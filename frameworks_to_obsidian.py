@@ -27,33 +27,13 @@ def print_df_info(name, df, num_rows=5):
     print("=" * 40)
     sys.stdout.flush()  # Force the output to flush
 
-def match_value(val_s, val_t, mode="exact"):
-    """
-    Compare val_s vs. val_t using:
-      - exact: string equality
-      - array-contains: checks if val_s in a split of val_t
-      - regex: val_s as a pattern in val_t
-    """
-    if pd.isna(val_s) or pd.isna(val_t):
-        return False
-    s, t = str(val_s).strip(), str(val_t).strip()
-
-    if mode == "exact":
-        return s == t
-    elif mode == "array-contains":
-        tokens = re.split(r'[,\s]+', t)
-        return s in tokens
-    elif mode == "regex":
-        return re.search(s, t) is not None
-    return False
-
-def build_full_path_components(code: str):  # TODO - refactor to account for different taxonomy IDs/code syntaxes (allow regex input?)
+def build_full_path_components(code: str, regex: str = r'[\.\-\(]'):
     """'ID.AM-1' -> ['ID','ID.AM','ID.AM-1'] (cumulative approach)."""
-    spots = [m.start() for m in re.finditer(r'[.-]', code)]
+    spots = [m.start() for m in re.finditer(regex, code)]
     parts = []
     for s in spots:
         parts.append(code[:s])
-    parts.append(code)
+        parts.append(code)
     return parts
 
 def split_folders(code: str):  # TODO - account for case of wanting to split names as they go down in the hiearchy instead
@@ -304,6 +284,7 @@ if __name__ == "__main__":
     file_cis_controls = "./Frameworks/CIS_Controls_Version_8.1_6_24_2024.xlsx"
     file_mapping_cis_controls_to_csf2 = "./Frameworks/CIS_Controls_v8_Mapping_to_NIST_CSF_2_2023.xlsx"
 
+    file_jonathans_xw = "./Frameworks/Jonathans_Framework Mapping.xlsx"
 
     # ----------------------------------------------------------------------
     # 1) CRI
@@ -423,8 +404,6 @@ if __name__ == "__main__":
     # print_df_info("NIST 800-53 Core", df_nist_core)
     # print_df_info("NIST to Mitre ATT&CK", df_nist_to_attack)
 
-    # TODO - define mapping and linking configs
-
     # ----------------------------------------------------------------------
     # 3) MITRE ATT&CK
     # ----------------------------------------------------------------------
@@ -496,8 +475,6 @@ if __name__ == "__main__":
         right_on="approach_id",
         suffixes=("","_remove")
     ).progress_apply(lambda x: x)
-
-    # remove the duplicate columns
     df_engage_approach_with_activities.drop([i for i in df_engage_approach_with_activities.columns if '_remove' in i],
                 axis=1, inplace=True)
 
@@ -509,8 +486,6 @@ if __name__ == "__main__":
         right_on="ID",
         suffixes=("", "_remove")
     ).progress_apply(lambda x: x)
-
-    # remove the duplicate columns
     df_engage_approach_with_activities.drop([i for i in df_engage_approach_with_activities.columns if '_remove' in i],
                 axis=1, inplace=True)
 
@@ -522,8 +497,6 @@ if __name__ == "__main__":
         right_on="approach_id",
         suffixes=("", "_remove")
     )
-
-    # remove the duplicate columns
     df_engage_core.drop([i for i in df_engage_core.columns if 'remove' in i],
                 axis=1, inplace=True)
 
@@ -590,20 +563,21 @@ if __name__ == "__main__":
     # TODO - fix d3fend structuring and att&ck
 
     # TODO - use this once granular deeper data has been accounted for in the code
-    # df_defend_full_mapping["def_tech_label"] = df_defend_full_mapping["def_tech_label"].astype(str)
 
-    # df_d3fend_core = pd.merge(
-    #     df_defend_full_mapping,
-    #     df_defend,
-    #     how="left",
-    #     left_on="def_tech_label",
-    #     right_on="lowest_tech_label",
-    #     suffixes=("", "_remove")
-    # ).progress_apply(lambda x: x)
+    df_defend_full_mapping["def_tech_label"] = df_defend_full_mapping["def_tech_label"].astype(str)
 
-    # # remove the duplicate columns
-    # df_d3fend_core.drop([i for i in df_engage_goals_with_approaches.columns if '_remove' in i],
-    #             axis=1, inplace=True)
+    df_d3fend_core = pd.merge(
+        df_defend_full_mapping,
+        df_defend,
+        how="left",
+        left_on="def_tech_label",
+        right_on="lowest_tech_label",
+        suffixes=("", "_remove")
+    ).progress_apply(lambda x: x)
+
+    # remove the duplicate columns
+    df_d3fend_core.drop([i for i in df_engage_goals_with_approaches.columns if '_remove' in i],
+                axis=1, inplace=True)
 
     # TESTING - Print out information for each DataFrame
     # print_df_info("Mitre D3FEND", df_defend)
@@ -611,15 +585,13 @@ if __name__ == "__main__":
     # print_df_info("Mitre D3FEND Core", df_d3fend_core)
     # print_df_info("Mitre D3FEND to NIST 800-53 Controls", df_defend_to_nist_controls)
 
-    # TODO - define mapping and linking configs
-
     # ----------------------------------------------------------------------
     # 6) NIST CSF v2
     # ----------------------------------------------------------------------
 
     df_csf2 = pd.read_excel(file_csf2_core, sheet_name="CSF 2.0", header=1)
     # MAPPINGS/CROSSWALKS (below)
-    df_csf2_to_nist_controls = pd.read_excel(file_mapping_csf2_to_nist_controls)
+    df_csf2_to_nist_controls = pd.read_excel(file_mapping_csf2_to_nist_controls, sheet_name="Relationships")
 
     # Define columns to fill in the hierarchical order
     hier_cols = [
@@ -630,6 +602,9 @@ if __name__ == "__main__":
 
     df_csf2 = hierarchical_ffill(df_csf2, hier_cols)
     df_csf2["CSF ID"] = df_csf2.apply(lambda r: extract_deepest_csf2_id(r, hier_cols), axis=1)
+
+    # get rid of newlines in column names
+    df_csf2_to_nist_controls.columns = [c.replace('\n', ' ') for c in df_csf2_to_nist_controls.columns.values.tolist()]
 
     # TESTING - Print out information for each DataFrame
     # print_df_info("NIST CSFv2 Core", df_csf2)
@@ -649,6 +624,12 @@ if __name__ == "__main__":
     df_cis_controls_to_csf2.drop(columns=['Unnamed: 0'], inplace=True)
     df_cis_controls_to_csf2_unmapped_CSF = pd.read_excel(file_mapping_cis_controls_to_csf2, sheet_name="Unmapped CSF")
     df_cis_controls_to_csf2_unmapped_CIS = pd.read_excel(file_mapping_cis_controls_to_csf2, sheet_name="Unmapped CIS")
+
+    # ----------------------------------------------------------------------
+    # 8) Jonathan's Crosswalk
+    # ----------------------------------------------------------------------
+
+    df_custom_xw = pd.read_excel(file_jonathans_xw, sheet_name="Framework Mapping", header=2)
 
     # ----------------------------------------------------------------------
     # Prepare mapping/crosswalk tables to be used for linking
@@ -786,7 +767,6 @@ if __name__ == "__main__":
     # print_df_info("Mitre D3FEND to NIST 800-53 Controls", df_defend_to_nist_controls)
     # print_df_info("CIS Controls v8 to NIST CSFv2", df_cis_controls_to_csf2)
 
-
     # ----------------------------------------------------------------------
     # Clean framework core dataframes to make sure the primary key or ID is the most granular data
     # ----------------------------------------------------------------------
@@ -812,7 +792,10 @@ if __name__ == "__main__":
     df_cri_core.drop_duplicates(subset=['Profile Id'], keep='first', inplace=True)
     df_nist_core.drop_duplicates(subset=['Control Identifier'], keep='first', inplace=True)
     df_mitre_attack.drop_duplicates(subset=['ID'], keep='first', inplace=True)
-    df_engage_core.drop_duplicates(subset=['ID'], keep='first', inplace=True)
+    df_engage_core.drop_duplicates(subset=['ID',
+                                           'goal_id',
+                                           'approach_id',
+                                           'activity_id'], keep='first', inplace=True)
     df_defend.drop_duplicates(subset=['ID'], keep='first', inplace=True)
     df_csf2.drop_duplicates(subset=['CSF ID'], keep='first', inplace=True)
     df_cis_controls.drop_duplicates(subset=['CIS ID'], keep='first', inplace=True)
@@ -846,6 +829,26 @@ if __name__ == "__main__":
         "ENGAGE‑ATT&CK"     : (df_mitre_engage_to_attack, "engage_id"),
         "D3FEND‑NIST"       : (df_defend_to_nist_controls,"d3_id"),
         "CIS‑CSF2"          : (df_cis_controls_to_csf2,   "CIS Control"),
+        "CSF2-NIST-800-53"  : (df_csf2_to_nist_controls, "Focal Document Element"),
+
+        # additional tables
+        "NIST 800-53 Controls"                : (df_nist_controls,  "Control Identifier"),
+        "NIST 800-53 Assessment"              : (df_nist_assessment,  "identifier"),
+        "Mitre ENGAGE Activities"             : (df_mitre_engage_activities,  "ID"),
+        "Mitre ENGAGE Approaches"             : (df_mitre_engage_approaches,  "ID"),
+        "Mitre ENGAGE Goals"                  : (df_mitre_engage_goals,  "ID"),
+        "Mitre ENGAGE Vulnerabilities"        : (df_mitre_engage_vulns,  "id"),
+        "Mitre ENGAGE Goal to Approach"       : (df_mitre_engage_goal_to_approach,  "goal_id"),
+        "Mitre ENGAGE Approach to Activity"   : (df_mitre_engage_approach_to_activity,  "approach_id"),
+        "Mitre ENGAGE Goals -> Approaches"    : (df_engage_goals_with_approaches,  "goal_id"),
+        "Mitre ENGAGE Approach -> Activities" : (df_engage_approach_with_activities,  "approach_id"),
+        "Mitre ENGAGE Core"                   : (df_engage_core,  "ID"),
+        "Mitre D3FEND Full Data"              : (df_defend_full_mapping,  "PRIMARY_KEY"),
+        "Mitre D3FEND Core"                   : (df_d3fend_core,  "PRIMARY_KEY"),
+        "Mitre D3FEND to NIST 800-53 Controls": (df_defend_to_nist_controls,  "Control"),
+        "Mitre ATT&CK Mitigations"            : (df_mitre_attack_mitigations,  "ID"),
+        "Custom Finance XW"                   : (df_custom_xw, "")
+        
     }
 
     out_file = "frameworks_export.xlsx"
@@ -876,6 +879,7 @@ if __name__ == "__main__":
             ws.autofilter(0, 0, len(df), len(df.columns)-1)
 
     # ----------------------------------------------------------------------
+    
     # ─────────────────────────────────────────────────────────────────────────────
     #  TAXONOMY BUILDER & LINKER  (fixed)
     # ─────────────────────────────────────────────────────────────────────────────
@@ -1108,7 +1112,7 @@ if __name__ == "__main__":
         name="CRI",
         df=df_cri_core,
         id_col="Profile Id",
-        hierarchy_cols=["Level","Profile Id"],
+        hierarchy_cols=[], # 'Level' or 'Profile ID' at the top? TODO
         path_mode=DEFAULT_PATH_MODE,
         folder_fmt=lambda d: d["Profile Id"],
         file_fmt=lambda d: f"{d['Profile Id']}.md",
@@ -1119,7 +1123,8 @@ if __name__ == "__main__":
         },
         #headings=["CRI Profile Function / Category / Subcategory"],
         tag_cols=[tags_column],
-        root_folder="CRI"    # ← this becomes the top‑level folder
+        root_folder="CRI",    # ← this becomes the top‑level folder
+        body_template = "%% Waypoint %%"
     ))
 
     FRAMEWORK_CONFIGS.append( FrameworkConfig(
@@ -1135,6 +1140,7 @@ if __name__ == "__main__":
             "Control Text":"text",
             "Discussion":"discussion"
         },
+        body_template = "%% Waypoint %%",
         #headings=[],
         root_folder="NIST-800-53"    # ← this becomes the top‑level folder
     ))
@@ -1148,6 +1154,7 @@ if __name__ == "__main__":
         folder_fmt=lambda d: d["ID"],
         file_fmt=lambda d: f"{d['ID']}.md",
         frontmatter={"name":"title","description":"desc"},
+        body_template = "%% Waypoint %%",
         #headings=[],
         root_folder="ATT&CK"    # ← this becomes the top‑level folder
     ))
@@ -1161,6 +1168,7 @@ if __name__ == "__main__":
         folder_fmt=lambda d: d["ID"],
         file_fmt=lambda d: f"{d['ID']}.md",
         frontmatter={"name":"title","long description":"desc"},
+        body_template = "%% Waypoint %%",
         #headings=[],
         root_folder="ENGAGE"    # ← this becomes the top‑level folder
     ))
@@ -1178,6 +1186,7 @@ if __name__ == "__main__":
             "D3FEND Technique":"technique",
             "Definition":"definition"
         },
+        body_template = "%% Waypoint %%",
         #headings=[],
         root_folder="D3FEND"    # ← this becomes the top‑level folder
     ))
@@ -1186,7 +1195,8 @@ if __name__ == "__main__":
         name="CSF2",
         df=df_csf2,
         id_col="CSF ID",
-        hierarchy_cols=["Function","Category","Subcategory"],
+        hierarchy_cols=[],
+        # hierarchy_cols=["Function","Category","Subcategory"],
         path_mode=DEFAULT_PATH_MODE,
         folder_fmt=lambda d: d["CSF ID"],
         file_fmt=lambda d: f"{d['CSF ID']}.md",
@@ -1196,6 +1206,7 @@ if __name__ == "__main__":
             "Implementation Examples":"examples",
             "Informative References":"refs"
         },
+        body_template = "%% Waypoint %%",
         #headings=["Function","Category"],
         root_folder="CSFv2"    # ← this becomes the top‑level folder
     ))
@@ -1204,45 +1215,56 @@ if __name__ == "__main__":
         name="CISv8",
         df=df_cis_controls,
         id_col="CIS ID",
-        hierarchy_cols=["CIS Control","CIS ID"],
+        hierarchy_cols=[],
+        # hierarchy_cols=["CIS Control","CIS ID"],
         path_mode=DEFAULT_PATH_MODE,
         folder_fmt=lambda d: d["CIS ID"],
         file_fmt=lambda d: f"{d['CIS ID']}.md", #TODO - old thing to change dots to underscores - .replace(".","_")
         frontmatter={
             "CIS Title":"title",
-            "Description":"description"
+            "Description":"description",
+            "Security Function": "security_function",
+            "Asset Type": "asset_type",
+            "IG1": "ig1",
+            "IG2": "ig2",
+            "IG3": "ig3",
         },
+        body_template = "%% Waypoint %%",
         #headings=["Security Function","Asset Type"],
         root_folder="CISv8"    # ← this becomes the top‑level folder
     ))
 
-    FRAMEWORK_CONFIGS.append( FrameworkConfig(
-        name         = "CSF2‑NIST_xwalk",
-        df           = df_csf2_to_nist_controls,
-        id_col       = "Seq",
-        hierarchy_cols = [],
-        path_mode    = "cumulative",
-        folder_fmt   = lambda d: d["csf_id"],
-        file_fmt     = lambda d: f"{d['csf_id']}.md",
-        frontmatter  = {
-            "csf_id"     : "csf_id",
-            "nist_id"    : "nist_id"
-        },
-        root_folder  = "XW_CSF2_NIST",
-    ))
+    # FRAMEWORK_CONFIGS.append( FrameworkConfig(
+    #     name         = "CSF2‑NIST_xwalk",
+    #     df           = df_csf2_to_nist_controls,
+    #     id_col       = "Focal Document Element",
+    #     hierarchy_cols = [],
+    #     path_mode    = "cumulative",
+    #     folder_fmt   = lambda d: d["csf_id"],
+    #     file_fmt     = lambda d: f"{d['csf_id']}.md",
+    #     frontmatter  = {
+    #         "csf_id"     : "csf_id",
+    #         "nist_id"    : "nist_id"
+    #     },
+    #     body_template = "%% Waypoint %%",
+    #     root_folder  = "XW_CSF2_NIST",
+    # ))
 
     FRAMEWORK_CONFIGS.append(FrameworkConfig(
         name         = "CSF2‑CRI_xwalk",
         df           = df_cri_nist_mapping,
-        id_col       = "Seq",
+        id_col       = "CSF / Profile Id",
         hierarchy_cols = [],
         path_mode    = "cumulative",
         folder_fmt   = lambda d: str(d["CSF / Profile Id"]).strip(),
         file_fmt     = lambda d: f"{str(d['CSF / Profile Id']).strip()}.md",
         frontmatter  = {
             "CSF / Profile Id" : "csf_id",
-            "Profile Id"       : "cri_id"
+            "Profile Id"       : "cri_id",
+            "Relationship": "relationship",
+            "CRI Mapping Note": "cri_mapping_note"
         },
+        body_template = "%% Waypoint %%",
         root_folder  = "XW_CSF2_CRI",
     ))
 
@@ -1263,11 +1285,11 @@ if __name__ == "__main__":
             tgt_col="CSF ID",
             mode="exact",
             direction="both",
-            link_to_pages=True,                 # keep wikilinks
+            link_to_pages=True,                    # keep wikilinks
             frontmatter_key="related_frameworks",  # write into YAML
             map_df     = df_cri_nist_mapping,
             map_left   = "Profile Id",            # == src_col on xwalk table
-            map_right  = "CSF / Profile Id",            # == tgt_colon xwalk table
+            map_right  = "CSF / Profile Id",      # == tgt_colon xwalk table
         ),
 
         # CRI ↔ CSF2 (X-WALK-LEFT)
@@ -1279,7 +1301,7 @@ if __name__ == "__main__":
             tgt_col="Profile Id",
             mode="exact",
             direction="both",
-            link_to_pages=True,                 # keep wikilinks
+            link_to_pages=True,    # keep wikilinks
             frontmatter_key="XW",  # write into YAML
         ),
 
@@ -1292,7 +1314,7 @@ if __name__ == "__main__":
             tgt_col="CSF ID",
             mode="exact",
             direction="both",
-            link_to_pages=True,                 # keep wikilinks
+            link_to_pages=True,    # keep wikilinks
             frontmatter_key="XW",  # write into YAML
         ),
 
@@ -1360,6 +1382,7 @@ if __name__ == "__main__":
         #     map_left   = "capability_id",            # == src_col on xwalk table
         #     map_right  = "CIS Control",            # == tgt_colon xwalk table
         # ),
+
         LinkConfig(
             name          = "CSF2 ↔ CISv8",
             src_fw        = fw_by_name["CSF2"],
@@ -1375,6 +1398,22 @@ if __name__ == "__main__":
             map_df    = df_cis_controls_to_csf2,
             map_left  = "csf_id",   # column that now always has a CSF ID
             map_right = "cis_id",        # column with control / safeguard
+        ),
+
+        # CRI ↔ CSF2
+        LinkConfig(
+            name="CSF2 ↔ NIST-800-53",
+            src_fw = fw_by_name["CSF2"],
+            tgt_fw = fw_by_name["NIST-800-53"],
+            src_col="CSF ID",
+            tgt_col="Control Identifier",
+            mode="exact",
+            direction="both",
+            link_to_pages=True,                    # keep wikilinks
+            frontmatter_key="related_frameworks",  # write into YAML
+            map_df     = df_csf2_to_nist_controls,
+            map_left   = "Focal Document Element",            # == src_col on xwalk table
+            map_right  = "Reference Document Element",        # == tgt_colon xwalk table
         )
     ]
 
@@ -1464,7 +1503,7 @@ if __name__ == "__main__":
                     f"→ suggestion: {suggestion}")
     print(f"[i] Broken‑link scan complete – {broken} link(s) need fixing.\n")
 
-    print("\n────────── Link summary ──────────")
+    print("\n\n\n────────── Link summary ──────────")
     for fw, n in link_stats.items():
         print(f"{fw:<15} : {n:>6} links")
     print("────────────────────────────────────\n")
