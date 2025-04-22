@@ -1,0 +1,181 @@
+Catalog,Control,Relation,Defensive Technique,Technique
+NIST SP 800-53 R5,AC-2(1),broader,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-2(1),broader,[Multi-factor Authentication](https://d3fend.mitre.org/technique/d3f:Multi-factorAuthentication),Multi-factor Authentication
+NIST SP 800-53 R5,AC-2(2),broader,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-2(3),broader,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-2(4),related,[Domain Account Monitoring](https://d3fend.mitre.org/technique/d3f:DomainAccountMonitoring),Domain Account Monitoring
+NIST SP 800-53 R5,AC-2(5),related,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-2(7),narrower,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,AC-2(9),narrower,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,AC-2(13),narrower,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-3,narrower,[Executable Allowlisting](https://d3fend.mitre.org/technique/d3f:ExecutableAllowlisting),Executable Allowlisting
+NIST SP 800-53 R5,AC-3,narrower,[Executable Denylisting](https://d3fend.mitre.org/technique/d3f:ExecutableDenylisting),Executable Denylisting
+NIST SP 800-53 R5,AC-3(8),narrower,[System Call Filtering](https://d3fend.mitre.org/technique/d3f:SystemCallFiltering),System Call Filtering
+NIST SP 800-53 R5,AC-4,narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4,narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(1),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(1),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(3),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(3),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(4),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(4),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(5),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(5),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(6),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(6),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(8),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(8),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(10),broader,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(10),broader,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(11),broader,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(11),broader,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(12),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(12),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(13),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(13),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(14),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(14),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(15),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(15),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(17),narrower,[Domain Trust Policy](https://d3fend.mitre.org/technique/d3f:DomainTrustPolicy),Domain Trust Policy
+NIST SP 800-53 R5,AC-4(19),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(19),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(20),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(20),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(21),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(21),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(26),narrower,[File Content Rules](https://d3fend.mitre.org/technique/d3f:FileContentRules),File Content Rules
+NIST SP 800-53 R5,AC-4(27),exactly,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(27),exactly,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(28),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(28),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(29),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(29),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(30),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(30),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(32),narrower,[Inbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:InboundTrafficFiltering),Inbound Traffic Filtering
+NIST SP 800-53 R5,AC-4(32),narrower,[Outbound Traffic Filtering](https://d3fend.mitre.org/technique/d3f:OutboundTrafficFiltering),Outbound Traffic Filtering
+NIST SP 800-53 R5,AC-5,broader,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,AC-5,broader,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,AC-6,broader,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,AC-6,broader,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,AC-6(1),exactly,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,AC-6(3),exactly,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,AC-6(4),narrower,[Hardware-based Process Isolation](https://d3fend.mitre.org/technique/d3f:Hardware-basedProcessIsolation),Hardware-based Process Isolation
+NIST SP 800-53 R5,AC-6(5),narrower,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,AC-6(5),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,AC-6(6),narrower,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,AC-6(6),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,AC-6(9),broader,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AC-6(9),broader,[User Behavior Analysis](https://d3fend.mitre.org/technique/d3f:UserBehaviorAnalysis),User Behavior Analysis
+NIST SP 800-53 R5,AC-6(10),narrower,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,AC-6(10),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,AC-7,exactly,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-7(3),narrower,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-7(4),broader,[Account Locking](https://d3fend.mitre.org/technique/d3f:AccountLocking),Account Locking
+NIST SP 800-53 R5,AC-17(8),broader,[Executable Denylisting](https://d3fend.mitre.org/technique/d3f:ExecutableDenylisting),Executable Denylisting
+NIST SP 800-53 R5,AC-23,narrower,[Job Function Access Pattern Analysis](https://d3fend.mitre.org/technique/d3f:JobFunctionAccessPatternAnalysis),Job Function Access Pattern Analysis
+NIST SP 800-53 R5,AC-23,narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AC-23,narrower,[Resource Access Pattern Analysis](https://d3fend.mitre.org/technique/d3f:ResourceAccessPatternAnalysis),Resource Access Pattern Analysis
+NIST SP 800-53 R5,AC-23,narrower,[User Data Transfer Analysis](https://d3fend.mitre.org/technique/d3f:UserDataTransferAnalysis),User Data Transfer Analysis
+NIST SP 800-53 R5,AC-24(1),narrower,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,AC-24(2),narrower,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,AU-2,exactly,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AU-2(1),exactly,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AU-2(2),exactly,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AU-3,exactly,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AU-4,narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AU-10(5),broader,[Driver Load Integrity Checking](https://d3fend.mitre.org/technique/d3f:DriverLoadIntegrityChecking),Driver Load Integrity Checking
+NIST SP 800-53 R5,AU-14(2),narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,AU-15,narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,CM-5,narrower,[Executable Allowlisting](https://d3fend.mitre.org/technique/d3f:ExecutableAllowlisting),Executable Allowlisting
+NIST SP 800-53 R5,CM-5,narrower,[Executable Denylisting](https://d3fend.mitre.org/technique/d3f:ExecutableDenylisting),Executable Denylisting
+NIST SP 800-53 R5,CM-5,narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,CM-5(1),narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,CM-5(3),narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,CM-5(3),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,CM-5(5),narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,CM-5(5),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,CM-5(6),narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,CM-5(6),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,CM-6(3),broader,[Application Configuration Hardening](https://d3fend.mitre.org/technique/d3f:ApplicationConfigurationHardening),Application Configuration Hardening
+NIST SP 800-53 R5,CM-14,related,[Driver Load Integrity Checking](https://d3fend.mitre.org/technique/d3f:DriverLoadIntegrityChecking),Driver Load Integrity Checking
+NIST SP 800-53 R5,CM-14,related,[Message Authentication](https://d3fend.mitre.org/technique/d3f:MessageAuthentication),Message Authentication
+NIST SP 800-53 R5,IA-2(1),narrower,[Multi-factor Authentication](https://d3fend.mitre.org/technique/d3f:Multi-factorAuthentication),Multi-factor Authentication
+NIST SP 800-53 R5,IA-2(2),narrower,[Multi-factor Authentication](https://d3fend.mitre.org/technique/d3f:Multi-factorAuthentication),Multi-factor Authentication
+NIST SP 800-53 R5,IA-2(4),narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,IA-2(6),narrower,[Multi-factor Authentication](https://d3fend.mitre.org/technique/d3f:Multi-factorAuthentication),Multi-factor Authentication
+NIST SP 800-53 R5,IR-4(12),related,[Dynamic Analysis](https://d3fend.mitre.org/technique/d3f:DynamicAnalysis),Dynamic Analysis
+NIST SP 800-53 R5,IR-4(13),related,[Decoy Environment](https://d3fend.mitre.org/technique/d3f:DecoyEnvironment),Decoy Environment
+NIST SP 800-53 R5,IR-4(13),related,[Decoy Object](https://d3fend.mitre.org/technique/d3f:DecoyObject),Decoy Object
+NIST SP 800-53 R5,MA-3(3),narrower,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,MA-3(4),narrower,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,MA-3(5),narrower,[User Account Permissions](https://d3fend.mitre.org/technique/d3f:UserAccountPermissions),User Account Permissions
+NIST SP 800-53 R5,MA-3(6),narrower,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,MA-4(1),narrower,[Local Account Monitoring](https://d3fend.mitre.org/technique/d3f:LocalAccountMonitoring),Local Account Monitoring
+NIST SP 800-53 R5,MA-6,narrower,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,MA-6(1),narrower,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,MA-6(2),narrower,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,MA-6(3),narrower,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,RA-3(3),broader,[File Analysis](https://d3fend.mitre.org/technique/d3f:FileAnalysis),File Analysis
+NIST SP 800-53 R5,RA-3(3),broader,[Identifier Analysis](https://d3fend.mitre.org/technique/d3f:IdentifierAnalysis),Identifier Analysis
+NIST SP 800-53 R5,RA-3(3),broader,[Message Analysis](https://d3fend.mitre.org/technique/d3f:MessageAnalysis),Message Analysis
+NIST SP 800-53 R5,RA-3(3),broader,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
+NIST SP 800-53 R5,RA-3(3),broader,[Platform Monitoring](https://d3fend.mitre.org/technique/d3f:PlatformMonitoring),Platform Monitoring
+NIST SP 800-53 R5,RA-3(3),broader,[Process Analysis](https://d3fend.mitre.org/technique/d3f:ProcessAnalysis),Process Analysis
+NIST SP 800-53 R5,RA-3(3),broader,[User Behavior Analysis](https://d3fend.mitre.org/technique/d3f:UserBehaviorAnalysis),User Behavior Analysis
+NIST SP 800-53 R5,RA-3(4),narrower,[File Analysis](https://d3fend.mitre.org/technique/d3f:FileAnalysis),File Analysis
+NIST SP 800-53 R5,RA-3(4),narrower,[Identifier Analysis](https://d3fend.mitre.org/technique/d3f:IdentifierAnalysis),Identifier Analysis
+NIST SP 800-53 R5,RA-3(4),narrower,[Message Analysis](https://d3fend.mitre.org/technique/d3f:MessageAnalysis),Message Analysis
+NIST SP 800-53 R5,RA-3(4),narrower,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
+NIST SP 800-53 R5,RA-3(4),narrower,[Platform Monitoring](https://d3fend.mitre.org/technique/d3f:PlatformMonitoring),Platform Monitoring
+NIST SP 800-53 R5,RA-3(4),narrower,[Process Analysis](https://d3fend.mitre.org/technique/d3f:ProcessAnalysis),Process Analysis
+NIST SP 800-53 R5,RA-3(4),narrower,[User Behavior Analysis](https://d3fend.mitre.org/technique/d3f:UserBehaviorAnalysis),User Behavior Analysis
+NIST SP 800-53 R5,RA-5,broader,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
+NIST SP 800-53 R5,RA-5(2),narrower,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
+NIST SP 800-53 R5,RA-5(3),narrower,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
+NIST SP 800-53 R5,RA-5(4),related,[Decoy Environment](https://d3fend.mitre.org/technique/d3f:DecoyEnvironment),Decoy Environment
+NIST SP 800-53 R5,RA-5(4),related,[Decoy Object](https://d3fend.mitre.org/technique/d3f:DecoyObject),Decoy Object
+NIST SP 800-53 R5,RA-5(5),narrower,[Platform Hardening](https://d3fend.mitre.org/technique/d3f:PlatformHardening),Platform Hardening
+NIST SP 800-53 R5,RA-5(6),narrower,[Platform Hardening](https://d3fend.mitre.org/technique/d3f:PlatformHardening),Platform Hardening
+NIST SP 800-53 R5,RA-5(7),narrower,[Executable Allowlisting](https://d3fend.mitre.org/technique/d3f:ExecutableAllowlisting),Executable Allowlisting
+NIST SP 800-53 R5,RA-5(7),narrower,[Executable Denylisting](https://d3fend.mitre.org/technique/d3f:ExecutableDenylisting),Executable Denylisting
+NIST SP 800-53 R5,SA-8(18),related,[Encrypted Tunnels](https://d3fend.mitre.org/technique/d3f:EncryptedTunnels),Encrypted Tunnels
+NIST SP 800-53 R5,SA-8(22),related,[Domain Account Monitoring](https://d3fend.mitre.org/technique/d3f:DomainAccountMonitoring),Domain Account Monitoring
+NIST SP 800-53 R5,SA-10(1),related,[Firmware Verification](https://d3fend.mitre.org/technique/d3f:FirmwareVerification),Firmware Verification
+NIST SP 800-53 R5,SA-10(1),related,[Platform Hardening](https://d3fend.mitre.org/technique/d3f:PlatformHardening),Platform Hardening
+NIST SP 800-53 R5,SA-10(3),related,[Firmware Verification](https://d3fend.mitre.org/technique/d3f:FirmwareVerification),Firmware Verification
+NIST SP 800-53 R5,SA-10(4),related,[Firmware Verification](https://d3fend.mitre.org/technique/d3f:FirmwareVerification),Firmware Verification
+NIST SP 800-53 R5,SA-10(5),related,[Firmware Verification](https://d3fend.mitre.org/technique/d3f:FirmwareVerification),Firmware Verification
+NIST SP 800-53 R5,SA-10(5),related,[Platform Hardening](https://d3fend.mitre.org/technique/d3f:PlatformHardening),Platform Hardening
+NIST SP 800-53 R5,SA-10(6),related,[Firmware Verification](https://d3fend.mitre.org/technique/d3f:FirmwareVerification),Firmware Verification
+NIST SP 800-53 R5,SA-10(6),related,[Platform Hardening](https://d3fend.mitre.org/technique/d3f:PlatformHardening),Platform Hardening
+NIST SP 800-53 R5,SA-11(1),related,[Application Hardening](https://d3fend.mitre.org/technique/d3f:ApplicationHardening),Application Hardening
+NIST SP 800-53 R5,SA-11(8),related,[Application Hardening](https://d3fend.mitre.org/technique/d3f:ApplicationHardening),Application Hardening
+NIST SP 800-53 R5,SC-2,broader,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,SC-2,broader,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,SC-2(1),narrower,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,SC-2(1),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,SC-3,broader,[Execution Isolation](https://d3fend.mitre.org/technique/d3f:ExecutionIsolation),Execution Isolation
+NIST SP 800-53 R5,SC-3,broader,[Network Isolation](https://d3fend.mitre.org/technique/d3f:NetworkIsolation),Network Isolation
+NIST SP 800-53 R5,SC-3(1),narrower,[Execution Isolation](https://d3fend.mitre.org/technique/d3f:ExecutionIsolation),Execution Isolation
+NIST SP 800-53 R5,SI-2(4),narrower,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,SI-2(5),exactly,[Firmware Verification](https://d3fend.mitre.org/technique/d3f:FirmwareVerification),Firmware Verification
+NIST SP 800-53 R5,SI-2(5),exactly,[Peripheral Firmware Verification](https://d3fend.mitre.org/technique/d3f:PeripheralFirmwareVerification),Peripheral Firmware Verification
+NIST SP 800-53 R5,SI-2(5),exactly,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,SI-2(5),exactly,[System Firmware Verification](https://d3fend.mitre.org/technique/d3f:SystemFirmwareVerification),System Firmware Verification
+NIST SP 800-53 R5,SI-2(6),narrower,[Firmware Verification](https://d3fend.mitre.org/technique/d3f:FirmwareVerification),Firmware Verification
+NIST SP 800-53 R5,SI-2(6),narrower,[Peripheral Firmware Verification](https://d3fend.mitre.org/technique/d3f:PeripheralFirmwareVerification),Peripheral Firmware Verification
+NIST SP 800-53 R5,SI-2(6),narrower,[Software Update](https://d3fend.mitre.org/technique/d3f:SoftwareUpdate),Software Update
+NIST SP 800-53 R5,SI-2(6),narrower,[System Firmware Verification](https://d3fend.mitre.org/technique/d3f:SystemFirmwareVerification),System Firmware Verification
+NIST SP 800-53 R5,SI-3,broader,[File Analysis](https://d3fend.mitre.org/technique/d3f:FileAnalysis),File Analysis
+NIST SP 800-53 R5,SI-3,broader,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
+NIST SP 800-53 R5,SI-3,broader,[Platform Monitoring](https://d3fend.mitre.org/technique/d3f:PlatformMonitoring),Platform Monitoring
+NIST SP 800-53 R5,SI-3,broader,[Process Analysis](https://d3fend.mitre.org/technique/d3f:ProcessAnalysis),Process Analysis
+NIST SP 800-53 R5,SI-3(4),narrower,[Local File Permissions](https://d3fend.mitre.org/technique/d3f:LocalFilePermissions),Local File Permissions
+NIST SP 800-53 R5,SI-3(4),narrower,[System Configuration Permissions](https://d3fend.mitre.org/technique/d3f:SystemConfigurationPermissions),System Configuration Permissions
+NIST SP 800-53 R5,SI-3(8),narrower,[User Behavior Analysis](https://d3fend.mitre.org/technique/d3f:UserBehaviorAnalysis),User Behavior Analysis
+NIST SP 800-53 R5,SI-3(10),exactly,[Dynamic Analysis](https://d3fend.mitre.org/technique/d3f:DynamicAnalysis),Dynamic Analysis
+NIST SP 800-53 R5,SI-4,broader,[Operating System Monitoring](https://d3fend.mitre.org/technique/d3f:OperatingSystemMonitoring),Operating System Monitoring
+NIST SP 800-53 R5,SI-4(2),narrower,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
+NIST SP 800-53 R5,SI-4(4),narrower,[Network Traffic Analysis](https://d3fend.mitre.org/technique/d3f:NetworkTrafficAnalysis),Network Traffic Analysis
