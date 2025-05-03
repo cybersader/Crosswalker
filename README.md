@@ -1,6 +1,5 @@
-Collaborate and join the [Obsidian & Cyber Working Group](https://github.com/cybersader/awesome-obsidian-and-cyber) (more of a knowledge work and cyber working group)
-
-📫 Contact me via my Cal.com link at [my website](https://cybersader.com/README#%F0%9F%94%97+Links)
+- Collaborate and join the [Obsidian & Cyber Working Group](https://github.com/cybersader/awesome-obsidian-and-cyber) 
+- 📫 Contact me via my Cal.com link at [my website](https://cybersader.com/README#%F0%9F%94%97+Links)
 
 # Crosswalker
 
