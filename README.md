@@ -26,7 +26,7 @@ GRC involves a lot of knowledge work; keeping structured frameworks side-by-side
 - First Principles: treat frameworks as taxonomic hierarchies, mapping them to file-system folders and YAML metadata.
 - Config-Driven: minimal code changes are required to onboard new frameworks via `FrameworkConfig` and `LinkConfig`.
 - Interoperable: leverages pandas and simple CSV/XLSX mapping tables, keeping data sources separate and extensible.
-- Obsidian-Friendly: produces Markdown with YAML front-matter and relative wikilinks for graph-based exploration.
+- Format-Agnostic: produces Markdown with YAML front-matter and relative wikilinks or markdown links for graph-based exploration.  Plaintext files work in all sorts of places.
 - The goal is to have a 2-way engine that can map frameworks to a hierarchical and related structure of notes useful for Knowledge Platforms (e.g. Obsidian, Notion), then be able to map from notes back to tabular framework files or other useful tabular reports that can be pivoted on in Excel.
 
 ## 🏗️ Architecture & Workflow
