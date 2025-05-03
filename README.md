@@ -1,8 +1,20 @@
+Collaborate and join the [Obsidian & Cyber Working Group](https://github.com/cybersader/awesome-obsidian-and-cyber) (more of a knowledge work and cyber working group)
+
+📫 Contact me via my Cal.com link at [my website](https://cybersader.com/README#%F0%9F%94%97+Links)
+
 # Crosswalker
 
 > A Python toolkit to translate tabular cybersecurity framework data into Obsidian-ready taxonomic folder structures and interconnected markdown notes.
 
 Essentially, a **Framework crosswalk engine** — crosswalks/maps and translates NIST, CIS, ISO, etc., into linked Markdown pages so you can evidence-map, explore, and automate straight from plaintext notes.  I'm already 1500 lines of Python code in on this one.  Way harder than expected.  So far, I've got MITRE ATT&CK + D3FEND + ENGAGE, NIST800-53, CSFv2, CISv8, and the CRI Profile started.
+
+This tool can be extended to work with other knowledge platforms.
+
+Below example of implementation and intent in [Obsidian](https://obsidian.md/).
+
+![image](https://github.com/user-attachments/assets/55baa236-4f4c-4930-8338-24994b7ad8bf)
+
+GRC involves a lot of knowledge work; keeping structured frameworks side-by-side with the knowledge we input, utilize, and share could change how we do that type of work.
 
 ## 🚀 Features
 - Supports CRI, NIST CSF, NIST SP-800-53, MITRE ATT&CK, MITRE EngAGE, MITRE D3FEND, CIS Controls v8, and custom crosswalks.
