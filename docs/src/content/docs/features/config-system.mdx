@@ -1,0 +1,40 @@
+---
+title: Config system
+description: Save, load, and match import configurations.
+---
+
+Crosswalker remembers your import configurations so you don't have to reconfigure columns every time.
+
+## Saving configs
+
+After a successful import, you're prompted to save the configuration. Saved configs include:
+- Column-to-role mappings
+- Output path and naming settings
+- A fingerprint of the source data structure
+
+## Config matching
+
+When you import a new file, Crosswalker generates a fingerprint and scores it against saved configs. If a match is found above the threshold (default: 50%), it suggests applying that config.
+
+Matching considers:
+- Column name overlap
+- Column count similarity
+- Data pattern similarity (when pattern detection is enabled)
+
+## Config browser
+
+Access saved configs from the settings tab. You can:
+- Browse all saved configs
+- Preview column mappings
+- Delete outdated configs
+- (Planned) Export/import configs as JSON for sharing
+
+## Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enable config suggestions | On | Show "Use saved config?" prompts |
+| Match threshold | 50 | Minimum score (0-100) to suggest a config |
+| Pattern detection | On | Detect data patterns for smarter matching |
+| Prompt to save | On | Ask to save config after import |
+| Auto-apply exact match | Off | Skip confirmation on 100% match |

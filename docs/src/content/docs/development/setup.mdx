@@ -1,0 +1,50 @@
+---
+title: Development setup
+description: How to set up your local development environment for Crosswalker.
+---
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+
+- [Bun](https://bun.sh/) (package manager)
+- [Obsidian](https://obsidian.md/) (for testing)
+
+## Clone and install
+
+```bash
+git clone https://github.com/cybersader/Crosswalker.git
+cd Crosswalker
+bun install
+```
+
+## Development workflow
+
+```bash
+# Watch mode — rebuilds on file changes, outputs to test-vault
+bun run dev
+
+# Open test-vault/ in Obsidian
+# Enable Crosswalker in Settings > Community Plugins
+# Changes auto-reload with Hot Reload plugin
+```
+
+## Build commands
+
+| Command | Description |
+|---------|-------------|
+| `bun run dev` | Watch mode, outputs to test-vault |
+| `bun run build` | Production build (type-check + bundle) |
+| `bun run test` | Run unit tests |
+| `bun run lint` | ESLint with obsidian-plugin rules |
+| `bun run lint:fix` | Auto-fix lint issues |
+| `bun run e2e` | Run E2E tests (requires Obsidian) |
+
+## Project structure
+
+- `src/` — Plugin source code (TypeScript)
+- `tests/` — Unit tests (Jest)
+- `test/e2e/` — E2E tests (WebdriverIO)
+- `test-vault/` — Embedded Obsidian vault for development
+- `docs/` — Astro Starlight documentation site
+- `.claude/` — AI agent context and project knowledge
+- `.github/workflows/` — CI/CD pipelines

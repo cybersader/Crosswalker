@@ -1,0 +1,42 @@
+---
+title: Contributing
+description: How to contribute to Crosswalker.
+---
+
+## Getting started
+
+1. Fork the repository on GitHub
+2. Clone your fork and set up the [development environment](/Crosswalker/development/setup/)
+3. Create a feature branch: `git checkout -b feature/my-feature`
+4. Make your changes
+5. Run tests: `bun run test && bun run lint`
+6. Commit and push
+7. Open a pull request
+
+## Code style
+
+- TypeScript with strict types
+- ESLint with `eslint-plugin-obsidianmd` rules
+- Sentence case for all UI text (Obsidian community plugin requirement)
+- Use `Setting.setHeading()` instead of `createEl('h3')` for settings headings
+
+## Commit messages
+
+Keep commit messages concise and descriptive. Focus on the "why" rather than the "what."
+
+## Adding a new parser
+
+To add support for a new file format:
+
+1. Create `src/import/parsers/<format>-parser.ts`
+2. Export a `parse<Format>(content, options)` function returning `ParsedData`
+3. Add the format to the file picker in `import-wizard.ts`
+4. Add unit tests in `tests/<format>-parser.test.ts`
+
+## Reporting issues
+
+File issues at [github.com/cybersader/Crosswalker/issues](https://github.com/cybersader/Crosswalker/issues) with:
+- Steps to reproduce
+- Expected vs. actual behavior
+- Sample data (if possible, anonymized)
+- Obsidian version and OS

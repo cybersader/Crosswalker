@@ -1,0 +1,35 @@
+---
+title: Crosswalker
+description: Import structured ontologies into Obsidian with folder structures, typed links, and metadata.
+template: splash
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What is Crosswalker?
+
+Crosswalker is an Obsidian plugin that imports structured data (CSV, XLSX, JSON) into your vault as organized folder hierarchies with rich metadata. While designed with compliance frameworks in mind (NIST, CIS, MITRE), it works with any structured ontology or taxonomy.
+
+<CardGrid>
+  <Card title="Import wizard" icon="rocket">
+    Step-by-step wizard guides you through file selection, column mapping, preview, and generation.
+  </Card>
+  <Card title="Smart config" icon="setting">
+    Save and reuse import configurations. Fingerprint-based matching suggests configs for similar files.
+  </Card>
+  <Card title="Rich metadata" icon="document">
+    Generate notes with YAML frontmatter, typed links, and hierarchical folder structures.
+  </Card>
+  <Card title="Tool-agnostic" icon="puzzle">
+    Output works with Obsidian Bases, Dataview, or plain markdown. No lock-in.
+  </Card>
+</CardGrid>
+
+## Quick start
+
+1. Install Crosswalker in Obsidian
+2. Open the command palette and run **Crosswalker: Import structured data**
+3. Select your CSV/XLSX file and follow the wizard
+4. Browse your new framework folder structure
+
+[Get started](/Crosswalker/getting-started/installation/) or explore the [concepts](/Crosswalker/concepts/problem/) behind the project.

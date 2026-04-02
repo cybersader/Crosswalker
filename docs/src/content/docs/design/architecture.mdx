@@ -1,0 +1,62 @@
+---
+title: Architecture
+description: Core components, data flow, and system design.
+---
+
+## Data flow
+
+```mermaid
+graph TD
+    A[Source File<br>CSV / XLSX / JSON] --> B[Parser]
+    B --> C[ParsedData<br>columns + rows]
+    C --> D[Column Analysis<br>type detection]
+    D --> E[User Configuration<br>wizard steps 2-3]
+    E --> F[CrosswalkerConfig]
+    F --> G[Generation Engine]
+    G --> H[Obsidian Vault<br>folders + notes]
+```
+
+## Components
+
+### Import engine (`src/import/`)
+- **Import wizard** — 4-step modal UI built on Obsidian's `Modal` class
+- **CSV parser** — PapaParse with streaming for files >5MB
+- **XLSX parser** — Planned (xlsx package installed)
+- **JSON parser** — Planned
+
+### Generation engine (`src/generation/`)
+- Creates folder hierarchy from hierarchy columns
+- Generates markdown notes with YAML frontmatter
+- Handles key naming transforms (snake_case, camelCase, etc.)
+- Tracks imports via `_crosswalker` metadata
+
+### Config system (`src/config/`)
+- **Config manager** — Save, load, fingerprint, and match configurations
+- **Config browser** — Modal UI for browsing and managing saved configs
+
+### Settings (`src/settings/`)
+- Plugin settings with defaults
+- Settings tab UI with progressive disclosure
+
+## File structure
+
+```
+src/
+├── main.ts                      # Plugin entry, registers commands
+├── import/
+│   ├── import-wizard.ts         # 4-step modal workflow
+│   └── parsers/
+│       └── csv-parser.ts        # PapaParse streaming parser
+├── generation/
+│   └── generation-engine.ts     # Folder + note creation
+├── config/
+│   ├── config-manager.ts        # Save/load/match configs
+│   └── config-browser-modal.ts  # Browse/select/delete UI
+├── settings/
+│   ├── settings-data.ts         # Interface + defaults
+│   └── settings-tab.ts          # Settings UI
+├── types/
+│   └── config.ts                # TypeScript interfaces
+└── utils/
+    └── debug.ts                 # Debug logging
+```

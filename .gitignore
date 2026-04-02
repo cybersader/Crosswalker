@@ -43,6 +43,14 @@ npm-debug.log*
 # Claude Code local settings (contains user-specific paths)
 .claude/settings.local.json
 
+# E2E test artifacts
+test-results/
+
+# Docs site
+docs/node_modules/
+docs/dist/
+docs/.astro/
+
 # Python
 __pycache__/
 *.py[cod]

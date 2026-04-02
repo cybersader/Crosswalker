@@ -1,0 +1,62 @@
+---
+title: Settings reference
+description: All Crosswalker plugin settings and their defaults.
+---
+
+## General
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Default output path | `Ontologies` | Base folder for generated framework structures |
+
+## Import defaults
+
+| Setting | Default | Options |
+|---------|---------|---------|
+| Key naming style | Snake case | As-is, Lowercase, Snake case, Camel case, Kebab case |
+| Array handling | As array | As array, Stringify, First, Last, Join |
+| Empty handling | Omit | Omit, Empty string, Null, Default |
+| Frontmatter style | Flat | Flat, Dot-to-nest, Group by prefix |
+
+## Link syntax
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Link syntax preset | Standard | Simple, Standard, Full, Custom |
+| Custom link namespace | `crosswalker` | Namespace for typed link syntax |
+
+## Config matching
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enable config suggestions | On | Show saved config suggestions on import |
+| Match threshold | 50 | Minimum score (0-100) to suggest a config |
+| Pattern detection | On | Use data patterns for smarter matching |
+| Prompt to save config | On | Ask to save config after successful import |
+| Auto-apply exact match | Off | Skip confirmation on 100% column match |
+
+## Wizard behavior
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Show column statistics | On | Display unique counts and types in Step 2 |
+| Show sample values | On | Display sample data in column configuration |
+| Sample value count | 3 | Number of samples to show (1-10) |
+| Confirm before generate | On | Show confirmation dialog before creating files |
+| Show progress notices | On | Display progress during parsing/generation |
+
+## Advanced
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Custom transforms | Off | Enable user-defined column transforms |
+| Custom transforms path | (empty) | Path to transforms configuration |
+| Max rows for preview | 100 | Limit preview rows for performance |
+| Streaming threshold | 5 MB | File size that triggers streaming parser |
+
+## Debug
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enable debug log | Off | Write logs to `crosswalker-debug.log` |
+| Verbose logging | Off | Extra detailed log output |

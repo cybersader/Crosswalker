@@ -1,0 +1,43 @@
+---
+title: The problem
+description: Why filesystems and knowledge graphs don't mix — and what Crosswalker does about it.
+---
+
+## The hierarchy vs. graph tension
+
+**Filesystems are hierarchical** — each file has exactly one parent folder. Path equals identity (`/Frameworks/NIST/AC-2.md`). Single location per item. Tree structure.
+
+**Knowledge is graph-shaped** — concepts connect to many other concepts. The same idea belongs in multiple contexts. Relationships have types and metadata. Polyhierarchy is natural.
+
+## Where Obsidian sits
+
+Obsidian runs on a filesystem but provides graph-like features:
+
+| Feature | Hierarchical | Graph-like |
+|---------|:---:|:---:|
+| Folders | Yes | - |
+| WikiLinks | - | Yes (untyped) |
+| Tags | - | Yes (multi-parent) |
+| Aliases | - | Yes (multiple identities) |
+| Properties | - | Yes (node metadata) |
+| Backlinks | - | Yes (bidirectional) |
+
+**The gap**: Links are untyped. You can link `[[AC-2]]` but you can't natively say "this IMPLEMENTS AC-2" or "this is EVIDENCE FOR AC-2."
+
+## Why this matters for frameworks
+
+Compliance frameworks are structured ontologies:
+- **NIST 800-53**: Families > Controls > Enhancements
+- **CIS Controls**: Controls > Safeguards > Implementation Groups
+- **MITRE ATT&CK**: Tactics > Techniques > Sub-techniques
+
+Organizations need to import these structures, link workspace notes to framework nodes, attach metadata to relationships, and query compliance status.
+
+## Current solutions fall short
+
+- **Proprietary GRC tools**: Lock-in, expensive, rigid
+- **Spreadsheets**: Don't scale, no graph navigation
+- **Plain Obsidian**: Links exist but no relationship types
+- **Graph databases**: Overkill, separate from notes
+
+Crosswalker bridges this gap: structured data in, Obsidian-native notes out, queryable with standard tools.

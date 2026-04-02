@@ -1,0 +1,66 @@
+---
+title: Generation engine
+description: How Crosswalker creates folders and notes from your data.
+---
+
+The generation engine converts parsed and configured data into Obsidian vault structure.
+
+## Folder creation
+
+Hierarchy columns define the folder tree. For a file with columns mapped as:
+- Level 1: `Control Family`
+- Level 2: `Control ID`
+
+The engine creates:
+```
+Ontologies/
+├── Access Control (AC)/
+│   ├── AC-1.md
+│   ├── AC-2.md
+│   └── ...
+├── Audit (AU)/
+│   └── ...
+```
+
+## Note generation
+
+Each leaf in the hierarchy becomes a markdown note with:
+
+### YAML frontmatter
+All frontmatter-mapped columns become properties:
+```yaml
+---
+control_id: AC-2
+control_name: Account Management
+family: Access Control
+_crosswalker:
+  source: nist-800-53.csv
+  imported: 2026-04-02T12:00:00Z
+  config: my-nist-config
+---
+```
+
+### Body content
+Body-mapped columns are inserted as markdown text below the frontmatter.
+
+### Links
+Link-mapped columns generate WikiLinks. Multiple values (comma-separated) create multiple links.
+
+## Key naming
+
+Frontmatter keys are transformed based on your naming style setting:
+
+| Style | Input | Output |
+|-------|-------|--------|
+| As-is | `Control Name` | `Control Name` |
+| Lowercase | `Control Name` | `control name` |
+| Snake case | `Control Name` | `control_name` |
+| Camel case | `Control Name` | `controlName` |
+| Kebab case | `Control Name` | `control-name` |
+
+## Metadata tracking
+
+Every generated note includes `_crosswalker` metadata so you can:
+- Identify which import created the note
+- Re-import without duplicating
+- Track import history

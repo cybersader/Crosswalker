@@ -12,32 +12,32 @@ Crosswalker is an Obsidian plugin for importing structured ontologies (framework
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Development mode (watch mode, outputs to test-vault)
-npm run dev
+bun run dev
 
 # Production build (type-check + bundle)
-npm run build
+bun run build
 
 # Run linter (required for community plugin submission)
-npm run lint
+bun run lint
 
 # Fix lint issues automatically
-npm run lint:fix
+bun run lint:fix
 
 # Run tests
-npm test
+bun run test
 
 # Run tests in watch mode
-npm test:watch
+bun run test:watch
 ```
 
 ## Testing Workflow
 
 The build outputs directly to `test-vault/.obsidian/plugins/crosswalker/` (configured in `esbuild.config.mjs`). To test:
 
-1. Run `npm run dev` (watch mode)
+1. Run `bun run dev` (watch mode)
 2. Open `test-vault/` in Obsidian
 3. Enable the Crosswalker plugin in Settings > Community Plugins
 4. Test via command palette: "Crosswalker: Import structured data"
