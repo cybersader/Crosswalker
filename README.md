@@ -1,106 +1,122 @@
-- Collaborate and join the [Obsidian & Cyber Working Group](https://github.com/cybersader/awesome-obsidian-and-cyber) 
-- 📫 Contact me via my Cal.com link at [my website](https://cybersader.com/README#%F0%9F%94%97+Links)
-
 # Crosswalker
 
-## Tool Overview
+[![GitHub](https://img.shields.io/github/license/cybersader/Crosswalker)](https://github.com/cybersader/Crosswalker)
 
-> A Python toolkit to translate tabular cybersecurity framework data into Obsidian-ready taxonomic folder structures and interconnected markdown notes.
+Import structured ontologies (frameworks, taxonomies, any hierarchical data) into Obsidian with hierarchical folder structures, typed links, and metadata.
 
-Essentially, a **Framework crosswalk engine** — crosswalks/maps and translates NIST, CIS, ISO, etc., into linked Markdown pages so you can evidence-map, explore, and automate straight from plaintext notes.  I'm already 1500 lines of Python code in on this one.  Way harder than expected.  So far, I've got MITRE ATT&CK + D3FEND + ENGAGE, NIST800-53, CSFv2, CISv8, and the CRI Profile started.
+**Repository**: https://github.com/cybersader/Crosswalker
 
-This tool can be extended to work with other knowledge platforms.
+## Features
 
-Below example of implementation and intent in [Obsidian](https://obsidian.md/).
+- **Import structured data** from CSV, XLSX, or JSON files
+- **Hierarchical folder structures** from your data columns
+- **YAML frontmatter** with configurable property mapping
+- **WikiLinks** for crosswalks between framework nodes
+- **Typed links with metadata** (coming in Phase 2)
 
-![image](https://github.com/user-attachments/assets/55baa236-4f4c-4930-8338-24994b7ad8bf)
+## Installation
 
-GRC involves a lot of knowledge work; keeping structured frameworks side-by-side with the knowledge we input, utilize, and share could change how we do that type of work.
+### From Community Plugins (Coming Soon)
 
-## 🚀 Features
-- Supports CRI, NIST CSF, NIST SP-800-53, MITRE ATT&CK, MITRE EngAGE, MITRE D3FEND, CIS Controls v8, and custom crosswalks.
-- Configurable `FrameworkConfig` and `LinkConfig` for modular addition of new frameworks and link mappings.
-- Generates hierarchical folders and `.md` files with YAML front-matter and optional body content.
+1. Open Settings → Community Plugins
+2. Search for "Crosswalker"
+3. Install and enable
 
-## 💡 Philosophy, Approach, and Goals
-- First Principles: treat frameworks as taxonomic hierarchies, mapping them to file-system folders and YAML metadata/frontmatter/properties(Obsidian).
-- Config-Driven: minimal code changes are required to onboard new frameworks via `FrameworkConfig` and `LinkConfig`.
-- Interoperable: leverages pandas and simple CSV/XLSX mapping tables, keeping data sources separate and extensible.
-- Format-Agnostic: produces Markdown with YAML front-matter and relative wikilinks or markdown links for graph-based exploration.  Plaintext files work in all sorts of places.
-- The goal is to have a 2-way engine that can map frameworks to a hierarchical and related structure of notes useful for Knowledge Platforms (e.g. Obsidian, Notion), then be able to map from notes back to tabular framework files or other useful tabular reports that can be pivoted on in Excel.
+### Manual Installation
 
-> If I was cringe cyber salesmen, then I would term this whole system as something like a COaPN (cybersecurity ontologies as plaintext notes) or CFaN (cyber frameworks as notes)
+1. Download `main.js`, `manifest.json`, and `styles.css` from the latest release
+2. Create folder: `your-vault/.obsidian/plugins/crosswalker/`
+3. Copy the files into that folder
+4. Enable the plugin in Settings → Community Plugins
 
-## Motivation
-Evidence mapping in GRC is rough.  Often, you're forced to lock all of the data into one database-backed platform and managing the linking of evidence to that platform can be error-prone, non-intuitive, and not super extensible.  My thought was, why not put the evidence right next to your knowledge work.  If you take notes enough and essentially build a "2nd-brain" in digital format, then mapping the evidence in it to all your various frameworks could be done in the same place.  Let's put the knowledge/evidence right next to the framework in a system where they link seamlessly, then build automations and systems around that knowledge platform (e.g. Obsidian, Notion).
+## Usage
 
-## 🏗️ Architecture & Workflow
-1. Load framework spreadsheets (CSV/XLSX) from the `Frameworks/` directory into pandas DataFrames.
-2. Clean & normalize columns (strip whitespace, unify casing, forward-fill hierarchies).
-3. Build core framework tables and crosswalk/mapping tables with custom rename and cleaning logic.
-4. Deduplicate each DataFrame so that each framework ID appears only once.
-5. Export all raw and merged tables into a consolidated `frameworks_export.xlsx` workbook for inspection.
-6. Define `FrameworkConfig` instances for each framework, specifying ID columns, hierarchy columns, folder and file naming conventions, and front-matter mappings.
-7. (Optional) Define `LinkConfig` instances to inject inter-framework wikilinks based on mapping tables or matching rules.
-8. Run the taxonomy builder to generate an Obsidian-compatible folder structure of `.md` files.
-9. Drop the generated folders into your Obsidian vault and visualize the framework graph.
+### Basic Import
 
-## 📦 Installation & Environment
+1. Run command: `Crosswalker: Import Framework`
+2. Select your CSV/XLSX/JSON file
+3. Map columns to:
+   - **Hierarchy levels** (folders)
+   - **Frontmatter properties**
+   - **CrossWalk links**
+4. Preview and generate
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/cybersader/crosswalker
-   cd frameworks_to_obsidian
-   ```
-2. Create and activate a virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate   # macOS/Linux
-   .\\venv\\Scripts\\activate  # Windows
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Example
 
-## 📁 Directory Structure
-```text
-.
-├── cri_mapper.py              # Example: CRI-specific mapper
-├── frameworks_to_obsidian.py  # Generic, multi-framework mapper
-├── Frameworks/                # Place CSV/XLSX framework files here
-├── requirements.txt           # Python dependencies
-├── LICENSE                    # Project license (MIT)
-├── README.md                  # Project overview and docs
-└── CONTRIBUTING.md            # Contribution guidelines
+Starting with a NIST 800-53 spreadsheet:
+
+| Control Family | Control ID | Control Name | Related Controls |
+|---------------|------------|--------------|------------------|
+| Access Control | AC-1 | Policy and Procedures | AC-2, AC-3 |
+| Access Control | AC-2 | Account Management | AC-1, AC-3, AC-5 |
+
+Generates:
+
+```
+Frameworks/
+└── NIST-800-53/
+    └── Access Control/
+        ├── AC-1.md
+        └── AC-2.md
 ```
 
-## ⚖️ Data Licensing
-> The raw CSV/XLSX framework data under `Frameworks/` is not included in this repo and remains under its original licenses.
-> Before running the scripts, download each framework from the official sources:
-- **NIST Cybersecurity Framework (CSF v2.0)**: https://www.nist.gov/cyberframework
-- **NIST SP-800-53 Rev.5**: https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final
-- **MITRE ATT&CK & EngAGE**: https://attack.mitre.org/, https://engage.mitre.org/
-- **MITRE D3FEND**: https://d3fend.mitre.org/
-- **CIS Controls v8**: https://www.cisecurity.org/controls/
+Where `AC-1.md` contains:
 
-## 📖 Usage
+```yaml
+---
+control_id: AC-1
+control_name: Policy and Procedures
+control_family: Access Control
+related_controls:
+  - "[[AC-2]]"
+  - "[[AC-3]]"
+---
 
-### Generic Frameworks
+## Description
+
+...
+```
+
+## Configuration
+
+See Settings → Crosswalker for:
+
+- Default output path
+- Key naming style (snake_case, camelCase, etc.)
+- Array handling (keep as array, stringify, etc.)
+- Empty value handling
+- Frontmatter style (flat, nested)
+- Link syntax options
+
+## Roadmap
+
+- [x] Phase 0: Foundation & architecture
+- [ ] Phase 1: Import MVP (CSV, XLSX, JSON → notes)
+- [ ] Phase 2: Link metadata system
+- [ ] Phase 3: Query & aggregation views
+- [ ] Phase 4: Framework templates & ecosystem
+
+## Development
+
 ```bash
-python frameworks_to_obsidian.py
+# Install dependencies
+npm install
+
+# Development mode (watch)
+npm run dev
+
+# Production build
+npm run build
+
+# Run tests
+npm test
 ```
 
-### CRI Example
+## Related Projects
 
-This was where it all started with trying to do all this "crosswalking" between frameworks.  CRI is a "community profile" of the CSFv2 framework.
+- [Crosswalker Python Tool](https://github.com/cybersader/Crosswalker) - Python CLI for framework import
+- [Awesome Obsidian & Cyber](https://github.com/cybersader/awesome-obsidian-and-cyber) - Curated resources
 
-```bash
-python cri_mapper.py
-```
+## License
 
-## 🤝 Contributing
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## 📝 License
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT
