@@ -1,0 +1,56 @@
+---
+title: Testing
+description: Unit tests, E2E tests, and manual testing strategies.
+---
+
+## Unit tests
+
+Unit tests use Jest with ts-jest and a minimal Obsidian API mock.
+
+```bash
+bun run test          # Run all tests
+bun run test:watch    # Watch mode
+```
+
+### What's tested
+- CSV parser (parsing, column analysis, edge cases)
+- Settings data (defaults, validation)
+- Config manager (fingerprinting, matching) — planned
+- Generation engine (output structure) — planned
+
+### Writing tests
+
+Tests live in `tests/` and use the Obsidian mock at `tests/__mocks__/obsidian.ts`.
+
+```typescript
+import { parseCSV } from '../src/import/parsers/csv-parser';
+
+describe('parseCSV', () => {
+  it('parses simple CSV', async () => {
+    const result = await parseCSV('Name,ID\nAlice,1');
+    expect(result.rows).toHaveLength(1);
+  });
+});
+```
+
+## E2E tests
+
+E2E tests use WebdriverIO with the `wdio-obsidian-service` to test the plugin in a real Obsidian instance.
+
+```bash
+bun run e2e    # Requires Obsidian installed locally
+```
+
+E2E tests are **not run in CI** currently (on the roadmap). They verify:
+- Plugin loads correctly
+- Import wizard opens and navigates
+- File generation produces expected output
+
+## Manual testing
+
+For UI interactions that are difficult to automate:
+
+1. Run `bun run dev` (watch mode)
+2. Open `test-vault/` in Obsidian
+3. Test the import wizard with sample data in `Crosswalker Test Data/`
+4. Check `crosswalker-debug.log` for detailed logs (enable in settings)

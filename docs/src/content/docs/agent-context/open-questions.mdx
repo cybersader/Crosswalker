@@ -1,0 +1,32 @@
+---
+title: Open questions
+description: Unresolved design questions for future development.
+---
+
+## Import behavior
+
+- **Re-import strategy**: When importing a file that was previously imported, should we overwrite, merge, or create new notes? What about user edits to generated notes?
+- **Column type inference**: How aggressive should auto-detection be? Current heuristics may misclassify columns.
+- **Multi-file import**: Should the wizard support importing multiple files in one session, with cross-linking between them?
+
+## Link metadata
+
+- **Link syntax**: Should typed links use inline Dataview fields (`type:: [[Target]] {json}`) or a custom syntax? What's most compatible with future Obsidian features?
+- **Link direction**: When two frameworks crosswalk, should links be injected in source notes, target notes, or both?
+- **Link updates**: When a framework is re-imported, how do existing typed links get preserved?
+
+## Performance
+
+- **Large frameworks**: NIST 800-53 has ~1000+ controls. How does generation perform at scale? Need benchmarks.
+- **Streaming threshold**: Is 5MB the right cutoff for streaming mode? Should it be row-count based instead?
+
+## User experience
+
+- **Wizard flow**: Is 4 steps the right number? Could steps 2 and 3 (configure + preview) be combined?
+- **Error recovery**: What happens when generation fails mid-way? Should we support rollback?
+- **Mobile support**: Obsidian mobile has limited file picker capabilities. How to handle?
+
+## Ecosystem
+
+- **OSCAL output**: What subset of OSCAL should we target? Full catalog or just control mappings?
+- **Community configs**: How to distribute and discover shared import configurations?

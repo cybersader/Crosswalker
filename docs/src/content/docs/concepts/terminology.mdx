@@ -1,0 +1,36 @@
+---
+title: Terminology
+description: Key terms and concepts used throughout Crosswalker.
+---
+
+## Core terms
+
+| Term | Definition |
+|------|-----------|
+| **Ontology** | A structured representation of knowledge — categories, relationships, and rules |
+| **Framework** | A specific ontology (NIST 800-53, CIS Controls, etc.) |
+| **Crosswalk** | A mapping between two frameworks showing how their elements relate |
+| **Hierarchy column** | A data column that defines folder nesting levels |
+| **Frontmatter** | YAML properties at the top of a markdown note |
+| **Typed link** | A link with metadata describing the relationship type |
+| **Fingerprint** | A hash of a data file's structure used for config matching |
+
+## Data flow terms
+
+| Term | Definition |
+|------|-----------|
+| **ParsedData** | The intermediate format after parsing a file (columns + rows) |
+| **ColumnInfo** | Analysis of a single column (type, unique count, samples) |
+| **CrosswalkerConfig** | Full import configuration (column mappings, output settings) |
+| **SavedConfig** | A persisted configuration with fingerprint for reuse |
+| **GeneratedNote** | The output structure before writing to disk |
+
+## Framework terms
+
+| Term | Example |
+|------|---------|
+| **Control family** | AC (Access Control) in NIST 800-53 |
+| **Control** | AC-2 (Account Management) |
+| **Enhancement** | AC-2(1) (Automated System Account Management) |
+| **Safeguard** | CIS Controls equivalent of a control |
+| **Technique** | T1059 (Command and Scripting Interpreter) in MITRE ATT&CK |

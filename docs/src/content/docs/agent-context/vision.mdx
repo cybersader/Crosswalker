@@ -1,0 +1,39 @@
+---
+title: Vision
+description: Short and long-term goals for Crosswalker.
+---
+
+## Short-term (current)
+
+A working Obsidian plugin that can:
+1. Import structured data (CSV/XLSX/JSON) into Obsidian as folder hierarchies + notes
+2. Generate proper frontmatter/properties from source columns
+3. Create links between framework nodes (crosswalks)
+4. Output data that works with Bases, Dataview, or any query tool
+
+## MVP status (achieved)
+
+The import wizard MVP is complete:
+- Step-by-step wizard with file selection, column mapping, preview, generation
+- CSV parsing with streaming for large files
+- Config save/load/match system
+- Generation engine with `_crosswalker` metadata
+
+## Long-term
+
+A comprehensive ontology management system for Obsidian:
+- Multiple framework import and linking
+- Typed link syntax with JSON metadata
+- Link insertion commands with autocomplete
+- Compliance dashboards via Dataview/Bases queries
+- OSCAL export for interoperability
+- Community-shared framework configs
+
+## Design principles
+
+1. **Plain text first** — Everything in markdown, YAML, JSON
+2. **Framework agnostic** — Easy to add any structured data source
+3. **Metadata rich** — Links carry structured data about relationships
+4. **Query powered** — Standard tools (Bases, Dataview) for aggregation
+5. **Future proof** — No lock-in, works with standard Obsidian
+6. **User-morphable** — Expose settings generously, smart defaults with full control

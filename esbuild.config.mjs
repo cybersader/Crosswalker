@@ -11,13 +11,10 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+const outdir = prod ? "./" : "test-vault/.obsidian/plugins/crosswalker/";
 
-// Output to test-vault for development
-const testVaultPluginDir = "test-vault/.obsidian/plugins/crosswalker";
-
-// Ensure test vault plugin directory exists
-if (!existsSync(testVaultPluginDir)) {
-	mkdirSync(testVaultPluginDir, { recursive: true });
+if (!prod && !existsSync(outdir)) {
+	mkdirSync(outdir, { recursive: true });
 }
 
 const context = await esbuild.context({
@@ -46,23 +43,15 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	outfile: `${testVaultPluginDir}/main.js`,
-	plugins: [{
-		name: "copy-assets",
-		setup(build) {
-			build.onEnd(() => {
-				// Copy manifest.json and styles.css to test vault
-				copyFileSync("manifest.json", `${testVaultPluginDir}/manifest.json`);
-				copyFileSync("styles.css", `${testVaultPluginDir}/styles.css`);
-				console.log("Copied manifest.json and styles.css to test-vault");
-			});
-		}
-	}]
+	outdir: outdir,
 });
 
 if (prod) {
 	await context.rebuild();
 	process.exit(0);
 } else {
+	copyFileSync("manifest.json", outdir + "manifest.json");
+	copyFileSync("styles.css", outdir + "styles.css");
 	await context.watch();
+	console.log("Watching for changes...");
 }

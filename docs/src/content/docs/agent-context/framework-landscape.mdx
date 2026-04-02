@@ -1,0 +1,47 @@
+---
+title: Framework landscape
+description: Overview of common compliance frameworks and their data structures.
+---
+
+## Major frameworks
+
+### NIST SP 800-53 Rev. 5
+- **Structure**: Family > Control > Enhancement
+- **Example**: AC (Access Control) > AC-2 (Account Management) > AC-2(1)
+- **Size**: ~1000+ controls with enhancements
+- **Format**: Available as CSV, XLSX, OSCAL XML/JSON
+- **Links**: Related controls, assessment procedures
+
+### NIST Cybersecurity Framework (CSF) 2.0
+- **Structure**: Function > Category > Subcategory
+- **Example**: Protect (PR) > Identity Management (PR.AA) > PR.AA-01
+- **Size**: ~100 subcategories
+- **Crosswalks**: Maps to 800-53, CIS, ISO 27001
+
+### CIS Controls v8
+- **Structure**: Control > Safeguard > Implementation Group
+- **Example**: Control 1 > 1.1 (Establish asset inventory) > IG1
+- **Size**: 18 controls, 153 safeguards
+- **Crosswalks**: Maps to NIST CSF, 800-53
+
+### MITRE ATT&CK
+- **Structure**: Tactic > Technique > Sub-technique
+- **Example**: Execution (TA0002) > T1059 (Command Scripting) > T1059.001 (PowerShell)
+- **Size**: ~200 techniques with sub-techniques
+- **Related**: D3FEND (defensive), ENGAGE (deception)
+
+### CRI Profile v2.0
+- **Structure**: Function > Category > Subcategory > Diagnostic Statement
+- **Size**: Comprehensive financial sector framework
+- **Crosswalks**: NIST CSF, FFIEC, CISA CPG
+
+## Data format patterns
+
+| Framework | ID Pattern | Hierarchy depth |
+|-----------|-----------|----------------|
+| NIST 800-53 | `AC-2`, `AC-2(1)` | 3 (family/control/enhancement) |
+| NIST CSF | `PR.AA-01` | 3 (function/category/subcategory) |
+| CIS v8 | `1.1`, `1.2` | 2-3 (control/safeguard/IG) |
+| MITRE ATT&CK | `T1059`, `T1059.001` | 2-3 (tactic/technique/sub) |
+
+Understanding these patterns informs column type detection and auto-mapping.

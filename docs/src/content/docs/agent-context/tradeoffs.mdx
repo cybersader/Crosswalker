@@ -1,0 +1,44 @@
+---
+title: Tradeoffs
+description: Known tradeoffs in the current design and their justifications.
+---
+
+## General import vs. per-framework importers
+
+**Chose**: General column-mapping wizard
+**Over**: Dedicated importers for each framework (NIST importer, CIS importer, etc.)
+**Why**: More flexible, less code to maintain, works with arbitrary data
+**Cost**: Users must understand their data structure; no "one-click NIST import"
+**Mitigation**: Saved configs + community-shared configs reduce setup friction
+
+## PapaParse bundled vs. native parsing
+
+**Chose**: Bundle PapaParse (~50KB)
+**Over**: Custom CSV parser
+**Why**: Handles all edge cases (RFC 4180 compliance, encoding, streaming)
+**Cost**: Larger bundle size
+**Mitigation**: Tree-shaking removes unused PapaParse features
+
+## Frontmatter over inline fields
+
+**Chose**: YAML frontmatter as primary metadata location
+**Over**: Inline Dataview fields in note body
+**Why**: Standard Obsidian properties, works with Bases and search, cleaner notes
+**Cost**: Less flexible for per-section metadata
+**Mitigation**: Body content supports inline fields for advanced users
+
+## Config matching vs. exact recall
+
+**Chose**: Fingerprint-based fuzzy matching with threshold
+**Over**: Exact column-name matching only
+**Why**: Files evolve — columns get renamed, added, removed. Fuzzy handles this.
+**Cost**: Possible false positive suggestions
+**Mitigation**: User confirms before applying; threshold is configurable
+
+## Single plugin vs. plugin + Python
+
+**Chose**: Keep both — plugin for Obsidian UI, Python for CLI/batch
+**Over**: Replacing Python entirely with the plugin
+**Why**: Different use cases. CLI is better for automation, CI, and large batch imports.
+**Cost**: Two codebases to maintain
+**Mitigation**: Shared concepts, different implementations. Python is stable and feature-complete.

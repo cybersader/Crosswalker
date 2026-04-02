@@ -1,0 +1,51 @@
+---
+title: Transformation system
+description: How source data is transformed into Obsidian notes.
+---
+
+## Column roles
+
+Each source column is assigned a role that determines how it's used during generation:
+
+| Role | Transformation |
+|------|---------------|
+| **Hierarchy** | Values become nested folder names, ordered by level |
+| **Frontmatter** | Key-value pairs in YAML frontmatter |
+| **Link** | WikiLinks to other notes in the vault |
+| **Body** | Raw markdown content in the note body |
+| **Ignore** | Skipped entirely |
+
+## Key naming
+
+Frontmatter keys are derived from column headers, transformed by the naming style:
+
+| Style | `Control Family` | `Control ID` |
+|-------|-----------------|-------------|
+| As-is | `Control Family` | `Control ID` |
+| Lowercase | `control family` | `control id` |
+| Snake case | `control_family` | `control_id` |
+| Camel case | `controlFamily` | `controlId` |
+| Kebab case | `control-family` | `control-id` |
+
+## Array handling
+
+When a cell contains multiple values (e.g., comma-separated tags):
+
+| Mode | Input | Output |
+|------|-------|--------|
+| As array | `tag1, tag2` | `[tag1, tag2]` |
+| Stringify | `tag1, tag2` | `"tag1, tag2"` |
+| First | `tag1, tag2` | `tag1` |
+| Last | `tag1, tag2` | `tag2` |
+| Join | `tag1, tag2` | `"tag1 tag2"` |
+
+## Empty value handling
+
+When a cell is empty:
+
+| Mode | Result |
+|------|--------|
+| Omit | Property not included in frontmatter |
+| Empty string | `key: ""` |
+| Null | `key: null` |
+| Default | `key: <configured default>` |

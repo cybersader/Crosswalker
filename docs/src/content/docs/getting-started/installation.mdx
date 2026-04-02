@@ -1,0 +1,27 @@
+---
+title: Installation
+description: How to install Crosswalker in your Obsidian vault.
+---
+
+## From community plugins (coming soon)
+
+Crosswalker is not yet listed in the Obsidian community plugins registry. Once submitted, you'll be able to install it directly from Settings > Community Plugins.
+
+## Manual installation
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/cybersader/Crosswalker/releases)
+2. Create a folder: `your-vault/.obsidian/plugins/crosswalker/`
+3. Copy the three files into that folder
+4. Open Obsidian, go to Settings > Community Plugins
+5. Enable "Crosswalker"
+
+## From source
+
+```bash
+git clone https://github.com/cybersader/Crosswalker.git
+cd Crosswalker
+bun install
+bun run build
+```
+
+Copy `main.js`, `manifest.json`, and `styles.css` to your vault's plugin folder.

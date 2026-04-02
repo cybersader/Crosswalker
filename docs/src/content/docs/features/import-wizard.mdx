@@ -1,0 +1,39 @@
+---
+title: Import wizard
+description: Step-by-step guide to the 4-step import workflow.
+---
+
+The import wizard walks you through converting structured data files into Obsidian notes.
+
+## Step 1: Select file
+
+Choose a source file from your filesystem. Supported formats:
+- **CSV** — Fully supported with PapaParse streaming for large files (>5MB)
+- **XLSX** — Planned (package installed, integration in progress)
+- **JSON** — Planned
+
+## Step 2: Configure columns
+
+After parsing, the wizard displays all detected columns with type analysis. For each column, assign a role:
+
+| Role | What it does |
+|------|-------------|
+| **Hierarchy** | Creates folder levels (ordered top to bottom) |
+| **Frontmatter** | Becomes a YAML property in the note |
+| **Link** | Generates WikiLinks to other notes |
+| **Body** | Inserted as the note's markdown body |
+| **Ignore** | Skipped during generation |
+
+Column analysis shows unique value counts, detected types, and sample values to help you decide.
+
+## Step 3: Preview
+
+See the folder tree that will be generated, plus a sample note with frontmatter. Adjust column assignments if the preview doesn't look right.
+
+## Step 4: Generate
+
+Creates all folders and notes in your vault under the configured output path. Each note includes:
+- YAML frontmatter from mapped columns
+- Body content from body columns
+- WikiLinks from link columns
+- `_crosswalker` metadata tracking the import source and timestamp

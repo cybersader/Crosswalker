@@ -1,0 +1,41 @@
+---
+title: Quick start
+description: Import your first framework in under 5 minutes.
+---
+
+## Import your first framework
+
+1. **Open the import wizard**: Command palette (`Ctrl/Cmd + P`) > "Crosswalker: Import structured data"
+
+2. **Select a file**: Choose a CSV or XLSX file containing your framework data. For example, a NIST 800-53 controls spreadsheet.
+
+3. **Configure columns**:
+   - Mark hierarchy columns (these become folders): e.g., `Control Family`, `Control ID`
+   - Mark frontmatter columns (these become note properties): e.g., `Description`, `Discussion`
+   - Mark link columns (these become WikiLinks): e.g., `Related Controls`
+
+4. **Preview**: Review the folder tree and sample note output. Adjust if needed.
+
+5. **Generate**: Click generate to create the folder structure and notes in your vault.
+
+## What you get
+
+```
+Ontologies/
+├── NIST-800-53/
+│   ├── AC - Access Control/
+│   │   ├── AC-1.md
+│   │   ├── AC-2.md
+│   │   └── ...
+│   ├── AU - Audit/
+│   │   └── ...
+│   └── ...
+```
+
+Each note includes YAML frontmatter with your mapped properties and `_crosswalker` metadata tracking the import source.
+
+## Next steps
+
+- Browse [features](/Crosswalker/features/import-wizard/) for detailed wizard documentation
+- Read about [the problem](/Crosswalker/concepts/problem/) Crosswalker solves
+- Check [settings reference](/Crosswalker/reference/settings/) for customization options

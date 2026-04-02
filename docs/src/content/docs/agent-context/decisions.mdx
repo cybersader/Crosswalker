@@ -1,0 +1,38 @@
+---
+title: Key decisions
+description: Technical decisions made during development and their rationale.
+---
+
+## Resolved decisions
+
+### Plugin name: Crosswalker
+**Decision**: Name the plugin "Crosswalker" (not Frameworker, OntologyMapper, etc.)
+**Rationale**: "Crosswalk" is the established GRC term for mapping between frameworks. Memorable, searchable, domain-specific.
+
+### TypeScript plugin over Python-only
+**Decision**: Build an Obsidian plugin in TypeScript, keep Python tool as a standalone
+**Rationale**: Plugin provides native UI, settings, and Obsidian API access. Python tool remains useful for CLI/batch workflows.
+
+### No Dataview dependency
+**Decision**: Plugin outputs standard frontmatter, doesn't require Dataview
+**Rationale**: Works with Obsidian Bases (built-in), Dataview, or plain browsing. No forced dependency on community plugins.
+
+### Config-driven, not hardcoded frameworks
+**Decision**: General import wizard instead of per-framework importers
+**Rationale**: Any structured data source works. Users define column mappings, not the plugin. More flexible, less maintenance.
+
+### PapaParse for CSV parsing
+**Decision**: Use PapaParse with streaming over manual parsing
+**Rationale**: Battle-tested library, handles edge cases (quoted fields, encoding), streaming prevents memory issues with large files.
+
+### Fingerprint-based config matching
+**Decision**: Generate data fingerprints to suggest saved configs
+**Rationale**: Reduces repetitive column mapping when re-importing similar files. Threshold-based to avoid false positives.
+
+### `_crosswalker` metadata in generated notes
+**Decision**: Include import metadata in every generated note
+**Rationale**: Enables re-import, tracking, and debugging. Prefixed to avoid collision with user properties.
+
+### Output path configurable, default "Ontologies"
+**Decision**: Let users choose where generated folders go, default to `Ontologies/`
+**Rationale**: Some users want `Frameworks/`, some want nested paths. Sensible default with full override.

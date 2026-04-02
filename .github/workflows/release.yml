@@ -1,0 +1,120 @@
+name: Release Obsidian Plugin
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release even if version unchanged'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version-changed: ${{ steps.version-check.outputs.changed }}
+      new-version: ${{ steps.version-check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: version-check
+        run: |
+          current=$(node -p "require('./package.json').version")
+          previous=$(git show HEAD~1:package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8')).version" 2>/dev/null || echo "0.0.0")
+
+          echo "Current version: $current"
+          echo "Previous version: $previous"
+
+          if [ "$current" != "$previous" ] || [ "${{ github.event.inputs.force_release }}" == "true" ]; then
+            echo "Version changed from $previous to $current"
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$current" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-release:
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          tag="${{ needs.check-version.outputs.new-version }}"
+          echo "Extracting notes for version $tag"
+
+          notes=$(awk -v ver="$tag" '
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "\\[" ver "\\]") found=1
+              next
+            }
+            /^---/ { if (found) exit }
+            found { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$notes" ]; then
+            notes="Release $tag"
+            echo "Warning: No changelog entry found for $tag"
+          fi
+
+          echo "$notes" > release_notes.md
+          echo "=== Release notes ==="
+          cat release_notes.md
+
+      - name: Build plugin
+        run: bun run build
+
+      - name: Verify build outputs
+        run: |
+          echo "=== Build outputs ==="
+          ls -la main.js styles.css manifest.json
+          echo "main.js: $(wc -c < main.js) bytes"
+          echo "styles.css: $(wc -c < styles.css) bytes"
+
+      - name: Create tag and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ needs.check-version.outputs.new-version }}"
+
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+          # Delete existing tag if re-running
+          git tag -d "$tag" 2>/dev/null || true
+          git push origin ":refs/tags/$tag" 2>/dev/null || true
+
+          # Create and push tag
+          git tag "$tag"
+          git push origin "$tag"
+
+          # Create GitHub release with build artifacts
+          gh release create "$tag" \
+            --title="$tag" \
+            --notes-file release_notes.md \
+            main.js manifest.json styles.css
