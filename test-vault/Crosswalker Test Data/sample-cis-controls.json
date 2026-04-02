@@ -1,0 +1,50 @@
+[
+  {
+    "control_group": "Inventory and Control",
+    "control_id": "1.1",
+    "control_name": "Establish and Maintain Detailed Enterprise Asset Inventory",
+    "description": "Establish and maintain an accurate, detailed, and up-to-date inventory of all enterprise assets.",
+    "asset_type": "Devices",
+    "implementation_group": "IG1"
+  },
+  {
+    "control_group": "Inventory and Control",
+    "control_id": "1.2",
+    "control_name": "Address Unauthorized Assets",
+    "description": "Address unauthorized assets weekly, or more frequently.",
+    "asset_type": "Devices",
+    "implementation_group": "IG1"
+  },
+  {
+    "control_group": "Inventory and Control",
+    "control_id": "2.1",
+    "control_name": "Establish and Maintain a Software Inventory",
+    "description": "Establish and maintain a detailed inventory of all licensed software.",
+    "asset_type": "Software",
+    "implementation_group": "IG1"
+  },
+  {
+    "control_group": "Data Protection",
+    "control_id": "3.1",
+    "control_name": "Establish and Maintain a Data Management Process",
+    "description": "Establish and maintain a data management process.",
+    "asset_type": "Data",
+    "implementation_group": "IG1"
+  },
+  {
+    "control_group": "Data Protection",
+    "control_id": "3.2",
+    "control_name": "Establish and Maintain a Data Inventory",
+    "description": "Establish and maintain a data inventory, based on the organization's data management process.",
+    "asset_type": "Data",
+    "implementation_group": "IG1"
+  },
+  {
+    "control_group": "Secure Configuration",
+    "control_id": "4.1",
+    "control_name": "Establish and Maintain a Secure Configuration Process",
+    "description": "Establish and maintain a secure configuration process for enterprise assets.",
+    "asset_type": "Devices",
+    "implementation_group": "IG1"
+  }
+]

@@ -1,13 +1,55 @@
-# Output from scripts
-cri_framework/
-# Exported Excel workbooks
-frameworks_export.xlsx
-# Optionally ignore generated Obsidian-taxonomy markdown folders
-# obsidian_vault/  # uncomment if using this for generated notes
+# Build output (root level)
+/main.js
+*.js.map
+
+# npm
+node_modules/
+
+# Obsidian workspace (user-specific)
+**/workspace.json
+**/workspace-mobile.json
+
+# Test vault - ignore build artifacts and cache, keep test data
+test-vault/.obsidian/plugins/crosswalker/main.js
+test-vault/.obsidian/plugins/crosswalker/manifest.json
+test-vault/.obsidian/plugins/crosswalker/styles.css
+test-vault/.obsidian/cache/
+test-vault/.obsidian/plugins/*/data.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+
+# Claude Code local settings (contains user-specific paths)
+.claude/settings.local.json
+
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 venv/
-.env/
 .ipynb_checkpoints/
-.DS_Store
+
+# Python output
+cri_framework/
+frameworks_export.xlsx

@@ -1,0 +1,13 @@
+Control Family,Control ID,Control Name,Description,Related Controls
+Access Control,AC-1,Policy and Procedures,"Develop, document, and disseminate access control policies.","AC-2, AC-3, PM-9"
+Access Control,AC-2,Account Management,"Manage system accounts including identifying, selecting, and authorizing users.","AC-1, AC-3, AC-5, AC-6"
+Access Control,AC-3,Access Enforcement,"Enforce approved authorizations for logical access.","AC-2, AC-5, AC-6"
+Access Control,AC-5,Separation of Duties,"Enforce separation of duties through assigned access authorizations.","AC-2, AC-3, AC-6"
+Access Control,AC-6,Least Privilege,"Employ the principle of least privilege.","AC-2, AC-3, AC-5"
+Audit,AU-1,Policy and Procedures,"Develop, document, and disseminate audit policies.","AU-2, AU-3, PM-9"
+Audit,AU-2,Event Logging,"Identify events that require logging.","AU-1, AU-3, AU-6"
+Audit,AU-3,Content of Audit Records,"Ensure audit records contain sufficient information.","AU-2, AU-6, AU-7"
+Audit,AU-6,Audit Record Review,"Review and analyze audit records.","AU-2, AU-3, AU-7"
+Configuration Management,CM-1,Policy and Procedures,"Develop configuration management policies.","CM-2, CM-6, PM-9"
+Configuration Management,CM-2,Baseline Configuration,"Develop and maintain baseline configurations.","CM-1, CM-6, CM-8"
+Configuration Management,CM-6,Configuration Settings,"Establish and document configuration settings.","CM-2, CM-8, SI-2"

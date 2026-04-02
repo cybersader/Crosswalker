@@ -1,0 +1,691 @@
+/* Crosswalker Plugin Styles */
+
+/* ============================================================================
+   Wizard Modal
+   ============================================================================ */
+
+.crosswalker-wizard-header {
+	margin-bottom: 1.5em;
+	padding-bottom: 1em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-wizard-header h2 {
+	margin: 0.5em 0 0 0;
+}
+
+.crosswalker-nav-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 0.5em;
+}
+
+.crosswalker-back-btn {
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 0.25em 0.5em;
+	font-size: 0.9em;
+}
+
+.crosswalker-back-btn:hover {
+	color: var(--text-normal);
+}
+
+.crosswalker-back-placeholder {
+	width: 60px;
+}
+
+.crosswalker-step-indicator {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	margin: 0;
+}
+
+.crosswalker-wizard-content {
+	min-height: 300px;
+	margin-bottom: 1.5em;
+}
+
+.crosswalker-wizard-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding-top: 1em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-footer-spacer {
+	flex: 1;
+}
+
+/* ============================================================================
+   File Input
+   ============================================================================ */
+
+.crosswalker-file-input {
+	margin: 1em 0;
+}
+
+.crosswalker-file-input input[type="file"] {
+	width: 100%;
+	padding: 1em;
+	border: 2px dashed var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	cursor: pointer;
+}
+
+.crosswalker-file-input input[type="file"]:hover {
+	border-color: var(--interactive-accent);
+}
+
+.crosswalker-file-info {
+	margin-top: 1em;
+	padding: 1em;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+.crosswalker-file-info p {
+	margin: 0.25em 0;
+}
+
+/* ============================================================================
+   Column Configuration Table
+   ============================================================================ */
+
+.crosswalker-column-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 1em 0;
+}
+
+.crosswalker-column-table th,
+.crosswalker-column-table td {
+	padding: 0.75em;
+	text-align: left;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-column-table th {
+	background: var(--background-secondary);
+	font-weight: 600;
+}
+
+.crosswalker-column-table tr:hover {
+	background: var(--background-secondary-alt);
+}
+
+/* ============================================================================
+   Preview Sections
+   ============================================================================ */
+
+.crosswalker-tree-preview,
+.crosswalker-note-preview {
+	margin: 1em 0;
+	padding: 1em;
+	background: var(--background-secondary);
+	border-radius: 8px;
+	overflow-x: auto;
+}
+
+.crosswalker-tree-preview pre,
+.crosswalker-note-preview pre {
+	margin: 0;
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	white-space: pre-wrap;
+}
+
+/* ============================================================================
+   Generate Summary
+   ============================================================================ */
+
+.crosswalker-generate-summary {
+	margin: 1.5em 0;
+	padding: 1em;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+.crosswalker-generate-summary ul {
+	margin: 0.5em 0 0 1.5em;
+	padding: 0;
+}
+
+.crosswalker-generate-summary li {
+	margin: 0.25em 0;
+}
+
+/* ============================================================================
+   Advanced Options Modal
+   ============================================================================ */
+
+.crosswalker-advanced-modal {
+	max-width: 600px;
+}
+
+.crosswalker-sample-values {
+	margin: 1em 0;
+	padding: 0.75em;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	font-size: 0.9em;
+}
+
+.crosswalker-sample-values code {
+	display: block;
+	margin: 0.25em 0;
+	color: var(--text-muted);
+}
+
+.crosswalker-transform-list {
+	margin: 1em 0;
+}
+
+.crosswalker-transform-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	margin: 0.5em 0;
+	padding: 0.5em;
+	background: var(--background-secondary);
+	border-radius: 4px;
+}
+
+.crosswalker-transform-item select {
+	flex: 1;
+}
+
+.crosswalker-preview-box {
+	margin-top: 1em;
+	padding: 0.75em;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+}
+
+/* ============================================================================
+   Progress & Error States
+   ============================================================================ */
+
+.crosswalker-progress {
+	margin: 1em 0;
+	padding: 1em;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+.crosswalker-progress progress {
+	width: 100%;
+	height: 8px;
+	margin: 0.5em 0;
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.crosswalker-progress progress::-webkit-progress-bar {
+	background: var(--background-modifier-border);
+}
+
+.crosswalker-progress progress::-webkit-progress-value {
+	background: var(--interactive-accent);
+}
+
+.crosswalker-error {
+	margin: 1em 0;
+	padding: 1em;
+	background: var(--background-modifier-error);
+	border-radius: 8px;
+	color: var(--text-error);
+}
+
+/* ============================================================================
+   Column Table Enhancements
+   ============================================================================ */
+
+.crosswalker-table-container {
+	max-height: 400px;
+	overflow-y: auto;
+	margin: 1em 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+}
+
+.crosswalker-col-name {
+	font-weight: 500;
+	max-width: 150px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.crosswalker-samples {
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.crosswalker-key-input {
+	width: 120px;
+	padding: 0.25em 0.5em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+}
+
+.crosswalker-stats {
+	padding: 0.5em;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+/* ============================================================================
+   Utility Classes
+   ============================================================================ */
+
+.crosswalker-muted {
+	color: var(--text-muted);
+}
+
+.crosswalker-warning {
+	color: var(--text-warning);
+	font-size: 0.85em;
+}
+
+.crosswalker-success {
+	color: var(--text-success);
+}
+
+/* ============================================================================
+   Config Browser Modal
+   ============================================================================ */
+
+.crosswalker-config-browser {
+	width: 80vw;
+	max-width: 900px;
+	min-width: 400px;
+}
+
+.crosswalker-config-browser .modal-content {
+	max-height: 80vh;
+	overflow-y: auto;
+}
+
+.crosswalker-browser-header {
+	margin-bottom: 1em;
+}
+
+.crosswalker-browser-header h2 {
+	margin: 0 0 0.25em 0;
+}
+
+.crosswalker-browser-toolbar {
+	display: flex;
+	gap: 1em;
+	align-items: center;
+	margin-bottom: 1em;
+	padding-bottom: 1em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-search-container {
+	flex: 1;
+}
+
+.crosswalker-search-input {
+	width: 100%;
+	padding: 0.5em 0.75em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	font-size: 0.95em;
+}
+
+.crosswalker-search-input:focus {
+	border-color: var(--interactive-accent);
+	outline: none;
+}
+
+.crosswalker-sort-container {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+}
+
+.crosswalker-sort-label {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	white-space: nowrap;
+}
+
+.crosswalker-config-list {
+	max-height: 400px;
+	overflow-y: auto;
+	margin-bottom: 1em;
+}
+
+.crosswalker-empty-state {
+	padding: 2em;
+	text-align: center;
+	color: var(--text-muted);
+}
+
+.crosswalker-empty-state p {
+	margin: 0.5em 0;
+}
+
+/* Config Card */
+.crosswalker-config-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	margin-bottom: 0.75em;
+	background: var(--background-primary);
+	transition: border-color 0.15s ease;
+}
+
+.crosswalker-config-card:hover {
+	border-color: var(--interactive-accent-hover);
+}
+
+.crosswalker-config-card.selected {
+	border-color: var(--interactive-accent);
+	background: var(--background-primary-alt);
+}
+
+.crosswalker-card-header {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+	padding: 0.75em 1em;
+}
+
+.crosswalker-card-header.clickable {
+	cursor: pointer;
+}
+
+.crosswalker-card-header input[type="radio"] {
+	margin: 0;
+	width: 16px;
+	height: 16px;
+}
+
+.crosswalker-card-title-area {
+	flex: 1;
+	min-width: 0;
+}
+
+.crosswalker-card-title {
+	margin: 0;
+	font-size: 1em;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.crosswalker-card-meta {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+	margin-top: 0.25em;
+	font-size: 0.8em;
+	color: var(--text-muted);
+}
+
+.crosswalker-meta-sep {
+	color: var(--text-faint);
+}
+
+.crosswalker-expand-btn {
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 0.25em 0.5em;
+	font-size: 0.8em;
+	border-radius: 4px;
+}
+
+.crosswalker-expand-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+/* Card Details (expanded) */
+.crosswalker-card-details {
+	padding: 0 1em 1em 1em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-config-description {
+	margin: 1em 0;
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+/* Two-column layout for fingerprint vs config */
+.crosswalker-details-two-col {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1.5em;
+	margin: 1em 0;
+}
+
+@media (max-width: 600px) {
+	.crosswalker-details-two-col {
+		grid-template-columns: 1fr;
+	}
+}
+
+.crosswalker-detail-col {
+	min-width: 0;
+}
+
+.crosswalker-col-header {
+	font-weight: 600;
+	font-size: 0.9em;
+	padding: 0.5em 0.75em;
+	border-radius: 6px;
+	margin-bottom: 0.75em;
+}
+
+.crosswalker-col-header.fingerprint {
+	background: var(--background-secondary);
+	border-left: 3px solid var(--text-muted);
+}
+
+.crosswalker-col-header.config {
+	background: var(--background-modifier-success-rgb, rgba(0, 200, 0, 0.1));
+	border-left: 3px solid var(--text-success, #00aa00);
+}
+
+.crosswalker-pattern-list {
+	margin: 0;
+	padding-left: 1.25em;
+	font-size: 0.85em;
+	font-family: var(--font-monospace);
+}
+
+.crosswalker-pattern-list li {
+	margin: 0.25em 0;
+}
+
+.crosswalker-detail-section {
+	margin: 1em 0;
+}
+
+.crosswalker-detail-section h4 {
+	margin: 0 0 0.5em 0;
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.crosswalker-column-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35em;
+}
+
+.crosswalker-chip {
+	display: inline-block;
+	padding: 0.2em 0.6em;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	font-size: 0.85em;
+	font-family: var(--font-monospace);
+}
+
+.crosswalker-mapping-summary {
+	margin: 0;
+	padding-left: 1.25em;
+	font-size: 0.9em;
+}
+
+.crosswalker-mapping-summary li {
+	margin: 0.25em 0;
+}
+
+.crosswalker-detail-section code {
+	display: inline-block;
+	padding: 0.25em 0.5em;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	font-size: 0.9em;
+}
+
+.crosswalker-timestamps {
+	font-size: 0.85em;
+}
+
+.crosswalker-card-actions {
+	display: flex;
+	gap: 0.5em;
+	margin-top: 1em;
+	padding-top: 1em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Browser Footer */
+.crosswalker-browser-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.75em;
+	padding-top: 1em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* ============================================================================
+   Config Suggestion UI (Wizard Step 1)
+   ============================================================================ */
+
+.crosswalker-config-suggestion,
+.crosswalker-config-applied,
+.crosswalker-config-no-match {
+	margin: 1.5em 0;
+	padding: 1em;
+	border-radius: 8px;
+	background: var(--background-secondary);
+	border-left: 4px solid var(--interactive-accent);
+}
+
+.crosswalker-config-applied {
+	border-left-color: var(--text-success, #00aa00);
+	background: var(--background-modifier-success-rgb, rgba(0, 200, 0, 0.1));
+}
+
+.crosswalker-config-no-match {
+	border-left-color: var(--text-muted);
+}
+
+.crosswalker-suggestion-label,
+.crosswalker-applied-label {
+	font-weight: 600;
+	margin: 0 0 0.5em 0;
+}
+
+.crosswalker-match-strong .crosswalker-suggestion-label {
+	color: var(--text-success, #00aa00);
+}
+
+.crosswalker-match-partial .crosswalker-suggestion-label {
+	color: var(--text-accent);
+}
+
+.crosswalker-suggestion-buttons {
+	display: flex;
+	gap: 0.5em;
+	margin-top: 1em;
+	flex-wrap: wrap;
+}
+
+.crosswalker-other-matches {
+	margin-top: 1em;
+	font-size: 0.9em;
+}
+
+.crosswalker-other-matches summary {
+	cursor: pointer;
+	color: var(--text-muted);
+}
+
+.crosswalker-other-matches summary:hover {
+	color: var(--text-normal);
+}
+
+.crosswalker-other-match-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.5em 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-other-match-row:last-child {
+	border-bottom: none;
+}
+
+.crosswalker-other-match-row button {
+	font-size: 0.85em;
+	padding: 0.25em 0.75em;
+}
+
+/* ============================================================================
+   Step 2 Config Integration
+   ============================================================================ */
+
+.crosswalker-step2-config-indicator {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+	padding: 0.5em 1em;
+	margin-bottom: 1em;
+	background: var(--background-modifier-success-rgb, rgba(0, 200, 0, 0.1));
+	border-left: 3px solid var(--text-success, #00aa00);
+	border-radius: 4px;
+}
+
+.crosswalker-config-badge {
+	font-weight: 500;
+}
+
+.crosswalker-row-from-config {
+	background: var(--background-modifier-success-rgb, rgba(0, 200, 0, 0.05));
+}
+
+.crosswalker-config-icon {
+	font-size: 0.85em;
+	opacity: 0.7;
+	cursor: help;
+}
