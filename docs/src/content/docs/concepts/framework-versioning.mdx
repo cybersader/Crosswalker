@@ -57,8 +57,8 @@ ATT&CK has the **most mature versioning system** of any cybersecurity framework:
 | **Deprecated** | Retired, no replacement | Techniques deemed too broad |
 | **Un-deprecated** | Brought back after deprecation | Techniques reconsidered based on community feedback |
 
-### Machine-readable changelogs
-ATT&CK publishes changelogs in both human-readable and **STIX JSON format**, enabling automated migration tooling. This is unique among frameworks.
+### Machine-readable changelogs via STIX 2.1
+ATT&CK publishes changelogs in both human-readable and [**STIX 2.1**](https://oasis-open.github.io/cti-documentation/stix/intro.html) JSON format. The key mechanism: `revoked-by` relationships link old objects to their replacements, creating a followable deprecation chain. The [`mitreattack-python`](https://github.com/mitre-attack/mitreattack-python) library can follow these chains programmatically — a pattern Crosswalker could adopt for automated migration detection.
 
 ### The sub-technique migration (July 2020)
 The largest structural change: 266 techniques consolidated into 156 parent techniques with 272 sub-techniques. IDs changed to dot notation:
@@ -97,6 +97,19 @@ MITRE preserved the pre-sub-technique version separately for backward compatibil
 ### Migration resources
 - [CRI Profile v2.0 Mapping](https://cyberriskinstitute.org/cri-issues-profile-version-2-0/) — v1.2.1 to v2.0 mapping document
 - [The Profile](https://cyberriskinstitute.org/the-profile/) — latest version download
+
+## OSCAL's versioning approach
+
+[OSCAL](https://pages.nist.gov/OSCAL/) uses SemVer (MAJOR.MINOR.PATCH) with a core guarantee: **content created under a MAJOR version remains valid under all subsequent releases within that major version.** Key mechanisms:
+
+- Every OSCAL document has a **UUID** that regenerates on every change
+- `last-modified`, `version`, and revision history fields are built-in
+- A **metaschema** framework generates XML, JSON, and YAML schemas simultaneously — migration between formats is easier because all derive from the same abstract definition
+- See also: [SchemaVer](/Crosswalker/concepts/ontology-evolution/#schemaver-an-alternative-to-semver-for-data) as an alternative versioning model
+
+### CRI Profile v2.1: separating content from mappings
+
+An important pattern: CRI v2.1 kept diagnostic statements unchanged but **moved crosswalk mappings to a separate workbook**. This separation enables independent evolution — the core framework and its crosswalks can update on different timelines. A pattern Crosswalker should consider for its own config management.
 
 ## Who maintains crosswalks?
 
