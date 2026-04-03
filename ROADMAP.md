@@ -1,47 +1,49 @@
 # Crosswalker Roadmap
 
-## Current (0.1.x) — Stabilizing the MVP
+Crosswalker is a meta-system for ontology lifecycle management. Architecture decisions come first, features are built on that foundation. Full docs roadmap with linked rationale: https://cybersader.github.io/crosswalker/reference/roadmap/
 
-- [x] Import wizard — 4-step flow: file select, column config, preview, generate
-- [x] CSV parsing — PapaParse with streaming for large files
-- [x] Column type detection — auto-detect hierarchy, ID, text, numeric, date, tags, URL
-- [x] Config system — save, load, and auto-match import configurations
-- [x] Generation engine — create folders and notes with `_crosswalker` metadata
-- [x] Debug logging — toggle-able logging to vault file
-- [x] Documentation site — 46-page knowledge base
-- [x] Unit tests — Jest + mocked Obsidian API
-- [x] CI/CD — GitHub Actions for releases, tests, and docs deployment
-- [ ] Bug fixes and UI polish
-- [ ] Improve error handling and user feedback
+## Done (0.1.0 MVP)
 
-## Near-term — File format support and config sharing
+- [x] Import wizard (CSV parsing, column config, preview, generation)
+- [x] Config save/load/match system with fingerprinting
+- [x] Generation engine with `_crosswalker` metadata
+- [x] Documentation site (70+ pages)
+- [x] Unit tests + CI/CD
 
-- [ ] **XLSX parser** — Excel file support (`xlsx` package installed, needs integration)
-- [ ] **JSON parser** — import from JSON/JSONL files
-- [ ] **Config export/import** — share configurations as `.crosswalker.json` files
-- [ ] **Improved preview** — expandable folder tree and full note preview in Step 3
+## Foundation — "Get the architecture right"
 
-## Medium-term — Evidence mapping and cross-framework linking
+- [ ] EvolutionPattern taxonomy — classify how ontologies evolve (standalone spec)
+- [ ] FrameworkConfig v2 schema — evolution metadata, config-as-code format
+- [ ] _crosswalker metadata v2 — version tracking, migration history
+- [ ] Migration strategy matrix — evolution pattern → SCD type → handling
+- [ ] CLI architecture — core library extractable from Obsidian API layer
+- [ ] PII scanning in CI/CD
 
-This is the core value proposition for GRC teams: linking frameworks to each other and to your evidence.
+## Formats — "Import anything, transform it properly"
 
-- [ ] **Cross-framework linking** — generate typed WikiLinks between imported frameworks using crosswalk data
-- [ ] **Link insertion commands** — "Insert framework link" command with search modal and metadata form
-- [ ] **Autocomplete** — suggestions for framework references as you type
-- [ ] **Batch re-import** — update existing framework folders with version awareness and diff preview
-- [ ] **FrameworkConfig presets** — per-framework configurations with sheet selection, custom transforms, and column overrides
+- [ ] Complete import wizard UI (redesigned around v2 schema)
+- [ ] XLSX parser + JSON/JSONL parser
+- [ ] Transform system (20+ types)
+- [ ] E2E test suite (built from spec)
 
-## Long-term — Interoperability and community
+## Crosswalks — "Link frameworks to each other and to evidence"
 
-- [ ] **OSCAL export** — export to Open Security Controls Assessment Language
-- [ ] **Community config templates** — shareable configs for common frameworks
-- [ ] **Framework update/sync** — detect upstream framework changes, apply updates
-- [ ] **Compliance dashboards** — gap analysis and coverage views using Obsidian Bases
-- [ ] **Report generation** — exportable compliance reports for auditors
+- [ ] Cross-framework linking engine
+- [ ] Link insertion commands with search modal
+- [ ] Batch re-import with version awareness
+- [ ] CLI implementation (headless operations)
 
-## Infrastructure
+## Evolution — "The meta-system"
 
-- [ ] E2E testing in CI with wdio-obsidian-service
+- [ ] Progressive classification UX (community → wizard → auto-detect)
+- [ ] Evolution profile registry
+- [ ] Migration strategy engine
+- [ ] Stale crosswalk detection
+
+## Community — "Share and scale"
+
+- [ ] Community config registry
+- [ ] OSCAL export
+- [ ] Compliance dashboards
 - [ ] Community plugin submission
-- [ ] Automated changelog generation
-- [ ] Docs CI tests with Playwright
+- [ ] Spec publication (EvolutionPattern taxonomy as standalone standard)

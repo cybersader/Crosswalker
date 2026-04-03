@@ -1,0 +1,88 @@
+---
+title: Vision alignment decisions
+description: Key architectural and strategic decisions from roadmap planning Q&A — the philosophical foundation for Crosswalker's direction.
+tags: [architecture, data-model-evolution, development]
+sidebar:
+  label: "04-03 · Vision alignment decisions"
+---
+
+## Core identity decision
+
+**Crosswalker is a meta-system for ontology lifecycle management, not just a framework importer.** The import wizard is the entry point, but the real value is the classification, evolution tracking, and community ecosystem around structured knowledge management.
+
+## Decision log
+
+### 1. Meta-layer UX: Progressive classification
+
+**Decision**: All three approaches, layered progressively:
+1. Community pre-classified configs (if framework is known)
+2. Guided classification wizard (if unknown framework)
+3. Auto-detect + confirm (future AI-assisted enhancement)
+
+Plus: a backend data format/primitive for representing everything as-code.
+
+**Rationale**: Don't force users into one path. Known frameworks should be one-click. Unknown frameworks get guidance. The system learns over time.
+
+**Research needed**: Define the as-code data format for evolution profiles.
+
+### 2. Config-as-code is the source of truth
+
+**Decision**: JSON/YAML config files are the canonical format. The UI reads and writes them. Power users can edit directly.
+
+**Model**: Terraform/Pulumi — config files are what you version control and share. The UI is a convenience layer.
+
+**Implication**: The config schema design is the MOST important architectural decision. Everything flows from it.
+
+### 3. Standalone spec + plugin implementation
+
+**Decision**: The EvolutionPattern taxonomy, FrameworkConfig schema, and migration strategy engine should be a **standalone specification** that the plugin implements. Other tools could implement it too.
+
+**Rationale**: The ontology evolution classification problem is novel — no existing standard. Creating one has value beyond Crosswalker. Think OSCAL-for-ontology-evolution.
+
+**Implication**: More work upfront but positions Crosswalker as defining a standard, not just being a tool.
+
+### 4. Architecture decisions before more UI code
+
+**Decision**: Get the data model right BEFORE completing the wizard UI. The wizard steps 2-4 should be designed around the final config schema, not retrofitted.
+
+**Rationale**: The three interconnected schemas (_crosswalker metadata, FrameworkConfig, EvolutionPattern) are expensive to change once users have generated notes and saved configs. Getting them wrong means re-importing every framework and breaking evidence links.
+
+**Risk acknowledged**: Users can't fully use the tool during this phase. The MVP still works for basic CSV import.
+
+### 5. Iterative spec, philosophical depth
+
+**Decision**: Write specs iteratively (not waterfall), but with the same thoroughness as formal specs. The approach must be philosophical — branching all the way down to first principles in how we attack the ontology management problem domain.
+
+**What this means**: Research sessions that explore "why" before "how." Log entries that capture the reasoning. Spec documents that evolve through prototyping.
+
+### 6. E2E testing after architecture
+
+**Decision**: Don't write E2E tests for the current incomplete wizard. Wait until the architecture decisions reshape it. Expand smoke tests minimally.
+
+**Rationale**: Writing tests for UI that's about to change is wasted work. The spec defines the expected behavior; tests follow the spec.
+
+### 7. CLI + plugin dual implementation
+
+**Decision**: Everything evolves into CLI toolsets with logic duplicated into the plugin. The purpose: some operations can run headless or via Obsidian headless (CI/CD, GitHub Actions, automation).
+
+**Implication**: Core logic should be extractable from the Obsidian API layer. The generation engine, config manager, and parsers need clean interfaces that work both in-plugin and standalone.
+
+**Architecture pattern**: Core library → Plugin wrapper (Obsidian API) + CLI wrapper (Node.js)
+
+### 8. Community marketplace: research item
+
+**Decision**: Not sure what's supported by Obsidian community plugin ecosystem. Leave as research and decision item on the roadmap.
+
+**Research needed**: What are the constraints of Obsidian's plugin distribution model? Can plugins fetch external resources? What patterns do other plugins use for community content?
+
+### 9. PII scanning in CI/CD
+
+**Decision**: Add automated PII/secrets scanning to GitHub Actions. No personal file paths, API keys, or identifying information should ever reach the public repo.
+
+**Implementation**: Add a pre-commit or CI step that greps for patterns like `C:\Users\`, `/home/`, `/mnt/`, `@.*@`, API key patterns, etc.
+
+### 10. Decision logging as a practice
+
+**Decision**: Every significant decision gets logged in the log/ section with rationale. The roadmap references these logs. Future contributors (human or AI) can understand WHY things are the way they are.
+
+**Pattern**: Decisions captured in dated log entries → referenced from roadmap items → linked from relevant KB pages.

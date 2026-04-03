@@ -1,55 +1,108 @@
 ---
 title: Roadmap
-description: What's planned for Crosswalker — from current polish to long-term vision.
+description: Named phases from architecture-first research through community ecosystem — each decision logged with rationale.
 tags: [development, architecture]
 ---
 
-## Current (0.1.x) — Stabilizing the MVP
+Crosswalker is a **meta-system for ontology lifecycle management**, not just a framework importer. The roadmap reflects this — architecture decisions come first, features are built on that foundation, and every significant decision is [logged with rationale](/crosswalker/agent-context/zz-log/).
 
-- [x] **Import wizard** — 4-step flow: file select, column config, preview, generate
-- [x] **CSV parsing** — PapaParse with streaming for large files
-- [x] **Column type detection** — auto-detect hierarchy, ID, text, numeric, date, tags, URL
-- [x] **[Config system](/crosswalker/features/config-system/)** — save, load, and auto-match import configurations
-- [x] **[Generation engine](/crosswalker/features/generation-engine/)** — create folders and notes with `_crosswalker` metadata
-- [x] **Debug logging** — toggle-able logging to vault file
-- [x] **Documentation site** — 46-page knowledge base with [graph view](/crosswalker/concepts/file-based-graph-database/), search, and [edit links](/crosswalker/development/contributing/)
-- [x] **Unit tests** — Jest + mocked Obsidian API, 14 tests passing
-- [x] **CI/CD** — GitHub Actions for releases, tests, and docs deployment
-- [ ] Bug fixes and UI polish
-- [ ] Improve error handling and user feedback
-
-## Near-term — File format support and config sharing
-
-- [ ] **XLSX parser** — Excel file support (`xlsx` package installed, needs integration into wizard)
-- [ ] **JSON parser** — import from JSON/JSONL for frameworks in structured data formats
-- [ ] **[Config export/import](/crosswalker/agent-context/config-schema-design/)** — share configurations as `.crosswalker.json` files
-- [ ] **Improved preview** — expandable folder tree and full note preview in Step 3
-
-## Medium-term — [Evidence mapping](/crosswalker/getting-started/grc-teams/) and cross-framework linking
-
-This is the core value proposition for GRC teams: linking frameworks to each other and to your evidence.
-
-- [ ] **[Cross-framework linking](/crosswalker/agent-context/framework-crosswalks/)** — generate typed WikiLinks between imported frameworks using crosswalk data
-- [ ] **[Link insertion commands](/crosswalker/agent-context/link-metadata-system/)** — "Insert framework link" command with search modal and metadata form
-- [ ] **Autocomplete** — suggestions for framework references as you type
-- [ ] **[Batch re-import](/crosswalker/agent-context/data-model-resilience/)** — update existing framework folders with version awareness and diff preview
-- [ ] **[FrameworkConfig presets](/crosswalker/agent-context/config-schema-design/)** — per-framework configurations with sheet selection, custom transforms, and column overrides
-
-## Long-term — Interoperability and community
-
-- [ ] **[OSCAL export](https://pages.nist.gov/OSCAL/)** — export to Open Security Controls Assessment Language for GRC tool integration
-- [ ] **[Community config templates](/crosswalker/agent-context/config-schema-design/#community-sharing-model)** — shareable configs for common frameworks
-- [ ] **[Framework update/sync](/crosswalker/concepts/framework-versioning/)** — detect upstream framework changes, apply updates with [data model resilience](/crosswalker/agent-context/data-model-resilience/) patterns
-- [ ] **Compliance dashboards** — gap analysis and coverage views using [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/)
-- [ ] **Report generation** — exportable compliance reports for auditors
-
-## Infrastructure
-
-- [ ] **E2E testing in CI** — [wdio-obsidian-service](https://github.com/jesse-r-s-hines/wdio-obsidian-service) (local setup done, CI deferred)
-- [ ] **Community plugin submission** — publish to the Obsidian plugin registry
-- [ ] **Automated changelog** — generate from conventional commits
-- [ ] **Docs CI tests** — [Playwright](/crosswalker/development/testing/) smoke tests in GitHub Actions
+See [vision alignment decisions](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/) for the philosophical foundations.
 
 ---
+
+## Done (0.1.0 MVP)
+
+- [x] Import wizard — 4-step flow: file select, column config, preview, generate
+- [x] CSV parsing — PapaParse with streaming for large files
+- [x] Column type detection — auto-detect hierarchy, ID, text, numeric, date, tags, URL
+- [x] [Config system](/crosswalker/features/config-system/) — save, load, and auto-match import configurations
+- [x] [Generation engine](/crosswalker/features/generation-engine/) — create folders and notes with `_crosswalker` metadata
+- [x] Debug logging — toggle-able logging to vault file
+- [x] Documentation site — 70+ page knowledge base
+- [x] Unit tests — Jest + mocked Obsidian API
+- [x] CI/CD — GitHub Actions for releases, tests, and docs deployment
+
+---
+
+## Foundation — "Get the architecture right"
+
+Architecture decisions before more code. The three interconnected schemas (_crosswalker metadata, FrameworkConfig, EvolutionPattern) must be designed together — getting any wrong is expensive to fix later. [Decision: architecture first](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#4-architecture-decisions-before-more-ui-code)
+
+**Research & spec** (iterative, philosophical, first-principled):
+
+- [ ] **EvolutionPattern taxonomy** — classify how ontologies evolve: release cadence, breaking change policy, ID stability, changelog format, crosswalk maintenance model. **Standalone spec**, not plugin-specific — other tools could implement it. [Research: nothing like this exists](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-1-ontology-lifecycle-management--does-anything-solve-this)
+- [ ] **FrameworkConfig v2 schema** — evolution metadata, sheet selection, custom transforms, crosswalk definitions. Config-as-code format (JSON/YAML) as [source of truth](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth); UI edits config files. [Current schema design](/crosswalker/agent-context/config-schema-design/)
+- [ ] **_crosswalker metadata v2** — version tracking, source hash, status field, evolution profile reference, migration history. Progressive [metadata tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers) (minimal → standard → extended → temporal)
+- [ ] **Migration strategy matrix** — given evolution pattern + old/new version → recommended [SCD type](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) + handling strategy
+- [ ] **As-code data format research** — define primitives for representing configs, evolution profiles, and migration rules as version-controllable files
+- [ ] **CLI architecture design** — core library extractable from Obsidian API layer, [dual wrapper pattern](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#7-cli--plugin-dual-implementation) (plugin + CLI) so operations can run headless
+
+**Infrastructure:**
+
+- [ ] **PII scanning in CI/CD** — automated detection of personal paths, secrets, API keys before push
+- [ ] Bug fixes and polish on current MVP
+- [ ] Expand E2E smoke tests minimally (don't test wizard UI — [it will change](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#6-e2e-testing-after-architecture))
+
+---
+
+## Formats — "Import anything, transform it properly"
+
+Built on the Foundation spec. The wizard UI is redesigned around FrameworkConfig v2.
+
+- [ ] **Complete import wizard UI** — steps 2-4 redesigned around the new config schema
+- [ ] **Complete settings tab** — all 8 sections reflecting new schema
+- [ ] **Complete config browser modal** — search, select, delete, import/export
+- [ ] **XLSX parser** — integrate xlsx package into wizard with sheet selector
+- [ ] **JSON/JSONL parser** — structured data import
+- [ ] **Transform system** — implement 20+ transform types defined in schema (string, array, type conversion, conditional). [Current types](/crosswalker/design/transformation/)
+- [ ] **Improved preview** — expandable folder tree, full note preview in Step 3
+- [ ] **E2E test suite** — full import wizard workflow tests, [built from spec](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-3-e2e-testing-with-wdio-obsidian)
+
+---
+
+## Crosswalks — "Link frameworks to each other and to evidence"
+
+The [evidence mapping](/crosswalker/getting-started/grc-teams/) workflow — the core value proposition for GRC teams.
+
+- [ ] **Cross-framework linking engine** — generate typed WikiLinks between imported frameworks using crosswalk data. [Crosswalk specs](/crosswalker/agent-context/framework-crosswalks/)
+- [ ] **Link insertion commands** — "Insert framework link" with search modal and metadata form. [Link metadata system](/crosswalker/agent-context/link-metadata-system/)
+- [ ] **Batch re-import** — update existing framework folders with [version awareness](/crosswalker/concepts/framework-versioning/) and diff preview. [Resilience patterns](/crosswalker/agent-context/data-model-resilience/)
+- [ ] **FrameworkConfig presets** — per-framework configs with sheet selection, custom transforms, column overrides. Community-contributed via the as-code format.
+- [ ] **CLI implementation** — headless import, crosswalk generation, batch operations
+
+---
+
+## Evolution — "The meta-system"
+
+Implement the ontology evolution classification system designed in Foundation. This is the novel contribution — [no existing tool solves this](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-1-ontology-lifecycle-management--does-anything-solve-this).
+
+- [ ] **Progressive classification UX** — [community pre-classified → guided wizard → auto-detect](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#1-meta-layer-ux-progressive-classification)
+- [ ] **Evolution profile registry** — YAML/JSON per framework, community-contributed
+- [ ] **Migration strategy engine** — old version + new version + user evidence → suggested handling + diff preview
+- [ ] **Stale crosswalk detection** — surface when imported frameworks have newer versions available
+- [ ] **Community marketplace research** — [Obsidian ecosystem constraints](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#8-community-marketplace-research-item), distribution model options
+
+---
+
+## Community — "Share and scale"
+
+Build the ecosystem around the spec.
+
+- [ ] **Community config registry** — start with GitHub repo, evaluate built-in registry later
+- [ ] **OSCAL export** — export to [Open Security Controls Assessment Language](https://pages.nist.gov/OSCAL/) for GRC tool integration
+- [ ] **Compliance dashboards** — [Bases views](/crosswalker/concepts/metadata-ecosystem/) for gap analysis, coverage tracking
+- [ ] **Report generation** — exportable compliance reports for auditors
+- [ ] **Community plugin submission** — publish to Obsidian plugin registry
+- [ ] **Spec publication** — publish EvolutionPattern taxonomy as standalone specification
+
+---
+
+## Decision log
+
+Every significant architectural decision is captured with rationale in the [log](/crosswalker/agent-context/zz-log/):
+
+- [Vision alignment decisions](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/) — 10 foundational decisions
+- [Deep research synthesis](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/) — ontology meta-tools, plugin state, E2E testing
+- [Architectural direction](/crosswalker/agent-context/zz-log/2026-04-03-architectural-direction-exploration/) — the "what are we building?" question
 
 See also: [ROADMAP.md on GitHub](https://github.com/cybersader/crosswalker/blob/main/ROADMAP.md)
