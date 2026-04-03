@@ -6,6 +6,180 @@ template: splash
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
+<div class="cw-hero">
+  <div class="cw-hero-flow">
+    <div class="cw-sources">
+      <div class="cw-source-item cw-float-1">
+        <div class="cw-icon">🛡️</div>
+        <span>NIST 800-53</span>
+      </div>
+      <div class="cw-source-item cw-float-2">
+        <div class="cw-icon">🎯</div>
+        <span>MITRE ATT&CK</span>
+      </div>
+      <div class="cw-source-item cw-float-3">
+        <div class="cw-icon">🔒</div>
+        <span>CIS Controls</span>
+      </div>
+      <div class="cw-source-item cw-float-4">
+        <div class="cw-icon">📊</div>
+        <span>CSV / XLSX</span>
+      </div>
+      <div class="cw-source-item cw-float-5">
+        <div class="cw-icon">🏛️</div>
+        <span>CRI Profile</span>
+      </div>
+    </div>
+    <div class="cw-pipeline">
+      <div class="cw-arrow-track">
+        <div class="cw-particle"></div>
+        <div class="cw-particle cw-particle-2"></div>
+        <div class="cw-particle cw-particle-3"></div>
+      </div>
+      <div class="cw-pipeline-label">Crosswalker</div>
+    </div>
+    <div class="cw-vault">
+      <div class="cw-vault-icon">
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div class="cw-vault-tree">
+        <div class="cw-tree-item cw-tree-folder">📁 Frameworks/</div>
+        <div class="cw-tree-item cw-tree-sub">📁 NIST-800-53/</div>
+        <div class="cw-tree-item cw-tree-file">📄 AC-2.md</div>
+        <div class="cw-tree-item cw-tree-sub">📁 CIS-v8/</div>
+        <div class="cw-tree-item cw-tree-link">🔗 crosswalk links</div>
+        <div class="cw-tree-item cw-tree-meta">⚙️ _crosswalker metadata</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>{`
+  .cw-hero {
+    margin: 0 auto 2rem;
+    max-width: 800px;
+    overflow: hidden;
+  }
+  .cw-hero-flow {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem 0;
+  }
+  /* Sources */
+  .cw-sources {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 140px;
+  }
+  .cw-source-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 8px;
+    background: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-5);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+    animation: cw-float 3s ease-in-out infinite;
+  }
+  .cw-icon { font-size: 1rem; }
+  .cw-float-1 { animation-delay: 0s; }
+  .cw-float-2 { animation-delay: 0.4s; }
+  .cw-float-3 { animation-delay: 0.8s; }
+  .cw-float-4 { animation-delay: 1.2s; }
+  .cw-float-5 { animation-delay: 1.6s; }
+  @keyframes cw-float {
+    0%, 100% { transform: translateX(0); opacity: 0.85; }
+    50% { transform: translateX(4px); opacity: 1; }
+  }
+  /* Pipeline */
+  .cw-pipeline {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 100px;
+  }
+  .cw-arrow-track {
+    width: 100%;
+    height: 3px;
+    background: var(--sl-color-gray-5);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cw-particle {
+    position: absolute;
+    width: 20px;
+    height: 3px;
+    background: var(--sl-color-accent);
+    border-radius: 2px;
+    animation: cw-flow 2s linear infinite;
+    box-shadow: 0 0 8px var(--sl-color-accent);
+  }
+  .cw-particle-2 { animation-delay: 0.7s; }
+  .cw-particle-3 { animation-delay: 1.4s; }
+  @keyframes cw-flow {
+    0% { left: -20px; }
+    100% { left: 100%; }
+  }
+  .cw-pipeline-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--sl-color-accent);
+  }
+  /* Vault */
+  .cw-vault {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 170px;
+  }
+  .cw-vault-icon {
+    color: var(--sl-color-accent);
+    animation: cw-pulse 2s ease-in-out infinite;
+  }
+  @keyframes cw-pulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
+  }
+  .cw-vault-tree {
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.7rem;
+    line-height: 1.5;
+    background: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 8px;
+    padding: 0.6rem 0.8rem;
+  }
+  .cw-tree-item { white-space: nowrap; }
+  .cw-tree-sub { padding-left: 1rem; }
+  .cw-tree-file { padding-left: 2rem; color: var(--sl-color-accent); }
+  .cw-tree-link { padding-left: 1rem; color: var(--sl-color-accent-high); font-style: italic; }
+  .cw-tree-meta { padding-left: 1rem; color: var(--sl-color-gray-3); font-style: italic; }
+  /* Responsive */
+  @media (max-width: 640px) {
+    .cw-hero-flow { flex-direction: column; }
+    .cw-sources { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+    .cw-arrow-track { width: 3px; height: 40px; }
+    .cw-particle { width: 3px; height: 20px; animation-name: cw-flow-v; }
+    @keyframes cw-flow-v {
+      0% { top: -20px; left: 0; }
+      100% { top: 100%; left: 0; }
+    }
+  }
+`}</style>
+
 ## What is Crosswalker?
 
 Crosswalker is an Obsidian plugin that imports structured data (CSV, XLSX, JSON) into your vault as organized folder hierarchies with rich metadata. While designed with compliance frameworks in mind (NIST, CIS, MITRE), it works with any structured ontology or taxonomy.
