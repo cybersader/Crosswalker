@@ -17,6 +17,11 @@ export default defineConfig({
   base: '/Crosswalker',
   vite: {
     plugins: [tailwindcss()],
+    define: {
+      'process.platform': '"browser"',
+      'process.version': '"v0.0.0"',
+      'process.env': '{}',
+    },
   },
   markdown: {
     remarkPlugins: [
