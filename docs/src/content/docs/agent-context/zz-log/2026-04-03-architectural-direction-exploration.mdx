@@ -1,0 +1,85 @@
+---
+title: Architectural direction exploration
+description: Defining what Crosswalker actually IS — meta-system for ontology management, not just a framework importer.
+tags: [architecture, data-model-evolution, frameworks]
+sidebar:
+  label: "04-03 · Architectural direction"
+---
+
+## The core question
+
+Is Crosswalker just an "import frameworks into Obsidian" tool, or is it a **meta-system for ontology lifecycle management**?
+
+The user's vision leans heavily toward the latter:
+
+> "I want it to be 'meta' in a way that really takes the high-level problem and develops processes that are fundamental and first principled."
+
+## Key architectural decisions to make
+
+### 1. Ontology classification system
+
+Different external ontologies evolve differently. CRI publishes updates differently than NIST differently than MITRE. The system needs to:
+- Let users classify HOW their external ontology evolves (update cadence, breaking changes, ID stability, crosswalk maintenance model)
+- Map that classification to appropriate handling strategies
+- Reference: [ontology evolution](/crosswalker/concepts/ontology-evolution/) categories
+
+**Question**: Do we build a classification UI/wizard, or do we define classification in the FrameworkConfig?
+
+### 2. No-code UI vs as-code backend
+
+Two audiences:
+- **GRC practitioners**: Need a no-code wizard to onboard new frameworks, configure transforms, set up crosswalks
+- **Developers/power users**: Want config-as-code (JSON/YAML) that can be version-controlled, shared, and automated
+
+**Proposed approach**: Config-as-code is the source of truth. The UI generates and edits the config files. Both paths produce the same artifact.
+
+### 3. Community marketplace / registry
+
+Once someone configures a framework import (sheets, columns, transforms, crosswalk mappings), that config should be shareable:
+- Community-driven config registry (like npm for framework configs)
+- `crosswalker install nist-800-53-r5` to get a pre-built import config
+- Versioned configs that track framework version changes
+- Community can submit new framework configs via PR
+
+**Question**: Where does the registry live? GitHub repo? Separate package registry? Built into the plugin settings?
+
+### 4. Ontology evolution mapping
+
+The [ontology evolution page](/crosswalker/concepts/ontology-evolution/) defines patterns (SCD types, SKOS, SSSOM, SchemaVer). Can we:
+- Map each external ontology to a known evolution pattern?
+- Auto-suggest the right re-import strategy based on the pattern?
+- Detect when an ontology's evolution pattern changes (e.g., MITRE starts doing something new)?
+
+**Question**: Does ANY existing tool/library solve the ontology-to-evolution-pattern mapping? Or do we need to build this from first principles?
+
+### 5. The "meta" layer
+
+The system should be:
+1. **Framework-agnostic**: Works with ANY structured data, not just known frameworks
+2. **Evolution-aware**: Understands that imported data WILL change and has strategies ready
+3. **Community-extensible**: Hard work of per-framework config is shared, not repeated
+4. **First-principled**: Built on formal ontology concepts, not ad-hoc heuristics
+
+## What this means for the roadmap
+
+The current roadmap is feature-focused (XLSX parser, JSON parser, cross-framework linking). But the architectural decisions above should come FIRST because they determine HOW those features get built.
+
+**Proposed reordering**:
+1. Define the ontology classification system (how does this framework evolve?)
+2. Define the config-as-code schema (FrameworkConfig + evolution metadata)
+3. Build the no-code UI that generates configs
+4. THEN build parsers, crosswalkers, etc. on top of that foundation
+
+## Research needed
+
+- Survey of existing ontology management tools (beyond what's in the KB)
+- How do OSCAL, OLIR, SCF STRM handle the meta-problem?
+- Is there a standard for "ontology evolution profiles"?
+- What does Protégé/OWL ecosystem offer for version management?
+- How do package registries (npm, PyPI, crates.io) handle versioned schemas?
+
+## Open threads
+
+- E2E testing with wdio-obsidian needs to be set up for iterative development
+- The data model decisions compound — getting them wrong early is expensive
+- "Are we in the business of..." — this framing matters for scope control

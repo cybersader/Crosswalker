@@ -1,0 +1,79 @@
+---
+title: Deep research synthesis — ontology meta-system, plugin state, E2E testing
+description: Synthesis of three parallel research agents exploring the architectural direction, current implementation state, and testing infrastructure.
+tags: [architecture, development, data-model-evolution]
+sidebar:
+  label: "04-03 · Deep research synthesis"
+---
+
+## Research 1: Ontology lifecycle management — does anything solve this?
+
+**Finding: The meta-problem is NOT solved by any existing tool.**
+
+Individual pieces exist:
+- MITRE ATT&CK has machine-readable deprecation chains (STIX 2.1) — gold standard
+- OSCAL uses SemVer with content validity guarantees
+- SCF STRM uses interlingua/pivot approach for 175+ frameworks
+- CISO Assistant has YAML library versioning
+
+But NO tool:
+- Classifies HOW an ontology evolves
+- Auto-selects a handling strategy based on that classification
+- Provides a registry/marketplace for community framework configs
+- Implements automated migration between versions
+
+**What we need to build from scratch:**
+1. EvolutionPattern taxonomy (release cadence, breaking change policy, ID stability, changelog format)
+2. Evolution profile registry (YAML/JSON per framework)
+3. Migration strategy engine (given old + new version → suggest handling)
+4. Community config marketplace
+
+**Key insight**: SCD types from data warehousing are more mature than any ontology-specific approach. Apply them directly.
+
+## Research 2: Plugin implementation state
+
+**Solid MVP (0.1.0) but significant gaps:**
+
+| Component | Completeness | Notes |
+|-----------|-------------|-------|
+| Generation engine | 95% | Production-ready, `_crosswalker` metadata, YAML serialization |
+| Config manager | 100% | Save/load/fingerprint/match, schema migration v0→v1 |
+| CSV parser | 100% | PapaParse with streaming, column analysis |
+| Settings schema | 100% | 50+ settings with defaults |
+| Debug logging | 100% | File-based, toggleable |
+| **Import wizard UI** | **~30%** | Steps 2-4 rendering incomplete |
+| **Settings tab UI** | **~30%** | Missing 70% of sections |
+| **Config browser modal** | **~30%** | Only header logic visible |
+| **Transform system** | **0%** | Schema defined (20+ types), zero implementation |
+| **XLSX parser** | **0%** | Package installed, no integration |
+| **JSON parser** | **0%** | Not started |
+
+**19 unit tests, 2 E2E smoke tests. Harness ready but no workflow coverage.**
+
+## Research 3: E2E testing with wdio-obsidian
+
+**Current state**: Config exists, smoke tests exist, but not ready for iterative dev.
+
+**What wdio-obsidian can test:**
+- Plugin loading, command registration
+- Modal interactions (open, fill forms, click buttons)
+- File operations through Obsidian API
+- Command execution and UI state verification
+- Vault reset between tests
+
+**What's missing for Crosswalker:**
+- Test helpers (vault reset, file upload, modal interaction utilities)
+- Import wizard E2E tests (the main workflow)
+- Test data fixtures (small/medium/large CSVs, multi-sheet XLSX)
+- TypeScript config for test files
+- GitHub Actions E2E workflow
+
+**Estimated setup**: 3-4 hours for minimum viable E2E, 5-7 hours for CI-ready.
+
+## Implications for roadmap
+
+1. **Architecture decisions FIRST** — the ontology evolution classification and config schema must be designed before building more features
+2. **Complete the UI before adding features** — wizard, settings tab, and config browser are 30% done
+3. **E2E testing enables iteration** — set it up early, write tests alongside features
+4. **Transform system is Phase 2** — schema is solid, implementation can follow
+5. **The "meta" layer is novel** — no existing tool to map to, must build from first principles
