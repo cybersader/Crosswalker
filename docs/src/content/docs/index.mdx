@@ -43,10 +43,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
         <div class="cw-dot cw-d3"></div>
       </div>
       <div class="cw-engine-badge">
-        <svg class="cw-obs" viewBox="0 0 65 100" width="20" height="30">
-          <path d="M32.5 0L65 50L32.5 100L0 50Z" fill="var(--sl-color-accent)" opacity="0.9"/>
-          <path d="M32.5 20L50 50L32.5 80L15 50Z" fill="var(--sl-color-black)" opacity="0.4"/>
-        </svg>
+        <span class="cw-engine-text">⬡</span>
       </div>
     </div>
 
@@ -67,10 +64,17 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     <svg class="cw-g" viewBox="0 0 700 240" preserveAspectRatio="xMidYMid meet">
       <defs>
         <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feGaussianBlur stdDeviation="2.5" result="blur"/>
           <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
+        {/* Obsidian-inspired gradient overlay — subtle presence over the graph */}
+        <radialGradient id="obsidian-aura" cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stop-color="var(--sl-color-accent)" stop-opacity="0.08"/>
+          <stop offset="100%" stop-color="var(--sl-color-accent)" stop-opacity="0"/>
+        </radialGradient>
       </defs>
+      {/* Gradient aura over the graph */}
+      <rect x="0" y="0" width="700" height="240" fill="url(#obsidian-aura)"/>
 
       {/* Edges */}
       <line class="cw-e" x1="100" y1="90" x2="260" y2="60"/>
@@ -106,10 +110,10 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
       <text class="cw-mt" x="338" y="187">status: "verified"</text>
 
       {/* Nodes */}
-      <g class="cw-n cw-n-fw" filter="url(#glow)">
-        <circle cx="100" cy="90" r="28"/>
+      <g class="cw-n cw-n-fw">
+        <circle cx="100" cy="90" r="24"/>
         <text x="100" y="85" class="cw-ni">AC-2</text>
-        <text x="100" y="101" class="cw-ns">NIST 800-53</text>
+        <text x="100" y="99" class="cw-ns">NIST 800-53</text>
       </g>
       <g class="cw-n cw-n-fw">
         <circle cx="260" cy="60" r="24"/>
@@ -117,30 +121,30 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
         <text x="260" y="69" class="cw-ns">CSF 2.0</text>
       </g>
       <g class="cw-n cw-n-fw">
-        <circle cx="220" cy="170" r="22"/>
+        <circle cx="220" cy="170" r="24"/>
         <text x="220" y="165" class="cw-ni">6.3</text>
         <text x="220" y="179" class="cw-ns">CIS v8</text>
       </g>
-      <g class="cw-n cw-n-atk" filter="url(#glow)">
-        <circle cx="420" cy="80" r="28"/>
+      <g class="cw-n cw-n-atk">
+        <circle cx="420" cy="80" r="24"/>
         <text x="420" y="75" class="cw-ni">T1078</text>
-        <text x="420" y="91" class="cw-ns">ATT&CK</text>
+        <text x="420" y="89" class="cw-ns">ATT&CK</text>
       </g>
       <g class="cw-n cw-n-ev">
         <circle cx="570" cy="60" r="24"/>
         <text x="570" y="55" class="cw-ni">MFA</text>
         <text x="570" y="69" class="cw-ns">Policy</text>
       </g>
-      <g class="cw-n cw-n-ev" filter="url(#glow)">
+      <g class="cw-n cw-n-ev">
         <circle cx="580" cy="170" r="24"/>
         <text x="580" y="165" class="cw-ni">Audit</text>
-        <text x="580" y="181" class="cw-ns">Q1 Report</text>
+        <text x="580" y="179" class="cw-ns">Q1 Report</text>
       </g>
 
-      {/* Pulse rings */}
-      <circle class="cw-pr" cx="100" cy="90" r="28"/>
-      <circle class="cw-pr cw-pr2" cx="420" cy="80" r="28"/>
-      <circle class="cw-pr cw-pr3" cx="580" cy="170" r="24"/>
+      {/* Pulse rings — one per type */}
+      <circle class="cw-pr" cx="260" cy="60" r="24"/>
+      <circle class="cw-pr cw-pr2" cx="420" cy="80" r="24"/>
+      <circle class="cw-pr cw-pr3" cx="570" cy="60" r="24"/>
     </svg>
 
     <div class="cw-graph-caption">
@@ -203,10 +207,14 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   @keyframes cw-fly { 0% { left: -16px; } 100% { left: 80px; } }
   .cw-engine-badge {
     display: flex; align-items: center; justify-content: center;
-    width: 40px; height: 40px; border-radius: 50%;
+    width: 44px; height: 44px; border-radius: 50%;
     border: 2px solid var(--sl-color-accent); background: var(--sl-color-gray-6);
     animation: cw-breathe 3s ease-in-out infinite;
     box-shadow: 0 0 16px color-mix(in srgb, var(--sl-color-accent) 30%, transparent);
+  }
+  .cw-engine-text {
+    font-size: 1.4rem; color: var(--sl-color-accent);
+    filter: drop-shadow(0 0 6px var(--sl-color-accent));
   }
   @keyframes cw-breathe {
     0%,100% { box-shadow: 0 0 8px color-mix(in srgb, var(--sl-color-accent) 20%, transparent); }
