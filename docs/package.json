@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "test:local": "playwright test",
+    "test:deploy": "playwright test tests/deployment.spec.ts",
+    "test:e2e": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.38.0",
@@ -25,5 +29,8 @@
     "starlight-site-graph": "^0.5.0",
     "starlight-theme-nova": "^0.11.7",
     "tailwindcss": "^4.2.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
   }
 }
