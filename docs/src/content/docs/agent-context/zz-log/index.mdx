@@ -42,11 +42,28 @@ description: One sentence about what this captures.
 tags: [relevant-tags]
 sidebar:
   label: "MM-DD · Short title"     # date prefix shows in sidebar
-  order: YYYYMMDD                   # numeric sort keeps chronological order
+  order: -YYYYMMDD                  # negative = newest first
 ---
 ```
 
-The `sidebar.label` shows a compact date in the nav so entries are scannable. The `order` field ensures chronological sorting (newest at bottom by default).
+The `sidebar.label` shows a compact date in the nav. The **negative `order`** ensures newest entries appear first (Starlight sorts ascending, so -20260403 sorts before -20260402).
+
+### Year folders
+
+When the log grows large, split into year subfolders:
+
+```
+zz-log/
+├── index.mdx
+├── 2026/
+│   ├── 2026-04-02-project-ops-setup.mdx
+│   ├── 2026-04-03-vision-alignment.mdx
+│   └── ...
+├── 2027/
+│   └── ...
+```
+
+Year folders become collapsed sidebar groups automatically. Migrate when a year has 15+ entries.
 
 Use the existing [tag taxonomy](/crosswalker/tags/) — tags are what make log entries discoverable. A note about OSCAL export ideas should be tagged `[frameworks, architecture]` so it surfaces alongside the structured OSCAL content.
 
