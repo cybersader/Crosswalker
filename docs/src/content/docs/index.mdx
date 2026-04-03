@@ -2,8 +2,6 @@
 title: Crosswalker
 description: Turn your Obsidian vault into an operational compliance knowledge graph.
 template: splash
-hero:
-  title: ' '
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -188,6 +186,8 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 </div>
 
 <style>{`
+  /* Hide the auto-generated h1 — title is already in navbar and throughout the page */
+  h1#_top { display: none; }
   .cw-hero { margin: -0.5rem auto 2rem; max-width: 880px; padding: 0 0.5rem; }
   @media (prefers-reduced-motion: reduce) { .cw-hero * { animation: none !important; } }
 
