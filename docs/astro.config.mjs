@@ -36,6 +36,9 @@ export default defineConfig({
     starlight({
       title: 'Crosswalker',
       description: 'Import structured ontologies into Obsidian with folder structures, typed links, and metadata',
+      editLink: {
+        baseUrl: 'https://github.com/cybersader/Crosswalker/edit/main/docs/',
+      },
       plugins: [
         nova({
           nav: [

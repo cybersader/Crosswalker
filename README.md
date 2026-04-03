@@ -102,6 +102,17 @@ pip install -r requirements.txt
 python frameworks_to_obsidian.py
 ```
 
+## Documentation
+
+Full docs at **https://cybersader.github.io/Crosswalker/**
+
+Found an error? Click "Edit page" on any docs page to fix it directly on GitHub, or see the [contributing guide](https://cybersader.github.io/Crosswalker/development/contributing/).
+
+To run docs locally:
+```bash
+cd docs && bun install && bun run dev
+```
+
 ## Roadmap
 
 See the full [roadmap](https://cybersader.github.io/Crosswalker/reference/roadmap/) on the docs site.
