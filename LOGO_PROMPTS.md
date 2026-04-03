@@ -84,33 +84,43 @@ Upload the hand-drawn sketch alongside these prompts. Use image-to-image / refer
 Clean up this hand-drawn logo sketch into a precise digital vector version. The sketch shows two letters "C" and "W" where each letter is made from small circular nodes connected by straight line edges, like a graph/network diagram that spells CW. Keep the exact same node positions and proportions from the sketch but make everything geometrically precise: perfectly circular nodes, straight uniform edges, consistent node sizes, aligned baseline. Black on white background. Clean vector style. Do not change the design — just digitize and align it.
 ```
 
-**Aligned + improved:**
+**Proportion and spacing grid:**
 ```
-Based on this hand-drawn CW logo sketch, create 4 refined digital variations in a 2x2 grid. The original shows C and W formed from graph nodes and edges. For each variation: keep the same fundamental layout (C as a curved arc of nodes, W as a zigzag of nodes) but improve geometric precision, alignment, and proportions.
-Top-left: Faithful cleanup — closest to the original sketch, just cleaner
-Top-right: Tighter spacing — nodes closer together, more compact letterforms
-Bottom-left: More nodes — add 1-2 extra nodes per letter for smoother curves
-Bottom-right: Bolder — thicker edges, larger nodes, heavier visual weight
-All: black on white, clean vector, no fills.
-```
-
-**Style exploration from sketch:**
-```
-Using this hand-drawn CW logo as the base design, create 4 stylistic variations in a 2x2 grid. Same node-and-edge letter construction, same basic C and W shapes.
-Top-left: Technical blueprint style — thin precise lines, small dots, like an engineering diagram
-Top-right: Neon/glow style — teal (#00d4aa) glowing nodes and edges on dark (#0d1117), cybersecurity aesthetic
-Bottom-left: Minimal — reduce to fewest possible nodes while still reading as CW, single stroke weight
-Bottom-right: Connected — add a bridge edge between C and W, plus 1-2 internal cross-connections within each letter
-All: maintain the proportions and character of the original sketch.
+Based on this hand-drawn CW logo sketch, create a 2x2 grid of refined digital versions. Each keeps the full design (C and W made from graph nodes connected by edges) but varies proportion and spacing.
+Top-left: Compact — C and W close together, tight letter-spacing, square overall proportion
+Top-right: Wide — more horizontal breathing room between C and W, wider overall proportion
+Bottom-left: Tall — letters stretched slightly taller, narrower nodes, elegant vertical proportion
+Bottom-right: Balanced — mathematically centered, equal node spacing, golden-ratio-informed proportions
+All: every node present, every edge present, teal (#00d4aa) on dark (#0d1117), clean geometric vector.
 ```
 
-**Color application from sketch:**
+**Size and weight grid:**
 ```
-Take this hand-drawn CW graph-letter logo and create 4 color variations in a 2x2 grid. Clean up the sketch into precise geometric forms first.
-Top-left: Teal (#00d4aa) on near-black (#0d1117) — primary brand
-Top-right: White on near-black (#0d1117) — monochrome dark
-Bottom-left: Dark teal (#0a6b56) on white — light mode
-Bottom-right: Multi-color — C nodes teal (#00d4aa), W nodes coral (#e06c75), any bridge edge green (#98c379)
+Based on this hand-drawn CW logo sketch, create a 2x2 grid of refined digital versions varying stroke weight and node size. Same design in each — C and W formed from graph nodes and edges.
+Top-left: Light — thin 1px edges, small 4px nodes, airy and technical
+Top-right: Medium — 2px edges, 6px nodes, balanced and professional
+Bottom-left: Bold — 3px edges, 10px nodes, confident and heavy, strong silhouette
+Bottom-right: Extra bold — 4px edges, 12px nodes, chunky, reads clearly at small sizes
+All: teal (#00d4aa) on dark (#0d1117), same proportions and layout in each cell.
+```
+
+**Alignment and precision grid:**
+```
+Based on this hand-drawn CW logo sketch, create a 2x2 grid of refined digital versions exploring alignment approaches. Full design in each — all nodes and edges present.
+Top-left: Grid-snapped — every node snapped to an invisible grid, perfectly regular spacing
+Top-right: Baseline-aligned — both letters share a precise horizontal baseline, top heights vary naturally
+Bottom-left: Center-aligned — both letters vertically centered on a shared middle axis
+Bottom-right: Optical alignment — nodes positioned for visual balance rather than mathematical precision, the way a type designer would do it
+All: teal (#00d4aa) on dark (#0d1117), medium stroke weight.
+```
+
+**Brand-ready color grid:**
+```
+Take this hand-drawn CW graph-letter logo, digitize with geometric precision, and create a 2x2 grid of color treatments. Full complete logo in each cell.
+Top-left: Teal (#00d4aa) nodes and edges on near-black (#0d1117) — primary brand, dark mode
+Top-right: Teal (#00d4aa) nodes and edges on white (#f8f9fa) — light mode
+Bottom-left: White nodes and edges on near-black (#0d1117) — monochrome dark
+Bottom-right: Multi-color — C in teal (#00d4aa), W in coral (#e06c75), one bridge edge between them in green (#98c379)
 ```
 
 ### F.1 Base prompt
@@ -119,58 +129,37 @@ Bottom-right: Multi-color — C nodes teal (#00d4aa), W nodes coral (#e06c75), a
 Two letters "C" and "W" side by side, where each letter is formed entirely from small circles (graph nodes) connected by thin straight lines (graph edges). The C is built from 5-6 evenly-spaced nodes arranged in a semicircular arc, connected sequentially by edges. The W is built from 5-7 nodes arranged in a zigzag pattern (down-up-down-up-down), connected sequentially by edges. The nodes are perfectly circular, uniform size. The edges are thin, straight, connecting adjacent nodes. The two letters are aligned on a common baseline. Clean geometric construction — like a graph theory diagram that happens to spell CW. Teal (#00d4aa) nodes and edges on dark (#0d1117) background. No fill, just stroke. Software product logo quality.
 ```
 
-### F.2 Geometric cleanup variations
+### F.2 Node style grid
 
 ```
-Same CW graph letterform concept. Generate a 2x2 grid of variations:
-Top-left: Thin strokes (1px edges, small 4px nodes) — delicate, technical
-Top-right: Bold strokes (3px edges, large 8px nodes) — confident, heavy
-Bottom-left: Nodes only, no edges — the letter shapes implied by dot placement alone
-Bottom-right: Edges only, no visible nodes — the letter shapes drawn as connected line segments
-All variations: teal (#00d4aa) on dark (#0d1117). Same letter proportions in each.
+CW graph letterform — full complete design in each cell. Generate a 2x2 grid varying node style:
+Top-left: Filled circles — solid teal nodes, teal edges
+Top-right: Hollow circles — teal ring nodes with dark center, teal edges
+Bottom-left: Filled with glow — solid teal nodes with subtle outer glow halo, teal edges
+Bottom-right: Double-stroke — nodes have a thin inner circle and thicker outer circle, teal edges
+All: teal (#00d4aa) on dark (#0d1117), medium stroke weight, same layout.
 ```
 
-### F.3 Node style grid
+### F.3 Connection patterns
 
 ```
-Same CW graph letterform layout. Generate a 2x2 grid exploring node styles:
-Top-left: Filled circles (solid teal nodes, thin teal edges)
-Top-right: Hollow circles (teal stroke, dark fill, thin teal edges)
-Bottom-left: Square nodes (tiny teal squares instead of circles, thin edges)
-Bottom-right: Mixed — C uses filled circles, W uses hollow circles (two different graph types meeting)
-All on dark (#0d1117) background.
+CW graph letterform — full complete design in each cell. Generate a 2x2 grid varying how C and W connect:
+Top-left: Small gap — C and W are independent sub-graphs with a clean gap between them
+Top-right: Bridged — one edge connects the last node of C to the first node of W (the crosswalk)
+Bottom-left: Shared node — C and W share one node where they meet (ligature approach)
+Bottom-right: Cross-linked — C and W overlap slightly, with 2 cross-edges between them forming an X at the intersection
+All: teal (#00d4aa) on dark (#0d1117), same node and edge style in each cell.
 ```
 
-### F.4 Connection patterns
+### F.4 Depth and finish
 
 ```
-Same CW graph letterform base. Generate a 2x2 grid exploring how C and W connect to each other:
-Top-left: Separate — C and W are independent sub-graphs with a small gap between them
-Top-right: Bridged — one thin edge connects the last node of C to the first node of W (the crosswalk!)
-Bottom-left: Shared node — C and W share one node where they meet (the ligature approach)
-Bottom-right: Overlapping — C and W overlap slightly, with 2-3 cross-edges between them forming an X pattern at the intersection
-All: teal (#00d4aa) on dark (#0d1117). The connection style IS the brand decision.
-```
-
-### F.5 Perspective and depth
-
-```
-Same CW graph letterform. Generate a 2x2 grid exploring visual depth:
-Top-left: Flat 2D (current concept — nodes and edges on a plane)
-Top-right: Subtle 3D — nodes have a slight drop shadow, edges have depth, like the graph floats above the background
-Bottom-left: Isometric — the CW letters are tilted in isometric perspective, nodes are spheres
-Bottom-right: Layered — C is slightly behind W with a subtle overlap/parallax effect, suggesting two layers of a knowledge graph
-All: teal (#00d4aa) on dark (#0d1117).
-```
-
-### F.6 Color variation grid
-
-```
-Same CW graph letterform (use the best node/edge style from earlier). Generate a 2x2 color grid:
-Top-left: Teal (#00d4aa) on near-black (#0d1117) — primary dark mode
-Top-right: Dark teal (#0a6b56) on white (#f8f9fa) — light mode
-Bottom-left: Multi-color — C nodes in teal (#00d4aa), W nodes in coral (#e06c75), bridge edge in green (#98c379) — three systems meeting
-Bottom-right: Monochrome — single color (#0d1117) on transparent — for favicon/print
+CW graph letterform — full complete design in each cell. Generate a 2x2 grid varying visual treatment:
+Top-left: Flat — clean 2D, no shadows or effects
+Top-right: Subtle depth — nodes have a soft drop shadow, slight 3D lift
+Bottom-left: Glow — nodes and edges have a soft teal glow/bloom, cybersecurity aesthetic
+Bottom-right: Embossed — subtle bevel on nodes, like stamped metal, premium feel
+All: teal (#00d4aa) on dark (#0d1117), same proportions.
 ```
 
 ### F.7 With wordmark
