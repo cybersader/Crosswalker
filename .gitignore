@@ -50,6 +50,8 @@ test-results/
 docs/node_modules/
 docs/dist/
 docs/.astro/
+docs/playwright-report/
+docs/blob-report/
 
 # Python
 __pycache__/
