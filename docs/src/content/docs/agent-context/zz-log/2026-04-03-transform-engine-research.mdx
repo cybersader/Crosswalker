@@ -1,0 +1,66 @@
+---
+title: Transform engine research
+description: Evaluated 14 declarative transform engines — custom build recommended over JSONata, Arquero, Arrow, DanfoJS, dbt, and others.
+tags: [architecture, import-transforms]
+sidebar:
+  label: "04-03 · Transform engine research"
+  order: -20260403
+---
+
+## The question
+
+Should Crosswalker use an existing declarative transformation engine or build custom?
+
+## Engines evaluated
+
+| Engine | Good at | Why not for Crosswalker |
+|--------|---------|------------------------|
+| **JSONata** | JSON query + transformation | Not tabular-aware; overhead for simple CSV operations |
+| **Arquero** | SQL-like column operations | No hierarchical output; no Obsidian integration |
+| **Apache Arrow** | Columnar analytics at scale | Overengineered for under 100K rows; 200KB+ bundle |
+| **DanfoJS** | Pandas-like for JS | ML/numerical focus; TensorFlow overhead |
+| **Polars** | 10-30x faster than alternatives | No native JavaScript binding |
+| **dbt** | Declarative SQL transforms | Warehouse-only; not applicable to files |
+| **OpenETL / ETL-Gun** | Database I/O pipelines | Infrastructure overhead; wrong abstraction |
+| **n8n / Retool / Zapier** | SaaS workflow automation | Not embeddable in a plugin |
+| **lodash/fp / Ramda** | Functional composition | Too low-level; no declarative config format |
+| **csv-parse + csv-stringify** | CSV stream transforms | No structured transform DSL |
+| **jq (JS ports)** | JSON filtering | CLI-focused; awkward in browser |
+| **JSON Schema + JSON Patch** | Schema validation + patching | Patching, not transformation |
+| **XSLT** | XML transformation | XML-only concept (though the declarative model applies) |
+| **Great Expectations** | Data validation | Validation, not transformation |
+
+## Decision: Build custom
+
+| Criteria | Custom engine | Best alternative (Arquero) |
+|----------|--------------|---------------------------|
+| Bundle size | ~2KB | ~180KB |
+| Performance (1000 rows) | under 25ms | 30-40ms |
+| Obsidian-native output | Built-in (WikiLinks, YAML, vault paths) | Not supported |
+| Hierarchical folder generation | Native | Not supported |
+| [Per-framework transforms](/crosswalker/reference/framework-data-sources/) | Native (tag aggregation, forward-fill, ID normalization) | Requires custom wrapper |
+| Learning curve | None (our code) | Medium (their API) |
+| Breaking updates risk | Zero | Library-dependent |
+
+## Escape hatches (future, optional)
+
+- **Arquero** — for cross-row aggregation on huge datasets (>100K rows)
+- **JSONata** — for complex JSON expression transforms (opt-in advanced feature)
+- **Apache Arrow** — for massive datasets (>1M rows, unlikely for framework data)
+
+These would plug into the [Transform stage of the pipeline](/crosswalker/concepts/pipeline/#transform) as optional providers, not replacements.
+
+## Connection to ChunkyCSV
+
+[ChunkyCSV](https://github.com/cybersader/chunkycsv) does structured-to-tabular conversion with search and flatten operations. These are specific transform operations that the custom engine should handle natively — the engine's design should be informed by ChunkyCSV's patterns. [Earlier log](/crosswalker/agent-context/zz-log/2026-04-03-chunkycsv-and-transformation-engines/).
+
+## Implementation scope
+
+24 transform types across 4 categories, implementable in 3-5 days:
+
+- **String**: trim, lowercase, uppercase, titlecase, replace, regex_extract, prefix, suffix, template
+- **Array**: split, join, unique, filter, first, last, map
+- **Type**: to_number, to_boolean, to_date, to_tags, to_wikilinks
+- **Conditional**: if_empty, if_matches, coalesce, lookup
+
+Plus the [per-framework transforms](/crosswalker/agent-context/helper-functions/) (hierarchical forward-fill, tag aggregation, ID normalization, preamble extraction) as built-in operations.
