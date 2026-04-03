@@ -8,17 +8,17 @@ tags: [data-model-evolution, frameworks-versioning, data-model-consistency]
 
 ```mermaid
 graph TD
-    subgraph "2023"
+    subgraph 2023
         A1[NIST CSF 1.1] --- B1[Your evidence links]
         A1 --- C1[CIS v7 crosswalk]
     end
-    subgraph "2024"
-        A2[NIST CSF 2.0] --- B2["Your evidence links (broken?)"]
-        A2 --- C2["CIS v8 crosswalk (stale?)"]
+    subgraph 2024
+        A2[NIST CSF 2.0] --- B2[Your evidence links (broken?)]
+        A2 --- C2[CIS v8 crosswalk (stale?)]
     end
-    A1 -->|"NIST publishes update"| A2
-    B1 -.->|"Do these still work?"| B2
-    C1 -.->|"Is this still valid?"| C2
+    A1 -->|NIST publishes update| A2
+    B1 -.->|Do these still work?| B2
+    C1 -.->|Is this still valid?| C2
 ```
 
 NIST publishes CSF 2.0. Suddenly:
@@ -32,17 +32,17 @@ NIST publishes CSF 2.0. Suddenly:
 
 ```mermaid
 graph TB
-    subgraph L1["Layer 1: The ontology itself changes"]
+    subgraph L1[Layer 1: The ontology itself changes]
         direction LR
-        F1[Framework v1] -->|"adds, removes, renames"| F2[Framework v2]
+        F1[Framework v1] -->|adds, removes, renames| F2[Framework v2]
     end
-    subgraph L2["Layer 2: The crosswalks between ontologies break"]
+    subgraph L2[Layer 2: The crosswalks between ontologies break]
         direction LR
-        CW1[A ↔ B mapping] -->|"one side updates"| CW2[A ↔ B mapping stale]
+        CW1[A ↔ B mapping] -->|one side updates| CW2[A ↔ B mapping stale]
     end
-    subgraph L3["Layer 3: Your work built on them becomes unreliable"]
+    subgraph L3[Layer 3: Your work built on them becomes unreliable]
         direction LR
-        E1[Evidence linked to v1] -->|"links to renamed IDs"| E2[Evidence → broken links]
+        E1[Evidence linked to v1] -->|links to renamed IDs| E2[Evidence → broken links]
     end
     L1 --> L2
     L2 --> L3
@@ -54,31 +54,31 @@ Real examples of what frameworks actually do when they update:
 
 ```mermaid
 graph LR
-    subgraph "NIST CSF 1.1 → 2.0"
+    subgraph NIST CSF 1.1 → 2.0
         direction TB
-        N1["5 Functions<br>(Identify, Protect, Detect, Respond, Recover)"]
-        N2["6 Functions<br>(+ GOVERN)"]
-        N1 -->|"Added entirely new function"| N2
+        N1[5 Functions<br>(Identify, Protect, Detect, Respond, Recover)]
+        N2[6 Functions<br>(+ GOVERN)]
+        N1 -->|Added entirely new function| N2
     end
 ```
 
 ```mermaid
 graph LR
-    subgraph "MITRE ATT&CK sub-technique migration (2020)"
+    subgraph MITRE ATT&CK sub-technique migration (2020)
         direction TB
-        M1["T1086<br>PowerShell"]
-        M2["T1059.001<br>Command and Scripting: PowerShell"]
-        M1 -->|"ID changed, nested under parent"| M2
+        M1[T1086<br>PowerShell]
+        M2[T1059.001<br>Command and Scripting: PowerShell]
+        M1 -->|ID changed, nested under parent| M2
     end
 ```
 
 ```mermaid
 graph LR
-    subgraph "CIS v7 → v8"
+    subgraph CIS v7 → v8
         direction TB
-        C1["20 Controls"]
-        C2["18 Controls<br>(consolidated)"]
-        C1 -->|"Controls merged and renumbered"| C2
+        C1[20 Controls]
+        C2[18 Controls<br>(consolidated)]
+        C1 -->|Controls merged and renumbered| C2
     end
 ```
 
@@ -98,17 +98,17 @@ When Framework A updates but the A↔B crosswalk doesn't, every link through tha
 
 ```mermaid
 graph TD
-    subgraph "Before update"
-        CSF1["CSF 1.1<br>PR.AC-1"] ---|"crosswalk"| NIST1["800-53<br>AC-2"]
-        NIST1 ---|"crosswalk"| CIS1["CIS v7<br>Control 4"]
+    subgraph Before update
+        CSF1[CSF 1.1<br>PR.AC-1] ---|crosswalk| NIST1[800-53<br>AC-2]
+        NIST1 ---|crosswalk| CIS1[CIS v7<br>Control 4]
     end
-    subgraph "After CSF update"
-        CSF2["CSF 2.0<br>PR.AC-01"] ---|"crosswalk ???"| NIST2["800-53<br>AC-2"]
-        NIST2 ---|"crosswalk still valid"| CIS2["CIS v8<br>Safeguard 4.1"]
+    subgraph After CSF update
+        CSF2[CSF 2.0<br>PR.AC-01] ---|crosswalk ???| NIST2[800-53<br>AC-2]
+        NIST2 ---|crosswalk still valid| CIS2[CIS v8<br>Safeguard 4.1]
     end
-    CSF1 -.->|"ID renamed"| CSF2
-    NIST1 -.->|"unchanged"| NIST2
-    CIS1 -.->|"renumbered"| CIS2
+    CSF1 -.->|ID renamed| CSF2
+    NIST1 -.->|unchanged| NIST2
+    CIS1 -.->|renumbered| CIS2
 ```
 
 The crosswalk from CSF 1.1 → 800-53 was maintained by [NIST OLIR](https://csrc.nist.gov/projects/olir). But OLIR is **submission-based** — someone has to manually update it. There's no automatic staleness detection. See [crosswalk staleness](/crosswalker/agent-context/framework-crosswalks/#crosswalk-staleness).
@@ -119,15 +119,15 @@ The crosswalk from CSF 1.1 → 800-53 was maintained by [NIST OLIR](https://csrc
 
 ```mermaid
 graph TD
-    subgraph "Your vault"
-        E["MFA-Policy.md<br>evidence note"]
-        E -->|"implements:: [[AC-2]]"| AC2["AC-2.md<br>NIST 800-53"]
-        E -->|"satisfies:: [[PR.AC-1]]"| PR["PR.AC-1.md<br>CSF 1.1"]
+    subgraph Your vault
+        E[MFA-Policy.md<br>evidence note]
+        E -->|implements:: [[AC-2]]| AC2[AC-2.md<br>NIST 800-53]
+        E -->|satisfies:: [[PR.AC-1]]| PR[PR.AC-1.md<br>CSF 1.1]
     end
-    subgraph "After CSF 2.0 import"
-        PR2["PR.AC-01.md<br>CSF 2.0"]
+    subgraph After CSF 2.0 import
+        PR2[PR.AC-01.md<br>CSF 2.0]
     end
-    PR -.->|"PR.AC-1 renamed to PR.AC-01<br>Your link is now broken"| PR2
+    PR -.->|PR.AC-1 renamed to PR.AC-01<br>Your link is now broken| PR2
 ```
 
 Your [evidence mapping](/crosswalker/getting-started/grc-teams/) work — the hours spent linking policies to controls — is at risk every time a framework updates.
@@ -138,29 +138,29 @@ The ontology evolution problem involves distinct entities with different roles, 
 
 ```mermaid
 graph TD
-    subgraph "Framework Owners"
-        NIST["NIST<br><i>publishes 800-53, CSF, OSCAL</i>"]
-        MITRE["MITRE<br><i>publishes ATT&CK, D3FEND, ENGAGE</i>"]
-        CIS["CIS<br><i>publishes Controls, Benchmarks</i>"]
-        CRI_ORG["CRI<br><i>publishes CRI Profile</i>"]
+    subgraph Framework Owners
+        NIST[NIST<br><i>publishes 800-53, CSF, OSCAL</i>]
+        MITRE[MITRE<br><i>publishes ATT&CK, D3FEND, ENGAGE</i>]
+        CIS[CIS<br><i>publishes Controls, Benchmarks</i>]
+        CRI_ORG[CRI<br><i>publishes CRI Profile</i>]
     end
-    subgraph "Mapping Maintainers"
-        OLIR["NIST OLIR<br><i>submission-based crosswalks</i>"]
-        SCF_ORG["SCF<br><i>175+ framework hub via STRM</i>"]
-        CTID["Center for Threat-<br>Informed Defense<br><i>ATT&CK ↔ 800-53 mappings</i>"]
-        COMMUNITY["Community<br><i>ad-hoc mappings in Excel/CSV</i>"]
+    subgraph Mapping Maintainers
+        OLIR[NIST OLIR<br><i>submission-based crosswalks</i>]
+        SCF_ORG[SCF<br><i>175+ framework hub via STRM</i>]
+        CTID[Center for Threat-<br>Informed Defense<br><i>ATT&CK ↔ 800-53 mappings</i>]
+        COMMUNITY[Community<br><i>ad-hoc mappings in Excel/CSV</i>]
     end
-    subgraph "Consumers (you)"
-        GRC["GRC Team<br><i>must prove compliance</i>"]
-        SEC["Security Team<br><i>maps controls to detections</i>"]
-        AUDIT["Auditors<br><i>verify evidence → controls</i>"]
+    subgraph Consumers (you)
+        GRC[GRC Team<br><i>must prove compliance</i>]
+        SEC[Security Team<br><i>maps controls to detections</i>]
+        AUDIT[Auditors<br><i>verify evidence → controls</i>]
     end
-    NIST -->|"publishes framework"| OLIR
-    MITRE -->|"publishes framework"| CTID
-    OLIR -->|"provides crosswalks"| GRC
-    SCF_ORG -->|"provides meta-mappings"| GRC
-    CTID -->|"provides mappings"| SEC
-    GRC -->|"proves compliance to"| AUDIT
+    NIST -->|publishes framework| OLIR
+    MITRE -->|publishes framework| CTID
+    OLIR -->|provides crosswalks| GRC
+    SCF_ORG -->|provides meta-mappings| GRC
+    CTID -->|provides mappings| SEC
+    GRC -->|proves compliance to| AUDIT
 ```
 
 ### The timing problem
@@ -181,16 +181,16 @@ Each actor operates on a different timeline:
 
 ```mermaid
 graph LR
-    subgraph "Ownership"
-        O["Framework Owner"] -->|"publishes, versions"| F["Framework"]
+    subgraph Ownership
+        O[Framework Owner] -->|publishes, versions| F[Framework]
     end
-    subgraph "Mapping"
-        F1["Framework A"] ---|"crosswalk<br>(maintained by someone)"| F2["Framework B"]
+    subgraph Mapping
+        F1[Framework A] ---|crosswalk<br>(maintained by someone)| F2[Framework B]
     end
-    subgraph "Consumption"
-        U["Your Team"] -->|"imports, links evidence to"| F
-        U -->|"uses crosswalk between"| F1
-        U -->|"uses crosswalk between"| F2
+    subgraph Consumption
+        U[Your Team] -->|imports, links evidence to| F
+        U -->|uses crosswalk between| F1
+        U -->|uses crosswalk between| F2
     end
 ```
 
@@ -215,17 +215,17 @@ The data warehouse community solved this decades ago with [Slowly Changing Dimen
 
 ```mermaid
 graph TD
-    subgraph "Type 1: Overwrite"
-        T1A["Import CSF 2.0"] --> T1B["Delete CSF 1.1 folder"]
-        T1B --> T1C["Evidence links → broken"]
+    subgraph Type 1: Overwrite
+        T1A[Import CSF 2.0] --> T1B[Delete CSF 1.1 folder]
+        T1B --> T1C[Evidence links → broken]
     end
-    subgraph "Type 2: Keep history"
-        T2A["Import CSF 2.0"] --> T2B["Keep CSF 1.1 folder too"]
-        T2B --> T2C["Both versions coexist"]
+    subgraph Type 2: Keep history
+        T2A[Import CSF 2.0] --> T2B[Keep CSF 1.1 folder too]
+        T2B --> T2C[Both versions coexist]
     end
-    subgraph "Type 3: Alias"
-        T3A["Import CSF 2.0"] --> T3B["PR.AC-01.md gets<br>aliases: [PR.AC-1]"]
-        T3B --> T3C["Old links still resolve"]
+    subgraph Type 3: Alias
+        T3A[Import CSF 2.0] --> T3B[PR.AC-01.md gets<br>aliases: [PR.AC-1]]
+        T3B --> T3C[Old links still resolve]
     end
 ```
 
@@ -244,9 +244,9 @@ When multiple versions coexist, you need to track WHEN:
 
 ```mermaid
 graph LR
-    subgraph "Bitemporal"
-        VT["Valid time<br>When was this true in reality?<br><i>CSF 2.0 published Feb 2024</i>"]
-        TT["Transaction time<br>When did we record it?<br><i>We imported it March 15</i>"]
+    subgraph Bitemporal
+        VT[Valid time<br>When was this true in reality?<br><i>CSF 2.0 published Feb 2024</i>]
+        TT[Transaction time<br>When did we record it?<br><i>We imported it March 15</i>]
     end
 ```
 
@@ -258,19 +258,19 @@ Crosswalker's [`_crosswalker` metadata](/crosswalker/agent-context/constraint-en
 
 ```mermaid
 graph TD
-    subgraph "Direct translation (N² problem)"
-        NIST["NIST"] ---|mapping| CIS["CIS"]
-        NIST ---|mapping| MITRE["MITRE"]
+    subgraph Direct translation (N² problem)
+        NIST[NIST] ---|mapping| CIS[CIS]
+        NIST ---|mapping| MITRE[MITRE]
         CIS ---|mapping| MITRE
-        NIST ---|mapping| CRI["CRI"]
+        NIST ---|mapping| CRI[CRI]
         CIS ---|mapping| CRI
         MITRE ---|mapping| CRI
     end
-    subgraph "Pivot/interlingua (N problem)"
-        N2["NIST"] --- SCF["SCF<br>(pivot)"]
-        C2["CIS"] --- SCF
-        M2["MITRE"] --- SCF
-        CR2["CRI"] --- SCF
+    subgraph Pivot/interlingua (N problem)
+        N2[NIST] --- SCF[SCF<br>(pivot)]
+        C2[CIS] --- SCF
+        M2[MITRE] --- SCF
+        CR2[CRI] --- SCF
     end
 ```
 
@@ -312,8 +312,8 @@ Zero-downtime migration pattern from databases:
 
 ```mermaid
 graph LR
-    E["Expand<br>Import CSF 2.0 alongside 1.1"] --> M["Migrate<br>Update evidence links to 2.0"]
-    M --> C["Contract<br>Archive CSF 1.1 folder"]
+    E[Expand<br>Import CSF 2.0 alongside 1.1] --> M[Migrate<br>Update evidence links to 2.0]
+    M --> C[Contract<br>Archive CSF 1.1 folder]
 ```
 
 ## LLM-based matching
