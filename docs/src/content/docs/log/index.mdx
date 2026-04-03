@@ -1,0 +1,58 @@
+---
+title: Log
+description: Timestamped notes, ideas, research, and context that doesn't fit elsewhere. The project's working memory.
+tags: [development]
+---
+
+## What goes here
+
+The log is a **chronological capture folder** for anything that doesn't have an obvious home in the structured docs. If you're not sure where something belongs, put it here with a date prefix.
+
+### Examples of log entries
+
+- Research notes from a deep dive into a topic
+- Ideas for roadmap features that need more thought
+- Decisions made during a session with context for why
+- Discoveries about the Obsidian ecosystem
+- Architecture explorations that might inform future work
+- Meeting notes, user feedback, or external input
+
+### Naming convention
+
+```
+YYYY-MM-DD-topic-slug.mdx
+```
+
+Examples:
+- `2026-04-02-project-ops-setup.mdx`
+- `2026-04-03-evidence-mapping-research.mdx`
+- `2026-04-03-oscal-export-ideas.mdx`
+- `2026-04-05-bases-limitations.mdx`
+
+### Frontmatter
+
+Every log entry should have:
+
+```yaml
+---
+title: Short descriptive title
+description: One sentence about what this captures.
+tags: [relevant-tags]
+---
+```
+
+Use the existing [tag taxonomy](/crosswalker/tags/) — tags are what make log entries discoverable. A note about OSCAL export ideas should be tagged `[frameworks, architecture]` so it surfaces alongside the structured OSCAL content.
+
+### What happens to log entries over time
+
+Log entries are **permanent** — they don't need to "graduate" into structured pages. They're context that future contributors (human or AI) can reference. If a log entry grows into something substantial, the structured page should link back to the log entry as prior art, not replace it.
+
+### For AI agents
+
+When working on this project, **use the log** for:
+- Session learnings that don't fit an existing page
+- Research findings before they're synthesized into docs
+- Decision rationale that might be questioned later
+- Ideas that need more thought before becoming roadmap items
+
+Don't overthink where things go. If it has a date and tags, it's findable.
