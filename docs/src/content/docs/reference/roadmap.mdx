@@ -35,7 +35,10 @@ Architecture decisions before more code. The three interconnected schemas (_cros
 - [ ] **_crosswalker metadata v2** — version tracking, source hash, status field, evolution profile reference, migration history. Progressive [metadata tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers) (minimal → standard → extended → temporal)
 - [ ] **Migration strategy matrix** — given evolution pattern + old/new version → recommended [SCD type](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) + handling strategy
 - [ ] **As-code data format research** — define primitives for representing configs, evolution profiles, and migration rules as version-controllable files
+- [ ] **Layered architecture design** — spec (universal) → library/SDK (implementations) → integrations (Obsidian plugin, CLI, framework drivers). [Architecture vision](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)
 - [ ] **CLI architecture design** — core library extractable from Obsidian API layer, [dual wrapper pattern](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#7-cli--plugin-dual-implementation) (plugin + CLI) so operations can run headless
+- [ ] **Transform engine research** — ChunkyCSV and structured-to-tabular conversion engines as transform providers. SDKs/libraries for the transform layer. [Log](/crosswalker/agent-context/zz-log/2026-04-03-chunkycsv-and-transformation-engines/)
+- [ ] **Obsidian plugin system constraints** — how the layered architecture maps to Obsidian's plugin model (community plugin distribution, external resource fetching, config storage patterns)
 
 **Infrastructure:**
 

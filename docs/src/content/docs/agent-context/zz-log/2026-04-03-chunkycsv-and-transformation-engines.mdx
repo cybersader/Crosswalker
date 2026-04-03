@@ -1,0 +1,47 @@
+---
+title: ChunkyCSV and transformation engines
+description: Structured-to-tabular conversion engines as a component of the migration and transformation system.
+tags: [architecture, import-transforms, data-model-evolution]
+sidebar:
+  label: "04-03 · ChunkyCSV & transform engines"
+  order: -20260403
+---
+
+## The idea
+
+For manual migrations between framework versions (or any structured data transformation), users need the ability to:
+1. Define transformations declaratively (as-code)
+2. OR run them manually with their own code
+3. OR use an engine that handles common patterns automatically
+
+## ChunkyCSV
+
+The user created [ChunkyCSV](https://github.com/cybersader/chunkycsv) — a structured-to-tabular conversion engine. This could be a key component of Crosswalker's transformation pipeline.
+
+**Research needed:**
+- What does ChunkyCSV do exactly? How does it handle hierarchy flattening, nested data, array expansion?
+- How does it compare to PapaParse (currently used for CSV parsing)?
+- Could it replace or augment the transform system defined in `src/types/config.ts`?
+- What about xlsx-based transformation tools?
+
+## Connection to roadmap
+
+This fits into multiple phases:
+- **Foundation**: The as-code data format for representing transformations
+- **Formats**: The transform system implementation (20+ types defined, 0% implemented)
+- **Evolution**: Manual migration paths when auto-migration isn't possible
+
+## The broader pattern
+
+The transformation engine is a key architectural component:
+- **Import transforms**: Clean, normalize, restructure incoming data (current focus)
+- **Migration transforms**: Convert between framework versions (Evolution phase)
+- **Export transforms**: Convert to OSCAL, reports, dashboards (Community phase)
+
+A general-purpose transformation engine that handles all three would be more valuable than three separate systems.
+
+## Related
+
+- [Transform system types](/crosswalker/design/transformation/)
+- [Helper functions](/crosswalker/agent-context/helper-functions/) — current Python implementations
+- [Config schema design](/crosswalker/agent-context/config-schema-design/) — TransformConfig interface
