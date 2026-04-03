@@ -132,6 +132,83 @@ graph TD
 
 Your [evidence mapping](/crosswalker/getting-started/grc-teams/) work — the hours spent linking policies to controls — is at risk every time a framework updates.
 
+## The actors: who owns what
+
+The ontology evolution problem involves distinct entities with different roles, incentives, and timelines:
+
+```mermaid
+graph TD
+    subgraph "Framework Owners"
+        NIST["NIST<br><i>publishes 800-53, CSF, OSCAL</i>"]
+        MITRE["MITRE<br><i>publishes ATT&CK, D3FEND, ENGAGE</i>"]
+        CIS["CIS<br><i>publishes Controls, Benchmarks</i>"]
+        CRI_ORG["CRI<br><i>publishes CRI Profile</i>"]
+    end
+    subgraph "Mapping Maintainers"
+        OLIR["NIST OLIR<br><i>submission-based crosswalks</i>"]
+        SCF_ORG["SCF<br><i>175+ framework hub via STRM</i>"]
+        CTID["Center for Threat-<br>Informed Defense<br><i>ATT&CK ↔ 800-53 mappings</i>"]
+        COMMUNITY["Community<br><i>ad-hoc mappings in Excel/CSV</i>"]
+    end
+    subgraph "Consumers (you)"
+        GRC["GRC Team<br><i>must prove compliance</i>"]
+        SEC["Security Team<br><i>maps controls to detections</i>"]
+        AUDIT["Auditors<br><i>verify evidence → controls</i>"]
+    end
+    NIST -->|"publishes framework"| OLIR
+    MITRE -->|"publishes framework"| CTID
+    OLIR -->|"provides crosswalks"| GRC
+    SCF_ORG -->|"provides meta-mappings"| GRC
+    CTID -->|"provides mappings"| SEC
+    GRC -->|"proves compliance to"| AUDIT
+```
+
+### The timing problem
+
+Each actor operates on a different timeline:
+
+| Actor | Update cadence | Your notification |
+|-------|---------------|-------------------|
+| **NIST** (framework owner) | Every 5-10 years | Federal Register notice, months of public comment |
+| **MITRE** (framework owner) | Every 6 months | Blog post, STIX JSON changelog |
+| **OLIR** (mapping maintainer) | When someone submits an update | No notification — you discover staleness yourself |
+| **SCF** (mapping hub) | When a framework they track updates | Release notes on their site |
+| **Your GRC team** (consumer) | Continuous — evidence links added daily | You need to know when YOUR imported snapshot is stale |
+
+**The gap Crosswalker fills**: No existing tool watches all these actors and tells you "your imported NIST 800-53 is now outdated, here's what changed, and here's which of your evidence links are affected."
+
+### The relationship types
+
+```mermaid
+graph LR
+    subgraph "Ownership"
+        O["Framework Owner"] -->|"publishes, versions"| F["Framework"]
+    end
+    subgraph "Mapping"
+        F1["Framework A"] ---|"crosswalk<br>(maintained by someone)"| F2["Framework B"]
+    end
+    subgraph "Consumption"
+        U["Your Team"] -->|"imports, links evidence to"| F
+        U -->|"uses crosswalk between"| F1
+        U -->|"uses crosswalk between"| F2
+    end
+```
+
+Three distinct relationship types, each with different staleness risks:
+1. **Ownership**: Framework owner → framework. Stable until they publish an update.
+2. **Mapping**: Maintained by a THIRD PARTY (OLIR, SCF, or community). Can go stale independently of either framework.
+3. **Consumption**: YOUR work linking evidence to controls. At risk whenever ownership OR mapping changes.
+
+### What this means for Crosswalker
+
+The [EvolutionPattern taxonomy](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) needs to track not just how a framework changes, but:
+- **Who maintains it** (and how responsive they are to updates)
+- **Who maintains the crosswalks** (OLIR? SCF? community? unmaintained?)
+- **What notification mechanisms exist** (STIX JSON? Excel diff? nothing?)
+- **What's your exposure** (how many of your evidence links touch this framework?)
+
+These are the [progressive classification](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#1-meta-layer-ux-progressive-classification) inputs — community pre-classified profiles capture this institutional knowledge so individual users don't have to research it.
+
 ## How to handle it: Slowly Changing Dimensions
 
 The data warehouse community solved this decades ago with [Slowly Changing Dimensions](https://en.wikipedia.org/wiki/Slowly_changing_dimension) (SCD). These patterns apply directly:
