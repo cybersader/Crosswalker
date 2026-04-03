@@ -76,7 +76,7 @@ export default defineConfig({
         },
         {
           label: 'Concepts',
-          autogenerate: { directory: 'concepts' },
+          autogenerate: { directory: 'concepts', collapsed: true },
         },
         {
           label: 'Design',
