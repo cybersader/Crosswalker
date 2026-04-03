@@ -84,23 +84,82 @@ The key insight: **Crosswalker doesn't just import data — it creates a tempora
 
 ---
 
+## SKOS: the natural formal model
+
+[SKOS (Simple Knowledge Organization System)](https://www.w3.org/TR/skos-reference/) is the W3C standard most naturally suited to Crosswalker's domain. The mapping is direct:
+
+| SKOS Concept | Crosswalker Equivalent |
+|-------------|----------------------|
+| `skos:ConceptScheme` | A framework (NIST CSF, CIS v8) |
+| `skos:Concept` | A control, technique, or safeguard |
+| `skos:broader` / `skos:narrower` | Hierarchy levels (Family → Control → Enhancement) |
+| `skos:exactMatch` | Exact crosswalk correspondence |
+| `skos:broadMatch` / `skos:narrowMatch` | Partial crosswalk (broader or narrower scope) |
+| `skos:relatedMatch` | Related but not equivalent |
+
+SKOS has a versioning gap — no built-in version tracking for concept schemes. The [skos-history](https://github.com/zbw/skos-history) project and Tennis's "vocabulary ontogeny" extensions address this partially.
+
+## SSSOM: mappings as data
+
+[SSSOM (Simple Standard for Sharing Ontology Mappings)](https://mapping-commons.github.io/sssom/) represents mappings as TSV/CSV with standardized metadata columns. This is essentially what Crosswalker imports and exports — making SSSOM a natural export format for Crosswalker's crosswalk data.
+
+## Expand-Migrate-Contract pattern
+
+The industry standard for zero-downtime schema migration in databases:
+
+1. **Expand** — add new structure alongside old (import new framework version into a new folder)
+2. **Migrate** — move data from old to new (update evidence links to point to new version)
+3. **Contract** — optionally remove old structure (archive old version folder)
+
+This maps cleanly to Crosswalker's [re-import strategies](/Crosswalker/agent-context/data-model-resilience/).
+
+## SchemaVer: an alternative to SemVer for data
+
+Where SemVer tracks API compatibility, [SchemaVer](https://docs.snowplow.io/docs/pipeline-components-and-applications/iglu/common-architecture/schemaver/) tracks data compatibility using **MODEL-REVISION-ADDITION**:
+
+| Component | Meaning | Example |
+|-----------|---------|---------|
+| MODEL | Can existing data work with new schema? | ATT&CK sub-technique migration (no — IDs changed) |
+| REVISION | Can new data work with old schema? | NIST adding GOVERN function (no — new function) |
+| ADDITION | Can old data work with new schema? | CIS fixing a description typo (yes) |
+
+## LLM-based ontology matching
+
+Recent OAEI evaluations show LLM-based systems (MILA, GenOM) achieving F1 scores of 0.83-0.95 on ontology matching benchmarks. This suggests a future where Crosswalker could use LLMs to *suggest* crosswalk mappings between arbitrary imported frameworks.
+
+---
+
 ## Resources
 
 ### Standards & specifications
 - [NIST IR 8477](https://csrc.nist.gov/pubs/ir/8477/final) — Mapping Relationships Between Documentary Standards (formal methodology)
-- [OWL 2 Web Ontology Language](https://www.w3.org/TR/owl2-overview/) — W3C standard for ontology representation
+- [OWL 2 Web Ontology Language](https://www.w3.org/TR/owl2-overview/) — W3C standard, includes `owl:priorVersion`, `owl:backwardCompatibleWith`, `owl:deprecated`
 - [SKOS Reference](https://www.w3.org/TR/skos-reference/) — Simple Knowledge Organization System (W3C)
-- [OSCAL](https://pages.nist.gov/OSCAL/) — Machine-readable security control format with versioning
+- [SSSOM](https://mapping-commons.github.io/sssom/) — Simple Standard for Sharing Ontology Mappings
+- [OSCAL](https://pages.nist.gov/OSCAL/) — Machine-readable security controls with SemVer versioning
+- [STIX 2.1](https://oasis-open.github.io/cti-documentation/stix/intro.html) — ATT&CK's `revoked-by` and deprecation mechanism
+- [SchemaVer](https://docs.snowplow.io/docs/pipeline-components-and-applications/iglu/common-architecture/schemaver/) — MODEL-REVISION-ADDITION versioning for data
+- [Dublin Core Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) — `dcterms:replaces` / `dcterms:isReplacedBy` for version chains
 
 ### Tools
 - [Protégé](https://protege.stanford.edu/) — Open-source ontology editor (Stanford)
-- [OAEI](http://oaei.ontologymatching.org/) — Ontology Alignment Evaluation Initiative
+- [OAEI](http://oaei.ontologymatching.org/) — Ontology Alignment Evaluation Initiative (annual competition)
+- [LogMap](https://www.cs.ox.ac.uk/isg/tools/LogMap/) — Large-scale ontology matching (Oxford)
+- [MELT Framework](https://dwslab.github.io/melt/) — Matching EvaLuation Toolkit (OAEI evaluation framework)
 - [SCF STRM Bundle](https://securecontrolsframework.com/strm-bundle/) — Meta-framework mapping dataset
+- [skos-history](https://github.com/zbw/skos-history) — SKOS concept scheme version tracking
 
 ### Academic references
 - Flouris et al., "Ontology change: classification and survey" (2008) — foundational survey
 - Noy & Klein, "Ontology Evolution: Not the Same as Schema Evolution" (2004) — key distinction paper
+- Euzenat & Shvaiko, "Ontology Matching" (2013, Springer) — comprehensive textbook
+- Rahm & Bernstein, "A survey of approaches to automatic schema matching" (2001) — foundational (~4000 citations)
+- Polleres et al., "How Does Knowledge Evolve in Open Knowledge Graphs?" (2023) — six dimensions of KG evolution
 - Kimball & Ross, "The Data Warehouse Toolkit" — SCD patterns reference
+
+### Knowledge graph evolution
+- [Wikidata EntitySchemas](https://www.wikidata.org/wiki/Wikidata:Database_reports/EntitySchema_directory) — gradual adoption, deprecation over deletion
+- [Formal Concept Analysis](https://en.wikipedia.org/wiki/Formal_concept_analysis) — lattice theory for structural correspondences
 
 ### Related pages
 - [Schema matching & alignment](/Crosswalker/concepts/schema-matching/)
