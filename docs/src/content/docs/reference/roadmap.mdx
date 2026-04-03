@@ -36,9 +36,9 @@ Architecture decisions before more code. The three interconnected schemas (_cros
 - [ ] **Migration strategy matrix** — given evolution pattern + old/new version → recommended [SCD type](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) + handling strategy
 - [ ] **As-code data format research** — define primitives for representing configs, evolution profiles, and migration rules as version-controllable files
 - [ ] **Layered architecture design** — spec (universal) → library/SDK (implementations) → integrations (Obsidian plugin, CLI, framework drivers). [Architecture vision](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)
-- [ ] **CLI architecture design** — core library extractable from Obsidian API layer, [dual wrapper pattern](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#7-cli--plugin-dual-implementation) (plugin + CLI) so operations can run headless
-- [ ] **Transform engine** — custom build (14 engines evaluated, none fit). 24 transform types, ChunkyCSV-style operations, optional Arquero/JSONata escape hatches. [Pipeline: Transform stage](/crosswalker/concepts/ontology-lifecycle/#transform) · [Research](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/)
-- [ ] **Obsidian plugin system constraints** — how the layered architecture maps to Obsidian's plugin model (community plugin distribution, external resource fetching, config storage patterns)
+- [ ] **Distribution architecture** — pnpm monorepo: `@crosswalker/core` (pure logic) + plugin (Obsidian wrapper) + CLI (Node.js `fs` wrapper). VaultAdapter interface bridges platforms. [Research](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/)
+- [ ] **Monorepo restructure** — extract ~50-60% of current codebase into `packages/core/`, keep plugin UI in `packages/plugin/`, create `packages/cli/`. After spec work, not before. [Sequence rationale](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/#decision-when-to-restructure)
+- [ ] **Transform engine** — custom build (14 engines evaluated, none fit). 24 transform types, ChunkyCSV-style operations, optional [Arquero](https://github.com/uwdata/arquero)/[JSONata](https://jsonata.org/) escape hatches. [Ontology lifecycle: Import](/crosswalker/concepts/ontology-lifecycle/#import) · [Research](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/)
 
 **Infrastructure:**
 
