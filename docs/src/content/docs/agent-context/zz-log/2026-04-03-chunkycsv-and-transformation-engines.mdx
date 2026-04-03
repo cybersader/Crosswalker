@@ -7,12 +7,16 @@ sidebar:
   order: -20260403
 ---
 
+## Context
+
+This log entry captures the initial idea. It has since been expanded by [transform engine research](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/) (14 engines evaluated, custom build decided) and documented as the [Transform stage of the pipeline](/crosswalker/concepts/pipeline/#transform).
+
 ## The idea
 
 For manual migrations between framework versions (or any structured data transformation), users need the ability to:
-1. Define transformations declaratively (as-code)
-2. OR run them manually with their own code
-3. OR use an engine that handles common patterns automatically
+1. Define transformations declaratively ([config-as-code](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth))
+2. OR run them manually with their own code (via [CLI](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#7-cli--plugin-dual-implementation))
+3. OR use an engine that handles common patterns automatically (the custom [transform engine](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/))
 
 ## ChunkyCSV
 
