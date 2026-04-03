@@ -35,3 +35,61 @@ tags: [frameworks, data-model]
 | **Enhancement** | AC-2(1) (Automated System Account Management) |
 | **Safeguard** | CIS Controls equivalent of a control |
 | **Technique** | T1059 (Command and Scripting Interpreter) in MITRE ATT&CK |
+| **Diagnostic statement** | CRI Profile's equivalent of a control — a testable assertion |
+| **Informative reference** | NIST's term for a crosswalk mapping between frameworks |
+
+## Ontology evolution terms
+
+These come up throughout the [ontology evolution](/crosswalker/concepts/ontology-evolution/) and [framework versioning](/crosswalker/concepts/framework-versioning/) pages.
+
+| Term | Definition |
+|------|-----------|
+| **Ontology evolution** | How a structured knowledge system changes over time — adding, removing, or restructuring concepts. Distinct from ontology *versioning* (tracking which version you have). [More](/crosswalker/concepts/ontology-evolution/) |
+| **Schema evolution** | Changes to the structure of data (adding fields, renaming columns) as opposed to changes to the data itself |
+| **Deprecation chain** | A sequence of `revoked-by` relationships linking old concepts to their replacements. MITRE ATT&CK uses STIX 2.1 for this — when technique T1234 is deprecated, the chain says "replaced by T5678." [More](/crosswalker/concepts/framework-versioning/#mitre-attck--the-gold-standard) |
+| **SemVer** | Semantic Versioning (MAJOR.MINOR.PATCH). OSCAL uses this with a guarantee: content created under a MAJOR version remains valid in later releases within that major. [More](/crosswalker/concepts/ontology-evolution/#schemaver-an-alternative-to-semver-for-data) |
+| **SchemaVer** | MODEL-REVISION-ADDITION versioning for data (from Snowplow). MODEL = can old consumers read new data? REVISION = can new consumers read old data? ADDITION = non-breaking new fields. [More](/crosswalker/concepts/ontology-evolution/#schemaver-an-alternative-to-semver-for-data) |
+| **SCD (Slowly Changing Dimensions)** | Data warehouse pattern for handling records that change over time. Type 1 = overwrite, Type 2 = keep history (version-tagged folders), Type 3 = add alias column, Type 6 = hybrid. [More](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) |
+| **SKOS** | Simple Knowledge Organization System (W3C). Natural fit for frameworks: ConceptScheme = framework, Concept = control, broader/narrower = hierarchy, exactMatch = crosswalk. [More](/crosswalker/concepts/ontology-evolution/#skos-the-natural-formal-model) |
+| **SSSOM** | Simple Standard for Sharing Ontology Mappings. TSV/CSV format for crosswalk data — essentially what Crosswalker imports and exports. [More](/crosswalker/concepts/ontology-evolution/#sssom-mappings-as-data) |
+| **OSCAL** | Open Security Controls Assessment Language (NIST). Machine-readable format for security controls with built-in versioning. [More](https://pages.nist.gov/OSCAL/) |
+| **OLIR** | Online Informative References (NIST). Submission-based crosswalk registry with formal relationship types (Subset, Intersects, Equal, Superset, Not Related). [More](/crosswalker/concepts/schema-matching/#nist-olirs-formal-relationship-types) |
+| **Interlingua / pivot** | A "universal framework" that others map through — like a pivot language in translation. SCF's STRM is this for compliance: map to SCF once, get crosswalks to 175+ frameworks. [More](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) |
+
+## Data model terms
+
+These appear in the [file-based graph database](/crosswalker/concepts/file-based-graph-database/) and [consistency models](/crosswalker/concepts/consistency-models/) pages.
+
+| Term | Definition |
+|------|-----------|
+| **Property graph** | A graph where both nodes and edges carry key-value properties. Obsidian vaults are property graphs: notes = nodes, WikiLinks = edges, frontmatter = properties. [More](/crosswalker/concepts/file-based-graph-database/#property-graph-model) |
+| **Edge metadata** | Structured data attached to a relationship (link) between two notes, not to the notes themselves. The core concept behind Crosswalker's [typed link system](/crosswalker/agent-context/link-metadata-system/). |
+| **Denormalization** | Deliberately duplicating data to speed up reads at the cost of write complexity. When Crosswalker stores both forward links and frontmatter arrays, that's denormalization. [More](/crosswalker/concepts/file-based-graph-database/#the-denormalization-tax) |
+| **Materialized view** | Pre-computed query results stored for fast access. Dataview/Bases queries over vault files are materialized views — they compute on each query, never getting stale. |
+| **Referential integrity** | A guarantee that all references (links) point to existing targets. Obsidian vaults have NO referential integrity — you can delete a note and leave broken WikiLinks everywhere. [More](/crosswalker/agent-context/constraint-enforcement/#the-referential-integrity-gap) |
+| **ACID** | Atomicity, Consistency, Isolation, Durability — database transaction guarantees. File-based systems only provide Durability. [More](/crosswalker/concepts/consistency-models/#acid-analysis-for-file-based-systems) |
+| **CAP theorem** | A distributed system can provide at most two of: Consistency, Availability, Partition tolerance. Obsidian vaults are AP systems (available + partition-tolerant, not strongly consistent). [More](/crosswalker/concepts/consistency-models/#cap-theorem-positioning) |
+| **Eventual consistency** | Given enough time, all copies of data converge to the same state. In Crosswalker: re-import achieves consistency, but it requires manual action. [More](/crosswalker/concepts/consistency-models/#base-model) |
+| **Event sourcing** | Storing the sequence of changes (events) rather than just the current state. The `_crosswalker.history` field (future) would enable this. [More](/crosswalker/concepts/consistency-models/#event-sourcing-pattern) |
+
+## Matching & alignment terms
+
+From the [schema matching](/crosswalker/concepts/schema-matching/) page.
+
+| Term | Definition |
+|------|-----------|
+| **Schema matching** | Finding correspondences between elements of two different data structures. When Crosswalker detects that a column called "Control Family" should be a hierarchy level, that's schema matching. |
+| **Ontology alignment** | Finding semantic correspondences between concepts in different ontologies. When NIST says "AC-2" maps to CIS "5.2," that's ontology alignment. |
+| **OAEI** | Ontology Alignment Evaluation Initiative — annual competition benchmarking alignment algorithms. Recent LLM-based systems achieve 0.83-0.95 F1 scores. [More](/crosswalker/concepts/schema-matching/) |
+| **Formal Concept Analysis** | Lattice theory approach to finding structural correspondences between concept hierarchies without relying on string similarity. [More](/crosswalker/concepts/schema-matching/#formal-concept-analysis-fca) |
+
+## Metadata ecosystem terms
+
+From the [metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) page.
+
+| Term | Definition |
+|------|-----------|
+| **Inline field** | Dataview syntax: `key:: value` in note body. Only queryable by Dataview (and potentially Datacore), NOT by Obsidian Bases. |
+| **Properties** | Obsidian's native YAML frontmatter system (since v1.4). First-class, queryable by Bases and Dataview. |
+| **Obsidian Bases** | Native database views (.base files). Tabular only — can query frontmatter but CANNOT traverse typed links or query inline fields. [More](/crosswalker/concepts/metadata-ecosystem/) |
+| **Datacore** | Community successor to Dataview (in development). Different API, better performance. |
