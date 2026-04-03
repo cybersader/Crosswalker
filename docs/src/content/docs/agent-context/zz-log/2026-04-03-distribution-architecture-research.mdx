@@ -1,0 +1,118 @@
+---
+title: Distribution architecture research
+description: How to ship Obsidian plugin + CLI + future web UI from one codebase — monorepo structure, VaultAdapter pattern, and Obsidian API boundaries.
+tags: [architecture, development]
+sidebar:
+  label: "04-03 · Distribution architecture"
+  order: -20260403
+---
+
+## The question
+
+How does the same core logic live in an Obsidian plugin, a CLI tool, and potentially headless/CI environments?
+
+## Key findings
+
+### Obsidian API boundary
+
+Analyzed every source file. **~50-60% of Crosswalker is pure logic** with no Obsidian dependency:
+
+| File | Obsidian dependency | Extractable |
+|------|:------------------:|:-----------:|
+| config-manager.ts | No | Yes |
+| csv-parser.ts | No | Yes |
+| settings-data.ts | No | Yes |
+| types/config.ts | No | Yes |
+| generation-engine.ts (note building) | Partial | Mostly |
+| generation-engine.ts (file I/O) | Yes | Need adapter |
+| main.ts | Yes | Plugin only |
+| import-wizard.ts | Yes | Plugin only |
+| settings-tab.ts | Yes | Plugin only |
+| config-browser-modal.ts | Yes | Plugin only |
+| debug.ts | Yes | Need adapter |
+
+### No vault API for CLI
+
+- The `obsidian` npm package is **plugin-scoped only** — can't use `app.vault` from Node.js
+- [obsidian-headless](https://github.com/obsidianmd/obsidian-headless) exists but is **sync-focused only**, not a general-purpose vault API
+- **CLI must use Node.js `fs` directly** to read/write vault files
+- This is fine — Obsidian vaults ARE just folders of markdown files
+
+### The VaultAdapter pattern
+
+The key abstraction that makes everything work:
+
+```typescript
+// Core defines the interface
+interface VaultAdapter {
+  createFile(path: string, content: string): Promise<void>;
+  readFile(path: string): Promise<string>;
+  exists(path: string): Promise<boolean>;
+  createFolder(path: string): Promise<void>;
+  listFiles(path: string): Promise<string[]>;
+}
+
+// Plugin implements with Obsidian API
+class ObsidianVaultAdapter implements VaultAdapter {
+  async createFile(path, content) {
+    return await this.app.vault.create(path, content);
+  }
+}
+
+// CLI implements with Node.js fs
+class FileSystemVaultAdapter implements VaultAdapter {
+  async createFile(path, content) {
+    return await fs.promises.writeFile(path, content);
+  }
+}
+```
+
+Core logic takes a `VaultAdapter` — doesn't care if it's Obsidian or filesystem.
+
+### Recommended structure: pnpm monorepo
+
+```
+crosswalker/
+├── packages/
+│   ├── core/           # Pure logic (parsers, config, generation, transforms)
+│   ├── plugin/         # Obsidian wrapper (UI, commands, vault adapter)
+│   ├── cli/            # Node.js CLI (fs vault adapter, commander)
+│   └── web/ (future)   # Web UI
+├── pnpm-workspace.yaml
+└── package.json
+```
+
+Proven pattern from VS Code extension monorepos. [Prior art](https://github.com/LinbuduLab/vscode-extension-monorepo).
+
+### Distribution paths
+
+| Package | Distribution | Users |
+|---------|-------------|-------|
+| `@crosswalker/core` | npm (internal) | Other packages |
+| Obsidian plugin | GitHub Releases + Obsidian registry | End users |
+| `@crosswalker/cli` | npm global install | Power users, CI/CD |
+| Web UI (future) | Docker / self-hosted | Teams |
+
+### Constraints discovered
+
+1. Obsidian plugins run in **browser context** (Electron renderer) — can't assume Node.js APIs in plugin code
+2. Plugin distribution goes through **Obsidian community registry**, not npm
+3. esbuild marks `obsidian` as external — it's injected by the app at runtime
+4. No way to make a plugin also export a library — they're compiled single-file bundles
+
+## Decision: when to restructure
+
+This is a **Foundation phase** item. The monorepo restructure should happen AFTER the [spec work](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) (EvolutionPattern, FrameworkConfig v2, metadata v2) because:
+1. The spec defines what core functions exist
+2. The VaultAdapter interface depends on what operations the generation engine needs
+3. Restructuring before the spec means restructuring twice
+
+**Sequence**: spec → restructure to monorepo → implement features against clean architecture.
+
+## Related
+
+- [Layered architecture vision](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) — spec → library → integrations
+- [Why Obsidian, why files](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) — filesystem-first design
+- [Vision alignment: CLI + plugin](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#7-cli--plugin-dual-implementation)
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — what the core library implements
+- [Roadmap: Foundation phase](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
