@@ -8,6 +8,7 @@ import starlightAnnouncement from 'starlight-announcement';
 import starlightImageZoom from 'starlight-image-zoom';
 import starlightHeadingBadges from 'starlight-heading-badges';
 import starlightClientMermaid from '@pasqal-io/starlight-client-mermaid';
+import starlightTagsPlugin from 'starlight-tags';
 import remarkObsidianCallout from 'remark-obsidian-callout';
 import remarkWikiLink from 'remark-wiki-link';
 import rehypeExternalLinks from 'rehype-external-links';
@@ -55,6 +56,7 @@ export default defineConfig({
         }),
         starlightImageZoom(),
         starlightHeadingBadges(),
+        starlightTagsPlugin(),
       ],
       customCss: [
         './src/styles/global.css',

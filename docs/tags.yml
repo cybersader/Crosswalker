@@ -1,0 +1,104 @@
+tags:
+  # --- Frameworks ---
+  frameworks:
+    label: "Frameworks"
+    description: "Content about compliance frameworks, standards, and their data structures"
+    color: "#2596be"
+  frameworks-nist:
+    label: "NIST"
+    description: "NIST frameworks (800-53, CSF, RMF, OSCAL)"
+    color: "#2596be"
+  frameworks-mitre:
+    label: "MITRE"
+    description: "MITRE frameworks (ATT&CK, D3FEND, ENGAGE)"
+    color: "#2596be"
+  frameworks-mapping:
+    label: "Framework mapping"
+    description: "Cross-framework crosswalks and mapping strategies"
+    color: "#2596be"
+  frameworks-versioning:
+    label: "Framework versioning"
+    description: "Framework updates, version changes, and migration"
+    color: "#2596be"
+
+  # --- Data model ---
+  data-model:
+    label: "Data model"
+    description: "Data modeling, graph databases, consistency, and resilience"
+    color: "#00d4aa"
+  data-model-graph:
+    label: "Graph databases"
+    description: "Property graphs, nodes, edges, and file-based graph databases"
+    color: "#00d4aa"
+  data-model-consistency:
+    label: "Consistency"
+    description: "ACID, CAP, eventual consistency, and integrity enforcement"
+    color: "#00d4aa"
+  data-model-evolution:
+    label: "Schema evolution"
+    description: "Schema evolution, ontology versioning, and temporal patterns"
+    color: "#00d4aa"
+
+  # --- Evidence mapping ---
+  evidence-mapping:
+    label: "Evidence mapping"
+    description: "Linking evidence to controls — the core GRC workflow"
+    color: "#e06c75"
+  evidence-mapping-links:
+    label: "Typed links"
+    description: "Typed links, edge metadata, and link syntax"
+    color: "#e06c75"
+  evidence-mapping-queries:
+    label: "Queries"
+    description: "Querying relationships with Dataview, Bases, or Datacore"
+    color: "#e06c75"
+
+  # --- Obsidian ---
+  obsidian:
+    label: "Obsidian"
+    description: "Obsidian-specific concepts, APIs, and ecosystem"
+    color: "#7c3aed"
+  obsidian-metadata:
+    label: "Metadata"
+    description: "Properties, Dataview, Bases, Datacore — the metadata landscape"
+    color: "#7c3aed"
+  obsidian-plugins:
+    label: "Plugins"
+    description: "Obsidian plugin ecosystem and related tools"
+    color: "#7c3aed"
+
+  # --- Import ---
+  import:
+    label: "Import"
+    description: "Data import pipeline — parsing, transformation, generation"
+    color: "#e5c07b"
+  import-parsers:
+    label: "Parsers"
+    description: "CSV, XLSX, JSON parsing and column detection"
+    color: "#e5c07b"
+  import-transforms:
+    label: "Transforms"
+    description: "Data transformation functions and per-framework processing"
+    color: "#e5c07b"
+  import-config:
+    label: "Config"
+    description: "Import configuration, fingerprinting, and sharing"
+    color: "#e5c07b"
+
+  # --- Other ---
+  grc:
+    label: "GRC"
+    description: "Governance, Risk, Compliance concepts and workflows"
+    color: "#e06c75"
+  architecture:
+    label: "Architecture"
+    description: "System design, architecture decisions, and data flow"
+    color: "#56b6c2"
+  getting-started:
+    label: "Getting started"
+    description: "Installation, setup, and first steps"
+    color: "#98c379"
+  development:
+    label: "Development"
+    description: "Contributing, testing, and development workflow"
+    color: "#d19a66"
