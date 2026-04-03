@@ -35,10 +35,18 @@ export default defineConfig({
         nova({
           nav: [
             { label: 'Docs', href: '/Crosswalker/getting-started/installation/' },
+            { label: 'Blog', href: '/Crosswalker/blog/' },
             { label: 'GitHub', href: 'https://github.com/cybersader/Crosswalker' },
           ],
         }),
-        // starlightClientMermaid(),
+        starlightClientMermaid(),
+        starlightSiteGraph(),
+        starlightBlog({
+          title: 'Changelog',
+          prefix: 'blog',
+        }),
+        starlightImageZoom(),
+        starlightHeadingBadges(),
       ],
       customCss: [
         './src/styles/global.css',
