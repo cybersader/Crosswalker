@@ -33,6 +33,50 @@ To add support for a new file format:
 3. Add the format to the file picker in `import-wizard.ts`
 4. Add unit tests in `tests/<format>-parser.test.ts`
 
+## Editing the documentation
+
+The docs site is built with [Astro Starlight](https://starlight.astro.build/) and lives in the `docs/` folder.
+
+### Quick edits
+
+Every docs page has an **"Edit page"** link in the sidebar. Click it to edit the page directly on GitHub and submit a pull request — no local setup needed.
+
+### Local development
+
+For larger changes or new pages:
+
+```bash
+git clone https://github.com/cybersader/Crosswalker.git
+cd Crosswalker/docs
+bun install
+bun run dev        # Preview at http://localhost:4321/Crosswalker/
+```
+
+Edit files in `docs/src/content/docs/`. Changes hot-reload in the browser.
+
+### File format
+
+Docs use `.mdx` (Markdown with JSX components). Standard Markdown works — you only need JSX for Starlight components like `<Card>`, `<Tabs>`, `<Steps>`:
+
+```mdx
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="My card">Content here.</Card>
+</CardGrid>
+```
+
+### Not an Obsidian vault
+
+The `docs/` folder is **not** an Obsidian vault — the content files are `.mdx`, not `.md`. For rich editing, use VS Code with the [MDX extension](https://marketplace.visualstudio.com/items?itemName=unifiedjs.vscode-mdx).
+
+### Testing docs changes
+
+```bash
+bun run build          # Verify all pages compile
+bun run test:local     # Run Playwright smoke tests
+```
+
 ## Reporting issues
 
 File issues at [github.com/cybersader/Crosswalker/issues](https://github.com/cybersader/Crosswalker/issues) with:
