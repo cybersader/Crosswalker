@@ -1,0 +1,66 @@
+---
+title: Why Obsidian, why files
+description: The foundational design decision — filesystem-first, not database-first. Why Obsidian over Notion, Airtable, or any no-code database.
+tags: [architecture, data-model]
+sidebar:
+  label: "04-03 · Why Obsidian, why files"
+  order: -20260403
+---
+
+## The decision
+
+Crosswalker is built on **files and folders**, not a proprietary database. Obsidian is the chosen platform because it IS files — markdown on your filesystem, owned by you.
+
+## Why NOT a no-code database tool
+
+Building this on Notion, Airtable, Coda, or any SaaS database would be:
+
+- **Too opinionated** — their schema is their schema. You can't version-control a Notion database with git. You can't diff two versions of an Airtable base. You can't run a CI/CD pipeline against a Coda doc.
+- **Locked in** — your compliance data lives in their servers, their format, their export limitations. When the vendor changes their API or pricing, your workflow breaks.
+- **Not universal** — everyone has a filesystem. Not everyone has Notion. Files work on Linux, Windows, macOS, air-gapped networks, classified environments.
+
+## Why files specifically
+
+| Property | Files | Database |
+|----------|-------|----------|
+| Version control | Git natively | Requires export/API |
+| Diff between versions | `git diff` | Custom tooling |
+| Offline access | Always | Depends on vendor |
+| CI/CD integration | Read files directly | API calls needed |
+| Air-gapped environments | Works | Usually doesn't |
+| Ownership | You own the bytes | Vendor owns the platform |
+| Portability | Copy the folder | Export + re-import |
+| Tool-agnostic | Any editor, any OS | Vendor-specific UI |
+
+## Why Obsidian specifically
+
+Obsidian is chosen over other markdown editors because:
+
+1. **Plugin ecosystem** — Crosswalker can ship as a community plugin with UI, commands, settings
+2. **WikiLinks** — native bidirectional linking between notes, which IS the knowledge graph
+3. **Graph view** — built-in visualization of the link structure
+4. **Properties API** — native YAML frontmatter support with type system
+5. **Bases** — native tabular views for compliance dashboards (though [limited to flat queries](/crosswalker/concepts/metadata-ecosystem/))
+6. **Community** — large, active community of knowledge workers and developers
+7. **Local-first** — no server dependency, works offline, syncs optionally
+8. **Extensible** — Excalidraw, Dataview, Templater, and hundreds of plugins that complement Crosswalker
+
+## What this means for the architecture
+
+The [layered architecture](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) keeps Obsidian at the integration layer, not the core:
+
+- **Spec + Library** → no Obsidian dependency, pure data processing on files
+- **Plugin wrapper** → Obsidian-specific (vault API, modals, commands, settings)
+- **CLI wrapper** → Node.js, no Obsidian required at all
+
+If someone wanted to build Crosswalker for VS Code, Logseq, or a web app — the spec and library layers work unchanged. Only the integration layer changes.
+
+## The trade-off accepted
+
+Files give us portability and ownership. In exchange, we accept:
+- No [referential integrity](/crosswalker/agent-context/constraint-enforcement/) (broken links are possible)
+- No [ACID transactions](/crosswalker/concepts/consistency-models/) (partial imports can happen)
+- No real-time collaboration (file-level merge conflicts with sync)
+- Manual [eventual consistency](/crosswalker/concepts/consistency-models/#base-model) (re-import required to converge)
+
+These trade-offs are the right ones for compliance knowledge management, where **data ownership and auditability** matter more than real-time collaboration.

@@ -1,0 +1,97 @@
+---
+title: Layered architecture vision
+description: Three-layer funnel from universal spec to framework-specific integrations — what makes Crosswalker a platform, not just a plugin.
+tags: [architecture, data-model-evolution, development]
+sidebar:
+  label: "04-03 · Layered architecture vision"
+  order: -20260403
+---
+
+## The funnel
+
+Crosswalker's architecture is a funnel — universal at the top, specific at the bottom. The deeper you go, the more framework-specific the code gets. But the top layer stays clean and reusable by anyone.
+
+### Layer 1: Spec (universal, first-principled)
+
+The intellectual foundation. Applies to ANY ontology management tool, not just Crosswalker.
+
+- **EvolutionPattern taxonomy** — how ontologies evolve (release cadence, breaking changes, ID stability, changelog format)
+- **SCD type mapping** — which Slowly Changing Dimension strategy applies to which evolution pattern
+- **Migration strategy matrix** — given old + new version + evolution pattern → recommended handling
+- **Config-as-code format** — JSON/YAML schema for representing framework configs, evolution profiles, migration rules
+- **Relationship type taxonomy** — Subset, Intersects, Equal, Superset (from OLIR) applied as a general standard
+
+This layer is publishable as a standalone specification. A GRC tool that has nothing to do with Obsidian could implement it.
+
+### Layer 2: Library / SDK (implementations of the patterns)
+
+Language-specific implementations of the spec. Could be TypeScript, Python, or both.
+
+- **Config parser** — read/write/validate FrameworkConfig v2 files
+- **Transform engine** — execute the 20+ transform types (string, array, type conversion, conditional). ChunkyCSV or similar engines plug in here as transform providers
+- **Crosswalk resolver** — given two imported frameworks + a crosswalk config, compute the link set
+- **Migration planner** — given old version + new version + evolution profile, produce a migration plan
+- **Fingerprint matcher** — detect which framework a file contains from its structure
+- **Evolution classifier** — analyze a framework's release history and suggest an evolution pattern
+
+This layer has NO dependency on Obsidian, Astro, or any specific runtime. Pure data processing.
+
+### Layer 3: Integrations (framework-specific, platform-specific)
+
+The wiring that connects the library to specific platforms and specific frameworks.
+
+**Platform wrappers:**
+- **Obsidian plugin** — wraps the library for vault operations (file creation, frontmatter, WikiLinks, modal UI)
+- **CLI tool** — wraps the library for headless operations (CI/CD, automation, Obsidian headless via GitHub Actions)
+- **Future: web UI, VS Code extension, API server** — same library, different wrapper
+
+**Framework "drivers" (community-contributed):**
+- `nist-800-53-r5.crosswalker.json` — sheet names, column mappings, ID regex, assessment normalization, CCI linking
+- `mitre-attack-v16.crosswalker.json` — technique/sub-technique hierarchy, tactic mapping, STIX changelog integration
+- `cri-profile-v2.crosswalker.json` — tag aggregation, diagnostic statement merging, multi-sheet crosswalk config
+- `cis-v8.crosswalker.json` — preamble extraction, IG mapping, safeguard hierarchy
+
+Each driver implements the spec for one framework's specific quirks. The hard, per-framework work is done ONCE and shared through the community registry.
+
+**Transform providers:**
+- Built-in transforms (string, array, type conversion)
+- ChunkyCSV integration (structured-to-tabular conversion)
+- Custom user transforms (as-code functions)
+
+## Why this matters
+
+| Without layers | With layers |
+|----------------|-------------|
+| Every feature is Obsidian-specific | Core logic is portable |
+| New framework = write custom code | New framework = write a JSON config file |
+| Migration is ad-hoc | Migration follows formal patterns |
+| CLI duplicates plugin logic | CLI and plugin share the same library |
+| Community contributions require TypeScript | Community contributions are JSON configs |
+
+## The Terraform analogy
+
+| Terraform | Crosswalker |
+|-----------|-------------|
+| HCL spec | EvolutionPattern spec + FrameworkConfig schema |
+| Core engine | Transform engine + migration planner |
+| Providers (AWS, GCP, Azure) | Framework drivers (NIST, CRI, ATT&CK) |
+| Terraform CLI | Crosswalker CLI |
+| Terraform Cloud | Obsidian plugin |
+| Registry (registry.terraform.io) | Community config registry |
+
+## Implications for Foundation phase
+
+The Foundation research needs to design:
+1. **The spec** — what goes in it, what format, how versioned
+2. **The library interface** — what functions/classes, what language(s), how tested
+3. **The driver format** — what a `.crosswalker.json` file looks like, what it can express
+4. **The plugin boundary** — where the library ends and the Obsidian wrapper begins
+
+Getting this boundary right means the library can grow independently of the plugin. Framework drivers can be contributed without touching plugin code. And a CLI becomes trivial to build because the hard work is in the library.
+
+## Open questions
+
+- Should the library be a separate npm package (`@crosswalker/core`) or a folder within the plugin repo?
+- What language for the library? TypeScript is natural for the plugin, but Python has the data science ecosystem (Pandas, etc.)
+- How do transform providers register? Plugin system? Config-based? Import map?
+- Should framework drivers be validated against a JSON Schema?
