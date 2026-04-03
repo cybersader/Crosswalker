@@ -1,0 +1,32 @@
+---
+title: KB population and ecosystem shift
+description: Incorporated Frameworker research, DFD cross-project learnings, and documented the Dataview → Bases → Datacore transition.
+tags: [development, data-model, obsidian-metadata]
+---
+
+## What happened
+
+Major KB expansion session — went from 36 to 46+ content pages.
+
+### Frameworker research incorporated
+- Full link metadata syntax specification (wrapping styles, regex, two-tier priority)
+- Helper function specs (match_value, hierarchical_ffill, path builders)
+- Per-framework data source reference (sheets, columns, ID formats, transforms)
+- Config schema design (FrameworkConfig + LinkConfig proposals)
+
+### DFD-Excalidraw cross-project learnings
+- File-based graph databases — property graph formalization, Neo4j/CouchDB comparison
+- Consistency models — ACID/CAP/BASE analysis applied to Obsidian vaults
+- Constraint enforcement strategies — eager/lazy/compensating with metadata tiers
+- Key insight: design for lazy detection, not eager prevention
+
+### Ecosystem shift documented
+- Dataview is stagnant, Bases is tabular-only, Datacore is emerging
+- **Critical finding**: Bases CANNOT query inline fields or traverse typed links
+- Frontmatter-first is the correct default for Crosswalker
+- Inline fields reserved for typed-link edge metadata only (needs Dataview/Datacore)
+
+## Ideas for follow-up
+- Should Crosswalker generate `.base` files alongside framework notes for instant compliance dashboards?
+- Datacore monitoring — when stable, could replace DataviewJS for relationship queries
+- The metadata tier system (minimal → standard → extended → temporal) should inform `_crosswalker` field evolution

@@ -1,0 +1,33 @@
+---
+title: Hero visual iterations
+description: Designing the animated homepage hero — from flat emoji line to boundary narrative with knowledge graph.
+tags: [development, architecture]
+---
+
+## Iterations
+
+### v1 — Flat emoji line
+Single horizontal row: emoji sources → particle line → vault tree. Too minimal, no story.
+
+### v2 — SVG knowledge graph
+Added animated graph below with real framework nodes (AC-2, T1078, PR.AC-07), typed edge labels (maps_to, crosswalk, implements), and metadata badges (sufficient: true). Much better but top row lacked intention.
+
+### v3 — Equalized nodes, fixed "eye" diamond
+The Obsidian diamond SVG read as an eye. Replaced with hexagon badge. Equalized all node sizes. Added radial gradient aura.
+
+### v4 — Boundary narrative
+Restructured top row as "Outside your vault" → CW gateway → "Inside your vault". Structured sources (teal border) vs unstructured (dashed gray). CW funnel particles drift down into graph. Graph shows what lives inside the vault.
+
+### v5 — Clickable nodes, hidden title
+Graph nodes wrapped in `<a>` tags linking to relevant docs pages. Hover glow effect. Removed redundant "Crosswalker" h1.
+
+## Key decisions
+- Pure CSS animations, no JS hydration (not Astro Islands)
+- SVG graph is illustration, not interactive site-graph component
+- The boundary narrative: scattered data outside → CW bridge → queryable knowledge graph inside
+- "Operational compliance knowledge graph" as the tagline
+
+## Open ideas
+- Could use actual Obsidian logo SVG from their brand assets
+- The hero could be an interactive Astro Island with hover tooltips on nodes
+- Mobile responsive version needs work — graph is very small on phones
