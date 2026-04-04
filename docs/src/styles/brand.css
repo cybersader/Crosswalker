@@ -18,7 +18,7 @@
   font-size: 0.5em;
   font-weight: 400;
   font-family: var(--sl-font, system-ui, sans-serif);
-  margin-left: 0.5em;
+  margin-left: 0.15em;
   color: var(--sl-color-gray-3);
   vertical-align: middle;
   letter-spacing: 0.02em;
