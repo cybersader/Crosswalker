@@ -1,0 +1,41 @@
+---
+title: Nova theme asymmetric padding bug
+description: Root cause of systemic left-side misalignment on all custom diagrams — Nova theme adds padding-inline-start to markdown content.
+tags: [development]
+sidebar:
+  label: "04-04 · Nova padding bug fix"
+  order: -20260404
+---
+
+## The problem
+
+Every custom HTML/CSS diagram across all concept pages had a left-side misalignment — elements appeared shifted right or narrower than the content area. This affected entity cards, EMC step flows, temporal pairs, relationship chains, and more. The same pattern is reported by many Astro Starlight + Nova theme deployments.
+
+## Root cause
+
+Nova theme's `MarkdownContent.astro` adds:
+```css
+padding-inline-start: 2rem;
+```
+
+This creates **asymmetric padding** — 2rem on the left, 0 on the right. All content shifts right. Custom elements that calculate their width from the parent container end up 2rem narrower than expected on the left side.
+
+## The fix
+
+In `docs/src/styles/brand.css`:
+```css
+.sl-markdown-content {
+  padding-inline-start: 0 !important;
+  padding-inline-end: 0 !important;
+}
+```
+
+Plus global box-sizing and max-width rules for all custom diagram containers.
+
+## Lesson
+
+When using Starlight themes (Nova or others), always check what CSS they add to `.sl-markdown-content` and other content wrappers. Theme-specific padding/margin can silently break custom layouts.
+
+## Related
+
+- [Diagram strategy decision](/crosswalker/agent-context/zz-log/2026-04-03-diagram-strategy-decision/)
