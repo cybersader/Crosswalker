@@ -1,0 +1,282 @@
+---
+title: The work gradient
+description: From first-principles infrastructure to ongoing maintenance — where the work goes, why it never ends, and what that means for sustainability.
+tags: [architecture, grc, data-model-evolution]
+sidebar:
+  order: 6
+---
+
+Understanding where work goes in ontology management is essential for making architectural decisions. Not all work is equal — some is done once and lasts, some requires continuous human effort. This gradient determines what to build into software, what to crowdsource, and what would require ongoing resources (money, people, time) if you built a business around it.
+
+---
+
+## The gradient
+
+<div id="wg-gradient-diagram"></div>
+
+<script type="module">{`
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
+
+const container = document.getElementById('wg-gradient-diagram');
+if (container) {
+  const width = container.clientWidth || 700;
+  const height = 380;
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', '0 0 ' + width + ' ' + height)
+    .attr('preserveAspectRatio', 'xMidYMid meet')
+    .style('width', '100%').style('height', 'auto')
+    .style('background', 'var(--sl-color-black, #0d1117)')
+    .style('border-radius', '12px');
+
+  container.style.margin = '1.5rem 0';
+
+  // Gradient bar
+  const defs = svg.append('defs');
+  const grad = defs.append('linearGradient').attr('id', 'wg-grad').attr('x1', '0%').attr('x2', '100%');
+  grad.append('stop').attr('offset', '0%').attr('stop-color', '#00d4aa');
+  grad.append('stop').attr('offset', '50%').attr('stop-color', '#e5c07b');
+  grad.append('stop').attr('offset', '100%').attr('stop-color', '#e06c75');
+
+  // Main gradient bar
+  const barY = 60;
+  const barH = 24;
+  const barX = 60;
+  const barW = width - 120;
+
+  svg.append('rect')
+    .attr('x', barX).attr('y', barY).attr('width', barW).attr('height', barH)
+    .attr('rx', 12).attr('fill', 'url(#wg-grad)').attr('opacity', 0.85);
+
+  // Labels along gradient
+  const labels = [
+    { x: 0, text: 'Build once', sub: 'First principles', color: '#00d4aa' },
+    { x: 0.25, text: 'Build & refine', sub: 'Evolves slowly', color: '#4dc9a0' },
+    { x: 0.5, text: 'Community effort', sub: 'Shared work', color: '#e5c07b' },
+    { x: 0.75, text: 'Ongoing ops', sub: 'Changes regularly', color: '#d4855c' },
+    { x: 1, text: 'Continuous', sub: 'Never done', color: '#e06c75' },
+  ];
+
+  labels.forEach(l => {
+    const lx = barX + l.x * barW;
+    svg.append('line')
+      .attr('x1', lx).attr('y1', barY + barH + 4)
+      .attr('x2', lx).attr('y2', barY + barH + 14)
+      .attr('stroke', l.color).attr('stroke-width', 1.5);
+    svg.append('text')
+      .attr('x', lx).attr('y', barY + barH + 28)
+      .attr('text-anchor', 'middle').attr('font-size', '9px')
+      .attr('font-weight', '700').attr('fill', l.color)
+      .text(l.text);
+    svg.append('text')
+      .attr('x', lx).attr('y', barY + barH + 40)
+      .attr('text-anchor', 'middle').attr('font-size', '7px')
+      .attr('fill', '#5c636e').text(l.sub);
+  });
+
+  // Top label
+  svg.append('text')
+    .attr('x', width / 2).attr('y', 30)
+    .attr('text-anchor', 'middle').attr('font-size', '10px')
+    .attr('font-weight', '700').attr('fill', '#e8edf2')
+    .text('Work Gradient: Resilient ← → Ongoing');
+
+  svg.append('text')
+    .attr('x', width / 2).attr('y', 46)
+    .attr('text-anchor', 'middle').attr('font-size', '7px')
+    .attr('fill', '#5c636e')
+    .text('How often does this work need to be redone?');
+
+  // Work items positioned along gradient
+  const items = [
+    { x: 0.03, label: 'Spec design', desc: 'EvolutionPattern taxonomy', tier: 'software' },
+    { x: 0.08, label: 'Core library', desc: 'Parser, transform, generate', tier: 'software' },
+    { x: 0.13, label: 'CLI + plugin', desc: 'Platform wrappers', tier: 'software' },
+    { x: 0.18, label: 'VaultAdapter', desc: 'Obsidian/fs bridge', tier: 'software' },
+    { x: 0.28, label: 'Transform engine', desc: '24 transform types', tier: 'software' },
+    { x: 0.35, label: 'Migration logic', desc: 'SCD type strategies', tier: 'software' },
+    { x: 0.45, label: 'Evolution profiles', desc: 'Per-framework YAML', tier: 'community' },
+    { x: 0.52, label: 'Import configs', desc: 'FrameworkConfig JSON', tier: 'community' },
+    { x: 0.60, label: 'Crosswalk mappings', desc: 'Framework A ↔ B data', tier: 'community' },
+    { x: 0.70, label: 'Framework data', desc: 'CSV/XLSX source files', tier: 'external' },
+    { x: 0.80, label: 'Version tracking', desc: 'Detect new versions', tier: 'ops' },
+    { x: 0.88, label: 'Crosswalk refresh', desc: 'Update stale mappings', tier: 'ops' },
+    { x: 0.95, label: 'Evidence linking', desc: 'Your team maps controls', tier: 'user' },
+  ];
+
+  const tierColors = {
+    software: '#00d4aa',
+    community: '#e5c07b',
+    external: '#c678dd',
+    ops: '#e06c75',
+    user: '#98c379',
+  };
+
+  const itemStartY = 130;
+  const itemH = 18;
+  const itemGap = 2;
+
+  items.forEach((item, i) => {
+    const ix = barX + item.x * barW;
+    const iy = itemStartY + i * (itemH + itemGap);
+    const col = tierColors[item.tier];
+
+    // Connecting line to gradient bar
+    svg.append('line')
+      .attr('x1', ix).attr('y1', barY + barH)
+      .attr('x2', ix).attr('y2', iy + itemH / 2)
+      .attr('stroke', col).attr('stroke-width', 0.5).attr('opacity', 0.3)
+      .attr('stroke-dasharray', '2 2');
+
+    // Item pill
+    const pillW = 130;
+    const pillX = Math.max(5, Math.min(width - pillW - 5, ix - pillW / 2));
+
+    svg.append('rect')
+      .attr('x', pillX).attr('y', iy)
+      .attr('width', pillW).attr('height', itemH)
+      .attr('rx', 4).attr('fill', 'var(--sl-color-gray-6, #161a22)')
+      .attr('stroke', col).attr('stroke-width', 1).attr('opacity', 0.9);
+
+    svg.append('text')
+      .attr('x', pillX + 5).attr('y', iy + 12)
+      .attr('font-size', '7px').attr('font-weight', '600')
+      .attr('fill', col).text(item.label);
+
+    svg.append('text')
+      .attr('x', pillX + pillW - 5).attr('y', iy + 12)
+      .attr('text-anchor', 'end').attr('font-size', '6px')
+      .attr('fill', '#5c636e').text(item.desc);
+  });
+
+  // Legend
+  const legendY = height - 30;
+  const legendItems = [
+    { label: 'Software (build once)', color: '#00d4aa' },
+    { label: 'Community (shared)', color: '#e5c07b' },
+    { label: 'External (depends on publishers)', color: '#c678dd' },
+    { label: 'Operations (ongoing)', color: '#e06c75' },
+    { label: 'User work (your team)', color: '#98c379' },
+  ];
+  let lx = 40;
+  legendItems.forEach(li => {
+    svg.append('circle').attr('cx', lx).attr('cy', legendY).attr('r', 4).attr('fill', li.color);
+    svg.append('text').attr('x', lx + 8).attr('y', legendY + 3)
+      .attr('font-size', '7px').attr('fill', '#8b929c').text(li.label);
+    lx += li.label.length * 4.5 + 25;
+  });
+}
+`}</script>
+
+The gradient runs from **teal** (build once, rooted in first principles) through **yellow** (community-maintained, evolves slowly) to **red** (ongoing operational work that never ends).
+
+---
+
+## The five tiers of work
+
+### Tier 1: First-principles software (build once)
+
+Work rooted in the fundamental nature of the problem domain. Once solved correctly, this rarely changes because the underlying principles don't change.
+
+| Work item | Why it's resilient | Related |
+|-----------|-------------------|---------|
+| [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) | Ontologies have always evolved these ways — the patterns are structural | [Ontology evolution](/crosswalker/concepts/ontology-evolution/) |
+| [Core parser/transform/generate library](/crosswalker/concepts/ontology-lifecycle/#import) | CSV/XLSX/JSON parsing is a solved problem; generation is deterministic | [Layered architecture](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) |
+| [VaultAdapter interface](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/) | The abstraction between vault operations and platform is stable | [Why files](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) |
+| [SCD type strategies](/crosswalker/concepts/ontology-evolution/#how-to-handle-it-slowly-changing-dimensions) | Data warehouse patterns from the 1990s — proven, unchanged | [Data model resilience](/crosswalker/agent-context/data-model-resilience/) |
+| [Config-as-code schema](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth) | JSON/YAML schema design is durable; migrations handle evolution | [Config schema](/crosswalker/agent-context/config-schema-design/) |
+
+**Business analogy**: This is R&D. High upfront cost, near-zero marginal cost afterward.
+
+### Tier 2: Refined software (evolves slowly)
+
+Built on first principles but adapts as the ecosystem shifts. Changes on the order of years, not months.
+
+| Work item | What causes change | Related |
+|-----------|-------------------|---------|
+| [Transform engine](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/) (24 types) | New data patterns emerge; new framework formats appear | [Ontology lifecycle: Import](/crosswalker/concepts/ontology-lifecycle/#import) |
+| [Migration strategy engine](/crosswalker/concepts/ontology-evolution/) | New SCD type combinations discovered through practice | [Constraint enforcement](/crosswalker/agent-context/constraint-enforcement/) |
+| Plugin UI (wizard, settings) | Obsidian API changes; UX improvements from user feedback | [Roadmap: Formats](/crosswalker/reference/roadmap/#formats--import-anything-transform-it-properly) |
+| [Typed link syntax](/crosswalker/agent-context/link-metadata-syntax-spec/) | [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) evolves (Bases, Datacore) | [Link metadata](/crosswalker/agent-context/link-metadata-system/) |
+
+**Business analogy**: This is product engineering. Continuous improvement, but the foundation doesn't change.
+
+### Tier 3: Community-maintained (shared work)
+
+Work that's per-framework but shareable. Once someone configures a framework, everyone benefits. This is where community leverage matters most.
+
+| Work item | Who does it | Related |
+|-----------|------------|---------|
+| [Evolution profiles](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) (per-framework YAML) | Community contributes; Crosswalker validates | [EvolutionPattern spec](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) |
+| [FrameworkConfig presets](/crosswalker/agent-context/config-schema-design/) (import configs) | First user configures; shares via [registry](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#8-community-marketplace-research-item) | [Config schema](/crosswalker/agent-context/config-schema-design/) |
+| [Crosswalk mapping data](/crosswalker/agent-context/framework-crosswalks/) | Often sourced from [OLIR, SCF, CTID](/crosswalker/concepts/institutional-landscape/#the-entities); community refines | [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) |
+
+**Business analogy**: This is the marketplace/ecosystem. The more contributors, the more valuable each contribution becomes. Like npm packages or Terraform providers.
+
+**Key insight**: This tier is where Crosswalker's [community config registry](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#8-community-marketplace-research-item) would create the most value — the hard per-framework work done once, shared infinitely.
+
+### Tier 4: Operational maintenance (ongoing)
+
+Work that recurs because the external world changes. Cannot be eliminated — only automated or made more efficient.
+
+| Work item | Why it recurs | Related |
+|-----------|-------------|---------|
+| Framework version tracking | [Framework owners](/crosswalker/concepts/institutional-landscape/#the-entities) publish updates on their own schedules | [Framework versioning](/crosswalker/concepts/framework-versioning/) |
+| Crosswalk refresh | When either framework in a crosswalk updates, the [mapping may go stale](/crosswalker/concepts/ontology-evolution/#layer-2-crosswalks-break) | [Crosswalk staleness](/crosswalker/agent-context/framework-crosswalks/#crosswalk-staleness) |
+| Stale detection notifications | Users need to know when their imported snapshot is outdated | [Constraint enforcement](/crosswalker/agent-context/constraint-enforcement/) |
+| Community config validation | Submitted configs need review, testing, version bumping | [Progressive classification](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#1-meta-layer-ux-progressive-classification) |
+
+**Business analogy**: This is DevOps / SRE. If you built a business, this is where subscription revenue would fund ongoing labor. The [institutional timing problem](/crosswalker/concepts/ontology-evolution/#the-timing-problem) means this work literally never ends.
+
+### Tier 5: User work (your team's effort)
+
+Work that's specific to YOUR organization. No tool can eliminate it — only make it more efficient.
+
+| Work item | Why only you can do it | Related |
+|-----------|----------------------|---------|
+| [Evidence mapping](/crosswalker/getting-started/grc-teams/) | Only your team knows which policies satisfy which controls | [GRC teams](/crosswalker/getting-started/grc-teams/) |
+| Assessment documentation | Only your team knows your implementation details | [Evidence mapping](/crosswalker/getting-started/grc-teams/#map-evidence-with-structured-metadata) |
+| Audit trail maintenance | Only your team can answer auditor questions | [Institutional landscape](/crosswalker/concepts/institutional-landscape/#the-relationships) |
+| Custom crosswalks | Your org may have unique mapping needs between internal and external ontologies | [Schema matching](/crosswalker/concepts/schema-matching/) |
+
+**Business analogy**: This is the customer's work. The tool makes it faster and more reliable, but it's fundamentally human judgment.
+
+---
+
+## Why this matters architecturally
+
+The gradient directly maps to the [layered architecture](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/):
+
+| Tier | Architecture layer | Investment type |
+|------|-------------------|----------------|
+| Tier 1 (first principles) | [Spec](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/#layer-1-spec-universal-first-principled) | One-time R&D |
+| Tier 2 (refined software) | [Library/SDK](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/#layer-2-library--sdk-implementations-of-the-patterns) | Continuous engineering |
+| Tier 3 (community) | [Framework drivers](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/#layer-3-integrations-framework-specific-platform-specific) | Ecosystem building |
+| Tier 4 (operations) | Registry/infrastructure | Ongoing operations |
+| Tier 5 (user work) | Plugin UX | Customer success |
+
+**The goal of Crosswalker's architecture**: Push as much work as possible toward Tier 1 (solved once, resilient forever). Where that's impossible (Tiers 3-4), build community infrastructure so the work is shared. Only Tier 5 is irreducibly the user's burden.
+
+---
+
+## The sustainability question
+
+If this were a business:
+
+- **Tiers 1-2** are funded by initial development (open source contributions, grants, or VC)
+- **Tier 3** is self-sustaining once the community is large enough (network effects)
+- **Tier 4** is the ongoing cost that requires either subscription revenue, sponsorship, or dedicated volunteers
+- **Tier 5** is the value proposition — you sell efficiency, not elimination, of this work
+
+The [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) is a Tier 1 investment that reduces Tier 4 costs — by classifying evolution patterns upfront, stale detection and migration become more automated and less human-dependent.
+
+---
+
+## Resources
+
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — which lifecycle phases map to which tiers
+- [Layered architecture](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) — spec → library → integrations
+- [Institutional landscape](/crosswalker/concepts/institutional-landscape/) — who does the work at each tier
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — why Tier 4 work never ends
+- [Vision alignment](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/) — decisions that shape the tier distribution
+- [Roadmap](/crosswalker/reference/roadmap/) — what's being built in which order
