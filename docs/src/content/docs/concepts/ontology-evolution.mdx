@@ -6,56 +6,180 @@ tags: [data-model-evolution, frameworks-versioning, data-model-consistency]
 
 ## The problem in one picture
 
-<div class="oe-problem-picture">
-  <div class="oe-pp-era">
-    <div class="oe-pp-year">2023</div>
-    <div class="oe-pp-fw oe-pp-fw-old">NIST CSF 1.1</div>
-    <div class="oe-pp-links">
-      <div class="oe-pp-link oe-pp-evidence">
-        <span class="oe-pp-link-icon">&#128196;</span> Your evidence links
-      </div>
-      <div class="oe-pp-link oe-pp-crosswalk">
-        <span class="oe-pp-link-icon">&#128279;</span> CIS v7 crosswalk
-      </div>
-    </div>
-  </div>
-  <div class="oe-pp-transition">
-    <div class="oe-pp-update-arrow">
-      <div class="oe-pp-update-label">NIST publishes update</div>
-      <svg viewBox="0 0 120 40" class="oe-pp-arrow-svg">
-        <defs><marker id="oe-ah1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#00d4aa"/></marker></defs>
-        <line x1="10" y1="20" x2="105" y2="20" stroke="#00d4aa" stroke-width="2" marker-end="url(#oe-ah1)"/>
-      </svg>
-    </div>
-    <div class="oe-pp-question-arrows">
-      <div class="oe-pp-q-arrow">
-        <svg viewBox="0 0 120 30" class="oe-pp-q-svg">
-          <line x1="10" y1="15" x2="105" y2="15" stroke="#e06c75" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#oe-ah-q)"/>
-          <defs><marker id="oe-ah-q" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto"><polygon points="0 0, 6 2.5, 0 5" fill="#e06c75"/></marker></defs>
-        </svg>
-        <span class="oe-pp-q-label">Do these still work?</span>
-      </div>
-      <div class="oe-pp-q-arrow">
-        <svg viewBox="0 0 120 30" class="oe-pp-q-svg">
-          <line x1="10" y1="15" x2="105" y2="15" stroke="#e06c75" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#oe-ah-q)"/>
-        </svg>
-        <span class="oe-pp-q-label">Is this still valid?</span>
-      </div>
-    </div>
-  </div>
-  <div class="oe-pp-era">
-    <div class="oe-pp-year">2024</div>
-    <div class="oe-pp-fw oe-pp-fw-new">NIST CSF 2.0</div>
-    <div class="oe-pp-links">
-      <div class="oe-pp-link oe-pp-broken">
-        <span class="oe-pp-link-icon">&#9888;</span> Evidence links (broken?)
-      </div>
-      <div class="oe-pp-link oe-pp-stale">
-        <span class="oe-pp-link-icon">&#9888;</span> CIS v8 crosswalk (stale?)
-      </div>
-    </div>
-  </div>
-</div>
+<div id="oe-d3-problem-picture" style="width:100%;min-height:320px;background:var(--sl-color-gray-6,#0d1117);border:1px solid var(--sl-color-gray-5,#1e2530);border-radius:12px;margin:1.5rem 0;overflow:hidden;"></div>
+
+<script type="module">{`
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
+
+const container = document.getElementById('oe-d3-problem-picture');
+if (container) {
+  const width = container.clientWidth || 700;
+  const height = 340;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--sl-color-black')?.trim() || '#0d1117';
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', '0 0 ' + width + ' ' + height)
+    .attr('width', '100%')
+    .attr('height', height)
+    .style('font-family', 'system-ui, -apple-system, sans-serif');
+
+  svg.append('rect').attr('width', width).attr('height', height).attr('fill', bg).attr('rx', 12);
+
+  // Defs
+  const defs = svg.append('defs');
+  defs.append('marker').attr('id','oe-pp-arrow-teal').attr('markerWidth',8).attr('markerHeight',6).attr('refX',8).attr('refY',3).attr('orient','auto')
+    .append('polygon').attr('points','0 0, 8 3, 0 6').attr('fill','#00d4aa');
+
+  // Era boundaries
+  const eraLeft = { cx: width * 0.22, cy: height * 0.5 };
+  const eraRight = { cx: width * 0.78, cy: height * 0.5 };
+
+  // Era labels
+  svg.append('text').attr('x', eraLeft.cx).attr('y', 28).attr('text-anchor','middle')
+    .attr('fill','#8b949e').attr('font-size','11px').attr('font-weight',700).attr('letter-spacing','0.08em').text('2023');
+  svg.append('text').attr('x', eraRight.cx).attr('y', 28).attr('text-anchor','middle')
+    .attr('fill','#8b949e').attr('font-size','11px').attr('font-weight',700).attr('letter-spacing','0.08em').text('2024');
+
+  // Node data
+  const leftNodes = [
+    { id: 'csf11', label: 'NIST CSF 1.1', x: eraLeft.cx, y: eraLeft.cy - 50, color: '#00d4aa', r: 28, desc: 'Current framework version - stable' },
+    { id: 'evidence1', label: 'Evidence links', x: eraLeft.cx - 55, y: eraLeft.cy + 50, color: '#98c379', r: 22, desc: 'Your evidence mapped to CSF 1.1 controls' },
+    { id: 'crosswalk1', label: 'CIS v7 crosswalk', x: eraLeft.cx + 55, y: eraLeft.cy + 50, color: '#00d4aa', r: 22, desc: 'Mapping between CSF 1.1 and CIS Controls v7' },
+  ];
+  const rightNodes = [
+    { id: 'csf20', label: 'NIST CSF 2.0', x: eraRight.cx, y: eraRight.cy - 50, color: '#00d4aa', r: 28, desc: 'New framework version - IDs renamed, GOVERN added' },
+    { id: 'evidence2', label: 'Evidence links', x: eraRight.cx - 55, y: eraRight.cy + 50, color: '#e06c75', r: 22, desc: 'Evidence links may point to renamed/removed IDs' },
+    { id: 'crosswalk2', label: 'CIS v8 crosswalk', x: eraRight.cx + 55, y: eraRight.cy + 50, color: '#e5c07b', r: 22, desc: 'Crosswalk stale - both sides updated independently' },
+  ];
+  const leftLinks = [
+    { source: 'csf11', target: 'evidence1' },
+    { source: 'csf11', target: 'crosswalk1' },
+  ];
+  const rightLinks = [
+    { source: 'csf20', target: 'evidence2', broken: true },
+    { source: 'csf20', target: 'crosswalk2', broken: true },
+  ];
+
+  const allNodes = [...leftNodes, ...rightNodes];
+  const nodeMap = {};
+  allNodes.forEach(n => nodeMap[n.id] = n);
+
+  // Divider
+  svg.append('line').attr('x1', width/2).attr('y1', 40).attr('x2', width/2).attr('y2', height - 20)
+    .attr('stroke','#30363d').attr('stroke-width',1).attr('stroke-dasharray','6 4');
+
+  // Transition arrow
+  const arrowY = height * 0.25;
+  svg.append('line').attr('x1', eraLeft.cx + 80).attr('y1', arrowY).attr('x2', eraRight.cx - 80).attr('y2', arrowY)
+    .attr('stroke','#00d4aa').attr('stroke-width', 2.5).attr('marker-end','url(#oe-pp-arrow-teal)');
+  svg.append('text').attr('x', width/2).attr('y', arrowY - 10).attr('text-anchor','middle')
+    .attr('fill','#00d4aa').attr('font-size','10px').attr('font-weight',600).text('NIST publishes update');
+
+  // Draw left links (solid green)
+  leftLinks.forEach(l => {
+    const s = nodeMap[l.source], t = nodeMap[l.target];
+    svg.append('line').attr('class','oe-d3-left-link')
+      .attr('x1', s.x).attr('y1', s.y).attr('x2', t.x).attr('y2', t.y)
+      .attr('stroke','#98c379').attr('stroke-width', 2).attr('opacity', 0.7);
+  });
+
+  // Draw right links (dashed red, pulsing)
+  rightLinks.forEach(l => {
+    const s = nodeMap[l.source], t = nodeMap[l.target];
+    const line = svg.append('line').attr('class','oe-d3-right-link')
+      .attr('x1', s.x).attr('y1', s.y).attr('x2', t.x).attr('y2', t.y)
+      .attr('stroke','#e06c75').attr('stroke-width', 2).attr('stroke-dasharray','6 4').attr('opacity', 0.6);
+    function pulse() {
+      line.transition().duration(1200).attr('opacity', 1).attr('stroke-width', 3)
+        .transition().duration(1200).attr('opacity', 0.4).attr('stroke-width', 2)
+        .on('end', pulse);
+    }
+    pulse();
+  });
+
+  // Tooltip
+  const tooltip = d3.select(container).append('div')
+    .style('position','absolute').style('padding','6px 10px').style('background','#161b22')
+    .style('border','1px solid #30363d').style('border-radius','6px').style('font-size','11px')
+    .style('color','#e8edf2').style('pointer-events','none').style('opacity',0).style('z-index',10)
+    .style('max-width','200px').style('line-height','1.4');
+  container.style.position = 'relative';
+
+  // Draw nodes (draggable within era)
+  const simulation = d3.forceSimulation(allNodes)
+    .force('collide', d3.forceCollide().radius(d => d.r + 5))
+    .alphaDecay(1) // settle immediately
+    .stop();
+  simulation.tick(1);
+
+  const nodeGroups = svg.selectAll('.oe-d3-node').data(allNodes).enter().append('g')
+    .attr('class','oe-d3-node').attr('transform', d => 'translate(' + d.x + ',' + d.y + ')')
+    .style('cursor','grab');
+
+  nodeGroups.append('circle').attr('r', d => d.r)
+    .attr('fill', d => d.color + '15').attr('stroke', d => d.color).attr('stroke-width', 2);
+
+  nodeGroups.append('text').attr('text-anchor','middle').attr('dy','0.35em')
+    .attr('fill','#e8edf2').attr('font-size','8px').attr('font-weight',600)
+    .text(d => d.label);
+
+  // Hover effects
+  nodeGroups.on('mouseover', function(event, d) {
+    d3.select(this).select('circle').transition().duration(200)
+      .attr('stroke-width', 3).attr('r', d.r + 3);
+    tooltip.style('opacity', 1).html('<strong>' + d.label + '</strong><br/>' + d.desc);
+  }).on('mousemove', function(event) {
+    const rect = container.getBoundingClientRect();
+    tooltip.style('left', (event.clientX - rect.left + 12) + 'px')
+      .style('top', (event.clientY - rect.top - 10) + 'px');
+  }).on('mouseout', function(event, d) {
+    d3.select(this).select('circle').transition().duration(200)
+      .attr('stroke-width', 2).attr('r', d.r);
+    tooltip.style('opacity', 0);
+  });
+
+  // Drag
+  const leftBound = 0, rightBound = width;
+  const drag = d3.drag()
+    .on('start', function() { d3.select(this).style('cursor','grabbing'); })
+    .on('drag', function(event, d) {
+      const isLeft = leftNodes.includes(d);
+      const minX = isLeft ? 30 : width/2 + 30;
+      const maxX = isLeft ? width/2 - 30 : width - 30;
+      d.x = Math.max(minX, Math.min(maxX, event.x));
+      d.y = Math.max(40, Math.min(height - 20, event.y));
+      d3.select(this).attr('transform', 'translate(' + d.x + ',' + d.y + ')');
+      // Update links
+      svg.selectAll('.oe-d3-left-link').each(function() {
+        const line = d3.select(this);
+        leftLinks.forEach(l => {
+          const s = nodeMap[l.source], t = nodeMap[l.target];
+          line.filter(function() {
+            return +line.attr('x1') !== s.x || +line.attr('y1') !== s.y ? false : true;
+          });
+        });
+      });
+      // Simpler: redraw all links
+      svg.selectAll('.oe-d3-left-link').data(leftLinks)
+        .attr('x1', l => nodeMap[l.source].x).attr('y1', l => nodeMap[l.source].y)
+        .attr('x2', l => nodeMap[l.target].x).attr('y2', l => nodeMap[l.target].y);
+      svg.selectAll('.oe-d3-right-link').data(rightLinks)
+        .attr('x1', l => nodeMap[l.source].x).attr('y1', l => nodeMap[l.source].y)
+        .attr('x2', l => nodeMap[l.target].x).attr('y2', l => nodeMap[l.target].y);
+    })
+    .on('end', function() { d3.select(this).style('cursor','grab'); });
+
+  nodeGroups.call(drag);
+
+  // "?" labels on broken links
+  rightLinks.forEach(l => {
+    const s = nodeMap[l.source], t = nodeMap[l.target];
+    svg.append('text').attr('class','oe-d3-q-label')
+      .attr('x', (s.x + t.x)/2 + 8).attr('y', (s.y + t.y)/2 - 4)
+      .attr('fill','#e06c75').attr('font-size','10px').attr('font-weight',700).text('???');
+  });
+}
+`}</script>
 
 NIST publishes CSF 2.0. Suddenly:
 - Your evidence links to CSF 1.1 controls might point to renamed/restructured concepts
@@ -190,56 +314,121 @@ Each framework evolves differently:
 
 When Framework A updates but the A↔B crosswalk doesn't, every link through that crosswalk is suspect.
 
-<div class="oe-crosswalk-break">
-  <div class="oe-cwb-side">
-    <div class="oe-cwb-title">Before update</div>
-    <div class="oe-cwb-chain">
-      <div class="oe-cwb-node oe-cwb-csf">CSF 1.1<br/><span class="oe-mono-sm">PR.AC-1</span></div>
-      <div class="oe-cwb-link oe-cwb-link-ok">
-        <svg viewBox="0 0 60 20"><line x1="5" y1="10" x2="55" y2="10" stroke="#00d4aa" stroke-width="2"/></svg>
-        <span>crosswalk</span>
-      </div>
-      <div class="oe-cwb-node oe-cwb-nist">800-53<br/><span class="oe-mono-sm">AC-2</span></div>
-      <div class="oe-cwb-link oe-cwb-link-ok">
-        <svg viewBox="0 0 60 20"><line x1="5" y1="10" x2="55" y2="10" stroke="#00d4aa" stroke-width="2"/></svg>
-        <span>crosswalk</span>
-      </div>
-      <div class="oe-cwb-node oe-cwb-cis">CIS v7<br/><span class="oe-mono-sm">Control 4</span></div>
-    </div>
-  </div>
+<div id="oe-d3-crosswalk-break" style="width:100%;min-height:280px;background:var(--sl-color-gray-6,#0d1117);border:1px solid var(--sl-color-gray-5,#1e2530);border-radius:12px;margin:1.5rem 0;overflow:hidden;position:relative;"></div>
 
-  <div class="oe-cwb-transition-col">
-    <div class="oe-cwb-trans-item">
-      <svg viewBox="0 0 20 40"><defs><marker id="oe-cwt1" markerWidth="6" markerHeight="4" refX="6" refY="2" orient="auto"><polygon points="0 0,6 2,0 4" fill="#e06c75"/></marker></defs><line x1="10" y1="5" x2="10" y2="35" stroke="#e06c75" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#oe-cwt1)"/></svg>
-      <span class="oe-cwb-trans-label">ID renamed</span>
-    </div>
-    <div class="oe-cwb-trans-item">
-      <svg viewBox="0 0 20 40"><line x1="10" y1="5" x2="10" y2="35" stroke="var(--sl-color-gray-4)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#oe-cwt1)"/></svg>
-      <span class="oe-cwb-trans-label oe-cwb-trans-ok">unchanged</span>
-    </div>
-    <div class="oe-cwb-trans-item">
-      <svg viewBox="0 0 20 40"><line x1="10" y1="5" x2="10" y2="35" stroke="#e5c07b" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#oe-cwt1)"/></svg>
-      <span class="oe-cwb-trans-label">renumbered</span>
-    </div>
-  </div>
+<script type="module">{`
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
 
-  <div class="oe-cwb-side">
-    <div class="oe-cwb-title">After CSF update</div>
-    <div class="oe-cwb-chain">
-      <div class="oe-cwb-node oe-cwb-csf-new">CSF 2.0<br/><span class="oe-mono-sm">PR.AC-01</span></div>
-      <div class="oe-cwb-link oe-cwb-link-broken">
-        <svg viewBox="0 0 60 20"><line x1="5" y1="10" x2="55" y2="10" stroke="#e06c75" stroke-width="2" stroke-dasharray="5 4"/></svg>
-        <span>crosswalk ???</span>
-      </div>
-      <div class="oe-cwb-node oe-cwb-nist">800-53<br/><span class="oe-mono-sm">AC-2</span></div>
-      <div class="oe-cwb-link oe-cwb-link-ok">
-        <svg viewBox="0 0 60 20"><line x1="5" y1="10" x2="55" y2="10" stroke="#98c379" stroke-width="2"/></svg>
-        <span>still valid</span>
-      </div>
-      <div class="oe-cwb-node oe-cwb-cis-new">CIS v8<br/><span class="oe-mono-sm">Safeguard 4.1</span></div>
-    </div>
-  </div>
-</div>
+const container = document.getElementById('oe-d3-crosswalk-break');
+if (container) {
+  const width = container.clientWidth || 700;
+  const height = 280;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--sl-color-black')?.trim() || '#0d1117';
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', '0 0 ' + width + ' ' + height)
+    .attr('width', '100%').attr('height', height)
+    .style('font-family', 'system-ui, -apple-system, sans-serif');
+
+  svg.append('rect').attr('width', width).attr('height', height).attr('fill', bg).attr('rx', 12);
+
+  let showAfter = false;
+
+  const nodesData = [
+    { id: 'csf', label: 'CSF 1.1', labelAfter: 'CSF 2.0', sublabel: 'PR.AC-1', sublabelAfter: 'PR.AC-01', x: width * 0.18, y: height * 0.5, color: '#00d4aa', colorAfter: '#00d4aa' },
+    { id: 'nist', label: '800-53', sublabel: 'AC-2', x: width * 0.5, y: height * 0.5, color: '#2596be', colorAfter: '#2596be' },
+    { id: 'cis', label: 'CIS v7', labelAfter: 'CIS v8', sublabel: 'Control 4', sublabelAfter: 'Safeguard 4.1', x: width * 0.82, y: height * 0.5, color: '#e5c07b', colorAfter: '#e5c07b' },
+  ];
+
+  const linksData = [
+    { source: 'csf', target: 'nist', labelBefore: 'crosswalk', labelAfter: '???', breakAfter: true },
+    { source: 'nist', target: 'cis', labelBefore: 'crosswalk', labelAfter: 'still valid', breakAfter: false },
+  ];
+
+  const nodeMap = {};
+  nodesData.forEach(n => nodeMap[n.id] = n);
+
+  // State label
+  const stateLabel = svg.append('text').attr('x', width/2).attr('y', 28).attr('text-anchor','middle')
+    .attr('fill','#8b949e').attr('font-size','12px').attr('font-weight',700).attr('letter-spacing','0.06em')
+    .text('BEFORE UPDATE  (click to toggle)');
+
+  // Draw links
+  const linkGroup = svg.append('g');
+  const linkElements = linksData.map(l => {
+    const s = nodeMap[l.source], t = nodeMap[l.target];
+    const line = linkGroup.append('line')
+      .attr('x1', s.x).attr('y1', s.y).attr('x2', t.x).attr('y2', t.y)
+      .attr('stroke', '#00d4aa').attr('stroke-width', 2.5).attr('opacity', 0.8);
+    const midX = (s.x + t.x) / 2, midY = (s.y + t.y) / 2;
+    const label = svg.append('text').attr('x', midX).attr('y', midY - 14)
+      .attr('text-anchor','middle').attr('fill','#8b949e').attr('font-size','9px').text(l.labelBefore);
+    return { line, label, data: l };
+  });
+
+  // Draw nodes
+  const r = 32;
+  const nodeElements = nodesData.map(n => {
+    const g = svg.append('g').attr('transform','translate(' + n.x + ',' + n.y + ')');
+    const circle = g.append('circle').attr('r', r)
+      .attr('fill', n.color + '15').attr('stroke', n.color).attr('stroke-width', 2);
+    const mainLabel = g.append('text').attr('text-anchor','middle').attr('dy','-0.2em')
+      .attr('fill','#e8edf2').attr('font-size','9px').attr('font-weight',700).text(n.label);
+    const subLabel = g.append('text').attr('text-anchor','middle').attr('dy','1em')
+      .attr('fill', n.color).attr('font-size','8px').attr('font-family','monospace').text(n.sublabel);
+    return { g, circle, mainLabel, subLabel, data: n };
+  });
+
+  // Toggle function
+  function toggle() {
+    showAfter = !showAfter;
+    const dur = 600;
+
+    stateLabel.transition().duration(dur)
+      .text(showAfter ? 'AFTER CSF UPDATE  (click to toggle)' : 'BEFORE UPDATE  (click to toggle)')
+      .attr('fill', showAfter ? '#e06c75' : '#8b949e');
+
+    linkElements.forEach(le => {
+      if (le.data.breakAfter && showAfter) {
+        le.line.transition().duration(dur)
+          .attr('stroke', '#e06c75').attr('stroke-dasharray', '6 4').attr('opacity', 0.7);
+        le.label.transition().duration(dur).attr('fill', '#e06c75');
+        le.label.text(le.data.labelAfter);
+      } else if (!le.data.breakAfter && showAfter) {
+        le.line.transition().duration(dur)
+          .attr('stroke', '#98c379').attr('stroke-dasharray', null).attr('opacity', 0.8);
+        le.label.transition().duration(dur).attr('fill', '#98c379');
+        le.label.text(le.data.labelAfter);
+      } else {
+        le.line.transition().duration(dur)
+          .attr('stroke', '#00d4aa').attr('stroke-dasharray', null).attr('opacity', 0.8);
+        le.label.transition().duration(dur).attr('fill', '#8b949e');
+        le.label.text(le.data.labelBefore);
+      }
+    });
+
+    nodeElements.forEach(ne => {
+      const n = ne.data;
+      ne.mainLabel.transition().duration(dur).text(showAfter && n.labelAfter ? n.labelAfter : n.label);
+      ne.subLabel.transition().duration(dur).text(showAfter && n.sublabelAfter ? n.sublabelAfter : n.sublabel);
+      if (showAfter && n.id === 'csf') {
+        ne.circle.transition().duration(dur).attr('stroke-width', 3);
+      } else if (showAfter && n.id === 'cis') {
+        ne.circle.transition().duration(dur).attr('stroke-width', 3);
+      } else {
+        ne.circle.transition().duration(dur).attr('stroke-width', 2);
+      }
+    });
+  }
+
+  svg.style('cursor', 'pointer').on('click', toggle);
+
+  // Instruction hint
+  svg.append('text').attr('x', width/2).attr('y', height - 12).attr('text-anchor','middle')
+    .attr('fill','#484f58').attr('font-size','9px').attr('font-style','italic')
+    .text('Click anywhere to toggle before/after');
+}
+`}</script>
 
 The crosswalk from CSF 1.1 → 800-53 was maintained by [NIST OLIR](https://csrc.nist.gov/projects/olir). But OLIR is **submission-based** — someone has to manually update it. There's no automatic staleness detection. See [crosswalk staleness](/crosswalker/agent-context/framework-crosswalks/#crosswalk-staleness).
 
@@ -294,79 +483,173 @@ Your [evidence mapping](/crosswalker/getting-started/grc-teams/) work — the ho
 
 The ontology evolution problem involves distinct entities with different roles, incentives, and timelines:
 
-<div class="oe-actors">
-  <div class="oe-actors-group oe-ag-owners">
-    <div class="oe-ag-title">Framework Owners</div>
-    <div class="oe-ag-cards">
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">NIST</div>
-        <div class="oe-ac-desc">publishes 800-53, CSF, OSCAL</div>
-      </div>
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">MITRE</div>
-        <div class="oe-ac-desc">publishes ATT&CK, D3FEND, ENGAGE</div>
-      </div>
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">CIS</div>
-        <div class="oe-ac-desc">publishes Controls, Benchmarks</div>
-      </div>
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">CRI</div>
-        <div class="oe-ac-desc">publishes CRI Profile</div>
-      </div>
-    </div>
-  </div>
+<div id="oe-d3-actors" style="width:100%;min-height:420px;background:var(--sl-color-gray-6,#0d1117);border:1px solid var(--sl-color-gray-5,#1e2530);border-radius:12px;margin:1.5rem 0;overflow:hidden;position:relative;"></div>
 
-  <div class="oe-actors-flow">
-    <svg viewBox="0 0 60 40" class="oe-af-svg"><defs><marker id="oe-af1" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><polygon points="0 0,7 2.5,0 5" fill="#00d4aa"/></marker></defs><line x1="5" y1="20" x2="50" y2="20" stroke="#00d4aa" stroke-width="2" marker-end="url(#oe-af1)"/></svg>
-    <span class="oe-af-label">publishes framework</span>
-  </div>
+<script type="module">{`
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
 
-  <div class="oe-actors-group oe-ag-mappers">
-    <div class="oe-ag-title">Mapping Maintainers</div>
-    <div class="oe-ag-cards">
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">NIST OLIR</div>
-        <div class="oe-ac-desc">submission-based crosswalks</div>
-      </div>
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">SCF</div>
-        <div class="oe-ac-desc">175+ framework hub via STRM</div>
-      </div>
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">CTID</div>
-        <div class="oe-ac-desc">ATT&CK &harr; 800-53 mappings</div>
-      </div>
-      <div class="oe-actor-card">
-        <div class="oe-ac-name">Community</div>
-        <div class="oe-ac-desc">ad-hoc mappings in Excel/CSV</div>
-      </div>
-    </div>
-  </div>
+const container = document.getElementById('oe-d3-actors');
+if (container) {
+  const width = container.clientWidth || 700;
+  const height = 420;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--sl-color-black')?.trim() || '#0d1117';
 
-  <div class="oe-actors-flow">
-    <svg viewBox="0 0 60 40" class="oe-af-svg"><line x1="5" y1="20" x2="50" y2="20" stroke="#00d4aa" stroke-width="2" marker-end="url(#oe-af1)"/></svg>
-    <span class="oe-af-label">provides crosswalks / mappings</span>
-  </div>
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', '0 0 ' + width + ' ' + height)
+    .attr('width', '100%').attr('height', height)
+    .style('font-family', 'system-ui, -apple-system, sans-serif');
 
-  <div class="oe-actors-group oe-ag-consumers">
-    <div class="oe-ag-title">Consumers (you)</div>
-    <div class="oe-ag-cards">
-      <div class="oe-actor-card oe-ac-consumer">
-        <div class="oe-ac-name">GRC Team</div>
-        <div class="oe-ac-desc">must prove compliance</div>
-      </div>
-      <div class="oe-actor-card oe-ac-consumer">
-        <div class="oe-ac-name">Security Team</div>
-        <div class="oe-ac-desc">maps controls to detections</div>
-      </div>
-      <div class="oe-actor-card oe-ac-auditor">
-        <div class="oe-ac-name">Auditors</div>
-        <div class="oe-ac-desc">verify evidence &rarr; controls</div>
-      </div>
-    </div>
-  </div>
-</div>
+  svg.append('rect').attr('width', width).attr('height', height).attr('fill', bg).attr('rx', 12);
+
+  const nodes = [
+    // Framework owners (blue)
+    { id: 'NIST', group: 'owner', color: '#2596be', desc: 'Publishes 800-53, CSF, OSCAL', r: 24 },
+    { id: 'MITRE', group: 'owner', color: '#2596be', desc: 'Publishes ATT&CK, D3FEND, ENGAGE', r: 24 },
+    { id: 'CIS', group: 'owner', color: '#2596be', desc: 'Publishes Controls, Benchmarks', r: 22 },
+    { id: 'CRI', group: 'owner', color: '#2596be', desc: 'Publishes CRI Profile', r: 20 },
+    // Mapping maintainers (teal)
+    { id: 'OLIR', group: 'mapper', color: '#00d4aa', desc: 'NIST OLIR: submission-based crosswalks', r: 22 },
+    { id: 'SCF', group: 'mapper', color: '#00d4aa', desc: 'SCF: 175+ framework hub via STRM', r: 24 },
+    { id: 'CTID', group: 'mapper', color: '#00d4aa', desc: 'CTID: ATT&CK to 800-53 mappings', r: 20 },
+    // Consumers (green/orange)
+    { id: 'GRC Team', group: 'consumer', color: '#98c379', desc: 'Must prove compliance to auditors', r: 22 },
+    { id: 'Security Team', group: 'consumer', color: '#98c379', desc: 'Maps controls to detections', r: 22 },
+    { id: 'Auditors', group: 'consumer', color: '#d19a66', desc: 'Verify evidence maps to controls', r: 22 },
+  ];
+
+  const links = [
+    // Owners -> Mappers (publish frameworks that get mapped)
+    { source: 'NIST', target: 'OLIR', label: 'publishes for' },
+    { source: 'NIST', target: 'SCF', label: 'mapped by' },
+    { source: 'MITRE', target: 'CTID', label: 'publishes for' },
+    { source: 'MITRE', target: 'SCF', label: 'mapped by' },
+    { source: 'CIS', target: 'SCF', label: 'mapped by' },
+    { source: 'CRI', target: 'SCF', label: 'mapped by' },
+    // Mappers -> Consumers (provide crosswalks)
+    { source: 'OLIR', target: 'GRC Team', label: 'crosswalks' },
+    { source: 'SCF', target: 'GRC Team', label: 'crosswalks' },
+    { source: 'SCF', target: 'Security Team', label: 'crosswalks' },
+    { source: 'CTID', target: 'Security Team', label: 'mappings' },
+    { source: 'OLIR', target: 'Auditors', label: 'reference' },
+    { source: 'SCF', target: 'Auditors', label: 'reference' },
+  ];
+
+  // Force simulation
+  const simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(90).strength(0.4))
+    .force('charge', d3.forceManyBody().strength(-350))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collide', d3.forceCollide().radius(d => d.r + 12))
+    .force('x', d3.forceX().x(d => {
+      if (d.group === 'owner') return width * 0.2;
+      if (d.group === 'mapper') return width * 0.5;
+      return width * 0.8;
+    }).strength(0.15))
+    .force('y', d3.forceY(height / 2).strength(0.05));
+
+  // Group labels
+  svg.append('text').attr('x', width * 0.2).attr('y', 20).attr('text-anchor','middle')
+    .attr('fill','#2596be').attr('font-size','10px').attr('font-weight',700).attr('letter-spacing','0.06em')
+    .text('FRAMEWORK OWNERS');
+  svg.append('text').attr('x', width * 0.5).attr('y', 20).attr('text-anchor','middle')
+    .attr('fill','#00d4aa').attr('font-size','10px').attr('font-weight',700).attr('letter-spacing','0.06em')
+    .text('MAPPING MAINTAINERS');
+  svg.append('text').attr('x', width * 0.8).attr('y', 20).attr('text-anchor','middle')
+    .attr('fill','#98c379').attr('font-size','10px').attr('font-weight',700).attr('letter-spacing','0.06em')
+    .text('CONSUMERS');
+
+  // Draw links
+  const linkEls = svg.append('g').selectAll('line').data(links).enter().append('line')
+    .attr('stroke', '#30363d').attr('stroke-width', 1.5).attr('opacity', 0.5);
+
+  // Draw nodes
+  const nodeGroup = svg.append('g').selectAll('g').data(nodes).enter().append('g')
+    .style('cursor', 'grab');
+
+  nodeGroup.append('circle').attr('r', d => d.r)
+    .attr('fill', d => d.color + '18').attr('stroke', d => d.color).attr('stroke-width', 2);
+
+  nodeGroup.append('text').attr('text-anchor','middle').attr('dy','0.35em')
+    .attr('fill','#e8edf2').attr('font-size','8px').attr('font-weight',600)
+    .text(d => d.id);
+
+  // Tooltip
+  const tooltip = d3.select(container).append('div')
+    .style('position','absolute').style('padding','6px 10px').style('background','#161b22')
+    .style('border','1px solid #30363d').style('border-radius','6px').style('font-size','11px')
+    .style('color','#e8edf2').style('pointer-events','none').style('opacity',0).style('z-index',10)
+    .style('max-width','220px').style('line-height','1.4');
+  container.style.position = 'relative';
+
+  // Hover: highlight connected
+  nodeGroup.on('mouseover', function(event, d) {
+    const connected = new Set();
+    links.forEach(l => {
+      const sid = typeof l.source === 'object' ? l.source.id : l.source;
+      const tid = typeof l.target === 'object' ? l.target.id : l.target;
+      if (sid === d.id) connected.add(tid);
+      if (tid === d.id) connected.add(sid);
+    });
+    connected.add(d.id);
+    nodeGroup.select('circle').transition().duration(150)
+      .attr('opacity', n => connected.has(n.id) ? 1 : 0.15);
+    nodeGroup.select('text').transition().duration(150)
+      .attr('opacity', n => connected.has(n.id) ? 1 : 0.15);
+    linkEls.transition().duration(150)
+      .attr('opacity', l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        return (sid === d.id || tid === d.id) ? 0.9 : 0.05;
+      })
+      .attr('stroke', l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        return (sid === d.id || tid === d.id) ? d.color : '#30363d';
+      })
+      .attr('stroke-width', l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        return (sid === d.id || tid === d.id) ? 2.5 : 1.5;
+      });
+    d3.select(this).select('circle').transition().duration(150).attr('stroke-width', 3).attr('r', d.r + 3);
+    tooltip.style('opacity', 1).html('<strong>' + d.id + '</strong><br/>' + d.desc);
+  }).on('mousemove', function(event) {
+    const rect = container.getBoundingClientRect();
+    tooltip.style('left', (event.clientX - rect.left + 14) + 'px')
+      .style('top', (event.clientY - rect.top - 10) + 'px');
+  }).on('mouseout', function(event, d) {
+    nodeGroup.select('circle').transition().duration(200).attr('opacity', 1).attr('stroke-width', 2).attr('r', n => n.r);
+    nodeGroup.select('text').transition().duration(200).attr('opacity', 1);
+    linkEls.transition().duration(200).attr('opacity', 0.5).attr('stroke', '#30363d').attr('stroke-width', 1.5);
+    tooltip.style('opacity', 0);
+  });
+
+  // Drag
+  const drag = d3.drag()
+    .on('start', function(event, d) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      d.fx = d.x; d.fy = d.y;
+      d3.select(this).style('cursor', 'grabbing');
+    })
+    .on('drag', function(event, d) {
+      d.fx = event.x; d.fy = event.y;
+    })
+    .on('end', function(event, d) {
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null; d.fy = null;
+      d3.select(this).style('cursor', 'grab');
+    });
+  nodeGroup.call(drag);
+
+  // Tick
+  simulation.on('tick', () => {
+    linkEls
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    nodeGroup.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+  });
+}
+`}</script>
 
 ### The timing problem
 
@@ -548,46 +831,136 @@ Crosswalker's [`_crosswalker` metadata](/crosswalker/agent-context/constraint-en
 
 [Crosswalking](/crosswalker/agent-context/framework-crosswalks/) is structurally like language translation:
 
-<div class="oe-translation">
-  <div class="oe-trans-side oe-trans-direct">
-    <div class="oe-trans-title">Direct translation <span class="oe-trans-complexity">N&sup2; problem</span></div>
-    <div class="oe-trans-diagram">
-      <div class="oe-trans-node oe-tn-1">NIST</div>
-      <div class="oe-trans-node oe-tn-2">CIS</div>
-      <div class="oe-trans-node oe-tn-3">MITRE</div>
-      <div class="oe-trans-node oe-tn-4">CRI</div>
-      <svg class="oe-trans-lines-svg" viewBox="0 0 200 200">
-        <line x1="50" y1="40" x2="150" y2="40" stroke="#e5c07b" stroke-width="1.5" opacity="0.6"/>
-        <line x1="50" y1="40" x2="50" y2="160" stroke="#e5c07b" stroke-width="1.5" opacity="0.6"/>
-        <line x1="50" y1="40" x2="150" y2="160" stroke="#e5c07b" stroke-width="1.5" opacity="0.6"/>
-        <line x1="150" y1="40" x2="50" y2="160" stroke="#e5c07b" stroke-width="1.5" opacity="0.6"/>
-        <line x1="150" y1="40" x2="150" y2="160" stroke="#e5c07b" stroke-width="1.5" opacity="0.6"/>
-        <line x1="50" y1="160" x2="150" y2="160" stroke="#e5c07b" stroke-width="1.5" opacity="0.6"/>
-      </svg>
-    </div>
-    <div class="oe-trans-count">6 mappings for 4 frameworks</div>
-  </div>
+<div id="oe-d3-translation" style="width:100%;min-height:320px;background:var(--sl-color-gray-6,#0d1117);border:1px solid var(--sl-color-gray-5,#1e2530);border-radius:12px;margin:1.5rem 0;overflow:hidden;position:relative;"></div>
 
-  <div class="oe-trans-vs">vs</div>
+<script type="module">{`
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
 
-  <div class="oe-trans-side oe-trans-pivot">
-    <div class="oe-trans-title">Pivot / interlingua <span class="oe-trans-complexity oe-trans-good">N problem</span></div>
-    <div class="oe-trans-diagram oe-trans-hub-diagram">
-      <div class="oe-trans-node oe-tn-1">NIST</div>
-      <div class="oe-trans-node oe-tn-2">CIS</div>
-      <div class="oe-trans-hub">SCF</div>
-      <div class="oe-trans-node oe-tn-3">MITRE</div>
-      <div class="oe-trans-node oe-tn-4">CRI</div>
-      <svg class="oe-trans-lines-svg" viewBox="0 0 200 200">
-        <line x1="50" y1="40" x2="100" y2="100" stroke="#00d4aa" stroke-width="2"/>
-        <line x1="150" y1="40" x2="100" y2="100" stroke="#00d4aa" stroke-width="2"/>
-        <line x1="50" y1="160" x2="100" y2="100" stroke="#00d4aa" stroke-width="2"/>
-        <line x1="150" y1="160" x2="100" y2="100" stroke="#00d4aa" stroke-width="2"/>
-      </svg>
-    </div>
-    <div class="oe-trans-count">4 mappings for 4 frameworks</div>
-  </div>
-</div>
+const container = document.getElementById('oe-d3-translation');
+if (container) {
+  const totalWidth = container.clientWidth || 700;
+  const height = 320;
+  const halfW = totalWidth / 2;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--sl-color-black')?.trim() || '#0d1117';
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', '0 0 ' + totalWidth + ' ' + height)
+    .attr('width', '100%').attr('height', height)
+    .style('font-family', 'system-ui, -apple-system, sans-serif');
+
+  svg.append('rect').attr('width', totalWidth).attr('height', height).attr('fill', bg).attr('rx', 12);
+
+  // Divider
+  svg.append('line').attr('x1', halfW).attr('y1', 35).attr('x2', halfW).attr('y2', height - 15)
+    .attr('stroke','#30363d').attr('stroke-width', 1).attr('stroke-dasharray','4 3');
+  svg.append('text').attr('x', halfW).attr('y', height / 2 + 4).attr('text-anchor','middle')
+    .attr('fill','#484f58').attr('font-size','14px').attr('font-weight',700).text('vs');
+
+  // --- LEFT SIDE: N-squared ---
+  const leftTitle = svg.append('g');
+  leftTitle.append('text').attr('x', halfW * 0.5).attr('y', 22).attr('text-anchor','middle')
+    .attr('fill','#e8edf2').attr('font-size','11px').attr('font-weight',700).text('Direct translation');
+  leftTitle.append('text').attr('x', halfW * 0.5).attr('y', 36).attr('text-anchor','middle')
+    .attr('fill','#e06c75').attr('font-size','9px').attr('font-weight',600).text('N\\u00B2 problem');
+
+  const fwColors = ['#00d4aa', '#e5c07b', '#e06c75', '#c678dd'];
+  const fwNames = ['NIST', 'CIS', 'MITRE', 'CRI'];
+  const leftCx = halfW * 0.5, leftCy = height * 0.53, leftR = 75;
+
+  // Node positions for left
+  const leftNodes = fwNames.map((name, i) => {
+    const angle = (i / fwNames.length) * Math.PI * 2 - Math.PI / 2;
+    return { id: name, x: leftCx + Math.cos(angle) * leftR, y: leftCy + Math.sin(angle) * leftR, color: fwColors[i] };
+  });
+
+  // All pairs (N-squared)
+  const leftLinks = [];
+  for (let i = 0; i < leftNodes.length; i++) {
+    for (let j = i + 1; j < leftNodes.length; j++) {
+      leftLinks.push({ source: leftNodes[i], target: leftNodes[j] });
+    }
+  }
+
+  // Animate left links: chaotic pulsing
+  const leftLinkEls = svg.append('g');
+  leftLinks.forEach((l, idx) => {
+    const line = leftLinkEls.append('line')
+      .attr('x1', l.source.x).attr('y1', l.source.y)
+      .attr('x2', l.target.x).attr('y2', l.target.y)
+      .attr('stroke', '#e5c07b').attr('stroke-width', 1.5).attr('stroke-dasharray', '5 3').attr('opacity', 0.4);
+    function chaotic() {
+      line.transition().duration(600 + Math.random() * 800).attr('opacity', 0.25 + Math.random() * 0.5).attr('stroke-width', 1 + Math.random() * 1.5)
+        .transition().duration(600 + Math.random() * 800).attr('opacity', 0.2 + Math.random() * 0.4).attr('stroke-width', 1 + Math.random())
+        .on('end', chaotic);
+    }
+    chaotic();
+  });
+
+  // Left nodes
+  leftNodes.forEach(n => {
+    const g = svg.append('g').attr('transform', 'translate(' + n.x + ',' + n.y + ')');
+    g.append('circle').attr('r', 20).attr('fill', n.color + '18').attr('stroke', n.color).attr('stroke-width', 2);
+    g.append('text').attr('text-anchor','middle').attr('dy','0.35em')
+      .attr('fill','#e8edf2').attr('font-size','9px').attr('font-weight',700).text(n.id);
+  });
+
+  svg.append('text').attr('x', halfW * 0.5).attr('y', height - 16).attr('text-anchor','middle')
+    .attr('fill','#8b949e').attr('font-size','9px').attr('font-style','italic').text('6 mappings for 4 frameworks');
+
+  // --- RIGHT SIDE: Pivot/hub ---
+  const rightTitle = svg.append('g');
+  rightTitle.append('text').attr('x', halfW + halfW * 0.5).attr('y', 22).attr('text-anchor','middle')
+    .attr('fill','#e8edf2').attr('font-size','11px').attr('font-weight',700).text('Pivot / interlingua');
+  rightTitle.append('text').attr('x', halfW + halfW * 0.5).attr('y', 36).attr('text-anchor','middle')
+    .attr('fill','#00d4aa').attr('font-size','9px').attr('font-weight',600).text('N problem');
+
+  const rightCx = halfW + halfW * 0.5, rightCy = height * 0.53, rightR = 80;
+
+  const rightNodes = fwNames.map((name, i) => {
+    const angle = (i / fwNames.length) * Math.PI * 2 - Math.PI / 2;
+    return { id: name, x: rightCx + Math.cos(angle) * rightR, y: rightCy + Math.sin(angle) * rightR, color: fwColors[i] };
+  });
+  const hubNode = { id: 'SCF', x: rightCx, y: rightCy, color: '#00d4aa' };
+
+  // Right links: smooth flow through hub
+  const rightLinkEls = svg.append('g');
+  rightNodes.forEach(n => {
+    const line = rightLinkEls.append('line')
+      .attr('x1', hubNode.x).attr('y1', hubNode.y)
+      .attr('x2', n.x).attr('y2', n.y)
+      .attr('stroke', '#00d4aa').attr('stroke-width', 2).attr('opacity', 0.6);
+    function smooth() {
+      line.transition().duration(1500).ease(d3.easeSinInOut).attr('opacity', 0.8).attr('stroke-width', 2.5)
+        .transition().duration(1500).ease(d3.easeSinInOut).attr('opacity', 0.5).attr('stroke-width', 2)
+        .on('end', smooth);
+    }
+    smooth();
+  });
+
+  // Hub node
+  const hubG = svg.append('g').attr('transform', 'translate(' + hubNode.x + ',' + hubNode.y + ')');
+  hubG.append('circle').attr('r', 26).attr('fill', '#00d4aa22').attr('stroke', '#00d4aa').attr('stroke-width', 2.5);
+  hubG.append('text').attr('text-anchor','middle').attr('dy','0.35em')
+    .attr('fill','#00d4aa').attr('font-size','10px').attr('font-weight',800).text('SCF');
+  function pulseHub() {
+    hubG.select('circle').transition().duration(2000).attr('r', 29).attr('stroke-width', 3)
+      .transition().duration(2000).attr('r', 26).attr('stroke-width', 2.5)
+      .on('end', pulseHub);
+  }
+  pulseHub();
+
+  // Right outer nodes
+  rightNodes.forEach(n => {
+    const g = svg.append('g').attr('transform', 'translate(' + n.x + ',' + n.y + ')');
+    g.append('circle').attr('r', 20).attr('fill', n.color + '18').attr('stroke', n.color).attr('stroke-width', 2);
+    g.append('text').attr('text-anchor','middle').attr('dy','0.35em')
+      .attr('fill','#e8edf2').attr('font-size','9px').attr('font-weight',700).text(n.id);
+  });
+
+  svg.append('text').attr('x', halfW + halfW * 0.5).attr('y', height - 16).attr('text-anchor','middle')
+    .attr('fill','#8b949e').attr('font-size','9px').attr('font-style','italic').text('4 mappings for 4 frameworks');
+}
+`}</script>
 
 The [SCF STRM approach](https://securecontrolsframework.com/set-theory-relationship-mapping-strm/) is the interlingua — map each framework to SCF once, get crosswalks to all 175+ others. When a framework updates, only one mapping needs maintaining.
 
@@ -665,6 +1038,8 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
 <style>{`
   /* ========================================
      ONTOLOGY EVOLUTION DIAGRAMS — oe- prefix
+     Styles for remaining HTML/CSS diagrams
+     (D3 diagrams are self-contained in script blocks)
      ======================================== */
 
   /* ---- Shared tokens ---- */
@@ -685,63 +1060,7 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
     to { stroke-dashoffset: 0; }
   }
 
-  /* ========== 1. THE PROBLEM IN ONE PICTURE ========== */
-  .oe-problem-picture {
-    display: flex; align-items: flex-start; gap: 0;
-    background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5);
-    border-radius: 12px; padding: 1.2rem; margin: 1.5rem 0; overflow-x: auto;
-  }
-  .oe-pp-era {
-    flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 0.5rem;
-  }
-  .oe-pp-year {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.08em; color: var(--sl-color-gray-3);
-  }
-  .oe-pp-fw {
-    font-weight: 700; font-size: 0.85rem; padding: 0.4rem 0.7rem;
-    border-radius: 6px; display: inline-block;
-  }
-  .oe-pp-fw-old {
-    background: rgba(0, 212, 170, 0.1); border: 1px solid #00d4aa; color: #00d4aa;
-  }
-  .oe-pp-fw-new {
-    background: rgba(0, 212, 170, 0.15); border: 2px solid #00d4aa; color: #00d4aa;
-  }
-  .oe-pp-links { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 0.3rem; }
-  .oe-pp-link {
-    font-size: 0.72rem; padding: 0.25rem 0.5rem; border-radius: 5px;
-    border: 1px solid var(--sl-color-gray-4); background: var(--sl-color-black);
-  }
-  .oe-pp-link-icon { margin-right: 0.3rem; }
-  .oe-pp-evidence { border-color: #98c379; color: #98c379; }
-  .oe-pp-crosswalk { border-color: #00d4aa; color: #00d4aa; }
-  .oe-pp-broken {
-    border-color: #e06c75; color: #e06c75;
-    animation: oe-pulse-broken 2.5s ease-in-out infinite;
-  }
-  .oe-pp-stale {
-    border-color: #e5c07b; color: #e5c07b;
-    animation: oe-pulse-broken 2.5s ease-in-out infinite 0.4s;
-  }
-  .oe-pp-transition {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-width: 130px; padding: 0 0.3rem;
-  }
-  .oe-pp-update-arrow { text-align: center; }
-  .oe-pp-update-label {
-    font-size: 0.62rem; font-weight: 600; color: #00d4aa; margin-bottom: 0.15rem;
-  }
-  .oe-pp-arrow-svg { width: 100px; height: 30px; display: block; margin: 0 auto; }
-  .oe-pp-question-arrows { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.15rem; }
-  .oe-pp-q-arrow { text-align: center; }
-  .oe-pp-q-svg {
-    width: 100px; height: 20px; display: block; margin: 0 auto;
-  }
-  .oe-pp-q-svg line { animation: oe-dash-flow 1s linear infinite; }
-  .oe-pp-q-label { font-size: 0.58rem; color: #e06c75; font-style: italic; }
-
-  /* ========== 2. THREE LAYERS ========== */
+  /* ========== THREE LAYERS ========== */
   .oe-layers {
     display: flex; flex-direction: column; align-items: center; gap: 0;
     margin: 1.5rem 0;
@@ -777,7 +1096,7 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
   .oe-layer-verb { font-size: 0.55rem; color: var(--sl-color-gray-3); font-style: italic; }
   .oe-layer-connector { display: flex; justify-content: center; }
 
-  /* ========== 3-5. CHANGE CARDS (CSF, ATT&CK, CIS) ========== */
+  /* ========== CHANGE CARDS (CSF, ATT&CK, CIS) ========== */
   .oe-changes-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 0.75rem; margin: 1.5rem 0;
@@ -816,50 +1135,7 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
     text-align: center; max-width: 140px;
   }
 
-  /* ========== 6. CROSSWALK BREAKAGE ========== */
-  .oe-crosswalk-break {
-    display: flex; align-items: stretch; gap: 0.5rem;
-    background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5);
-    border-radius: 12px; padding: 1rem; margin: 1.5rem 0; overflow-x: auto;
-  }
-  .oe-cwb-side { flex: 1; min-width: 200px; }
-  .oe-cwb-title {
-    font-weight: 700; font-size: 0.72rem; color: var(--sl-color-gray-2);
-    margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em;
-  }
-  .oe-cwb-chain {
-    display: flex; align-items: center; justify-content: center; gap: 0.2rem; flex-wrap: nowrap;
-  }
-  .oe-cwb-node {
-    padding: 0.35rem 0.5rem; border-radius: 6px; text-align: center;
-    font-size: 0.72rem; font-weight: 600; background: var(--sl-color-black);
-    border: 1.5px solid var(--sl-color-gray-4); line-height: 1.3;
-    white-space: nowrap;
-  }
-  .oe-cwb-csf { border-color: #00d4aa; color: #00d4aa; }
-  .oe-cwb-csf-new { border-color: #00d4aa; color: #00d4aa; border-width: 2px; }
-  .oe-cwb-nist { border-color: #2596be; color: #2596be; }
-  .oe-cwb-cis { border-color: #e5c07b; color: #e5c07b; }
-  .oe-cwb-cis-new { border-color: #e5c07b; color: #e5c07b; border-width: 2px; }
-  .oe-cwb-link {
-    display: flex; flex-direction: column; align-items: center; min-width: 50px;
-  }
-  .oe-cwb-link svg { width: 50px; height: 16px; }
-  .oe-cwb-link span { font-size: 0.52rem; color: var(--sl-color-gray-3); }
-  .oe-cwb-link-broken span { color: #e06c75; font-weight: 600; }
-  .oe-cwb-link-broken svg line { animation: oe-dash-flow 1.2s linear infinite; }
-  .oe-cwb-transition-col {
-    display: flex; flex-direction: column; align-items: center; justify-content: space-around;
-    min-width: 60px; padding: 0 0.3rem;
-  }
-  .oe-cwb-trans-item {
-    display: flex; flex-direction: column; align-items: center;
-  }
-  .oe-cwb-trans-item svg { width: 16px; height: 30px; }
-  .oe-cwb-trans-label { font-size: 0.52rem; color: #e06c75; font-weight: 600; }
-  .oe-cwb-trans-ok { color: var(--sl-color-gray-3) !important; font-weight: 400 !important; }
-
-  /* ========== 7. YOUR WORK BREAKS ========== */
+  /* ========== YOUR WORK BREAKS ========== */
   .oe-work-breaks {
     display: flex; align-items: flex-start; gap: 0.5rem;
     background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5);
@@ -908,47 +1184,7 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
   }
   .oe-wb-after { display: flex; flex-direction: column; justify-content: center; }
 
-  /* ========== 8. ACTORS ========== */
-  .oe-actors {
-    display: flex; flex-direction: column; gap: 0; margin: 1.5rem 0;
-  }
-  .oe-actors-group {
-    background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5);
-    border-radius: 10px; padding: 0.8rem;
-  }
-  .oe-ag-title {
-    font-weight: 700; font-size: 0.78rem; color: var(--sl-color-white);
-    margin-bottom: 0.5rem;
-  }
-  .oe-ag-owners { border-left: 4px solid #2596be; }
-  .oe-ag-owners .oe-ag-title { color: #2596be; }
-  .oe-ag-mappers { border-left: 4px solid #00d4aa; }
-  .oe-ag-mappers .oe-ag-title { color: #00d4aa; }
-  .oe-ag-consumers { border-left: 4px solid #98c379; }
-  .oe-ag-consumers .oe-ag-title { color: #98c379; }
-  .oe-ag-cards {
-    display: flex; flex-wrap: wrap; gap: 0.4rem;
-  }
-  .oe-actor-card {
-    padding: 0.4rem 0.6rem; border-radius: 6px; background: var(--sl-color-black);
-    border: 1px solid var(--sl-color-gray-4); transition: border-color 0.2s;
-    flex: 1 1 130px; max-width: 200px;
-  }
-  .oe-actor-card:hover { border-color: var(--sl-color-gray-2); }
-  .oe-ac-name { font-weight: 700; font-size: 0.75rem; color: var(--sl-color-white); }
-  .oe-ac-desc { font-size: 0.6rem; color: var(--sl-color-gray-3); font-style: italic; }
-  .oe-ac-consumer { border-color: #98c379; }
-  .oe-ac-consumer .oe-ac-name { color: #98c379; }
-  .oe-ac-auditor { border-color: #d19a66; }
-  .oe-ac-auditor .oe-ac-name { color: #d19a66; }
-  .oe-actors-flow {
-    display: flex; align-items: center; justify-content: center;
-    gap: 0.4rem; padding: 0.3rem 0;
-  }
-  .oe-af-svg { width: 40px; height: 28px; flex-shrink: 0; }
-  .oe-af-label { font-size: 0.6rem; color: var(--sl-color-gray-3); font-style: italic; }
-
-  /* ========== 9. RELATIONSHIP TYPES ========== */
+  /* ========== RELATIONSHIP TYPES ========== */
   .oe-rel-types {
     display: flex; flex-direction: column; gap: 0.6rem; margin: 1.5rem 0;
   }
@@ -977,7 +1213,7 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
   .oe-rel-bidir svg { width: 80px; }
   .oe-rel-verb { font-size: 0.52rem; color: var(--sl-color-gray-3); font-style: italic; text-align: center; }
 
-  /* ========== 10-12. SCD TYPES ========== */
+  /* ========== SCD TYPES ========== */
   .oe-scd-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 0.75rem; margin: 1.5rem 0;
@@ -1019,7 +1255,7 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
   .oe-scd-result-great .oe-scd-step-num { color: #00d4aa; }
   .oe-scd-result-great .oe-scd-step-text { color: #00d4aa; }
 
-  /* ========== 13. TEMPORAL / BITEMPORAL ========== */
+  /* ========== TEMPORAL / BITEMPORAL ========== */
   .oe-temporal {
     background: var(--sl-color-gray-6); border: 1px solid var(--sl-color-gray-5);
     border-radius: 12px; padding: 1rem; margin: 1.5rem 0;
@@ -1046,62 +1282,7 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
     font-family: var(--sl-font-mono, monospace);
   }
 
-  /* ========== 14. TRANSLATION ANALOGY ========== */
-  .oe-translation {
-    display: flex; align-items: stretch; gap: 0;
-    margin: 1.5rem 0; overflow-x: auto;
-  }
-  .oe-trans-side {
-    flex: 1; min-width: 200px; background: var(--sl-color-gray-6);
-    border: 1px solid var(--sl-color-gray-5); border-radius: 10px; padding: 0.8rem;
-  }
-  .oe-trans-title {
-    font-weight: 700; font-size: 0.78rem; color: var(--sl-color-white);
-    margin-bottom: 0.6rem;
-  }
-  .oe-trans-complexity {
-    font-size: 0.62rem; font-weight: 600; padding: 0.1rem 0.4rem;
-    border-radius: 4px; background: rgba(224, 108, 117, 0.15); color: #e06c75;
-  }
-  .oe-trans-good { background: rgba(0, 212, 170, 0.15) !important; color: #00d4aa !important; }
-  .oe-trans-diagram {
-    position: relative; width: 200px; height: 200px; margin: 0 auto;
-  }
-  .oe-trans-node {
-    position: absolute; padding: 0.3rem 0.5rem; border-radius: 6px;
-    font-weight: 700; font-size: 0.72rem; background: var(--sl-color-black);
-    border: 1.5px solid var(--sl-color-gray-4); z-index: 2;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-  .oe-trans-node:hover { transform: scale(1.08); box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
-  .oe-tn-1 { top: 15px; left: 15px; border-color: #00d4aa; color: #00d4aa; }
-  .oe-tn-2 { top: 15px; right: 15px; border-color: #e5c07b; color: #e5c07b; }
-  .oe-tn-3 { bottom: 15px; left: 15px; border-color: #e06c75; color: #e06c75; }
-  .oe-tn-4 { bottom: 15px; right: 15px; border-color: #c678dd; color: #c678dd; }
-  .oe-trans-hub {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    padding: 0.5rem 0.8rem; border-radius: 50%; font-weight: 700; font-size: 0.82rem;
-    background: rgba(0, 212, 170, 0.15); border: 2px solid #00d4aa; color: #00d4aa;
-    z-index: 2; animation: oe-pulse-alive 3s ease-in-out infinite;
-  }
-  .oe-trans-lines-svg {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
-  }
-  .oe-trans-count {
-    text-align: center; font-size: 0.62rem; color: var(--sl-color-gray-3);
-    margin-top: 0.5rem; font-style: italic;
-  }
-  .oe-trans-vs {
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 0.85rem; color: var(--sl-color-gray-3);
-    min-width: 40px; padding: 0 0.3rem;
-  }
-  .oe-trans-direct .oe-trans-lines-svg line {
-    stroke-dasharray: 6 3;
-    animation: oe-dash-flow 2s linear infinite;
-  }
-
-  /* ========== 15. EXPAND-MIGRATE-CONTRACT ========== */
+  /* ========== EXPAND-MIGRATE-CONTRACT ========== */
   .oe-emc {
     display: flex; align-items: center; justify-content: center;
     gap: 0; margin: 1.5rem 0; flex-wrap: wrap;
@@ -1131,23 +1312,14 @@ The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — specific
 
   /* ========== RESPONSIVE ========== */
   @media (max-width: 640px) {
-    .oe-problem-picture { flex-direction: column; align-items: stretch; }
-    .oe-pp-transition { flex-direction: row; min-width: auto; padding: 0.5rem 0; }
-    .oe-pp-arrow-svg, .oe-pp-q-svg { width: 60px; }
-    .oe-crosswalk-break { flex-direction: column; }
-    .oe-cwb-transition-col { flex-direction: row; min-width: auto; padding: 0.3rem 0; }
-    .oe-cwb-trans-item svg { width: 30px; height: 16px; transform: rotate(-90deg); }
     .oe-work-breaks { flex-direction: column; }
     .oe-wb-arrow-col { flex-direction: row; padding: 0.3rem 0; }
     .oe-wb-mid-svg { width: 60px; height: 20px; transform: rotate(-90deg); }
-    .oe-translation { flex-direction: column; }
-    .oe-trans-vs { padding: 0.3rem 0; }
     .oe-emc { flex-direction: column; gap: 0.3rem; }
     .oe-emc-arrow svg { transform: rotate(90deg); }
     .oe-temporal-pair { grid-template-columns: 1fr; }
     .oe-changes-grid { grid-template-columns: 1fr; }
     .oe-scd-grid { grid-template-columns: 1fr; }
-    .oe-ag-cards { grid-template-columns: 1fr 1fr; }
     .oe-rel-chain { flex-direction: column; align-items: flex-start; }
     .oe-rel-arrow svg { transform: rotate(90deg); width: 18px; height: 40px; }
     .oe-rel-bidir svg { transform: rotate(90deg); width: 18px; height: 50px; }
