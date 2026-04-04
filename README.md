@@ -1,12 +1,12 @@
 # Crosswalker
 
-[![GitHub](https://img.shields.io/github/license/cybersader/Crosswalker)](https://github.com/cybersader/Crosswalker)
-[![Docs](https://img.shields.io/badge/docs-live-blue)](https://cybersader.github.io/Crosswalker/)
+[![GitHub](https://img.shields.io/github/license/cybersader/Crosswalker)](https://github.com/cybersader/crosswalker)
+[![Docs](https://img.shields.io/badge/docs-live-blue)](https://cybersader.github.io/crosswalker/)
 
 Import structured ontologies (frameworks, taxonomies, any hierarchical data) into Obsidian with hierarchical folder structures, typed links, and metadata.
 
-**Repository**: https://github.com/cybersader/Crosswalker
-**Documentation**: https://cybersader.github.io/Crosswalker/
+**Repository**: https://github.com/cybersader/crosswalker
+**Documentation**: https://cybersader.github.io/crosswalker/
 
 ## Features
 
@@ -29,7 +29,7 @@ Import structured ontologies (frameworks, taxonomies, any hierarchical data) int
 
 ### Manual installation
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/cybersader/Crosswalker/releases)
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/cybersader/crosswalker/releases)
 2. Create folder: `your-vault/.obsidian/plugins/crosswalker/`
 3. Copy the files into that folder
 4. Enable the plugin in Settings > Community plugins
@@ -104,9 +104,9 @@ python frameworks_to_obsidian.py
 
 ## Documentation
 
-Full docs at **https://cybersader.github.io/Crosswalker/**
+Full docs at **https://cybersader.github.io/crosswalker/**
 
-Found an error? Click "Edit page" on any docs page to fix it directly on GitHub, or see the [contributing guide](https://cybersader.github.io/Crosswalker/development/contributing/).
+Found an error? Click "Edit page" on any docs page to fix it directly on GitHub, or see the [contributing guide](https://cybersader.github.io/crosswalker/development/contributing/).
 
 To run docs locally:
 ```bash
@@ -115,7 +115,7 @@ cd docs && bun install && bun run dev
 
 ## Roadmap
 
-See the full [roadmap](https://cybersader.github.io/Crosswalker/reference/roadmap/) on the docs site.
+See the full [roadmap](https://cybersader.github.io/crosswalker/reference/roadmap/) on the docs site.
 
 - [x] Import wizard MVP (CSV parsing, column config, preview, generation)
 - [x] Config save/load/match system
@@ -150,7 +150,7 @@ cd docs && bun run test:local
 
 ## Contributing
 
-See the [contributing guide](https://cybersader.github.io/Crosswalker/development/contributing/) on the docs site.
+See the [contributing guide](https://cybersader.github.io/crosswalker/development/contributing/) on the docs site.
 
 ## License
 

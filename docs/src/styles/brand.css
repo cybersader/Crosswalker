@@ -32,28 +32,27 @@
 
 /* ====== NOVA THEME LAYOUT FIX ======
    Root cause: Nova's TwoColumnContent.astro adds overflow-x: hidden
-   on .main-pane, which silently clips any diagram content that exceeds
-   the container width (e.g. div with width:100% + padding in content-box
-   mode). This makes content appear left-shifted because the RIGHT side
-   gets invisibly cut off.
+   on .main-pane, which silently clips diagram content that exceeds
+   the container width due to content-box sizing.
 
-   Fix 1: Change overflow-x to auto so wide content scrolls instead of
-   being silently clipped.
-
-   Fix 2: Apply border-box to all divs inside markdown content so
-   width:100% + padding never exceeds the container.
+   Fix: Apply border-box to all divs inside markdown content so
+   width:100% + padding never exceeds the container. This prevents
+   the overflow from happening in the first place, so we don't need
+   to touch .main-pane's overflow (which would break the sidebar).
 
    Note: brand.css is unlayered, so it automatically beats all @layer
    rules (Nova uses @layer nova). No !important needed.
 
    See: /crosswalker/agent-context/zz-log/2026-04-04-nova-theme-padding-bug/
 */
-.main-pane {
-  overflow-x: auto;
-}
-
 .sl-markdown-content div {
   box-sizing: border-box;
+}
+
+/* Ensure custom diagrams never exceed their container */
+.sl-markdown-content svg {
+  max-width: 100%;
+  height: auto;
 }
 
 /* Obsidian-style callouts */
