@@ -13,171 +13,270 @@ import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
 
 const container = document.getElementById('oe-d3-problem-picture');
 if (container) {
-  const width = container.clientWidth || 700;
-  const height = 340;
+  const W = 750, H = 400;
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--sl-color-black')?.trim() || '#0d1117';
 
   const svg = d3.select(container).append('svg')
-    .attr('viewBox', '0 0 ' + width + ' ' + height)
+    .attr('viewBox', '0 0 ' + W + ' ' + H)
     .attr('width', '100%')
-    .attr('height', height)
     .style('font-family', 'system-ui, -apple-system, sans-serif');
 
-  svg.append('rect').attr('width', width).attr('height', height).attr('fill', bg).attr('rx', 12);
+  svg.append('rect').attr('width', W).attr('height', H).attr('fill', bg).attr('rx', 12);
 
-  // Defs
+  // ── Defs: markers, filters ──
   const defs = svg.append('defs');
-  defs.append('marker').attr('id','oe-pp-arrow-teal').attr('markerWidth',8).attr('markerHeight',6).attr('refX',8).attr('refY',3).attr('orient','auto')
-    .append('polygon').attr('points','0 0, 8 3, 0 6').attr('fill','#00d4aa');
+  defs.append('marker').attr('id','oe-pp-arrow-teal').attr('markerWidth',10).attr('markerHeight',7).attr('refX',10).attr('refY',3.5).attr('orient','auto')
+    .append('polygon').attr('points','0 0, 10 3.5, 0 7').attr('fill','#00d4aa');
 
-  // Era boundaries
-  const eraLeft = { cx: width * 0.22, cy: height * 0.5 };
-  const eraRight = { cx: width * 0.78, cy: height * 0.5 };
+  const glowRed = defs.append('filter').attr('id','oe-glow-red').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  glowRed.append('feGaussianBlur').attr('in','SourceGraphic').attr('stdDeviation','3').attr('result','blur');
+  glowRed.append('feFlood').attr('flood-color','#e06c75').attr('flood-opacity','0.6').attr('result','color');
+  glowRed.append('feComposite').attr('in','color').attr('in2','blur').attr('operator','in').attr('result','glow');
+  const glowMerge = glowRed.append('feMerge');
+  glowMerge.append('feMergeNode').attr('in','glow');
+  glowMerge.append('feMergeNode').attr('in','SourceGraphic');
 
-  // Era labels
-  svg.append('text').attr('x', eraLeft.cx).attr('y', 28).attr('text-anchor','middle')
-    .attr('fill','#8b949e').attr('font-size','11px').attr('font-weight',700).attr('letter-spacing','0.08em').text('2023');
-  svg.append('text').attr('x', eraRight.cx).attr('y', 28).attr('text-anchor','middle')
-    .attr('fill','#8b949e').attr('font-size','11px').attr('font-weight',700).attr('letter-spacing','0.08em').text('2024');
+  // ── Layout constants ──
+  const LX = W * 0.22, RX = W * 0.78;
+  const treeCY = 155, iconY = 310;
 
-  // Node data
-  const leftNodes = [
-    { id: 'csf11', label: 'NIST CSF 1.1', x: eraLeft.cx, y: eraLeft.cy - 50, color: '#00d4aa', r: 28, desc: 'Current framework version - stable' },
-    { id: 'evidence1', label: 'Evidence links', x: eraLeft.cx - 55, y: eraLeft.cy + 50, color: '#98c379', r: 22, desc: 'Your evidence mapped to CSF 1.1 controls' },
-    { id: 'crosswalk1', label: 'CIS v7 crosswalk', x: eraLeft.cx + 55, y: eraLeft.cy + 50, color: '#00d4aa', r: 22, desc: 'Mapping between CSF 1.1 and CIS Controls v7' },
-  ];
-  const rightNodes = [
-    { id: 'csf20', label: 'NIST CSF 2.0', x: eraRight.cx, y: eraRight.cy - 50, color: '#00d4aa', r: 28, desc: 'New framework version - IDs renamed, GOVERN added' },
-    { id: 'evidence2', label: 'Evidence links', x: eraRight.cx - 55, y: eraRight.cy + 50, color: '#e06c75', r: 22, desc: 'Evidence links may point to renamed/removed IDs' },
-    { id: 'crosswalk2', label: 'CIS v8 crosswalk', x: eraRight.cx + 55, y: eraRight.cy + 50, color: '#e5c07b', r: 22, desc: 'Crosswalk stale - both sides updated independently' },
-  ];
-  const leftLinks = [
-    { source: 'csf11', target: 'evidence1' },
-    { source: 'csf11', target: 'crosswalk1' },
-  ];
-  const rightLinks = [
-    { source: 'csf20', target: 'evidence2', broken: true },
-    { source: 'csf20', target: 'crosswalk2', broken: true },
-  ];
+  // ── Era labels ──
+  svg.append('text').attr('x', LX).attr('y', 30).attr('text-anchor','middle')
+    .attr('fill','#8b949e').attr('font-size','12px').attr('font-weight',700).attr('letter-spacing','0.1em').text('2023');
+  svg.append('text').attr('x', RX).attr('y', 30).attr('text-anchor','middle')
+    .attr('fill','#8b949e').attr('font-size','12px').attr('font-weight',700).attr('letter-spacing','0.1em').text('2024');
 
-  const allNodes = [...leftNodes, ...rightNodes];
-  const nodeMap = {};
-  allNodes.forEach(n => nodeMap[n.id] = n);
-
-  // Divider
-  svg.append('line').attr('x1', width/2).attr('y1', 40).attr('x2', width/2).attr('y2', height - 20)
+  // ── Divider ──
+  svg.append('line').attr('x1', W/2).attr('y1', 42).attr('x2', W/2).attr('y2', H - 15)
     .attr('stroke','#30363d').attr('stroke-width',1).attr('stroke-dasharray','6 4');
 
-  // Transition arrow
-  const arrowY = height * 0.25;
-  svg.append('line').attr('x1', eraLeft.cx + 80).attr('y1', arrowY).attr('x2', eraRight.cx - 80).attr('y2', arrowY)
+  // ── d3.tree() for framework hierarchy ──
+  const treeData = {
+    name: 'CSF', children: [
+      { name: 'ID', children: [{ name: 'AM' }] },
+      { name: 'PR', children: [{ name: 'AC' }] },
+      { name: 'DE' }
+    ]
+  };
+  const root = d3.hierarchy(treeData);
+  const treeLayout = d3.tree().size([120, 80]);
+  treeLayout(root);
+
+  function drawTree(g, cx, cy, color, broken) {
+    const links = root.links();
+    const nodes = root.descendants();
+    links.forEach(function(l) {
+      const line = g.append('line')
+        .attr('x1', cx + l.source.x - 60).attr('y1', cy + l.source.y - 40)
+        .attr('x2', cx + l.target.x - 60).attr('y2', cy + l.target.y - 40)
+        .attr('stroke', color).attr('stroke-width', 2).attr('opacity', 0.8);
+      if (broken && (l.target.data.name === 'AM' || l.target.data.name === 'DE')) {
+        line.attr('stroke-dasharray', '4 3').attr('opacity', 0.35);
+      }
+    });
+    nodes.forEach(function(n) {
+      const nx = cx + n.x - 60, ny = cy + n.y - 40;
+      const isBrokenNode = broken && n.data.name === 'DE';
+      g.append('circle')
+        .attr('cx', nx).attr('cy', ny).attr('r', 6)
+        .attr('fill', isBrokenNode ? '#e06c75' : color)
+        .attr('stroke', isBrokenNode ? '#e06c75' : color)
+        .attr('stroke-width', 2)
+        .attr('opacity', (broken && n.data.name === 'AM') ? 0.4 : 1);
+      g.append('text')
+        .attr('x', nx).attr('y', ny - 10).attr('text-anchor', 'middle')
+        .attr('fill', '#8b949e').attr('font-size', '8px').attr('font-weight', 600)
+        .text(n.data.name);
+    });
+  }
+
+  // Left tree (healthy)
+  const leftTreeG = svg.append('g');
+  drawTree(leftTreeG, LX, treeCY, '#00d4aa', false);
+  svg.append('text').attr('x', LX).attr('y', treeCY + 58).attr('text-anchor','middle')
+    .attr('fill','#00d4aa').attr('font-size','11px').attr('font-weight',700).text('NIST CSF 1.1');
+
+  // Right tree (broken) - initially hidden, revealed by animation
+  const rightTreeG = svg.append('g').attr('class','oe-right-tree');
+  drawTree(rightTreeG, RX, treeCY, '#00d4aa', true);
+  svg.append('text').attr('x', RX).attr('y', treeCY + 58).attr('text-anchor','middle')
+    .attr('fill','#e5c07b').attr('font-size','11px').attr('font-weight',700).text('NIST CSF 2.0');
+
+  // ── Icon helpers ──
+  function drawDocIcon(g, x, y, scale, ok) {
+    const ig = g.append('g').attr('transform', 'translate(' + x + ',' + y + ') scale(' + scale + ')');
+    // Document body
+    ig.append('path').attr('d', 'M3,1 h10 l4,4 v14 h-14 z')
+      .attr('fill', 'none').attr('stroke', ok ? '#98c379' : '#e06c75').attr('stroke-width', 1.5);
+    // Folded corner
+    ig.append('path').attr('d', 'M13,1 v4 h4')
+      .attr('fill', 'none').attr('stroke', ok ? '#98c379' : '#e06c75').attr('stroke-width', 1);
+    if (ok) {
+      // Checkmark
+      ig.append('path').attr('d', 'M6,10 l2,2 l4,-4')
+        .attr('fill', 'none').attr('stroke', '#98c379').attr('stroke-width', 1.5).attr('stroke-linecap', 'round');
+    } else {
+      // X mark
+      ig.append('path').attr('d', 'M7,8 l4,4 M11,8 l-4,4')
+        .attr('fill', 'none').attr('stroke', '#e06c75').attr('stroke-width', 1.5).attr('stroke-linecap', 'round');
+    }
+    return ig;
+  }
+
+  function drawBridgeIcon(g, x, y, scale, ok) {
+    const ig = g.append('g').attr('transform', 'translate(' + x + ',' + y + ') scale(' + scale + ')');
+    // Pillars
+    ig.append('line').attr('x1',2).attr('y1',18).attr('x2',2).attr('y2',12)
+      .attr('stroke', ok ? '#00d4aa' : '#e5c07b').attr('stroke-width', 2).attr('stroke-linecap','round');
+    ig.append('line').attr('x1',18).attr('y1',18).attr('x2',18).attr('y2',12)
+      .attr('stroke', ok ? '#00d4aa' : '#e5c07b').attr('stroke-width', 2).attr('stroke-linecap','round');
+    if (ok) {
+      // Solid arch
+      ig.append('path').attr('d', 'M2,12 Q10,2 18,12')
+        .attr('fill', 'none').attr('stroke', '#00d4aa').attr('stroke-width', 1.5);
+    } else {
+      // Cracked arch with gap
+      ig.append('path').attr('d', 'M2,12 Q6,5 9,9')
+        .attr('fill', 'none').attr('stroke', '#e5c07b').attr('stroke-width', 1.5);
+      ig.append('path').attr('d', 'M11,9 Q14,5 18,12')
+        .attr('fill', 'none').attr('stroke', '#e5c07b').attr('stroke-width', 1.5);
+    }
+    // Base line
+    ig.append('line').attr('x1', 0).attr('y1', 18).attr('x2', 20).attr('y2', 18)
+      .attr('stroke', ok ? '#00d4aa' : '#e5c07b').attr('stroke-width', 1);
+    return ig;
+  }
+
+  // ── Left icons (healthy) ──
+  const lDocX = LX - 65, lBridgeX = LX + 35;
+
+  drawDocIcon(svg, lDocX, iconY - 15, 1.4, true);
+  svg.append('text').attr('x', lDocX + 14).attr('y', iconY + 20)
+    .attr('text-anchor','middle').attr('fill','#98c379').attr('font-size','9px').attr('font-weight',600).text('Evidence links');
+
+  drawBridgeIcon(svg, lBridgeX, iconY - 15, 1.4, true);
+  svg.append('text').attr('x', lBridgeX + 14).attr('y', iconY + 20)
+    .attr('text-anchor','middle').attr('fill','#00d4aa').attr('font-size','9px').attr('font-weight',600).text('CIS v7 crosswalk');
+
+  // Left connecting lines (tree to icons)
+  svg.append('line').attr('x1', LX - 15).attr('y1', treeCY + 45).attr('x2', lDocX + 14).attr('y2', iconY - 18)
+    .attr('stroke','#98c379').attr('stroke-width', 1.5).attr('opacity', 0.7);
+  svg.append('line').attr('x1', LX + 15).attr('y1', treeCY + 45).attr('x2', lBridgeX + 14).attr('y2', iconY - 18)
+    .attr('stroke','#00d4aa').attr('stroke-width', 1.5).attr('opacity', 0.7);
+
+  // ── Right icons (broken) ──
+  const rDocX = RX - 65, rBridgeX = RX + 35;
+
+  const rDocG = drawDocIcon(svg, rDocX, iconY - 15, 1.4, false);
+  rDocG.attr('filter', 'url(#oe-glow-red)');
+  svg.append('text').attr('x', rDocX + 14).attr('y', iconY + 20)
+    .attr('text-anchor','middle').attr('fill','#e06c75').attr('font-size','9px').attr('font-weight',600).text('Evidence links');
+  svg.append('text').attr('x', rDocX + 14).attr('y', iconY + 31)
+    .attr('text-anchor','middle').attr('fill','#e06c75').attr('font-size','8px').attr('opacity', 0.7).text('(broken?)');
+
+  const rBridgeG = drawBridgeIcon(svg, rBridgeX, iconY - 15, 1.4, false);
+  rBridgeG.attr('filter', 'url(#oe-glow-red)');
+  svg.append('text').attr('x', rBridgeX + 14).attr('y', iconY + 20)
+    .attr('text-anchor','middle').attr('fill','#e5c07b').attr('font-size','9px').attr('font-weight',600).text('CIS v8 crosswalk');
+  svg.append('text').attr('x', rBridgeX + 14).attr('y', iconY + 31)
+    .attr('text-anchor','middle').attr('fill','#e5c07b').attr('font-size','8px').attr('opacity', 0.7).text('(stale?)');
+
+  // Right connecting lines (tree to icons - dashed red)
+  const rLine1 = svg.append('line').attr('x1', RX - 15).attr('y1', treeCY + 45).attr('x2', rDocX + 14).attr('y2', iconY - 18)
+    .attr('stroke','#e06c75').attr('stroke-width', 1.5).attr('stroke-dasharray','5 3').attr('opacity', 0.5);
+  const rLine2 = svg.append('line').attr('x1', RX + 15).attr('y1', treeCY + 45).attr('x2', rBridgeX + 14).attr('y2', iconY - 18)
+    .attr('stroke','#e5c07b').attr('stroke-width', 1.5).attr('stroke-dasharray','5 3').attr('opacity', 0.5);
+
+  // Pulse animation on right links
+  function pulseLines() {
+    rLine1.transition().duration(1200).attr('opacity', 0.9).attr('stroke-width', 2.5)
+      .transition().duration(1200).attr('opacity', 0.3).attr('stroke-width', 1.5).on('end', pulseLines);
+    rLine2.transition().duration(1200).attr('opacity', 0.9).attr('stroke-width', 2.5)
+      .transition().duration(1200).attr('opacity', 0.3).attr('stroke-width', 1.5);
+  }
+  pulseLines();
+
+  // ── Center transition arrow (tree to tree) ──
+  const arrowY = treeCY - 10;
+  svg.append('line').attr('x1', LX + 70).attr('y1', arrowY).attr('x2', RX - 70).attr('y2', arrowY)
     .attr('stroke','#00d4aa').attr('stroke-width', 2.5).attr('marker-end','url(#oe-pp-arrow-teal)');
-  svg.append('text').attr('x', width/2).attr('y', arrowY - 10).attr('text-anchor','middle')
+  svg.append('text').attr('x', W/2).attr('y', arrowY - 10).attr('text-anchor','middle')
     .attr('fill','#00d4aa').attr('font-size','10px').attr('font-weight',600).text('NIST publishes update');
 
-  // Draw left links (solid green)
-  leftLinks.forEach(l => {
-    const s = nodeMap[l.source], t = nodeMap[l.target];
-    svg.append('line').attr('class','oe-d3-left-link')
-      .attr('x1', s.x).attr('y1', s.y).attr('x2', t.x).attr('y2', t.y)
-      .attr('stroke','#98c379').attr('stroke-width', 2).attr('opacity', 0.7);
-  });
+  // ── Dashed red cross-arrows (evidence to evidence, bridge to bridge) ──
+  // Evidence arrow
+  svg.append('line')
+    .attr('x1', lDocX + 28).attr('y1', iconY)
+    .attr('x2', rDocX - 4).attr('y2', iconY)
+    .attr('stroke','#e06c75').attr('stroke-width', 1).attr('stroke-dasharray','4 3').attr('opacity', 0.6);
+  svg.append('text').attr('x', W/2).attr('y', iconY - 6).attr('text-anchor','middle')
+    .attr('fill','#e06c75').attr('font-size','8px').attr('font-style','italic').text('Do these still work?');
 
-  // Draw right links (dashed red, pulsing)
-  rightLinks.forEach(l => {
-    const s = nodeMap[l.source], t = nodeMap[l.target];
-    const line = svg.append('line').attr('class','oe-d3-right-link')
-      .attr('x1', s.x).attr('y1', s.y).attr('x2', t.x).attr('y2', t.y)
-      .attr('stroke','#e06c75').attr('stroke-width', 2).attr('stroke-dasharray','6 4').attr('opacity', 0.6);
-    function pulse() {
-      line.transition().duration(1200).attr('opacity', 1).attr('stroke-width', 3)
-        .transition().duration(1200).attr('opacity', 0.4).attr('stroke-width', 2)
-        .on('end', pulse);
-    }
-    pulse();
-  });
+  // Bridge arrow
+  svg.append('line')
+    .attr('x1', lBridgeX + 32).attr('y1', iconY + 5)
+    .attr('x2', rBridgeX - 4).attr('y2', iconY + 5)
+    .attr('stroke','#e5c07b').attr('stroke-width', 1).attr('stroke-dasharray','4 3').attr('opacity', 0.6);
+  svg.append('text').attr('x', W/2).attr('y', iconY + 16).attr('text-anchor','middle')
+    .attr('fill','#e5c07b').attr('font-size','8px').attr('font-style','italic').text('Is this still valid?');
 
-  // Tooltip
+  // ── Tooltip ──
+  container.style.position = 'relative';
   const tooltip = d3.select(container).append('div')
-    .style('position','absolute').style('padding','6px 10px').style('background','#161b22')
+    .style('position','absolute').style('padding','8px 12px').style('background','#161b22')
     .style('border','1px solid #30363d').style('border-radius','6px').style('font-size','11px')
     .style('color','#e8edf2').style('pointer-events','none').style('opacity',0).style('z-index',10)
-    .style('max-width','200px').style('line-height','1.4');
-  container.style.position = 'relative';
+    .style('max-width','220px').style('line-height','1.4').style('transition','opacity 0.15s');
 
-  // Draw nodes (draggable within era)
-  const simulation = d3.forceSimulation(allNodes)
-    .force('collide', d3.forceCollide().radius(d => d.r + 5))
-    .alphaDecay(1) // settle immediately
-    .stop();
-  simulation.tick(1);
+  // Hover zones for icons (invisible rects over document and bridge areas)
+  const hoverData = [
+    { x: lDocX - 4, y: iconY - 20, w: 40, h: 55, tip: '<strong>Evidence links</strong><br/>Your evidence notes link to specific framework control IDs. When the framework updates, those IDs may be renamed or removed.' },
+    { x: lBridgeX - 4, y: iconY - 20, w: 40, h: 55, tip: '<strong>CIS v7 crosswalk</strong><br/>Maps between two frameworks. Both sides update independently, so the mapping can become stale or inaccurate.' },
+    { x: rDocX - 4, y: iconY - 20, w: 40, h: 55, tip: '<strong>Broken evidence</strong><br/>CSF 2.0 renamed IDs (e.g. ID.AM becomes ID.AM-*). Evidence links now point to concepts that no longer exist in the new version.' },
+    { x: rBridgeX - 4, y: iconY - 20, w: 40, h: 55, tip: '<strong>Stale crosswalk</strong><br/>CIS updated to v8 and NIST to CSF 2.0. The old crosswalk maps v7 to CSF 1.1 - both sides are now outdated.' },
+  ];
 
-  const nodeGroups = svg.selectAll('.oe-d3-node').data(allNodes).enter().append('g')
-    .attr('class','oe-d3-node').attr('transform', d => 'translate(' + d.x + ',' + d.y + ')')
-    .style('cursor','grab');
-
-  nodeGroups.append('circle').attr('r', d => d.r)
-    .attr('fill', d => d.color + '15').attr('stroke', d => d.color).attr('stroke-width', 2);
-
-  nodeGroups.append('text').attr('text-anchor','middle').attr('dy','0.35em')
-    .attr('fill','#e8edf2').attr('font-size','8px').attr('font-weight',600)
-    .text(d => d.label);
-
-  // Hover effects
-  nodeGroups.on('mouseover', function(event, d) {
-    d3.select(this).select('circle').transition().duration(200)
-      .attr('stroke-width', 3).attr('r', d.r + 3);
-    tooltip.style('opacity', 1).html('<strong>' + d.label + '</strong><br/>' + d.desc);
-  }).on('mousemove', function(event) {
-    const rect = container.getBoundingClientRect();
-    tooltip.style('left', (event.clientX - rect.left + 12) + 'px')
-      .style('top', (event.clientY - rect.top - 10) + 'px');
-  }).on('mouseout', function(event, d) {
-    d3.select(this).select('circle').transition().duration(200)
-      .attr('stroke-width', 2).attr('r', d.r);
-    tooltip.style('opacity', 0);
+  hoverData.forEach(function(h) {
+    svg.append('rect').attr('x', h.x).attr('y', h.y).attr('width', h.w).attr('height', h.h)
+      .attr('fill', 'transparent').style('cursor', 'pointer')
+      .on('mouseover', function() { tooltip.style('opacity', 1).html(h.tip); })
+      .on('mousemove', function(event) {
+        const rect = container.getBoundingClientRect();
+        tooltip.style('left', (event.clientX - rect.left + 14) + 'px')
+          .style('top', (event.clientY - rect.top - 12) + 'px');
+      })
+      .on('mouseout', function() { tooltip.style('opacity', 0); });
   });
 
-  // Drag
-  const leftBound = 0, rightBound = width;
-  const drag = d3.drag()
-    .on('start', function() { d3.select(this).style('cursor','grabbing'); })
-    .on('drag', function(event, d) {
-      const isLeft = leftNodes.includes(d);
-      const minX = isLeft ? 30 : width/2 + 30;
-      const maxX = isLeft ? width/2 - 30 : width - 30;
-      d.x = Math.max(minX, Math.min(maxX, event.x));
-      d.y = Math.max(40, Math.min(height - 20, event.y));
-      d3.select(this).attr('transform', 'translate(' + d.x + ',' + d.y + ')');
-      // Update links
-      svg.selectAll('.oe-d3-left-link').each(function() {
-        const line = d3.select(this);
-        leftLinks.forEach(l => {
-          const s = nodeMap[l.source], t = nodeMap[l.target];
-          line.filter(function() {
-            return +line.attr('x1') !== s.x || +line.attr('y1') !== s.y ? false : true;
-          });
-        });
-      });
-      // Simpler: redraw all links
-      svg.selectAll('.oe-d3-left-link').data(leftLinks)
-        .attr('x1', l => nodeMap[l.source].x).attr('y1', l => nodeMap[l.source].y)
-        .attr('x2', l => nodeMap[l.target].x).attr('y2', l => nodeMap[l.target].y);
-      svg.selectAll('.oe-d3-right-link').data(rightLinks)
-        .attr('x1', l => nodeMap[l.source].x).attr('y1', l => nodeMap[l.source].y)
-        .attr('x2', l => nodeMap[l.target].x).attr('y2', l => nodeMap[l.target].y);
-    })
-    .on('end', function() { d3.select(this).style('cursor','grab'); });
+  // ── Delayed crack animation ──
+  // Initially hide right-side broken elements, reveal after 2s
+  const brokenEls = svg.selectAll('.oe-crack-anim');
+  rDocG.attr('opacity', 0);
+  rBridgeG.attr('opacity', 0);
+  rLine1.attr('opacity', 0);
+  rLine2.attr('opacity', 0);
 
-  nodeGroups.call(drag);
+  // Draw a healthy right side initially (will fade out)
+  const tempRDoc = drawDocIcon(svg, rDocX, iconY - 15, 1.4, true);
+  const tempRBridge = drawBridgeIcon(svg, rBridgeX, iconY - 15, 1.4, true);
+  const tempLine1 = svg.append('line').attr('x1', RX - 15).attr('y1', treeCY + 45).attr('x2', rDocX + 14).attr('y2', iconY - 18)
+    .attr('stroke','#98c379').attr('stroke-width', 1.5).attr('opacity', 0.7);
+  const tempLine2 = svg.append('line').attr('x1', RX + 15).attr('y1', treeCY + 45).attr('x2', rBridgeX + 14).attr('y2', iconY - 18)
+    .attr('stroke','#00d4aa').attr('stroke-width', 1.5).attr('opacity', 0.7);
 
-  // "?" labels on broken links
-  rightLinks.forEach(l => {
-    const s = nodeMap[l.source], t = nodeMap[l.target];
-    svg.append('text').attr('class','oe-d3-q-label')
-      .attr('x', (s.x + t.x)/2 + 8).attr('y', (s.y + t.y)/2 - 4)
-      .attr('fill','#e06c75').attr('font-size','10px').attr('font-weight',700).text('???');
-  });
+  setTimeout(function() {
+    // Fade out healthy versions
+    tempRDoc.transition().duration(600).attr('opacity', 0).remove();
+    tempRBridge.transition().duration(600).attr('opacity', 0).remove();
+    tempLine1.transition().duration(600).attr('opacity', 0).remove();
+    tempLine2.transition().duration(600).attr('opacity', 0).remove();
+
+    // Fade in broken versions
+    rDocG.transition().delay(400).duration(600).attr('opacity', 1);
+    rBridgeG.transition().delay(400).duration(600).attr('opacity', 1);
+    rLine1.transition().delay(400).duration(600).attr('opacity', 0.5).on('end', pulseLines);
+    rLine2.transition().delay(400).duration(600).attr('opacity', 0.5);
+  }, 2000);
 }
 `}</script>
 
