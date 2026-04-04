@@ -55,6 +55,34 @@
   height: auto;
 }
 
+/* CRITICAL FIX: Starlight's markdown.css adds margin-top: var(--sl-content-gap-y)
+   (1rem/16px) between adjacent non-inline elements via:
+   .sl-markdown-content :not(inline) + :not(inline) { margin-top: 1rem }
+
+   This applies INSIDE our grid/flex containers, adding 16px margin-top to
+   the 2nd, 3rd, etc. children — making them appear shorter than the 1st child.
+
+   Fix: Reset margin-top to 0 for all children inside our custom containers. */
+.sl-markdown-content [class*="oe-"] > *,
+.sl-markdown-content [class*="il-"] > *,
+.sl-markdown-content [class*="ol-"] > *,
+.sl-markdown-content [class*="pr-"] > *,
+.sl-markdown-content [class*="fg-"] > *,
+.sl-markdown-content [class*="cm-"] > *,
+.sl-markdown-content [class*="wg-"] > * {
+  margin-top: 0;
+}
+
+/* Hide sidebar scrollbar while keeping scroll functionality.
+   The sidebar content (94+ pages) exceeds the viewport height,
+   so scrolling is needed, but the visible scrollbar is ugly. */
+#starlight__sidebar {
+  scrollbar-width: none; /* Firefox */
+}
+#starlight__sidebar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge */
+}
+
 /* Obsidian-style callouts */
 .callout {
   padding: 1rem;
