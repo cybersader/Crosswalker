@@ -29,8 +29,8 @@ if (container) {
     .append('polygon').attr('points','0 0, 10 3.5, 0 7').attr('fill','#00d4aa');
 
   const glowRed = defs.append('filter').attr('id','oe-glow-red').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
-  glowRed.append('feGaussianBlur').attr('in','SourceGraphic').attr('stdDeviation','3').attr('result','blur');
-  glowRed.append('feFlood').attr('flood-color','#e06c75').attr('flood-opacity','0.6').attr('result','color');
+  glowRed.append('feGaussianBlur').attr('in','SourceGraphic').attr('stdDeviation','4').attr('result','blur');
+  glowRed.append('feFlood').attr('flood-color','#e06c75').attr('flood-opacity','0.8').attr('result','color');
   glowRed.append('feComposite').attr('in','color').attr('in2','blur').attr('operator','in').attr('result','glow');
   const glowMerge = glowRed.append('feMerge');
   glowMerge.append('feMergeNode').attr('in','glow');
@@ -93,13 +93,13 @@ if (container) {
   // Left tree (healthy)
   const leftTreeG = svg.append('g');
   drawTree(leftTreeG, LX, treeCY, '#00d4aa', false);
-  svg.append('text').attr('x', LX).attr('y', treeCY + 58).attr('text-anchor','middle')
+  svg.append('text').attr('x', LX).attr('y', treeCY + 70).attr('text-anchor','middle')
     .attr('fill','#00d4aa').attr('font-size','11px').attr('font-weight',700).text('NIST CSF 1.1');
 
   // Right tree (broken) - initially hidden, revealed by animation
   const rightTreeG = svg.append('g').attr('class','oe-right-tree');
   drawTree(rightTreeG, RX, treeCY, '#00d4aa', true);
-  svg.append('text').attr('x', RX).attr('y', treeCY + 58).attr('text-anchor','middle')
+  svg.append('text').attr('x', RX).attr('y', treeCY + 70).attr('text-anchor','middle')
     .attr('fill','#e5c07b').attr('font-size','11px').attr('font-weight',700).text('NIST CSF 2.0');
 
   // ── Icon helpers ──
@@ -127,23 +127,23 @@ if (container) {
     const ig = g.append('g').attr('transform', 'translate(' + x + ',' + y + ') scale(' + scale + ')');
     // Pillars
     ig.append('line').attr('x1',2).attr('y1',18).attr('x2',2).attr('y2',12)
-      .attr('stroke', ok ? '#00d4aa' : '#e5c07b').attr('stroke-width', 2).attr('stroke-linecap','round');
+      .attr('stroke', ok ? '#00d4aa' : '#e06c75').attr('stroke-width', 2.5).attr('stroke-linecap','round');
     ig.append('line').attr('x1',18).attr('y1',18).attr('x2',18).attr('y2',12)
-      .attr('stroke', ok ? '#00d4aa' : '#e5c07b').attr('stroke-width', 2).attr('stroke-linecap','round');
+      .attr('stroke', ok ? '#00d4aa' : '#e06c75').attr('stroke-width', 2.5).attr('stroke-linecap','round');
     if (ok) {
       // Solid arch
       ig.append('path').attr('d', 'M2,12 Q10,2 18,12')
-        .attr('fill', 'none').attr('stroke', '#00d4aa').attr('stroke-width', 1.5);
+        .attr('fill', 'none').attr('stroke', '#00d4aa').attr('stroke-width', 2);
     } else {
-      // Cracked arch with gap
+      // Cracked arch with gap — red for danger
       ig.append('path').attr('d', 'M2,12 Q6,5 9,9')
-        .attr('fill', 'none').attr('stroke', '#e5c07b').attr('stroke-width', 1.5);
+        .attr('fill', 'none').attr('stroke', '#e06c75').attr('stroke-width', 2);
       ig.append('path').attr('d', 'M11,9 Q14,5 18,12')
-        .attr('fill', 'none').attr('stroke', '#e5c07b').attr('stroke-width', 1.5);
+        .attr('fill', 'none').attr('stroke', '#e06c75').attr('stroke-width', 2);
     }
     // Base line
     ig.append('line').attr('x1', 0).attr('y1', 18).attr('x2', 20).attr('y2', 18)
-      .attr('stroke', ok ? '#00d4aa' : '#e5c07b').attr('stroke-width', 1);
+      .attr('stroke', ok ? '#00d4aa' : '#e06c75').attr('stroke-width', 1.5);
     return ig;
   }
 
