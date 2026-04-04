@@ -30,49 +30,30 @@
   --sl-color-black: #f8f9fa;
 }
 
-/* ====== GLOBAL DIAGRAM FIX ======
-   All custom diagram containers must fill their parent width,
-   use border-box sizing, and not overflow. This prevents the
-   systemic alignment issues where cards/grids are narrower
-   than the Starlight content area (.sl-markdown-content).
-*/
-.sl-markdown-content div[class*="oe-"],
-.sl-markdown-content div[class*="il-"],
-.sl-markdown-content div[class*="ol-"],
-.sl-markdown-content div[class*="pr-"],
-.sl-markdown-content div[class*="fg-"],
-.sl-markdown-content div[class*="cm-"],
-.sl-markdown-content div[class*="wg-"] {
-  box-sizing: border-box;
-  max-width: 100%;
-}
+/* ====== NOVA THEME LAYOUT FIX ======
+   Root cause: Nova's TwoColumnContent.astro adds overflow-x: hidden
+   on .main-pane, which silently clips any diagram content that exceeds
+   the container width (e.g. div with width:100% + padding in content-box
+   mode). This makes content appear left-shifted because the RIGHT side
+   gets invisibly cut off.
 
-.sl-markdown-content [class*="-wrap"],
-.sl-markdown-content [class*="-container"],
-.sl-markdown-content [class*="-pair"],
-.sl-markdown-content [class*="-grid"],
-.sl-markdown-content [class*="-entities"],
-.sl-markdown-content [class*="-chain"],
-.sl-markdown-content [class*="-scenario"],
-.sl-markdown-content [class*="-layers"],
-.sl-markdown-content [class*="-emc"],
-.sl-markdown-content [class*="-temporal"],
-.sl-markdown-content [class*="-changes"],
-.sl-markdown-content [class*="-actors"],
-.sl-markdown-content [class*="-rels"],
-.sl-markdown-content [class*="-scd"] {
-  width: 100%;
-  box-sizing: border-box;
-  max-width: 100%;
+   Fix 1: Change overflow-x to auto so wide content scrolls instead of
+   being silently clipped.
+
+   Fix 2: Apply border-box to all divs inside markdown content so
+   width:100% + padding never exceeds the container.
+
+   Note: brand.css is unlayered, so it automatically beats all @layer
+   rules (Nova uses @layer nova). No !important needed.
+
+   See: /crosswalker/agent-context/zz-log/2026-04-04-nova-theme-padding-bug/
+*/
+.main-pane {
   overflow-x: auto;
 }
 
-/* Fix Nova theme's asymmetric padding on markdown content.
-   Nova adds padding-inline-start: 2rem which shifts content left-to-right
-   asymmetrically, causing all our custom diagrams to appear misaligned. */
-.sl-markdown-content {
-  padding-inline-start: 0 !important;
-  padding-inline-end: 0 !important;
+.sl-markdown-content div {
+  box-sizing: border-box;
 }
 
 /* Obsidian-style callouts */
