@@ -37,6 +37,9 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Crosswalker',
+      logo: {
+        src: './public/logo.svg',
+      },
       description: 'Import structured ontologies into Obsidian with folder structures, typed links, and metadata',
       editLink: {
         baseUrl: 'https://github.com/cybersader/crosswalker/edit/main/docs/',

@@ -33,55 +33,55 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     <text class="cw-sv-label" x="95" y="22">OUTSIDE YOUR VAULT</text>
     <text class="cw-sv-label" x="785" y="22" text-anchor="end">INSIDE YOUR VAULT</text>
 
-    {/* Left input items — pill shapes */}
+    {/* Left input items — all teal dashed (all are data CW can ingest) */}
     <g class="cw-sv-item-in">
       <rect x="30" y="40" width="135" height="30" rx="6"/>
-      <text x="97" y="60">Frameworks</text>
-      <g transform="translate(50,48)"><path d="M10 1H4a1.5 1.5 0 00-1.5 1.5v12A1.5 1.5 0 004 16h9a1.5 1.5 0 001.5-1.5V6z" fill="none" stroke-width="1.3"/><path d="M10 1v4.5h4.5M6 10h6M6 13h6" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(38,48) scale(0.8)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6M8 13h8M8 17h8" fill="none" stroke-width="1.8"/></g>
+      <text x="105" y="60">Frameworks</text>
     </g>
     <g class="cw-sv-item-in">
       <rect x="30" y="90" width="135" height="30" rx="6"/>
-      <text x="97" y="110">Spreadsheets</text>
-      <g transform="translate(50,98)"><rect x="2" y="2" width="13.5" height="13.5" rx="1.5" fill="none" stroke-width="1.3"/><path d="M2 7h13.5M8 2v13.5" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(38,98) scale(0.8)"><rect x="2" y="2" width="16" height="16" rx="2" fill="none" stroke-width="1.8"/><path d="M2 8h16M10 2v16" fill="none" stroke-width="1.8"/></g>
+      <text x="105" y="110">Spreadsheets</text>
     </g>
-    <g class="cw-sv-item-in cw-sv-dim">
+    <g class="cw-sv-item-in">
       <rect x="30" y="140" width="135" height="30" rx="6"/>
-      <text x="97" y="160">Policies</text>
-      <g transform="translate(50,148)"><path d="M10 1H4a1.5 1.5 0 00-1.5 1.5v12A1.5 1.5 0 004 16h9a1.5 1.5 0 001.5-1.5V6z" fill="none" stroke-width="1.3"/><path d="M10 1v4.5h4.5" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(38,148) scale(0.8)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
+      <text x="105" y="160">Policies</text>
     </g>
-    <g class="cw-sv-item-in cw-sv-dim">
+    <g class="cw-sv-item-in">
       <rect x="30" y="190" width="135" height="30" rx="6"/>
-      <text x="97" y="210">Evidence</text>
-      <g transform="translate(50,198)"><path d="M7 3.5H5a1.5 1.5 0 00-1.5 1.5v9A1.5 1.5 0 005 15.5h7.5A1.5 1.5 0 0014 14V5a1.5 1.5 0 00-1.5-1.5H10.5" fill="none" stroke-width="1.3"/><path d="M7 3.5a1.5 1.5 0 011.5-1.5h1.5A1.5 1.5 0 0111.5 3.5v0A1.5 1.5 0 0110 5H8.5A1.5 1.5 0 017 3.5z" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(38,198) scale(0.8)"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" fill="none" stroke-width="1.8"/><path d="M9 5a2 2 0 012-2h2a2 2 0 012 2v0a2 2 0 01-2 2h-2a2 2 0 01-2-2z" fill="none" stroke-width="1.8"/></g>
+      <text x="105" y="210">Evidence</text>
     </g>
 
-    {/* Right output items — solid pill shapes */}
+    {/* Right output items — solid teal (structured output from CW) */}
     <g class="cw-sv-item-out">
       <rect x="715" y="40" width="135" height="30" rx="6"/>
-      <text x="782" y="60">Queryable</text>
-      <g transform="translate(733,48)"><circle cx="7.5" cy="7.5" r="7" fill="none" stroke-width="1.3"/><path d="M7.5 4v4.5l3 1.5" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(723,48) scale(0.8)"><circle cx="10" cy="10" r="8" fill="none" stroke-width="1.8"/><path d="M10 5v6l4 2" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="60">Queryable</text>
     </g>
     <g class="cw-sv-item-out">
       <rect x="715" y="90" width="135" height="30" rx="6"/>
-      <text x="782" y="110">Linked</text>
-      <g transform="translate(733,98)"><path d="M7.5 10a3.75 3.75 0 005.66.4l2.25-2.25a3.75 3.75 0 00-5.3-5.3l-1.29 1.28" fill="none" stroke-width="1.3"/><path d="M10.5 8a3.75 3.75 0 00-5.66-.4L2.59 9.85a3.75 3.75 0 005.3 5.3l1.28-1.28" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(723,98) scale(0.8)"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" fill="none" stroke-width="1.8"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="110">Linked</text>
     </g>
     <g class="cw-sv-item-out">
       <rect x="715" y="140" width="135" height="30" rx="6"/>
-      <text x="782" y="160">Resilient</text>
-      <g transform="translate(733,148)"><path d="M9 16.5s6-3 6-7.5V3.75L9 1.5 3 3.75V9c0 4.5 6 7.5 6 7.5z" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(723,148) scale(0.8)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="160">Resilient</text>
     </g>
     <g class="cw-sv-item-out">
       <rect x="715" y="190" width="135" height="30" rx="6"/>
-      <text x="782" y="210">Plain markdown</text>
-      <g transform="translate(733,198)"><path d="M10 1H4a1.5 1.5 0 00-1.5 1.5v12A1.5 1.5 0 004 16h9a1.5 1.5 0 001.5-1.5V6z" fill="none" stroke-width="1.3"/><path d="M10 1v4.5h4.5" fill="none" stroke-width="1.3"/></g>
+      <g transform="translate(723,198) scale(0.8)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="210">Markdown</text>
     </g>
 
     {/* Visible stream paths (faint trail) */}
     <use href="#pathL1" class="cw-sv-trail cw-sv-trail-in"/>
     <use href="#pathL2" class="cw-sv-trail cw-sv-trail-in"/>
-    <use href="#pathL3" class="cw-sv-trail cw-sv-trail-in cw-sv-trail-dim"/>
-    <use href="#pathL4" class="cw-sv-trail cw-sv-trail-in cw-sv-trail-dim"/>
+    <use href="#pathL3" class="cw-sv-trail cw-sv-trail-in"/>
+    <use href="#pathL4" class="cw-sv-trail cw-sv-trail-in"/>
     <use href="#pathR1" class="cw-sv-trail cw-sv-trail-out"/>
     <use href="#pathR2" class="cw-sv-trail cw-sv-trail-out"/>
     <use href="#pathR3" class="cw-sv-trail cw-sv-trail-out"/>
@@ -259,10 +259,6 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   .cw-sv-item-in path, .cw-sv-item-in rect:not(:first-child), .cw-sv-item-in circle {
     stroke: var(--sl-color-accent);
   }
-  .cw-sv-dim rect { stroke: var(--sl-color-gray-4); }
-  .cw-sv-dim text { fill: var(--sl-color-gray-2); }
-  .cw-sv-dim path, .cw-sv-dim rect:not(:first-child), .cw-sv-dim circle { stroke: var(--sl-color-gray-3); }
-
   /* Output items (right) — solid border, teal */
   .cw-sv-item-out rect {
     fill: color-mix(in srgb, var(--sl-color-accent) 8%, transparent);
@@ -282,7 +278,6 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   }
   .cw-sv-trail-in { stroke: var(--sl-color-gray-3); }
   .cw-sv-trail-out { stroke: var(--sl-color-accent); }
-  .cw-sv-trail-dim { opacity: 0.1; }
 
   /* Animated particles */
   .cw-sv-p { opacity: 0.85; }
