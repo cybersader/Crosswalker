@@ -1,41 +1,82 @@
 ---
-title: Nova theme asymmetric padding bug
-description: Root cause of systemic left-side misalignment on all custom diagrams — Nova theme adds padding-inline-start to markdown content.
+title: Nova theme CSS layout fix
+description: Root cause of systemic alignment issues — Nova's overflow-x hidden silently clips content, not a padding problem.
 tags: [development]
 sidebar:
-  label: "04-04 · Nova padding bug fix"
+  label: "04-04 · Nova CSS layout fix"
   order: -20260404
 ---
 
 ## The problem
 
-Every custom HTML/CSS diagram across all concept pages had a left-side misalignment — elements appeared shifted right or narrower than the content area. This affected entity cards, EMC step flows, temporal pairs, relationship chains, and more. The same pattern is reported by many Astro Starlight + Nova theme deployments.
+Every custom HTML/CSS diagram across all concept pages had alignment issues — elements appeared shifted left, cards were uneven heights, content seemed narrower than the container. This is a common pattern reported across many Astro Starlight + Nova theme deployments.
 
-## Root cause
+## What we initially thought (WRONG)
 
-Nova theme's `MarkdownContent.astro` adds:
-```css
-padding-inline-start: 2rem;
-```
+Initially blamed `padding-inline-start: 2rem` on `.sl-markdown-content`. This was wrong — Nova only adds that padding to `<dd>` elements (definition list descriptions), not to the markdown content container. The padding override we added was a no-op.
 
-This creates **asymmetric padding** — 2rem on the left, 0 on the right. All content shifts right. Custom elements that calculate their width from the parent container end up 2rem narrower than expected on the left side.
+## Actual root causes (from deep audit)
+
+### Cause 1: Nova's `overflow-x: hidden` on `.main-pane`
+
+Nova's `TwoColumnContent.astro` adds `overflow-x: hidden` on `.main-pane`. Starlight base does NOT do this.
+
+**Effect**: Any diagram with internal padding that pushes its total rendered width beyond the `.sl-container` boundary gets **silently clipped on the right side**. This creates the APPEARANCE of left-shifting because the right edge is invisibly cut off.
+
+**File**: `node_modules/starlight-theme-nova/src/components/TwoColumnContent.astro`
+
+### Cause 2: Missing `box-sizing: border-box`
+
+CSS default is `content-box`. When a div has `width: 100%` plus `padding: 1rem`, its actual rendered width is 100% + 2rem — exceeding the container. Combined with Cause 1, this content gets clipped.
+
+### Cause 3: Per-diagram card height issues
+
+Flex/grid containers not constraining children to equal heights. This is a per-diagram CSS issue in each MDX file's `<style>` block, not theme-level.
 
 ## The fix
 
 In `docs/src/styles/brand.css`:
+
 ```css
-.sl-markdown-content {
-  padding-inline-start: 0 !important;
-  padding-inline-end: 0 !important;
+/* Fix Nova's silent overflow clipping */
+.main-pane {
+  overflow-x: auto;
+}
+
+/* All diagram divs use border-box so width + padding never exceeds container */
+.sl-markdown-content div {
+  box-sizing: border-box;
 }
 ```
 
-Plus global box-sizing and max-width rules for all custom diagram containers.
+Two clean rules replace 40+ lines of wildcard selectors and `!important` overrides.
 
-## Lesson
+**Why no `!important`**: `brand.css` is unlayered CSS. Nova uses `@layer nova`. Unlayered CSS automatically beats all `@layer` rules — `!important` is unnecessary.
 
-When using Starlight themes (Nova or others), always check what CSS they add to `.sl-markdown-content` and other content wrappers. Theme-specific padding/margin can silently break custom layouts.
+## CSS architecture lesson
+
+The DOM wrapper chain in Starlight + Nova:
+
+```
+.main-frame          ← padding-inline-start: var(--sl-content-inline-start)
+  .main-pane         ← overflow-x: hidden (NOVA ADDS THIS — the culprit)
+    main
+      .content-panel ← padding: 1.5rem var(--sl-content-pad-x)
+        .sl-container ← max-width: var(--sl-content-width) [50rem with Nova]
+          .sl-markdown-content ← NO padding from Starlight or Nova
+```
+
+Nova also sets `--sl-content-width: 50rem` (wider than Starlight's default 45rem).
+
+## For future Starlight + Nova projects
+
+When using Nova theme with custom HTML/CSS content:
+1. Always add `box-sizing: border-box` to custom divs
+2. Override `.main-pane { overflow-x: auto }` to prevent silent clipping
+3. Don't use `!important` — unlayered CSS already wins over `@layer` rules
+4. Check Nova's component overrides for any `overflow`, `isolation`, or `contain` properties
 
 ## Related
 
 - [Diagram strategy decision](/crosswalker/agent-context/zz-log/2026-04-03-diagram-strategy-decision/)
+- [Institutional landscape decisions](/crosswalker/agent-context/zz-log/2026-04-04-institutional-landscape-decisions/)
