@@ -12,16 +12,20 @@
   letter-spacing: -0.02em;
 }
 
-/* Version label next to title — subtle, informational */
-.site-title::after {
-  content: 'v0.1';
-  font-size: 0.5em;
-  font-weight: 400;
+/* Version badge — tight against title text, like Vite/Tailwind docs */
+.site-title span::after {
+  content: 'alpha';
+  font-size: 0.55em;
+  font-weight: 500;
   font-family: var(--sl-font, system-ui, sans-serif);
-  margin-left: 0.15em;
-  color: var(--sl-color-gray-3);
-  vertical-align: middle;
-  letter-spacing: 0.02em;
+  margin-left: 0.3em;
+  padding: 0.1em 0.45em;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--sl-color-accent) 15%, transparent);
+  color: var(--sl-color-accent);
+  vertical-align: super;
+  letter-spacing: 0.03em;
+  line-height: 1;
 }
 
 /* Dark mode (primary) — near-black backgrounds, cyan/teal accent */
