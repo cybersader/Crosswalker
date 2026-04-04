@@ -81,17 +81,22 @@
    This fixes mobile landscape (e.g. Samsung Galaxy S21 Ultra = ~915px)
    and narrow desktop windows. */
 @media (min-width: 768px) and (max-width: 1023px) {
-  /* Hide fixed sidebar */
+  /* Hide fixed sidebar by default (not enough room at this width).
+     BUT allow it to show when hamburger is clicked via
+     body[data-mobile-menu-expanded]. */
   #starlight__sidebar {
-    visibility: hidden !important;
+    visibility: hidden;
+  }
+  body[data-mobile-menu-expanded] #starlight__sidebar {
+    visibility: visible !important;
+    width: 100% !important;
   }
   /* Remove sidebar offset from content */
   .main-frame {
     padding-inline-start: 0 !important;
   }
   /* Show hamburger menu and its parent container.
-     Nova's parent div uses Tailwind md:hidden which compiles to
-     @media(min-width:768px){display:none}. Override it. */
+     Nova's parent div uses Tailwind md:hidden — override it. */
   header .md\:hidden {
     display: flex !important;
   }
