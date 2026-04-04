@@ -44,6 +44,15 @@ An ontology (framework, taxonomy, any structured knowledge system) goes through 
   box-shadow: 0 4px 16px rgba(0,0,0,0.25);
   animation: ol-pulse 3s ease-in-out infinite;
   position: relative;
+  transition: transform 0.15s;
+}
+a.ol-phase {
+  text-decoration: none;
+  color: inherit;
+}
+a.ol-phase:hover .ol-phase-card {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 .ol-phase-card .ol-icon {
   font-size: 1.6rem;
@@ -117,41 +126,41 @@ An ontology (framework, taxonomy, any structured knowledge system) goes through 
 `}</style>
 
 <div class="ol-lifecycle-ring" role="img" aria-label="Ontology lifecycle: Acquire, Import, Enrich, Maintain, Share, cycling back to Acquire">
-  <div class="ol-phase">
+  <a href="#acquire" class="ol-phase">
     <div class="ol-phase-card ol-acquire">
       <span class="ol-icon">📥</span>
       <span>Acquire</span>
     </div>
-  </div>
+  </a>
   <div class="ol-arrow">→</div>
-  <div class="ol-phase">
+  <a href="#import" class="ol-phase">
     <div class="ol-phase-card ol-import">
       <span class="ol-icon">⚙️</span>
       <span>Import</span>
     </div>
-  </div>
+  </a>
   <div class="ol-arrow">→</div>
-  <div class="ol-phase">
+  <a href="#enrich" class="ol-phase">
     <div class="ol-phase-card ol-enrich">
       <span class="ol-icon">🔗</span>
       <span>Enrich</span>
     </div>
-  </div>
+  </a>
   <div class="ol-arrow">→</div>
-  <div class="ol-phase" style="position:relative">
+  <a href="#maintain" class="ol-phase" style="position:relative">
     <div class="ol-maintain-loop">↩ Enrich</div>
     <div class="ol-phase-card ol-maintain">
       <span class="ol-icon">🔄</span>
       <span>Maintain</span>
     </div>
-  </div>
+  </a>
   <div class="ol-arrow">→</div>
-  <div class="ol-phase">
+  <a href="#share" class="ol-phase">
     <div class="ol-phase-card ol-share">
       <span class="ol-icon">🌐</span>
       <span>Share</span>
     </div>
-  </div>
+  </a>
 </div>
 <div class="ol-loop-arrow">
   <svg viewBox="0 0 700 40" fill="none" xmlns="http://www.w3.org/2000/svg">

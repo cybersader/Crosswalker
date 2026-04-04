@@ -6,9 +6,9 @@ tags: [grc, evidence-mapping, frameworks-mapping]
 
 ## The evidence mapping problem
 
-Every GRC practitioner knows this pain: you have **evidence** (policies, procedures, audit findings, screenshots, technical configs) scattered across wikis, SharePoint, OneNote, and email. You have **frameworks** (NIST, CIS, MITRE, CRI, FFIEC) in massive spreadsheets. And you need to prove to auditors that specific evidence satisfies specific controls.
+Every GRC practitioner knows this pain: you have **evidence** (policies, procedures, audit findings, screenshots, technical configs) scattered across wikis, SharePoint, OneNote, and email. You have **[frameworks](/crosswalker/concepts/framework-standards/)** (NIST, CIS, MITRE, CRI, FFIEC) in massive spreadsheets. And you need to prove to [auditors](/crosswalker/concepts/institutional-landscape/#the-entities) that specific evidence satisfies specific controls.
 
-This is **evidence mapping** — the core work of compliance — and the tools are broken.
+This is **evidence mapping** — the core work of compliance — and the tools are broken. Understanding [who owns what](/crosswalker/concepts/institutional-landscape/) in the ontology ecosystem helps explain why.
 
 ### Two worlds that don't talk to each other
 
@@ -23,11 +23,11 @@ The gap between these worlds is where compliance teams spend most of their time 
 
 ### Why spreadsheets fail at evidence mapping
 
-- **No bidirectional linking** — you can write "AC-2 → MFA Policy" in a cell, but the MFA Policy document doesn't know it's been mapped. Update the evidence and the mapping is instantly stale.
-- **No metadata about the mapping itself** — Is this evidence *sufficient*? Who *reviewed* it? *When* was it last validated? What *type* of evidence is it? Spreadsheets can't answer these without exploding in columns.
-- **No cross-framework traceability** — when an auditor asks "show me the CRI diagnostic statement, the CSF subcategory it maps to, the 800-53 control, AND the evidence" — that's a manual detective hunt across 4+ spreadsheets.
-- **No query capability** — you can't ask a spreadsheet "which controls have zero evidence?" without writing formulas that break when rows shift.
-- **Sync is impossible** — frameworks update, evidence moves, people leave. The mapping sheet becomes a graveyard of stale references that nobody trusts.
+- **No bidirectional linking** — you can write "AC-2 → MFA Policy" in a cell, but the MFA Policy document doesn't know it's been mapped. Update the evidence and the mapping is instantly stale. This is the [referential integrity gap](/crosswalker/agent-context/constraint-enforcement/#the-referential-integrity-gap) that [file-based systems](/crosswalker/concepts/file-based-graph-database/) face.
+- **No metadata about the mapping itself** — Is this evidence *sufficient*? Who *reviewed* it? *When* was it last validated? What *type* of evidence is it? Spreadsheets can't answer these. Crosswalker solves this with [typed links and edge metadata](/crosswalker/agent-context/link-metadata-system/).
+- **No cross-framework traceability** — when an auditor asks "show me the CRI diagnostic statement, the CSF subcategory it maps to, the 800-53 control, AND the evidence" — that's a manual detective hunt across 4+ spreadsheets. [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) make this one click.
+- **No query capability** — you can't ask a spreadsheet "which controls have zero evidence?" without formulas that break when rows shift. [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) and Dataview solve this natively.
+- **Sync is impossible** — frameworks update, evidence moves, people leave. The mapping sheet becomes a graveyard of stale references. This is the [ontology evolution](/crosswalker/concepts/ontology-evolution/) problem — and it's [never fully solved](/crosswalker/concepts/work-gradient/#tier-4-operational-maintenance-ongoing), only managed.
 
 ### The multi-framework regulatory pressure
 
