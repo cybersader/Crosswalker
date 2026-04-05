@@ -1,7 +1,8 @@
 ---
 title: Crosswalker
 description: Turn your Obsidian vault into an operational compliance knowledge graph.
-template: splash
+sidebar:
+  hidden: true
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
@@ -234,6 +235,13 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 </div>
 
 <style>{`
+  /* Homepage: hide sidebar + right panel on desktop, keep hamburger functional on mobile */
+  .right-sidebar-container, .right-sidebar { display: none !important; }
+  @media (min-width: 768px) {
+    #starlight__sidebar { display: none !important; }
+    .main-frame { padding-inline-start: 0 !important; }
+  }
+
   /* Hide the auto-generated h1 */
   h1#_top { display: none; }
   .cw-hero { margin: -0.5rem auto 2rem; max-width: 920px; padding: 0 0.5rem; }

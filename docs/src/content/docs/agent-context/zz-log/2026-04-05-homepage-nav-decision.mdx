@@ -1,0 +1,36 @@
+---
+title: Homepage navigation and site identity decision
+description: Should the docs sidebar be accessible from the homepage? Is the docs site also the marketing site?
+tags: [architecture, development]
+sidebar:
+  label: "04-05 · Homepage nav"
+  order: -20260405
+---
+
+## Decision
+
+**Use `doc` template with `sidebar: hidden` for the homepage** — sidebar is hidden on desktop (clean landing page) but accessible via hamburger on mobile for navigation.
+
+## Context
+
+The homepage uses Starlight's `splash` template, which strips the sidebar and hamburger entirely. On mobile, this means no way to browse the docs from the homepage — only inline header links (Docs, Blog).
+
+## Options considered
+
+1. **Keep splash, no hamburger** — Docs/Blog links inline in header are sufficient. Simple, but users can't browse the page tree from the homepage on mobile.
+2. **Switch to doc template, hide sidebar on desktop** — Hamburger appears on mobile, opens full page tree. Desktop stays clean. ← **Chosen**
+3. **Custom hamburger with minimal menu** — Build a standalone hamburger that opens just Docs/Blog/GitHub, not the full page tree. More work, less useful.
+
+## Why this matters later
+
+This docs site is currently **both the marketing site and the docs site**. If Crosswalker grows to need:
+- Pricing pages
+- A product landing page separate from docs
+- A marketing site with different branding/layout
+
+...then the homepage would move to a separate site/layout, and the docs site would be purely docs (always showing sidebar). At that point, revisit this decision.
+
+## Related
+
+- [Roadmap](/crosswalker/reference/roadmap/) — Community phase may drive this split
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — positioning decisions
