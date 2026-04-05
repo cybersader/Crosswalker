@@ -41,6 +41,9 @@ export default defineConfig({
         src: './public/logo.svg',
       },
       description: 'Import structured ontologies into Obsidian with folder structures, typed links, and metadata',
+      components: {
+        MobileMenuFooter: './src/components/MobileMenuFooter.astro',
+      },
       editLink: {
         baseUrl: 'https://github.com/cybersader/crosswalker/edit/main/docs/',
       },
