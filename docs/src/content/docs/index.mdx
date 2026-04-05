@@ -8,6 +8,12 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <div class="cw-hero" role="img" aria-label="Crosswalker transforms compliance frameworks into a queryable Obsidian knowledge graph">
 
+  {/* === TAGLINE === */}
+  <div class="cw-tagline">
+    <h2 class="cw-headline">The future of compliance<br/>is a <span class="cw-accent">graph.</span></h2>
+    <p class="cw-subtitle">Import frameworks. Link evidence. Evolve with every update. Open source.</p>
+  </div>
+
   {/* === HERO: Full SVG with curved streams, big logo, and labels === */}
   <svg class="cw-flow-svg" viewBox="0 0 880 260" preserveAspectRatio="xMidYMid meet">
     <defs>
@@ -232,6 +238,32 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   h1#_top { display: none; }
   .cw-hero { margin: -0.5rem auto 2rem; max-width: 920px; padding: 0 0.5rem; }
   @media (prefers-reduced-motion: reduce) { .cw-hero * { animation: none !important; } }
+
+  /* ========== TAGLINE ========== */
+  .cw-tagline {
+    text-align: center;
+    padding: 2rem 1rem 0;
+  }
+  .cw-headline {
+    font-family: 'Space Grotesk', var(--sl-font, system-ui, sans-serif);
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--sl-color-white);
+    margin: 0;
+  }
+  .cw-accent { color: var(--sl-color-accent); }
+  .cw-subtitle {
+    font-size: 1rem;
+    color: var(--sl-color-gray-2);
+    margin: 0.75rem 0 0;
+    font-weight: 400;
+  }
+  @media (max-width: 640px) {
+    .cw-tagline { padding: 1rem 0.5rem 0; }
+    .cw-headline { font-size: 1.5rem; }
+    .cw-subtitle { font-size: 0.8rem; }
+  }
 
   /* ========== SVG FLOW DIAGRAM ========== */
   .cw-flow-svg {
