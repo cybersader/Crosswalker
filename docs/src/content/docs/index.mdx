@@ -13,6 +13,17 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   <div class="cw-tagline">
     <h2 class="cw-headline">The future of compliance<br/>is a <span class="cw-accent">knowledge graph.</span></h2>
     <p class="cw-subtitle">Import frameworks. Link evidence. Query everything. Evolve with every update. Open source.</p>
+    <div class="cw-platforms">
+      <a href="https://obsidian.md" class="cw-plat cw-plat-active">
+        <img src="/crosswalker/obsidian-icon.svg" alt="" class="cw-plat-icon" />
+        Obsidian
+      </a>
+      <span class="cw-plat cw-plat-soon">
+        <img src="/crosswalker/notion-icon.svg" alt="" class="cw-plat-icon" />
+        Notion · soon
+      </span>
+      <span class="cw-plat cw-plat-more">+ more</span>
+    </div>
   </div>
 
   {/* === HERO: Full SVG with curved streams, big logo, and labels === */}
@@ -255,6 +266,47 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   .cw-tagline {
     text-align: center;
     padding: 3rem 1rem 0.5rem;
+  }
+
+  /* Platform badges */
+  .cw-platforms {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+  }
+  .cw-plat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .cw-plat-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+  .cw-plat-active {
+    border: 1px solid var(--sl-color-accent);
+    color: var(--sl-color-accent);
+    background: color-mix(in srgb, var(--sl-color-accent) 8%, transparent);
+  }
+  .cw-plat-active .cw-plat-icon { filter: brightness(0) saturate(100%) invert(73%) sepia(52%) saturate(500%) hue-rotate(115deg); }
+  .cw-plat-active:hover { background: color-mix(in srgb, var(--sl-color-accent) 15%, transparent); text-decoration: none; color: var(--sl-color-accent); }
+  .cw-plat-soon {
+    border: 1px solid var(--sl-color-gray-4);
+    color: var(--sl-color-gray-3);
+  }
+  .cw-plat-soon .cw-plat-icon { opacity: 0.4; }
+  .cw-plat-more {
+    color: var(--sl-color-gray-3);
+    font-size: 0.7rem;
+    padding: 0.2rem 0.3rem;
   }
   .cw-headline {
     font-family: 'Space Grotesk', var(--sl-font, system-ui, sans-serif);
