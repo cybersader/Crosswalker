@@ -29,11 +29,11 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
       <path id="pathL3" d="M170,155 C300,155 360,130  440,130" fill="none"/>
       <path id="pathL4" d="M170,205 C300,205 340,130  440,130" fill="none"/>
 
-      {/* Curved paths — center diverging to right items */}
-      <path id="pathR1" d="M440,130 C540,130 580,55  710,55"  fill="none"/>
-      <path id="pathR2" d="M440,130 C540,130 520,105 710,105" fill="none"/>
-      <path id="pathR3" d="M440,130 C540,130 520,155 710,155" fill="none"/>
-      <path id="pathR4" d="M440,130 C540,130 580,205 710,205" fill="none"/>
+      {/* Curved paths — center diverging to right items (shifted down 20px) */}
+      <path id="pathR1" d="M440,130 C540,130 580,75  710,75"  fill="none"/>
+      <path id="pathR2" d="M440,130 C540,130 520,120 710,120" fill="none"/>
+      <path id="pathR3" d="M440,130 C540,130 520,165 710,165" fill="none"/>
+      <path id="pathR4" d="M440,130 C540,130 580,210 710,210" fill="none"/>
     </defs>
 
     {/* Section labels */}
@@ -62,37 +62,37 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
       <text x="105" y="210">Evidence</text>
     </g>
 
-    {/* Right output items — solid teal (structured output from CW) */}
-    <g class="cw-sv-item-out">
-      <rect x="715" y="40" width="135" height="30" rx="6"/>
-      <g transform="translate(723,48) scale(0.8)"><circle cx="10" cy="10" r="8" fill="none" stroke-width="1.8"/><path d="M10 5v6l4 2" fill="none" stroke-width="1.8"/></g>
-      <text x="790" y="60">Queryable</text>
-    </g>
-    <g class="cw-sv-item-out">
-      <rect x="715" y="90" width="135" height="30" rx="6"/>
-      <g transform="translate(723,98) scale(0.8)"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" fill="none" stroke-width="1.8"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" fill="none" stroke-width="1.8"/></g>
-      <text x="790" y="110">Linked</text>
-    </g>
-    <g class="cw-sv-item-out">
-      <rect x="715" y="140" width="135" height="30" rx="6"/>
-      <g transform="translate(723,148) scale(0.8)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
-      <text x="790" y="160">Resilient</text>
-    </g>
-    <g class="cw-sv-item-out">
-      <rect x="715" y="190" width="135" height="30" rx="6"/>
-      <g transform="translate(723,198) scale(0.8)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
-      <text x="790" y="210">Markdown</text>
-    </g>
-
-    {/* Platform logos — aligned with "INSIDE YOUR VAULT" left edge (x≈658) */}
+    {/* Platform logos — below label, above pills, aligned with label left edge */}
     <a href="https://obsidian.md" target="_blank" class="cw-sv-plat-link">
-      <image href="/crosswalker/obsidian-icon.svg" x="658" y="28" width="10" height="10"/>
-      <text x="671" y="36" class="cw-sv-plat-text">Obsidian</text>
+      <image href="/crosswalker/obsidian-icon.svg" x="658" y="32" width="10" height="10"/>
+      <text x="671" y="40" class="cw-sv-plat-text">Obsidian</text>
     </a>
     <a href="https://notion.so" target="_blank" class="cw-sv-plat-link">
-      <image href="/crosswalker/notion-icon.svg" x="712" y="28" width="10" height="10"/>
-      <text x="725" y="36" class="cw-sv-plat-text">Notion · exploring</text>
+      <image href="/crosswalker/notion-icon.svg" x="712" y="32" width="10" height="10"/>
+      <text x="725" y="40" class="cw-sv-plat-text">Notion · exploring</text>
     </a>
+
+    {/* Right output items — shifted down 20px to make room for logos */}
+    <g class="cw-sv-item-out">
+      <rect x="715" y="60" width="135" height="30" rx="6"/>
+      <g transform="translate(723,68) scale(0.8)"><circle cx="10" cy="10" r="8" fill="none" stroke-width="1.8"/><path d="M10 5v6l4 2" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="80">Queryable</text>
+    </g>
+    <g class="cw-sv-item-out">
+      <rect x="715" y="105" width="135" height="30" rx="6"/>
+      <g transform="translate(723,113) scale(0.8)"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" fill="none" stroke-width="1.8"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="125">Linked</text>
+    </g>
+    <g class="cw-sv-item-out">
+      <rect x="715" y="150" width="135" height="30" rx="6"/>
+      <g transform="translate(723,158) scale(0.8)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="170">Resilient</text>
+    </g>
+    <g class="cw-sv-item-out">
+      <rect x="715" y="195" width="135" height="30" rx="6"/>
+      <g transform="translate(723,203) scale(0.8)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
+      <text x="790" y="215">Markdown</text>
+    </g>
 
     {/* Visible stream paths (faint trail) */}
     <use href="#pathL1" class="cw-sv-trail cw-sv-trail-in"/>
