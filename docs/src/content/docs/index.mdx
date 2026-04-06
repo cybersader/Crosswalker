@@ -202,7 +202,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   </svg>
 
   {/* === HERO: Mobile flow diagram (vertical stack, shown only on mobile) === */}
-  <svg class="cw-flow-svg cw-flow-mobile" viewBox="0 0 360 520" preserveAspectRatio="xMidYMid meet">
+  <svg class="cw-flow-svg cw-flow-mobile" viewBox="0 0 360 480" preserveAspectRatio="xMidYMid meet">
     <defs>
       <filter id="m-glow-in"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       <filter id="m-glow-out"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -216,7 +216,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     </defs>
 
     {/* TOP: Outside your knowledgebase */}
-    <text class="cw-sv-label" x="180" y="18" text-anchor="middle">OUTSIDE YOUR KNOWLEDGEBASE</text>
+    <text class="cw-sv-label cw-sv-label-mobile" x="180" y="20" text-anchor="middle">OUTSIDE YOUR KNOWLEDGEBASE</text>
 
     {/* Input pills — 2x2 grid */}
     <g class="cw-sv-item-in">
@@ -258,38 +258,38 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     <circle class="cw-sv-p cw-sv-p-out" r="3.5" filter="url(#m-glow-out)"><animateMotion dur="2.2s" repeatCount="indefinite" begin="1s"><mpath href="#mPathU2"/></animateMotion></circle>
 
     {/* BOTTOM: Inside your knowledgebase */}
-    <text class="cw-sv-label" x="180" y="365" text-anchor="middle">INSIDE YOUR KNOWLEDGEBASE</text>
+    <text class="cw-sv-label cw-sv-label-mobile" x="180" y="355" text-anchor="middle">INSIDE YOUR KNOWLEDGEBASE</text>
 
-    {/* Platform logos */}
+    {/* Platform logos — more space above pills */}
     <a href="https://obsidian.md" target="_blank" class="cw-sv-plat-link">
-      <image href="/crosswalker/obsidian-icon.svg" x="108" y="372" width="12" height="12"/>
-      <text x="123" y="382" class="cw-sv-plat-text">Obsidian</text>
+      <image href="/crosswalker/obsidian-icon.svg" x="108" y="365" width="12" height="12"/>
+      <text x="123" y="375" class="cw-sv-plat-text">Obsidian</text>
     </a>
     <a href="https://notion.so" target="_blank" class="cw-sv-plat-link">
-      <image href="/crosswalker/notion-icon.svg" x="175" y="372" width="12" height="12"/>
-      <text x="190" y="382" class="cw-sv-plat-text">Notion · exploring</text>
+      <image href="/crosswalker/notion-icon.svg" x="175" y="365" width="12" height="12"/>
+      <text x="190" y="375" class="cw-sv-plat-text">Notion · exploring</text>
     </a>
 
-    {/* Output pills — 2x2 grid */}
+    {/* Output pills — 2x2 grid, pushed down for spacing */}
     <g class="cw-sv-item-out">
-      <rect x="10" y="392" width="160" height="32" rx="6"/>
-      <g transform="translate(20,399) scale(0.85)"><circle cx="10" cy="10" r="8" fill="none" stroke-width="1.8"/><path d="M10 5v6l4 2" fill="none" stroke-width="1.8"/></g>
-      <text x="100" y="413">Queryable</text>
+      <rect x="10" y="395" width="160" height="32" rx="6"/>
+      <g transform="translate(20,402) scale(0.85)"><circle cx="10" cy="10" r="8" fill="none" stroke-width="1.8"/><path d="M10 5v6l4 2" fill="none" stroke-width="1.8"/></g>
+      <text x="100" y="416">Queryable</text>
     </g>
     <g class="cw-sv-item-out">
-      <rect x="190" y="392" width="160" height="32" rx="6"/>
-      <g transform="translate(200,399) scale(0.85)"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" fill="none" stroke-width="1.8"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" fill="none" stroke-width="1.8"/></g>
-      <text x="280" y="413">Linked</text>
+      <rect x="190" y="395" width="160" height="32" rx="6"/>
+      <g transform="translate(200,402) scale(0.85)"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" fill="none" stroke-width="1.8"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" fill="none" stroke-width="1.8"/></g>
+      <text x="280" y="416">Linked</text>
     </g>
     <g class="cw-sv-item-out">
-      <rect x="10" y="434" width="160" height="32" rx="6"/>
-      <g transform="translate(20,441) scale(0.85)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
-      <text x="100" y="455">Resilient</text>
+      <rect x="10" y="437" width="160" height="32" rx="6"/>
+      <g transform="translate(20,444) scale(0.85)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
+      <text x="100" y="458">Resilient</text>
     </g>
     <g class="cw-sv-item-out">
-      <rect x="190" y="434" width="160" height="32" rx="6"/>
-      <g transform="translate(200,441) scale(0.85)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
-      <text x="280" y="455">Markdown</text>
+      <rect x="190" y="437" width="160" height="32" rx="6"/>
+      <g transform="translate(200,444) scale(0.85)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
+      <text x="280" y="458">Markdown</text>
     </g>
   </svg>
 
@@ -481,13 +481,20 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   @media (max-width: 640px) {
     .cw-flow-desktop { display: none; }
     .cw-flow-mobile { display: block; }
-    /* Scale up knowledge graph nodes on mobile */
-    .cw-g { transform: scale(1.15); transform-origin: center top; }
-    .cw-ni { font-size: 13px; }
+    /* Knowledge graph: much bigger on mobile */
+    .cw-graph-wrap { padding: 0.3rem; overflow: visible; }
+    .cw-g { transform: scale(1.5); transform-origin: center top; margin-bottom: 80px; }
+    .cw-n circle { r: 28; }
+    .cw-ni { font-size: 14px; }
     .cw-ns { font-size: 9px; }
-    .cw-el { font-size: 9px; }
-    .cw-mt { font-size: 9px; }
-    .cw-graph-caption { font-size: 0.55rem; }
+    .cw-el { font-size: 10px; }
+    .cw-mt { font-size: 10px; }
+    .cw-mb { rx: 5; }
+    .cw-graph-caption { font-size: 0.65rem; gap: 0.6rem; padding-top: 5rem; }
+  }
+  .cw-sv-label-mobile {
+    font-size: 11px;
+    letter-spacing: 0.12em;
   }
   .cw-sv-plat-text {
     font-size: 7px; fill: var(--sl-color-gray-3);
