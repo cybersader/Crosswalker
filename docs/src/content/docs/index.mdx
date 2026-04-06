@@ -88,8 +88,8 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     })();
   `}</script>
 
-  {/* === HERO: Full SVG with curved streams, big logo, and labels === */}
-  <svg class="cw-flow-svg" viewBox="0 0 880 260" preserveAspectRatio="xMidYMid meet">
+  {/* === HERO: Desktop flow diagram (hidden on mobile) === */}
+  <svg class="cw-flow-svg cw-flow-desktop" viewBox="0 0 880 260" preserveAspectRatio="xMidYMid meet">
     <defs>
       {/* Glow filters */}
       <filter id="cw-glow-in"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -199,6 +199,98 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     <circle class="cw-sv-ring" cx="440" cy="130" r="68"/>
     <circle class="cw-sv-ring cw-sv-ring2" cx="440" cy="130" r="68"/>
     <image href="/crosswalker/logo.svg" x="380" y="75" width="120" height="110" filter="url(#cw-logo-glow)"/>
+  </svg>
+
+  {/* === HERO: Mobile flow diagram (vertical stack, shown only on mobile) === */}
+  <svg class="cw-flow-svg cw-flow-mobile" viewBox="0 0 360 520" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <filter id="m-glow-in"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="m-glow-out"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="m-logo-glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      {/* Vertical paths — top items down to logo */}
+      <path id="mPathD1" d="M90,105  C90,140  180,160  180,200" fill="none"/>
+      <path id="mPathD2" d="M270,105 C270,140 180,160  180,200" fill="none"/>
+      {/* Vertical paths — logo down to bottom items */}
+      <path id="mPathU1" d="M180,280 C180,320 90,340   90,375" fill="none"/>
+      <path id="mPathU2" d="M180,280 C180,320 270,340  270,375" fill="none"/>
+    </defs>
+
+    {/* TOP: Outside your knowledgebase */}
+    <text class="cw-sv-label" x="180" y="18" text-anchor="middle">OUTSIDE YOUR KNOWLEDGEBASE</text>
+
+    {/* Input pills — 2x2 grid */}
+    <g class="cw-sv-item-in">
+      <rect x="10" y="32" width="160" height="32" rx="6"/>
+      <g transform="translate(20,39) scale(0.85)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6M8 13h8M8 17h8" fill="none" stroke-width="1.8"/></g>
+      <text x="100" y="53">Frameworks</text>
+    </g>
+    <g class="cw-sv-item-in">
+      <rect x="190" y="32" width="160" height="32" rx="6"/>
+      <g transform="translate(200,39) scale(0.85)"><path d="M13 1H5a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V5z" fill="none" stroke-width="1.8"/><path d="M13 1v4h4M6 9h8M6 12h8M6 15h5" fill="none" stroke-width="1.8"/></g>
+      <text x="280" y="53">Spreadsheets</text>
+    </g>
+    <g class="cw-sv-item-in">
+      <rect x="10" y="74" width="160" height="32" rx="6"/>
+      <g transform="translate(20,81) scale(0.85)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
+      <text x="100" y="95">Policies</text>
+    </g>
+    <g class="cw-sv-item-in">
+      <rect x="190" y="74" width="160" height="32" rx="6"/>
+      <g transform="translate(200,81) scale(0.85)"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" fill="none" stroke-width="1.8"/><path d="M9 5a2 2 0 012-2h2a2 2 0 012 2v0a2 2 0 01-2 2h-2a2 2 0 01-2-2z" fill="none" stroke-width="1.8"/></g>
+      <text x="280" y="95">Evidence</text>
+    </g>
+
+    {/* Stream trails down */}
+    <use href="#mPathD1" class="cw-sv-trail cw-sv-trail-in"/>
+    <use href="#mPathD2" class="cw-sv-trail cw-sv-trail-in"/>
+    <circle class="cw-sv-p cw-sv-p-in" r="4" filter="url(#m-glow-in)"><animateMotion dur="2s" repeatCount="indefinite" begin="0s"><mpath href="#mPathD1"/></animateMotion></circle>
+    <circle class="cw-sv-p cw-sv-p-in" r="3" filter="url(#m-glow-in)"><animateMotion dur="2.2s" repeatCount="indefinite" begin="0.7s"><mpath href="#mPathD2"/></animateMotion></circle>
+
+    {/* CENTER: Logo */}
+    <circle class="cw-sv-ring" cx="180" cy="240" r="55"/>
+    <circle class="cw-sv-ring cw-sv-ring2" cx="180" cy="240" r="55"/>
+    <image href="/crosswalker/logo.svg" x="130" y="195" width="100" height="90" filter="url(#m-logo-glow)"/>
+
+    {/* Stream trails down from logo */}
+    <use href="#mPathU1" class="cw-sv-trail cw-sv-trail-out"/>
+    <use href="#mPathU2" class="cw-sv-trail cw-sv-trail-out"/>
+    <circle class="cw-sv-p cw-sv-p-out" r="4" filter="url(#m-glow-out)"><animateMotion dur="2s" repeatCount="indefinite" begin="0.3s"><mpath href="#mPathU1"/></animateMotion></circle>
+    <circle class="cw-sv-p cw-sv-p-out" r="3.5" filter="url(#m-glow-out)"><animateMotion dur="2.2s" repeatCount="indefinite" begin="1s"><mpath href="#mPathU2"/></animateMotion></circle>
+
+    {/* BOTTOM: Inside your knowledgebase */}
+    <text class="cw-sv-label" x="180" y="365" text-anchor="middle">INSIDE YOUR KNOWLEDGEBASE</text>
+
+    {/* Platform logos */}
+    <a href="https://obsidian.md" target="_blank" class="cw-sv-plat-link">
+      <image href="/crosswalker/obsidian-icon.svg" x="108" y="372" width="12" height="12"/>
+      <text x="123" y="382" class="cw-sv-plat-text">Obsidian</text>
+    </a>
+    <a href="https://notion.so" target="_blank" class="cw-sv-plat-link">
+      <image href="/crosswalker/notion-icon.svg" x="175" y="372" width="12" height="12"/>
+      <text x="190" y="382" class="cw-sv-plat-text">Notion · exploring</text>
+    </a>
+
+    {/* Output pills — 2x2 grid */}
+    <g class="cw-sv-item-out">
+      <rect x="10" y="392" width="160" height="32" rx="6"/>
+      <g transform="translate(20,399) scale(0.85)"><circle cx="10" cy="10" r="8" fill="none" stroke-width="1.8"/><path d="M10 5v6l4 2" fill="none" stroke-width="1.8"/></g>
+      <text x="100" y="413">Queryable</text>
+    </g>
+    <g class="cw-sv-item-out">
+      <rect x="190" y="392" width="160" height="32" rx="6"/>
+      <g transform="translate(200,399) scale(0.85)"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" fill="none" stroke-width="1.8"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" fill="none" stroke-width="1.8"/></g>
+      <text x="280" y="413">Linked</text>
+    </g>
+    <g class="cw-sv-item-out">
+      <rect x="10" y="434" width="160" height="32" rx="6"/>
+      <g transform="translate(20,441) scale(0.85)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
+      <text x="100" y="455">Resilient</text>
+    </g>
+    <g class="cw-sv-item-out">
+      <rect x="190" y="434" width="160" height="32" rx="6"/>
+      <g transform="translate(200,441) scale(0.85)"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="none" stroke-width="1.8"/><path d="M14 2v6h6" fill="none" stroke-width="1.8"/></g>
+      <text x="280" y="455">Markdown</text>
+    </g>
   </svg>
 
   {/* === Funnel — particles drifting down into graph === */}
@@ -383,6 +475,19 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   .cw-flow-svg {
     width: 100%; height: auto; display: block;
     margin: 1.5rem 0 0;
+  }
+  /* Desktop/mobile SVG toggle */
+  .cw-flow-mobile { display: none; }
+  @media (max-width: 640px) {
+    .cw-flow-desktop { display: none; }
+    .cw-flow-mobile { display: block; }
+    /* Scale up knowledge graph nodes on mobile */
+    .cw-g { transform: scale(1.15); transform-origin: center top; }
+    .cw-ni { font-size: 13px; }
+    .cw-ns { font-size: 9px; }
+    .cw-el { font-size: 9px; }
+    .cw-mt { font-size: 9px; }
+    .cw-graph-caption { font-size: 0.55rem; }
   }
   .cw-sv-plat-text {
     font-size: 7px; fill: var(--sl-color-gray-3);
