@@ -15,6 +15,20 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     <p class="cw-subtitle">Import frameworks. Link evidence. Query everything. Evolve with every update. Open source.</p>
   </div>
 
+  <script>{`
+    (function() {
+      const rotate = document.querySelector('.cw-rotate');
+      const words = document.querySelectorAll('.cw-rotate > span');
+      if (!rotate || !words.length) return;
+      let i = 0;
+      const n = words.length;
+      setInterval(() => {
+        i = (i + 1) % n;
+        rotate.style.transform = 'translateY(-' + (i * 1.15) + 'em)';
+      }, 2500);
+    })();
+  `}</script>
+
   {/* === HERO: Full SVG with curved streams, big logo, and labels === */}
   <svg class="cw-flow-svg" viewBox="0 0 880 260" preserveAspectRatio="xMidYMid meet">
     <defs>
@@ -267,33 +281,26 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     padding: 3rem 1rem 0.5rem;
   }
 
-  /* Rotating word animation */
+  /* Rotating word animation — fixed width to longest word, left-aligned */
   .cw-rotate-wrap {
     display: inline-block;
     overflow: hidden;
     vertical-align: bottom;
     height: 1.15em;
+    width: 16.5ch;
     position: relative;
   }
   .cw-rotate {
-    display: inline-flex;
+    display: flex;
     flex-direction: column;
-    animation: cw-word-rotate 15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .cw-rotate > span {
     display: block;
     height: 1.15em;
     line-height: 1.15;
-  }
-  /* 6 words × 2.5s each = 15s total */
-  @keyframes cw-word-rotate {
-    0%, 13.33%    { transform: translateY(0); }
-    16.67%, 30%   { transform: translateY(-1.15em); }
-    33.33%, 46.67%{ transform: translateY(-2.3em); }
-    50%, 63.33%   { transform: translateY(-3.45em); }
-    66.67%, 80%   { transform: translateY(-4.6em); }
-    83.33%, 96.67%{ transform: translateY(-5.75em); }
-    100%          { transform: translateY(-6.9em); }
+    white-space: nowrap;
+    text-align: left;
   }
 
   .cw-headline {
