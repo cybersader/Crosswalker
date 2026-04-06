@@ -48,6 +48,15 @@ export default defineConfig({
         baseUrl: 'https://github.com/cybersader/crosswalker/edit/main/docs/',
       },
       plugins: [
+        starlightAnnouncement({
+          announcements: [{
+            id: 'early-alpha',
+            content: '🚧 Early alpha — building the foundation.',
+            link: { text: 'See the roadmap →', href: '/crosswalker/reference/roadmap/' },
+            variant: 'caution',
+            dismissible: true,
+          }],
+        }),
         nova({
           nav: [
             { label: 'Docs', href: '/crosswalker/getting-started/installation/' },
