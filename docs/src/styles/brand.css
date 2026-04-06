@@ -1,3 +1,7 @@
+/* Navbar title font — Space Grotesk: geometric, techy, sharp.
+   @import MUST be first in the file or browsers ignore it. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap');
+
 /* Crosswalker — cybersecurity-themed dark palette */
 
 /* Larger base font on wide screens — feels too small at 100% on big monitors.
@@ -12,9 +16,6 @@
     font-size: 118%;
   }
 }
-
-/* Navbar title font — Space Grotesk: geometric, techy, sharp */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap');
 
 .site-title { font-family: 'Space Grotesk', var(--sl-font, system-ui, sans-serif) !important; }
 /* Starlight wraps the title in an <a> with data-astro attributes — target the text span */
