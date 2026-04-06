@@ -166,7 +166,7 @@
 
    This fixes mobile landscape (e.g. Samsung Galaxy S21 Ultra = ~915px)
    and narrow desktop windows. */
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1151px) {
   /* Hide left sidebar — not enough room for sidebar + content.
      Hamburger click still works via data-mobile-menu-expanded. */
   #starlight__sidebar {
