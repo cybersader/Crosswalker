@@ -44,6 +44,7 @@ Architecture decisions before more code. The three interconnected schemas (_cros
 - [ ] **PII scanning in CI/CD** — automated detection of personal paths, secrets, API keys before push
 - [ ] Bug fixes and polish on current MVP
 - [ ] Expand E2E smoke tests minimally (don't test wizard UI — [it will change](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#6-e2e-testing-after-architecture))
+- [ ] **Fluid layout scaling** — replace rigid Nova breakpoints (768/1152px) with `clamp()` CSS so spacing adapts to browser zoom. Current fix: extended breakpoint to 1152px. Full fix: fluid custom properties for `--sl-nav-height`, `--sl-content-pad-x`, typography scale. ~3-5 hours.
 
 ---
 
