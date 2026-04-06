@@ -5,7 +5,7 @@
 <h1 align="center">Crosswalker</h1>
 
 <p align="center">
-  <strong>Turn your Obsidian vault into an operational compliance knowledge graph.</strong>
+  <strong>Turn your Obsidian vault into an operational GRC knowledge graph.</strong>
 </p>
 
 <p align="center">
