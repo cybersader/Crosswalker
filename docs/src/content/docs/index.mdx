@@ -11,7 +11,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
   {/* === TAGLINE === */}
   <div class="cw-tagline">
-    <h2 class="cw-headline">The future of <span class="cw-rotate-wrap"><span class="cw-rotate"><span>compliance</span><span>risk management</span><span>governance</span><span>framework mapping</span><span>evidence management</span><span>internal audit</span></span></span><br/>is a <span class="cw-accent">knowledge graph.</span></h2>
+    <h2 class="cw-headline">The future of <span class="cw-rotate-wrap"><span class="cw-rotate"><span>compliance</span><span>risk management</span><span>governance</span><span>framework mapping</span><span>evidence management</span><span>internal audit</span><span>compliance</span></span></span><br/>is a <span class="cw-accent">knowledge graph.</span></h2>
     <p class="cw-subtitle">Import frameworks. Link evidence. Query everything. Evolve with every update. Open source.</p>
   </div>
 
@@ -41,13 +41,28 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
           requestAnimationFrame(function() {
             var widths = measure();
             var i = 0;
-            var n = words.length;
+            var real = words.length - 1; // last word is duplicate of first
             wrap.style.width = widths[0] + 'px';
 
             setInterval(function() {
-              i = (i + 1) % n;
+              i++;
               wrap.style.width = widths[i] + 'px';
               rotate.style.transform = 'translateY(-' + (i * 1.15) + 'em)';
+              if (i >= real) {
+                setTimeout(function() {
+                  rotate.style.transition = 'none';
+                  rotate.style.transform = 'translateY(0)';
+                  wrap.style.transition = 'none';
+                  wrap.style.width = widths[0] + 'px';
+                  i = 0;
+                  requestAnimationFrame(function() {
+                    requestAnimationFrame(function() {
+                      rotate.style.transition = 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+                      wrap.style.transition = 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+                    });
+                  });
+                }, 600);
+              }
             }, 2500);
 
             // Re-measure on resize (handles zoom changes)
