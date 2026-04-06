@@ -235,13 +235,15 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 </div>
 
 <style>{`
-  /* Homepage: hide sidebar + right panel on desktop, keep hamburger functional on mobile */
+  /* Homepage: hide sidebar + right panel on desktop, keep hamburger functional on mobile.
+     Force content to center by removing all sidebar offsets at every width. */
   .right-sidebar-container, .right-sidebar { display: none !important; }
   .content-panel { border-top: none !important; padding-top: 0 !important; }
-  .main-pane { padding-top: 0 !important; }
+  .main-pane { padding-top: 0 !important; width: 100% !important; max-width: 100% !important; }
+  .main-frame { padding-inline-start: 0 !important; }
+  .sl-container { max-width: 920px !important; margin: 0 auto !important; }
   @media (min-width: 768px) {
     #starlight__sidebar { display: none !important; }
-    .main-frame { padding-inline-start: 0 !important; }
   }
 
   /* Hide the auto-generated h1 */
@@ -252,27 +254,24 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   /* ========== TAGLINE ========== */
   .cw-tagline {
     text-align: center;
-    padding: 2rem 1rem 0;
+    padding: 3rem 1rem 0.5rem;
   }
   .cw-headline {
     font-family: 'Space Grotesk', var(--sl-font, system-ui, sans-serif);
-    font-size: 2.2rem;
+    font-size: clamp(1.8rem, 1rem + 4vw, 3.5rem);
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.15;
     color: var(--sl-color-white);
     margin: 0;
+    letter-spacing: -0.02em;
   }
   .cw-accent { color: var(--sl-color-accent); }
   .cw-subtitle {
-    font-size: 1rem;
+    font-size: clamp(0.85rem, 0.6rem + 1.2vw, 1.25rem);
     color: var(--sl-color-gray-2);
-    margin: 0.75rem 0 0;
+    margin: 1rem 0 0;
     font-weight: 400;
-  }
-  @media (max-width: 640px) {
-    .cw-tagline { padding: 1rem 0.5rem 0; }
-    .cw-headline { font-size: 1.5rem; }
-    .cw-subtitle { font-size: 0.8rem; }
+    letter-spacing: 0.01em;
   }
 
   /* ========== SVG FLOW DIAGRAM ========== */
