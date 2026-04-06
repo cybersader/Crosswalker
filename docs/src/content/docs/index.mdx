@@ -16,7 +16,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   </div>
 
   {/* === HERO: Full SVG with curved streams, big logo, and labels === */}
-  <svg class="cw-flow-svg" viewBox="0 0 880 280" preserveAspectRatio="xMidYMid meet">
+  <svg class="cw-flow-svg" viewBox="0 0 880 260" preserveAspectRatio="xMidYMid meet">
     <defs>
       {/* Glow filters */}
       <filter id="cw-glow-in"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -84,14 +84,14 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
       <text x="790" y="210">Markdown</text>
     </g>
 
-    {/* Platform logos — aligned under right column */}
+    {/* Platform logos — right below "INSIDE YOUR VAULT" label */}
     <a href="https://obsidian.md" target="_blank" class="cw-sv-plat-link">
-      <image href="/crosswalker/obsidian-icon.svg" x="670" y="234" width="14" height="14"/>
-      <text x="687" y="245" class="cw-sv-plat-text">Obsidian</text>
+      <image href="/crosswalker/obsidian-icon.svg" x="670" y="28" width="12" height="12"/>
+      <text x="685" y="37" class="cw-sv-plat-text">Obsidian</text>
     </a>
     <a href="https://notion.so" target="_blank" class="cw-sv-plat-link">
-      <image href="/crosswalker/notion-icon.svg" x="730" y="234" width="14" height="14"/>
-      <text x="747" y="245" class="cw-sv-plat-text">Notion · exploring</text>
+      <image href="/crosswalker/notion-icon.svg" x="725" y="28" width="12" height="12"/>
+      <text x="740" y="37" class="cw-sv-plat-text">Notion · exploring</text>
     </a>
 
     {/* Visible stream paths (faint trail) */}
