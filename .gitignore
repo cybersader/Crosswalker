@@ -9,8 +9,11 @@ node_modules/
 **/workspace.json
 **/workspace-mobile.json
 
-# Root .obsidian folder (if repo opened as vault)
-/.obsidian/
+# Root .obsidian — keep config, ignore user-specific state
+/.obsidian/workspace.json
+/.obsidian/workspace-mobile.json
+/.obsidian/cache/
+/.obsidian/plugins/*/data.json
 
 # Test vault - ignore build artifacts and cache, keep test data
 test-vault/.obsidian/plugins/crosswalker/main.js
@@ -46,8 +49,9 @@ npm-debug.log*
 # Claude Code local settings (contains user-specific paths)
 .claude/settings.local.json
 
-# Local workspace (architecture drafts, working docs — not synced)
-.workspace/
+# Local workspace — folder tracked (so contributors get it), contents ignored
+.workspace/*
+!.workspace/.gitkeep
 
 # E2E test artifacts
 test-results/
