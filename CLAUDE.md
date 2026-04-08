@@ -170,6 +170,26 @@ The roadmap lives in two places that must stay in sync:
 
 **Every significant decision** gets a dated log entry in `docs/src/content/docs/agent-context/zz-log/`. Roadmap items should link to their log entries so the reasoning is always reachable.
 
+## Local Workspace (`.workspace/`)
+
+The `.workspace/` folder at the repo root is **gitignored** — it holds local working documents for architecture exploration, research drafts, and back-and-forth thinking that isn't ready for the public knowledge base.
+
+**When to use `.workspace/`:**
+- Architecture exploration before decisions are made
+- Draft schemas, data models, and design proposals
+- Research synthesis from external agents or conversations
+- Anything that needs iteration before committing to the KB
+
+**File naming:** Same dated pattern as log files: `YYYY-MM-DD-<topic-slug>.md`
+
+**Lifecycle:**
+- Working docs start here
+- When a decision is made → create a dated log entry in `docs/src/content/docs/agent-context/zz-log/` with the decision and rationale
+- When a concept crystallizes → move relevant content to the docs KB
+- Old workspace files can be deleted once their decisions are logged
+
+**Key difference from `zz-log/`:** Workspace docs are messy, in-progress, and local. Log entries are clean, decided, and public.
+
 ## Extended Documentation
 
 For detailed project knowledge, architecture decisions, and roadmap, see `.claude/` folder:
