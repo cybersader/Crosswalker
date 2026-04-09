@@ -1,0 +1,135 @@
+---
+title: "Research: atomic operations on graphs — are the 13 primitives primitive enough?"
+description: Literature survey of graph edit distance, ontology diff, tree-diff, schema evolution, and category theory to determine the provably complete set of atomic operations for describing structural changes.
+tags: [research, architecture, data-model, data-model-evolution, first-principles]
+sidebar:
+  label: "04-09 · Atomic operations research"
+  order: -20260409
+---
+
+## Question
+
+Are the [13 structural change primitives](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) truly primitive? Or are some of them composite operations that decompose into simpler atoms? What does the literature say about the **provably complete minimal set** of operations for transforming one labeled directed graph into another?
+
+## Answer: 6 mathematical atoms, our 9 are a valid refinement
+
+The literature converges on **6 atomic operations** as the provably complete minimal set:
+
+| # | Operation | Proven by |
+|---|---|---|
+| 1 | Node insertion | GED (Bunke & Allermann 1983), Algebraic Graph Transformation (Ehrig et al. 2006) |
+| 2 | Node deletion | Same |
+| 3 | Node relabeling | Same |
+| 4 | Edge insertion | Same |
+| 5 | Edge deletion | Same |
+| 6 | Edge relabeling | Same |
+
+**Completeness proof:** For any two finite labeled directed graphs G1 and G2, there exists a finite sequence of these 6 operations that transforms G1 into G2. Proven via category theory (pushout constructions) and constructively (delete everything in G1, insert everything in G2).
+
+Our refinement of "node relabeling" into three sub-types (id_changed, properties_changed, type_changed) and "edge relabeling" into two sub-types (type_changed, properties_changed) is a **pragmatic design choice** supported by schema evolution practice (RENAME is universally treated as distinct from ALTER) and ontology tools (PROMPT, OntoDiff). It's a superset of the minimal complete set, so completeness is preserved.
+
+## What the literature says per domain
+
+### Graph Edit Distance (GED)
+**Bunke & Allermann 1983, Sanfeliu & Fu 1983**
+
+Six operations. Provably complete. GED is NP-hard in general but polynomial for special graph classes. The six operations are the mathematical gold standard.
+
+### Ontology diff tools (OntoDiff, PROMPT, ContentCVS)
+**Klein 2004, Noy & Musen 2004**
+
+All use a **two-tier model**: atomic changes + detected composite changes. Atomic operations align with GED's six. Composites include merge, split, move, pull-up, push-down, flatten, deepen. This two-tier model validates our approach of having both atomic primitives and recognized composites.
+
+### SKOS / ISO 25964
+**ISO 25964-1:2011**
+
+Thesauri management recognizes add, deprecate (NOT delete), merge, split, restructure. Key insight: **deprecation as a first-class concept** — thesauri never truly delete, they deprecate and redirect. This is a properties_changed + edge additions in our model, but worth recognizing as a pattern.
+
+### Schema evolution (Liquibase, PRISM)
+**Curino et al. 2008**
+
+PRISM proved 11 Schema Modification Operators are **complete for relational schemas**. Key insight: RENAME is always treated as atomic and distinct from ALTER — validates our separation of id_changed from properties_changed.
+
+### Tree-diff (GumTree, Chawathe et al.)
+**Chawathe et al. 1996, Falleri et al. 2014**
+
+Four operations for ordered trees: insert, delete, update, **move**. Move is treated as atomic even though it decomposes into delete + insert — because detecting it as a unit produces dramatically better change descriptions. **This is the strongest challenge to our primitive set: we should add `node.moved` as a recognized operation.**
+
+### Category theory / algebraic graph transformation
+**Ehrig et al. 2006**
+
+The definitive mathematical framework. Six elementary operations via Double Pushout (DPO) construction. Provably complete. Everything else is provably a composition.
+
+### Change ontologies (Stojanovic 2004, Papavassiliou et al. 2009)
+**Stojanovic 2004**
+
+15 elementary changes for OWL ontologies. When you strip away OWL-specific semantics, they reduce to the GED six plus domain refinements. Universally distinguish atomic from composite.
+
+## Revised operation set
+
+### Tier 1 — True atomics (9 operations)
+Refinement of the mathematical 6, preserving completeness:
+
+| # | Operation | Mathematical basis |
+|---|---|---|
+| 1 | `node.added` | node insertion |
+| 2 | `node.removed` | node deletion |
+| 3 | `node.id_changed` | node relabeling (identity) |
+| 4 | `node.properties_changed` | node relabeling (data) |
+| 5 | `node.type_changed` | node relabeling (type) |
+| 6 | `edge.added` | edge insertion |
+| 7 | `edge.removed` | edge deletion |
+| 8 | `edge.type_changed` | edge relabeling (type) |
+| 9 | `edge.properties_changed` | edge relabeling (data) |
+
+### Tier 2 — Recognized composites (detected patterns)
+Not primitive but recognized as units for UX and change comprehension:
+
+| # | Operation | Decomposes into | Why recognize it |
+|---|---|---|---|
+| 10 | `node.moved` | edge.removed + edge.added | 30 years of tree-diff research says this is essential for readable diffs (Chawathe 1996, GumTree 2014) |
+| 11 | `subgraph.merged` | node.removed + edge ops + property merge | Universal in ontology evolution literature |
+| 12 | `subgraph.split` | node.added + edge ops + property split | Inverse of merge |
+| 13 | `hierarchy.restructured` | Multiple edge operations | Catch-all for complex reorganizations |
+
+### Changes from original 13
+- **Dropped:** `hierarchy.depth_changed` — redundant with hierarchy.restructured; depth change is a measurable property of restructuring, not a separate operation
+- **Added:** `node.moved` — strong literature support as a recognized composite (replaces the depth_changed slot)
+- **Explicitly tiered:** 9 true atomics vs. 4 recognized composites
+
+### Operations we considered but excluded
+- **Deprecation:** Sub-case of properties_changed (adding deprecated flag) + edge additions (redirect). Common pattern, not distinct operation.
+- **Copy/clone:** Decomposes into insert + property copy. Not atomic.
+- **Edge reversal:** Decomposes into delete + insert with swapped endpoints. Not atomic.
+- **Edge retargeting** (change source/target): Interesting for preserving edge identity through moves. May add later as `edge.source_changed` / `edge.target_changed` if needed.
+
+## Implications for Crosswalker
+
+1. **The 9 atomic operations are the foundation.** They're a provably complete set. Every possible change to a labeled directed graph can be expressed as a sequence of these 9.
+
+2. **The 4 recognized composites are the UX layer.** They exist because users and agents need readable change descriptions, not because the math requires them.
+
+3. **This is exactly the "tight to first principles while allowing extension of opinionation" architecture** — the atoms are non-negotiable math, the composites are pragmatic engineering, and the [per-framework decisioning](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-4-decisioning-as-per-framework-taxonomy-taxonomy-over-taxonomies) is opinionated extension on top.
+
+4. **The schema can confidently build on this.** The diff engine produces a sequence of tier-1 atoms. The composite detector groups them into tier-2 patterns. The decisioning layer maps each to a handling strategy. Each layer is independently testable and independently extensible.
+
+## Sources
+
+- Bunke, H. & Allermann, G. (1983). "Inexact graph matching for structural pattern recognition." *Pattern Recognition Letters*, 1(4), 245–253.
+- Sanfeliu, A. & Fu, K.S. (1983). "A distance measure between attributed relational graphs." *IEEE Trans. SMC*, 13(3), 353–362.
+- Zhang, K. & Shasha, D. (1989). "Simple fast algorithms for the editing distance between trees." *SIAM J. Computing*, 18(6), 1245–1262.
+- Chawathe, S.S. et al. (1996). "Change detection in hierarchically structured information." *ACM SIGMOD*, 25(2), 493–504.
+- Noy, N.F. & Musen, M.A. (2004). "Ontology versioning in an ontology management framework." *IEEE Intelligent Systems*, 19(4), 6–13.
+- Klein, M. (2004). *Change Management for Distributed Ontologies.* PhD Thesis, VU Amsterdam.
+- Stojanovic, L. (2004). *Methods and Tools for Ontology Evolution.* PhD Thesis, University of Karlsruhe.
+- Ehrig, H. et al. (2006). *Fundamentals of Algebraic Graph Transformation.* Springer.
+- Curino, C. et al. (2008). "Graceful database schema evolution: The PRISM workbench." *VLDB*, 1(1), 761–772.
+- Falleri, J-R. et al. (2014). "Fine-grained and accurate source code differencing." *ASE*, 313–324.
+- Gao, X. et al. (2010). "A survey of graph edit distance." *Pattern Analysis and Applications*, 13(1), 113–129.
+- ISO 25964-1:2011. "Information and documentation — Thesauri and interoperability with other vocabularies."
+
+## Related
+
+- [First principles: ontology change](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) — the original 13 primitives
+- [User-first ontology maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) — the experience layer
+- [Primitives depth + pluggable layers](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) — the layer model
