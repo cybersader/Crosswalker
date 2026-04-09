@@ -11,13 +11,13 @@ sidebar:
 
 The [previous log](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) defined the problem from the DATA STRUCTURE level — 13 structural change primitives, hash-based staleness detection, identity resolution. That's the engine.
 
-This log asks the question Steve Jobs would ask: **start with the user experience and work backwards to the technology.**
+This log comes at it differently: **start with the entities that are utilizing this instance of the system** — agents or people — and figure out how to **make this system efficacious for those entities.** Then work backwards to what the technology needs to be. This is the Steve Jobs approach: start with the customer, work backwards.
 
-Who are the entities using this system? What do they need? What does it FEEL like to keep ontologies current? Then: what system makes that feeling happen?
+The previous log explored the problem at the "philosophical data structure level along with conventions." This log asks: what does the system actually look like when a person or agent is **going through and fixing things?** What are our routes forward?
 
 ## The entities
 
-Two types of entities interact with Crosswalker:
+The entities that are utilizing this instance of the system are either **agents or people**. Two types, same underlying system:
 
 ### Humans
 - **GRC analyst** — maintains compliance mappings, maps evidence to controls, runs gap analysis
@@ -31,7 +31,7 @@ Two types of entities interact with Crosswalker:
 - **Matching agent** — suggests crosswalk mappings between frameworks using semantic similarity
 - **Report generator** — pulls structured data from the graph for compliance reports
 
-Both humans and agents need the SAME underlying system. The difference is the interface — humans get forms and visual feedback, agents get APIs and structured responses.
+Both humans and agents need the SAME underlying system. The goal is to **make this system efficacious for those entities** — whether that entity is a compliance analyst clicking through a form or an AI agent executing a migration plan. The difference is the interface, not the engine.
 
 ## The scenario: NIST publishes a new version
 
@@ -108,7 +108,7 @@ SR (new family): Supply Chain
 | Hierarchy restructured | Move files, keep in place with updated metadata |
 | Edge added/removed | Update crosswalk links, flag for review |
 
-**This is the core UX decision:** Is this a FORM? A WIZARD? A MARKDOWN FILE the user edits? A combination?
+**This is the core UX decision:** Is this a **guided form-based system with things stored in the background as some sort of structured language or convention or code** — i.e., JSON or YAML? Is it a wizard? A markdown file the user edits? The question is: what does it look like when the user is **going through and fixing things?**
 
 ### Step 4: Execution
 **What the user sees:** A progress indicator as Crosswalker applies their decisions:
@@ -170,7 +170,7 @@ Review queue (11 items):
 - User reviews and edits the YAML (or an agent does)
 - System executes the plan
 
-**This IS the progressive depth model:** beginners use the form, power users edit the YAML, agents generate and execute plans programmatically.
+**This IS the progressive depth model** — i.e., a guided form-based system with things stored in the background as structured code. Beginners use the form, power users edit the YAML, agents generate and execute plans programmatically. The key is **how we translate core logic into various libraries and the tightest we can make the consolidation** — every interface is a thin wrapper over the same engine.
 
 ### Interface 3: CLI
 **Best for:** CI/CD pipelines, scheduled checks, headless servers
@@ -214,7 +214,7 @@ In this user-first framing:
 
 **Path C clearly wins in this framing.** The taxonomy is a DEFAULT STRATEGY SELECTOR, not a philosophical classification. It answers: "what should the radio buttons be pre-selected to?"
 
-## Open questions
+## Routes forward — open questions
 
 - [ ] **Form vs YAML vs both:** Do we build the form first (most users) or the YAML first (most flexible)?
 - [ ] **Migration plan format:** What does the YAML schema look like? How does it reference the 13 primitives?
@@ -225,7 +225,7 @@ In this user-first framing:
 
 ## The first-principles constraint
 
-Everything above must stay tight to first principles while allowing extension:
+Everything above must **keep tight to first principles while still allowing for extension of opinionation** — that's the design constraint at the heart of Crosswalker:
 
 **First principles (non-negotiable):**
 - Changes are compositions of 13 structural primitives
@@ -239,7 +239,7 @@ Everything above must stay tight to first principles while allowing extension:
 - Execution engine (Obsidian vault ops, filesystem ops, API calls)
 - Notification system (Obsidian notice, email, webhook)
 
-This separation — **primitives are fixed, opinions are pluggable** — is how the system stays first-principled while allowing different users, teams, and agents to work the way they prefer.
+This separation — **primitives are fixed, opinions are pluggable** — is how the system stays tight to first principles while allowing extension of opinionation. Different entities (agents or people), different preferences, same underlying truth. The viewing and export problem is fundamentally about **pulling out structured representations of the data from a graph-based underlying structure** — and each interface is just a different projection of that graph.
 
 ## Related
 
