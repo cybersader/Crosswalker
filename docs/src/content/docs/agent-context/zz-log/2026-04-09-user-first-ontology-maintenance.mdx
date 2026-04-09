@@ -1,0 +1,249 @@
+---
+title: "User-first ontology maintenance: what does the experience look like?"
+description: Starting from the user (human or agent) and working backwards — what does it feel like to keep ontologies up to date? What does the system actually DO when frameworks change?
+tags: [architecture, data-model, data-model-evolution, ux]
+sidebar:
+  label: "04-09 · User-first maintenance"
+  order: -20260409
+---
+
+## The shift in perspective
+
+The [previous log](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) defined the problem from the DATA STRUCTURE level — 13 structural change primitives, hash-based staleness detection, identity resolution. That's the engine.
+
+This log asks the question Steve Jobs would ask: **start with the user experience and work backwards to the technology.**
+
+Who are the entities using this system? What do they need? What does it FEEL like to keep ontologies current? Then: what system makes that feeling happen?
+
+## The entities
+
+Two types of entities interact with Crosswalker:
+
+### Humans
+- **GRC analyst** — maintains compliance mappings, maps evidence to controls, runs gap analysis
+- **Security engineer** — imports frameworks for reference, links technical controls to policies
+- **Auditor** — needs current state of compliance, evidence trail, what changed since last audit
+- **Manager** — wants dashboards, coverage percentages, risk posture
+
+### Agents (AI/automation)
+- **Import agent** — detects new framework versions, triggers re-import
+- **Staleness detector** — flags crosswalk links that might be outdated
+- **Matching agent** — suggests crosswalk mappings between frameworks using semantic similarity
+- **Report generator** — pulls structured data from the graph for compliance reports
+
+Both humans and agents need the SAME underlying system. The difference is the interface — humans get forms and visual feedback, agents get APIs and structured responses.
+
+## The scenario: NIST publishes a new version
+
+Walk through the complete experience:
+
+### Step 1: Detection
+**What the user sees:** A notification (in Obsidian, or via CLI check): "NIST 800-53 Rev 6 is available. Your vault has Rev 5."
+
+**What the system did:** Compared the user's `_crosswalker.source_version` against a known registry of framework versions. This could be:
+- Manual: user downloads new CSV and imports it
+- Semi-auto: plugin checks a community registry for version updates
+- Auto: CI/CD pipeline detects new version in a watched repository
+
+**Open question:** Where does the "known versions" registry live? Community-maintained JSON? GitHub repo? Built into the plugin?
+
+### Step 2: Diff
+**What the user sees:** A diff view showing exactly what changed:
+```
+NIST 800-53: Rev 5 → Rev 6
+
+Added (12 controls):
+  + AC-24: Secure Communication Channels
+  + SC-51: Hardware Separation
+  ...
+
+Removed (3 controls):
+  - AC-19(2): merged into AC-19
+  - SC-15: withdrawn
+  ...
+
+Changed (47 controls):
+  ~ AC-2: description updated, 2 new enhancements
+  ~ AC-3: renamed enhancement AC-3(15) → AC-3(16)
+  ...
+
+Hierarchy changes:
+  ↳ New family: Supply Chain (SR) split from System & Services Acquisition (SA)
+```
+
+**What the system did:** Applied the [13 structural change primitives](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) to produce this diff. Compared source hashes, matched node IDs, detected renames via alias tables or fuzzy matching.
+
+**Key UX question:** Is this a modal in Obsidian? A generated markdown note? A side panel? A CLI output?
+
+### Step 3: Decision
+**What the user sees:** For each change, a guided choice:
+
+```
+AC-2: description updated, 2 new enhancements added
+  ○ Update in place (overwrite current note properties)
+  ○ Keep both versions (create Rev 6 note, keep Rev 5)
+  ○ Skip (don't import this change)
+  ○ Review manually later (flag for review)
+
+AC-19(2): merged into AC-19
+  ○ Archive AC-19(2) note, redirect links to AC-19
+  ○ Keep AC-19(2) with "deprecated" status
+  ○ Delete AC-19(2) entirely
+  ○ Review manually later
+
+SR (new family): Supply Chain
+  ○ Import all 15 controls as new notes
+  ○ Import selectively (choose which)
+  ○ Skip entire family
+```
+
+**What the system did:** For each structural change primitive, presented a set of HANDLING STRATEGIES. The strategies are:
+
+| Change type | Possible strategies |
+|---|---|
+| Node added | Import, skip, import later |
+| Node removed | Archive, delete, keep with deprecated flag, redirect links |
+| Node ID changed | Alias (old→new), rename note, keep both |
+| Node properties changed | Overwrite, merge, keep both versions |
+| Hierarchy restructured | Move files, keep in place with updated metadata |
+| Edge added/removed | Update crosswalk links, flag for review |
+
+**This is the core UX decision:** Is this a FORM? A WIZARD? A MARKDOWN FILE the user edits? A combination?
+
+### Step 4: Execution
+**What the user sees:** A progress indicator as Crosswalker applies their decisions:
+```
+Applying 62 changes...
+  ✓ Updated 47 control descriptions
+  ✓ Created 12 new control notes
+  ✓ Archived 3 deprecated controls
+  ✓ Updated 23 crosswalk links
+  ✓ Flagged 8 crosswalks for manual review
+  ⚠ 3 evidence links now point to archived controls — review needed
+Done. See migration-report-2026-04-09.md for details.
+```
+
+**What the system did:** Applied the chosen strategies as file operations (create, modify, move, archive). Generated a migration report as a markdown note in the vault. Updated `_crosswalker` metadata on all affected notes.
+
+### Step 5: Reconciliation
+**What the user sees:** A review queue of items needing human judgment:
+```
+Review queue (11 items):
+  □ AC-3(15→16): 4 evidence notes linked to old ID — update links?
+  □ SC-15 (withdrawn): 2 crosswalks from CIS still reference it
+  □ SR-1 through SR-5: no evidence mapped yet (new controls)
+  ...
+```
+
+**What the system did:** Identified all downstream effects of the changes — broken links, stale crosswalks, unmapped controls. Presented them as a checklist the user works through.
+
+## The interfaces
+
+### Interface 1: Guided form (Obsidian modal)
+**Best for:** Interactive, single-user, small-to-medium updates (< 100 changes)
+- Step-by-step wizard in Obsidian
+- Each change shows context (old vs new), affected links, evidence count
+- User makes decisions with radio buttons / checkboxes
+- "Apply all defaults" for confident users, "Review each" for cautious ones
+
+**Stored as:** User decisions captured as a migration plan (JSON/YAML) in `_crosswalker` config, then executed
+
+### Interface 2: Migration plan file (config-as-code)
+**Best for:** Large updates, repeatable migrations, CI/CD, agent-driven workflows
+- System generates a `migration-plan.yaml`:
+  ```yaml
+  source: nist-800-53
+  from_version: r5
+  to_version: r6
+  changes:
+    - type: node_added
+      id: AC-24
+      strategy: import
+    - type: node_removed
+      id: AC-19(2)
+      strategy: archive_and_redirect
+      redirect_to: AC-19
+    - type: node_properties_changed
+      id: AC-2
+      strategy: overwrite
+  ```
+- User reviews and edits the YAML (or an agent does)
+- System executes the plan
+
+**This IS the progressive depth model:** beginners use the form, power users edit the YAML, agents generate and execute plans programmatically.
+
+### Interface 3: CLI
+**Best for:** CI/CD pipelines, scheduled checks, headless servers
+```bash
+crosswalker diff nist-800-53 --from r5 --to r6
+crosswalker plan nist-800-53 --from r5 --to r6 --strategy default
+crosswalker apply migration-plan.yaml --dry-run
+crosswalker apply migration-plan.yaml
+```
+
+## How this connects to the 13 primitives
+
+The 13 structural change primitives from the [previous log](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) are the ENGINE. They detect what changed.
+
+The HANDLING STRATEGIES are the GEAR BOX. They translate structural changes into user-facing decisions.
+
+The INTERFACES are the STEERING WHEEL. They present decisions to the user (or agent) in the appropriate format.
+
+```
+[Framework versions] 
+    → [Diff engine: 13 primitives]
+        → [Handling strategies: per-change-type options]
+            → [Interface: form / YAML / CLI]
+                → [Execution: file operations]
+                    → [Reconciliation: review queue]
+```
+
+Each layer is independent. You can swap the interface without changing the engine. You can add new handling strategies without changing the diff algorithm. **This is the progressive depth architecture applied to ontology maintenance.**
+
+## Where does the EvolutionPattern taxonomy fit? (Paths A, B, C)
+
+Revisiting the [three paths](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/#three-paths-for-the-evolutionpattern-taxonomy):
+
+In this user-first framing:
+
+**Path A (taxonomy as prediction):** Before the user even imports, the system says "NIST 800-53 typically has stable IDs, rare breaking changes, and structured changelogs — we recommend the 'overwrite' default strategy." This is a UX optimization — fewer decisions for the user.
+
+**Path B (track actual changes only):** No predictions. Every update, the user sees the full diff and makes all decisions. Simpler system, more work per update.
+
+**Path C (both):** The taxonomy sets DEFAULTS for the handling strategies. The diff shows ACTUALS. When defaults are wrong (taxonomy said "stable IDs" but IDs changed), the system highlights the surprise. User overrides as needed.
+
+**Path C clearly wins in this framing.** The taxonomy is a DEFAULT STRATEGY SELECTOR, not a philosophical classification. It answers: "what should the radio buttons be pre-selected to?"
+
+## Open questions
+
+- [ ] **Form vs YAML vs both:** Do we build the form first (most users) or the YAML first (most flexible)?
+- [ ] **Migration plan format:** What does the YAML schema look like? How does it reference the 13 primitives?
+- [ ] **Default strategy selection:** How does the system pick defaults? Per-framework community annotation? Per-change-type heuristic? User preference?
+- [ ] **Review queue:** Is this a special note type? A sidebar panel? A modal?
+- [ ] **Agent interface:** How does an AI agent interact with the migration plan? Generate it? Review it? Execute it?
+- [ ] **Version registry:** Where do framework version announcements live? Who maintains them?
+
+## The first-principles constraint
+
+Everything above must stay tight to first principles while allowing extension:
+
+**First principles (non-negotiable):**
+- Changes are compositions of 13 structural primitives
+- Files are the source of truth
+- Every change has a hash-based audit trail
+- Migration plans are declarative (what to do, not how)
+
+**Extension points (opinionated, swappable):**
+- Default strategy selection (taxonomy, heuristics, user prefs)
+- Interface (form, YAML, CLI, API)
+- Execution engine (Obsidian vault ops, filesystem ops, API calls)
+- Notification system (Obsidian notice, email, webhook)
+
+This separation — **primitives are fixed, opinions are pluggable** — is how the system stays first-principled while allowing different users, teams, and agents to work the way they prefer.
+
+## Related
+
+- [First principles: ontology change](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) — the 13 primitives, Path A/B/C
+- [EvolutionPattern taxonomy draft](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — the original 8-field design
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — progressive depth, community configs
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — the 5 phases (Acquire → Share)
