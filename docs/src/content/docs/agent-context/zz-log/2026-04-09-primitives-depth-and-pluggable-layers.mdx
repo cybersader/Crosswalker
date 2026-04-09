@@ -1,0 +1,165 @@
+---
+title: "How primitive are the primitives? Pluggable layers and open questions"
+description: Questioning whether the 13 structural primitives are fundamental enough, exploring detection as pluggable logic, taxonomy-over-taxonomies for decisioning, custom transfer logic, and graph vs. hierarchy scope.
+tags: [architecture, data-model, data-model-evolution, first-principles]
+sidebar:
+  label: "04-09 · Primitives depth + pluggable layers"
+  order: -20260409
+---
+
+## Context
+
+Follow-on from [user-first ontology maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/). Several threads surfaced that need their own space — they're about whether our foundational abstractions are truly foundational, and what the pluggable layers look like on top.
+
+## Thread 1: Detection is pluggable, not primitive
+
+**The assumption we were making:** The system detects when a framework or ontology has changed (e.g., "NIST published Rev 6").
+
+**The correction:** Detection is NOT a first-principles capability of the data structure layer. The system can't inherently know that NIST published something. That's **opinionated, pluggable logic** — i.e., something tacked on as a form of pluggable behavior that the user or community defines, rather than something that describes merely a data structure change.
+
+Detection would be:
+- **Manual:** User downloads new CSV and imports it
+- **Semi-auto:** Plugin checks a community-maintained version registry
+- **Auto:** CI/CD watches a GitHub repo or RSS feed for new releases
+
+All three are opinionated implementations of a detection interface. The first-principles layer only knows: "here's version A, here's version B, here's what's different."
+
+**Implication:** Detection belongs in the pluggable layer, not the foundation. We define a standard interface for version registries (i.e., the shape of the data that says "version X exists"), and the community develops solutions around maintenance of that. This is a long-term roadmap item — thinking up the approach for how that standard works, how community members contribute, and what guarantees the system makes about freshness.
+
+## Thread 2: Beyond hierarchical taxonomies
+
+**The question:** Are we only limited to hierarchical taxonomies? Or in the future, do we handle various graph taxonomies?
+
+Current assumption: ontologies are directed graphs that MAY have hierarchical structure. But many real-world knowledge structures are:
+- **Pure hierarchies** (NIST 800-53: Family → Control → Enhancement)
+- **DAGs** (directed acyclic graphs — a control maps to multiple parents)
+- **General graphs** (MITRE ATT&CK: techniques → mitigations → software, with cycles possible)
+- **Hypergraphs** (a single relationship connects 3+ entities simultaneously)
+
+**The 13 primitives assume a simple directed graph.** If we need to handle hypergraphs or multi-typed edges, the primitives might need extension. This is a scope question that feeds back into the "are the primitives primitive enough" thread below.
+
+**Route forward:** Start with directed graphs (covers 95% of use cases). Flag hypergraph support as future extension. The primitives should be defined at a level that ALLOWS extension without breaking.
+
+## Thread 3: Version registry as a pluggable standard
+
+We define the **standard** — i.e., the data shape for declaring "this framework has version X available at this URL with this hash." The community builds implementations:
+
+- A GitHub repo of version declarations (JSON/YAML files per framework)
+- An API endpoint that returns current versions
+- A Notion database someone maintains
+- A scraper that watches NIST/MITRE/CIS websites
+
+Crosswalker just needs a plugin interface: "given a framework ID, what versions exist?" The answer comes from whatever registry the user has configured.
+
+**Roadmap item:** Design the version registry standard. Think through: what fields? How does a community member contribute a new framework version declaration? What's the minimum viable schema?
+
+## Thread 4: Decisioning as per-framework taxonomy (taxonomy over taxonomies)
+
+**The idea:** The handling strategies (overwrite, archive, alias, etc.) could be defined PER ONTOLOGY or PER FRAMEWORK — not just as global defaults. This is essentially a **taxonomy over taxonomies** — a meta-classification that says "for this specific framework, when this type of change happens, do this."
+
+For example:
+- NIST 800-53: "when node IDs change, always alias because NIST provides explicit mapping tables"
+- MITRE ATT&CK: "when nodes are deprecated, archive with forward reference because MITRE uses revocation chains"
+- CIS Controls: "when hierarchy restructures, move files because CIS keeps IDs stable"
+
+This per-framework decisioning behavior would itself be a stored configuration — yet another taxonomy that you store, a sort of **taxonomy over the taxonomy**. We'd have to build that as a system as well.
+
+**Route forward:** Default decisioning is reframed in the language of the first-principles data structure primitives (i.e., the change types map to default strategies). Per-framework overrides are layered on top as community-contributed configs. This is the progressive opinionation model:
+
+```
+Level 0: Data structure primitives (universal, non-negotiable)
+Level 1: Default handling strategies per change type (sensible defaults)
+Level 2: Per-framework decisioning overrides (community-contributed)
+Level 3: Per-user/per-org custom overrides (local preferences)
+```
+
+Each level inherits from the one above and can override. This IS the "tight to first principles while allowing extension of opinionation" constraint in action.
+
+## Thread 5: Custom transfer logic
+
+**The question:** What about custom transfer logic? When migrating from one version to another, sometimes the handling isn't just "overwrite" or "archive" — it's a TRANSFORMATION. For example:
+
+- NIST merges two controls into one: the evidence from both old controls needs to be re-linked to the merged control
+- CIS splits a control into three: the evidence needs to be distributed or duplicated
+- A framework changes its ID scheme entirely: a regex transformation maps old IDs to new ones
+
+This is **custom transfer logic** — user-defined transformation rules that go beyond the default strategies. This is part of what makes the ontology evolution problem hard: the handling isn't always a simple primitive operation. Sometimes it's a COMPUTATION.
+
+**Route forward:** The migration plan format (YAML) needs to support a "transform" step that can reference custom logic — either:
+- Inline expressions (simple: `new_id = old_id.replace('AC-', 'AC.')`)
+- Named transforms from a library (medium: `strategy: nist_merge_controls`)
+- Custom scripts (advanced: `transform: ./scripts/migrate-nist-r5-to-r6.js`)
+
+This is the ultimate expression of progressive depth: default strategies are primitives, per-framework configs add opinionation, custom scripts add arbitrary logic.
+
+## Thread 6: Are the 13 primitives primitive ENOUGH?
+
+**This is the deepest question.** The [13 structural change primitives](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) were defined by reasoning about what can change in a directed graph. But:
+
+- Are they truly at the data structure level, or are some of them already opinionated?
+- Is "hierarchy restructured" (primitive #10) actually a COMPOSITION of node-add + edge-remove + edge-add? Should it be decomposed further?
+- Is "node ID changed" (primitive #3) a data structure change or an IDENTITY RESOLUTION problem that belongs at a higher layer?
+- What about METADATA changes on the graph itself (not nodes or edges) — like the graph's name, version, or schema changing?
+
+**What we need: research into how information scientists, data scientists, and ontology engineers formally describe structural changes.**
+
+### Research directions to explore
+
+1. **Graph edit distance** — formal measure of the minimum edits to transform one graph into another. Operations: node insertion, node deletion, node substitution, edge insertion, edge deletion, edge substitution. Is this more primitive than our 13?
+
+2. **Ontology diff algorithms** — OWL ontology diffing tools (OntoDiff, ContentCVS, PROMPT) have formal change taxonomies. What primitives do THEY use?
+
+3. **Schema evolution in databases** — how do database migration tools (Liquibase, Flyway, Alembic) describe schema changes? Their operations (ADD COLUMN, RENAME TABLE, etc.) are well-studied.
+
+4. **SKOS change management** — SKOS (Simple Knowledge Organization System) has a formal vocabulary for concept changes. What does it define?
+
+5. **VCS (version control) diff semantics** — Git describes changes as additions, deletions, and modifications at the line level. Tree-diff algorithms (GumTree, ChangeDistiller) work on ASTs. How do they decompose structural changes?
+
+6. **Category theory / graph morphisms** — the mathematical formalism for describing structure-preserving transformations between graphs. This is the most fundamental level possible.
+
+7. **SCD (Slowly Changing Dimensions) in data warehousing** — we already reference this. But are our 6 SCD types (overwrite, keep history, alias, etc.) truly primitives or are THEY compositions?
+
+### The question to answer
+**Can we find or define a set of ATOMIC operations on labeled directed graphs that are provably complete** — i.e., any structural change can be expressed as a sequence of these atoms? If yes, those atoms are our true primitives and the 13 may be decomposable into them. If the 13 ARE atomic, we need to prove it.
+
+This is the philosophical and mathematical work that needs to happen before we freeze the schema. It's the most important open research question in the project.
+
+## Summary: the layer model
+
+```
+┌─────────────────────────────────────────────────┐
+│  PLUGGABLE LAYER: Detection, Registries, UIs    │
+│  (semi-auto, auto, community-maintained)        │
+├─────────────────────────────────────────────────┤
+│  OPINIONATION LAYER: Per-framework decisioning  │
+│  (taxonomy over taxonomies, custom transforms)  │
+├─────────────────────────────────────────────────┤
+│  STRATEGY LAYER: Default handling per change    │
+│  (overwrite, archive, alias, merge, split...)   │
+├─────────────────────────────────────────────────┤
+│  PRIMITIVE LAYER: Structural change atoms       │
+│  (the 13 primitives — or whatever is truly      │
+│   atomic after research)                        │
+├─────────────────────────────────────────────────┤
+│  DATA LAYER: Labeled directed graph             │
+│  (nodes, edges, properties, hierarchy)          │
+└─────────────────────────────────────────────────┘
+```
+
+Each layer only depends on the one below it. Each layer is independently extensible. This is the architecture that stays **tight to first principles while allowing extension of opinionation.**
+
+## Routes forward
+
+- [ ] **RESEARCH: Graph edit distance and ontology diff literature** — find the truly atomic operations. Separate log page for findings.
+- [ ] **RESEARCH: SKOS change management vocabulary** — what exists already?
+- [ ] **RESEARCH: Schema evolution patterns from database migration tools** — proven patterns for describing structural changes
+- [ ] **DEFINE: Version registry standard** — minimum viable schema for declaring framework versions
+- [ ] **DEFINE: Per-framework decisioning format** — the taxonomy-over-taxonomies config shape
+- [ ] **DEFINE: Custom transfer logic interface** — how users/agents specify arbitrary migration transformations
+- [ ] **DECIDE: Graph scope** — directed graphs only, or DAGs/hypergraphs? (Recommend: directed graphs now, extension points for later)
+
+## Related
+
+- [First principles: ontology change](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) — the 13 primitives, Path A/B/C
+- [User-first ontology maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) — the experience layer
+- [EvolutionPattern taxonomy draft](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — the original 8-field design
