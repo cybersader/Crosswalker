@@ -1,11 +1,24 @@
 ---
 title: Registry
-description: Organizations and standards in the ontology ecosystem — who creates, maps, regulates, and maintains compliance frameworks.
+description: Organizations, standards, methodologies, and foundational publications that are cornerstones of the ontology lifecycle ecosystem — the stakes in the ground from decades of research that Crosswalker's architecture has to respect.
 tags: [frameworks, grc]
 volatility: evolving
 ---
 
-The registry catalogs the institutional actors and key standards in the ontology ecosystem. Each entry documents what the entity does, what they own/maintain, and how they fit into the [operational landscape](/crosswalker/concepts/operational-landscape/).
+The registry catalogs the **cornerstones of the ontology lifecycle ecosystem** — the institutions, standards, methodologies, and foundational publications that have become stakes in the ground through decades of prior research, and that Crosswalker's architecture has to either adopt, bridge to, or consciously reject.
+
+**What earns an entry here:** an entity, spec, methodology, or publication that the KB cites in multiple places, that represents a *convergence point* in the literature (where independent projects arrived at the same answer), or that a Foundation-phase decision depends on. Not every technical term belongs here — only the ones that matter enough to lock in canonical facts so future research agents don't re-derive them. When the 04-10 research sessions kept surfacing things like SSSOM, STRM, and NIST IR 8477 as repeated touchstones, it became worth giving each its own page.
+
+:::note[A note on what goes where — and the meta-joke embedded in that question]
+This registry holds both **organizations** *and* **technical specs, methodologies, and publications**, because — somewhat on the nose for a tool built to solve ontology problems — entities in this space resist clean categorization:
+
+- **STRM** is both a methodology *and* an SCF work product
+- **OSCAL** is both a spec *and* a NIST project
+- **NIST IR 8477** is both a publication *and* the formalization of a methodology SCF already used
+- **OLIR** is both an org-level program *and* a crosswalk registry artifact
+
+Rather than fighting this by forcing every entry into a single hierarchy slot, we put related things next to each other under descriptive prose headings and let entries cross-link freely. This is the same lesson the [Ranganathan / faceted classification section](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#file-first-is-valid-at-current-scale) of the 04-10 synthesis calls out: **facets over rigid trees is the resilient pattern**, and we're applying it to our own KB structure here.
+:::
 
 > This registry will grow into the **community marketplace** for framework configs — each entity page will eventually link to available [FrameworkConfig](/crosswalker/agent-context/config-schema-design/) presets and [evolution profiles](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/).
 
@@ -18,7 +31,7 @@ The registry catalogs the institutional actors and key standards in the ontology
 
 ## Mapping organizations
 
-- [SCF](/crosswalker/reference/registry/scf/) — 175+ framework hub via STRM (the interlingua)
+- [SCF](/crosswalker/reference/registry/scf/) — 175+ framework hub via STRM (the interlingua / synthetic spine)
 - [OLIR](/crosswalker/reference/registry/olir/) — NIST's submission-based crosswalk registry
 - [CTID](/crosswalker/reference/registry/ctid/) — ATT&CK ↔ 800-53 mappings (MITRE Engenuity)
 
@@ -32,10 +45,26 @@ The registry catalogs the institutional actors and key standards in the ontology
 - [FFIEC](/crosswalker/reference/registry/ffiec/) — US financial institution examinations
 - [SEC](/crosswalker/reference/registry/sec/) — US securities cyber disclosure
 
-## Standards & formats
+## Specs, formats & data models
 
-- [OSCAL](/crosswalker/reference/registry/oscal/) — Machine-readable security controls (NIST)
+Machine-readable formats and data models that serialize framework content.
+
+- [OSCAL](/crosswalker/reference/registry/oscal/) — Machine-readable security controls format (NIST)
+
+## Mapping methodologies & edge vocabularies
+
+Named methodologies and vocabularies for describing *how things map to each other* — the "edge semantics" layer that sits above any particular framework. This is where the 04-10 synthesis found most of its cornerstones.
+
+- [SKOS](/crosswalker/reference/registry/skos/) — Simple Knowledge Organization System. The W3C mapping relations (exactMatch, closeMatch, broadMatch, narrowMatch, relatedMatch) that the research found *insufficient* for compliance — but that every later mapping standard builds from.
+- [SSSOM](/crosswalker/reference/registry/sssom/) — Simple Standard for Sharing Ontological Mappings. The mature metadata model for mapping provenance, confidence, authorship, and negation. *(Candidate edge metadata model for Crosswalker crosswalks.)*
+- [STRM](/crosswalker/reference/registry/strm/) — Set Theory Relationship Mapping. SCF's methodology, formalized independently in NIST IR 8477 and adopted by OSCAL's Control Mapping Model. The 5-relationship vocabulary (equivalent, subset, superset, intersects, no-relationship) that the [04-10 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) identifies as the convergence point for crosswalk edge types.
+
+## Foundational publications
+
+Specific documents that lock in methodologies or definitions the problem domain has converged on.
+
+- **NIST IR 8477** *(coming)* — *Mapping Relationships Between Documentary Standards* (February 2024). The formal NIST publication that defines the 5 set-theory relationships used in STRM, SCF, and OSCAL's Control Mapping Model.
 
 ---
 
-See also: [Institutional landscape](/crosswalker/concepts/institutional-landscape/) · [Operational landscape](/crosswalker/concepts/operational-landscape/) · [Framework standards & tools](/crosswalker/concepts/framework-standards/)
+See also: [Institutional landscape](/crosswalker/concepts/institutional-landscape/) · [Operational landscape](/crosswalker/concepts/operational-landscape/) · [Framework standards & tools](/crosswalker/concepts/framework-standards/) · [Terminology](/crosswalker/concepts/terminology/)
