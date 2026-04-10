@@ -1,0 +1,128 @@
+---
+title: "SEACOW + folder-tag-sync — prior-art the project owner built before Crosswalker"
+description: Documenting two of the project owner's existing tools (SEACOW meta-framework in cyberbase, obsidian-folder-tag-sync plugin) as Foundation-phase prior-art that should inform Crosswalker's hierarchy-vs-graph decisions — and flagging a formal reuse investigation as a research item.
+tags: [obsidian, architecture, data-model]
+date: 2026-04-10
+sidebar:
+  label: "04-10 · SEACOW + folder-tag-sync prior-art"
+  order: -20260410.5
+---
+
+:::note[This is prior-art synthesis, not a decision]
+This log exists because Crosswalker's project owner — the same person designing the Foundation architecture — has **already built two tools that address adjacent parts of the hierarchy-vs-graph problem**. That prior work has been partially mentioned in [knowledge-organization.mdx](/crosswalker/agent-context/knowledge-organization/#seacowr-meta-framework) and [prior-art.mdx](/crosswalker/agent-context/prior-art/), but it hasn't been explicitly connected to the Foundation-phase decisions yet. This log closes that gap and flags a formal research item to decide what to reuse.
+:::
+
+## Why this log exists
+
+The [04-10 foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) distilled 4 external research sessions about the primitives Crosswalker should commit to. But there's a parallel conversation the external research agents never saw: **the project owner has already wrestled with the same problems in two other projects**, with working code and lived experience to show for it. Those artifacts belong in the Foundation conversation.
+
+- **[SEACOW](https://github.com/cybersader/cyberbase)** — a meta-framework for *organizing knowledge inside a filesystem-primitive world*. Lives in the `cyberbase` public vault. It's the philosophical prior art: how do you build enduring knowledge structures when your substrate is a hierarchy?
+- **[obsidian-folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync)** — a plugin that uses **tags to layer polyhierarchy onto a hierarchical filesystem**. It's the mechanical prior art: if filesystems are trees but knowledge needs graph-shaped classification, tags can carry the second axis.
+
+Both tools are directly relevant to Crosswalker's core tension (the [ontology lifecycle problem](/crosswalker/concepts/ontology-lifecycle/), the [problem framing](/crosswalker/concepts/problem/), and the whole [9 primitives + synthetic spine thread](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/)). They're not external research — they're **internal prior art the rest of the KB has barely acknowledged**.
+
+## SEACOW — the hierarchy-in-filesystem meta-framework
+
+**Where it lives:** `cybersader/cyberbase` — [search the repo for "seacow"](https://github.com/search?q=repo%3Acybersader%2Fcyberbase+seacow&type=code) to find the primary source material.
+
+**What it stands for** (per the existing [knowledge-organization page](/crosswalker/agent-context/knowledge-organization/#seacowr-meta-framework)):
+
+- **S**ystem — the platform and its specific capabilities
+- **E**ntity — the user (their role, their goals)
+- **A**ctivities:
+  - **C**apture — how knowledge enters the system
+  - **O**utput — how knowledge exits
+  - **W**ork — how knowledge is processed
+  - **(r)elation** — how concepts connect
+
+**Core insight the project owner encoded in SEACOW:** before you can design a vault structure, you need to answer *four orthogonal questions* — which platform, which user, which activity, which relation type. A hierarchical folder structure alone can't carry all four. Tags, metadata, and links have to carry the axes folders can't.
+
+This is the same insight that pushed Crosswalker toward [property graphs with metadata on both nodes and edges](/crosswalker/concepts/file-based-graph-database/) — SEACOW just arrived at it from the knowledge-organization side rather than the ontology-diff side.
+
+**Relevance to Foundation decisions:**
+
+1. **Ontology diff primitives** — SEACOW's "Activities" axis (Capture / Output / Work / Relation) maps onto the lifecycle stages where ontology diffs happen. Our [9 primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) operate on relations and state, but they don't currently carry activity-context about *why* a diff was applied (was it captured from upstream? reworked by a user? output to a downstream consumer?). SEACOW's framing suggests that might be a missing metadata axis on diff events.
+
+2. **Knowledge organization concept page** — the existing [knowledge-organization page](/crosswalker/agent-context/knowledge-organization/) already has a SEACOWr section but treats it as an abstract thinking tool. It doesn't link out to the cyberbase source, doesn't flag it as the project owner's own prior art, and doesn't connect it to current Foundation decisions. That page should be updated to cite the source and link here.
+
+3. **Progressive tier architecture** — SEACOW implicitly assumes a Tier 1 file-first model (it was designed for Obsidian vaults). Its lessons about which knowledge gets stored as folders vs. tags vs. properties are directly applicable to deciding what the [sql.js sidecar](/crosswalker/reference/roadmap/) should index.
+
+4. **Institutional landscape** — SEACOW's "Entity" axis parallels the [institutional-landscape page](/crosswalker/concepts/institutional-landscape/)'s actor typology. Worth checking whether SEACOW's definitions can sharpen or correct the current landscape framing.
+
+## folder-tag-sync — polyhierarchy via tag layering
+
+**Where it lives:** [`cybersader/obsidian-folder-tag-sync`](https://github.com/cybersader/obsidian-folder-tag-sync). Active development. Sits next to Crosswalker in the same `plugin_development/` workspace.
+
+**What it does:** It's a **bidirectional sync between folder paths and Obsidian tags** with regex-based transformation rules. A note in `Frameworks/NIST-800-53/AC/AC-2.md` can automatically carry `#framework/nist/ac-2` (and vice versa). The folder structure is one hierarchy; the tag structure is a *parallel, overlapping, polyhierarchical* view of the same content.
+
+**Core insight the project owner encoded in folder-tag-sync:** the filesystem is rigidly hierarchical, but knowledge is not. Tags can carry a second (or third, or fourth) classification axis that the folder path can't. The plugin makes those axes stay in sync so you never have to pick one.
+
+**Relevance to Foundation decisions:**
+
+1. **Hierarchy-vs-graph tension** — this is the **single most central Foundation question** (see [the problem page](/crosswalker/concepts/problem/)) and **we already have a working polyhierarchy tool**. A control that belongs to multiple NIST families, or a technique that belongs to multiple MITRE tactics, is the canonical case — and folder-tag-sync's pattern (primary folder location + synthesized tags for alternate axes) is a proven approach. Crosswalker's generation engine could reuse this mechanism directly, or at minimum use it as the reference implementation.
+
+2. **Property graph model & tags-as-edges** — folder-tag-sync treats tags as a **second-class hierarchy**. If Crosswalker adopts a property-graph model with typed edges (see [the storage-commitment callout](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#the-9-primitives-are-sound)), tags are arguably a degenerate case: "edge of type `classified-as` pointing to a tag entity." The folder-tag-sync mechanism and Crosswalker's edge model may be the same thing viewed from two angles.
+
+3. **Generation engine reuse** — when Crosswalker's [generation engine](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) produces framework folder trees, it currently puts each control in exactly one folder. It could (and probably should) also emit tags per folder-tag-sync's rules so users with multi-hierarchy needs get the polyhierarchy for free. This is direct code reuse potential.
+
+4. **Regex transformation rules** — folder-tag-sync's regex-based path-to-tag transformation is conceptually identical to some of the [custom per-framework transforms](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/) Crosswalker's Python predecessor needed (e.g., the CRI tag aggregation, the NIST 800-53 ID normalization). There may be a shared transform vocabulary hiding across the two projects.
+
+5. **Evidence mapping workflow** — when a GRC analyst maps an evidence note to multiple framework controls across multiple frameworks, the result is inherently polyhierarchical. folder-tag-sync's pattern (primary location + synthesized tags) could be the UX model for how Crosswalker surfaces multi-framework evidence.
+
+## Where both tools touch Crosswalker's Foundation decisions
+
+| Foundation area | SEACOW contribution | folder-tag-sync contribution |
+|---|---|---|
+| [9 ontology diff primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) | Missing activity-context axis on diff events | Tag changes as first-class diff atoms |
+| [Hierarchy vs graph tension](/crosswalker/concepts/problem/) | Philosophical framing of the tradeoff | Working mechanical solution via tag layering |
+| [Progressive tiers](/crosswalker/reference/roadmap/) | Informs what the Tier 2 sidecar indexes | Informs which operations need index support |
+| [File-based graph database](/crosswalker/concepts/file-based-graph-database/) | The SEACOW entity axes map to node types | Tags as a degenerate edge-type case |
+| [Knowledge organization](/crosswalker/agent-context/knowledge-organization/) | Already the primary citation point | Not mentioned yet — should be added |
+| [Generation engine](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) | No direct overlap | **Direct reuse candidate** — emit tags per folder-tag-sync rules |
+| [Evidence mapping workflow](/crosswalker/getting-started/grc-teams/) | "Work" activity framing | **Direct UX model** — primary location + multi-axis tags |
+| [Custom transforms](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/) | No direct overlap | Shared regex-transformation vocabulary |
+
+## What's borrowable — concrete opportunities
+
+**Conceptual / vocabulary borrows (low effort, high signal):**
+- SEACOW's 4-axis framing (System / Entity / Activity / Relation) as a sanity-check for any Crosswalker decision — "does our primitive set carry all four axes, or is one implicit?"
+- SEACOW's distinction between Capture / Output / Work / Relation activities as a labeling scheme for diff events
+- folder-tag-sync's "primary location + parallel tag hierarchy" pattern as the baseline UX for polyhierarchy in Crosswalker
+
+**Direct code / mechanism borrows (higher effort, high payoff):**
+- folder-tag-sync's regex transformation engine could be imported wholesale or extracted into a shared module (both plugins live in the same `plugin_development/` workspace)
+- folder-tag-sync's bidirectional sync logic is a working example of the kind of file-canonical / derived-index reconciliation Crosswalker's Tier 2 sidecar will need
+- folder-tag-sync's test suite contains working examples of multi-hierarchy scenarios — potential fixture data for Crosswalker's crosswalk tests
+
+**Philosophical borrows (shape Foundation decisions):**
+- SEACOW's hierarchy-is-not-enough argument is the strongest possible prior art for why Crosswalker has to go beyond folders
+- folder-tag-sync's existence is proof that the polyhierarchy problem is *solvable* in Obsidian without abandoning files — a direct data point for the [file-canonical ceiling debate](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#files-canonical-ceiling--documented-already-answered-by-the-3-tier-pillar)
+
+## Open questions (handed to the research item)
+
+The following questions need answering before Crosswalker commits to any specific reuse. These are flagged in the [Foundation roadmap](/crosswalker/reference/roadmap/) as a research item:
+
+1. **Code reuse vs. parallel evolution.** Should folder-tag-sync's regex engine be extracted into a shared module that both plugins consume, or should each plugin keep its own copy? The first gives DRY but couples release cycles; the second is simpler but drifts.
+2. **SEACOW vocabulary adoption.** Does Crosswalker's terminology page adopt the SEACOW axes as canonical labels, or use them only as an informal sanity-check?
+3. **Tags as edges — formalize or defer.** If Crosswalker commits to tags-as-edges in the property graph model, the generation engine has to emit tag edges with proper [STRM + SSSOM metadata](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish). That's a significant schema commitment. Defer to after the edge semantics roadmap item lands?
+4. **Is folder-tag-sync itself a Crosswalker dependency?** Should Crosswalker declare folder-tag-sync as a soft dependency, recommend it for polyhierarchy use cases, or leave it independent?
+5. **Knowledge-organization page ownership.** The existing [knowledge-organization.mdx](/crosswalker/agent-context/knowledge-organization/) page cites SEACOW without linking out. Should it be restructured around SEACOW as the canonical framework, with Crosswalker's other conventions mapped against its axes?
+
+## Next steps
+
+1. **Add roadmap item** — "SEACOW + folder-tag-sync prior-art integration" in the Foundation research section, linking here (done in parallel with this log)
+2. **Update [knowledge-organization.mdx](/crosswalker/agent-context/knowledge-organization/)** — add a link out to the cyberbase source, add a folder-tag-sync section, and link to this log (done in parallel)
+3. **Update [prior-art.mdx](/crosswalker/agent-context/prior-art/)** — expand the one-line SEACOWr mention into a proper section with links and flag folder-tag-sync (done in parallel)
+4. **Future**: once the research item is picked up, create a dated design log deciding concrete reuse (code extraction, shared transforms, etc.)
+
+## Related
+
+- [04-10 Foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — the main synthesis this is adjacent to
+- [Knowledge organization](/crosswalker/agent-context/knowledge-organization/) — where SEACOW is already cited (needs updating)
+- [Prior art](/crosswalker/agent-context/prior-art/) — where SEACOWr is mentioned in passing (needs updating)
+- [The core problem — hierarchy vs graph](/crosswalker/concepts/problem/) — what both tools address
+- [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — where tags-as-edges would fit formally
+- [Ontology diff primitives (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) — where the activity-context axis could be added
+- [Primitives depth and pluggable layers (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) — where the generation engine reuse would happen
+- **External**: [cybersader/cyberbase](https://github.com/cybersader/cyberbase) — SEACOW home, searchable via [this query](https://github.com/search?q=repo%3Acybersader%2Fcyberbase+seacow&type=code)
+- **External**: [cybersader/obsidian-folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync) — folder-tag-sync plugin repo

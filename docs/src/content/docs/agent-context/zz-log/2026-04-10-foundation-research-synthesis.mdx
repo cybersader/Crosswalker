@@ -1,0 +1,678 @@
+---
+title: "Foundation research synthesis — testing our decisions against 4 parallel research sessions"
+description: Distilling 4 parallel research sessions against Foundation-phase decisions. Convergences, challenges, new formal concepts, and the decisions this forces — with visual anchors for the math.
+tags: [research, architecture, foundation, first-principles, data-model, data-model-evolution]
+date: 2026-04-10
+sidebar:
+  label: "04-10 · Foundation research synthesis"
+  order: -20260410
+---
+
+:::note[How to read this log]
+This log distills **four parallel research sessions** run on 2026-04-10 against our Foundation-phase decisions. The research leans hard on formal abstractions — graph edit distance theory, category theory, Formal Concept Analysis, set-theory relationships, upper ontologies. Where an idea gets mathematical, we anchor it to a **visual diagram** you can look at instead of parsing the formalism. No mermaid — inline SVG/HTML in the style of our [concepts pages](/crosswalker/concepts/file-based-graph-database/).
+:::
+
+## Why this log exists
+
+The project is in its **Foundation phase**, and decisions made here calcify fast. Before we start pouring concrete we sent four fresh research agents at the current architecture with no prior context bias, each with a different angle:
+
+1. **First-principles roadmap critique** — stress-test the technical roadmap against known problem-domain literature
+2. **Formal primitives audit** (the long one, ~94KB) — ground our primitives in information science, category theory, BFO, FCA, SSSOM, OAEI literature
+3. **Resilient knowledge work primitives** — what makes a knowledge structure last 20+ years
+4. **Accessibility pass** — same rigor, but explicitly asked to keep it anchored to things a non-specialist can hold onto
+
+All four sit in `.workspace/` (local, gitignored). This log is the distillation — what converged, what pushed back, what new concepts showed up, and what we now need to decide.
+
+## What we tested against
+
+The Foundation decisions under review:
+
+- **The 9 [ontology diff primitives](/crosswalker/concepts/terminology/#architecture--evolution-primitives)** — see [atomic operations research](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) (6 GED atoms refined to 9, with 4 composites)
+- **The [EvolutionPattern](/crosswalker/concepts/terminology/) taxonomy** — see [evolution pattern draft](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/)
+- **File-first / progressive tiers** — see [why Obsidian, why files](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) and [layered architecture vision](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)
+- **User-first entity-aligned maintenance UX** — see [user-first ontology maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/)
+- **Pluggable detection & decisioning layers** — see [primitives depth and pluggable layers](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/)
+
+<style>{`
+  /* Foundation research synthesis scoped styles */
+  .frs-figure {
+    margin: 2rem auto;
+    /* Scale with the widened content area (up to the full column on wide screens)
+       while staying readable. Was previously locked at 760px which left a narrow
+       column of diagrams floating in the middle of the new wider content area. */
+    max-width: min(100%, 1100px);
+    width: 100%;
+    background: #1e1e2e;
+    border: 1px solid #313244;
+    border-radius: 12px;
+    padding: 1.25rem 1.25rem 1rem;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  .frs-figure-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #6c7086;
+    margin-bottom: 0.75rem;
+  }
+  .frs-figure-caption {
+    margin-top: 0.75rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: #a6adc8;
+    border-top: 1px solid #313244;
+    padding-top: 0.75rem;
+  }
+
+  /* Atoms grid */
+  .frs-atoms {
+    display: grid;
+    grid-template-columns: 1fr auto 1.4fr;
+    gap: 1rem;
+    align-items: center;
+  }
+  .frs-atoms-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .frs-atom {
+    background: #181825;
+    border: 1px solid #313244;
+    border-radius: 6px;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.72rem;
+    color: #cdd6f4;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .frs-atom-num {
+    color: #6c7086;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.65rem;
+  }
+  .frs-atom-math { border-color: #00d4aa33; }
+  .frs-atom-math .frs-atom-num { color: #00d4aa; }
+  .frs-atom-ours { border-color: #89b4fa33; }
+  .frs-atom-ours .frs-atom-num { color: #89b4fa; }
+  .frs-arrow {
+    color: #6c7086;
+    font-size: 1.4rem;
+  }
+  .frs-col-header {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6c7086;
+    margin-bottom: 0.4rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid #313244;
+  }
+
+  /* Scale cliff.
+     Use aspect-ratio instead of fixed height so the SVG stretches to fill
+     the (now wider) figure container. viewBox is 720x260, so the ratio is
+     preserved via CSS and the SVG content scales up on wide monitors
+     instead of rendering at native 720px with empty gutters. */
+  .frs-cliff {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 720 / 260;
+    display: block;
+  }
+
+  /* Pairwise vs spine */
+  .frs-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .frs-compare-panel {
+    background: #181825;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 0.75rem;
+  }
+  .frs-compare-header {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #cdd6f4;
+    margin-bottom: 0.5rem;
+    text-align: center;
+  }
+  .frs-compare-svg {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 240 / 180;
+    display: block;
+  }
+  .frs-compare-stat {
+    text-align: center;
+    margin-top: 0.5rem;
+    font-size: 0.68rem;
+    color: #a6adc8;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .frs-compare-bad { color: #f38ba8; }
+  .frs-compare-good { color: #a6e3a1; }
+
+  /* Set-theory relationships.
+     aspect-ratio makes the SVG stretch to fill the figure width on wide
+     monitors instead of rendering at native 720px wide with empty gutters. */
+  .frs-strm {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 720 / 220;
+    display: block;
+  }
+
+  /* Evolution vs recipes card */
+  .frs-evo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .frs-evo-card {
+    background: #181825;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    padding: 0.9rem;
+  }
+  .frs-evo-card h4 {
+    margin: 0 0 0.3rem 0;
+    font-size: 0.85rem;
+    color: #cdd6f4;
+  }
+  .frs-evo-tag {
+    display: inline-block;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.15rem 0.45rem;
+    border-radius: 3px;
+    margin-bottom: 0.5rem;
+  }
+  .frs-evo-tag-predict {
+    background: #f9e2af22;
+    color: #f9e2af;
+    border: 1px solid #f9e2af55;
+  }
+  .frs-evo-tag-record {
+    background: #a6e3a122;
+    color: #a6e3a1;
+    border: 1px solid #a6e3a155;
+  }
+  .frs-evo-card ul {
+    margin: 0.4rem 0 0 0;
+    padding-left: 1rem;
+    font-size: 0.72rem;
+    color: #a6adc8;
+    line-height: 1.5;
+  }
+  .frs-evo-card li { margin-bottom: 0.2rem; }
+
+  @media (max-width: 640px) {
+    .frs-atoms { grid-template-columns: 1fr; }
+    .frs-arrow { transform: rotate(90deg); text-align: center; }
+    .frs-compare, .frs-evo { grid-template-columns: 1fr; }
+  }
+`}</style>
+
+## Convergences — where the research agrees with Foundation
+
+### The 9 primitives are sound
+
+All four research sessions, independently, converged on the same answer: **the 6 mathematical atoms of Graph Edit Distance theory** (Bunke & Allermann 1983, Sanfeliu & Fu 1983) are provably complete for transforming any labeled directed graph into any other — and our 9-primitive set is a **valid refinement** of those 6, splitting the two "substitution" operations into semantically distinct sub-cases (id change vs. property change vs. type change).
+
+<div class="frs-figure" role="img" aria-label="Diagram showing the 6 provably-complete Graph Edit Distance atoms on the left, mapped to Crosswalker's 9 ontology diff primitives on the right, illustrating that our set is a refinement of the mathematically complete set.">
+  <div class="frs-figure-title">Math atoms → Crosswalker's refinement</div>
+  <div class="frs-atoms">
+    <div class="frs-atoms-col">
+      <div class="frs-col-header">6 GED atoms (provably complete)</div>
+      <div class="frs-atom frs-atom-math"><span class="frs-atom-num">1</span>node insertion</div>
+      <div class="frs-atom frs-atom-math"><span class="frs-atom-num">2</span>node deletion</div>
+      <div class="frs-atom frs-atom-math"><span class="frs-atom-num">3</span>node substitution</div>
+      <div class="frs-atom frs-atom-math"><span class="frs-atom-num">4</span>edge insertion</div>
+      <div class="frs-atom frs-atom-math"><span class="frs-atom-num">5</span>edge deletion</div>
+      <div class="frs-atom frs-atom-math"><span class="frs-atom-num">6</span>edge substitution</div>
+    </div>
+    <div class="frs-arrow">→</div>
+    <div class="frs-atoms-col">
+      <div class="frs-col-header">9 Crosswalker primitives</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">1</span>node.added</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">2</span>node.removed</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">3a</span>node.id_changed</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">3b</span>node.properties_changed</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">3c</span>node.type_changed</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">4</span>edge.added</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">5</span>edge.removed</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">6a</span>edge.type_changed</div>
+      <div class="frs-atom frs-atom-ours"><span class="frs-atom-num">6b</span>edge.properties_changed</div>
+    </div>
+  </div>
+  <div class="frs-figure-caption">
+    <strong>Plain-English anchor:</strong> If you had a Lego model and wanted to turn it into a different Lego model, the only things you can do are add a brick, remove a brick, swap a brick, or change how two bricks are connected. That's it. The math guarantees those six moves are enough. We kept all six, then split "swap a brick" into three kinds because <em>renaming</em> a control (id change), <em>editing its description</em> (property change), and <em>reclassifying it from detective to preventive</em> (type change) mean very different things to a compliance user, even though the math doesn't care.
+  </div>
+</div>
+
+The 4 composite operations (node.moved, subgraph.merged, subgraph.split, hierarchy.restructured) also got formal backing: Klein (2004) calls these "complex changes" and **proved the set is infinite** (you can always define new compositions). Our decision to recognize only 4 and keep the list open is formally correct.
+
+**Also confirmed:** The **property graph model** (nodes + edges + properties on both) is the right formal substrate. Unlike RDF's triple model, property graphs allow metadata directly on edges — essential for crosswalks where a mapping carries confidence scores, rationale, and provenance. The new ISO GQL standard (ISO/IEC 39075:2024) enshrines property graphs as the international standard. This is Lindy-compatible.
+
+:::tip[From model to hardware — this is a storage commitment, not just a vocabulary choice]
+"Property graphs are the right substrate" sounds like a conceptual choice, but it's actually an **architectural commitment that reaches all the way down to storage**. To practically implement it you have to start at the hardware level and work up: first-class edge properties (confidence, provenance, rationale attached to a mapping) need a backend that can natively store and query **edges-with-properties** — not just nodes.
+
+Markdown files alone can only fake this: we'd be encoding edge metadata in link syntax (the `framework_here:: [[AC-2]] {"sufficient": true}` pattern), which is fragile, slow to query, and breaks as soon as the vault gets large. See [the scale cliff below](#files-canonical-has-a-real-ceiling) — the `bun run serve` of this architecture is the **Tier 2 sql.js WASM sidecar**: it lives beside the vault, stays gitignored, is rebuildable from the files (so files remain source-of-truth), and gives us the property-graph operations Obsidian alone can't. The files stay canonical; the sidecar is the machine-queryable index layer built on top.
+
+See the [file-based graph database concept page](/crosswalker/concepts/file-based-graph-database/) for the full formal model and the [layered architecture vision (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) for how the tiers stack.
+:::
+
+### File-first is valid at current scale
+
+The resilient-knowledge-work research found that **sixty years of information science converge on the same architecture** when the criteria are human readability, version controllability, extensibility, and multi-decade resilience:
+
+- **Ranganathan's faceted classification** (Colon Classification, 1933) — the "break it into independent tags" idea. The point of this bullet: our YAML frontmatter structure inherited a 90-year-old library-science property that makes it **safe to extend forever without reorganizing**. Here's why that matters:
+
+  - **The old way (rigid trees):** pick one giant pre-made category tree and force every item into exactly one slot. *"19th-century French landscape painting"* becomes a single drawer you have to find. If you later decide you care about the artist's mood, you have to rebuild the tree — every drawer needs a new subdivision, and all your old cross-references break.
+  - **Ranganathan's way (independent labels):** break the same item into small independent labels and combine them at query time: `era: 19th century` + `country: France` + `medium: painting` + `subject: landscape`. Now you can ask for "all French things," "all landscapes," or any combination on the fly.
+  - **The key property:** adding a new label later **never touches the old labels**. If next week you want to track `mood: melancholy`, you just start writing it on new items. Nothing reshuffles. Old queries keep working unchanged because they never looked at `mood` in the first place. Ranganathan called this *hospitality* — the system is "hospitable" to new information.
+  - **Why this matters for Crosswalker:** YAML frontmatter keys **are** facets. Every `type:`, `framework:`, `control_id:`, `reviewer:` field on a note is an independent facet. When we want to track a new property on controls (say, `quantum-resistant: true` in 2029), we just start adding it. No schema migration, no reshuffling folders, no breaking existing queries.
+  - **And to address the obvious question:** this is **not** the same as "deprecate but never delete" (which is Protobuf's schema-evolution discipline for binary wire formats). Hospitality is a step more fundamental — because new facets can't collide with old ones, there's nothing to deprecate in the first place. You just grow the vocabulary. The old fields aren't "legacy kept alive for compatibility"; they're simply facets you still happen to use.
+
+  This is the deepest reason the markdown + YAML file-first architecture is likely to age well — we got a 90-year-old library-science property for free just by picking plain text files with key-value frontmatter.
+- **Luhmann's Zettelkasten** — 90,000+ file-per-node cards maintained for 30 years, produced 70+ books. File-first scales to serious intellectual work without a database.
+- **[Markdown + YAML + WikiLinks](/crosswalker/concepts/file-based-graph-database/) vs OWL+RDF+SPARQL** — the "simple plain-text stack vs. formal Semantic Web stack" tradeoff. Richard Gabriel's "Worse is Better" (1991) predicted exactly this outcome:
+
+  - **The "worse" stack wins on adoption.** Markdown notes with YAML frontmatter and `[[wiki links]]` is technically less expressive than OWL+RDF+SPARQL (no Description Logic reasoner, no SPARQL query engine, no formal axioms). But it's radically simpler to implement, adopt, and read. Obsidian has **1.5M+ monthly active users**; formal ontology tooling sits at roughly **27% production deployment** even among organizations that bought into the Semantic Web. This is exactly why [we picked Obsidian + files in the first place](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) — adoption and human-readability beat formal expressiveness in practice.
+  - **We don't lose the formal stack — we build a bridge when we need it.** The research flagged two mature bridge technologies: **YAML-LD** (W3C Community Group Final Report, December 2023) defines conventions for serializing Linked Data as YAML on top of JSON-LD syntax, and **LinkML** provides a single YAML schema language that compiles to JSON Schema, OWL, SHACL, and SQL DDL. So if we ever need to export a vault to RDF for interoperability with [institutional ontology tooling](/crosswalker/agent-context/zz-log/2026-04-03-institutional-ontology-landscape/), or hand a SHACL schema to a compliance auditor, the path exists — without abandoning files as source-of-truth. See the [new formal concepts reference table](#new-formal-concepts-the-research-introduced) below for pointers.
+  - **The deeper design principle.** This is the same "worse is better" bet Crosswalker makes everywhere: human-editable files first, machine-queryable layers built on top, formal-export bridges reserved for the rare moments they're actually needed. See [what makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) for the philosophical pillar this connects to, and the [property graph callout above](#the-9-primitives-are-sound) for how the same logic extends the claim all the way down to storage (files canonical + Tier 2 sidecar for edge-property queries).
+
+### Pluggable layers match the research
+
+Our "pluggable detection + pluggable decisioning" separation (see [primitives depth log](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/)) lines up with **Javed, Abgaz & Pahl's (2009) four-layer change operator model**: atomic operations → composite operations → domain-specific patterns → domain-specific complex patterns. Our "math atoms → detectors → decisioners → handlers" stack is the same structure under different names. Good sign.
+
+## Challenges — where the research pushes back
+
+### Files-canonical ceiling — documented, already answered by the 3-tier pillar
+
+The first-principles critique confirmed a ceiling we'd already identified: files-as-source-of-truth is strategically correct, but Tier 1 (pure files + in-vault queries) has finite headroom. This is **not a surprise finding and not a crisis** — it's the exact reason the [**Progressive tier architecture**](/crosswalker/reference/roadmap/) is a Foundation pillar on the roadmap. We're documenting the ceiling here so the research on record agrees with our existing plan.
+
+**What the ceilings look like:**
+
+- Obsidian's graph view caps usefully around **25K nodes**
+- The V8 engine inside Electron caps at **~4 GB heap**
+- A full NIST-800-53 × CIS × ISO × MITRE crosswalk is ~**210,000 potential mapping pairs** to evaluate
+- Any in-vault query layer doing linear scans over YAML frontmatter degrades around **3–5K notes** (the research literature cites this as a Dataview number — see the expandable note below on why that's a misleading framing for us)
+
+<details>
+<summary><strong>Note: we are not building on Dataview — click to expand</strong> (recurring research-agent confusion)</summary>
+
+The underlying research reports all cite **Dataview's** 3–5K note ceiling as *the* "Obsidian query layer" limit. **Crosswalker is not building on Dataview.** Dataview is deprecated, and we explicitly chose not to take on that dependency.
+
+The roadmap's [**Obsidian Bases direction research**](/crosswalker/reference/roadmap/) Foundation item captures the actual plan: build the viewing/querying layer on top of **Obsidian Bases** (the native successor to Dataview-style queries), with **Datacore** as a backup to investigate if Bases turns out to be insufficient.
+
+What this means for the ceiling claim: the 3–5K note figure is a reasonable first estimate for *any* in-vault query engine doing linear scans over YAML frontmatter — Bases is likely to face similar orders-of-magnitude limits until we do our own benchmarks against it. The Tier 2 sql.js sidecar argument stands either way (it rescues query performance at scale regardless of which viewing layer we pick). The specific number should be re-measured against Bases as part of the Foundation research item, not inherited from Dataview benchmarks.
+
+Research items to reconcile: [Obsidian internals research (04-04)](/crosswalker/agent-context/zz-log/2026-04-04-obsidian-internals-research/) and the roadmap's [Bases direction item](/crosswalker/reference/roadmap/).
+
+</details>
+
+<div class="frs-figure" role="img" aria-label="Scale ladder chart showing UX responsiveness degrading as vault note count grows, with Dataview degradation around 3 to 5 thousand notes, graph view cap around 25 thousand, and V8 heap cap around 50 thousand, and Tier 2 sidecar index rescuing responsiveness past those points.">
+  <div class="frs-figure-title">Where files-canonical starts to hurt</div>
+  <svg class="frs-cliff" viewBox="0 0 720 260" preserveAspectRatio="xMidYMid meet" style={{display:'block',width:'100%',height:'auto',aspectRatio:'720 / 260'}}>
+    {/* Axes */}
+    <line x1="60" y1="30" x2="60" y2="210" stroke="#585b70" stroke-width="1.5" />
+    <line x1="60" y1="210" x2="690" y2="210" stroke="#585b70" stroke-width="1.5" />
+    <text x="30" y="40" fill="#a6adc8" font-size="10" text-anchor="end">fast</text>
+    <text x="30" y="205" fill="#a6adc8" font-size="10" text-anchor="end">slow</text>
+    <text x="60" y="232" fill="#a6adc8" font-size="10" text-anchor="middle">0</text>
+    <text x="200" y="232" fill="#a6adc8" font-size="10" text-anchor="middle">5K</text>
+    <text x="340" y="232" fill="#a6adc8" font-size="10" text-anchor="middle">25K</text>
+    <text x="480" y="232" fill="#a6adc8" font-size="10" text-anchor="middle">50K</text>
+    <text x="620" y="232" fill="#a6adc8" font-size="10" text-anchor="middle">210K+</text>
+    <text x="690" y="248" fill="#6c7086" font-size="9" text-anchor="end">notes / mapping pairs</text>
+
+    {/* Responsiveness curve — Tier 1 */}
+    <path d="M 60 50 Q 150 55, 200 75 Q 260 110, 340 160 Q 400 195, 480 205"
+          stroke="#f38ba8" stroke-width="2.5" fill="none" stroke-dasharray="0" />
+    {/* Tier 2 rescue line */}
+    <path d="M 200 80 Q 340 75, 480 85 Q 600 95, 680 110"
+          stroke="#a6e3a1" stroke-width="2.5" fill="none" stroke-dasharray="5 3" />
+
+    {/* Vertical threshold markers */}
+    <line x1="200" y1="30" x2="200" y2="210" stroke="#f9e2af" stroke-width="1" stroke-dasharray="2 3" opacity="0.6" />
+    <text x="200" y="25" fill="#f9e2af" font-size="9" text-anchor="middle">Dataview slows</text>
+    <line x1="340" y1="30" x2="340" y2="210" stroke="#f9e2af" stroke-width="1" stroke-dasharray="2 3" opacity="0.6" />
+    <text x="340" y="25" fill="#f9e2af" font-size="9" text-anchor="middle">Graph view cap</text>
+    <line x1="480" y1="30" x2="480" y2="210" stroke="#f38ba8" stroke-width="1" stroke-dasharray="2 3" opacity="0.6" />
+    <text x="480" y="25" fill="#f38ba8" font-size="9" text-anchor="middle">V8 heap cliff</text>
+
+    {/* Labels on curves */}
+    <text x="480" y="198" fill="#f38ba8" font-size="10" text-anchor="start">Tier 1 (files only)</text>
+    <text x="560" y="105" fill="#a6e3a1" font-size="10" text-anchor="start">Tier 2 (sql.js sidecar)</text>
+  </svg>
+  <div class="frs-figure-caption">
+    <strong>Plain-English anchor:</strong> Think of a filing cabinet. At 500 folders it's fine. At 5,000 it's still workable if you have an index card drawer. At 50,000 you're overturning the cabinet every time you want to find something. At that point you need a <em>librarian</em> sitting beside the cabinet who keeps a notebook of where everything is — that's Tier 2. The files are still the source of truth, but the librarian makes them queryable. Our current roadmap has Tier 2 as "when needed" — the research says <strong>we need to commit to when it activates</strong>, because the ceiling is closer than it looks.
+  </div>
+</div>
+
+**This is not a new challenge — it's the exact ceiling the [Progressive tier architecture pillar](/crosswalker/reference/roadmap/) is committed to handling.** Files stay canonical at all three tiers; what changes is the machine-queryable index layer sitting beside them: Tier 1 (files only + validation) → Tier 2 (files + sql.js WASM sidecar for property-graph queries) → Tier 3 (files + server: PocketBase / Postgres). The research's contribution is narrower than "we need a new plan" — it's that **Tier 2's activation threshold should be explicit and designed rather than emergent**. See the [Decisions this forces](#decisions-this-forces) section below for the specific Tier 2 cutoff question, and the [property graph callout above](#the-9-primitives-are-sound) for why the sidecar is also what makes first-class edge properties practically queryable.
+
+### The synthetic spine is the missing architectural insight
+
+This is the single most transformational finding in all four research sessions. It showed up independently in three of them:
+
+**Every mature compliance meta-framework** — SCF (~1,300 controls across 175+ frameworks), the DESM (Data Exchange Standards Mapper), Hyperproof's topic-based mapping, UCF's ~10,000 Common Controls — **converges on the same architecture**: instead of maintaining O(n²) pairwise mappings between every framework pair, each framework maps **once** to a canonical intermediate representation (the "spine"), and cross-framework mappings are derived **transitively** through the spine.
+
+<div class="frs-figure" role="img" aria-label="Two-panel comparison: the left panel shows seven frameworks connected to every other in a dense web of 21 edges labeled O of n squared. The right panel shows the same seven frameworks each connected to a single central hub labeled canonical spine, with only 7 edges labeled O of n.">
+  <div class="frs-figure-title">Pairwise mapping vs. synthetic spine</div>
+  <div class="frs-compare">
+    <div class="frs-compare-panel">
+      <div class="frs-compare-header">Pairwise (what we have now)</div>
+      <svg class="frs-compare-svg" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet" style={{display:'block',width:'100%',height:'auto',aspectRatio:'240 / 180'}}>
+        {/* 7 nodes around a circle with all pairwise edges */}
+        {[
+          [120, 30], [190, 60], [210, 130], [160, 165],
+          [80, 165], [30, 130], [50, 60]
+        ].map(([x, y], i, arr) => (
+          <g key={`edges-${i}`}>
+            {arr.slice(i + 1).map(([x2, y2], j) => (
+              <line key={`${i}-${j}`} x1={x} y1={y} x2={x2} y2={y2}
+                    stroke="#f38ba8" stroke-width="0.8" opacity="0.55" />
+            ))}
+          </g>
+        ))}
+        {[
+          [120, 30, 'NIST'], [190, 60, 'ISO'], [210, 130, 'CIS'], [160, 165, 'CSF'],
+          [80, 165, 'MITRE'], [30, 130, 'SOC2'], [50, 60, 'HIPAA']
+        ].map(([x, y, label], i) => (
+          <g key={`node-p-${i}`}>
+            <circle cx={x} cy={y} r="11" fill="#181825" stroke="#f38ba8" stroke-width="1.5" />
+            <text x={x} y={y + 3} fill="#cdd6f4" font-size="8" text-anchor="middle">{label}</text>
+          </g>
+        ))}
+      </svg>
+      <div class="frs-compare-stat frs-compare-bad">21 edges · O(n²) · n=7</div>
+    </div>
+    <div class="frs-compare-panel">
+      <div class="frs-compare-header">Synthetic spine (hub-and-spoke)</div>
+      <svg class="frs-compare-svg" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet" style={{display:'block',width:'100%',height:'auto',aspectRatio:'240 / 180'}}>
+        {/* 7 nodes around a circle, each connected only to center */}
+        {[
+          [120, 30], [190, 60], [210, 130], [160, 165],
+          [80, 165], [30, 130], [50, 60]
+        ].map(([x, y], i) => (
+          <line key={`spoke-${i}`} x1={x} y1={y} x2="120" y2="98" stroke="#a6e3a1" stroke-width="1.8" />
+        ))}
+        {/* Central spine hub */}
+        <circle cx="120" cy="98" r="18" fill="#0d3d33" stroke="#a6e3a1" stroke-width="2" />
+        <text x="120" y="95" fill="#a6e3d1" font-size="7" text-anchor="middle">spine</text>
+        <text x="120" y="104" fill="#a6e3d1" font-size="7" text-anchor="middle">(SCF-like)</text>
+        {/* Framework nodes */}
+        {[
+          [120, 30, 'NIST'], [190, 60, 'ISO'], [210, 130, 'CIS'], [160, 165, 'CSF'],
+          [80, 165, 'MITRE'], [30, 130, 'SOC2'], [50, 60, 'HIPAA']
+        ].map(([x, y, label], i) => (
+          <g key={`node-s-${i}`}>
+            <circle cx={x} cy={y} r="11" fill="#181825" stroke="#a6e3a1" stroke-width="1.5" />
+            <text x={x} y={y + 3} fill="#cdd6f4" font-size="8" text-anchor="middle">{label}</text>
+          </g>
+        ))}
+      </svg>
+      <div class="frs-compare-stat frs-compare-good">7 edges · O(n) · n=7</div>
+    </div>
+  </div>
+  <div class="frs-figure-caption">
+    <strong>Plain-English anchor:</strong> Imagine translating between every pair of 50 languages. You'd need 1,225 dictionaries. Or — you pick <em>one</em> pivot language (say, a simplified Esperanto), translate each of the 50 into it once, and now to translate from Korean to Swahili you just go Korean → pivot → Swahili. You need only 50 dictionaries instead of 1,225. The research says: <strong>pick a pivot for compliance controls</strong>. Candidates include SCF's ~1,300 canonical controls, an OSCAL-based catalog, or a Crosswalker-authored canonical. Category theory backs this formally — alignments are "spans", merging through a pivot is the "pushout" construction, and it's provably the best-possible structure-preserving transformation (Spivak's functorial data model).
+  </div>
+</div>
+
+This is a concept we don't currently have a formal position on. The roadmap talks about crosswalks as pairwise edges. The research is saying: that's the O(n²) trap, and there's a proven architectural alternative that every mature system has converged on independently. **This is the biggest open architectural question surfaced by the research** — now tracked as the [roadmap item "Pairwise crosswalks vs synthetic spine architecture"](/crosswalker/reference/roadmap/) and the fresh-agent [research challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/), which also goes deep on the long-term resilience and audit-grade trustworthiness questions that have to be answered before any spine can be committed to.
+
+<details>
+<summary><strong>Is a synthetic spine the same as a crosswalk?</strong> — click to expand</summary>
+
+**Short answer: no.** They're related but sit at different levels of the stack.
+
+- **A crosswalk** is a mapping artifact between two specific ontologies. "NIST 800-53 AC-2 maps to ISO 27001 A.9.2.1 with justification X" is a crosswalk entry. It's an *edge* — a statement about two concrete things that already exist. Crosswalks are what Crosswalker is named after and what it produces.
+
+- **A synthetic spine** is not a crosswalk — it's an *architectural choice* for how you generate and maintain crosswalks at scale. Instead of authoring N×(N-1)/2 direct crosswalks between every pair of frameworks, you author a **canonical intermediate ontology** (the "spine"), map each framework to the spine *once* (N mappings instead of N²), and let cross-framework crosswalks be derived transitively through the spine.
+
+**The practical difference:**
+
+| | Pairwise crosswalks | Synthetic spine |
+|---|---|---|
+| What you author | A↔B, A↔C, B↔C, … (N² edges) | A→spine, B→spine, C→spine, … (N mappings) |
+| When framework A updates | Re-review every crosswalk involving A | Re-review only A's mapping to the spine |
+| Consistency guarantee | Pairs can silently disagree (A→B ∘ B→C ≠ A→C) | Transitivity enforced by construction |
+| Example in the wild | Hand-curated NIST↔ISO spreadsheets | [SCF](/crosswalker/concepts/institutional-landscape/) (~1,300 controls as pivot), DESM, UCF |
+
+**So which does Crosswalker make?** Crosswalks — that's the product. The spine question is *how* we architect the production of those crosswalks at scale. A vault could contain both: framework-to-spine mappings (efficient to maintain) and transitively-derived framework-to-framework crosswalks (what the user actually queries against).
+
+**For more context on where crosswalks, frameworks, interchange formats, and canonical ontologies sit in the broader ecosystem**, see the [institutional landscape](/crosswalker/concepts/institutional-landscape/) page (who creates, maps, mandates, and consumes each of these) and the [operational landscape](/crosswalker/concepts/operational-landscape/) page (which explicitly distinguishes "frameworks themselves vs crosswalks vs evidence vs interchange formats" as different resource classes with different update cadences).
+
+</details>
+
+### Edge semantics should be set-theoretic, not SKOS-ish
+
+**Where this sits in the bigger picture.** This is the decision about what vocabulary every Crosswalker crosswalk edge must speak. It's the ground-level instantiation of the broader [**interlingua / pivot approach**](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) pattern — also called a **pivot ontology** or **meta-framework** — where every framework maps once to a canonical intermediate instead of O(n²) pairwise. The **[mapping organizations](/crosswalker/concepts/operational-landscape/#the-responsibility-matrix)** that already operate at that scale — [SCF](/crosswalker/reference/registry/scf/) with its ~1,300-control STRM bundle, [NIST OLIR](/crosswalker/reference/registry/olir/), [CTID](/crosswalker/reference/registry/ctid/) — have each committed to a specific edge-type vocabulary. Crosswalker's question is which one to adopt.
+
+The [schema matching concept page](/crosswalker/concepts/schema-matching/) already documents most of this terrain — specifically its [NIST OLIR formal relationship types section](/crosswalker/concepts/schema-matching/#nist-olirs-formal-relationship-types) (the 5 set-theory relationships, with domain examples) and its [SSSOM section](/crosswalker/concepts/schema-matching/#sssom-a-standard-for-sharing-mappings) (the metadata envelope). **This log's contribution is not to reinvent that content, it's to tie those pieces to an explicit Foundation commitment**: STRM as the required predicate vocabulary, SSSOM as the required metadata envelope, SKOS rejected as the base (kept only as an export format via the [YAML-LD / LinkML bridge](#file-first-is-valid-at-current-scale)).
+
+Right now we don't have a locked-in vocabulary for crosswalk edge types. The research is unambiguous: **[SKOS](/crosswalker/reference/registry/skos/)'s 5 mapping relations** (exactMatch, closeMatch, broadMatch, narrowMatch, relatedMatch) **are insufficient** for compliance crosswalking. They lack confidence scores, provenance, many-to-many support, and negation.
+
+The literature converges on **5 set-theory relationships** from NIST IR 8477 (February 2024), the SCF's [STRM](/crosswalker/reference/registry/strm/) methodology, and OSCAL's Control Mapping Model — three independent efforts that picked the same vocabulary:
+
+<div class="frs-figure" role="img" aria-label="Five labeled Venn-style relationship diagrams: equivalent-to shows two fully overlapping circles, subset-of shows a small circle inside a large one, superset-of shows a large circle containing a small one, intersects-with shows two partially overlapping circles, and no-relationship shows two separate circles.">
+  <div class="frs-figure-title">NIST IR 8477 set-theory relationships (5 primitives)</div>
+  <svg class="frs-strm" viewBox="0 0 720 220" preserveAspectRatio="xMidYMid meet" style={{display:'block',width:'100%',height:'auto',aspectRatio:'720 / 220'}}>
+    {/* equivalent-to */}
+    <g transform="translate(60, 40)">
+      <circle cx="30" cy="50" r="32" fill="#00d4aa22" stroke="#00d4aa" stroke-width="2" />
+      <circle cx="30" cy="50" r="32" fill="none" stroke="#89b4fa" stroke-width="2" stroke-dasharray="4 3" />
+      <text x="30" y="120" fill="#cdd6f4" font-size="11" text-anchor="middle" font-weight="600">equivalent-to</text>
+      <text x="30" y="135" fill="#6c7086" font-size="9" text-anchor="middle">A ≡ B</text>
+    </g>
+    {/* subset-of */}
+    <g transform="translate(200, 40)">
+      <circle cx="40" cy="50" r="38" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
+      <circle cx="40" cy="55" r="18" fill="#00d4aa22" stroke="#00d4aa" stroke-width="2" />
+      <text x="40" y="120" fill="#cdd6f4" font-size="11" text-anchor="middle" font-weight="600">subset-of</text>
+      <text x="40" y="135" fill="#6c7086" font-size="9" text-anchor="middle">A ⊂ B</text>
+    </g>
+    {/* superset-of */}
+    <g transform="translate(340, 40)">
+      <circle cx="40" cy="50" r="38" fill="#00d4aa22" stroke="#00d4aa" stroke-width="2" />
+      <circle cx="40" cy="55" r="18" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
+      <text x="40" y="120" fill="#cdd6f4" font-size="11" text-anchor="middle" font-weight="600">superset-of</text>
+      <text x="40" y="135" fill="#6c7086" font-size="9" text-anchor="middle">A ⊃ B</text>
+    </g>
+    {/* intersects-with */}
+    <g transform="translate(480, 40)">
+      <circle cx="28" cy="50" r="28" fill="#00d4aa22" stroke="#00d4aa" stroke-width="2" />
+      <circle cx="56" cy="50" r="28" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
+      <text x="42" y="120" fill="#cdd6f4" font-size="11" text-anchor="middle" font-weight="600">intersects-with</text>
+      <text x="42" y="135" fill="#6c7086" font-size="9" text-anchor="middle">A ∩ B ≠ ∅</text>
+    </g>
+    {/* no-relationship */}
+    <g transform="translate(610, 40)">
+      <circle cx="18" cy="50" r="22" fill="#00d4aa22" stroke="#00d4aa" stroke-width="2" />
+      <circle cx="70" cy="50" r="22" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
+      <text x="44" y="120" fill="#cdd6f4" font-size="11" text-anchor="middle" font-weight="600">no-relationship</text>
+      <text x="44" y="135" fill="#6c7086" font-size="9" text-anchor="middle">A ∩ B = ∅</text>
+    </g>
+  </svg>
+  <div class="frs-figure-caption">
+    <strong>Plain-English anchor:</strong> Forget SKOS's vague "closeMatch" / "relatedMatch" — think in terms of what the two things actually <em>cover</em>. <em>Equivalent</em> = same requirement. <em>Subset</em> = framework A's control is a narrower version of framework B's. <em>Superset</em> = A covers everything B covers and more. <em>Intersects</em> = they overlap but neither contains the other. <em>No-relationship</em> = genuinely unrelated. That's the whole vocabulary, and it's the same one that NIST, SCF, and OSCAL's Control Mapping Model all independently arrived at.
+  </div>
+</div>
+
+**Technically, [STRM](/crosswalker/reference/registry/strm/) is the *edge-type vocabulary* (the 5 allowed values for a crosswalk edge's `predicate_id` slot) and [SSSOM](/crosswalker/reference/registry/sssom/) is the *row-schema envelope* (the required + optional metadata fields every edge carries alongside that predicate).** They sit at different layers and work together, not as alternatives — the [edge semantics stack entry in terminology](/crosswalker/concepts/terminology/#matching--alignment-terms) and the [schema matching concept page](/crosswalker/concepts/schema-matching/#nist-olirs-formal-relationship-types) both define this distinction formally. (Expand the collapsible callout below for a worked example with both layers filled in.)
+
+:::caution[Scope of this commitment: ontology-to-ontology crosswalks only]
+The STRM + SSSOM stack above applies specifically to **[crosswalk edges](/crosswalker/concepts/terminology/#core-terms)** — edges where both ends are concepts in structured ontologies (framework↔framework, framework↔synthetic spine, transitively-derived). It does **not** cover **[evidence links](/crosswalker/concepts/terminology/#core-terms)** — edges from user-authored documents to framework controls with properties like `status: covered`, `sufficient: true`, `reviewer: Alice`. Evidence-link semantics ("this document demonstrates this control at such-and-such implementation status") are fundamentally different from crosswalk semantics ("these two concepts correspond at such-and-such confidence"), and SSSOM's vocabulary does not fit the evidence case.
+
+**The evidence-link edge model is a separate, unresolved Foundation question** that this synthesis didn't settle. Candidate approaches include adopting [OSCAL](/crosswalker/reference/registry/oscal/)'s Implementation Layer concepts (`by-component`, `implementation-status`, `satisfied`), reusing Crosswalker's original `framework_here.applies_to:: [[AC-2]] {JSON}` [link metadata syntax](/crosswalker/agent-context/link-metadata-system/), or inventing a Crosswalker-specific schema. Tracked as its own research item in the [Foundation roadmap](/crosswalker/reference/roadmap/).
+:::
+
+Each ontology-to-ontology edge then carries **[SSSOM](/crosswalker/reference/registry/sssom/)-style metadata** (Matentzoglu et al., *Database*, 2022): `mapping_justification` (mandatory), `confidence` score, `author_id`, `mapping_date`, `mapping_tool`, and `predicate_modifier` for negation. This is the edge model our crosswalks (but not our evidence links) should commit to.
+
+<details>
+<summary><strong>How STRM and SSSOM fit together in practice — they are not alternatives, they are layers</strong> (click to expand)</summary>
+
+This is the part that gets confusing on first read: **STRM is not a replacement for SSSOM, and SSSOM is not a replacement for STRM**. They're two different layers of the same edge, and you use them *together*.
+
+**The envelope/content analogy.** Think of a shipping manifest form. The **form itself** has mandatory fields — sender, recipient, declared contents, weight, date shipped — with rules about which are required. That's **SSSOM**: the row schema, the "what fields must every crosswalk carry." Then **one specific field** on that form ("declared contents category") has a controlled vocabulary — `electronics`, `liquid`, `fragile`, `perishable`. That's **STRM**: the allowed values for the *predicate_id* field only. Without the form, you have nothing to write on. Without the vocabulary, the most important field is free-text slop that can't be audited.
+
+**What a real Crosswalker edge looks like with both layers filled in:**
+
+```yaml
+# A single crosswalk edge — SSSOM row schema, STRM predicate vocabulary
+subject_id:            NIST-800-53/AC-2              # ← what this edge starts from
+predicate_id:          strm:subset-of                 # ← STRM's vocabulary (1 of 5 values)
+object_id:             ISO-27001/A.9.2.1              # ← what it points to
+mapping_justification: semapv:ManualMappingCuration   # ← SSSOM: mandatory
+confidence:            0.85                           # ← SSSOM: optional
+author_id:             alice@example.org              # ← SSSOM: optional
+mapping_date:          2026-04-10                     # ← SSSOM: optional
+mapping_tool:          crosswalker-wizard             # ← SSSOM: optional
+```
+
+- Every field except `predicate_id` is an SSSOM field. SSSOM is **predicate-agnostic** — it doesn't care what vocabulary you use for the `predicate_id`; it just requires there *be* one, and that the other envelope fields travel with it for audit.
+- The `predicate_id` value itself (`strm:subset-of`) is from **STRM's** 5-relationship vocabulary. If you picked SKOS instead, it would be `skos:narrowMatch` — same slot, different vocabulary.
+- Together they give you **auditable, precisely-typed crosswalks**: STRM gives the compliance auditor confidence that "subset-of" means exactly one thing mathematically; SSSOM gives them the justification, confidence, author, and date needed to trust the assertion.
+
+**Where this decision lives:**
+
+- **Roadmap pillar:** [Crosswalk edge semantics commitment (STRM + SSSOM)](/crosswalker/reference/roadmap/) in Foundation phase — this is the commitment we have to lock in before any crosswalk authoring features ship
+- **Registry entries (canonical facts):** [SKOS](/crosswalker/reference/registry/skos/) · [SSSOM](/crosswalker/reference/registry/sssom/) · [STRM](/crosswalker/reference/registry/strm/)
+- **Bigger-picture concept:** [schema matching — the interlingua / pivot approach](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) shows where these edge types sit in the larger crosswalking workflow
+- **Terminology:** [interlingua / pivot](/crosswalker/concepts/terminology/) entry
+- **Related research angle:** the [synthetic spine question in Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) asks how STRM+SSSOM edges *compose* when crosswalks are derived transitively through a pivot rather than authored directly — does `subset-of ∘ subset-of = subset-of`? That's the composition math we'll need to answer
+
+</details>
+
+### EvolutionPattern needs formal grounding — or replacement
+
+The [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) classifies how a framework evolves (stewardship profile, cadence, backwards compatibility, etc.) so we can set sensible default handling strategies. The research didn't invalidate it, but it surfaced a sharper question we'd already been circling (see [roadmap research item](/crosswalker/reference/roadmap/)):
+
+<div class="frs-figure" role="img" aria-label="Side-by-side card comparison of two approaches to framework evolution. Left card: EvolutionPattern taxonomy, framework-level prediction. Right card: Transformation recipe, per-version record of actual changes. Each card lists pros and cons.">
+  <div class="frs-figure-title">EvolutionPattern vs. transformation recipes</div>
+  <div class="frs-evo">
+    <div class="frs-evo-card">
+      <span class="frs-evo-tag frs-evo-tag-predict">prediction</span>
+      <h4>EvolutionPattern taxonomy</h4>
+      <div style={{ fontSize: '0.72rem', color: '#a6adc8', marginBottom: '0.4rem' }}>
+        A per-framework profile: "NIST evolves like X, so expect Y when a new version drops."
+      </div>
+      <strong style={{ fontSize: '0.68rem', color: '#a6e3a1' }}>Strengths</strong>
+      <ul>
+        <li>Works before any new version exists</li>
+        <li>Sets defaults for unknown changes</li>
+        <li>Portable across frameworks in the same class</li>
+      </ul>
+      <strong style={{ fontSize: '0.68rem', color: '#f38ba8' }}>Weaknesses</strong>
+      <ul>
+        <li>Predictive, so can be wrong</li>
+        <li>Needs formal grounding (Stojanovic 2004 evolution ontology, Flouris 11 change tasks)</li>
+        <li>Coarse-grained vs. per-version reality</li>
+      </ul>
+    </div>
+    <div class="frs-evo-card">
+      <span class="frs-evo-tag frs-evo-tag-record">record</span>
+      <h4>Transformation recipe</h4>
+      <div style={{ fontSize: '0.72rem', color: '#a6adc8', marginBottom: '0.4rem' }}>
+        A per-version-transition record: "NIST r5→r6 renamed these 12 IDs, merged these 3, split this one."
+      </div>
+      <strong style={{ fontSize: '0.68rem', color: '#a6e3a1' }}>Strengths</strong>
+      <ul>
+        <li>Grounded in actual changes, not prediction</li>
+        <li>Auditable — every change has provenance</li>
+        <li>Reuses our 9 primitives directly</li>
+      </ul>
+      <strong style={{ fontSize: '0.68rem', color: '#f38ba8' }}>Weaknesses</strong>
+      <ul>
+        <li>Only exists after a new version is released</li>
+        <li>Doesn't help set defaults for first-time imports</li>
+        <li>Per-transition labor cost</li>
+      </ul>
+    </div>
+  </div>
+  <div class="frs-figure-caption">
+    <strong>The research's verdict:</strong> keep EvolutionPattern, but treat it as a <em>default-setter</em> that transformation recipes can override when actual version deltas become available. Both layers coexist — EvolutionPattern sets expectations before a new version; the recipe records what actually happened. And <strong>EvolutionPattern itself needs formal grounding in Stojanovic's (2004) evolution ontology</strong> (capture → represent → semantics → implement → propagate → validate) and Flouris et al.'s (2008) 11-task classification. Currently it's a draft taxonomy with no literature anchor.
+  </div>
+</div>
+
+## New formal concepts the research introduced
+
+These are concepts that weren't in our Foundation vocabulary but the research leans on heavily. Each deserves a short definition now so future logs and concept pages can cite them.
+
+| Concept | Source | One-line definition | Relevance to Crosswalker |
+|---|---|---|---|
+| **[Graph Edit Distance (GED)](https://en.wikipedia.org/wiki/Graph_edit_distance)** | Bunke & Allermann 1983, Sanfeliu & Fu 1983 | The minimum-cost sequence of atomic graph operations to transform one labeled graph into another | Proves [our 9 primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) are complete |
+| **Algebraic [graph transformation / DPO](https://en.wikipedia.org/wiki/Graph_rewriting)** | Ehrig, Prange & Taentzer 2006 | Formalizes graph rewrite rules via Double Pushout category-theoretic constructions | Each of [our 9 primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) maps to a DPO production rule |
+| **[Category theory](https://en.wikipedia.org/wiki/Category_theory) (spans, functors, pushouts)** | Spivak, Kent — *ologs* | Math of structure-preserving mappings between categories; alignments are spans, merges are pushouts | Formal basis for the [synthetic spine](#the-synthetic-spine-is-the-missing-architectural-insight) and transitive crosswalks — see [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) |
+| **[Formal Concept Analysis (FCA)](https://en.wikipedia.org/wiki/Formal_concept_analysis)** | Ganter & Wille | Given a cross-table of objects × attributes, computes the unique concept lattice of all co-occurrence patterns | Could auto-discover implicit control equivalences from data — a candidate mechanism for [spine distillation in Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) |
+| **[SSSOM](/crosswalker/reference/registry/sssom/)** | Matentzoglu et al. 2022 (*Database*) | Simple Standard for Sharing Ontological Mappings — [SKOS](/crosswalker/reference/registry/skos/) predicates + mandatory justification, confidence, author, date, tool | The metadata model our crosswalk edges should adopt — tracked in the [edge semantics roadmap item](/crosswalker/reference/roadmap/) |
+| **[NIST IR 8477](https://csrc.nist.gov/pubs/ir/8477/final) / [STRM](/crosswalker/reference/registry/strm/)** | NIST Feb 2024 | Set Theory Relationship Mapping: equivalent, subset, superset, intersects, no-relationship | The 5 edge-type primitives for compliance crosswalks — tracked in the [edge semantics roadmap item](/crosswalker/reference/roadmap/) |
+| **[BFO (Basic Formal Ontology)](https://basic-formal-ontology.org/)** | ISO/IEC 21838-2:2021 | 36-class ISO-standardized upper ontology; baseline for DOD/IC since Jan 2024 | Its continuants/occurrents distinction clarifies "framework as entity" vs. "framework revision as event" — see [decision #5 below](#decisions-this-forces) |
+| **Stojanovic's evolution ontology** | Stojanovic 2004 (KAON) | Models ontology changes as first-class entities with a six-phase lifecycle | Should ground our [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — tracked in the [EvolutionPattern vs transformation recipes roadmap item](/crosswalker/reference/roadmap/) |
+| **Flouris 11 change tasks** | Flouris et al. 2008 | Taxonomy distinguishing evolution, versioning, integration, and alignment as formally separate problems | Clarifies that our "evolution" work is actually four different problems — see [user-first maintenance log](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) |
+| **Ranganathan PMEST / [faceted classification](https://en.wikipedia.org/wiki/Colon_classification)** | Colon Classification, 1933 | 5 fundamental facets — Personality, Matter, Energy, Space, Time — for decomposing any subject | The deepest root for why YAML frontmatter works as a facet system — see [file-first is valid at current scale](#file-first-is-valid-at-current-scale) |
+| **Synthetic spine / hub-and-spoke mapping** | SCF, DESM, UCF convergence | Map each framework to a canonical intermediate, derive cross-framework mappings transitively | The biggest architectural insight — see [the synthetic spine section above](#the-synthetic-spine-is-the-missing-architectural-insight), the [pairwise-vs-spine roadmap item](/crosswalker/reference/roadmap/), and [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/). Related concept: [schema matching — interlingua / pivot approach](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) |
+| **YAML-LD / [LinkML](https://linkml.io/)** | W3C CG Final Report 2023; LinkML project | Bridges from YAML frontmatter to full RDF/OWL/SHACL | Our escape hatch to formal Semantic Web tooling without abandoning files — see [the Markdown + YAML vs OWL+RDF+SPARQL bullet](#file-first-is-valid-at-current-scale) |
+| **[Content-addressable versioning](https://en.wikipedia.org/wiki/Content-addressable_storage)** | Git, IPFS, Nix, Dolt | Identify versions by SHA of content, not by central numbering | Candidate versioning model for framework snapshots — see [Versioning model in Next research items below](#next-research-items) |
+
+## Decisions this forces
+
+The research doesn't make these decisions — it makes them **unavoidable**. Each of these now needs an explicit position, and each should become a dated log entry or zz-challenge when picked up:
+
+1. **Tier 2 activation threshold.** Where does the sql.js sidecar kick in? Candidate cutoffs: 3K notes (the "community query tooling" threshold), 5K notes (soft user-noticeable), 10K notes (hard). And is it **user-toggled, note-count-triggered, or adaptive** based on operation latency? Right now this is "when needed" — that's not a decision, that's a deferral. Tracked under the [Progressive tier architecture pillar](/crosswalker/reference/roadmap/) and the [Obsidian Bases direction research item](/crosswalker/reference/roadmap/) (which needs to re-measure the ceiling against Bases specifically — see [the Dataview callout above](#files-canonical-ceiling--documented-already-answered-by-the-3-tier-pillar)).
+
+2. **EvolutionPattern: keep, replace, or stack?** Keep [EvolutionPattern](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) as framework-level default-setter AND add per-version transformation recipes, OR replace it entirely with recipes and let recipes generalize. Research leans "stack both", but we need a commitment. Tracked under the [EvolutionPattern vs transformation recipes roadmap item](/crosswalker/reference/roadmap/).
+
+3. **Crosswalk edge vocabulary.** Commit to the [5 NIST IR 8477 set-theory relationships](https://csrc.nist.gov/pubs/ir/8477/final) — i.e. [STRM](/crosswalker/reference/registry/strm/) — as the edge type vocabulary? And commit to [SSSOM](/crosswalker/reference/registry/sssom/)'s metadata model for edge properties (mandatory justification + optional confidence, author, date, tool)? Tracked under the new [Crosswalk edge semantics commitment roadmap item](/crosswalker/reference/roadmap/). See the [STRM and SSSOM fit together in practice callout](#edge-semantics-should-be-set-theoretic-not-skos-ish) above for how the two layers compose on a single edge.
+
+4. **Synthetic spine — adopt or reject.** Do we architect around a canonical pivot ([SCF](/crosswalker/reference/registry/scf/)'s ~1,300 controls? An [OSCAL](/crosswalker/reference/registry/oscal/) catalog? A Crosswalker-authored canonical?) so crosswalks become transitive through the spine, or do we keep direct pairwise mappings and accept the O(n²) maintenance burden? **This is the biggest open question.** Tracked under the [Pairwise vs synthetic spine roadmap item](/crosswalker/reference/roadmap/) and explored in depth in [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/), which also covers the long-term resilience and audit-grade trustworthiness angles. Bigger context: [schema matching — interlingua / pivot approach](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach).
+
+5. **BFO-style formal grounding — how much?** Adopt [BFO](https://basic-formal-ontology.org/)'s continuant/occurrent distinction as a `node.type` convention (near-zero cost, high conceptual clarity) without adopting the full 36-class ontology? Or stay fully platform-independent and resist any upper-ontology commitment as premature lock-in? No roadmap item exists yet — this decision is currently only captured here.
+
+6. **Formal grounding for EvolutionPattern.** Rebuild the [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) on top of **Stojanovic's six-phase evolution ontology** (capture → represent → semantics → implement → propagate → validate) and **Flouris et al.'s 11 change tasks** — or keep it as a pragmatic draft and defer the grounding? Tracked under the same [EvolutionPattern vs transformation recipes roadmap item](/crosswalker/reference/roadmap/) as decision #2, since the "keep / replace / stack" question and the "formalize against Stojanovic / Flouris" question travel together.
+
+## Next research items
+
+These don't need decisions yet — they need investigation:
+
+- **Is [FCA](https://en.wikipedia.org/wiki/Formal_concept_analysis) tractable on real framework data?** Build a formal context (rows = controls across [NIST](/crosswalker/reference/registry/nist/) + [CIS](/crosswalker/reference/registry/cis/) + [ISO](/crosswalker/reference/registry/iso/), columns = properties extracted from description text) and see whether the auto-computed concept lattice reveals real equivalences that match [SCF](/crosswalker/reference/registry/scf/)'s hand-curated mappings. If yes, we have an automated mapping discovery path. This is one of the explicit investigation branches in [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) (spine distillation option).
+- **Sizing the synthetic spine.** If we adopt hub-and-spoke, is the spine **inherited** (reuse [SCF](/crosswalker/reference/registry/scf/) or [OSCAL](/crosswalker/reference/registry/oscal/)), **distilled** (compute it from FCA over the imported frameworks), or **authored** (handcraft a small canonical set)? Each has very different operational implications. Explicitly addressed in section 4 of [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/#4-spine-selection), with resilience and trustworthiness profiles for each option.
+- **Versioning model.** [Content-addressable](https://en.wikipedia.org/wiki/Content-addressable_storage) (Git-style CIDs per framework snapshot)? Semantic version strings (NIST r5 / r6)? [Datomic](https://www.datomic.com/)-style immutable accumulation? Research pointed at all three as viable — we haven't picked. Related: [framework versioning concept page](/crosswalker/concepts/framework-versioning/). No dedicated roadmap item yet.
+- **[CRDT](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type) layer for future distributed editing.** Not Foundation-phase, but the research flagged that if we ever want multi-user editing, we should layer [Yjs](https://github.com/yjs/yjs) (via the Relay plugin architecture for Obsidian) on top rather than invent our own reconciler. See the [consistency models concept page](/crosswalker/concepts/consistency-models/) for the formal backdrop. Note for later.
+- **LLM matching pipeline (Tier 3 of crosswalk matching).** Magneto / MILA / LLMs4OM achieved 0.83–0.95 F1 on ontology alignment by using LLMs only for uncertain mappings. When we get to automated crosswalk suggestion, this is the architecture to adopt — three-tier: lexical → embedding → LLM-for-uncertain-only. No roadmap item yet; will fit under a future "AI-assisted transforms" workstream. Related concept: [schema matching](/crosswalker/concepts/schema-matching/).
+
+Each of these is a candidate for a new **[research challenge brief](/crosswalker/agent-context/zz-challenges/)** so fresh agents can attack them without inheriting our assumptions. [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) is the first one spun out from this synthesis; future items should follow the same pattern.
+
+## What this log does NOT settle
+
+To be explicit: this log is the **synthesis**, not the decisions. Nothing in the KB, roadmap, or terminology pages gets modified based on this log alone. The next steps are:
+
+1. Review this synthesis with fresh eyes
+2. Pick the decisions above one at a time, each becoming its own dated log entry
+3. Update roadmap / concepts / terminology pages as each decision lands
+4. Archive the `.workspace/` research docs once their insights are represented in the KB
+
+The Foundation phase holds up. It gets **refined**, not rebuilt.
+
+## Related
+
+- [Atomic operations research (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) — the 6 GED atoms, our 9 primitives, completeness proof
+- [Ontology evolution first principles (04-08)](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) — the original 13 structural change primitives exercise
+- [User-first ontology maintenance (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) — entity-aligned UX, Path C
+- [Primitives depth and pluggable layers (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) — detection / decisioning / handling separation
+- [Evolution pattern taxonomy draft (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — the taxonomy this research wants grounded in Stojanovic
+- [Why Obsidian, why files (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) — the file-first commitment
+- [Layered architecture vision (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) — progressive Tier 1/2/3
+- [Terminology](/crosswalker/concepts/terminology/) — definitions for ontology diff primitives, EvolutionPattern, transformation recipes, decisioning, handling strategy, pluggable layer
+- [Roadmap](/crosswalker/reference/roadmap/) — where the ontology diff primitives and EvolutionPattern research items live
+- [Research challenges](/crosswalker/agent-context/zz-challenges/) — the place where "next research items" become fresh-agent assignments

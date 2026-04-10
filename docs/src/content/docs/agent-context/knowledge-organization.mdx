@@ -41,6 +41,8 @@ Compliance frameworks are structured hierarchies, but the knowledge work around 
 
 ## SEACOWr meta-framework
 
+**Prior art by the project owner** — SEACOW is a meta-framework for knowledge organization inside filesystem-primitive worlds, developed and lives in [`cybersader/cyberbase`](https://github.com/cybersader/cyberbase) ([search the repo](https://github.com/search?q=repo%3Acybersader%2Fcyberbase+seacow&type=code)). It's not abstract theory — it's working convention from years of real use. Crosswalker should treat it as Foundation-phase prior art, not as a decontextualized thinking tool.
+
 A thinking tool for organizing knowledge platforms, applicable to how Crosswalker structures output:
 
 - **S**ystem — the platform (Obsidian, with its specific capabilities)
@@ -52,6 +54,16 @@ A thinking tool for organizing knowledge platforms, applicable to how Crosswalke
   - **(r)elation** — how concepts connect (typed links, crosswalks)
 
 This framework helps answer "where should this go?" when structuring imported data.
+
+See the [04-10 SEACOW + folder-tag-sync prior-art log](/crosswalker/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/) for how SEACOW's axes map onto Crosswalker's current Foundation decisions, and the [roadmap research item](/crosswalker/reference/roadmap/) tracking what Crosswalker should formally adopt from it.
+
+## Polyhierarchy via tags — obsidian-folder-tag-sync
+
+**More prior art from the project owner** — the [`cybersader/obsidian-folder-tag-sync`](https://github.com/cybersader/obsidian-folder-tag-sync) plugin (active development, lives in the same `plugin_development/` workspace as Crosswalker) provides **bidirectional sync between folder paths and Obsidian tags with regex-based rules**. A note in `Frameworks/NIST-800-53/AC/AC-2.md` can automatically carry `#framework/nist/ac-2` and vice versa.
+
+**Why it matters for Crosswalker:** the filesystem is a rigid hierarchy, but compliance knowledge is inherently polyhierarchical — a control can belong to multiple NIST families, a technique to multiple MITRE tactics, and an evidence note to multiple framework controls across multiple frameworks. folder-tag-sync's pattern (primary folder location + synthesized parallel tag hierarchy) is a **proven working solution** to this problem. Crosswalker's generation engine could reuse the mechanism directly, or at minimum cite it as the reference implementation.
+
+See the [04-10 prior-art log](/crosswalker/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/) for the full list of reuse opportunities and the roadmap research item tracking the reuse decision.
 
 ## PARA + Taxonomies
 
