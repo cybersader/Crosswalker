@@ -184,7 +184,7 @@ The roadmap lives in two places that must stay in sync:
 
 **The goal:** A reader should be able to follow any concept from any page to its definition, rationale, and related decisions without dead ends.
 
-## Research Challenges (`agent-context/challenges/`)
+## Research Challenges (`agent-context/zz-challenges/`)
 
 One-off research briefs for fresh agents to critically assess the project. Each challenge is a focused assignment that stress-tests an assumption, explores a blind spot, or finds new paths not yet considered.
 
