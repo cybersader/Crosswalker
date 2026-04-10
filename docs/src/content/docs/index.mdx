@@ -1,6 +1,7 @@
 ---
 title: Crosswalker
 description: Turn your Obsidian vault into an operational compliance knowledge graph.
+hideMeta: true
 sidebar:
   hidden: true
 ---
@@ -51,6 +52,55 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
         // This avoids DOM cloning entirely
         widths.push(words[j].textContent.length);
       }
+
+      // Detect whether the widest rotating word would cause the first line
+      // of the headline to overflow its container. If so, we apply a class
+      // that forces the rotating wrap onto its own line so nothing gets
+      // cut off on narrow viewports. Re-runs on window resize.
+      function checkOverflow() {
+        var headline = wrap.closest('.cw-headline');
+        if (!headline) return;
+        // Measure the widest word using the same font/weight as the headline
+        var test = document.createElement('span');
+        test.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
+        test.className = wrap.className;
+        headline.appendChild(test);
+        var maxWordWidth = 0;
+        for (var j = 0; j <= n; j++) {
+          test.textContent = words[j].textContent;
+          var w = test.getBoundingClientRect().width;
+          if (w > maxWordWidth) maxWordWidth = w;
+        }
+        headline.removeChild(test);
+
+        // Measure the prefix ("The future of ") width. Clone the headline
+        // text up to the rotating wrap and measure it.
+        var prefixText = '';
+        var node = wrap.previousSibling;
+        while (node) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            prefixText = node.textContent + prefixText;
+          }
+          node = node.previousSibling;
+        }
+        var prefixTest = document.createElement('span');
+        prefixTest.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:inherit;';
+        prefixTest.textContent = prefixText;
+        headline.appendChild(prefixTest);
+        var prefixWidth = prefixTest.getBoundingClientRect().width;
+        headline.removeChild(prefixTest);
+
+        // Compare (prefix + widest word + padding) against container width.
+        // If it exceeds, break the rotating wrap onto a new line.
+        var containerWidth = headline.getBoundingClientRect().width;
+        var needed = prefixWidth + maxWordWidth + 24; // 24px fudge for padding/kerning
+        if (needed > containerWidth) {
+          headline.classList.add('cw-headline-stacked');
+        } else {
+          headline.classList.remove('cw-headline-stacked');
+        }
+      }
+
       // Convert to em-based widths (set via JS after font loads)
       function setWidths() {
         var test = document.createElement('span');
@@ -70,9 +120,20 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
       function start() {
         requestAnimationFrame(function() {
           setWidths();
+          checkOverflow();
           setInterval(tick, 2500);
         });
       }
+
+      // Re-check on resize (debounced)
+      var resizeTimer = null;
+      window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+          setWidths();
+          checkOverflow();
+        }, 150);
+      });
 
       if (document.fonts && document.fonts.ready) {
         document.fonts.ready.then(start);
@@ -547,6 +608,18 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     color: var(--sl-color-white);
     margin: 0;
     letter-spacing: -0.02em;
+  }
+
+  /* Auto-wrap mode: applied by checkOverflow() in the inline script above
+     when the widest rotating word plus the prefix would overflow the
+     container at the current viewport width. Forces the rotating wrap
+     onto its own line so nothing gets cut off on narrow viewports. */
+  .cw-headline-stacked .cw-rotate-wrap {
+    display: block;
+    margin: 0.1em auto 0;
+  }
+  .cw-headline-stacked .cw-rotate-wrap::before {
+    content: none;
   }
   .cw-accent { color: var(--sl-color-accent); }
   .cw-subtitle {

@@ -25,7 +25,13 @@ const sameDay = createdDate && updatedDate &&
   createdDate.toDateString() === updatedDate.toDateString();
 
 const volatility = data.volatility;
-const hasMeta = Boolean(volatility || createdDate || (updatedDate && !sameDay));
+
+// Splash/hero pages can opt out of the meta row with `hideMeta: true` in
+// frontmatter. The index page does this because it has its own custom
+// hero layout where a floating "UPDATED Apr X, 2026" line looks out of
+// place above the hand-authored rotating headline.
+const hideMeta = data.hideMeta === true;
+const hasMeta = !hideMeta && Boolean(volatility || createdDate || (updatedDate && !sameDay));
 
 function fmt(d: Date): string {
   return d.toLocaleDateString(undefined, {
