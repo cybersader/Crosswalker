@@ -27,15 +27,17 @@ This is the secret sauce: **the meta-layer that understands how knowledge struct
 
 ## What's genuinely novel
 
-Individual pieces of the puzzle exist elsewhere — OSCAL for machine-readable controls, SCF's STRM for framework mapping, MITRE's STIX for deprecation chains. But [no tool combines them](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-1-ontology-lifecycle-management--does-anything-solve-this):
+Individual pieces of the puzzle exist elsewhere — [OSCAL](/crosswalker/reference/registry/oscal/) for machine-readable controls, [SCF](/crosswalker/reference/registry/scf/)'s [STRM](/crosswalker/reference/registry/strm/) for framework mapping, [MITRE](/crosswalker/reference/registry/mitre/)'s STIX for deprecation chains, [SSSOM](/crosswalker/reference/registry/sssom/) for ontology-mapping metadata. But [no tool combines them](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-1-ontology-lifecycle-management--does-anything-solve-this):
 
 | Capability | Exists today? | Crosswalker's approach |
 |---|---|---|
 | Classify **how** an ontology evolves | No | [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — 8 fields, community-contributed profiles |
 | Auto-select migration strategy from that classification | No | Migration strategy matrix — evolution pattern + SCD type → handling |
-| Community registry for framework configs | Partially (SCF) | Config-as-code files, shareable via registry (`crosswalker install nist-800-53-r5`) |
-| Detect stale crosswalks automatically | No | Version tracking in `_crosswalker` metadata, evolution profile comparison |
-| File-based compliance knowledge graph | No | Obsidian vault as a [property graph](/crosswalker/concepts/file-based-graph-databases/) — plain markdown, zero vendor lock-in |
+| Community registry for framework configs | Partially ([SCF](/crosswalker/reference/registry/scf/)) | Config-as-code files, shareable via registry (`crosswalker install nist-800-53-r5`) |
+| Detect stale [crosswalks](/crosswalker/concepts/terminology/#core-terms) automatically | No | Version tracking in `_crosswalker` metadata, evolution profile comparison |
+| [Crosswalk edge semantics](/crosswalker/concepts/terminology/#matching--alignment-terms) committed as a layered stack ([STRM](/crosswalker/reference/registry/strm/) vocabulary + [SSSOM](/crosswalker/reference/registry/sssom/) envelope) | Partially (SCF uses STRM, no PKM tool combines with SSSOM) | [Set-theoretic predicates with full audit envelope](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish), not SKOS's vague closeMatch semantics |
+| [Evidence-link edge model](/crosswalker/concepts/terminology/#core-terms) distinct from crosswalk edges | No | [Junction notes](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) with 13-field schema, isomorphic to OSCAL `by-component`, Bases-queryable |
+| File-based compliance knowledge graph | No | Obsidian vault as a [property graph](/crosswalker/concepts/file-based-graph-database/) — plain markdown, zero vendor lock-in |
 
 ---
 
@@ -47,7 +49,7 @@ Crosswalker chooses **files and folders** over proprietary databases. This isn't
 
 - **Version control**: `git diff` between framework versions, not custom export tooling
 - **Data ownership**: you own the bytes, air-gapped environments work
-- **Tool-agnostic**: works with [Bases, Dataview, or plain search](/crosswalker/concepts/metadata-ecosystem/) — no lock-in
+- **Tool-agnostic**: the query layer is [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) (we [explicitly committed against Dataview](/crosswalker/reference/roadmap/) as it's deprecated), but plain-text frontmatter means any tool can read the data — no lock-in
 - **CI/CD friendly**: read files directly in pipelines
 
 The tradeoff: eventual consistency and manual re-import instead of real-time sync. For compliance knowledge management, where **auditability matters more than real-time collaboration**, this is the right tradeoff.

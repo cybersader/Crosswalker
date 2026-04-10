@@ -244,9 +244,9 @@ Obsidian runs on a filesystem but provides graph-like features:
 </div>
 
 Compliance frameworks are structured ontologies:
-- **NIST 800-53**: Families > Controls > Enhancements
-- **CIS Controls**: Controls > Safeguards > Implementation Groups
-- **MITRE ATT&CK**: Tactics > Techniques > Sub-techniques
+- [**NIST**](/crosswalker/reference/registry/nist/) **800-53**: Families > Controls > Enhancements
+- [**CIS**](/crosswalker/reference/registry/cis/) **Controls**: Controls > Safeguards > Implementation Groups
+- [**MITRE**](/crosswalker/reference/registry/mitre/) **ATT&CK**: Tactics > Techniques > Sub-techniques
 
 Organizations need to import these structures, link workspace notes to framework nodes, attach metadata to relationships, and query compliance status.
 
@@ -254,15 +254,15 @@ Organizations need to import these structures, link workspace notes to framework
 
 - **Proprietary GRC tools**: Lock-in, expensive, rigid
 - **Spreadsheets**: Don't scale, no graph navigation
-- **Plain Obsidian**: Links exist but no relationship types
+- **Plain Obsidian**: Links exist but no relationship types — see the [Terminology: Edge metadata](/crosswalker/concepts/terminology/#data-model-terms) entry for the full context
 - **Graph databases**: Overkill, separate from notes
 
-Crosswalker bridges this gap: structured data in, Obsidian-native notes out, queryable with standard tools.
+Crosswalker bridges this gap: structured data in, Obsidian-native notes out, queryable with standard tools. See [what makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) for the committed architectural differentiators — including the two Foundation-phase edge-model commitments ([crosswalks via STRM + SSSOM](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) and [evidence links via junction notes](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)) that resolve the "no relationship types" gap at the data-model layer.
 
 ## The temporal dimension
 
-The hierarchy-vs-graph tension is compounded by **time**: frameworks evolve. NIST publishes new CSF versions. MITRE adds and deprecates ATT&CK techniques. CIS consolidates controls. Every import is a snapshot that becomes stale.
+The hierarchy-vs-graph tension is compounded by **time**: frameworks evolve. [NIST](/crosswalker/reference/registry/nist/) publishes new CSF versions. [MITRE](/crosswalker/reference/registry/mitre/) adds and deprecates ATT&CK techniques. [CIS](/crosswalker/reference/registry/cis/) consolidates controls. Every import is a snapshot that becomes stale.
 
-This introduces [ontology evolution](/crosswalker/concepts/ontology-evolution/) — the challenge of maintaining data models as the underlying structures change. It connects to formal problems like [schema matching](/crosswalker/concepts/schema-matching/) (how do you map between versions?) and [framework versioning](/crosswalker/concepts/framework-versioning/) (how does each framework actually handle this?).
+This introduces [ontology evolution](/crosswalker/concepts/ontology-evolution/) — the challenge of maintaining data models as the underlying structures change. It connects to formal problems like [schema matching](/crosswalker/concepts/schema-matching/) (how do you map between versions?), [framework versioning](/crosswalker/concepts/framework-versioning/) (how does each framework actually handle this?), and the [9 atomic ontology diff primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) Crosswalker uses to describe any structural change between two ontology versions.
 
 See [data model resilience](/crosswalker/agent-context/data-model-resilience/) for how Crosswalker approaches this architecturally.
