@@ -170,6 +170,20 @@ The roadmap lives in two places that must stay in sync:
 
 **Every significant decision** gets a dated log entry in `docs/src/content/docs/agent-context/zz-log/`. Roadmap items should link to their log entries so the reasoning is always reachable.
 
+## Cross-Linking Convention
+
+**Links are critical in this knowledge base.** Every page should aggressively cross-link to related concepts, decisions, and definitions.
+
+**When creating or editing any docs page:**
+1. Link terms to their [terminology](/crosswalker/concepts/terminology/) definitions on first mention
+2. Link concepts to the pages that explore them deeper (log entries, concept pages)
+3. Every log page must have a `## Related` section at the bottom with links to related pages
+4. Roadmap items should link to their log entries, research pages, and concept pages
+5. When a term has aliases (e.g., "ontology diff primitives" = "graph change atoms"), mention the aliases and link to the terminology page
+6. Link to the project's philosophical pillars ([vision](/crosswalker/agent-context/vision/), [problem](/crosswalker/concepts/problem/), [what makes CW unique](/crosswalker/concepts/what-makes-crosswalker-unique/)) where design decisions connect to them
+
+**The goal:** A reader should be able to follow any concept from any page to its definition, rationale, and related decisions without dead ends.
+
 ## Local Workspace (`.workspace/`)
 
 The `.workspace/` folder at the repo root is **gitignored** — it holds local working documents for architecture exploration, research drafts, and back-and-forth thinking that isn't ready for the public knowledge base.
