@@ -98,10 +98,20 @@ MITRE publishes biannual with STIX changelogs → automation possible. CIS publi
 5. **LLM-assisted detection** — can LLMs analyze changelogs and suggest evolution patterns?
 6. **Pivot/interlingua strategy** — should Crosswalker adopt SCF as a meta-framework?
 
+:::note[Status update (April 2026)]
+This draft is under active review. The [ontology diff primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) research established a provably complete set of atomic operations for detecting changes — the question is now whether this taxonomy is needed alongside [per-version transformation recipes](/crosswalker/concepts/terminology/#architecture--evolution-primitives), or whether actual transformation records replace it. See the [research item in the roadmap](/crosswalker/reference/roadmap/).
+:::
+
 ## Related
 
+- [First principles: ontology change](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) — revisited primitives, Path A/B/C
+- [Ontology diff primitives research](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) — provably complete atomic operations
+- [User-first ontology maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) — the experience layer, Path C recommended
+- [Primitives depth + pluggable layers](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) — detection, decisioning, custom transforms
+- [Terminology](/crosswalker/concepts/terminology/#architecture--evolution-primitives) — EvolutionPattern aliases and related terms
 - [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — the problem domain
 - [Framework versioning](/crosswalker/concepts/framework-versioning/) — per-framework details
 - [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — the Maintain phase implements this
 - [Config schema design](/crosswalker/agent-context/config-schema-design/) — FrameworkConfig v2 builds on this
-- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — this is the first spec item
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — the novel contribution
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — research item: EvolutionPattern vs transformation recipes
