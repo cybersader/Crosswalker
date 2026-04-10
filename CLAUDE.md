@@ -14,33 +14,144 @@ Crosswalker is an Obsidian plugin for importing structured ontologies (framework
 # Install dependencies
 bun install
 
-# Development mode (watch mode, outputs to test-vault)
+# Plugin — development mode (watch, outputs to test-vault)
 bun run dev
 
-# Production build (type-check + bundle)
+# Plugin — production build (type-check + bundle)
 bun run build
 
-# Run linter (required for community plugin submission)
+# Lint (required for community plugin submission)
 bun run lint
-
-# Fix lint issues automatically
 bun run lint:fix
 
-# Run tests
+# Unit tests
 bun run test
-
-# Run tests in watch mode
 bun run test:watch
 ```
 
-## Testing Workflow
+## Local dev orchestrator — `bun run serve`
 
-The build outputs directly to `test-vault/.obsidian/plugins/crosswalker/` (configured in `esbuild.config.mjs`). To test:
+`scripts/serve.mjs` is an interactive menu wrapping every local workflow (plugin watch, docs dev, docs build, tunnel sharing, docs E2E). Prefer this over raw commands — it handles cross-OS `node_modules` contamination (e.g. rollup native-binary mismatches when bouncing between WSL and Windows) automatically and cleans up all spawned children on `Ctrl+C`.
 
-1. Run `bun run dev` (watch mode)
+```bash
+# Interactive menu (8 options)
+bun run serve
+
+# Non-interactive shortcuts (skip the menu)
+bun run serve:docs       # Docs dev server (Astro HMR) → http://localhost:4321
+bun run serve:plugin     # Plugin watch build → test-vault
+bun run serve:both       # Docs dev + plugin watch in parallel
+bun run serve:share      # Docs dev + Tailscale tunnel (tailnet only)
+
+# Advanced (use the menu, or pass as argv)
+bun scripts/serve.mjs preview      # Build docs + serve dist
+bun scripts/serve.mjs build        # Build docs only → docs/dist
+bun scripts/serve.mjs cloudflare   # Docs dev + Cloudflare Tunnel (public URL)
+bun scripts/serve.mjs test         # Docs E2E (Playwright test:local)
+```
+
+**Interactive menu options** (what you see running `bun run serve`):
+
+| # | Option | What it does |
+|---|--------|--------------|
+| 1 | Docs dev server | `bun x astro dev` in `docs/` on port 4321 with HMR — use this for KB editing |
+| 2 | Docs preview (built) | `bun x astro build` + `bun x astro preview` — test the production render |
+| 3 | Docs build only | `bun x astro build` → `docs/dist`, then exits |
+| 4 | Plugin dev (watch) | `bun run dev` at repo root — rebuilds plugin into `test-vault/.obsidian/plugins/crosswalker/` on save |
+| 5 | Docs + plugin dev | Runs options 1 + 4 in parallel. Single `Ctrl+C` kills both |
+| 6 | Share docs (Tailscale) | Docs dev + `tailscale serve 4321`, prints tailnet URL |
+| 7 | Share docs (Cloudflare) | Docs dev + `bun x cloudflared tunnel --url http://localhost:4321`, prints public URL |
+| 8 | Docs E2E tests | `bun run test:local` in `docs/` (Playwright smoke + deployment suites) |
+
+**Cross-platform notes:**
+- First run in `docs/` auto-installs dependencies if `node_modules/` is missing
+- If you bounce between WSL and Windows, the script detects a rollup native-binary mismatch (e.g. `@rollup/rollup-win32-x64-msvc` missing when Linux binaries are present) and nukes + reinstalls `docs/node_modules` automatically
+- Tailscale detection handles both `tailscale` (Linux/WSL) and `tailscale.exe` (Windows)
+
+## Testing Workflows
+
+Three separate test surfaces. Know which you're working on before picking commands.
+
+### 1. Plugin unit tests (Jest)
+
+```bash
+bun run test              # one shot
+bun run test:watch        # watch mode
+```
+
+Covers parsers, config manager, generation engine logic. Fully headless — no Obsidian runtime required.
+
+### 2. Plugin manual testing (Obsidian)
+
+The plugin build outputs directly to `test-vault/.obsidian/plugins/crosswalker/` (configured in `esbuild.config.mjs`). Obsidian plugin UI can't be automated headlessly, so manual testing is still required for UX.
+
+1. `bun run serve:plugin` (or `bun run dev`) — starts the watch build
 2. Open `test-vault/` in Obsidian
-3. Enable the Crosswalker plugin in Settings > Community Plugins
+3. Enable the Crosswalker plugin in Settings → Community Plugins
 4. Test via command palette: "Crosswalker: Import structured data"
+5. Edits to `src/` auto-rebuild; reload the plugin in Obsidian (Ctrl+R in dev console, or toggle in settings) to pick up changes
+
+### 3. Docs E2E tests (Playwright)
+
+The docs site has a Playwright suite in `docs/tests/` that runs against a built + previewed site. Two suites:
+
+- **`smoke.spec.ts`** (10 tests) — homepage loads, Nova top nav, sidebar, search, content pages (installation, features, agent-context, blog, architecture)
+- **`deployment.spec.ts`** (4 tests) — HTTP 200, no console errors, no failed asset requests, meta tags present
+
+**Running docs tests:**
+
+```bash
+cd docs
+
+# All tests — builds + starts preview server + runs Chromium
+bun run test:local
+
+# Deployment-only tests (faster, subset)
+bun run test:deploy
+
+# Headed mode — watch the browser run the tests
+bun run test:e2e
+
+# Playwright UI mode — interactive debugging
+bun run test:e2e:ui
+
+# Against live site (instead of local preview)
+TEST_URL=https://cybersader.github.io bun run test:deploy
+```
+
+**Or from the repo root, through the orchestrator:**
+```bash
+bun run serve            # interactive menu → pick option 8
+# or:
+bun scripts/serve.mjs test
+```
+
+**Prerequisites (first time only):**
+```bash
+cd docs
+bun install
+bun x playwright install chromium    # or: npx playwright install chromium
+bun run build                          # preview server serves from dist/
+```
+
+**Configuration:**
+- `docs/playwright.config.ts` — Playwright config
+- Base path: `/Crosswalker` (Astro base) — all `page.goto()` calls must prefix this
+- Preview server auto-starts on port 4321
+- Browser: Chromium only (sufficient for docs coverage)
+
+**Screenshots on failure:** automatically captured to `docs/test-results/`. Can be read by agents directly.
+
+**Common docs testing issues:**
+
+| Issue | Fix |
+|-------|-----|
+| 404 on every page | Forgot `bun run build` — preview serves from `dist/` |
+| Chromium not found | `bun x playwright install chromium` |
+| Tailwind classes missing | Check `docs/src/styles/global.css` has `@source` directives |
+| Base path 404s in custom tests | Prefix every `page.goto()` with `${BASE}/` where `const BASE = '/Crosswalker'` |
+
+For the full docs testing reference, see `.claude/skills/docs-testing/SKILL.md`. For docs site architecture (Astro config, plugins, theming), see `.claude/skills/docs-site/SKILL.md`.
 
 ## Architecture
 
