@@ -1,8 +1,197 @@
 ---
 title: Terminology
-description: Key terms and concepts used throughout Crosswalker.
+description: Key terms and concepts used throughout Crosswalker — with a visual at-a-glance of the two committed edge models (crosswalks and evidence links) at the top.
 tags: [frameworks, data-model]
 ---
+
+<style>{`
+  /* Terminology page edge-model visual (tm-*) */
+  .sl-markdown-content .tm-edge-figure {
+    margin: 0.5rem 0 2rem;
+    max-width: 100%;
+    background: #1e1e2e;
+    border: 1px solid #313244;
+    border-radius: 12px;
+    padding: 1.25rem;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  .sl-markdown-content .tm-edge-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #6c7086;
+    margin-bottom: 0.25rem;
+  }
+  .sl-markdown-content .tm-edge-subtitle {
+    font-size: 0.85rem;
+    color: #cdd6f4;
+    margin-bottom: 1.25rem;
+    font-weight: 500;
+  }
+  .sl-markdown-content .tm-edge-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .sl-markdown-content .tm-edge-card {
+    background: #181825;
+    border: 1.5px solid #313244;
+    border-radius: 10px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+  .sl-markdown-content .tm-edge-card-crosswalk { border-color: #89b4fa66; }
+  .sl-markdown-content .tm-edge-card-evidence { border-color: #00d4aa66; }
+  .sl-markdown-content .tm-edge-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 3px;
+    margin-bottom: 0.55rem;
+    align-self: flex-start;
+    font-weight: 700;
+  }
+  .sl-markdown-content .tm-badge-crosswalk {
+    background: #89b4fa22;
+    color: #89b4fa;
+    border: 1px solid #89b4fa55;
+  }
+  .sl-markdown-content .tm-badge-evidence {
+    background: #00d4aa22;
+    color: #00d4aa;
+    border: 1px solid #00d4aa55;
+  }
+  .sl-markdown-content .tm-edge-cardtitle {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #cdd6f4;
+    margin-bottom: 0.25rem;
+  }
+  .sl-markdown-content .tm-edge-semantic {
+    font-size: 0.75rem;
+    color: #a6adc8;
+    font-style: italic;
+    margin-bottom: 0.9rem;
+    line-height: 1.5;
+  }
+  .sl-markdown-content .tm-edge-diagram {
+    width: 100%;
+    height: auto;
+    display: block;
+    margin-bottom: 0.9rem;
+    aspect-ratio: 260 / 90;
+  }
+  .sl-markdown-content .tm-edge-fields {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.7rem;
+    color: #cdd6f4;
+    line-height: 1.65;
+    background: #11111a;
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 0.7rem;
+    border: 1px solid #313244;
+  }
+  .sl-markdown-content .tm-edge-fkey { color: #89b4fa; }
+  .sl-markdown-content .tm-edge-fval { color: #a6e3a1; }
+  .sl-markdown-content .tm-edge-fcomment { color: #6c7086; font-style: italic; }
+  .sl-markdown-content .tm-edge-status {
+    font-size: 0.7rem;
+    color: #a6adc8;
+    line-height: 1.5;
+    border-top: 1px solid #313244;
+    padding-top: 0.7rem;
+    margin-top: auto;
+  }
+  .sl-markdown-content .tm-edge-status strong { color: #cdd6f4; }
+  .sl-markdown-content .tm-edge-status a { color: #89b4fa; }
+  .sl-markdown-content .tm-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.7rem;
+    color: #6c7086;
+  }
+  .sl-markdown-content .tm-legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 0.3rem;
+    vertical-align: middle;
+  }
+  @media (max-width: 640px) {
+    .sl-markdown-content .tm-edge-grid { grid-template-columns: 1fr; }
+  }
+`}</style>
+
+<div class="tm-edge-figure" role="img" aria-label="At-a-glance comparison of Crosswalker's two committed edge models: ontology-to-ontology crosswalks using STRM plus SSSOM, versus evidence-to-framework implementation links using junction notes with a 13-field schema.">
+  <div class="tm-edge-title">Edge model at a glance</div>
+  <div class="tm-edge-subtitle">Crosswalker has two kinds of edges. Both have Foundation-committed architectures. Disambiguating them is the point of this page.</div>
+  <div class="tm-edge-grid">
+    <div class="tm-edge-card tm-edge-card-crosswalk">
+      <span class="tm-edge-badge tm-badge-crosswalk">Crosswalk</span>
+      <div class="tm-edge-cardtitle">Ontology ↔ Ontology</div>
+      <div class="tm-edge-semantic">"These two concepts <em>correspond</em> at such-and-such confidence."</div>
+      <svg class="tm-edge-diagram" viewBox="0 0 260 90" preserveAspectRatio="xMidYMid meet">
+        <circle cx="50" cy="45" r="26" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
+        <text x="50" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">NIST</text>
+        <text x="50" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">AC-2</text>
+        <circle cx="210" cy="45" r="26" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
+        <text x="210" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">ISO</text>
+        <text x="210" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">A.9.2.1</text>
+        <line x1="78" y1="45" x2="182" y2="45" stroke="#89b4fa" stroke-width="2" stroke-dasharray="4 3" />
+        <text x="130" y="36" fill="#89b4fa" font-size="8" text-anchor="middle">subset-of</text>
+      </svg>
+      <div class="tm-edge-fields">
+<span class="tm-edge-fkey">subject_id</span>: <span class="tm-edge-fval">NIST-800-53/AC-2</span>
+<span class="tm-edge-fkey">predicate_id</span>: <span class="tm-edge-fval">strm:subset-of</span>  <span class="tm-edge-fcomment">← STRM</span>
+<span class="tm-edge-fkey">object_id</span>: <span class="tm-edge-fval">ISO-27001/A.9.2.1</span>
+<span class="tm-edge-fkey">confidence</span>: <span class="tm-edge-fval">0.85</span>  <span class="tm-edge-fcomment">← SSSOM</span>
+<span class="tm-edge-fkey">mapping_justification</span>: <span class="tm-edge-fval">…</span>
+      </div>
+      <div class="tm-edge-status">
+        <strong>Committed architecture:</strong> <a href="/crosswalker/reference/registry/strm/">STRM</a> 5-relationship vocabulary in the <code>predicate_id</code> slot + <a href="/crosswalker/reference/registry/sssom/">SSSOM</a> metadata envelope. <a href="/crosswalker/reference/registry/skos/">SKOS</a> rejected as base. See the <a href="/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish">04-10 synthesis §edge semantics</a>.
+      </div>
+    </div>
+    <div class="tm-edge-card tm-edge-card-evidence">
+      <span class="tm-edge-badge tm-badge-evidence">Evidence link</span>
+      <div class="tm-edge-cardtitle">Document → Ontology</div>
+      <div class="tm-edge-semantic">"This document <em>implements</em> this control at such-and-such status."</div>
+      <svg class="tm-edge-diagram" viewBox="0 0 260 90" preserveAspectRatio="xMidYMid meet">
+        <rect x="16" y="22" width="68" height="46" rx="4" fill="#00d4aa22" stroke="#00d4aa" stroke-width="2" />
+        <text x="50" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">MFA</text>
+        <text x="50" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">Policy.md</text>
+        <circle cx="210" cy="45" r="26" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
+        <text x="210" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">NIST</text>
+        <text x="210" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">AC-2</text>
+        <line x1="88" y1="45" x2="178" y2="45" stroke="#00d4aa" stroke-width="2" />
+        <polygon points="178,42 184,45 178,48" fill="#00d4aa" />
+        <text x="133" y="36" fill="#00d4aa" font-size="8" text-anchor="middle">implements</text>
+      </svg>
+      <div class="tm-edge-fields">
+<span class="tm-edge-fkey">link_type</span>: <span class="tm-edge-fval">evidence-control</span>
+<span class="tm-edge-fkey">evidence</span>: <span class="tm-edge-fval">"[[MFA-Policy]]"</span>
+<span class="tm-edge-fkey">control</span>: <span class="tm-edge-fval">"[[NIST--AC-2]]"</span>
+<span class="tm-edge-fkey">status</span>: <span class="tm-edge-fval">implemented</span>  <span class="tm-edge-fcomment">← OSCAL</span>
+<span class="tm-edge-fkey">reviewer</span>: <span class="tm-edge-fval">"[[Jane-Auditor]]"</span>
+<span class="tm-edge-fcomment"># + 8 more fields</span>
+      </div>
+      <div class="tm-edge-status">
+        <strong>Committed architecture:</strong> <a href="/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/">Junction notes</a> — one markdown file per edge with a 13-field flat-YAML schema isomorphic to <a href="/crosswalker/reference/registry/oscal/">OSCAL</a>'s <code>by-component</code>. See <a href="/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/">Challenge 07</a>.
+      </div>
+    </div>
+  </div>
+  <div class="tm-legend">
+    <span><span class="tm-legend-dot" style="background:#89b4fa"></span>Ontology concept (framework control, spine node)</span>
+    <span><span class="tm-legend-dot" style="background:#00d4aa"></span>User-authored document (evidence note)</span>
+  </div>
+</div>
 
 ## Core terms
 

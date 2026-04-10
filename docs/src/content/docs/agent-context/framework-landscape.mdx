@@ -7,34 +7,39 @@ tags: [frameworks, frameworks-nist, frameworks-mitre, grc]
 ## Major frameworks
 
 ### NIST SP 800-53 Rev. 5
+- **Authored by**: [NIST](/crosswalker/reference/registry/nist/)
 - **Structure**: Family > Control > Enhancement
 - **Example**: AC (Access Control) > AC-2 (Account Management) > AC-2(1)
 - **Size**: ~1000+ controls with enhancements
-- **Format**: Available as CSV, XLSX, OSCAL XML/JSON
+- **Format**: Available as CSV, XLSX, [OSCAL](/crosswalker/reference/registry/oscal/) XML/JSON
 - **Links**: Related controls, assessment procedures
 
 ### NIST Cybersecurity Framework (CSF) 2.0
+- **Authored by**: [NIST](/crosswalker/reference/registry/nist/)
 - **Structure**: Function > Category > Subcategory
 - **Example**: Protect (PR) > Identity Management (PR.AA) > PR.AA-01
 - **Size**: ~100 subcategories
-- **Crosswalks**: Maps to 800-53, CIS, ISO 27001
+- **Crosswalks**: Maps to 800-53, [CIS](/crosswalker/reference/registry/cis/), [ISO](/crosswalker/reference/registry/iso/) 27001
 
 ### CIS Controls v8
+- **Authored by**: [CIS](/crosswalker/reference/registry/cis/) (Center for Internet Security)
 - **Structure**: Control > Safeguard > Implementation Group
 - **Example**: Control 1 > 1.1 (Establish asset inventory) > IG1
 - **Size**: 18 controls, 153 safeguards
-- **Crosswalks**: Maps to NIST CSF, 800-53
+- **Crosswalks**: Maps to [NIST](/crosswalker/reference/registry/nist/) CSF, 800-53
 
 ### MITRE ATT&CK
+- **Authored by**: [MITRE](/crosswalker/reference/registry/mitre/)
 - **Structure**: Tactic > Technique > Sub-technique
 - **Example**: Execution (TA0002) > T1059 (Command Scripting) > T1059.001 (PowerShell)
 - **Size**: ~200 techniques with sub-techniques
-- **Related**: D3FEND (defensive), ENGAGE (deception)
+- **Related**: D3FEND (defensive), ENGAGE (deception). Maintained crosswalks to NIST 800-53 via [CTID](/crosswalker/reference/registry/ctid/).
 
 ### CRI Profile v2.0
+- **Authored by**: [CRI](/crosswalker/reference/registry/cri/) (Cyber Risk Institute)
 - **Structure**: Function > Category > Subcategory > Diagnostic Statement
 - **Size**: Comprehensive financial sector framework
-- **Crosswalks**: NIST CSF, FFIEC, CISA CPG
+- **Crosswalks**: [NIST](/crosswalker/reference/registry/nist/) CSF, [FFIEC](/crosswalker/reference/registry/ffiec/), CISA CPG
 
 ## Data format patterns
 
@@ -70,7 +75,7 @@ From an FS-ISAC Spring Summit 2024 session on adopting CRI Profile v2.0:
 - **SaaS demand**: Strong demand for SaaS solutions that can handle CRI's complexity without manual spreadsheet management
 
 ### Mapping complexity
-- CRI maps to NIST CSF, FFIEC CAT, CISA CPG, and other financial-sector standards
+- [CRI](/crosswalker/reference/registry/cri/) maps to [NIST](/crosswalker/reference/registry/nist/) CSF, [FFIEC](/crosswalker/reference/registry/ffiec/) CAT, CISA CPG, and other financial-sector standards
 - Organizations need to maintain continuous compliance across all mapped frameworks simultaneously
 - Evidence collection must link back to specific diagnostic statements — exactly what Crosswalker's typed-link system is designed for
 
