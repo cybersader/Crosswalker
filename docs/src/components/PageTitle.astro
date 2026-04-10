@@ -1,0 +1,129 @@
+---
+// PAGE_TITLE_ID is '_top' per Starlight's internal constants module. Inlined here
+// because `@astrojs/starlight/constants` is not a publicly exported specifier —
+// importing from it fails with "Missing ./constants specifier in @astrojs/starlight"
+// since it's listed for internal use only in the package's exports map.
+const PAGE_TITLE_ID = '_top';
+
+// Starlight exposes the page data and the git-computed lastUpdated date through
+// Astro.locals.starlightRoute. Reference:
+//   node_modules/@astrojs/starlight/components/LastUpdated.astro
+const { entry, lastUpdated } = Astro.locals.starlightRoute;
+const data = entry.data as Record<string, any>;
+
+// Created/published date — from frontmatter `date:` (blog-schema compatible)
+const createdDate: Date | null = data.date ? new Date(data.date) : null;
+
+// Updated date — from git (via lastUpdated:true in astro.config.mjs) OR
+// from an explicit `lastUpdated:` frontmatter override. Starlight resolves this
+// into Astro.locals.starlightRoute.lastUpdated as a Date object.
+const updatedDate: Date | null = lastUpdated ?? null;
+
+// Don't show "Updated" if it's the same day as "Created" — reduces noise on
+// pages that were just published and haven't been edited since.
+const sameDay = createdDate && updatedDate &&
+  createdDate.toDateString() === updatedDate.toDateString();
+
+const volatility = data.volatility;
+const hasMeta = Boolean(volatility || createdDate || (updatedDate && !sameDay));
+
+function fmt(d: Date): string {
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+---
+
+<h1 id={PAGE_TITLE_ID}>{data.title}</h1>
+
+{hasMeta && (
+  <div class="cw-page-meta">
+    {volatility && (
+      <span class:list={['cw-meta-badge', `cw-meta-volatility-${volatility}`]}>
+        {volatility}
+      </span>
+    )}
+    {createdDate && (
+      <span class="cw-meta-date">
+        <span class="cw-meta-label">Created</span>
+        <time datetime={createdDate.toISOString()}>{fmt(createdDate)}</time>
+      </span>
+    )}
+    {updatedDate && !sameDay && (
+      <span class="cw-meta-date">
+        <span class="cw-meta-label">Updated</span>
+        <time datetime={updatedDate.toISOString()}>{fmt(updatedDate)}</time>
+      </span>
+    )}
+  </div>
+)}
+
+<style>
+  @layer starlight.core {
+    h1 {
+      margin-top: 1rem;
+      font-size: var(--sl-text-h1);
+      line-height: var(--sl-line-height-headings);
+      font-weight: 600;
+      color: var(--sl-color-white);
+    }
+  }
+
+  .cw-page-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+    margin-top: 0.6rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--sl-color-gray-2);
+  }
+
+  .cw-meta-badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 4px;
+    border: 1px solid var(--sl-color-gray-4);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .cw-meta-volatility-stable {
+    color: #a6e3a1;
+    border-color: rgba(166, 227, 161, 0.4);
+    background: rgba(166, 227, 161, 0.08);
+  }
+
+  .cw-meta-volatility-evolving {
+    color: #f9e2af;
+    border-color: rgba(249, 226, 175, 0.4);
+    background: rgba(249, 226, 175, 0.08);
+  }
+
+  .cw-meta-date {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+    font-size: 0.72rem;
+    color: var(--sl-color-gray-2);
+  }
+
+  .cw-meta-label {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.62rem;
+    color: var(--sl-color-gray-3);
+    font-weight: 600;
+  }
+
+  .cw-meta-date time {
+    color: var(--sl-color-gray-1);
+  }
+</style>
