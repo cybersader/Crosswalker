@@ -208,10 +208,19 @@
     overflow: hidden !important;
     padding: 0 !important;
   }
-  /* Keep mobile TOC breadcrumb visible and full-width */
-  [class~="lg:sl-hidden"] {
-    width: 100vw !important;
-    position: relative !important;
+  /* Hide the Starlight mobile TOC at narrow-desktop widths.
+     The element is a custom element <mobile-starlight-toc> defined in
+     node_modules/@astrojs/starlight/components/MobileTableOfContents.astro.
+     It's position:fixed at the top of the viewport, and at min-width:50rem
+     gets inset-inline-start: var(--sl-content-inline-start) to clear the
+     desktop sidebar. At 768-1151px we've hidden the sidebar entirely, so
+     that inset-inline-start offset leaves the TOC floating in weird empty
+     space. Cleanest fix: just hide it in this range — the content is wide
+     enough at this width that users can see headings by scrolling normally.
+     Mobile (< 768px) still gets the TOC because this rule is inside a
+     min-width:768px media query. */
+  mobile-starlight-toc {
+    display: none !important;
   }
   /* Show hamburger menu and its parent container.
      Nova's parent div uses Tailwind md:hidden — override it. */
@@ -223,6 +232,115 @@
 /* Sidebar scrollbar: kept visible (Nova's demo site has one too).
    With 100+ pages, the sidebar needs scrolling and the scrollbar
    helps users know there's more content below. */
+
+/* Widen content column on large screens + narrow sidebars.
+   - Content: elastic clamp so reading column grows with viewport but caps at
+     ~85rem for readable line lengths. Fixes squished tables in wide-monitor
+     layouts without breaking narrow-desktop.
+   - Sidebars: 15rem (was 18.75rem) — reclaims ~120px total for content. */
+@media (min-width: 1152px) {
+  :root {
+    --sl-content-width: clamp(50rem, 68vw, 85rem);
+    --sl-sidebar-width: 15rem;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   04-10 foundation research synthesis figures (.frs-*)
+
+   Moved here from the MDX file's inline <style> block. Reason: inline
+   MDX <style> blocks can have compilation quirks with modern CSS features
+   (aspect-ratio, clamp, min/max) where rules silently get dropped or not
+   applied. Keeping these rules in global brand.css guarantees reliable
+   delivery to the browser regardless of how the MDX file is compiled.
+   The .frs-* classes are scoped by convention to the 04-10 log file only.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.sl-markdown-content .frs-figure {
+  margin: 2rem auto;
+  max-width: 100%;
+  width: 100%;
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 12px;
+  padding: 1.25rem 1.25rem 1rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  box-sizing: border-box;
+}
+
+.sl-markdown-content .frs-figure-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #6c7086;
+  margin-bottom: 0.75rem;
+}
+
+.sl-markdown-content .frs-figure-caption {
+  margin-top: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #a6adc8;
+  border-top: 1px solid #313244;
+  padding-top: 0.75rem;
+}
+
+/* SVGs inside frs figures: force full-width, aspect-preserved scaling.
+   Using specificity .sl-markdown-content .frs-figure svg to beat the
+   sibling .sl-markdown-content svg { max-width:100%; height:auto } rule
+   above. */
+.sl-markdown-content .frs-figure svg.frs-cliff,
+.sl-markdown-content .frs-figure svg.frs-strm,
+.sl-markdown-content .frs-figure svg.frs-compare-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.sl-markdown-content .frs-figure svg.frs-cliff { aspect-ratio: 720 / 260; }
+.sl-markdown-content .frs-figure svg.frs-strm { aspect-ratio: 720 / 220; }
+.sl-markdown-content .frs-figure svg.frs-compare-svg { aspect-ratio: 240 / 180; }
+
+/* EvolutionPattern vs Transformation recipe comparison cards —
+   subgrid alignment so "Strengths" / "Weaknesses" sections line up
+   horizontally across both cards regardless of description length. */
+.sl-markdown-content .frs-evo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto auto auto auto auto auto;
+  gap: 1rem;
+}
+
+.sl-markdown-content .frs-evo-card {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 7;
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 0.9rem;
+  /* Fallback for browsers without subgrid — still gives equal card heights */
+  row-gap: 0.35rem;
+}
+
+/* Keep the badge/tag as a compact pill instead of stretching to fill
+   the grid cell width — grid items default to justify-self: stretch
+   which was turning the badges into weird rectangular boxes. */
+.sl-markdown-content .frs-evo-card .frs-evo-tag {
+  justify-self: start;
+  align-self: start;
+}
+
+@media (max-width: 640px) {
+  .sl-markdown-content .frs-evo {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+  .sl-markdown-content .frs-evo-card {
+    grid-template-rows: none;
+    grid-row: auto;
+  }
+}
 
 /* Obsidian-style callouts */
 .callout {

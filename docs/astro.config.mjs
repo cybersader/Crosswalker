@@ -23,6 +23,12 @@ export default defineConfig({
       'process.version': '"v0.0.0"',
       'process.env': '{}',
     },
+    server: {
+      // Allow access from Docker / MCP browser / LAN / Tailscale / cross-machine previews.
+      // Vite 6+ blocks non-localhost Host headers by default — this opens it back up.
+      // Safe for local dev only; production builds are served as static files.
+      allowedHosts: true,
+    },
   },
   markdown: {
     remarkPlugins: [
@@ -42,8 +48,10 @@ export default defineConfig({
       },
       favicon: '/favicon.svg',
       description: 'Import structured ontologies into Obsidian with folder structures, typed links, and metadata',
+      lastUpdated: true,
       components: {
         MobileMenuFooter: './src/components/MobileMenuFooter.astro',
+        PageTitle: './src/components/PageTitle.astro',
       },
       editLink: {
         baseUrl: 'https://github.com/cybersader/crosswalker/edit/main/docs/',
