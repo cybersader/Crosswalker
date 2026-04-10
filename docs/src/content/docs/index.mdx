@@ -1,6 +1,6 @@
 ---
 title: Crosswalker
-description: Turn your Obsidian vault into an operational compliance knowledge graph.
+description: Philosophically, Crosswalker is an ontology lifecycle management engine. In practice, it turns your Obsidian vault into an operational compliance knowledge graph.
 hideMeta: true
 sidebar:
   hidden: true
@@ -616,7 +616,13 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
      onto its own line so nothing gets cut off on narrow viewports. */
   .cw-headline-stacked .cw-rotate-wrap {
     display: block;
-    margin: 0.1em auto 0;
+    margin: 0 auto;
+  }
+  /* Hide the <br/> in stacked mode — it otherwise adds a blank line
+     between the rotating word and "is a knowledge graph." because the
+     rotating wrap is already block-level and triggering its own line break. */
+  .cw-headline-stacked br {
+    display: none;
   }
   .cw-headline-stacked .cw-rotate-wrap::before {
     content: none;
@@ -834,7 +840,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 ## What is Crosswalker?
 
-Crosswalker turns your [Obsidian](https://obsidian.md) vault into an **operational compliance knowledge graph**. Import structured frameworks, [crosswalk](/crosswalker/agent-context/framework-crosswalks/) between standards, link evidence to controls with structured metadata, and query everything — all in plain markdown you own. AI-ready from day one.
+Philosophically, Crosswalker is an [ontology lifecycle management](/crosswalker/concepts/ontology-lifecycle/) engine. In practice, it turns your [Obsidian](https://obsidian.md) vault into an **operational compliance knowledge graph**. Import structured frameworks, [crosswalk](/crosswalker/concepts/terminology/#core-terms) between standards, link evidence to controls with structured metadata, and query everything — all in plain markdown you own. AI-ready from day one.
 
 <CardGrid>
   <Card title="Import wizard" icon="rocket">

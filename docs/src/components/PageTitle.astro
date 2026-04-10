@@ -26,11 +26,13 @@ const sameDay = createdDate && updatedDate &&
 
 const volatility = data.volatility;
 
-// Splash/hero pages can opt out of the meta row with `hideMeta: true` in
-// frontmatter. The index page does this because it has its own custom
-// hero layout where a floating "UPDATED Apr X, 2026" line looks out of
-// place above the hand-authored rotating headline.
-const hideMeta = data.hideMeta === true;
+// Splash/hero pages opt out of the meta row. Two ways:
+//   1. Explicit `hideMeta: true` in frontmatter (if the schema allows it)
+//   2. Implicit: `sidebar.hidden === true` — any page hidden from the
+//      sidebar is almost certainly a splash/landing page
+// The sidebar.hidden check is the one that currently works because
+// Starlight's content schema may strip the custom hideMeta field.
+const hideMeta = data.hideMeta === true || data.sidebar?.hidden === true;
 const hasMeta = !hideMeta && Boolean(volatility || createdDate || (updatedDate && !sameDay));
 
 function fmt(d: Date): string {
