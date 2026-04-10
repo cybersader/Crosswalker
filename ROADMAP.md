@@ -12,8 +12,8 @@ Crosswalker is a meta-system for ontology lifecycle management. Architecture dec
 
 ## Foundation — "Get the architecture right"
 
-- [ ] Structural diff engine spec — 9 atomic operations + 4 recognized composites (provably complete)
-- [ ] EvolutionPattern taxonomy — prediction/defaults layer on top of diff engine
+- [ ] Ontology diff primitives — 9 atomic operations + 4 recognized composites (provably complete). Also: graph change atoms, structural change primitives
+- [ ] EvolutionPattern vs transformation recipes — investigate whether framework-level evolution classification is needed alongside per-version transformation records. Both may coexist. Research item.
 - [ ] FrameworkConfig v2 schema — evolution metadata, config-as-code format
 - [ ] _crosswalker metadata v2 — version tracking, source hash, migration history
 - [ ] Migration strategy matrix — evolution pattern → SCD type → handling
