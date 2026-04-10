@@ -1,0 +1,165 @@
+---
+title: "Challenge 07: Link metadata / edge model for evidence mapping"
+description: Design the edge metadata model for evidence→framework implementation links — the "other" edge type Crosswalker has to support that's NOT a crosswalk. Bases-compatible storage, custom or inherited schema, reviewer attribution, status transitions.
+tags: [research, architecture, evidence-mapping-links, data-model]
+date: 2026-04-10
+sidebar:
+  label: "07 · Link metadata / edge model"
+---
+
+## The assignment
+
+Crosswalker has two fundamentally different edge categories that were conflated in early design but have since been distinguished:
+
+1. **Ontology-to-ontology crosswalks** — `NIST 800-53/AC-2` ↔ `ISO 27001/A.9.2.1`. Resolved by the [04-10 foundation synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish): [STRM](/crosswalker/reference/registry/strm/) vocabulary + [SSSOM](/crosswalker/reference/registry/sssom/) envelope. Already a roadmap commitment.
+2. **Evidence-to-framework implementation links** — `MFA-Policy.md` → `NIST AC-2` with properties like `{status: "covered", sufficient: true, reviewer: "Alice", review_date: "2026-04-10"}`. **Not resolved.** This is your target.
+
+Evidence links are actually Crosswalker's **original** motivation — the project started as a way to attach structured metadata to links between evidence notes and framework controls (see the [link metadata system](/crosswalker/agent-context/link-metadata-system/) prior design). The ontology-crosswalking story came later. But the 04-10 synthesis research sessions all focused on the crosswalking problem and silently ignored the evidence case. Your job is to resolve what got deferred.
+
+**Your assignment: design the evidence-link edge model Crosswalker commits to.**
+
+## What to investigate
+
+### 1. Historical context — the prior art
+
+Read the existing [link metadata system](/crosswalker/agent-context/link-metadata-system/) design carefully. It proposed an inline-field syntax like `framework_here.applies_to:: [[AC-2]] {"sufficient": true, "reviewer": "Alice"}`. Note:
+
+- **What's right about it**: The dotKey + destination + metadata structure is the right conceptual shape. The priority hierarchy (inline + JSON > inline boolean > frontmatter default > folder default) is a sensible resolution order.
+- **What's stale about it**: It depends on Dataview inline fields. Crosswalker has since [committed to Obsidian Bases](/crosswalker/reference/roadmap/) as the viewing/querying layer, and **Bases cannot process inline fields** — only frontmatter. The storage layer has to change.
+- **What's unknown about it**: Whether the dotKey semantic still makes sense in a frontmatter-first world, or whether a different syntactic shape is needed.
+
+### 2. The anticipated direction
+
+The [roadmap research item](/crosswalker/reference/roadmap/) anticipates **a Crosswalker-specific custom schema** — not inheriting a full external spec like OSCAL wholesale. Your job is to validate (or refute) this anticipation by:
+
+- **Steelmanning the custom option**: what does a minimal, Bases-compatible, frontmatter-storable schema look like? What fields are mandatory vs. optional? What status vocabulary (covered / partial / planned / deprecated)? How is reviewer attribution captured?
+- **Steelmanning the OSCAL-inherit option**: would adopting [OSCAL Implementation Layer](/crosswalker/reference/registry/oscal/)'s `by-component`, `implementation-status`, `satisfied` concepts wholesale be over-engineered for a local-first Obsidian tool? Or is the interoperability payoff worth the adoption tax?
+- **Steelmanning the hybrid**: adopt OSCAL *concept vocabulary* (status names, satisfied/partial semantics) but embed it in a Crosswalker-native storage schema that Bases can query directly.
+
+### 3. The storage question — how does it live in the file?
+
+This is the hard part. Three candidate storage shapes, each with different trade-offs:
+
+**(a) Inline in the markdown body** (the original design)
+```markdown
+This policy addresses [[NIST 800-53/AC-2]] {"status": "covered", "sufficient": true, "reviewer": "Alice"}
+```
+- **Pro**: natural authoring flow — you write the claim in prose and attach metadata inline
+- **Con**: Bases can't query it. Requires a custom parser. Dataview was the only query path.
+
+**(b) In frontmatter as structured arrays**
+```yaml
+---
+implements:
+  - target: NIST-800-53/AC-2
+    status: covered
+    sufficient: true
+    reviewer: Alice
+    review_date: 2026-04-10
+  - target: ISO-27001/A.9.2.1
+    status: partial
+    reviewer: Bob
+---
+```
+- **Pro**: Bases can query it natively. Standard YAML. No custom parser needed.
+- **Con**: Separated from the prose context — you can't write the link inline alongside the text that describes it. UX feels more form-filling than authoring.
+
+**(c) Sidecar files**
+A separate `.links.json` or `.edges.yml` file next to each evidence note with all its outgoing edge metadata.
+- **Pro**: keeps the markdown clean, structured data is fully machine-readable, can be generated/edited by tools
+- **Con**: two files per note to keep in sync, human editing is harder, not visible when reading the markdown
+
+**(d) Hybrid — inline WikiLinks + frontmatter metadata by index**
+WikiLinks stay inline (visible in markdown reading view), but the metadata for each link lives in frontmatter keyed by the link target:
+```markdown
+This policy addresses [[NIST 800-53/AC-2]] and [[ISO 27001/A.9.2.1]].
+```
+```yaml
+---
+link_metadata:
+  "NIST 800-53/AC-2":
+    status: covered
+    sufficient: true
+    reviewer: Alice
+  "ISO 27001/A.9.2.1":
+    status: partial
+    reviewer: Bob
+---
+```
+- **Pro**: links stay in prose, metadata queryable by Bases, no custom parser
+- **Con**: two places to update when adding a link, frontmatter keys with special characters get awkward
+
+**Your job: pick one (or propose a fifth) and justify it.** Consider: what does the authoring UX feel like? What does a Bases table view of "all evidence with covered status" look like? What happens when you rename a framework control (referential integrity)?
+
+### 4. The status vocabulary question
+
+The prior design mentioned `status: covered`. OSCAL has a more elaborate taxonomy. What should Crosswalker's status vocabulary be?
+
+Candidates:
+- **Minimal**: `covered | partial | planned | not_applicable`
+- **OSCAL-aligned**: `implemented | partially-implemented | planned | alternative-implementation | not-applicable`
+- **Status + coverage**: two orthogonal fields — `status: implemented` + `coverage: full | partial`
+- **Status + lifecycle**: four states — `proposed | under-review | approved | deprecated`
+- **Compound**: all of the above
+
+Research what real compliance workflows need and don't invent fields nobody will use.
+
+### 5. Reviewer and audit trail
+
+Evidence links are AUDIT artifacts. What fields does an auditor need?
+
+Minimum candidates:
+- `reviewer` — who approved this assertion
+- `review_date` — when
+- `review_notes` — free-text rationale
+- `expiration_date` — when does this evidence go stale?
+- `supersedes` / `superseded_by` — chain of reviews over time
+- `confidence` — how sure is the reviewer?
+- `evidence_type` — policy doc? screenshot? test result? config file?
+
+Which are mandatory, which optional? How does this compare to OSCAL's `responsible-party` and related concepts?
+
+### 6. Status transitions and workflow
+
+Evidence isn't static. A control might be `planned` → `partial` → `covered` → `deprecated` over time. Does Crosswalker track transitions?
+
+- **Option A**: no, only current state — simpler but loses history
+- **Option B**: append-only event log — each status change is a new row/record with timestamp
+- **Option C**: git history as the audit trail — let the file system's versioning be the source of truth
+- **Option D**: both current state and a sidecar transition log
+
+### 7. Integration with the rest of the stack
+
+How does this edge model compose with:
+
+- **[Obsidian Bases direction research](/crosswalker/reference/roadmap/)**: whatever you propose must be Bases-queryable for dashboards to work
+- **[Progressive tier architecture pillar](/crosswalker/reference/roadmap/)**: the Tier 2 sql.js sidecar will need to index evidence edges for fast queries. Does the frontmatter design translate cleanly to a relational schema?
+- **[Synthetic spine question (Challenge 06)](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/)**: if crosswalks go through a spine, do evidence links ALSO go through the spine (evidence → spine-concept → framework), or directly to framework controls? Has implications for how "this evidence covers NIST AC-2 but also automatically covers ISO A.9.2.1 via the spine" works.
+- **[OSCAL](/crosswalker/reference/registry/oscal/) export**: eventually Crosswalker wants to export to OSCAL format. Can your proposed schema round-trip through OSCAL's Implementation Layer cleanly?
+
+## Context to read first
+
+- [Link metadata system](/crosswalker/agent-context/link-metadata-system/) — **the primary prior art**, read this first
+- [Terminology: Crosswalk vs Evidence link](/crosswalker/concepts/terminology/#core-terms) — the distinction this challenge is built on
+- [04-10 synthesis: scope callout](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) — why the crosswalking decision doesn't cover this
+- [OSCAL registry entry](/crosswalker/reference/registry/oscal/) — the inspiration for status and reviewer fields
+- [Obsidian Bases direction research item](/crosswalker/reference/roadmap/) — the viewing layer constraint
+- [obsidian-folder-tag-sync](/crosswalker/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/) — the project owner's polyhierarchy tool, relevant if evidence edges need to span multiple frameworks at once
+- [file-based graph database concept](/crosswalker/concepts/file-based-graph-database/) — property graph model, node types, and how edges currently work
+
+## What success looks like
+
+A report that answers four questions with evidence and a concrete proposal:
+
+1. **Storage shape**: one of (a) inline, (b) frontmatter arrays, (c) sidecar, (d) hybrid, or (e) something else. Justified against authoring UX, Bases queryability, referential integrity, and tooling ergonomics.
+2. **Field schema**: explicit list of mandatory + optional fields with rationale. Status vocabulary, reviewer attribution, confidence, expiration, evidence type.
+3. **Workflow model**: does Crosswalker track transitions? If yes, how? If no, how does a GRC analyst see "when did this control become covered?"
+4. **OSCAL round-trip**: does the proposed schema cleanly round-trip through [OSCAL](/crosswalker/reference/registry/oscal/) Implementation Layer for export? Where are the lossy points?
+
+Deliverable: a Foundation-phase decision log entry with the above, ready to become a commitment in the [roadmap](/crosswalker/reference/roadmap/).
+
+## What this challenge does NOT decide
+
+- The full evidence-mapping WORKFLOW (import, linking UX, gap surfacing, reports). That's a separate roadmap item — [Evidence mapping workflow](/crosswalker/reference/roadmap/). This challenge decides only the **edge data model**.
+- The exact Tier 2 sql.js sidecar schema. That's downstream of this decision and the progressive tier pillar.
+- The Obsidian plugin UI. Product design can iterate on top of a locked edge schema.

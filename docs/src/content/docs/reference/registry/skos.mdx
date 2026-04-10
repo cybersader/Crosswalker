@@ -1,0 +1,58 @@
+---
+title: SKOS
+description: Simple Knowledge Organization System — the W3C mapping vocabulary that every modern crosswalk standard builds from, but that our research found insufficient for compliance crosswalking on its own.
+tags: [frameworks-mapping, evidence-mapping-links]
+volatility: stable
+sidebar:
+  order: 45
+date: 2026-04-10
+---
+
+## What it is
+
+**SKOS** (*Simple Knowledge Organization System*) is a W3C Recommendation for representing controlled vocabularies, taxonomies, and thesauri as Linked Data. It's the foundational vocabulary for expressing *how concepts in one knowledge organization system map to concepts in another* — and every subsequent mapping standard (including [SSSOM](/crosswalker/reference/registry/sssom/)) builds on it.
+
+Published by W3C in 2009 as a Recommendation. Still the default vocabulary for ontology mapping in the Semantic Web world.
+
+## The 5 mapping relations
+
+SKOS defines exactly five predicates for expressing correspondence between concepts in different vocabularies:
+
+| Predicate | Meaning |
+|---|---|
+| `skos:exactMatch` | The two concepts can be used interchangeably |
+| `skos:closeMatch` | The concepts are similar enough to substitute in some retrieval contexts |
+| `skos:broadMatch` | The target is broader than the source |
+| `skos:narrowMatch` | The target is narrower than the source |
+| `skos:relatedMatch` | The concepts are associated but neither broader nor narrower |
+
+That's the whole vocabulary. It's deliberately minimal — the W3C chose "lightweight" over "expressive."
+
+## Why the minimalism is a problem for crosswalks
+
+The [04-10 foundation synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) identified **five specific gaps** that make SKOS insufficient for compliance crosswalking:
+
+1. **No confidence scores** — every SKOS mapping is a bare triple with no way to say "we're 60% sure of this match"
+2. **No provenance** — no fields for author, review date, tool, or justification
+3. **Only 1:1 correspondences** — compliance mappings are inherently many-to-many (a NIST control often maps to multiple ISO controls)
+4. **No negation** — you can't explicitly assert that two concepts are *not* equivalent
+5. **Deliberately minimal formal semantics** — Cohen (2013) analyzed this limitation in detail; SKOS trades precision for simplicity
+
+None of these gaps matter for lightweight thesaurus alignment (the SKOS design target). All of them matter for audit-grade compliance crosswalks.
+
+## How later standards fix the gaps
+
+- **[SSSOM](/crosswalker/reference/registry/sssom/)** keeps SKOS predicates as the base vocabulary but wraps them in mandatory `mapping_justification` + optional `confidence`, `author_id`, `mapping_date`, `mapping_tool`, and a `predicate_modifier` that supports negation
+- **STRM / NIST IR 8477** *(coming)* replaces the SKOS predicate set entirely with **5 set-theory relationships** (`equivalent-to`, `subset-of`, `superset-of`, `intersects-with`, `no-relationship`) — keeping SKOS-style simplicity but with precise semantics
+- **OSCAL Control Mapping Model** *(coming)* adopts the STRM predicates and adds machine-readable fields for method, confidence, and coverage
+
+## In Crosswalker
+
+SKOS is the historical baseline Crosswalker's edge semantics have to improve on, not a target to adopt directly. The synthesis identifies the right stack as: **STRM predicates for the relationship type, SSSOM metadata fields for the provenance envelope**. SKOS predicates remain valid as an *export format* — if a vault ever needs to emit RDF for interop with Semantic Web tooling, SKOS is the lowest-common-denominator predicate vocabulary, reachable via the [YAML-LD / LinkML bridge path](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#file-first-is-valid-at-current-scale) discussed in the 04-10 synthesis.
+
+## Links
+
+- [W3C SKOS Reference](https://www.w3.org/TR/skos-reference/) — the 2009 Recommendation
+- [SKOS Primer](https://www.w3.org/TR/skos-primer/) — human-readable introduction
+- [Cohen 2013 — "The Unrealized Promise of SKOS"](https://www.dlib.org/dlib/may13/cohen/05cohen.html) — the gap analysis
+- [SSSOM](/crosswalker/reference/registry/sssom/) — the modern extension

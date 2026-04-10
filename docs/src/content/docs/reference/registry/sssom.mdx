@@ -1,0 +1,57 @@
+---
+title: SSSOM
+description: Simple Standard for Sharing Ontological Mappings — the edge metadata model that extends SKOS with mandatory provenance, confidence, and negation support.
+tags: [frameworks-mapping, evidence-mapping-links]
+volatility: stable
+sidebar:
+  order: 44
+date: 2026-04-10
+---
+
+## What it is
+
+**SSSOM** (*Simple Standard for Sharing Ontological Mappings*) is a metadata standard for ontology mappings. It defines how to attach provenance, confidence, authorship, and justification to each mapping — turning a bare "A maps to B" triple into an **auditable crosswalk edge**. Published by Matentzoglu et al. in *Database* (2022).
+
+## How it works
+
+Every SSSOM mapping is a row with three core fields and a set of mandatory + optional metadata:
+
+| Field | Role |
+|---|---|
+| `subject_id` | The source entity (e.g., a NIST 800-53 control) |
+| `predicate_id` | The relationship (typically a SKOS or OWL predicate — *SSSOM is predicate-agnostic*) |
+| `object_id` | The target entity (e.g., an ISO 27001 control) |
+| `mapping_justification` | **Mandatory** — why this mapping was asserted (manual review, LLM, lexical match, etc.) |
+| `confidence` | Optional — numeric score, 0.0–1.0 |
+| `author_id` | Optional — who authored the mapping |
+| `mapping_date` | Optional — when it was authored or reviewed |
+| `mapping_tool` | Optional — what tool produced it |
+| `predicate_modifier` | Optional — supports **negation** ("A is *not* equivalent to B") |
+
+## Why it matters for crosswalks
+
+SSSOM fills the five gaps that make bare [SKOS](/crosswalker/reference/registry/) insufficient for compliance crosswalking: **confidence scores, provenance, many-to-many support, negation, and authored-by-whom**. Every mature ontology alignment ecosystem has converged on something SSSOM-shaped — it's not exotic, it's the baseline.
+
+## In Crosswalker
+
+SSSOM is the candidate edge metadata model for Crosswalker **ontology-to-ontology crosswalks specifically** — that is, the edges between concepts in two structured ontologies (framework↔framework mappings, framework↔[synthetic spine](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) mappings, and transitive crosswalks derived through a pivot). The [04-10 foundation synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) proposes committing to SSSOM's metadata fields as the required provenance envelope on every such crosswalk edge, paired with the [NIST IR 8477 set-theory relationships](/crosswalker/reference/registry/strm/) as the `predicate_id` vocabulary. The decision is tracked in the [Foundation roadmap](/crosswalker/reference/roadmap/) under edge semantics commitment.
+
+For spine-derived mappings (see [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/)), SSSOM also supports **chained provenance** — a derived crosswalk can cite its component mappings and composition operator, which matters for audit-grade trust.
+
+:::caution[SSSOM is *not* the right fit for evidence-framework implementation links]
+Crosswalker has at least two distinct edge categories:
+
+1. **Ontology↔ontology crosswalks** — `NIST AC-2` ↔ `ISO A.9.2.1` — *semantic correspondence*. SSSOM is the right envelope.
+2. **Evidence→framework implementation links** — `MFA-Policy.md` → `NIST AC-2` with properties like `status: covered`, `sufficient: true`, `reviewer: Alice`, `review_date: 2026-04-10` — *implementation claim*, not correspondence. SSSOM's vocabulary ("these two concepts correspond at confidence X") doesn't semantically fit "this document demonstrates this control at status Y".
+
+**SSSOM applies only to category #1.** Category #2 needs a different edge model (likely inspired by [OSCAL's Implementation Layer](/crosswalker/reference/registry/oscal/) concepts like `by-component`, `implementation-status`, `satisfied`, or Crosswalker's original `framework_here.applies_to:: [[AC-2]] {JSON}` link metadata syntax). The evidence-link edge model is a **separate open Foundation question** that the 04-10 synthesis did not settle — see the [Foundation roadmap](/crosswalker/reference/roadmap/) for the research item tracking that decision.
+
+The short rule: if both ends of the edge are concepts in structured ontologies, use SSSOM. If one end is a user-authored document or piece of evidence, use the (TBD) evidence-link model.
+:::
+
+## Links
+
+- [mapping-commons.github.io/sssom](https://mapping-commons.github.io/sssom/) — specification
+- [Matentzoglu et al. 2022 in *Database*](https://academic.oup.com/database/article/doi/10.1093/database/baac035/6591806) — the original paper
+- [SSSOM on GitHub](https://github.com/mapping-commons/sssom) — reference implementation + schema
+- [Operational landscape: mapping orgs use SSSOM](/crosswalker/concepts/operational-landscape/)
