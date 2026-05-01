@@ -1,0 +1,184 @@
+---
+title: "Foundation state of play — the web-of-webs and the open problems"
+description: A re-orientation log after a 3-week gap. Frames ontology lifecycle management as structured webs connecting to structured webs (with optional intermediaries), then maps every open Foundation problem onto that picture with links to the roadmap, challenges, and prior research.
+tags: [orientation, foundation, data-model, data-model-evolution, mental-model]
+date: 2026-05-01
+sidebar:
+  label: "05-01 · Foundation state of play"
+  order: -20260501
+---
+
+:::note[How to read this log]
+This is an **orientation log**, not a synthesis or decision log. Read this first if you've been away from the project for a while, or if you're a fresh agent picking up Foundation work. It frames the abstract problem space, lays out the open Foundation questions in relation to one another, and links into the deeper research, challenges, and roadmap items where each question is being worked.
+:::
+
+## Why this log exists
+
+After ~3 weeks away from the project, the abstract problem we're solving in Foundation phase is hard to hold front-of-mind. There are now [27 dated log entries in `zz-log/`](/crosswalker/agent-context/zz-log/), [7 research challenges](/crosswalker/agent-context/zz-challenges/), and a multi-section [roadmap](/crosswalker/reference/roadmap/) with several forced-but-unmade decisions. The two large [04-10 syntheses](#related) covered most of the substance, but reading them cold doesn't reboot the *frame* — only the contents.
+
+This log attempts the frame. One metaphor, four kinds of structured graph, six open questions mapped onto the picture, and one canonical reading order. It deliberately makes no new claims and commits no decisions. Every assertion below is backed by a link to an existing log, challenge, concept page, or roadmap item.
+
+## The web-of-webs framing
+
+The general problem is **structured webs connecting to structured webs**.
+
+Each [ontology](/crosswalker/concepts/terminology/#core-terms) Crosswalker handles — [NIST 800-53](/crosswalker/reference/registry/nist/), [CIS Controls](/crosswalker/reference/registry/cis/), MITRE ATT&CK, [SCF](/crosswalker/reference/registry/scf/) — is itself a structured web: typed nodes (controls, techniques, sub-techniques), typed edges (parent/child, references, mitigates), and edge metadata (confidence, scope, applicability). When we [import](/crosswalker/concepts/ontology-lifecycle/#import) one, we're [reifying that web into the filesystem](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) as folders, notes, frontmatter, and links.
+
+Crosswalker's job is what happens *between* those webs. There are at least four kinds of inter-web connection in play, plus one optional intermediary:
+
+```
+                                  ┌────────────────────────┐
+                                  │  evidence-vault web    │
+                                  │ (your policies, audits,│
+                                  │  technical docs, etc.) │
+                                  └───────────┬────────────┘
+                                              │
+                                              │ evidence-link edges
+                                              │ (junction notes, 13-field schema)
+                                              ▼
+   ┌──────────────┐    crosswalk      ┌────────────────┐    crosswalk     ┌──────────────┐
+   │  NIST 800-53 │  ◄──────────────► │  optional      │ ◄──────────────► │  CIS Controls│
+   │  ontology    │      edges        │  spine web?    │      edges       │  ontology    │
+   │  web         │                   │ (Challenge 06) │                  │  web         │
+   └──────┬───────┘                   └────────────────┘                  └──────┬───────┘
+          │                                                                      │
+          │     lifecycle edges (between versions of the same web)               │
+          └──────────────────────────────────────────────────────────────────────┘
+                  9 atomic primitives: add / remove / rename / split / merge / ...
+```
+
+The four edge types and the optional spine are the things Foundation is figuring out.
+
+## The webs in play
+
+| Web | What it is | Linked to |
+|---|---|---|
+| **Source-ontology web** | An imported framework — folders + notes + typed links carrying the structure of NIST/CIS/MITRE/etc. into the vault | [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) · [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) · [Why files](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) |
+| **Evidence-vault web** | The user's own notes — policies, audit reports, configuration evidence, interview notes | [Evidence mapping for GRC teams](/crosswalker/getting-started/grc-teams/) · [Link metadata system (historical)](/crosswalker/agent-context/link-metadata-system/) |
+| **Optional spine web** | A canonical intermediate ontology between source webs — synthetic (computed via FCA), inherited (SCF, OSCAL catalog), or handcrafted | [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) · [Schema matching: pivot approach](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) |
+| **Lifecycle meta-web** | Versions of an ontology over time, connected by structural-change atoms (add, remove, rename, split, merge, deprecate, etc.) | [Ontology evolution](/crosswalker/concepts/ontology-evolution/) · [Atomic operations research](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) · [EvolutionPattern draft](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) |
+
+Every Foundation question is a question about one of these webs or the connections between them.
+
+## The connections in play
+
+| Edge type | Connects | Status | Goes to |
+|---|---|---|---|
+| **Crosswalk edges** | source-ontology web ↔ source-ontology web | Vocabulary direction set ([STRM](/crosswalker/reference/registry/strm/) + [SSSOM](/crosswalker/reference/registry/sssom/)); form factor (junction notes? frontmatter? sidecar files?) still pending | [Foundation synthesis §"Edge semantics"](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) |
+| **Evidence-link edges** | evidence-vault web → source-ontology web | **Architecture committed**: junction notes (one file per edge), 13-field flat-YAML schema, OSCAL `by-component` round-trip, git audit trail | [Evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) · [Challenge 07](/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/) |
+| **Hierarchy edges** | within a single ontology web | Folder structure carries this — solved by the [generation engine](/crosswalker/features/generation-engine/) | [Ontology lifecycle: Import](/crosswalker/concepts/ontology-lifecycle/#import) |
+| **Lifecycle edges** | between versions of the same source-ontology web | [9 atomic operations + 4 composites](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/), provably complete per graph edit distance literature | [Atomic operations research](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) · [Primitives depth](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) |
+
+[SSSOM](/crosswalker/reference/registry/sssom/) dual-confidence borrowing applies to both crosswalk and evidence-link edges. [BFO](/crosswalker/concepts/terminology/) continuant/occurrent typing — if adopted — applies at the node level, not the edge level.
+
+## Open Foundation problems, mapped to the web-of-webs
+
+Six forced-but-unmade decisions. Each is fundamentally a question about one of the webs above or the edges between them.
+
+| Question (web-of-webs framing) | Status | Where it lives |
+|---|---|---|
+| **Do we add an *intermediary web*** between source-ontology webs? Or do we keep direct pairwise edges and accept O(n²) maintenance? | Open research — biggest open question | [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) · [Foundation synthesis §"synthetic spine"](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#the-synthetic-spine-is-the-missing-architectural-insight) · [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) |
+| **What labels go on web → web edges?** And what metadata envelope wraps each label? | Ready to commit — STRM + SSSOM | [Foundation synthesis §"edge semantics"](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) · [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) |
+| **What does an evidence-vault → ontology edge physically look like?** What schema? What status vocabulary? What audit trail? | Ready to commit — junction notes, 13-field schema, 3D status, git history | [Evidence-link synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) · [Challenge 07](/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/) · [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) |
+| **How do we describe a web's *lifecycle*?** Per-framework defaults? Per-version transformation recipes? Both stacked? | Needs a position; research direction set | [EvolutionPattern draft](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) · [Primitives depth](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) · [User-first maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) · [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) |
+| **Do nodes carry a formal ontological *type*?** Adopt BFO continuant/occurrent as `node.type`? Skip BFO entirely? | Design call | [Foundation synthesis §"EvolutionPattern needs formal grounding"](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#evolutionpattern-needs-formal-grounding--or-replacement) |
+| **How do we *query* the entire web-of-webs at scale?** When does Tier 2 sql.js kick in? What's the SQL schema? What does Bases force? | Needs perf testing + schema design | [Progressive tier architecture pillar](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) · [Foundation synthesis §"files-canonical ceiling"](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#files-canonical-ceiling--documented-already-answered-by-the-3-tier-pillar) · [Architecture at scale: Challenge 02](/crosswalker/agent-context/zz-challenges/02-architecture-at-scale/) |
+
+Things that are *not* on this list because they're already settled at Foundation level: file-first storage ([why-obsidian-why-files](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/)), config-as-code ([vision alignment §2](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth)), layered architecture ([layered architecture vision](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)), the 9 atomic operations ([atomic operations research](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)).
+
+## Where we left off (3-week refresh)
+
+Last real activity: **2026-04-10**. Twelve commits landed across two parallel synthesis sessions ([foundation](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) AM, [evidence-link](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) PM). Eight `.workspace/` research drafts (~225 KB total) fed those syntheses; two of them remain undistilled into KB form.
+
+The system is now in a **decide-next** state. Suggested phasing:
+
+- **Phase A — Lock in what's ready** (pure paperwork, unblocks docs):
+  - Commit STRM + SSSOM crosswalk vocabulary → new dated log + roadmap update
+  - Commit evidence-link junction-note architecture → new dated log + roadmap update
+  - Commit BFO scope decision (probably continuant/occurrent only) → new dated log
+- **Phase B — Run the gating research**:
+  - Hand [Challenge 06](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) to a fresh agent (synthetic-spine adopt/reject)
+  - Resolve [EvolutionPattern keep/replace/stack](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) with formal grounding (Stojanovic / Flouris)
+- **Phase C — Downstream design** (only after A+B):
+  - Tier 2 sql.js perf testing + SQL schema mapping
+  - [Bases direction research](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) re-measure against junction note volumes
+
+Phase A items don't change behavior — they convert "the syntheses said this" into "we committed to this." Phase B is the actual remaining Foundation research. Phase C unblocks development.
+
+## Reading order for fresh agents
+
+If you (or a fresh agent) need to spin up on Foundation work from cold:
+
+1. **This log** — orientation
+2. [**Terminology**](/crosswalker/concepts/terminology/) — vocabulary
+3. [**Ontology lifecycle**](/crosswalker/concepts/ontology-lifecycle/) — the 5-phase cycle (Acquire → Import → Enrich → Maintain → Share)
+4. [**Foundation research synthesis (04-10)**](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — the morning synthesis covering 4 parallel research sessions
+5. [**Evidence-link edge model synthesis (04-10)**](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — the afternoon synthesis resolving Challenge 07
+6. [**Roadmap: Foundation section**](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — the live decision checklist
+7. [**Challenge 06**](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) and [**Challenge 07**](/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/) — the two open research briefs
+8. The [Apr 8–9 cluster](#related) for the primitives / atomic-operations background
+9. The [Apr 3 cluster](#related) for the original architectural commitments
+
+That's about 4 hours of careful reading; this log alone should take 10 minutes and refresh enough mental scaffolding to make the rest of the path navigable.
+
+## Related
+
+**The two 04-10 syntheses (must-read):**
+
+- [Foundation research synthesis (04-10)](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — distills 4 parallel research sessions; commits STRM + SSSOM, surfaces 6 forced decisions
+- [Evidence-link edge model synthesis (04-10)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — distills 2 research sessions; commits junction-note architecture for evidence links
+- [SEACOW + folder-tag-sync prior-art (04-10)](/crosswalker/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/) — what to reuse from existing tools
+
+**Apr 8–9 cluster (primitives, atomic operations, user-first UX):**
+
+- [Atomic operations research (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) — 9 atomic ops + 4 composites, completeness via GED literature
+- [Primitives depth and pluggable layers (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) — detection / decisioning / handling separation
+- [User-first ontology maintenance (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) — entity-aligned UX, Path C
+- [Ontology evolution first principles (04-08)](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) — 13 structural change primitives exercise
+
+**Apr 3 cluster (architectural foundations, highlights):**
+
+- [Vision alignment decisions (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/) — 10 foundational decisions, the philosophical bedrock
+- [Layered architecture vision (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) — spec → library → integrations
+- [EvolutionPattern taxonomy draft (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — 8-field taxonomy applied to 7 frameworks
+- [Why Obsidian, why files (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) — file-first commitment
+- [Deep research synthesis (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/) — first parallel-research synthesis
+- [Architectural direction exploration (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-architectural-direction-exploration/) — what Crosswalker IS
+
+**Research challenges (fresh-agent briefs):**
+
+- [Challenge 01: Primitives atomicity](/crosswalker/agent-context/zz-challenges/01-primitives-atomicity/)
+- [Challenge 02: Architecture at scale](/crosswalker/agent-context/zz-challenges/02-architecture-at-scale/) — Tier 2 SQL ceiling
+- [Challenge 03: Competitive landscape](/crosswalker/agent-context/zz-challenges/03-competitive-landscape/)
+- [Challenge 04: First principles audit](/crosswalker/agent-context/zz-challenges/04-first-principles-audit/)
+- [Challenge 05: Transformation problem](/crosswalker/agent-context/zz-challenges/05-transformation-problem/)
+- [Challenge 06: Pairwise vs synthetic spine](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) — open
+- [Challenge 07: Link metadata edge model](/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/) — resolved by 04-10 evidence-link synthesis
+
+**Concept pages (terminology and conceptual depth):**
+
+- [Terminology](/crosswalker/concepts/terminology/) — definitions for ontology, crosswalk, evidence link, edge metadata, EvolutionPattern, etc.
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — Acquire → Import → Enrich → Maintain → Share
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — versioning, drift, SCD types
+- [Schema matching](/crosswalker/concepts/schema-matching/) — pairwise vs pivot approaches
+- [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) — typed inter-framework links
+- [Framework versioning](/crosswalker/concepts/framework-versioning/) — version models
+- [File-based graph databases](/crosswalker/concepts/file-based-graph-database/) — files-canonical reasoning
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases vs Dataview vs Datacore
+- [Operational landscape](/crosswalker/concepts/operational-landscape/) — runtime tier picture
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
+
+**Roadmap and challenge index:**
+
+- [Roadmap](/crosswalker/reference/roadmap/) — root
+- [Roadmap: Foundation section](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — where every open question above is tracked
+- [Research challenges index](/crosswalker/agent-context/zz-challenges/) — all 7
+
+**Undistilled `.workspace/` drafts (gitignored, repo root):**
+
+These two 04-10 research drafts haven't been distilled into KB logs yet — flagged for a future cleanup pass:
+
+- `Claude-Ontology primitives for knowledge work architecture.md` (~92 KB) — largest of the 04-10 batch
+- `Claude-Ontology primitives for resilient knowledge work.md` (~35 KB)
+
+Six other `.workspace/` drafts from the 04-10 batch have already been distilled into the two syntheses above but remain in `.workspace/` until the cleanup pass.
