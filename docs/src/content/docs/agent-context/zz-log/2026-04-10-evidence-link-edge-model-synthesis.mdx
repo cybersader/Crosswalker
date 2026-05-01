@@ -9,14 +9,14 @@ sidebar:
 ---
 
 :::note[How to read this log]
-This log distills **2 research sessions** dropped on 2026-04-10 PM that specifically target [Challenge 07 — Link metadata / edge model for evidence mapping](/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/). Unlike the [morning's Foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — which stress-tested abstract ontology primitives and **explicitly deferred** the evidence-link edge model — these two files attack Challenge 07 head-on with a strong convergent thesis: **junction notes (edge-as-note reification) are the only viable architecture** given Obsidian Bases' flat-YAML constraint, and there is a concrete **13-field schema** that's structurally isomorphic to OSCAL's `by-component` assembly. This log proposes adopting that architecture as a Foundation commitment.
+This log distills **2 research sessions** dropped on 2026-04-10 PM that specifically target [Challenge 07 — Link metadata / edge model for evidence mapping](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/). Unlike the [morning's Foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — which stress-tested abstract ontology primitives and **explicitly deferred** the evidence-link edge model — these two files attack Challenge 07 head-on with a strong convergent thesis: **junction notes (edge-as-note reification) are the only viable architecture** given Obsidian Bases' flat-YAML constraint, and there is a concrete **13-field schema** that's structurally isomorphic to OSCAL's `by-component` assembly. This log proposes adopting that architecture as a Foundation commitment.
 :::
 
 ## Why this log exists
 
 On the morning of 2026-04-10 the [main Foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) landed — distilling 4 parallel research sessions against the Foundation-phase decisions. That synthesis committed Crosswalker to [**STRM + SSSOM** for ontology-to-ontology **crosswalks**](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish), but **explicitly scoped out evidence-link edges** — the `MFA-Policy.md` → `NIST 800-53/AC-2` case with `status`, `reviewer`, `review_date`, and `sufficient: true` kind of metadata. That scope note sat as an acknowledged gap in the synthesis log's `:::caution` callout, pointing forward to a separate Foundation decision.
 
-[Challenge 07](/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/) was spun out as a fresh-agent research brief to resolve that gap. The same afternoon, **two research sessions landed in `.workspace/`** targeting it directly:
+[Challenge 07](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/) was spun out as a fresh-agent research brief to resolve that gap. The same afternoon, **two research sessions landed in `.workspace/`** targeting it directly:
 
 1. **`Claude-Link metadata edge model research challenge.md`** (21KB) — the primary response, structured as a direct answer to Challenge 07's four success criteria (storage shape, field schema, workflow model, OSCAL round-trip)
 2. **`Claude-Graph to tabular ontology linking in knowledge tools.md`** (28KB) — a broader PKM comparative research covering how every major knowledge-management tool (Obsidian, Roam, Tana, Notion, Capacities, AnyType, Heptabase) handles — or fails to handle — edge metadata
@@ -600,7 +600,7 @@ These aren't in the Foundation vocabulary yet but the research leans on them. Ea
 
 7. **UUID enterprise resilience scope.** File 2 flags filename-based linking as fragile across out-of-app moves. Decide: does Foundation scope include enterprise multi-user resilience (UUID field added to the schema), or is local-first vault integrity sufficient for Tier 1? If out-of-scope, document the assumption explicitly.
 8. **Tier 2 sql.js sidecar schema mapping.** Design task: what's the SQL table structure for junction note data? How does it round-trip with Tier 1 YAML? Not research — design work downstream of this decision and the [Progressive tier architecture pillar](/crosswalker/reference/roadmap/).
-9. **Challenge 06 synthetic spine integration.** Do evidence links target framework controls directly, or do they flow through the [synthetic spine](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) (evidence → spine-concept → framework)? Has implications for the "this evidence automatically covers equivalent controls in other frameworks" story.
+9. **Challenge 06 synthetic spine integration.** Do evidence links target framework controls directly, or do they flow through the [synthetic spine](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) (evidence → spine-concept → framework)? Has implications for the "this evidence automatically covers equivalent controls in other frameworks" story.
 10. **Vault scale threshold documentation.** Propose: document 10,000 junction notes as the tested Tier 1 threshold, warn at 20,000+. Requires actual perf testing; not research.
 11. **Mandatory vs optional field marking.** File 1 lists 13 fields but doesn't formally mark which are non-nullable. Propose: `link_type`, `evidence`, `control`, `framework`, `status` are mandatory; rest are optional. Lock this in during the follow-up design pass.
 12. **Multi-editor conflict resolution.** With git as audit trail, what happens when two reviewers set different statuses on the same junction note simultaneously? Standard git merge conflict, or first-writer-wins? Not blocking but worth specifying.
@@ -619,7 +619,7 @@ Per Challenge 07's "out of scope" section, plus discovered caveats:
 
 ## Related
 
-- [Challenge 07: Link metadata / edge model for evidence mapping](/crosswalker/agent-context/zz-challenges/07-link-metadata-edge-model/) — the fresh-agent research brief this log resolves
+- [Challenge 07: Link metadata / edge model for evidence mapping](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/) — the fresh-agent research brief this log resolves
 - [04-10 Foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — the morning synthesis that committed to STRM + SSSOM for crosswalks and explicitly deferred this evidence-link decision
 - [04-10 SEACOW + folder-tag-sync prior-art log](/crosswalker/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/) — file-move resilience adjacency
 - [Terminology: Evidence link (and Crosswalk for contrast)](/crosswalker/concepts/terminology/#core-terms) — the two distinct edge categories
@@ -628,7 +628,7 @@ Per Challenge 07's "out of scope" section, plus discovered caveats:
 - [OSCAL registry entry](/crosswalker/reference/registry/oscal/) — the canonical export target
 - [SSSOM registry entry](/crosswalker/reference/registry/sssom/) — where dual-confidence and justification-vocabulary borrowing comes from
 - [STRM registry entry](/crosswalker/reference/registry/strm/) — for contrast; this is the *crosswalk* edge vocabulary, not evidence links
-- [Challenge 06: Pairwise vs synthetic spine](/crosswalker/agent-context/zz-challenges/06-synthetic-spine/) — integration question flagged as open sub-decision #9
+- [Challenge 06: Pairwise vs synthetic spine](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) — integration question flagged as open sub-decision #9
 - [Progressive tier architecture pillar](/crosswalker/reference/roadmap/) — Tier 2 SQL mapping is a downstream design task
 - [Obsidian Bases direction research](/crosswalker/reference/roadmap/) — the viewing-layer constraint that forces the junction note architecture
 - [Roadmap: Evidence-framework edge model](/crosswalker/reference/roadmap/) — updated by this log with the committed direction

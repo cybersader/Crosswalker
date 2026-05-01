@@ -1,0 +1,257 @@
+---
+title: "Foundation commitments and follow-on research — pairwise+spine, junction-notes-by-tier, EvolutionPattern reframe"
+description: "Decisions made 2026-05-01 after re-reading the morning orientation log and the Challenge 06 research deliverable. Commits the pairwise+optional-spine hybrid, ties junction-note feasibility to tier, reframes EvolutionPattern as a stewardship schema (not a data-prediction model), introduces the schema-marketplace direction, and spins up three new research challenges (git-history audit-trail tenability, UUID/CWUUID strategy, graph→tabular bridging engine)."
+tags: [foundation, decisions, data-model, evidence-mapping-links, crosswalk, research-callouts]
+date: 2026-05-01
+sidebar:
+  label: "05-01 · Foundation commitments + follow-on research"
+  order: -20260501.7
+---
+
+:::note[How to read this log]
+This is a **decision log**, not a synthesis or orientation log. Read this together with the [morning orientation log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-state-of-play/): the orientation log frames the open Foundation problems; this log captures the commitments, clarifications, and new research callouts that came out of re-reading the orientation pass plus the **Challenge 06 research deliverable** that landed in `.workspace/` today.
+
+A separate **direction log** is planned next — that one will reform the roadmap based on what's committed here. This log deliberately does *not* edit the roadmap.
+:::
+
+## Why this log exists
+
+This morning the orientation log reframed Foundation in the *web-of-webs* metaphor and listed the 6 forced-but-unmade decisions. Reading it back through made several things clearer; one of those decisions also resolved itself, because a fresh-agent research session against [Challenge 06: Pairwise vs synthetic spine](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) produced a concrete deliverable. That deliverable is preserved in `.workspace/2026-05-01-challenge-06-pairwise-spine-research.md` (gitignored, repo-local) and is the load-bearing input for §2.1 below.
+
+Today's pass:
+
+- **Commits** four positions ([§2](#commitments))
+- **Clarifies** four points where the morning orientation log undersold or mis-framed the picture ([§3](#clarifications))
+- **Spins up** three new research challenges that surfaced ([§4](#follow-on-research-challenges))
+- **Archives** the two resolved challenges (06, 07) ([§5](#housekeeping--resolved-challenges-archived))
+- **Defers** roadmap edits to the upcoming direction log ([§6](#where-this-is-going-next))
+
+## Commitments
+
+### 2.1 Pairwise + optional inheritable spine (Challenge 06 resolution)
+
+**Commitment: deferred-spine hybrid.** Pairwise crosswalks are first-class. A spine is *optional and inheritable, not authored*. SCF (`v2025.4+`) is the default inheritable spine. Persistence is **SSSOM-on-markdown**. Derived mappings are computed on demand from spine-routed composition; never stored as primary facts.
+
+Concretely, per the Challenge 06 deliverable:
+
+- Pairwise mappings are SSSOM-style records in markdown frontmatter. Mandatory: `subject_id`, `predicate_id`, `object_id`, `mapping_justification`. Predicates are drawn from the [STRM](/crosswalker/reference/registry/strm/) / NIST IR 8477 set-theory vocabulary (`equivalent-to`, `subset-of`, `superset-of`, `intersects-with`, `no-relationship`).
+- A user can optionally import a spine bundle (default: SCF). Spines live in their own vault folder, content-addressed by `sha256` of the imported snapshot. Multiple spine versions can coexist.
+- Derived mappings carry a `derivation_path`, an *inherited* `mapping_date` (the minimum of component dates), and a downgraded predicate per the SSSOM RCE chain rules. They are visually distinct from authored mappings in any rendering.
+- Authored mappings always outrank derived ones for the same subject/object pair. Conflicts surface as explicit "review needed" items.
+- **Exit strategy**: pairwise data is the source of truth, so SCF disappearing degrades Crosswalker to a pure pairwise tool with stale derived edges — not a catastrophe. Fallback options (graceful degradation): (1) freeze last SCF snapshot, (2) community fork, (3) migrate to OSCAL Control Mapping Model when stable, (4) FCA-reconstruct a spine from in-vault pairwise data.
+
+**Validity stamp** (reproduced verbatim from the deliverable): *"This recommendation holds until (a) the OSCAL Foundation publishes a v1.0 stable Control Mapping Model with a public derived-mapping convention, (b) SCF Council changes its license terms or ceases monthly STRM releases for >12 months, or (c) Crosswalker users routinely import >10 frameworks per vault. Re-evaluate at the earliest of those events, or no later than Q4 2027."*
+
+**The user's added emphasis**: most of the engineering work for this commitment is **not** in the underlying data structure (which stays simple — pairwise SSSOM records + an optional content-addressed spine folder). It's in the **reporting and rendering layer**: pulling multi-hop spine traversals into merged tabular views for an analyst, with the right disclosure (authored vs derived), the right staleness signal, and the right blast-radius indicator. That problem is its own research item — see [§4.3 Challenge 10](#43-challenge-10--graphtabular-bridging-engine).
+
+### 2.2 Junction notes confirmed — but feasibility is tier-aware
+
+**Commitment: junction notes (edge-as-note reification) for evidence links, with the explicit caveat that practical feasibility is tier-bound.**
+
+The [04-10 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) committed the architecture: one markdown file per evidence→ontology edge, 13-field flat-YAML frontmatter, OSCAL `by-component` round-trip. That direction is **right**. Today's commitment adds the operational caveat:
+
+- **Tier 1 (files-canonical only)** — junction notes are usable up to small-to-medium framework counts (per the Challenge 06 deliverable and the user's own analysis: ~3–5 frameworks comfortably; 5–10 painful but tractable; >10 not realistic without a spine reducing proliferation pressure). The Tier 1 ceiling is *real* but not catastrophic if the vault stays under it.
+- **Tier 2 (sql.js sidecar) and Tier 3 (server-backed)** — junction notes scale comfortably to GRC-grade volumes (tens of thousands of evidence links) because the index, query, and cross-tabulation work happens off-files in the sidecar/backend.
+- **The spine reduces junction-note proliferation pressure proportionally.** With a spine, you don't need to author N×N pairwise evidence links for analogous controls in different frameworks — one evidence link to the spine concept covers the long tail through derivation.
+
+**Practical implication**: a small GRC team running 3 frameworks can ship on Tier 1. A larger compliance team running 7+ frameworks needs the Tier 2/3 backend to be performant. We tell them this honestly in the docs.
+
+### 2.3 Evidence-link schema is our shipped *default*; architecture supports a marketplace
+
+**Commitment**: the 13-field junction-note schema from the 04-10 evidence-link synthesis is Crosswalker's **default, shipped-out-of-the-box** evidence-link schema. **The architecture should support user-loadable alternative schemas** (a "schema marketplace" concept) so different teams or domains can choose schemas that match their workflows.
+
+Examples of why someone would want a different schema:
+
+- Healthcare teams may want HIPAA-specific status vocabularies
+- Financial-services teams may want SOX 404-aligned field semantics
+- Public-sector teams already on FedRAMP may want OSCAL `by-component` directly with no Crosswalker layer
+- A research lab running biomedical ontologies may want full SSSOM with no compliance-flavored fields
+
+**Open meta-question (deferred to the upcoming direction log):** *"Can you change the schema of that schema?"* — i.e., is the schema marketplace itself versioned/governed? Can users author a new field on top of an inherited schema? Can two schemas be merged? This is a real question that shapes the marketplace design but isn't blocking the Foundation commitment to the *default* schema. The direction log will frame the meta-schema problem; it does not need a position today.
+
+**Out of scope today**: the actual marketplace mechanics (Obsidian's plugin-distribution constraints, signing, sandboxing of user-loaded schemas, etc.). Today commits the *direction*; mechanics follow.
+
+### 2.4 Tier-aware reporting / rendering
+
+**Commitment**: Crosswalker's three tiers correspond not just to *storage* (files vs sidecar vs server) but to *rendering capability*.
+
+- **Tier 1 (files only)** — extensive performance limitations. The user's specific framing: **the plugin generates Bases-compatible folders with materialized joined/merged data inside them.** Custom plugin logic walks the graph (ontology nodes + crosswalk edges + evidence links), materializes a flattened view for a given report, and writes it to a folder Bases can render. This is essentially "materialized SQL views, but as folders of notes."
+- **Tier 2 (sql.js WASM sidecar)** — the materialization moves into SQL. Pivot tables, cross-tabulation grids, and ad-hoc analytical queries become tractable. The sidecar is rebuilt from files on import / on demand; files remain the source of truth.
+- **Tier 3 (server-backed)** — same model, scaled out; multi-user editing, real-time dashboards, externally exposed APIs.
+
+**Multi-hop spine renders** (per §2.1) — when a render needs to show subject control + spine concept + object control merged with metadata from all three legs, that's a graph traversal followed by a flatten. Tier 1 produces it as a folder; Tier 2 produces it as a SQL query result; Tier 3 produces it as a live dashboard. Same semantics, different storage.
+
+**The bridging engine question** — what *engine* does the graph-traversal-then-flatten work? That's its own research challenge; see [§4.3 Challenge 10](#43-challenge-10--graphtabular-bridging-engine).
+
+## Clarifications
+
+### 3.1 STRM/SSSOM and graph edit/transformation language are not the same thing — and they are not in tension
+
+The user explicitly flagged confusion here. Resolving it:
+
+```
+                    crosswalk
+   Ontology web A  ◄────────────►  Ontology web B
+                       ▲
+                       │  these edges have LABELS and PROVENANCE.
+                       │  STRM/SSSOM is the vocabulary for that.
+                       │  (= equivalent-to, subset-of, with mapping_justification, confidence, ...)
+                       │
+                       │
+                       ▼
+   ┌───────────────────────────────────────┐
+   │   Lifecycle (across versions)         │
+   │   Same web at time T₀ vs time T₁      │
+   │   Connected by graph-EDIT operations  │
+   │   (add node, rename, split, merge,    │
+   │    delete edge, ...)                  │
+   │   The 9 atomic primitives + 4         │
+   │   composites are the vocabulary       │
+   │   for THIS layer.                     │
+   └───────────────────────────────────────┘
+```
+
+The two layers:
+
+| Layer | Question it answers | Vocabulary |
+|---|---|---|
+| **Edge labels** (between two ontology graphs) | "How does control X in framework A relate to control Y in framework B *right now*?" | STRM (set-theory predicates) + SSSOM (envelope: justification, confidence, author, date) |
+| **Graph operations** (across versions of one graph) | "What changed in framework A between version r5 and version r6?" | Graph edit / structural change primitives (add, remove, rename, split, merge, deprecate — the [9 atomic ops](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)) |
+
+They speak about *different things*. STRM/SSSOM never describes the act of *changing* a graph; graph-edit primitives never describe the *labels on relationships between two graphs*. The user is right that graph-edit/transformation language is a more *fundamental* description of the lifecycle problem — but that fundamentality applies to lifecycle, not to crosswalks.
+
+Both vocabularies stay; both have a place; they don't compete.
+
+### 3.2 EvolutionPattern reframe — stewardship schema, not data-prediction
+
+The morning orientation log's framing of EvolutionPattern was correct, and this log makes it explicit:
+
+**EvolutionPattern is a *stewardship schema* — a way to capture how the steward of an ontology (an institution, a team, a person) decides to handle changes.** It is **not a data-prediction model** that infers future changes from past data.
+
+- The fields it captures (release cadence, breaking-change policy, ID stability, changelog format, etc.) are **declarations made by the steward**, not statistics derived from version history.
+- Two stewards managing the same data can choose different EvolutionPatterns; both can be valid; the choice is institutional, not algorithmic.
+- The role of EvolutionPattern in Crosswalker is to set **defaults** for how Crosswalker handles ingest of a new version of that ontology — should it auto-migrate, prompt the user, freeze, etc.
+
+**Alternative names listed for future evaluation** (no rename committed today):
+
+- **StewardshipProfile** — most accurate to the reframe
+- **FrameworkHandlingProfile** — emphasizes that it tells Crosswalker *how to handle* the framework
+- **OntologyMaintenancePolicy** — clearest from a governance angle
+- **VersioningProfile** — narrower; loses the broader stewardship framing
+
+A future direction log or terminology pass can pick one. For now, "EvolutionPattern" continues to mean "the stewardship schema that drives Crosswalker's per-framework defaults."
+
+### 3.3 "Lifecycle meta-web" was provisional orientation framing — now softened
+
+The morning orientation log used the phrase *"lifecycle meta-web"* in its table of webs. That phrasing reified the lifecycle problem as a separate web, which oversells it. **The lifecycle problem applies to *every* web** — every source-ontology web, the spine web, even the evidence-vault web (evidence ages, gets superseded, becomes stale).
+
+The orientation log has been **edited** to soften the wording: the table cell now reads *"Lifecycle (cross-version) graph"* with a note that this is not a separate "meta-web." The edit is purely terminology cleanup; no architectural commitment changes.
+
+### 3.4 "Spine" ≡ "interlingua / pivot"
+
+Two literatures, same pattern:
+
+- **Compliance-mapping community** (SCF, UCF, NIST OLIR) — *spine*, *hub*, *common controls*
+- **Schema-matching / ontology-alignment literature** (OAEI, FCA, Spivak) — *pivot*, *interlingua*, *canonical intermediate*
+
+These are aliases. The [schema-matching concept page](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) has been updated with a callout listing the aliases so a reader from either background can connect them. Today's log uses *spine* as the primary term because that's the compliance term, and Crosswalker's primary user is a GRC analyst.
+
+## Follow-on research challenges
+
+Three new challenges spun up today, each as a fresh-agent brief in `zz-challenges/`. Brief summaries here; full briefs in the linked challenge files.
+
+### 4.1 Challenge 08 — Git-history audit-trail tenability
+
+**The 04-10 evidence-link synthesis assumed git history (with three hardening measures) is a sufficient audit trail.** The user is appropriately skeptical: *"I'm honestly not sure git history is tenable for audit trail."*
+
+Brief: stress-test against AICPA SAS 142, PCAOB AS 1105, ISO 27001, HIPAA 164.312(b), legal admissibility (FRE 901/902, SOX 404), and how mature GRC tools handle the same problem (Hyperproof, Drata, Vanta, Auditree). Identify failure modes (force-push, lost branches, signature-verification gaps, clock-skew). Recommend either a reaffirm-with-conditions, an augmentation (RFC 3161 timestamping? WORM tier?), or a replacement.
+
+**Full brief**: [Challenge 08: Git history audit-trail tenability](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/)
+
+### 4.2 Challenge 09 — UUID / CWUUID cross-cutting strategy
+
+**The 04-10 evidence-link synthesis flagged "UUID enterprise resilience scope" as one specific deferred sub-decision.** Today's commitment broadens the scope: the user's framing is that *we will need UUIDs in many ways across the entire web-of-webs*, not just on evidence-link junction notes.
+
+Brief: enumerate every place a persistent identifier matters (ontology nodes, crosswalk edges, junction notes, evidence notes, framework versions, spine snapshots, mapping authors, vault identity, schema definitions, lifecycle change records). Compare options (UUIDv4/v7, ULID, CID, OSCAL UUIDs, custom `CW-` prefix). Recommend a minimum viable scheme for Foundation with explicit OSCAL round-trip mapping.
+
+**Full brief**: [Challenge 09: UUID / CWUUID cross-cutting strategy](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/)
+
+### 4.3 Challenge 10 — Graph→tabular bridging engine
+
+**Crosswalker's data is fundamentally a graph; most useful outputs are tabular.** The user's framing: *"need to research and/or develop logic that can pull in everything to be represented as graphs and then be able to query into merged tabular or structured or whatever views."*
+
+Brief: survey relevant engines (DuckDB-WASM, KuzuDB, Apache AGE, Neo4j+Cypher, oxigraph, sql.js, Datacore, Polars). Design the bridging architecture across all three Crosswalker tiers — including the Tier-1-specific suggestion of *"plugin-generated Bases-compatible folders with pre-joined/merged data."* Define the data-flow contract: files canonical, derived stores at Tier 2/3, queries can touch either tier, writes always land in files.
+
+**Full brief**: [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/)
+
+## Housekeeping — resolved challenges archived
+
+Two challenges have produced research deliverables and have corresponding committed positions. Today they move to `zz-challenges/archive/` so the active list stays focused. Briefs are preserved verbatim (re-runnable) with resolution callouts pointing to the resolving log.
+
+| Challenge | Resolved by | Archived path |
+|---|---|---|
+| **06: Pairwise vs synthetic spine** | This log §2.1 + research deliverable in `.workspace/` | [`zz-challenges/archive/06-synthetic-spine`](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) |
+| **07: Link metadata / edge model** | [04-10 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/), reaffirmed by this log §2.2 | [`zz-challenges/archive/07-link-metadata-edge-model`](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/) |
+
+Stale internal links across the KB have been updated to point to the new archive paths in this same commit.
+
+## Where this is going next
+
+The user has signaled an upcoming **direction log** that will reform parts of the roadmap based on what's committed here. That log is *not* this log. Today's pass is decisions and clarifications; the direction log will translate them into roadmap deltas (which Foundation items move to "committed direction," which become Phase A pure paperwork, which spawn new Phase B challenges, etc.).
+
+**Until that direction log lands**, the [roadmap Foundation section](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) still reads as it did this morning — with Challenge 06 marked as the biggest open question (now resolved by this log) and the evidence-link edge model marked as committed (which it is, with the tier caveat now added).
+
+## Related
+
+**Today's pair (read together):**
+
+- [Foundation state of play (orientation, 05-01 AM)](/crosswalker/agent-context/zz-log/2026-05-01-foundation-state-of-play/) — the morning orientation log; frames the open Foundation problems
+- This log — afternoon decisions, clarifications, new research
+
+**The 04-10 syntheses (load-bearing for today's commitments):**
+
+- [Foundation research synthesis (04-10)](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — STRM + SSSOM crosswalk vocabulary; surfaced the synthetic-spine question
+- [Evidence-link edge model synthesis (04-10)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction notes + 13-field schema; reaffirmed today with tier caveat
+
+**The Apr 8–9 cluster (graph-edit / atomic operations background — informs §3.1):**
+
+- [Atomic operations research (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) — 9 atomic ops + 4 composites
+- [Primitives depth and pluggable layers (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/)
+- [User-first ontology maintenance (04-09)](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/)
+- [Ontology evolution first principles (04-08)](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/)
+
+**The Apr 3 cluster (architectural foundations):**
+
+- [Vision alignment decisions (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/)
+- [Layered architecture vision (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)
+- [EvolutionPattern taxonomy draft (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — the draft this log reframes
+- [Why Obsidian, why files (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/)
+
+**Research challenges (active + archived):**
+
+- Active: [01](/crosswalker/agent-context/zz-challenges/01-primitives-atomicity/), [02](/crosswalker/agent-context/zz-challenges/02-architecture-at-scale/), [03](/crosswalker/agent-context/zz-challenges/03-competitive-landscape/), [04](/crosswalker/agent-context/zz-challenges/04-first-principles-audit/), [05](/crosswalker/agent-context/zz-challenges/05-transformation-problem/)
+- New today: [08 git-audit](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/), [09 UUID/CWUUID](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/), [10 graph→tabular](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/)
+- Archived: [06 spine](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/), [07 edge model](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/)
+- [Challenges index](/crosswalker/agent-context/zz-challenges/) · [Archived index](/crosswalker/agent-context/zz-challenges/archive/)
+
+**Concept pages (vocabulary and conceptual depth):**
+
+- [Terminology](/crosswalker/concepts/terminology/)
+- [Schema matching](/crosswalker/concepts/schema-matching/) — interlingua / pivot / **spine** alias added
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/)
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/)
+- [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/)
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases / Dataview / Datacore landscape
+
+**External references for §2.1 (pairwise+spine commitment):**
+
+- [SCF — Secure Controls Framework](https://securecontrolsframework.com/) — default inheritable spine
+- [SSSOM — Simple Standard for Sharing Ontological Mappings](https://mapping-commons.github.io/sssom/spec/) — persistence model
+- [STRM — Set Theory Relationship Mapping (NIST IR 8477)](https://csrc.nist.gov/glossary/term/set_theory_relationship_mapping) — predicate vocabulary
+- [OSCAL Control Mapping Model](https://pages.nist.gov/OSCAL/learn/concepts/layer/control/mapping/) — future eventual default per validity stamp
+- Research deliverable: `.workspace/2026-05-01-challenge-06-pairwise-spine-research.md` (gitignored, repo-local)
+
+**Roadmap (untouched today; deferred to direction log):**
+
+- [Roadmap root](/crosswalker/reference/roadmap/)
+- [Roadmap: Foundation section](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — where the next direction log will land changes

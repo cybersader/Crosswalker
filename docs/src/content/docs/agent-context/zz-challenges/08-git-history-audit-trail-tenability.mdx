@@ -1,0 +1,94 @@
+---
+title: "Challenge 08: Is git history a tenable compliance audit trail?"
+description: The 04-10 evidence-link synthesis assumed git history (with signed commits, branch protection, and periodic external snapshots) is a sufficient audit trail for evidence-link state changes. Stress-test that assumption against actual compliance audit-evidence standards, legal admissibility frameworks, and how mature GRC tools handle the same problem.
+tags: [research, audit, evidence-mapping-links, compliance, first-principles]
+date: 2026-05-01
+sidebar:
+  label: "08 · Git audit-trail tenability"
+---
+
+## The assignment
+
+The [04-10 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) committed to **git history as the audit trail** for evidence-link state changes (status transitions, reviewer attribution, review dates, supersedes chains), with three hardening measures: signed commits, branch protection, and periodic external snapshots. This commitment was reaffirmed in the [2026-05-01 Foundation commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) but with explicit caution from the project owner — **"I'm honestly not sure git history is tenable for audit trail."**
+
+Your job: stress-test that commitment. Is git history actually defensible as the system-of-record for compliance evidence-link state changes? Or does the local-first/files-first ethos here run headlong into compliance-audit reality?
+
+## What to investigate
+
+### 1. Audit-evidence standards — does git satisfy them?
+
+- **AICPA SAS 142** (Audit Evidence) — the four attributes (accuracy, completeness, authenticity, susceptibility to management bias). Does signed-commit + branch-protection git satisfy each?
+- **PCAOB AS 1105** and **AICPA AU-C 500** on Information Produced by an Entity (IPE) — auditors must test the reliability of system-generated information. What controls would have to exist over the git workflow for an auditor to consider IPE-grade?
+- **SOC 2 Trust Services Criteria** — particularly CC7.x (system operations) and CC9.x (change management). Where does git fit? Where doesn't it?
+- **ISO 27001 / 27002** clauses on records management and audit trails (5.33, 8.15). Compatible with git?
+- **HIPAA 164.312(b)** audit controls for healthcare-related compliance — what's the bar?
+
+### 2. Legal admissibility
+
+- **U.S. Federal Rules of Evidence 901 / 902** — authentication of digital evidence. Does signed-commit cryptographic provenance satisfy 901's threshold? 902(13)/(14) self-authentication of electronic records?
+- **Sarbanes-Oxley 802 / 404** — record retention and internal-controls requirements. Are git repositories acceptable retention systems?
+- **ESI (Electronically Stored Information) preservation** under FRCP 26 / 34 — git's history is preserved by design, but force-pushes and lost branches break this. Are required hardening controls sufficient?
+- Case law if any exists where git commits were entered as evidence (search recent docket data).
+
+### 3. How mature GRC tools handle this
+
+Compare against incumbent GRC platforms' audit-log architectures:
+
+- **Auditree** (IBM, ComplianceAsCode) — explicitly uses git as the evidence store. Has a published threat model and operational pattern. Read their docs end-to-end.
+- **Hyperproof, Drata, Vanta, OneTrust, AuditBoard** — what do their audit logs actually look like? Append-only DB with cryptographic chaining? WORM storage? Third-party timestamping (RFC 3161)?
+- **What guarantees do their auditors give to *their* customers' auditors?**
+
+### 4. Failure modes — what breaks git as audit trail?
+
+- **Force-pushes** — even with branch protection, a vault holder can rewrite history on a fork. How is this detected?
+- **Lost branches / orphaned commits** — `reflog` retention and `gc` settings.
+- **Signature verification gaps** — what if a key is compromised post-hoc? Key rotation?
+- **Clock skew / commit-date manipulation** — `git commit --date=` accepts any value.
+- **Submodule history opacity** — if evidence references submodules, the history of the referent isn't always inspected.
+- **Multi-vault federation** — when an evidence link references content across vault boundaries, the audit chain fragments.
+- **Deletion semantics** — git can technically expunge content via filter-branch / BFG. What hardening prevents this for compliance-bearing files?
+
+### 5. RFC 3161 / Trusted Timestamping
+
+- Should every audit-relevant commit be RFC 3161-timestamped via a third-party TSA (DigiCert, Apple, Microsoft, Sectigo)?
+- What's the operational cost? Free public TSAs vs paid?
+- Does this make git history *tenable* even when not perfect?
+
+### 6. The hybrid escape hatch
+
+If pure git history isn't tenable for high-assurance audit, what's the minimum delta?
+
+- WORM (write-once-read-many) export to S3 Glacier / Azure Blob immutability tier on commit?
+- Append-only ledger sidecar (e.g., AWS QLDB, immudb)?
+- Periodic notarization to a public blockchain (overkill?)?
+- Per-commit notarization to a Merkle-tree timestamping service?
+
+Each of these has a real cost (operational, financial, complexity). What's the threshold where they become required?
+
+## Success criteria for the deliverable
+
+A **conditional yes/no/it-depends recommendation**, structured as:
+
+1. **Standards mapping** — for each of SAS 142, SOC 2, ISO 27001, HIPAA (relevant subsets), specify whether the proposed git architecture satisfies the standard, and if not, what minimum delta would close the gap.
+2. **Failure-mode inventory** — exhaustive list of how git history can be subverted, with mitigations rated by cost (cheap config / operational discipline / paid third-party).
+3. **Tier-based recommendation** matching Crosswalker's progressive tier architecture:
+   - Tier 1 (local file vault): what's the minimum bar? (e.g., signed commits + branch protection + monthly archive?)
+   - Tier 2 (sql.js sidecar): does this change anything?
+   - Tier 3 (server-backed): can the server provide the missing audit guarantees?
+4. **Decision: reaffirm git, augment, or replace.**
+5. **What the user-facing UX looks like** — if augmentations are required, does the user see RFC 3161 timestamps in the UI? Notarization receipts? A separate "audit log" panel?
+
+## Out of scope
+
+- Designing a custom blockchain audit chain. If that's the answer, document it but don't design it here.
+- Detailed implementation of any third-party integrations.
+- Specific vendor selection (AWS vs Azure vs GCP for WORM tier).
+
+## Related
+
+- [04-10 Evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — original git-history-as-audit-trail commitment
+- [2026-05-01 Foundation commitments and follow-on research](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) — re-flagged this as a research item
+- [Auditree framework](https://github.com/ComplianceAsCode/auditree-framework) — the prior art most directly aligned with the Crosswalker model
+- [AICPA SAS 142](https://www.aicpa-cima.com/resources/article/audit-evidence-eight-things-to-know) — overview
+- [NIST Cybersecurity Framework v2.0](https://www.nist.gov/cyberframework) — for context on what GRC frameworks expect
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — where the resolution will land

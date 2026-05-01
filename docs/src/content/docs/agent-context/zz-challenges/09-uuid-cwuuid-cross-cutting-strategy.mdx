@@ -1,0 +1,107 @@
+---
+title: "Challenge 09: UUID / CWUUID cross-cutting identifier strategy"
+description: "Where exactly does Crosswalker need persistent identifiers? Survey every place a UUID-class ID would matter (nodes, edges, junction notes, evidence notes, framework versions, spine snapshots, mapping authors, vault identity), evaluate options (UUIDv4/v7, ULID, content-addressed CID, OSCAL UUIDs, custom CW prefix), and recommend a minimum viable identifier scheme for Foundation."
+tags: [research, architecture, data-model, identifiers, foundation]
+date: 2026-05-01
+sidebar:
+  label: "09 · UUID / CWUUID strategy"
+---
+
+## The assignment
+
+The [04-10 evidence-link synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) flagged "UUID enterprise resilience scope" as an open sub-decision (#7 in its decisions list) — File 2 of that research argued filename-based linking is fragile across out-of-app moves, and that a UUID field on every junction note would harden the architecture. The decision was deferred at the time.
+
+The [2026-05-01 Foundation commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) re-surfaced this as a **cross-cutting** concern — UUIDs aren't just an evidence-link question; they're a question about *every persistent identifier in the entire web-of-webs*. The user's framing: *"we WILL need UUIDs in many ways, and I'm not sure we've researched that requirement across the board. We could very well need CWUUID type stuff in other parts of this ontology lifecycle management web to web mapping problem space."*
+
+Your job: survey the entire identifier surface area and recommend a coherent identifier scheme.
+
+## What to investigate
+
+### 1. Where does Crosswalker need persistent identifiers?
+
+Enumerate exhaustively. Starting list:
+
+- **Ontology nodes** (controls, techniques, sub-techniques) — does the framework's natural ID (e.g., `AC-2`, `ATT&CK T1003`) suffice, or do we need a Crosswalker-internal UUID layered on top? What about renamed/split/merged controls across versions?
+- **Ontology web identifiers** — each imported framework version needs an ID (NIST 800-53 r5 vs r6).
+- **Crosswalk edges** — pairwise mappings between two ontology controls; carries STRM + SSSOM metadata.
+- **Evidence-link junction notes** — one file per evidence→ontology edge.
+- **Evidence notes themselves** — user-authored markdown. Does Crosswalker assign IDs, or do we trust filenames?
+- **Spine snapshots** — content-addressed by `sha256` (already proposed in Challenge 06 deliverable), but does each *spine concept* also need a stable ID?
+- **Mapping author / reviewer IDs** — SSSOM has `author_id` slot. Per-vault, per-team, or globally federated?
+- **Framework versions / spine versions** — how do we identify "NIST 800-53 r5 as of 2024-03-15" vs "as of 2024-09-01"?
+- **Vault identity** — for multi-vault federation or cross-vault dedup, does the vault itself need an ID?
+- **Lifecycle change records** — atomic operations that transform one ontology version to the next (the 9 atomic primitives) — each individual record needs an ID for traceability.
+- **Schema definitions** (per the marketplace concept in [the 05-01 commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#23-evidence-link-schema-is-our-shipped-default-architecture-supports-a-marketplace)) — alternative evidence-link schemas published by community need IDs.
+
+### 2. Evaluate identifier options
+
+Compare across the criteria below:
+
+| Option | Determinism | Sortability | Distribution-safety | Filename-friendly | OSCAL alignment | Bytes |
+|---|---|---|---|---|---|---|
+| **UUIDv4** | Random | None | Strong | Yes | OSCAL native | 16/36 |
+| **UUIDv7** | Time-prefixed | Good | Strong | Yes | Becoming OSCAL-aware | 16/36 |
+| **ULID** | Time-prefixed | Excellent | Strong | Yes | Not native | 26 chars |
+| **NanoID** | Random, short | None | Strong-ish | Yes | Not native | 21 chars |
+| **Content-addressed CID** (sha256) | Deterministic | None | Bulletproof | Long | No | 64 chars |
+| **Composite key** (`framework:version:control_id`) | Deterministic | Good | Vault-local only | Risky chars | No | Variable |
+| **Custom `CW-<v7>`** prefix | Time-prefixed | Good | Strong | Yes | No | ~20 chars |
+
+### 3. OSCAL UUID semantics
+
+OSCAL extensively uses UUIDs across the catalog/profile/component-definition models. For evidence links specifically, OSCAL's `by-component` assembly has `uuid` slots. **Crosswalker should map to OSCAL UUIDs cleanly for round-trip export.**
+
+- What's the OSCAL UUID generation convention? (Random UUIDs, or are there content-addressed conventions?)
+- If Crosswalker uses UUIDv7 internally and exports as OSCAL UUID, is that compliant?
+- What about importing OSCAL data — do we preserve incoming UUIDs, or assign our own?
+
+### 4. The filename question
+
+Junction notes are markdown files. Their *filename* is currently the natural anchor. But filenames are mutable (user can rename in Obsidian). Options:
+
+- Keep filenames as-is and require UUID in frontmatter as the stable handle (how Logseq, Tana, Capacities do it).
+- Use UUID-based filenames (ugly for humans).
+- Use composite filenames with UUID embedded (`evidence-AC-2-cw7a3b9f.md`).
+- Use content-addressed filenames (very ugly).
+
+Each has UX consequences. Pick.
+
+### 5. Cross-vault federation
+
+If a user has two vaults and wants to share evidence links between them, what's the dedup story? Vault-local UUIDs collide; globally unique UUIDs (v4/v7) don't. But vault-local content-addressed CIDs would.
+
+Is this a Foundation concern, or is it explicitly out-of-scope until Phase 2/3?
+
+### 6. What does CWUUID mean?
+
+The user proposed *"CWUUID type stuff"* — a Crosswalker-prefixed identifier. Investigate:
+
+- Is a custom prefix worth it for grep-ability and readability? (e.g., `CW-7a3b9f` immediately recognizable as Crosswalker-issued.)
+- What about a *URN* approach? `urn:crosswalker:evidence-link:7a3b9f`? Verbose but unambiguous.
+- DID (Decentralized Identifier) overkill here?
+
+## Success criteria for the deliverable
+
+A **single coherent identifier strategy** that covers:
+
+1. **Minimum viable set for Foundation** — which entities MUST have UUIDs in v0/v1, and which can defer.
+2. **Identifier scheme per entity type** — for each entity (nodes, edges, junction notes, etc.), specify the identifier class (UUIDv7? CID? composite?) and the rationale.
+3. **OSCAL round-trip mapping** — explicit table showing `Crosswalker entity → OSCAL UUID slot` for every entity that has an OSCAL counterpart.
+4. **Filename strategy for junction notes** — decision on whether the UUID lives in the filename, frontmatter only, or both.
+5. **Migration path** — what happens to existing vault data when this scheme lands? Retroactive UUID assignment? Annotation script?
+6. **Reservation / generation conventions** — who generates UUIDs (the plugin? a CLI? the user?), and how are collisions prevented in offline workflows.
+
+## Out of scope
+
+- DID resolution and verifiable credentials infrastructure (out of Foundation scope).
+- Cross-vault sync mechanics — separate problem.
+- Generation performance benchmarks — solve the design first; the implementation cost of UUIDv7 is negligible.
+
+## Related
+
+- [04-10 Evidence-link edge model synthesis §"Open sub-decision #7"](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/#decisions-this-forces) — original UUID flag
+- [2026-05-01 Foundation commitments and follow-on research](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) — broadened the scope to cross-cutting
+- [SSSOM author_id slot](https://mapping-commons.github.io/sssom/spec/) — the closest standard for mapping-author identifiers
+- [OSCAL UUID conventions](https://pages.nist.gov/OSCAL/concepts/uuid/) — the round-trip target
+- [UUIDv7 spec (RFC 9562)](https://www.rfc-editor.org/rfc/rfc9562.html) — for time-ordered UUIDs
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — where the resolution will land
