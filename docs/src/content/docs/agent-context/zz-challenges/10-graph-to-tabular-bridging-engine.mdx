@@ -1,0 +1,113 @@
+---
+title: "Challenge 10: Graph → tabular bridging engine for the web-of-webs"
+description: "Crosswalker's data is fundamentally a graph (ontology nodes + crosswalk edges + evidence-link junction notes + lifecycle change atoms). Most reporting needs are tabular (compliance matrices, gap dashboards, coverage reports). Survey existing engines (DuckDB, KuzuDB, Apache AGE, Neo4j+Cypher, oxigraph, sql.js+materialized joins, Datacore graph queries) and design the bridging architecture across Crosswalker's three tiers."
+tags: [research, architecture, query, rendering, tier-2, tier-3, foundation]
+date: 2026-05-01
+sidebar:
+  label: "10 · Graph→tabular bridging"
+---
+
+## The assignment
+
+Crosswalker stores knowledge as a **graph**:
+
+- **Nodes** — ontology controls, evidence notes, spine concepts
+- **Edges** — crosswalk edges (STRM + SSSOM), evidence-link junction notes (13-field schema), hierarchy edges (folders), lifecycle change atoms (across versions)
+
+But almost every *useful output* is **tabular** or **structured**:
+
+- Compliance matrices (controls × evidence as a cross-tabulated grid)
+- Gap dashboards (controls without sufficient evidence)
+- Coverage reports (per framework, per Implementation Group, per evidence type)
+- Multi-hop spine renders (subject control + spine concept + object control merged into one row, per Challenge 06's hybrid model)
+- Auditor exports (OSCAL `by-component` JSON, derived from graph state)
+
+The user's framing in the [2026-05-01 Foundation commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#24-tier-aware-reportingrendering): *"In practice, I think we need to research and/or develop logic that can pull in everything to be represented as graphs and then be able to query into merged tabular or structured or whatever views. Use an existing engine or develop bridging logic with existing engines (definitely its own research endeavor)."*
+
+Your job: design the bridging architecture across Crosswalker's three tiers, and decide whether to build, integrate, or hybrid.
+
+## What to investigate
+
+### 1. Survey of relevant engines
+
+Evaluate each on (a) graph-modeling fit, (b) tabular query fit, (c) browser/Obsidian compatibility, (d) bundle size, (e) license:
+
+- **[DuckDB](https://duckdb.org/) (WASM)** — columnar OLAP database with SQL. Excellent at tabular aggregation. Can model graphs as edge tables and use recursive CTEs. Browser-ready (~10MB WASM).
+- **[KuzuDB](https://kuzudb.com/) (WASM)** — embedded graph DBMS, Cypher, designed for analytics. Browser support? Bundle size?
+- **[Apache AGE](https://age.apache.org/)** — Postgres extension for property graphs + Cypher. Server-only.
+- **[Neo4j + Cypher](https://neo4j.com/)** — full graph DBMS, Cypher. Server-required, not local-first.
+- **[oxigraph](https://github.com/oxigraph/oxigraph)** — Rust SPARQL DB with WASM build. RDF-native (good for SSSOM/STRM ontologies).
+- **[sql.js](https://sql.js.org/)** — SQLite compiled to WASM. Already proposed for Crosswalker Tier 2.
+- **[Datacore](https://github.com/blacksmithgu/datacore)** — Obsidian community plugin, successor to Dataview. JavaScript query API on vault metadata.
+- **[Kuzu vs DuckDB benchmarking](https://kuzudb.com/blog/comparing-kuzu-and-duckdb)** — published comparisons.
+- **[Apache Arrow JS / Polars JS](https://pola.rs/)** — in-memory columnar stores; useful as a join layer between heterogenous data sources.
+- **[in-Obsidian Bases](https://help.obsidian.md/bases)** — the committed Tier 1 query layer; flat YAML only, no joins, no pivots.
+
+### 2. The Tier 1 question (the user's specific suggestion)
+
+The user proposed for Tier 1: **plugin logic that auto-generates Bases-compatible folders containing pre-joined / merged data**.
+
+> "I think for Tier 1 (with extensive performance limitations) we can use a custom plugin logic to auto-generate base folders that have the joined/merged data within them (complex but definitely the idea I'm thinking)."
+
+Investigate:
+
+- Is "materialize a graph query as a folder of pre-joined notes" actually feasible? The output folder is then queried with Bases (which can group / count / sort).
+- What's the trigger? On import? On user request? On note save?
+- File proliferation cost — if every materialized view is N notes, this could explode. How bad?
+- Caching / staleness — when source data changes, all derived view folders are stale. How is this surfaced?
+- Comparison: SQL views vs materialized views in classical DBMS. Crosswalker would be doing the latter, with files as the materialization target.
+
+### 3. The Tier 2 / 3 architecture
+
+For sql.js sidecar (Tier 2) and server-backed (Tier 3):
+
+- What's the SQL schema for the graph? Edge tables? Property-graph normal form?
+- Round-trip with Tier 1 YAML — when source files change, does the SQL store re-derive automatically? Reverse: can users edit through Tier 2 and have it write back to Tier 1?
+- Query language exposure — do users see SQL, Cypher, a query builder UI, or just pre-built dashboards?
+- Pivot tables / cross-tabulation — File 2 of the 04-10 evidence-link research called these *"fundamentally impossible in Bases"*. Where does that work get done? In sql.js? In a custom rendering layer over sql.js?
+
+### 4. Multi-hop spine renders
+
+Per the [2026-05-01 commitments](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#21-pairwise--optional-inheritable-spine), some renders need to show:
+
+```
+NIST 800-53 AC-2  ─→  SCF IAC-15  ─→  CIS Controls 6.1
+   (subject)         (spine)            (object)
+```
+
+merged into one row, with metadata from all three legs. This is fundamentally a graph-traversal-then-flatten operation. Which of the surveyed engines does this most cleanly?
+
+### 5. Build vs integrate vs hybrid
+
+Three plausible strategies:
+
+- **Pure integrate**: pick one engine (e.g., DuckDB-WASM at Tier 2, plus pre-materialized folders at Tier 1) and live with its limits.
+- **Pure build**: write a Crosswalker-internal bridge layer that reads markdown frontmatter → in-memory graph → flexible query API. No external engine.
+- **Hybrid**: Tier 1 = build (folder materialization), Tier 2 = integrate (DuckDB-WASM or sql.js), Tier 3 = integrate (full server-backed graph DB).
+
+Recommend with rationale.
+
+## Success criteria for the deliverable
+
+1. **Engine evaluation matrix** — completed scoring across the criteria above.
+2. **Tier 1 design** — concrete spec for materialized folder generation, including file format, trigger model, staleness handling, and cost ceiling.
+3. **Tier 2 design** — recommended engine (with bundle/size/license rationale), schema sketch, round-trip semantics with files.
+4. **Tier 3 design** — what changes when the budget for a server is on the table.
+5. **Data-flow contract** — formal spec for "files are the source of truth; Tier 2/3 stores derive from files; queries can touch either tier; writes always land in files." Including invariants (idempotency, staleness detection, error handling).
+6. **Multi-hop spine render** — concrete worked example showing the query as expressed in the recommended Tier 2 engine.
+7. **Cost ceiling per tier** — at what vault size does each tier hit its limits? When does a user need to migrate up?
+
+## Out of scope
+
+- UI/UX for the query builder — separate downstream design.
+- Specific SQL schema for evidence-link junction notes — covered by Challenge 09 (UUIDs) and Tier 2 design follow-ups.
+- Performance benchmarking on real vaults — needs actual datasets; this challenge produces the design, not the numbers.
+
+## Related
+
+- [2026-05-01 Foundation commitments §2.4 Tier-aware reporting/rendering](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) — original framing
+- [Foundation research synthesis §"files-canonical ceiling"](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#files-canonical-ceiling--documented-already-answered-by-the-3-tier-pillar) — the ceiling problem
+- [Challenge 02: Architecture at scale](/crosswalker/agent-context/zz-challenges/02-architecture-at-scale/) — sister problem; Tier 2 perf
+- [Schema matching & alignment](/crosswalker/concepts/schema-matching/) — pivot/spine pattern that drives multi-hop renders
+- [Metadata ecosystem: Bases vs Dataview vs Datacore](/crosswalker/concepts/metadata-ecosystem/) — current Obsidian options
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — Progressive tier architecture pillar where this lands

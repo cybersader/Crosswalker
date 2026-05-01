@@ -1,14 +1,14 @@
 ---
-title: "Challenge 07: Link metadata / edge model for evidence mapping"
-description: Design the edge metadata model for evidence→framework implementation links — the "other" edge type Crosswalker has to support that's NOT a crosswalk. Bases-compatible storage, custom or inherited schema, reviewer attribution, status transitions.
-tags: [research, architecture, evidence-mapping-links, data-model]
+title: "Challenge 07: Link metadata / edge model for evidence mapping (archived)"
+description: Design the edge metadata model for evidence→framework implementation links — the "other" edge type Crosswalker has to support that's NOT a crosswalk. Bases-compatible storage, custom or inherited schema, reviewer attribution, status transitions. RESOLVED 2026-04-10, archived 2026-05-01.
+tags: [research, architecture, evidence-mapping-links, data-model, archived]
 date: 2026-04-10
 sidebar:
-  label: "07 · Link metadata / edge model"
+  label: "07 · Link metadata / edge model (archived)"
 ---
 
-:::tip[Findings — this challenge has a proposed resolution]
-Two research sessions targeted at this challenge landed on 2026-04-10 PM. Both independently converged on **junction notes (edge-as-note reification)** as the only architecture compatible with Obsidian Bases' flat-YAML constraint, with a concrete **13-field schema** structurally isomorphic to OSCAL's `by-component` assembly. See the **[Evidence-link edge model synthesis log](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)** for the full distillation: convergences, divergences, the proposed schema reproduced verbatim, the three-dimensional status vocabulary (implementation status + freshness + evidence type), git-based audit trail with 3 hardening measures, OSCAL round-trip mapping, and the 6 decisions ready to commit vs. the 7 open sub-decisions still requiring design work.
+:::tip[Resolved 2026-04-10 — archived 2026-05-01]
+Two research sessions targeted at this challenge landed on 2026-04-10 PM. Both independently converged on **junction notes (edge-as-note reification)** as the only architecture compatible with Obsidian Bases' flat-YAML constraint, with a concrete **13-field schema** structurally isomorphic to OSCAL's `by-component` assembly. See the **[Evidence-link edge model synthesis log](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)** for the full distillation. Crosswalker subsequently committed to junction-notes-by-tier in the **[2026-05-01 Foundation commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/)** (§2.2), with the file-proliferation tradeoff explicitly tied to Tier 2/3 backend availability.
 
 **This challenge brief is preserved as originally written** (research assignment for fresh agents) so it stays re-runnable. Findings flow back as log entries per the [research challenges convention](/crosswalker/agent-context/zz-challenges/), not as edits to the brief itself.
 :::
