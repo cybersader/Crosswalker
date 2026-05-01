@@ -1,7 +1,7 @@
 ---
-title: "Foundation commitments and follow-on research — pairwise+spine, junction-notes-by-tier, EvolutionPattern reframe"
-description: "Decisions made 2026-05-01 after re-reading the morning orientation log and the Challenge 06 research deliverable. Commits the pairwise+optional-spine hybrid, ties junction-note feasibility to tier, reframes EvolutionPattern as a stewardship schema (not a data-prediction model), introduces the schema-marketplace direction, and spins up three new research challenges (git-history audit-trail tenability, UUID/CWUUID strategy, graph→tabular bridging engine)."
-tags: [foundation, decisions, data-model, evidence-mapping-links, crosswalk, research-callouts]
+title: "Foundation commitments and follow-on research — pairwise+pivot, junction-notes-by-tier, StewardshipProfile, meta-schema lifecycle"
+description: "Decisions made 2026-05-01 after re-reading the morning orientation log and the Challenge 06 research deliverable. Commits the pairwise + optional-pivot hybrid (Challenge 06 resolution); ties junction-note feasibility to tier; renames EvolutionPattern → StewardshipProfile; introduces the schema-marketplace direction; commits that every Crosswalker-internal schema is versioned and migration-aware (Crosswalker eats its own dog food); spins up three new research challenges (git-history audit-trail tenability, UUID/CWUUID strategy, graph→tabular bridging engine)."
+tags: [foundation, decisions, data-model, evidence-mapping-links, crosswalk, meta-schema, research-callouts]
 date: 2026-05-01
 sidebar:
   label: "05-01 · Foundation commitments + follow-on research"
@@ -20,8 +20,9 @@ This morning the orientation log reframed Foundation in the *web-of-webs* metaph
 
 Today's pass:
 
-- **Commits** four positions ([§2](#commitments))
+- **Commits** five positions ([§2](#commitments)): pairwise + optional pivot, junction-notes-by-tier, evidence-link schema as default + marketplace direction, tier-aware reporting/rendering, **and** the meta-level commitment that every Crosswalker-internal schema is versioned and migration-aware
 - **Clarifies** four points where the morning orientation log undersold or mis-framed the picture ([§3](#clarifications))
+- **Renames** EvolutionPattern → **StewardshipProfile** ([§3.2](#32-stewardshipprofile--the-evolutionpattern-rename-committed))
 - **Spins up** three new research challenges that surfaced ([§4](#follow-on-research-challenges))
 - **Archives** the two resolved challenges (06, 07) ([§5](#housekeeping--resolved-challenges-archived))
 - **Defers** roadmap edits to the upcoming direction log ([§6](#where-this-is-going-next))
@@ -69,9 +70,9 @@ Examples of why someone would want a different schema:
 - Public-sector teams already on FedRAMP may want OSCAL `by-component` directly with no Crosswalker layer
 - A research lab running biomedical ontologies may want full SSSOM with no compliance-flavored fields
 
-**Open meta-question (deferred to the upcoming direction log):** *"Can you change the schema of that schema?"* — i.e., is the schema marketplace itself versioned/governed? Can users author a new field on top of an inherited schema? Can two schemas be merged? This is a real question that shapes the marketplace design but isn't blocking the Foundation commitment to the *default* schema. The direction log will frame the meta-schema problem; it does not need a position today.
+**Open meta-question — partly answered today**: *"Can you change the schema of that schema?"* — i.e., is the schema marketplace itself versioned and migration-aware? The general principle is committed in [§2.5](#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware) below: every Crosswalker-internal schema (the default evidence-link schema, every marketplace-distributed alternative, plus all the others Crosswalker invents) is versioned and migration-aware. The marketplace-specific sub-questions — can two schemas be merged, can a user inherit-and-extend, what's the conflict-resolution UX when an installed alternative schema gets a new version — are deferred to the upcoming direction log.
 
-**Out of scope today**: the actual marketplace mechanics (Obsidian's plugin-distribution constraints, signing, sandboxing of user-loaded schemas, etc.). Today commits the *direction*; mechanics follow.
+**Out of scope today**: marketplace mechanics (Obsidian's plugin-distribution constraints, signing, sandboxing of user-loaded schemas). Today commits the *direction* and the *meta-schema constraint* (§2.5); mechanics follow.
 
 ### 2.4 Tier-aware reporting / rendering
 
@@ -84,6 +85,35 @@ Examples of why someone would want a different schema:
 **Multi-hop pivot renders** (per §2.1) — when a render needs to show subject control + pivot/spine concept + object control merged with metadata from all three legs, that's a graph traversal followed by a flatten. Tier 1 produces it as a folder; Tier 2 produces it as a SQL query result; Tier 3 produces it as a live dashboard. Same semantics, different storage.
 
 **The bridging engine question** — what *engine* does the graph-traversal-then-flatten work? That's its own research challenge; see [§4.3 Challenge 10](#43-challenge-10--graphtabular-bridging-engine).
+
+### 2.5 Crosswalker eats its own dog food — every Crosswalker-internal schema is versioned and migration-aware
+
+**Commitment**: Crosswalker invents schemas to manage ontology lifecycle — [StewardshipProfile](#32-stewardshipprofile--the-evolutionpattern-rename-committed) (the rename from EvolutionPattern), the [13-field junction-note schema](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/), [FrameworkConfig](/crosswalker/agent-context/config-schema-design/), the `_crosswalker` metadata block, the pivot snapshot manifest, the lifecycle change record schema, the SSSOM-on-markdown crosswalk record. **Each of these schemas itself has a lifecycle.** When Crosswalker decides to change one of its own schemas — to add a field, deprecate a status value, restructure a sub-schema — that's a real change with a real cost to vaults that already encode user data in the prior shape.
+
+This is the meta-level concern that the morning orientation log's "lifecycle meta-web" was genuinely pointing at — see [§3.3](#33-what-the-lifecycle-meta-web-was-actually-about) for the framing fix.
+
+**Architecturally, this means:**
+
+- **Every Crosswalker-internal schema is versioned.** The exact mechanism (a `schema_version` field, a namespace+version pair, a content-addressed hash) is deferred to the direction log; the *commitment* is that no Crosswalker-internal schema ships unversioned.
+- **Every internal schema has a documented migration path** when it changes — automated where mechanical (rename a field), interactive where ambiguous (split one field into two), with explicit user consent for anything destructive.
+- **Backward-compatibility windows are a published policy**, not implicit. When a schema changes, the prior version is read-supported for at least one minor release; write-supported until users have a path off the deprecated shape.
+- **The schema-marketplace meta-question from [§2.3](#23-evidence-link-schema-is-our-shipped-default-architecture-supports-a-marketplace)** ("can you change the schema of *that* schema?") is **one specific instance of this general principle**. The marketplace is not exempt — user-loadable alternative schemas are also subject to versioning and migration concerns, just played one level up.
+
+**Concrete list of Crosswalker-internal schemas in scope** (non-exhaustive; the principle applies to anything Crosswalker invents to manage ontology lifecycle):
+
+| Schema | Where it lives | Status |
+|---|---|---|
+| **StewardshipProfile** (renamed from EvolutionPattern, see [§3.2](#32-stewardshipprofile--the-evolutionpattern-rename-committed)) | Per-framework YAML/JSON config | Foundation — schema design in flight |
+| **Junction-note 13-field schema** | Markdown frontmatter on every evidence-link junction note | Committed shape; evolution policy TBD |
+| **`_crosswalker` metadata block** | Top-of-file YAML on every Crosswalker-generated note | v1 today; v2 planned per [roadmap](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) |
+| **FrameworkConfig** | Per-framework JSON/YAML import config | v2 in design — see [config-schema-design](/crosswalker/agent-context/config-schema-design/) |
+| **Pivot snapshot manifest** | Per-imported-pivot folder, content-addressed by `sha256` | Committed shape; future spine drivers may extend |
+| **Lifecycle change record schema** | Per-version-transition record (the [9 atomic ops + composites](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)) | Foundation — schema design in flight |
+| **Crosswalk SSSOM-on-markdown record** | Markdown frontmatter on each pairwise crosswalk file | Committed today (§2.1) |
+
+**This is a constraint, not a research challenge** — it should ride along with every Foundation schema decision from this point forward. Whenever a schema lands or changes, document its versioning policy and migration story in the same pass. The direction log will translate this into a concrete versioning-and-migration policy spec that every internal schema must comply with.
+
+**Open sub-question deferred to direction log**: do all internal schemas use the *same* versioning convention (e.g., semantic `schema_version: 1.2`), or do different schemas use different conventions (semver vs. content-addressed vs. release-tag-aligned)? Probably one convention per category (data schemas vs. config schemas vs. log records), but worth deciding explicitly.
 
 ## Clarifications
 
@@ -124,30 +154,50 @@ They speak about *different things*. STRM/SSSOM never describes the act of *chan
 
 Both vocabularies stay; both have a place; they don't compete.
 
-### 3.2 EvolutionPattern reframe — stewardship schema, not data-prediction
+### 3.2 StewardshipProfile — the EvolutionPattern rename, committed
 
-The morning orientation log's framing of EvolutionPattern was correct, and this log makes it explicit:
+**Rename committed: EvolutionPattern → StewardshipProfile.**
 
-**EvolutionPattern is a *stewardship schema* — a way to capture how the steward of an ontology (an institution, a team, a person) decides to handle changes.** It is **not a data-prediction model** that infers future changes from past data.
+The morning orientation log already framed this concept correctly — it captures how the *steward* of an ontology (institution, team, person) decides to handle changes — but the original name *EvolutionPattern* leaked the wrong implication: that it was a model for *predicting* evolution from data. It is not. **It is a declaration the steward makes, not a statistic Crosswalker infers.**
 
-- The fields it captures (release cadence, breaking-change policy, ID stability, changelog format, etc.) are **declarations made by the steward**, not statistics derived from version history.
-- Two stewards managing the same data can choose different EvolutionPatterns; both can be valid; the choice is institutional, not algorithmic.
-- The role of EvolutionPattern in Crosswalker is to set **defaults** for how Crosswalker handles ingest of a new version of that ontology — should it auto-migrate, prompt the user, freeze, etc.
+What the schema captures (independent of name):
 
-**Alternative names listed for future evaluation** (no rename committed today):
+- Fields like release cadence, breaking-change policy, ID stability, changelog format, default ingest behavior — **declarations made by the steward**, not derived from version history.
+- Two stewards managing the same data can choose different profiles; both valid. The choice is institutional, not algorithmic.
+- The role of the profile is to set *defaults* for how Crosswalker handles ingest of a new version of that ontology — auto-migrate, prompt the user, freeze, etc.
 
-- **StewardshipProfile** — most accurate to the reframe
-- **FrameworkHandlingProfile** — emphasizes that it tells Crosswalker *how to handle* the framework
-- **OntologyMaintenancePolicy** — clearest from a governance angle
-- **VersioningProfile** — narrower; loses the broader stewardship framing
+**Why StewardshipProfile is the right name**:
 
-A future direction log or terminology pass can pick one. For now, "EvolutionPattern" continues to mean "the stewardship schema that drives Crosswalker's per-framework defaults."
+- *Stewardship* names the right verb (a steward stewards an ontology over time)
+- *Profile* names the right noun (it's a declarative profile, like a personality profile or a configuration profile, not an inferred model)
+- Drops *Pattern*, which read as "an empirically observed pattern" — opposite of what we mean
+- Drops *Evolution*, which suggested data-driven derivation rather than human declaration
 
-### 3.3 "Lifecycle meta-web" was provisional orientation framing — now softened
+**Alternatives considered and rejected**:
 
-The morning orientation log used the phrase *"lifecycle meta-web"* in its table of webs. That phrasing reified the lifecycle problem as a separate web, which oversells it. **The lifecycle problem applies to *every* web** — every source-ontology web, the pivot/spine web, even the evidence-vault web (evidence ages, gets superseded, becomes stale).
+- **FrameworkHandlingProfile** — accurate but verbose; doesn't generalize to non-framework ontologies (taxonomies, registries, schemas)
+- **OntologyMaintenancePolicy** — too compliance-flavored; "policy" implies enforcement when this is more like a default-setter
+- **VersioningProfile** — too narrow; the profile covers more than versioning (also: changelog format, default ingest behavior, breaking-change policy)
 
-The orientation log has been **edited** to soften the wording: the table cell now reads *"Lifecycle (cross-version) graph"* with a note that this is not a separate "meta-web." The edit is purely terminology cleanup; no architectural commitment changes.
+**Cascading edits — flagged for the direction log**:
+
+This rename ripples through:
+
+- The [terminology page](/crosswalker/concepts/terminology/) — definitions need updating
+- The [original 04-03 EvolutionPattern taxonomy draft log](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — add a top-of-file rename callout (don't rewrite history)
+- The [04-10 foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — incidental mentions
+- The [roadmap](/crosswalker/reference/roadmap/) — at least one Foundation item references EvolutionPattern by name
+- Any of today's prior-pass logs that mention EvolutionPattern (this log, the orientation log) — keep both names visible during the transition window per [§2.5 Crosswalker-eats-its-own-dog-food](#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware)
+
+The direction log will land all the cross-KB rename edits in one pass. **Until then, this log uses the old and new names side-by-side as `EvolutionPattern → StewardshipProfile` to keep links and search working.**
+
+### 3.3 What the "lifecycle meta-web" was actually about
+
+The morning orientation log used the phrase *"lifecycle meta-web"* in its table of webs. My first instinct was to read that as the obvious-but-trivial claim that *every* web has a lifecycle problem (source ontologies evolve, evidence ages, pivots get versioned). That reading is true but weak — and it caused me to soften the table cell to *"Lifecycle (cross-version) graph"* with a note that this isn't a separate meta-web. **That softening was wrong-direction.**
+
+The real point — and what *meta-web* was genuinely pointing at — is the level above: **every schema Crosswalker itself invents for ontology lifecycle management is itself subject to change**. When Crosswalker changes its own internal schemas, the existing user data in prior shapes needs a migration path. **Crosswalker eats its own dog food** — the tool that manages ontology lifecycle for users must also manage the lifecycle of its own schemas.
+
+The substantive commitment that follows from this clarification lives in [§2.5 above](#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware). The orientation log's table cell will be re-edited to reflect this — the cell that was *"Lifecycle (cross-version) graph"* now reads *"Crosswalker-internal schema lifecycle (the meta-web)"* with the clarifying language that this is a *level* above the first-order ontology-evolution problem, not just a synonym for it.
 
 ### 3.4 Pivot ≡ spine ≡ interlingua ≡ hub ≡ canonical intermediate
 
@@ -231,7 +281,7 @@ The user has signaled an upcoming **direction log** that will reform parts of th
 
 - [Vision alignment decisions (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/)
 - [Layered architecture vision (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)
-- [EvolutionPattern taxonomy draft (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — the draft this log reframes
+- [StewardshipProfile (then EvolutionPattern) taxonomy draft (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — the draft this log [reframes and renames in §3.2](#32-stewardshipprofile--the-evolutionpattern-rename-committed)
 - [Why Obsidian, why files (04-03)](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/)
 
 **Research challenges (active + archived):**
