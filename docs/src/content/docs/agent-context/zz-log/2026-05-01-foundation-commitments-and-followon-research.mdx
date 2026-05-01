@@ -28,21 +28,23 @@ Today's pass:
 
 ## Commitments
 
-### 2.1 Pairwise + optional inheritable spine (Challenge 06 resolution)
+### 2.1 Pairwise + optional inheritable pivot (Challenge 06 resolution)
 
-**Commitment: deferred-spine hybrid.** Pairwise crosswalks are first-class. A spine is *optional and inheritable, not authored*. SCF (`v2025.4+`) is the default inheritable spine. Persistence is **SSSOM-on-markdown**. Derived mappings are computed on demand from spine-routed composition; never stored as primary facts.
+> **Terminology note**: this project uses **pivot** as the primary term — also known as **spine**, **hub**, **interlingua**, **canonical intermediate ontology**, **common controls** (compliance literature), or **canonical pivot** (schema-matching literature). All refer to the same architectural pattern: a single intermediate ontology that source ontologies map to, instead of mapping pairwise to each other. See [§3.4 below](#34-pivot--spine--interlingua--hub--canonical-intermediate) and the [schema-matching concept page](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach).
+
+**Commitment: deferred-pivot hybrid.** Pairwise crosswalks are first-class. A pivot/spine is *optional and inheritable, not authored*. [SCF](https://securecontrolsframework.com/) (`v2025.4+`) is the default inheritable pivot. Persistence is **SSSOM-on-markdown**. Derived mappings are computed on demand from pivot-routed composition; never stored as primary facts.
 
 Concretely, per the Challenge 06 deliverable:
 
 - Pairwise mappings are SSSOM-style records in markdown frontmatter. Mandatory: `subject_id`, `predicate_id`, `object_id`, `mapping_justification`. Predicates are drawn from the [STRM](/crosswalker/reference/registry/strm/) / NIST IR 8477 set-theory vocabulary (`equivalent-to`, `subset-of`, `superset-of`, `intersects-with`, `no-relationship`).
-- A user can optionally import a spine bundle (default: SCF). Spines live in their own vault folder, content-addressed by `sha256` of the imported snapshot. Multiple spine versions can coexist.
+- A user can optionally import a pivot bundle (default: SCF). Pivots live in their own vault folder, content-addressed by `sha256` of the imported snapshot. Multiple pivot versions can coexist.
 - Derived mappings carry a `derivation_path`, an *inherited* `mapping_date` (the minimum of component dates), and a downgraded predicate per the SSSOM RCE chain rules. They are visually distinct from authored mappings in any rendering.
 - Authored mappings always outrank derived ones for the same subject/object pair. Conflicts surface as explicit "review needed" items.
-- **Exit strategy**: pairwise data is the source of truth, so SCF disappearing degrades Crosswalker to a pure pairwise tool with stale derived edges — not a catastrophe. Fallback options (graceful degradation): (1) freeze last SCF snapshot, (2) community fork, (3) migrate to OSCAL Control Mapping Model when stable, (4) FCA-reconstruct a spine from in-vault pairwise data.
+- **Exit strategy**: pairwise data is the source of truth, so SCF disappearing degrades Crosswalker to a pure pairwise tool with stale derived edges — not a catastrophe. Fallback options (graceful degradation): (1) freeze last SCF snapshot, (2) community fork, (3) migrate to OSCAL Control Mapping Model when stable, (4) FCA-reconstruct a pivot from in-vault pairwise data.
 
 **Validity stamp** (reproduced verbatim from the deliverable): *"This recommendation holds until (a) the OSCAL Foundation publishes a v1.0 stable Control Mapping Model with a public derived-mapping convention, (b) SCF Council changes its license terms or ceases monthly STRM releases for >12 months, or (c) Crosswalker users routinely import >10 frameworks per vault. Re-evaluate at the earliest of those events, or no later than Q4 2027."*
 
-**The user's added emphasis**: most of the engineering work for this commitment is **not** in the underlying data structure (which stays simple — pairwise SSSOM records + an optional content-addressed spine folder). It's in the **reporting and rendering layer**: pulling multi-hop spine traversals into merged tabular views for an analyst, with the right disclosure (authored vs derived), the right staleness signal, and the right blast-radius indicator. That problem is its own research item — see [§4.3 Challenge 10](#43-challenge-10--graphtabular-bridging-engine).
+**The user's added emphasis**: most of the engineering work for this commitment is **not** in the underlying data structure (which stays simple — pairwise SSSOM records + an optional content-addressed pivot/spine folder). It's in the **reporting and rendering layer**: pulling multi-hop pivot-traversal results into merged tabular views for an analyst, with the right disclosure (authored vs derived), the right staleness signal, and the right blast-radius indicator. That problem is its own research item — see [§4.3 Challenge 10](#43-challenge-10--graphtabular-bridging-engine).
 
 ### 2.2 Junction notes confirmed — but feasibility is tier-aware
 
@@ -50,9 +52,9 @@ Concretely, per the Challenge 06 deliverable:
 
 The [04-10 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) committed the architecture: one markdown file per evidence→ontology edge, 13-field flat-YAML frontmatter, OSCAL `by-component` round-trip. That direction is **right**. Today's commitment adds the operational caveat:
 
-- **Tier 1 (files-canonical only)** — junction notes are usable up to small-to-medium framework counts (per the Challenge 06 deliverable and the user's own analysis: ~3–5 frameworks comfortably; 5–10 painful but tractable; >10 not realistic without a spine reducing proliferation pressure). The Tier 1 ceiling is *real* but not catastrophic if the vault stays under it.
+- **Tier 1 (files-canonical only)** — junction notes are usable up to small-to-medium framework counts (per the Challenge 06 deliverable and the user's own analysis: ~3–5 frameworks comfortably; 5–10 painful but tractable; >10 not realistic without a pivot reducing proliferation pressure). The Tier 1 ceiling is *real* but not catastrophic if the vault stays under it.
 - **Tier 2 (sql.js sidecar) and Tier 3 (server-backed)** — junction notes scale comfortably to GRC-grade volumes (tens of thousands of evidence links) because the index, query, and cross-tabulation work happens off-files in the sidecar/backend.
-- **The spine reduces junction-note proliferation pressure proportionally.** With a spine, you don't need to author N×N pairwise evidence links for analogous controls in different frameworks — one evidence link to the spine concept covers the long tail through derivation.
+- **The pivot reduces junction-note proliferation pressure proportionally.** With a pivot/spine, you don't need to author N×N pairwise evidence links for analogous controls in different frameworks — one evidence link to the pivot concept covers the long tail through derivation.
 
 **Practical implication**: a small GRC team running 3 frameworks can ship on Tier 1. A larger compliance team running 7+ frameworks needs the Tier 2/3 backend to be performant. We tell them this honestly in the docs.
 
@@ -79,7 +81,7 @@ Examples of why someone would want a different schema:
 - **Tier 2 (sql.js WASM sidecar)** — the materialization moves into SQL. Pivot tables, cross-tabulation grids, and ad-hoc analytical queries become tractable. The sidecar is rebuilt from files on import / on demand; files remain the source of truth.
 - **Tier 3 (server-backed)** — same model, scaled out; multi-user editing, real-time dashboards, externally exposed APIs.
 
-**Multi-hop spine renders** (per §2.1) — when a render needs to show subject control + spine concept + object control merged with metadata from all three legs, that's a graph traversal followed by a flatten. Tier 1 produces it as a folder; Tier 2 produces it as a SQL query result; Tier 3 produces it as a live dashboard. Same semantics, different storage.
+**Multi-hop pivot renders** (per §2.1) — when a render needs to show subject control + pivot/spine concept + object control merged with metadata from all three legs, that's a graph traversal followed by a flatten. Tier 1 produces it as a folder; Tier 2 produces it as a SQL query result; Tier 3 produces it as a live dashboard. Same semantics, different storage.
 
 **The bridging engine question** — what *engine* does the graph-traversal-then-flatten work? That's its own research challenge; see [§4.3 Challenge 10](#43-challenge-10--graphtabular-bridging-engine).
 
@@ -143,18 +145,23 @@ A future direction log or terminology pass can pick one. For now, "EvolutionPatt
 
 ### 3.3 "Lifecycle meta-web" was provisional orientation framing — now softened
 
-The morning orientation log used the phrase *"lifecycle meta-web"* in its table of webs. That phrasing reified the lifecycle problem as a separate web, which oversells it. **The lifecycle problem applies to *every* web** — every source-ontology web, the spine web, even the evidence-vault web (evidence ages, gets superseded, becomes stale).
+The morning orientation log used the phrase *"lifecycle meta-web"* in its table of webs. That phrasing reified the lifecycle problem as a separate web, which oversells it. **The lifecycle problem applies to *every* web** — every source-ontology web, the pivot/spine web, even the evidence-vault web (evidence ages, gets superseded, becomes stale).
 
 The orientation log has been **edited** to soften the wording: the table cell now reads *"Lifecycle (cross-version) graph"* with a note that this is not a separate "meta-web." The edit is purely terminology cleanup; no architectural commitment changes.
 
-### 3.4 "Spine" ≡ "interlingua / pivot"
+### 3.4 Pivot ≡ spine ≡ interlingua ≡ hub ≡ canonical intermediate
 
-Two literatures, same pattern:
+These are all the same thing. Different communities settle on different terms; Crosswalker spans the communities, so it's worth being explicit about which term we lead with and why.
 
-- **Compliance-mapping community** (SCF, UCF, NIST OLIR) — *spine*, *hub*, *common controls*
-- **Schema-matching / ontology-alignment literature** (OAEI, FCA, Spivak) — *pivot*, *interlingua*, *canonical intermediate*
+| Community | Preferred term | Why |
+|---|---|---|
+| Schema-matching / ontology-alignment / data-engineering | **pivot**, **interlingua**, **canonical intermediate** | "Pivot" is the most familiar in data/ETL/dimensional-modeling contexts; "interlingua" comes from machine translation literature; both predate the compliance use |
+| Compliance-mapping (SCF, UCF, NIST OLIR) | **spine**, **hub**, **common controls** | Anchored in hub-and-spoke imagery; "common controls" is the OLIR vocabulary |
+| Category theory / functorial data migration | **apex**, **pullback object** | Pure formalism; rarely used in product docs |
 
-These are aliases. The [schema-matching concept page](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) has been updated with a callout listing the aliases so a reader from either background can connect them. Today's log uses *spine* as the primary term because that's the compliance term, and Crosswalker's primary user is a GRC analyst.
+**Crosswalker's primary term is *pivot***, with **spine** as the most common synonym (especially when the audience is a compliance analyst and the surrounding context is SCF / UCF / NIST OLIR). On first introduction in any new doc, mention at least two of the synonyms in parentheses so a reader from either background can connect the dots — this is an abstract project and overly-narrow terminology hurts.
+
+The [schema-matching concept page](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) has the canonical alias callout. Updates to the [terminology page](/crosswalker/concepts/terminology/) ride along with the upcoming direction log.
 
 ## Follow-on research challenges
 
@@ -172,7 +179,7 @@ Brief: stress-test against AICPA SAS 142, PCAOB AS 1105, ISO 27001, HIPAA 164.31
 
 **The 04-10 evidence-link synthesis flagged "UUID enterprise resilience scope" as one specific deferred sub-decision.** Today's commitment broadens the scope: the user's framing is that *we will need UUIDs in many ways across the entire web-of-webs*, not just on evidence-link junction notes.
 
-Brief: enumerate every place a persistent identifier matters (ontology nodes, crosswalk edges, junction notes, evidence notes, framework versions, spine snapshots, mapping authors, vault identity, schema definitions, lifecycle change records). Compare options (UUIDv4/v7, ULID, CID, OSCAL UUIDs, custom `CW-` prefix). Recommend a minimum viable scheme for Foundation with explicit OSCAL round-trip mapping.
+Brief: enumerate every place a persistent identifier matters (ontology nodes, crosswalk edges, junction notes, evidence notes, framework versions, pivot/spine snapshots, mapping authors, vault identity, schema definitions, lifecycle change records). Compare options (UUIDv4/v7, ULID, CID, OSCAL UUIDs, custom `CW-` prefix). Recommend a minimum viable scheme for Foundation with explicit OSCAL round-trip mapping.
 
 **Full brief**: [Challenge 09: UUID / CWUUID cross-cutting strategy](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/)
 
@@ -237,7 +244,7 @@ The user has signaled an upcoming **direction log** that will reform parts of th
 **Concept pages (vocabulary and conceptual depth):**
 
 - [Terminology](/crosswalker/concepts/terminology/)
-- [Schema matching](/crosswalker/concepts/schema-matching/) — interlingua / pivot / **spine** alias added
+- [Schema matching](/crosswalker/concepts/schema-matching/) — pivot / interlingua / spine / hub aliases (canonical alias callout added)
 - [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/)
 - [Ontology evolution](/crosswalker/concepts/ontology-evolution/)
 - [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/)
