@@ -1,0 +1,97 @@
+---
+title: "Challenge 18: Tier 2-Lite SSSOM rule subset and scale ceiling"
+description: "Ch 14 recommended a Tier 2-Lite alternate stack (sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE SSSOM reasoning) for Obsidian Mobile, low-end laptops, and restricted-CSP environments — but did not define which SSSOM rules are tractable under recursive-CTE evaluation, where the scale ceiling sits, or what the migration-up-to-Tier-2 trigger should be. This challenge fills that gap with a concrete rule-by-rule expressivity matrix and a measured scale ceiling."
+tags: [research, architecture, query-engine, tier-2-lite, sqlite, sssom, datalog, recursive-cte, foundation]
+date: 2026-05-02
+sidebar:
+  label: "18 · Tier 2-Lite scope"
+---
+
+## Why this exists
+
+The [Ch 14 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) §2.7 recommends adopting **sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE** as a "Tier 2-Lite" alternate stack for environments where the full Ch 11 layered stack (DuckDB-WASM + Oxigraph + Nemo, ~5 MB compressed) is too heavy: **Obsidian Mobile** (no Electron, no native WASM threading), **low-end laptops**, **restricted-CSP / locked-down enterprise** environments where COOP/COEP can't be set, and **air-gapped users** who can't load larger artifacts.
+
+Ch 14 also flagged the structural cost of the alternate stack: **loss of native Datalog (Nemo) and SPARQL (Oxigraph)**. The recursive-CTE workaround handles many SSSOM chain rules but not all. Ch 14 left that scope undefined, with the explicit follow-on:
+
+> Document the SSSOM rule subset that is supported under recursive-CTE evaluation and the scale ceiling.
+
+This challenge runs that documentation pass — but as a research brief rather than a doc edit, because the answer requires (a) walking through every SSSOM-derived rule type Crosswalker actually uses, (b) measuring recursive-CTE performance at multiple scales, and (c) defining the trigger condition for "user has outgrown Tier 2-Lite, migrate up to Tier 2 proper".
+
+## What to investigate
+
+### 1. Rule-by-rule expressivity audit
+
+Walk every rule type Crosswalker derives and classify it as **Tier 2-Lite tractable**, **Tier 2-Lite tractable with caveat**, or **requires full Tier 2 (Datalog/SPARQL)**.
+
+The rule types known to be needed:
+
+- **Transitive closure of `skos:exactMatch`** — A→B and B→C derives A→C with `confidence_min(c1, c2)`. Recursive CTE example shown in Ch 14 §2.7. Tractable but bounded; what's the depth ceiling under recursive CTE before perf collapses?
+- **Mixed predicate paths** — A `skos:exactMatch` B `skos:closeMatch` C produces a derived A *something* C with weakened justification. Does the SSSOM predicate algebra (STRM "is equivalent to" / "is broader than" / "is approximate to") survive recursive-CTE evaluation, or does it require stratified Datalog?
+- **Confidence aggregation** — when multiple paths from A to C exist with different confidence values, SSSOM allows `confidence_max`, `confidence_avg`, or "cite all paths". Recursive CTEs can do this with `GROUP BY` + window functions but the query gets ugly fast — at what complexity does the user benefit from Datalog's rule-level aggregation?
+- **Stratified negation** — "find mappings A→C that are *not* derivable through any intermediate B" (negation-as-failure semantics). This is the textbook case where Datalog dominates SQL. Does Crosswalker actually need it for SSSOM rule derivation, or can it be answered with `NOT EXISTS` / `LEFT JOIN ... WHERE NULL`?
+- **Mapping cardinality constraints** — `mapping_cardinality: 1:1` vs `1:n` vs `n:1` vs `n:n` is part of the SSSOM spec. Does enforcement at derivation time require Datalog?
+- **SHACL validation paths** — Ch 11 deliverables flagged SHACL for SSSOM mapping_set validation. SHACL has SPARQL-equivalent semantics; can it be expressed as recursive CTEs at all, or is this where Tier 2-Lite hits a hard wall?
+- **Bi-temporal queries** — Crosswalker doesn't have a Minigraf-style bi-temporal model today, but the [Ch 14 trigger B](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#24-migration-triggers-ch-14-7--preserved-verbatim-for-discoverability) puts that on the watchlist. If/when bi-temporal is needed, can recursive CTE handle "what was the mapping as of date X" queries with `valid_time_start <= X AND valid_time_end > X` predicates, or is that a Tier 2-only feature?
+
+### 2. Scale ceiling — where does recursive-CTE collapse?
+
+Ch 14 §2.7 stated the rough thresholds without measurement:
+- "tens of thousands of mappings" → "tens of milliseconds" (fine)
+- "1M mappings with branching factor over 5" → "slows substantially"
+- "10M mappings" → "not viable"
+
+Convert this into a measured matrix. Required:
+- Build a representative SSSOM dataset at 10⁴, 10⁵, 10⁶, 10⁷ mappings (synthetic but with realistic branching factors — pull from NIST CSF ↔ ISO 27002 ↔ MITRE ATT&CK actual mappings if available, otherwise generate)
+- Measure transitive-closure recursive CTE wall-clock time on `@sqlite.org/sqlite-wasm` running OPFS persistence
+- Measure same on IndexedDB persistence (the COOP/COEP fallback)
+- Identify the inflection point where Tier 2-Lite stops being viable
+- Express the ceiling in user-visible terms: "Tier 2-Lite recommended up to **N mappings** with a typical branching factor; above that, migrate up to Tier 2 proper"
+
+Bonus: how does pre-computing closure indices (materializing `mappings_transitive` table at write time vs query time) shift the ceiling? Is this practical for an Obsidian plugin or is the write-amplification cost too high?
+
+### 3. The migration trigger
+
+Ch 14 made clear that Tier 2-Lite is **not a downgrade for upper-tier users** — it's a tier-floor option for environments where the full stack can't run. So the "migrate up" question is: **when does a user notice they've outgrown it?**
+
+Define the migration trigger conditions:
+- **Performance trigger**: query latency exceeds X ms on Y operation
+- **Scale trigger**: mapping count exceeds the ceiling from §2 above
+- **Feature trigger**: user attempts an operation that requires a rule type from §1 that Tier 2-Lite doesn't support
+- **Plugin UX**: how does the plugin surface this? "Your vault has reached the Tier 2-Lite ceiling. Migrate to Tier 2? [Why this matters / Migrate now / Defer]"
+
+### 4. The migration path itself
+
+Ch 16 §5 established that mappings are **canonically SSSOM markdown + YAML in the vault**, so any database is a *projection* of the canonical files, not the source of truth. Migration up from Tier 2-Lite to Tier 2 proper should therefore be:
+- Re-run the SSSOM-to-RDF projector against the canonical vault into Oxigraph-WASM
+- Load DuckDB-WASM analytics view alongside
+- Optionally load Nemo for derivation rules that Tier 2-Lite couldn't express
+
+Verify this works end-to-end. Identify any subtle data loss in the round trip (e.g., simple-graph's JSON node format vs Oxigraph's RDF terms — are there SSSOM fields that simple-graph stores in a way that doesn't round-trip cleanly?).
+
+## Success criteria for the deliverable
+
+1. **Rule expressivity matrix** — every SSSOM rule type Crosswalker uses, classified as ✅ Tier 2-Lite tractable / ⚠️ tractable with caveat / ❌ requires full Tier 2; with the actual recursive CTE shown for the ✅ rows
+2. **Measured scale ceiling** — wall-clock numbers at 10⁴/10⁵/10⁶/10⁷ mappings; recommended cutoff
+3. **Migration trigger spec** — concrete plugin UX for surfacing "you've outgrown Tier 2-Lite"
+4. **Migration path verification** — round-trip test from Tier 2-Lite → Tier 2 with no data loss
+5. **Recommended Tier 2-Lite scope statement** — single paragraph the plugin can show users: "Tier 2-Lite handles X, Y, Z up to ~N mappings. Above that, or if you need Q, you'll see a prompt to migrate up to Tier 2."
+
+## Out of scope
+
+- Re-evaluating whether to ship Tier 2-Lite at all (Ch 14 already committed to it)
+- Re-evaluating whether to ship Comunica federation (separate Ch — see [third-wave log §7.2](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#72-confirmed-defaults--user-sign-off-received-2026-05-02))
+- Pure-Datalog alternatives to recursive CTE (would mean swapping out Tier 2-Lite primary engine; that defeats the bundle-size purpose)
+- WebGPU acceleration (not available on Obsidian Mobile; out of scope for the alternate stack)
+
+## Relationship to prior challenges
+
+- **Direct follow-on to [Ch 14](/crosswalker/agent-context/zz-challenges/archive/14-missed-engines-evaluation/)** — Ch 14 §2.7 recommended Tier 2-Lite; this fills the scope-definition gap
+- **Coordinates with [Ch 12 deliverables](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/)** — Ch 12 evaluated Datalog vs SQL for SSSOM chain rules in general; this evaluates the same question specifically for the recursive-CTE subset
+- **Independent of [Ch 11 deliverables](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/)** — Ch 11 picked the upper-tier engines; this is about the lower-tier alternate
+
+## Related
+
+- [Ch 14 deliverable §2.7 (sqlite-vec + simple-graph + sqlite-wasm)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — the recommendation that produced this brief
+- [Third-wave log §2.3](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#23-whats-new-vs-the-tldr) — where Tier 2-Lite was committed
+- [TL;DR §2.1](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#21-tier-2-layered-stack--duckdb-wasm--oxigraph--nemo-confirmed) — the canonical "where we're at" on Tier 2 architecture
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/)

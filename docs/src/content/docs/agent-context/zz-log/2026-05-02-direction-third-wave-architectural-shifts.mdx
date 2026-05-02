@@ -50,7 +50,7 @@ Crosswalker Tier 2 (post-Ch 14)
 ├── PRIMARY (default — confirmed)
 │   ├── DuckDB-WASM            (~6.4 MB / 18 MB EH bundle — analytics, SQL, joins, Parquet)
 │   ├── Oxigraph-WASM          (~3 MB — local SPARQL 1.1, RDF I/O, canonicalization)
-│   └── Nemo-WASM              (Datalog for SSSOM chain rules, stratified negation)
+│   └── Nemo-WASM              ([Datalog](/crosswalker/concepts/zz-glossary/datalog/) for SSSOM chain rules, stratified negation)
 │
 ├── ADD-ON (new, opt-in — federation)
 │   └── Comunica + N3 + HDT    (~250–300 KB gz core — federated query meta-engine,
@@ -273,18 +273,19 @@ These should be applied to the [Roadmap reference](/crosswalker/reference/roadma
 
 - **OSCAL native support promotion** (TL;DR §3.3) — still pending user yes/no. Not addressed by this wave. Once you signal yes/no this becomes a TL;DR §2.x commitment or stays in §3.
 
-### 7.2 Confirmed defaults pending explicit user sign-off
+### 7.2 Confirmed defaults — user sign-off received 2026-05-02
 
-- **Tier 3 default flip** (this log §3) — confirm Fuseki primary + oxigraph-server alternative + AGE as fallback. **[Confirm? Y/N]**
-- **Tier 1 audit 4-tier model + T2 OTS default** (this log §4) — confirm T0/T1/T2/T3 model + OpenTimestamps as new T2 default + git stack as one of three T3 options. **[Confirm? Y/N]**
-- **Tier 2 stack confirmation + Tier 2-Lite + Comunica add-on** (this log §2) — confirm Tier 2-Lite alternate stack + Comunica federation. **[Confirm? Y/N]**
+- ✅ **Tier 3 default flip** (this log §3) — Fuseki primary + oxigraph-server alternative + AGE as fallback. **Confirmed.**
+- ✅ **Tier 1 audit 4-tier model + T2 OTS default** (this log §4) — T0/T1/T2/T3 model + OpenTimestamps as new T2 default + git stack as one of three T3 options. **Confirmed.**
+- ✅ **Tier 2 stack + Tier 2-Lite alternate** (this log §2) — Ch 11 layered stack as production + sqlite-wasm Tier 2-Lite alternate stack. **Confirmed.**
+- ⏳ **Comunica + N3 + HDT federation add-on** (this log §2) — **conditional** confirmation. User flagged that Comunica/SPARQL "seem bulky or overengineered" and asked for an honest, practical assessment before locking in. **Action**: write a Comunica honest-and-practical assessment page (under `architecture/` or as a fresh-agent research task) before treating this as a committed default. The simplicity-default principle (simpler-thing-becomes-default-because-more-adoptable) needs an explicit defense for Comunica or it gets dropped from the recommended stack.
 
 ### 7.3 Follow-on candidates (briefs not yet spun up)
 
 | Candidate | Status | Why |
 |---|---|---|
 | **Ch 17 candidate (LinkML scope)** | Defer until requested | User signaled "idk about that"; major architectural pivot |
-| **Ch 18 candidate (Tier 2-Lite SSSOM rule subset)** | Worth spinning up; pending user signal | Ch 14 explicitly flags missing scope definition for which SSSOM rules work under recursive-CTE evaluation and the scale ceiling |
+| **[Ch 18 (Tier 2-Lite SSSOM rule subset)](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/)** | ✅ Spun up 2026-05-02 | Ch 14 explicitly flags missing scope definition for which SSSOM rules work under recursive-CTE evaluation and the scale ceiling |
 | **Ch 19 candidate (PQC dual-sign protocol detail)** | Defer toward 2027 | Ch 15 sketches Ed25519+ML-DSA-44 dual-signing; deeper brief on library readiness and protocol design |
 | **Ch 20 candidate (eIDAS 2.0 / EUDI Wallet integration profile)** | Defer | Ch 15 flags as 2027+ profile when EUDI rollout matures |
 

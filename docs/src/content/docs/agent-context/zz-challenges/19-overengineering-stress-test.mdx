@@ -1,0 +1,123 @@
+---
+title: "Challenge 19: Over-engineering stress test — is the architecture justified by the problem?"
+description: "Honest, adversarial assessment: is Crosswalker's accumulated tech stack (layered Tier 2: DuckDB-WASM + Oxigraph + Nemo; layered Tier 3: Fuseki / oxigraph-server / DuckDB-on-server; 4-tier audit-trail with OpenTimestamps + RFC 3161 + Sigstore Rekor + eIDAS QTSA + in-toto + W3C VC Data Integrity; SSSOM + STRM + junction notes + StewardshipProfile + LinkML-considered + IPLD-considered) actually justified by the problem Crosswalker is solving, or has the architecture grown beyond what the user audience can adopt? The challenge is to reach an honest verdict — could be 'yes the complexity is necessary because the problem demands it' OR 'we've over-engineered; here's the radically simpler stack that serves 90% of users'."
+tags: [research, architecture, first-principles, simplicity, adoption, foundation, adversarial]
+date: 2026-05-02
+sidebar:
+  label: "19 · Over-engineering stress test"
+---
+
+## Why this exists
+
+The 2026-05-01 and 2026-05-02 research waves accumulated significant architectural complexity. After Ch 11/12/13/14/15/16, the recommended stack includes:
+
+- **Tier 2 layered stack**: DuckDB-WASM + Oxigraph-WASM + Nemo-WASM (~5 MB compressed, three engines, three query languages)
+- **Tier 2-Lite alternate**: sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE
+- **Tier 2 federation add-on**: Comunica + N3 + HDT
+- **Tier 3 layered stack**: Apache Jena Fuseki + oxigraph-server (alternative) + DuckDB-on-server (power-user) + TerminusDB (vault-mirror) + Apache AGE (Postgres-shop fallback) + Postgres+JSONB+CTE (boring-tech minimal)
+- **Audit trail 4-tier model**: chain.jsonl + Ed25519 + OpenTimestamps + (optional) RFC 3161 TSA + (optional) Sigstore Rekor v2 + (optional) eIDAS QTSA + (optional) S3 Object Lock + (optional) FRE 902(13) PDF + (optional) in-toto + (optional) W3C VC Data Integrity + (optional) FROST threshold + (optional) PIV + (optional) PQC dual-sign
+- **Data model**: SSSOM canonical + STRM predicates + Junction-Notes (13-field) + StewardshipProfile + meta-schema lifecycle + (long-horizon) LinkML + (long-horizon) IPLD content-addressed bundles + (long-horizon) Tier 1.5 compilation pipeline
+
+The user's instinct, surfaced 2026-05-02 while reviewing the third-wave shifts: the simpler thing tends to become the default because it's more adoptable. **Are we losing that property?** Has the architecture grown beyond what the actual user audience (cybersecurity GRC consultants, locked-down enterprise IT, federal/air-gapped, multi-tenant teams, EU-regulated) can adopt — even though each individual decision was justified?
+
+This challenge stress-tests that question adversarially. It is *not* a request for permission to ship the current stack. It is a request for an honest read on whether we're building a tool a small fraction of users can actually run.
+
+## The framing
+
+There are three honest answers a fresh agent could reach. The brief allows all three:
+
+1. **"The complexity is justified because the problem demands it."** Defensible answer if the problem of crosswalking compliance frameworks, evidence-link audit trails, and multi-tenant team workflows genuinely cannot be solved with simpler primitives. The agent should be specific about *which* parts of the stack are load-bearing for *which* user persona.
+
+2. **"The complexity is over-engineered. Here's a radically simpler stack."** Defensible answer if a meaningful fraction of the user audience is served by, e.g., "vault + git + SQLite + plain markdown" with no layered tiers, no audit-trail tower, no SSSOM/STRM apparatus. Agent should propose the simpler stack and identify what's lost.
+
+3. **"Tiered complexity — most users get the simple stack; advanced users opt into layers."** Defensible answer if the simple-default + opt-in-complexity pattern works. Agent should propose the simple default explicitly and the opt-in trigger conditions.
+
+## What to investigate
+
+### 1. The user-adoption ceiling test
+
+For each user persona Crosswalker targets, walk through the actual setup story:
+- **Solo GRC consultant** — what's the absolute minimum number of tools they need to install/configure/learn before producing useful output?
+- **Locked-down enterprise IT user** — what's the minimum that gets them to "compliance-defensible audit trail"?
+- **Federal / air-gapped** — what's the minimum that's actually deployable?
+- **Multi-tenant consulting firm** — what's the minimum for the senior reviewer's workflow to be coherent?
+
+For each: the recommended Crosswalker stack today vs the absolute minimum that gets the same outcome. If the gap is large, that's evidence of over-engineering.
+
+### 2. The "vault + git" baseline
+
+The simplest defensible answer: an Obsidian vault + git + plain markdown + a thin Crosswalker plugin that handles import/export. No SSSOM. No layered engines. No audit-trail tower. Just a plugin that:
+- imports CSV/XLSX of compliance frameworks
+- generates folder structures and markdown notes with frontmatter
+- adds typed wikilinks with metadata
+- exports back to common formats
+
+What user workflows does this handle? What does it fail at? Is the failure surface large enough to justify SSSOM canonical + layered engines, or are the failures edge cases that the 90% of users don't hit?
+
+### 3. SSSOM as canonical — load-bearing or aspirational?
+
+SSSOM is the linchpin assumption that drove Ch 09 (UUID/CWUUID), Ch 10 (graph-tabular bridging), Ch 11 (engines), Ch 12 (Datalog vs SQL), Ch 14 (engine survey), and Ch 16 (Tier 3). If SSSOM-canonical was replaced with **plain CSV + plain markdown + frontmatter**, what breaks?
+- Specifically: which of the 11 confirmed commitments in the [TL;DR](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) lose their motivation?
+- Is the SSSOM commitment justified by *actual* SSSOM ecosystem benefits (sssom-py round-trip, OBO/OAK/Bioregistry consumption, RDF interop) — or is it a "future-proofing" commitment that the actual user audience never exercises?
+- If SSSOM is genuinely aspirational rather than load-bearing, the entire layered Tier 2/Tier 3 stack becomes optional, not necessary.
+
+### 4. The audit-trail tower test
+
+The [Ch 15 4-tier model](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) has *15+ optional components* (chain.jsonl, Ed25519, OpenTimestamps, RFC 3161, Sigstore Rekor, eIDAS QTSA, S3 Object Lock, FRE 902(13), in-toto, VC Data Integrity, FROST, PIV, PQC dual-sign, key transparency logs, SigSum, Roughtime, C2PA — the last few rejected but considered).
+
+For each Crosswalker user persona, what's the *minimum* audit-trail substrate that gets them to a defensible position?
+- Solo consultant: probably "git + signed commits" (T2 of the Ch 15 model, if they have git) — no OTS, no S3, no Rekor needed unless litigation actually appears
+- Locked-down enterprise: T1 minimum, T2 if a single TSA URL is reachable
+- Federal: PIV signing + delayed OTS
+
+Does the 4-tier model survive contact with the 90% case (solo consultant, no litigation today)? Or is the 4-tier framing "solving for the 5% case while penalizing the 95%"?
+
+### 5. The "competitor reality check"
+
+What do the user audience's *actual existing tools* look like?
+- Hyperproof, Drata, Vanta, AuditBoard, RegScale (commercial GRC platforms): how complex are they internally? How do they handle evidence chain of custody? How do they handle crosswalks?
+- The folks doing GRC in Excel + SharePoint + a folder of policy PDFs: what does *that* stack provide that Crosswalker has to match to be a credible alternative?
+
+Crosswalker should match the competitor floor and add Obsidian-native + plaintext + local-first benefits — not reinvent the entire stack from first principles. Honest assessment of competitor floor vs Crosswalker stack.
+
+### 6. The simplicity-default principle (user-stated, 2026-05-02)
+
+The user explicitly stated: *"the simpler thing becomes the default sometimes because it's more adoptable."* Apply this principle to every confirmed commitment:
+- Tier 2 layered (3 engines, ~5 MB) — does the simpler thing (sqlite-wasm Tier 2-Lite, ~600 KB) become the default once measured properly?
+- Tier 3 layered — does the simpler thing (Postgres + JSONB + recursive CTE for 90% of users; or just oxigraph-server) become the default once we account for how few users actually hit the 250k-mapping threshold?
+- 4-tier audit — does the simpler thing (T2 with OTS only; skip every optional component) become the default?
+- SSSOM canonical — does the simpler thing (CSV + frontmatter, no SSSOM apparatus) become the default for the 90%?
+
+For each: the agent should explicitly defend OR retreat from the layered position.
+
+### 7. What we'd lose
+
+For honesty: if the conclusion is "simplify radically," the agent must enumerate what we'd *lose* by doing so. Crosswalker's [philosophical pillars](/crosswalker/concepts/what-makes-crosswalker-unique/) include plain-text, no-lock-in, tool-agnostic, resilient-to-decades. Some of the layered architecture is in service of those pillars (e.g., SSSOM is partly a "outlive Crosswalker" hedge). The agent should distinguish between complexity that serves the pillars vs complexity that doesn't.
+
+## Success criteria for the deliverable
+
+1. **Verdict** — one of the three honest answers (#1, #2, or #3 from the framing above), with explicit reasoning
+2. **Per-persona setup-cost matrix** — for each user persona, the recommended-Crosswalker setup vs the minimum-defensible setup, with the gap quantified
+3. **The "what we'd lose" enumeration** — if the verdict is "simplify," what philosophical pillars or capabilities do we sacrifice?
+4. **Concrete simpler-default proposal** — if the verdict is "tiered complexity" (#3), what is the *exact simple default* and what are the trigger conditions for each opt-in layer?
+5. **Adversarial sanity check** — would a competent GRC consultant looking at the recommended stack think "this is too much" and bounce to a competitor? An honest read.
+
+## Out of scope
+
+- Re-litigating any individual Ch 06–18 decision in isolation (this challenge is about the *aggregate* complexity)
+- Defending Crosswalker's existence (the challenge accepts that *some* tool in this space is needed; the question is how complex it should be)
+- Marketing positioning (the question is technical, not how to sell complexity)
+
+## Relationship to prior challenges
+
+This challenge is **adversarial to the entire 2026-05-02 research wave**. It deliberately approaches every commitment from the "is this necessary?" angle rather than "is this correct?" The output should either reaffirm the layered architecture with sharper justifications, or argue convincingly for retreat to a simpler default.
+
+A fresh agent should run this challenge with **no commitment to defending the prior decisions** — the goal is honest pressure on the simplicity-default principle.
+
+## Related
+
+- [TL;DR direction commitments](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) — the canonical "where we're at" being stress-tested
+- [Third-wave architectural shifts log](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) — the latest layer of complexity
+- [Crosswalker philosophical pillars](/crosswalker/concepts/what-makes-crosswalker-unique/) — the values the simpler stack would have to preserve
+- [The problem](/crosswalker/concepts/problem/) — first-principles framing the agent should re-read before answering
+- [Challenge 04: First principles audit](/crosswalker/agent-context/zz-challenges/04-first-principles-audit/) — earlier, narrower version of this question
