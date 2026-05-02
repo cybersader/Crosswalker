@@ -1,0 +1,144 @@
+---
+title: "Challenge 14: Missed engines evaluation — Grafeo, Minigraf, CozoDB, SurrealDB, Comunica, cr-sqlite"
+description: "Phase 2 engine evaluation. Multiple engines surfaced during Challenge 11 research that were absent from the original brief — most consequentially Grafeo (pure-Rust LPG+RDF, all major query languages, vector index, WASM bindings, potentially collapses the layered Tier 2 stack to a single engine). Verify viability and recommend keep-the-Ch11-stack, swap-one-engine, or full-collapse-to-single-engine."
+tags: [research, architecture, query-engine, tier-2, tier-3, follow-on, foundation]
+date: 2026-05-02
+sidebar:
+  label: "14 · Missed engines"
+---
+
+## Why this exists
+
+[Challenge 11's three independent fresh-agent runs](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#24-challenge-11--tier-23-engine-deep-survey-3-deliverables) all surfaced engines that were *absent from the original Ch 11 brief* but might dominate or eliminate Crosswalker's currently-favoured layered Tier 2 stack (DuckDB-WASM + Oxigraph-WASM + Nemo-WASM).
+
+The most consequential is **Grafeo** — a pure-Rust graph DB supporting *both* LPG and RDF, with **all** major query languages (GQL, Cypher, Gremlin, GraphQL, SPARQL, SQL, SQL/PGQ), built-in HNSW vector index, change data capture, and WASM bindings via wasm-bindgen. Apache-2.0. If its WASM build is viable and its SPARQL passes the W3C test suite, **it could collapse the entire three-engine Tier 2 stack into one dependency.**
+
+This challenge validates (or rejects) that hypothesis and evaluates several other engines surfaced by Challenges 11 and 12 deliverable B.
+
+## What to investigate
+
+### 1. Grafeo — the potential game-changer
+
+[Grafeo](https://github.com/grafeo) (Rust, Apache-2.0, ~6 months old, 582 stars at survey time, v0.5.41+).
+
+Required:
+- **WASM bundle size**: build the actual `grafeo-wasm` artifact and measure compressed payload. Compare against current Tier 2 layered stack (~10–12 MB worst case for DuckDB+Oxigraph+Nemo combined).
+- **W3C SPARQL 1.1 conformance**: run the W3C SPARQL test suite. Confirm SPARQL completeness vs Oxigraph.
+- **Project health**: contributor count, commit cadence, issue close rate, governance commitments. Crosswalker's multi-year horizon needs >12 months of stable releases.
+- **Benchmark verification**: Grafeo's self-published benchmarks (2,904ms vs LadybugDB's 5,333ms on SNB Interactive, 136 MB vs 4,890 MB) need independent reproduction.
+- **Vector + RDF integration**: does the HNSW index integrate with SPARQL queries? With SQL?
+- **License rigor**: Apache-2.0 is OSI; verify there's no CLA / copyright assignment that complicates community contributions.
+- **CDC story**: change data capture is a feature — does it integrate with file-based git workflow Crosswalker uses?
+
+If viable: **promote to sole Tier 2 engine; retire Oxigraph-WASM and Nemo-WASM from Tier 2.**
+
+### 2. Minigraf — embedded bi-temporal Datalog
+
+[Minigraf 1.0](https://github.com/project-minigraf/minigraf) — embedded graph DB in Rust, **bi-temporal semantics** (transaction time + valid time, Datomic-inspired), Datalog query, native + browser WASM + WASI + UniFFI bindings.
+
+Required:
+- **Bi-temporal semantics for SSSOM**: SSSOM mappings are inherently temporal (`mapping_date`, `replaces`, `predicate_modifier`). Does Minigraf's bi-temporal model support "what was our mapping between NIST CSF 2.0 and ISO 27002 on 2025-Q3 audit cut-off?" queries naturally?
+- **Datalog dialect compatibility**: how does Minigraf's Datalog compare to Nemo's? Could it replace Nemo for SSSOM chain-rule derivation?
+- **Project health**: 1.0 just released; under 12 months old. What's the maintenance commitment?
+- **WASM bundle size**: actual artifact measurement.
+
+If viable: **could replace Nemo at Tier 2 AND add native bi-temporal queries that DuckDB+recursive CTE can't do cleanly.**
+
+### 3. CozoDB — Datalog + graph + vector + time-travel
+
+[CozoDB](https://github.com/cozodb/cozo) — Rust, MPL-2.0, Datalog query language (CozoScript), HNSW vector search built in, time-travel, embedded with WASM target.
+
+Required:
+- **Project health update**: CozoDB's commit cadence has slowed in 2024–2025. Is the project still under active development? What are the maintainer's stated plans?
+- **WASM in-browser persistence**: GitHub issue #213 confirms persistence in-browser still requires manual export to OPFS or LocalStorage. Has this been fixed?
+- **CozoScript vs SSSOM rules**: how much rule translation is required to express SSSOM chain rules in CozoScript vs Nemo's Datalog?
+- **Vector + Datalog integration**: same engine doing both rule derivation and embedding-based mapping suggestion — strong architectural unifier or premature complexity?
+
+If viable: **could replace Nemo (and add vector search) at Tier 2.**
+
+### 4. SurrealDB-WASM — multi-model with WASM
+
+[SurrealDB WASM](https://github.com/surrealdb/surrealdb.wasm) — full SurrealDB engine compiles to WASM with IndexedDB persistence; supports relational, document, graph, time-series, vector, geospatial, key-value through SurrealQL. $38M Series A, 31,000 GitHub stars, recently added bi-temporal queries.
+
+Required:
+- **License analysis**: BSL 1.1. Not OSI open source. Crosswalker's GRC audience is unusually license-sensitive (some federal contexts mandate OSI-OSS). Document the implications.
+- **WASM bundle size**: multi-model engines tend to be large. Measure against Crosswalker's bundle budget.
+- **SurrealQL vs SSSOM**: SSSOM/SKOS would need translation to SurrealQL graph model. Quantify the translation cost.
+- **BSL 4-year reversion**: SurrealDB BSL converts to Apache-2.0 after 4 years. Track the timer.
+
+If viable: **could serve as unified engine across all tiers** — one engine, all tiers, same query language. Strong simplicity argument; license tradeoffs are the blocker.
+
+### 5. Comunica + N3 + HDT — TS-native SPARQL alternative
+
+[Comunica](https://comunica.dev/) — modular SPARQL meta-engine in TypeScript, ~200 KB gzipped, runs in browser/Deno/Node, queries any RDF/JS Source (in-memory, federated, Linked Data Fragments). Pairs with [N3.js](https://github.com/rdfjs/N3.js) (in-memory RDF store) and [HDT](https://www.rdfhdt.org/) (compact RDF binary format).
+
+Required:
+- **Bundle size comparison vs Oxigraph-WASM**: the headline claim is Comunica + N3 is ~200 KB gzipped vs Oxigraph-WASM's ~3 MB. Verify with actual builds.
+- **Performance comparison**: SPARQL query benchmarks on representative SSSOM workload.
+- **HDT viability**: 10M-triple SSSOM dataset → ~50 MB HDT — ideal for ship-once. Verify the file format works in the browser.
+- **Federation story**: Comunica's killer feature is federated SPARQL across multiple endpoints (including Linked Data Fragments). Could enable Crosswalker federation in a way Oxigraph cannot.
+
+If viable: **could replace Oxigraph-WASM at Tier 2 with materially smaller bundle and federation capability.**
+
+### 6. cr-sqlite — CRDT SQLite for collaborative editing
+
+[cr-sqlite](https://github.com/vlcn-io/cr-sqlite) — runtime-loadable SQLite extension and Rust crate that turns ordinary SQLite tables into CRDTs (LWW, counter, fractional-index, peritext). Has a WASM build (vlcn-io/js).
+
+Required:
+- **vs Yjs for SSSOM tables**: Yjs is the production-fleet leader for collaborative editing (~10–30 KB gzipped). cr-sqlite gives you SQL-shaped CRDTs which match the SSSOM table shape natively. Is the bundle and complexity tradeoff worth it?
+- **Conflict semantics**: what happens when two analysts edit the same `(subject_id, predicate_id, object_id)` row with different `confidence`? Last-writer-wins, or smarter?
+- **Yjs interop**: can cr-sqlite be combined with Yjs (cr-sqlite for SSSOM rows, Yjs for note text)?
+
+If viable: **direct path to multi-analyst collaborative crosswalk editing without a server.**
+
+### 7. sqlite-vec + simple-graph + sql.js / wa-sqlite — minimal Tier 2 alternative
+
+A radically simpler Tier 2 stack:
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) — pure-C, runs in browser via wa-sqlite, adds vector search to SQLite
+- [simple-graph](https://github.com/dpapathanasiou/simple-graph) — JSON nodes + ID-pair edges + recursive CTE templates over SQLite
+- [sql.js](https://sql.js.org/) or [wa-sqlite](https://github.com/rhashimoto/wa-sqlite) — SQLite in WASM
+
+Required:
+- **Bundle size**: the entire stack is probably under 2 MB compressed. Verify.
+- **Query capability**: can SQLite recursive CTEs handle SSSOM chain rules at Crosswalker's expected scale (tens of thousands of mappings)?
+- **Vector + graph integration**: sqlite-vec inside the same SQLite that does graph traversal — does this work in practice for embedding-based mapping suggestion?
+- **Lacks Datalog and SPARQL**: requires translating SSSOM rules into recursive SQL by hand, and gives up SPARQL/SKOS semantics. Acceptable tradeoff?
+
+If viable: **could replace the entire Tier 2 stack with a much smaller bundle, at the cost of Datalog and SPARQL native support.**
+
+## Success criteria for the deliverable
+
+A **clear recommendation per engine**, framed as one of:
+
+1. **Adopt as Tier 2 primary, retire current layered stack** — only if Grafeo or another single engine genuinely subsumes DuckDB+Oxigraph+Nemo with comparable performance and smaller bundle.
+2. **Adopt as Tier 2 add-on or swap-one-engine** — e.g., replace Oxigraph-WASM with Comunica for SPARQL surface; replace Nemo with CozoDB or Minigraf for Datalog; add cr-sqlite for collaborative editing.
+3. **Track in long-horizon list, do not adopt** — when an engine is interesting but immature or licensing-incompatible.
+4. **Reject** — when it doesn't fit Crosswalker's profile.
+
+Plus:
+- **WASM bundle size measurement table** for every viable candidate (actual artifact builds, not vendor-reported numbers)
+- **W3C SPARQL test suite results** for any engine claiming SPARQL support
+- **Project-health checklist** per engine: license, governance, commit cadence, contributor count, issue close rate, stated multi-year commitment
+- **Updated migration triggers** for the previously-recommended Ch 11 stack
+- **Verification of any vendor-published benchmarks** (independent reproduction or rejection)
+
+## Out of scope
+
+- Revisiting the Tier 3 server stack from Ch 11 (TerminusDB / AGE / Jena Fuseki) — that's a separate decision
+- Rebuilding the entire Ch 11 evaluation matrix from scratch — Ch 11's matrix stands; this challenge focuses only on engines absent from it
+- Implementation of any engine integration (this is research, not implementation)
+- Evaluating commercial engines (RDFox, Stardog, GraphDB) — they were considered in Ch 11 and ruled out
+
+## Relationship to prior challenges
+
+- **Phase 2 follow-on to [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)** — Ch 11's three deliverables converged on a layered Tier 2 stack but explicitly flagged engines they hadn't evaluated. This challenge resolves those.
+- **Coordinates with [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/)** — if Minigraf or CozoDB replaces Nemo, the Ch 12 commitment to "Nemo for SSSOM derivation" needs to flip to the replacement.
+- **Independent of [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)** — different layer of architecture.
+
+## Related
+
+- [Ch 11a deliverable: Grafeo follow-up](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/) — predecessor; surfaced Grafeo, CozoDB, SurrealDB, GraphLite, LadybugDB
+- [Ch 11b deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) — predecessor; identified Comunica + N3 + HDT as smaller-bundle SPARQL alternative
+- [Ch 12b deliverable: Beyond the known engine landscape](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) — predecessor; surfaced Stoolap, Minigraf, HelixDB, Comunica, sqlite-vec, cr-sqlite
+- [05-02 §3.4 critical assessment of Ch 11](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#34-critical-read-of-ch-11) — the gap inventory this challenge fills
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — where the resolution lands

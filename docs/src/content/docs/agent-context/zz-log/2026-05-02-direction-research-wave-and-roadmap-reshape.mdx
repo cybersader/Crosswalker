@@ -8,27 +8,40 @@ sidebar:
   order: -20260502
 ---
 
-:::note[How to read this log — work in progress]
-This is the **direction log** signaled in the [05-01 decision log §6](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#where-this-is-going-next). It does what yesterday's log deliberately did *not* do: translate Foundation commitments into concrete roadmap edits, and spin up follow-on research challenges where gaps remain.
+:::note[How to read this log — synthesis after two research waves]
+This is the **direction log** signaled in the [05-01 decision log §6](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#where-this-is-going-next). It captures *both* research waves of 2026-05-02:
 
-This log is being built up incrementally as decisions firm up. §1–§9 are populated; the proposed roadmap edits in §7 and the StewardshipProfile rename ripples in §8 are **listed for review only — not yet applied to the roadmap or the affected files**. After review, those edits land in their own dedicated commits separate from this log.
+- **First wave (Ch 08/09/10)** — 3 deliverables; covered in §2.A, §3.A, §4.A.
+- **Second wave (Ch 11/12/13)** — 6 deliverables (Ch 11 produced 3 independent runs, Ch 12 produced 2, Ch 13 produced 1); covered in §2.B, §3.B, §4.B.
+
+§5 captures direction posture across **four buckets**: confirmed commitments (lock in immediately), convergent commitments pending user sign-off, partial-convergence items needing user input, and follow-on research items. §10 (new) lists long-horizon ideas surfaced but not committed (LinkML, IPLD, Tier 1.5 compilation, etc.).
+
+Roadmap edits in §7 and StewardshipProfile rename ripples in §8 remain **listed for review only — not yet applied** to the roadmap or affected files.
 :::
 
 ## Why this log exists
 
 Yesterday's pair of logs ([orientation AM](/crosswalker/agent-context/zz-log/2026-05-01-foundation-state-of-play/), [decisions PM](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/)) set the table: web-of-webs framing, five Foundation commitments, three new research challenges (08/09/10), the StewardshipProfile rename, the meta-schema lifecycle commitment ("Crosswalker eats its own dog food"), and an explicit deferral of roadmap edits to *this* log.
 
-Today, three things converge:
+Today **two research waves** landed, totalling 9 fresh-agent deliverables:
 
-1. **The 08/09/10 research deliverables landed**, all dropped into the chat by the project owner from fresh-agent research sessions and now preserved verbatim under [`agent-context/zz-research/`](/crosswalker/agent-context/zz-research/) as public, URL-shareable pages so external research sessions can be pointed at them directly.
-2. **A critical reading of those deliverables** surfaced substantive gaps — particularly in Challenge 10's tech-stack coverage. The deliverables make decisions on a shortlist that doesn't exhaust the design space; the gap is non-trivial because the choice of analytical/graph engine touches every downstream architectural question.
-3. **The roadmap still reads as it did 2026-04-10**, with Challenge 06 still listed as "biggest open question" (now resolved) and no entries for the StewardshipProfile rename, the meta-schema commitment, the new 08/09/10 challenges, or what comes next.
+- **First wave (Ch 08/09/10)**: 3 deliverables addressing the gaps surfaced by yesterday's commitments — git audit-trail tenability, identifier strategy, graph→tabular bridging engine.
+- **Second wave (Ch 11/12/13)**: 6 deliverables (Ch 11 produced **three independent runs** with slightly different recommendations on Tier 2/3 engine choice; Ch 12 produced two; Ch 13 produced one). Multi-agent convergence across the three Ch 11 runs is itself load-bearing evidence for the Tier 2 layered stack.
 
-This log addresses all three: summarizes the research wave (§2), gives a critical reading with explicit gap inventory (§3), spins up new research to fill the gaps (§4), commits the directions that *are* clear (§5), refreshes the phase plan (§6), and lands the actual roadmap deltas (§7). §8 captures the StewardshipProfile rename ripples — the cascading edits flagged yesterday but not yet applied.
+This log:
+1. Summarizes both waves (§2.A first wave, §2.B second wave)
+2. Gives critical reads of each (§3)
+3. Marks the resolved challenges and spins up [Challenge 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) for the engines surfaced *during* Ch 11 research (§4)
+4. Direction posture: confirmed / pending / partial / follow-on (§5)
+5. Phase plan refresh (§6)
+6. Roadmap deltas listed for review (§7)
+7. StewardshipProfile rename ripples listed (§8) — preserved from earlier today
+8. What's still deferred (§9)
+9. **NEW: Long-horizon ideas considered, not committed** (§10) — LinkML, IPLD, Tier 1.5 compilation, AI-augmented mapping, etc.
 
-## The research wave landed
+## §2.A First research wave (Ch 08/09/10)
 
-Three fresh-agent research deliverables, all 2026-05-02:
+Three fresh-agent research deliverables, all 2026-05-02 morning:
 
 ### 2.1 Challenge 08 — Git history as a compliance audit trail (verdict: augment, not replace)
 
@@ -56,7 +69,7 @@ Three fresh-agent research deliverables, all 2026-05-02:
 
 **Headline finding**: layered scheme. **UUIDv7** (RFC 9562, May 2024) for almost everything Crosswalker generates; **content-addressed sha256 CIDs** only where the entity *is* its content (spine snapshots, schema releases); **CURIEs** for external references (controls, frameworks, ORCIDs); **ORCID CURIEs verbatim** for SSSOM author/reviewer slots. **"CWUUID" is a display convention, not a new algebra** — every CW-minted ID is a canonical UUIDv7 stored in YAML frontmatter; `cw:` prefix and short hex suffixes are UI affordances only.
 
-**Filename strategy**: human-readable filenames for browseable classes (ontology nodes, evidence notes); composite filenames with `--cw<6-hex>` suffix for collision-prone classes (junction notes, lifecycle records, crosswalk edges with multiple predicates). Aligns with the prevailing Obsidian convention of `uid` in frontmatter (Advanced URI plugin, etc.).
+**Filename strategy**: human-readable filenames for browseable classes (ontology nodes, evidence notes); composite filenames with `--cwunder 6-hex>` suffix for collision-prone classes (junction notes, lifecycle records, crosswalk edges with multiple predicates). Aligns with the prevailing Obsidian convention of `uid` in frontmatter (Advanced URI plugin, etc.).
 
 **OSCAL round-trip**: preserve incoming `@uuid` flags verbatim on import; mint UUIDv7 only for entities Crosswalker creates de novo. UUIDv7 is syntactically valid in every OSCAL `uuid` slot — published OSCAL schemas constrain only the regex grammar, not the version nibble. Risk of NIST tightening to v4-only is low.
 
@@ -90,7 +103,66 @@ The deliverable is **substantively complete**. Minor gaps flagged in §3.2 below
 
 The deliverable is **technically thorough on the shortlist it considered**, but the shortlist is incomplete in ways that matter — see §3.1.
 
-## Critical assessment of the research wave
+## §2.B Second research wave (Ch 11/12/13)
+
+Six fresh-agent research deliverables, all 2026-05-02 (afternoon/evening):
+
+### 2.4 Challenge 11 — Tier 2/3 engine deep survey (3 deliverables)
+
+**Three independent fresh-agent runs**, each producing slightly different recommendations. Multi-agent convergence is itself load-bearing evidence.
+
+| Deliverable | Distinguishing recommendation |
+|---|---|
+| [Ch 11a — TerminusDB-as-Tier-3 emphasis](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/) | Keep DuckDB-WASM Tier 2; **drop AGE**; adopt **TerminusDB as default Tier 3** (git-style branch/diff/merge). Includes a Grafeo follow-up (potential game-changer engine that could collapse the layered Tier 2 stack to one engine). |
+| [Ch 11b — Layered Tier 2 stack](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) | Layer Tier 2: **DuckDB-WASM + Oxigraph-WASM + Nemo-WASM** (each lazy-loaded). AGE remains optional Tier 3. |
+| [Ch 11c — Layered + OSCAL/FedRAMP angle](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-c-engine-survey/) | Same layered Tier 2 as 11b. Tier 3 = AGE+Jena Fuseki + optional TerminusDB vault-mirror. **Strategic insight: FedRAMP RFC-0024 mandates machine-readable authorisation packages by Sept 2026** → OSCAL native support is a 10× value-multiplier. |
+
+**Convergence summary** (multi-agent evidence):
+
+| Recommendation | 11a | 11b | 11c | Convergence |
+|---|---|---|---|---|
+| KuzuDB upstream dead, no fork stable | ✅ | ✅ | ✅ | 3-of-3 strong |
+| DuckDB-WASM stays Tier 2 default | ✅ | ✅ | ✅ | 3-of-3 strong |
+| Datalog (Nemo) for SSSOM derivation | ✅ | ✅ | ✅ | 3-of-3 strong |
+| AGE alone is insufficient for Tier 3 (no RDF) | ✅ | ✅ | ✅ | 3-of-3 strong |
+| Polars-WASM not viable today | ✅ | ✅ | ✅ | 3-of-3 strong |
+| TerminusDB cannot be Tier 2 (no embedded WASM) | ✅ | ✅ | ✅ | 3-of-3 strong |
+| **Tier 2 layered stack (DuckDB + Oxigraph + Nemo)** | ❌ (single-engine + Tier 3 swap) | ✅ | ✅ | **2-of-3** — 11a takes a different shape |
+| Tier 3 default = AGE+Jena Fuseki | ❌ (TerminusDB-as-default) | ✅ | ✅ | 2-of-3 — split |
+| TerminusDB as optional Tier 3 vault-mirror | ✅ (as primary) | ✅ (as alternative) | ✅ (as optional vault-mirror) | 3-of-3 strong (role varies) |
+
+**New engines surfaced during research** (absent from original Ch 11 brief): Grafeo (potential game-changer — pure-Rust LPG+RDF+vector with WASM bindings, all major query languages, could collapse layered Tier 2 to single engine), Minigraf (embedded bi-temporal Datalog with WASM), CozoDB (Datalog+graph+vector embedded), SurrealDB-WASM (multi-model unified, BSL 1.1 license), Comunica + N3 + HDT (TS-native SPARQL meta-engine, ~200 KB gzipped vs Oxigraph's ~3 MB), cr-sqlite (CRDT SQLite), simple-graph + sqlite-vec stack. **All flagged for follow-on Challenge 14.**
+
+### 2.5 Challenge 12 — Datalog vs SQL for SSSOM chain rules (2 deliverables)
+
+| Deliverable | Distinguishing recommendation |
+|---|---|
+| [Ch 12a — Focused fork-in-the-road](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) | Hybrid: rules expressed as Datalog DSL, executable via either **Datalog engine (Nemo, browser/CLI)** or compiled to **SQL recursive CTEs (DuckDB-WASM/SQLite-WASM)**. OxO2 reference architecture validates Datalog at scale (1.16M mappings → 49.5K inferences, ~17 min, ~380 MB on a laptop). |
+| [Ch 12b — Beyond the known engine landscape](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) | Long-horizon: **LinkML as canonical schema substrate** (auto-generates JSON Schema, OWL, SHACL, Pydantic, TypeScript from one YAML). **IPLD content-addressed crosswalks**. Tier 1.5 compilation pipeline producing Parquet/HDT/JSON-LD/OSCAL/IPLD-CAR. AI-augmented mapping per OAEI 2025/26 (LogMap-LLM, GenOM). Many engines absent from prior surveys. |
+
+**Convergence:** Both deliverables converge on **Datalog (Nemo) as primary derivation engine, OxO2 as the reference architecture**. Both endorse the rules-as-data DSL pattern compiled to either Datalog or SQL. Deliverable B expands well beyond the Ch 12 brief into long-horizon architectural ideas — those land in §10.
+
+### 2.6 Challenge 13 — Modern attestation primitives (confirms Ch 08, adds in-toto)
+
+[Full deliverable: Ch 13 — Modern attestation primitives](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/). **Brief**: [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/).
+
+**Verdict by primitive:**
+
+| Primitive | Decision | Why |
+|---|---|---|
+| Sigstore / gitsign / Rekor | **Complement** (configurable alternative for commit signing) | Cleanest path to SLSA L3; non-air-gap only; offer alongside GPG/SSH. |
+| **in-toto attestations** | **Complement (mandatory, Tier 1)** | Replaces commit messages as authoritative review-chain record; backward-compatible with PDF Audit Authenticity Report. |
+| **SLSA targeting** | **Adopt as framing model** | L1 for v0.1, L2 for v1.0, L3 for v2.0+ (via gitsign). |
+| OpenTimestamps | **Skip Tier 1; offer Tier 2** | Latency + auditor unfamiliarity outweigh marginal benefit for 7-year retention; permanence value re-emerges only for >25-year horizon. |
+| W3C Verifiable Credentials | **Skip near-term; track for v2.0+** | Standards-stable since May 2025 but not in audit toolchains today; viable for cross-vault federation later. |
+| **AWS QLDB** | **Drop entirely** | **Service ended 2025-07-31.** |
+| Azure Confidential Ledger | **Skip Tier 1; document as Tier 3** | High cost (~$3/day per ledger), narrow incremental benefit, vendor-locked. |
+| immudb | **Skip Tier 1; document as Tier 3** | Useful for high-volume scale but not auditor-recognized as external party. |
+| Challenge 08 stack | **Confirm + extend with in-toto** | Auditor-familiar floor; in-toto is the missing review/approval schema. |
+
+**Net architectural impact**: Ch 13 adds **exactly one mandatory primitive (in-toto)** to Ch 08's Tier 1 stack. Tier 1 minimum bar is now: signed commits + RFC 3161 TSA + S3 Object Lock WORM + FRE 902(13) PDF cert + **in-toto attestations**.
+
+## Critical assessment of the research waves
 
 ### 3.1 Challenge 10 has substantive gaps
 
@@ -146,114 +218,170 @@ Challenge 08 is broadly complete but skips a category of *modern* attestation pr
 - **W3C Verifiable Credentials** for the qualified-person certification — flexible alternative to the proposed PDF Audit Authenticity Report
 - **AWS QLDB / Azure Confidential Ledger** rejected without deep analysis
 
-**Action**: spin up a narrower follow-on research challenge focused specifically on these primitives — see [§4.3](#43-challenge-13--modern-attestation-primitives) below.
+**Action**: spin up a narrower follow-on research challenge focused specifically on these primitives — resolved by [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) (deliverable summarized in §2.6 above; critical read in §3.6 below).
 
-## New research challenges to spin up
+### 3.4 Critical read of Ch 11
 
-Three new fresh-agent briefs to fill the gaps identified in §3. Stub files to be created in `zz-challenges/` once approved; full briefs follow the existing 06/07/08/09/10 pattern.
+**Convergence is strong** across the three independent runs:
+- **3-of-3** rejected KuzuDB upstream and all four forks (Bighorn, Ladybug, RyuGraph, Vela) as not stable enough for a multi-year compliance tool
+- **3-of-3** kept DuckDB-WASM as Tier 2 default
+- **3-of-3** committed to Datalog (Nemo, OxO2 architecture) for SSSOM derivation
+- **3-of-3** found AGE alone insufficient at Tier 3 (no RDF; SSSOM/SKOS/STRM are RDF-native)
+- **3-of-3** rejected Polars-WASM as Tier 1.5 (Pyodide-only path, alpha)
 
-### 4.1 Challenge 11 — Tier 2/3 graph + analytical engine deep survey
+**Divergence on the layered Tier 2 stack** — 11b and 11c explicitly recommend layered Tier 2 (DuckDB-WASM + Oxigraph-WASM + Nemo-WASM lazy-loaded). 11a takes a different shape: keep DuckDB single-engine at Tier 2 and replace AGE with TerminusDB at Tier 3. Both architectures are coherent. Decision pending user input — see [§5.B](#5b-convergent-commitments--pending-user-sign-off).
 
-**One-line**: Re-evaluate the Tier 2 and Tier 3 engine choice from Challenge 10 against the full design space, including Datalog engines, production triple stores, versioned graph databases (TerminusDB especially), other property graphs, embedded analytical engines, vector+graph hybrids, streaming/incremental MV systems, and virtual/federated approaches.
+**Divergence on Tier 3 default**:
+- 11a: TerminusDB as default (versioning is the load-bearing requirement)
+- 11b/11c: AGE+Jena Fuseki as default; TerminusDB as optional vault-mirror
 
-**Why now**: Challenge 10's deliverable is technically correct on its shortlist but the shortlist is incomplete. Locking in DuckDB+AGE before Challenge 11 finishes is premature for a multi-year-horizon project.
+**New engines surfaced** — Grafeo (most consequential potential game-changer), Minigraf, CozoDB, SurrealDB-WASM, Comunica + N3 + HDT, cr-sqlite, sqlite-vec stack. **Spin up [Challenge 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/)**.
 
-**Required scope**:
+**FedRAMP RFC-0024** (mandates machine-readable authorisation packages by Sept 2026) flagged by 11c as a 10× value-multiplier for Crosswalker's federal market — argues for elevating OSCAL native support from feature to architectural concern.
 
-- ≥15 engines evaluated against the same matrix Challenge 10 used (graph fit, tabular fit, browser/server, bundle size, license, project health)
-- Explicit TerminusDB analysis — versioned-graph-with-diff-and-merge alignment with Crosswalker's files-canonical ethos
-- Explicit Datalog vs recursive-CTE comparison for SSSOM chain-rule derivation (overlaps with Challenge 12 below; coordinate)
-- Verification of the empirical claims in Challenge 10 (KuzuDB archival status, DuckDB-WASM bundle size, DuckPGQ WASM readiness)
-- Recommend: keep Challenge 10's DuckDB+AGE call, replace, or layer (e.g., Datalog-on-top-of-AGE)
+### 3.5 Critical read of Ch 12
 
-**Out of scope**: actual benchmarks (separate work item per Challenge 02), specific UI design.
+**Strong convergence** across 12a and 12b plus all three Ch 11 deliverables: Datalog (Nemo) is the right derivation engine, OxO2 is the reference architecture, rules-as-data DSL is the architectural pattern.
+
+**Ch 12b expansion beyond brief**: deliverable B explicitly went beyond the narrow Datalog-vs-SQL question and proposed major architectural ideas not previously on the table:
+- **LinkML as canonical schema substrate** — auto-generates JSON Schema, OWL, SHACL, Pydantic, TypeScript from one YAML; SSSOM is itself defined in LinkML; could become Crosswalker's "Tier 0"
+- **IPLD content-addressed crosswalks** — every SSSOM bundle hashes to a CID; distribution via Merkle-DAG; signed with W3C VCs
+- **Tier 1.5 compilation pipeline** — Markdown+SSSOM TSV → Parquet/HDT/JSON-LD/OSCAL/IPLD-CAR multi-target artifact compiler
+- **AI-augmented mapping** — LogMap-LLM, GenOM, BERTMap; OAEI 2025/2026 results validate hybrid LLM approach
+
+These are major architectural pivots, **not adopted today**. Catalogued in [§10 (long-horizon ideas considered, not committed)](#10-long-horizon-ideas-considered-not-committed).
+
+### 3.6 Critical read of Ch 13
+
+**Highest confidence of the second wave**. Ch 13 directly confirms Ch 08's stack with one explicit addition (in-toto attestations as mandatory Tier 1) and several explicit non-adoptions (skip OpenTimestamps for Tier 1, drop QLDB entirely as it's dead, skip ACL/immudb/VCs as Tier 1).
+
+**Single new commitment vector**: in-toto attestations as the mandatory schema for review/approval evidence. Custom Crosswalker predicate type `https://crosswalker.dev/predicates/evidence-review/v1` plus reuse of SLSA Provenance v1.
+
+**No surprises**, no contradictions, no major divergences from Ch 08. Lift to **commit** in [§5.B](#5b-convergent-commitments--pending-user-sign-off).
+
+## Research challenges status
+
+### 4.1 Challenge 11 — Tier 2/3 engine deep survey
+
+✅ **RESOLVED by 3 fresh-agent deliverables** (one of the strongest convergence signals in the project so far). Summarized in §2.4; critical read in §3.4.
+- [Ch 11a](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/) — TerminusDB-as-Tier-3 emphasis
+- [Ch 11b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) — Layered Tier 2 stack (DuckDB + Oxigraph + Nemo)
+- [Ch 11c](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-c-engine-survey/) — Layered + OSCAL/FedRAMP angle
+
+**Net direction**: layered Tier 2 stack (2-of-3 explicit + alignment from 11a's Grafeo follow-up); Tier 3 default open between AGE+Jena and TerminusDB-as-primary; new engines surfaced → [Challenge 14](#44-challenge-14-new--missed-engines-evaluation).
 
 ### 4.2 Challenge 12 — Datalog vs SQL for SSSOM chain-rule derivation
 
-**One-line**: Narrow brief: should the *core spine derivation engine* (the thing that composes pairwise mappings through a pivot using SSSOM's 22 chain rules) be Datalog or recursive CTE? Independent of the broader Tier 2 engine choice in Challenge 11.
+✅ **RESOLVED by 2 fresh-agent deliverables**. Strong convergence on Datalog (Nemo) primary + OxO2 reference architecture. Summarized in §2.5; critical read in §3.5.
+- [Ch 12a](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) — focused fork-in-the-road analysis; rules-as-data DSL
+- [Ch 12b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) — long-horizon expansion (LinkML, IPLD, Tier 1.5 compilation, AI-augmented mapping); long-horizon ideas catalogued in §10
 
-**Why now**: this is a direct fork in the road. The OxO2 prior art uses Datalog; Challenge 10's deliverable uses recursive CTE. Both work, but they have different expressiveness profiles, different debugging stories, different provenance-tracking properties, and different operational maturity.
+### 4.3 Challenge 13 — Modern attestation primitives
 
-**Required scope**:
+✅ **RESOLVED by 1 fresh-agent deliverable**. Confirms Ch 08 Tier 1 stack; adds in-toto attestations as mandatory; offers Sigstore/gitsign as configurable alternative; SLSA L1→L2→L3 progression. Summarized in §2.6; critical read in §3.6.
+- [Ch 13](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — modern attestation primitives
 
-- Formal comparison: SSSOM chain rules expressed as Datalog rules vs as recursive-CTE patterns. Express RCE2 (the rule OxO2 uses) in both
-- Provenance: which yields cleaner `derivation_path` records?
-- Performance characteristics on representative chains (depth 2–5, 10K–100K mappings)
-- Maintainability: which is easier for a fresh contributor to reason about?
-- Recommend: Datalog as the primary derivation engine, recursive CTE as the primary, or hybrid (Datalog produces materialized derived rows, queried via SQL)
+### 4.4 Challenge 14 (NEW) — Missed engines evaluation
 
-**Out of scope**: specific Datalog engine choice (covered in Challenge 11).
+🆕 **Spun up today as Phase 2 follow-on to Ch 11**. Engines surfaced *during* Ch 11 research that were absent from the original brief — most consequentially **Grafeo** (potential game-changer that could collapse the layered Tier 2 stack to a single engine). Plus Minigraf, CozoDB, SurrealDB-WASM, Comunica + N3 + HDT, cr-sqlite, sqlite-vec.
 
-### 4.3 Challenge 13 — Modern attestation primitives (Sigstore, in-toto, SLSA, OpenTimestamps, VCs)
+[Challenge 14: Missed engines evaluation](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/)
 
-**One-line**: Narrower follow-on to Challenge 08. Evaluate the modern attestation stack — Sigstore for federated signing, in-toto for review attestations, SLSA for supply-chain framing, OpenTimestamps as alternative/complement to RFC 3161, W3C Verifiable Credentials for the qualified-person certification — and recommend whether these subsume, complement, or are skipped vs Challenge 08's TSA + WORM + cert-export Tier 1 plan.
+Required scope: verify Grafeo's WASM viability + W3C SPARQL conformance + project health; evaluate Minigraf's bi-temporal Datalog vs Nemo; assess CozoDB resumption; flag SurrealDB BSL license tradeoffs; benchmark Comunica+N3 bundle size vs Oxigraph-WASM; evaluate cr-sqlite for collaborative editing.
 
-**Why now**: Challenge 08's recommendation is implementable today, but if Sigstore-style federated OIDC signing replaces the GPG/SSH key UX, that's a Tier 1 architectural difference, not a polish item. Worth knowing before shipping the audit-trail UX.
+### 4.5 (informational) Possible future challenges identified
 
-**Required scope**:
+Not spun up today; flagged for user signal:
+- **Challenge 15** (potential) — LinkML adoption as canonical schema substrate (per Ch 12b §2.3)
+- **Challenge 16** (potential) — IPLD content-addressed crosswalk distribution (per Ch 12b §4.2)
+- **Challenge 17** (potential) — Reactive/incremental computation for derived crosswalks (Feldera/DBSP/Materialize)
 
-- Sigstore vs RFC 3161 + GPG/SSH for the per-commit signing-and-timestamping primitive
-- in-toto attestations vs simple commit messages for the review/approval chain
-- SLSA Level 1–4 mapping: where does Crosswalker land, and what does each level cost?
-- OpenTimestamps vs RFC 3161 TSAs: complement or replace?
-- W3C VCs vs PDF certification report for the qualified-person artifact
-- AWS QLDB / Azure Confidential Ledger / immudb deeper-than-one-paragraph evaluation
-- Recommend: replace/augment/skip per primitive
+## Direction posture
 
-**Out of scope**: implementation details, vendor selection.
+The user signal: lift convergent items in this log; embed inline checkpoint questions for explicit yes/no per item; do follow-on research where convergence is partial.
 
-### 4.4 TerminusDB — short callout pending Challenge 11
+Four buckets:
 
-TerminusDB warrants a one-paragraph callout *before* Challenge 11 finishes because its versioned-graph-with-diff-and-merge model is so structurally aligned with Crosswalker's files-canonical ethos that not naming it as a top contender feels like a research blind spot. **Decision deferred to Challenge 11**, but this log explicitly flags it as a candidate that must be evaluated, not just "another graph DB on the list."
+### 5.A Confirmed commitments (locked in this log)
 
-## Direction posture (adopt or defer per topic)
+Items with strong convergence and no objections expected; lock in immediately.
 
-This log is a stepping stone to the next research wave, not a final stake-in-the-ground. Most of what Challenges 08 and 10 surfaced has follow-on research (Challenges 11/12/13) that could change the answer; only Challenge 09's identifier strategy is mature enough to lock in today.
+| Topic | Source |
+|---|---|
+| **Identifier strategy** — UUIDv7 + sha256 CIDs + CURIEs + ORCID for SSSOM authors | [Ch 09 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/); single deliverable, substantively complete |
+| **KuzuDB and forks**: do NOT adopt as Tier 2 primary (no fork has 12+ months stability) | 3-of-3 Ch 11 convergence |
+| **Polars-WASM**: NOT viable as Tier 1.5 today (alpha, Pyodide-only path) | 3-of-3 Ch 11 convergence; reaffirmed by Ch 12b |
+| **AWS QLDB**: drop entirely (service ended 2025-07-31) | Ch 13 |
+| **Pairwise + optional pivot crosswalk architecture** | [05-01 §2.1](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#21-pairwise--optional-inheritable-pivot-challenge-06-resolution) commitment stays |
+| **Junction-note evidence-link form factor** | 04-10 synthesis + [05-01 §2.2](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#22-junction-notes-confirmed--but-feasibility-is-tier-aware) commitment stays |
+| **OxO2 reference architecture** for SSSOM chain-rule derivation | 3-of-3 Ch 11 + 2-of-2 Ch 12 |
 
-| Topic | Status | Gates on |
+### 5.B Convergent commitments — pending user sign-off
+
+Strong convergence; flagged for explicit yes/no per item before locking. Each row ends with a checkpoint question.
+
+| Topic | Convergence | Checkpoint |
 |---|---|---|
-| **Identifier strategy** — UUIDv7 + sha256 CIDs + CURIEs + ORCID for SSSOM authors per [Challenge 09 deliverable](#22-challenge-09--uuid--cwuuid-cross-cutting-identifier-strategy) | **Adopt** | None — research substantively complete |
-| **Tier 1 materialized-folder generator** — flatten graph queries into Bases-compatible YAML notes per Challenge 10 §2 | **Defer** (concept sound; implementation details depend on engine choice) | [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) |
-| **Tier 1 audit-trail bar** — TSA + WORM mirror + FRE 902(13) cert export per Challenge 08 | **Defer** | [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) |
-| **Tier 2 embedded engine** — DuckDB-WASM per Challenge 10 | **Defer** | [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) |
-| **Core spine derivation engine** — Datalog vs recursive CTE | **Defer** | [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/) |
-| **Tier 3 server stack** — PostgreSQL + Apache AGE per Challenge 10 | **Defer** | [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) |
-| **Modern attestation primitives integration** — Sigstore, in-toto, SLSA, OpenTimestamps, VCs | **Defer** | [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) |
-| **StewardshipProfile rename application** across the KB | **Action item** (today) | None — see [§8](#stewardshipprofile-rename-ripples-proposed-edits) |
-| **Crosswalker-internal schema versioning policy** per [05-01 §2.5 dog-food commitment](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware) | **Defer** (concrete versioning convention) | Direction synthesis after Phase B |
-| **Pairwise + optional pivot crosswalk architecture** per [05-01 §2.1](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#21-pairwise--optional-inheritable-pivot-challenge-06-resolution) | **Stays committed** (Challenge 06 resolution) | None |
-| **Junction-note evidence-link architecture** per 04-10 synthesis + [05-01 §2.2](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#22-junction-notes-confirmed--but-feasibility-is-tier-aware) | **Stays committed** (form factor) — Tier 1 *audit-trail hardening on top of it* deferred per row above | None for form factor; Ch 13 for hardening |
+| **Tier 2 layered stack**: DuckDB-WASM + Oxigraph-WASM + Nemo-WASM (all lazy-loaded). Total compressed ~10 MB worst case; under 100 KB plugin shell + ~3 MB on first analytical query. | 2-of-3 Ch 11 (11a takes a different shape — single-engine + TerminusDB-as-Tier-3); reaffirmed by Ch 12 + Ch 14 brief | **[Confirm? Y/N]** Adopt layered Tier 2 (DuckDB + Oxigraph + Nemo) over single-engine Tier 2? |
+| **Tier 1 audit-trail bar**: signed commits + RFC 3161 TSA + S3 Object Lock WORM mirror + FRE 902(13) PDF cert + **in-toto attestations** (mandatory). | Total convergence (Ch 13 confirms Ch 08 + adds in-toto only) | **[Confirm? Y/N]** Adopt the 5-layer Tier 1 audit-trail bar including in-toto? |
+| **Datalog (Nemo) for SSSOM chain-rule derivation** per OxO2 architecture (build-pipeline derivation, not live query). DuckDB recursive CTE remains for ad-hoc queries over already-derived facts. | Total convergence (3-of-3 Ch 11 + 2-of-2 Ch 12) | **[Confirm? Y/N]** Lock in Nemo-as-derivation-engine, OxO2-as-reference-architecture? |
+| **Sigstore/gitsign as configurable alternative for commit signing** (path to SLSA L3); GPG/SSH remains default. | Ch 13 explicit | **[Confirm? Y/N]** Offer Sigstore/gitsign as alternative-not-replacement? |
+| **SLSA targeting**: L1 for v0.1, L2 for v1.0, L3 for v2.0+ via gitsign. | Ch 13 explicit | **[Confirm? Y/N]** Adopt SLSA progression (L1→L2→L3 per version)? |
+| **Tier 1 materialized-folder generator** for Bases-compatible pre-joined views (Ch 10 §2 design). | Stays sound across Ch 11 deliverables; concept doesn't change with engine choice | **[Confirm? Y/N]** Lock in materialized-folder-generator as Tier 1 pattern? |
 
-The two "stays committed" rows are the architectural commitments from yesterday that don't depend on Ch 11/12/13. Everything new from today's research wave is provisional pending the next wave.
+### 5.C Partial convergence — need user input
+
+Items where multiple acceptable answers emerged from the research. User input needed.
+
+| Topic | Convergence pattern | User input needed |
+|---|---|---|
+| **Tier 3 default stack**: AGE+Jena Fuseki (Ch 11b, 11c) vs TerminusDB-as-primary (Ch 11a) | 2-of-3 favors AGE+Jena; 1-of-3 favors TerminusDB | **Pick: AGE+Jena Fuseki primary, TerminusDB optional vault-mirror? OR TerminusDB primary, AGE fallback?** |
+| **TerminusDB role**: vault-mirror only / Tier 3 alternative / Tier 3 default? | 3-of-3 mention TerminusDB; role varies | **Pick role for TerminusDB.** |
+| **LinkML as canonical schema substrate** (Ch 12b major architectural pivot) | 1-of-2 Ch 12 deliverables; substantial implications | **Adopt LinkML as Tier 0 schema layer (auto-generates JSON Schema/OWL/SHACL/Pydantic/TypeScript)? Or stick with bespoke schemas? Or spin up Challenge 15 to evaluate?** |
+| **OSCAL native support priority** (Ch 11c flag: FedRAMP RFC-0024 mandates by Sept 2026) | 1-of-3 Ch 11 explicitly flagged; demand-side validation event | **Promote OSCAL import/export from feature to architectural concern? Add roadmap item?** |
+| **Grafeo evaluation timing** (Ch 11a follow-up + Ch 14 brief) | Identified as potential game-changer; Ch 14 will evaluate | **Wait for Ch 14 deliverable, OR also evaluate now via narrower in-session research?** |
+
+### 5.D Identified for follow-on research
+
+Items where the convergence pointed at a gap. New research challenges spun up:
+
+- **Challenge 14** (created today): missed engines (Grafeo, Minigraf, CozoDB, SurrealDB-WASM, Comunica, cr-sqlite, sqlite-vec). [Brief published](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/).
+- **Possible Challenge 15** (await user signal): LinkML adoption as canonical schema substrate.
+- **Possible Challenge 16** (await user signal): IPLD content-addressed crosswalk distribution.
+- **Possible Challenge 17** (await user signal): reactive/incremental computation for derived crosswalks.
 
 ## Phase plan refresh
 
-Yesterday's Phase A/B/C, with this log's "defer most things" posture folded in:
+The two research waves of 2026-05-02 collapsed Phases B and C into the same calendar day:
 
-- **Phase A — Today's housekeeping (in flight, this log)**
-  - Adopt the [Challenge 09 identifier strategy](#22-challenge-09--uuid--cwuuid-cross-cutting-identifier-strategy)
-  - Apply the [StewardshipProfile rename](#stewardshipprofile-rename-ripples-proposed-edits) across the KB
-  - Land the [proposed roadmap deltas](#proposed-roadmap-deltas) (after user review)
-  - Spin up the new fresh-agent challenge stubs ([Ch 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/), [Ch 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/), [Ch 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)) — done in this same commit
-- **Phase B — Run the next research wave**
-  - Hand Challenges 11, 12, 13 to fresh agents
-  - Resolve [StewardshipProfile keep/replace/stack](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) with formal grounding (Stojanovic / Flouris) — already on the [Foundation roadmap](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
-  - Continue with the existing active challenges (01–05) as appetite allows
-- **Phase C — Synthesize**
-  - Another decision/direction log distilling Phase B deliverables
-  - Likely commits Tier 2 engine, Tier 3 stack, derivation paradigm (Datalog vs SQL), and Tier 1 audit-trail hardening
-- **Phase D — Implementation begins**
-  - Tier 1 materialized-folder generator — design from Challenge 10 §2 if it survives Phase C, or revised per Challenge 11
-  - Tier 1 audit-trail hardening — per the Phase C audit-trail commitment
-  - Tier 2 engine integration — once selected
+- **Phase A — Today's housekeeping (✅ done)**
+  - Adopted the [Challenge 09 identifier strategy](#22-challenge-09--uuid--cwuuid-cross-cutting-identifier-strategy) — locked in §5.A
+  - Spun up Ch 11, Ch 12, Ch 13 (earlier today) and Ch 14 (this log)
+  - StewardshipProfile rename ripples — listed in §8 (still not yet applied; awaits user)
+  - Roadmap deltas — listed in §7 (still not yet applied; awaits user)
+- **Phase B — Run the second research wave (✅ done, today)**
+  - Ch 11 produced 3 independent fresh-agent runs
+  - Ch 12 produced 2 deliverables (one focused, one long-horizon)
+  - Ch 13 produced 1 deliverable
+- **Phase C — Synthesize (✅ in flight, this log update)**
+  - This log captures convergences (§5.A and §5.B) and divergences (§5.C)
+  - Key open question: Tier 3 stack default (AGE+Jena vs TerminusDB-as-primary)
+- **Phase B′ — Run the third research wave**
+  - Hand [Challenge 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) to a fresh agent (engines that surfaced during Ch 11)
+  - Optionally spin up Challenges 15/16/17 if the user signals interest in LinkML / IPLD / reactive computation (§5.C)
+- **Phase D — Implementation begins (gated on Phase B′ + §5.B sign-off)**
+  - Tier 1 materialized-folder generator (committed in §5.B pending sign-off)
+  - Tier 1 audit-trail hardening: signed commits + TSA + WORM + cert export + in-toto (committed in §5.B pending sign-off)
+  - Tier 2 engine integration: layered stack (DuckDB-WASM + Oxigraph-WASM + Nemo-WASM) — committed in §5.B pending sign-off and contingent on Ch 14 not surfacing a single-engine collapse
+  - Tier 3 engine integration: gated on §5.C user input
   - Schemas (StewardshipProfile, junction-note, FrameworkConfig v2, `_crosswalker` v2) — implementation following the [meta-schema versioning policy](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware) once that policy is concretized
 - **Phase E — Out of scope for this Foundation cycle**
   - Marketplace mechanics
   - Cross-vault federation (Phase 2)
-  - LLM/AI-assisted features
-  - Multi-user collaboration / CRDT layer
+  - LLM/AI-assisted features (informed by Ch 11 §2.6 + Ch 12b § AI-augmented mapping; defer concrete commitment)
+  - Multi-user collaboration / CRDT layer (informed by Yjs/Loro/Automerge/cr-sqlite analyses across Ch 11 deliverables)
 
-The big change vs yesterday's plan: **Phase D is fully gated on Phase C now**. Yesterday I had Phase D running in parallel with Phase B because the Tier 1 design was "committed." Per the user's [defer-till-13 directive](#direction-posture--adopt-or-defer-per-topic), the Tier 1 audit-trail bar isn't actually committed; only the form-factor (junction notes, materialized folders) is. So Phase D waits for Phase C synthesis before any implementation work starts.
+The big change vs yesterday's plan: **Phases B and C collapsed into one calendar day** because the user ran multiple fresh-agent sessions in parallel. The new gate before Phase D is (a) §5.B explicit sign-off from the user, (b) Ch 14 deliverable on missed engines, (c) §5.C resolution of partial-convergence items.
 
 ## Proposed roadmap deltas
 
@@ -292,7 +420,7 @@ Concrete edits to land in `docs/src/content/docs/reference/roadmap/index.mdx` �
 **B1. NEW: "Identifier strategy (UUIDv7 + sha256 CIDs + CURIEs)"** ✅ committed
 - Per [Challenge 09 deliverable](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/): UUIDv7 default, sha256 multibase CIDs for content-addressed (spine snapshots, schema releases), CURIEs for external references (controls, frameworks, ORCIDs)
 - "CWUUID" is display convention only, not a new algebra
-- Filename rule: human-readable + `--cw<6-hex>` suffix on collision-prone classes
+- Filename rule: human-readable + `--cwunder 6-hex>` suffix on collision-prone classes
 - Six-class minimum viable Foundation set (vault, ontology web, ontology node, junction note, spine snapshot CID, SSSOM author CURIE)
 - OSCAL round-trip: preserve incoming `@uuid` verbatim; mint UUIDv7 only for new entities
 - Links to [deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/)
@@ -313,6 +441,38 @@ Concrete edits to land in `docs/src/content/docs/reference/roadmap/index.mdx` �
 - Per [05-01 §2.5 dog-food commitment](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware): every Crosswalker-internal schema (StewardshipProfile, junction-note 13-field schema, FrameworkConfig, `_crosswalker` metadata, pivot snapshot manifest, lifecycle change record, SSSOM crosswalk record) is versioned and migration-aware
 - Versioning convention TBD (semver vs content-addressed vs release-tag-aligned)
 - Direction log next pass to commit the convention
+
+**B6. NEW: "Tier 2 layered engine stack (DuckDB-WASM + Oxigraph-WASM + Nemo-WASM)"** (PENDING §5.B sign-off)
+- Per [Ch 11 deliverables b+c convergence](#24-challenge-11--tier-23-engine-deep-survey-3-deliverables) — DuckDB-WASM for tabular SQL; Oxigraph-WASM for SPARQL/SKOS; Nemo-WASM for SSSOM chain-rule derivation
+- Bundle target: under 100 KB plugin shell + ~3 MB on first analytical query + lazy-load Oxigraph (~3 MB) and Nemo (~3–4 MB) on demand
+- Alternative collapse-to-single-engine pending [Ch 14 evaluation of Grafeo](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/)
+
+**B7. NEW: "SSSOM chain-rule derivation engine (Nemo, OxO2 architecture)"** (PENDING §5.B sign-off)
+- Per [Ch 12 convergence](#25-challenge-12--datalog-vs-sql-for-sssom-chain-rules-2-deliverables) — Nemo (Rust → WASM) as the canonical Datalog derivation engine
+- OxO2 reference architecture: Markdown vault → SSSOM facts → Nemo (Datalog with chain rules) → derived facts (with provenance) → DuckDB Parquet shard / TerminusDB graph commit
+- Rules expressed as data (Datalog DSL), not code; compilable to either Nemo or SQL recursive CTE per deployment
+
+**B8. NEW: "Tier 1 audit-trail hardening (Ch 08 + in-toto)"** (PENDING §5.B sign-off)
+- Per [Ch 08 + Ch 13 convergence](#26-challenge-13--modern-attestation-primitives-confirms-ch-08-adds-in-toto) — five-layer Tier 1 stack:
+  1. Signed commits (GPG/SSH default; gitsign as configurable alternative)
+  2. RFC 3161 trusted timestamps on every commit
+  3. S3 Object Lock WORM mirror
+  4. FRE 902(13) qualified-person certification PDF
+  5. **in-toto attestations** (mandatory) for review/approval evidence — custom predicate type `https://crosswalker.dev/predicates/evidence-review/v1`
+- Tier 2: Rekor cross-publication when gitsign in use; OpenTimestamps as parallel `.ots` proof for high-retention vaults
+- Tier 3 (optional): Azure Confidential Ledger or immudb for high-volume installations
+
+**B9. NEW: "Sigstore/gitsign as configurable alternative; SLSA targeting (L1→L2→L3)"** (PENDING §5.B sign-off)
+- Per Ch 13 — Sigstore (Fulcio/Rekor/gitsign) as alternative-not-replacement for GPG/SSH
+- SLSA Build target: L1 v0.1, L2 v1.0, L3 v2.0+ (gitsign + Fulcio + ephemeral keys)
+
+**B10. NEW: "Tier 3 engine stack"** (PENDING §5.C user input)
+- Per [Ch 11 partial convergence](#34-critical-read-of-ch-11) — Tier 3 default is split between AGE+Jena Fuseki (deliverables b+c) and TerminusDB-as-primary (deliverable a)
+- One row blocked on user signal; not yet a roadmap delta
+
+**B11. NEW: "OSCAL native support (FedRAMP RFC-0024 demand-side validation)"** (PENDING §5.C user input)
+- Per Ch 11c — FedRAMP RFC-0024 mandates machine-readable authorisation packages by Sept 2026; OSCAL native import/export becomes a 10× value-multiplier for Crosswalker's federal market
+- Could promote OSCAL from "feature" to "architectural concern"; not yet a roadmap delta
 
 ### C. Decision log (bottom of roadmap) — append entries
 
@@ -391,24 +551,117 @@ The rename pass should be its own commit, separate from this log's commit, so th
 
 ## What's still deferred
 
-After this log lands, the following remain **explicitly deferred** to future Foundation work:
+The deferred list is shorter now that Ch 11/12/13 resolved. Remaining items:
 
 | Deferred topic | Gates on |
 |---|---|
-| Tier 2 embedded analytical engine choice | [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) deliverable |
-| Tier 3 server stack | [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) deliverable |
-| Core spine derivation paradigm (Datalog vs recursive CTE) | [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/) deliverable |
-| Tier 1 audit-trail hardening (TSA + WORM + cert export, or successor) | [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) deliverable |
-| Concrete versioning convention for Crosswalker-internal schemas (semver vs content-addressed vs release-tag-aligned) | Direction synthesis after Phase B |
-| StewardshipProfile keep / replace / stack (formal grounding via Stojanovic & Flouris) | Already on the Foundation roadmap; runs alongside Phase B |
+| **Tier 3 default stack** (AGE+Jena vs TerminusDB-as-primary) | §5.C user input |
+| **TerminusDB role** (vault-mirror only / Tier 3 alternative / primary) | §5.C user input |
+| **OSCAL native support architectural priority** | §5.C user input |
+| **Layered Tier 2 vs single-engine collapse** | [Challenge 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) deliverable (Grafeo viability) |
+| **Bi-temporal Datalog (Minigraf) for SSSOM** | [Challenge 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) |
+| **LinkML adoption as canonical schema substrate** | Possible Challenge 15 (await user signal) |
+| **IPLD content-addressed crosswalk distribution** | Possible Challenge 16 (await user signal) |
+| **Reactive/incremental computation** (Feldera/DBSP) | Possible Challenge 17 (await user signal); see §10 |
+| Concrete versioning convention for Crosswalker-internal schemas | Phase B′ synthesis |
+| StewardshipProfile keep/replace/stack (formal grounding via Stojanovic & Flouris) | Already on Foundation roadmap |
 | Marketplace mechanics (Obsidian plugin distribution, signing, sandboxing) | Post-Foundation (Phase 2) |
-| Cross-vault federation protocol | Phase 2 |
-| LLM/AI-assisted features (NL query, schema-matching assistance, mapping suggestion) | Post-Foundation |
-| Multi-user collaboration / CRDT layer | Post-Foundation |
-| Marketplace meta-schema (the schema-of-schema question from [05-01 §2.3](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#23-evidence-link-schema-is-our-shipped-default-architecture-supports-a-marketplace)) | Resolved in spirit by [§2.5 dog-food](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware); concrete mechanics still deferred to direction synthesis after Phase B |
+| Cross-vault federation protocol | Phase 2 (informed by Linked Data Fragments + Comunica federated SPARQL per Ch 11/12) |
+| LLM/AI-assisted features (NL query, schema-matching assistance, mapping suggestion) | Post-Foundation (informed by OAEI 2025/26 hybrid LLM patterns; see §10) |
+| Multi-user collaboration / CRDT layer | Post-Foundation (informed by Yjs/Loro/Automerge/cr-sqlite analyses; see §10) |
+| Marketplace meta-schema (schema-of-schema question) | Resolved in spirit by [§2.5 dog-food](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#25-crosswalker-eats-its-own-dog-food--every-crosswalker-internal-schema-is-versioned-and-migration-aware); concrete mechanics still deferred |
 
-This list is intentionally non-exhaustive. The pattern: when a Foundation question can be answered with the *current* state of the world, it's been answered (in [05-01 commitments](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) or this log). When it depends on Phase B research, it stays deferred.
+## §10 Long-horizon ideas considered, not committed
 
+This section catalogs architectural ideas that surfaced during the second research wave but are **not adopted in this log**. They are worth surfacing for future decisions and may seed individual research challenges if the user signals interest.
+
+### LinkML as canonical schema substrate (Tier 0)
+
+**Source**: [Ch 12b §2.3](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/).
+
+**The idea**: LinkML is the schema language SSSOM itself is defined in. From a single YAML LinkML schema, codegen produces JSON Schema, ShEx, SHACL, OWL, Python dataclasses, Pydantic models, TypeScript types, and more. If Crosswalker adopted LinkML as a "Tier 0," every engine choice (DuckDB / Oxigraph / Nemo / TerminusDB / etc.) becomes a serializer/deserializer plugin against the canonical LinkML schema rather than a competing schema authority.
+
+**Why interesting**: Resolves the schema-substrate question that the §2.5 dog-food commitment opened. Future-proof against engine churn (engines come and go; LinkML schemas persist).
+
+**Why deferred**: Adopting LinkML as Tier 0 is a meaningful architectural commitment with cascading implications across every Crosswalker schema (StewardshipProfile, junction-note 13-field, FrameworkConfig, `_crosswalker` metadata, etc.). Worth a dedicated Challenge 15 if the user signals interest.
+
+**Possible Challenge 15** brief: "Adopt LinkML as Crosswalker's canonical schema substrate? Evaluate codegen overhead, contributor learning curve, alignment with SSSOM-py / OAK / Mondo prior art, migration path from current ad-hoc schemas."
+
+### IPLD content-addressed crosswalks
+
+**Source**: [Ch 12b §4.2](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/).
+
+**The idea**: Every SSSOM row, bundle, and mapping_set hashes to an IPLD CID. Crosswalk releases become immutable Merkle DAGs. An audit can verify "we used exactly these mappings on the assessment date" by checking one hash. Distribution via CAR files; signing via W3C VCs.
+
+**Why interesting**: Solves provenance permanently; couples cleanly with the `cid:` content-addressed identifier convention from [Ch 09](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/); enables federated distribution without a central registry.
+
+**Why deferred**: Adds operational complexity; depends on at least some users adopting IPLD-aware tooling.
+
+**Possible Challenge 16** brief: "IPLD/CAR content-addressed distribution for SSSOM mapping sets — feasibility, tooling overhead, integration with existing Git-based vault."
+
+### Tier 1.5 compilation pipeline
+
+**Source**: [Ch 12b §2.2](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/).
+
+**The idea**: A Rust CLI (`crosswalker compile`) ingests the vault and emits multi-target artifacts in one pass: `mappings.parquet` (DuckDB/Polars/Datafusion), `mappings.hdt` and `mappings.ttl` (Comunica/Oxigraph), `mappings.json-ld` (web), `oscal.json` and `sssom.tsv` (regulator-facing exports), `mappings.car` (IPLD content-addressed bundle), `rules.wasm` (Ascent-compiled Datalog rules for browser inference).
+
+**Why interesting**: Decouples the canonical layer (Markdown + SSSOM TSV) from any specific query engine. Engines become consumers of the compiled artifacts rather than competing storage layers. Each tier loads only the artifact it needs.
+
+**Why deferred**: Substantial new architectural component. Worth its own decision after §5.B is locked in.
+
+### Reactive/incremental computation for derived crosswalk views
+
+**Source**: [Ch 12b §2.4](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) + Ch 11b §4.7.
+
+**The idea**: Adopt a Differential-Dataflow / Materialize-style execution model so derived views (coverage matrices, gap reports, MITRE ATT&CK Navigator overlays) update partially on each Markdown save rather than rebuilding from scratch. Realistic substrates: declarative-dataflow, Materialize OSS, Feldera/DBSP.
+
+**Why interesting**: Live crosswalk editing is naturally a streaming workload; partial updates would dramatically improve UX at scale.
+
+**Why deferred**: None of these run in the browser yet. Crosswalker's "files canonical, derived stores rebuildable" principle already provides coarse incrementalism. Revisit if rebuild times become unbearable. **Possible Challenge 17.**
+
+### CRDT-based collaborative editing
+
+**Source**: [Ch 11 §2.4 (all three deliverables)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/), [Ch 12b §4.1](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/).
+
+**The idea**: Yjs (~10–30 KB gzipped, mature ecosystem) or Loro (newer, Rust-native, full editing-history DAG) for live multi-analyst editing of SSSOM rows. Or cr-sqlite (CRDT SQLite, preserves SQL shape over CRDT semantics).
+
+**Why interesting**: Live-edit team mode is on the deferred list; this is the architectural option for it.
+
+**Why deferred**: Live-edit is post-Foundation (Phase 2). When the time comes, **Yjs is the safe default; cr-sqlite is the architecturally-intriguing alternative** because it preserves SQL semantics natively.
+
+### AI-augmented mapping (LogMap-LLM, GenOM)
+
+**Source**: [Ch 12b §2.5](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) + Ch 11 §2.6.
+
+**The idea**: OAEI 2025/2026 results show hybrid symbolic-skeleton (LogMap/AML) + embedding-retrieval (sqlite-vec or LanceDB-WASM) + LLM-oracle outperforms pure symbolic baselines by 5–16% F1 on biomedical alignments. Same pattern transfers to GRC frameworks. Architecture: vector-search nearest unmapped controls → top-K candidate to LLM → LLM emits SSSOM row with `mapping_justification`, `confidence`, `predicate_modifier: candidate` for review.
+
+**Why interesting**: LLMs are now empirically validated for ontology alignment. Combined with sqlite-vec or LanceDB at Tier 2, in-Obsidian "suggest next mapping" UX becomes feasible.
+
+**Why deferred**: Crosswalker's GRC audience is acutely privacy-sensitive — LLM placement (in-browser via WebLLM, local sidecar via Ollama, BYOK cloud) is a separate architectural question. Defer until the basic three-tier engine stack is shipping.
+
+### Verifiable Credentials for mapping_set provenance
+
+**Source**: [Ch 13 §5](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) + [Ch 12b §4.7](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/).
+
+**The idea**: W3C VCs v2.0 (Recommendation since May 2025) on the mapping_set so consumers can cryptographically verify "this mapping was signed by the official NIST OLIR submitter." Combines naturally with IPLD CID-anchored bundles.
+
+**Why deferred**: Track for v2.0+; auditor-familiarity is "very low" today (per Ch 13 table). EU eIDAS 2 + EUDI Wallet rollout is the catalyst that will eventually mainstream VCs in audit toolchains.
+
+### OSCAL native support (FedRAMP RFC-0024 demand-side validation)
+
+**Source**: [Ch 11c §4.4](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-c-engine-survey/).
+
+**The idea**: FedRAMP RFC-0024 mandates machine-readable authorisation packages by September 2026. NIST OSCAL (catalog/profile/component-definition/SSP/AP/AR/POA&M models) is the format federal agencies will require. Crosswalker that natively imports/exports OSCAL becomes 10× more valuable to the federal market.
+
+**Decision flagged in §5.C** — this could become an architectural concern, not just a feature, depending on user input.
+
+### Federated crosswalks via Linked Data Fragments
+
+**Source**: [Ch 12b §4.7](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/).
+
+**The idea**: Every Crosswalker installation publishes a Triple Pattern Fragments (TPF) endpoint; Comunica federates queries across them client-side. No central registry. Combined with W3C VCs for signed mapping_sets, this enables a fully federated crosswalk distribution model without a central authority.
+
+**Why deferred**: Cross-vault federation is Phase 2.
 
 ## Related
 
@@ -417,19 +670,31 @@ This list is intentionally non-exhaustive. The pattern: when a Foundation questi
 - [Foundation state of play (orientation, 05-01 AM)](/crosswalker/agent-context/zz-log/2026-05-01-foundation-state-of-play/) — web-of-webs framing, six open questions
 - [Foundation commitments and follow-on research (decisions, 05-01 PM)](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) — five commitments, three new challenges, the StewardshipProfile rename, the meta-schema commitment
 
-**The research wave (today's deliverables):**
+**First-wave deliverables (Ch 08/09/10 — 2026-05-02 morning):**
 
 - [Ch 08 deliverable: Is git history a tenable compliance audit trail?](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/)
 - [Ch 09 deliverable: UUID/CWUUID cross-cutting identifier strategy](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/)
 - [Ch 10 deliverable: Graph→tabular bridging engine for the web-of-webs](/crosswalker/agent-context/zz-research/2026-05-02-challenge-10-graph-tabular/)
 - [Ch 06 deliverable: Pairwise vs synthetic spine](/crosswalker/agent-context/zz-research/2026-05-01-challenge-06-pairwise-spine/) (predecessor; resolved 2026-05-01)
 
+**Second-wave deliverables (Ch 11/12/13 — 2026-05-02 afternoon/evening):**
+
+- [Ch 11 deliverable A: Engine survey, TerminusDB-as-Tier-3 emphasis](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/) — includes Grafeo follow-up
+- [Ch 11 deliverable B: Engine survey, layered Tier 2 stack](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) — DuckDB-WASM + Oxigraph-WASM + Nemo-WASM
+- [Ch 11 deliverable C: Engine survey, layered + OSCAL/FedRAMP angle](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-c-engine-survey/) — multi-agent validation; FedRAMP RFC-0024 strategic insight
+- [Ch 12 deliverable A: Datalog vs SQL focused fork-in-the-road](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/)
+- [Ch 12 deliverable B: Beyond the known engine landscape (long-horizon)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) — LinkML, IPLD, Tier 1.5 compilation, AI-augmented mapping
+- [Ch 13 deliverable: Modern attestation primitives](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — Sigstore/in-toto/SLSA/OpenTimestamps/VCs/QLDB(dead)
+
 **The challenges (briefs):**
 
-- [Challenge 08: Git audit-trail tenability](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/)
-- [Challenge 09: UUID/CWUUID strategy](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/)
-- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/)
-- Challenge 11/12/13 stubs **to be created** following user approval (see [§4](#new-research-challenges-to-spin-up))
+- [Challenge 08: Git audit-trail tenability](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/) — ✅ resolved (Ch 13 follow-on)
+- [Challenge 09: UUID/CWUUID strategy](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/) — ✅ resolved
+- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/) — ✅ resolved (Ch 11+12 follow-on)
+- [Challenge 11: Tier 2/3 engine deep survey](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) — ✅ resolved (3 deliverables)
+- [Challenge 12: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/) — ✅ resolved (2 deliverables)
+- [Challenge 13: Modern attestation primitives](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) — ✅ resolved
+- 🆕 [Challenge 14: Missed engines evaluation](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) — Phase 2 follow-on; spun up today
 
 **Roadmap (target of this log's deltas):**
 
