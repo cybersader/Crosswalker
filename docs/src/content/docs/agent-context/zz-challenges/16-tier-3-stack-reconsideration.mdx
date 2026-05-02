@@ -1,0 +1,123 @@
+---
+title: "Challenge 16: Tier 3 stack reconsideration — alternatives to Apache AGE"
+description: "Apache AGE was Challenge 10's Tier 3 default but the 2026-05-02 research wave surfaced concerns: Bitnine→SKAI Worldwide pivot away from databases, slow release cadence, Postgres ABI break in 17.1 affecting AGE. Reconsider Tier 3 against alternatives already on the radar (Apache Jena Fuseki, DuckDB-on-server + DuckPGQ, TerminusDB-as-primary, HelixDB) plus any others."
+tags: [research, architecture, query-engine, tier-3, server, foundation]
+date: 2026-05-02
+sidebar:
+  label: "16 · Tier 3 reconsideration"
+---
+
+## Why this exists
+
+Challenge 10 picked Apache AGE on PostgreSQL as the Tier 3 graph engine. Challenge 11's three deliverables verified empirical claims about AGE and surfaced concerns:
+
+- **Sponsor health**: Bitnine Co. (Korean parent of Bitnine Global, AGE's primary commercial sponsor) was acquired in December 2024 and **renamed SKAI Worldwide** in January 2025, **pivoting toward AI advertising/content production** while still maintaining graph DB products. The fact that the primary commercial sponsor pivoted *away from databases* is a meaningful long-term-stability concern.
+- **Release cadence**: ~one major release per supported Postgres line per year; PG 18 support PR was open from October 2025 with slow movement
+- **Postgres ABI risk**: AGE was directly hit by the **PostgreSQL 17.1 ABI break in November 2024** (per Crunchy Data's blog); extension users had to rebuild against the new minor version
+- **Single-vendor anchored**: while Apache 2.0 license, governance is single-sponsor without Apache Foundation top-level project status
+
+The user's reaction (in the [TL;DR direction log](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#32-tier-3-stack--alternatives-to-age)): "AGE is just slow in development it seemed — so I'm not sure about AGE for [Tier 3 default]. Maybe lots of better options for that which we've researched."
+
+This challenge does that reconsideration explicitly.
+
+## What to investigate
+
+### 1. Apache Jena Fuseki as Tier 3 primary
+
+Drop AGE entirely; expose the canonical Crosswalker SSSOM data via Jena's SPARQL endpoint.
+
+Required:
+- **Performance**: SPARQL query benchmarks on representative SSSOM workload (tens of thousands of mappings; multi-hop traversals)
+- **OWL/RDFS inference**: Jena natively supports RDFS and a subset of OWL; what's the practical inference capability for SSSOM/SKOS workloads?
+- **Operational story**: JVM dependency; container size; memory footprint; multi-user concurrency
+- **Federation**: can multiple Jena instances federate via SERVICE clauses for cross-vault queries?
+- **Pros**: Apache Foundation governance (much stronger than AGE's single-sponsor); mature; supports RDFS/OWL inference; canonical RDF-native fit for SSSOM/SKOS/STRM
+- **Cons**: JVM (large container, slow startup); SPARQL-only (no SQL surface for tabular consumers)
+
+### 2. DuckDB-on-server + DuckPGQ as Tier 3 primary
+
+Use the same DuckDB engine across Tier 2 (browser) and Tier 3 (server), with DuckPGQ extension providing graph queries via SQL/PGQ.
+
+Required:
+- **DuckPGQ stability**: it's a "community extension" since DuckDB v1.0; the October 2025 DuckDB blog post on graph queries used it; CWI labels it "research project" still under development. Is it stable enough for Tier 3 production?
+- **Engine unification value**: same engine, same SQL dialect, same storage format across both tiers — operational simplicity is real. What's the cost?
+- **Multi-user concurrency**: DuckDB historically targets analytical workloads; how does it handle 10–100 concurrent users querying a server-mode instance?
+- **Persistence**: DuckDB-on-server uses regular files; how does this compare to Postgres durability guarantees?
+- **Pros**: One engine across tiers; MIT license; DuckDB Foundation governance; weekly releases; SQL/PGQ standard (vs proprietary Cypher dialect)
+- **Cons**: DuckPGQ not yet WASM-loadable in DuckDB-WASM (so Tier 2 can't use SQL/PGQ today); not historically positioned for multi-user server workloads
+
+### 3. TerminusDB as Tier 3 primary (revisit from Ch 11a)
+
+Ch 11 deliverable A recommended TerminusDB as default Tier 3. Ch 11 deliverables B and C recommended AGE+Jena with TerminusDB as optional vault-mirror. The user's [§5.C decision](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#5c-partial-convergence--need-user-input) leaned toward AGE+Jena, but if AGE is being dropped, TerminusDB-as-primary becomes more attractive.
+
+Required:
+- **Re-evaluate TerminusDB as Tier 3 primary** with AGE removed from consideration
+- **Operational complexity**: SWI-Prolog + Rust storage; Docker-only; server only (no embedded)
+- **Performance ceiling**: tens of millions of triples comfortably; billions with sufficient RAM
+- **DFRNT stewardship since 2025**: small Stockholm-based commercial sponsor; v12 shipped December 2025; on-disk format unchanged from v11
+- **Pros**: native Git-style branch/diff/merge — matches files-canonical ethos; closed-world RDF + JSON-LD; WOQL Datalog query + GraphQL surface; Apache 2.0
+- **Cons**: SWI-Prolog stack is unusual (operational learning curve); single-vendor stewardship; no embedded mode
+
+### 4. HelixDB as Tier 3 primary
+
+[HelixDB](https://www.helix-db.com/) — native Rust graph + vector database on LMDB, strongly-typed compiled query language (HelixQL), built-in MCP support for LLM agents.
+
+Required:
+- **License**: AGPL — restrictive. Acceptable for self-hosted Tier 3? Implications for redistribution?
+- **Y Combinator funding**: positive signal but young project
+- **Vector + graph + MCP integration**: collapses three layers Crosswalker would otherwise stitch
+- **Performance**: vendor-claimed billions-of-queries; need independent validation
+- **Pros**: AI-agent-ready (MCP); vector-native; Rust = good operational story
+- **Cons**: AGPL is restrictive; very young project; HelixQL is proprietary query language
+
+### 5. Other candidates already on the radar
+
+| Engine | License | Why might it work | Why not previously picked |
+|---|---|---|---|
+| **NebulaGraph** | Apache-2.0 | Distributed graph; mature; nGQL | Distributed-server overkill for typical Crosswalker scale; nGQL is proprietary |
+| **JanusGraph** | Apache-2.0 | Tinkerpop standard; pluggable backend | JVM + Cassandra/HBase backend; operationally heavy |
+| **ArcadeDB** | Apache-2.0 | Multi-model (document/graph/key-value/time-series/vector); MCP server | JVM-based; smaller community |
+| **Memgraph** | BSL 1.1 | Excellent Cypher; vector index | Not OSI open source |
+| **ArangoDB** | BSL 1.1 (since 2024) | Multi-model; mature | Not OSI open source |
+| **FalkorDB** | SSPL | Vector + Cypher + sparse-matrix engine | SSPL — not OSI open source |
+| **GraphDB Free** (Ontotext) | Commercial (free tier) | Best OWL reasoning | Commercial license complications |
+
+### 6. Hybrid: layered Tier 3 (mirroring layered Tier 2)
+
+What if Tier 3 mirrors Tier 2's layered approach? E.g.:
+- **Apache Jena Fuseki** for RDF/SPARQL (canonical SSSOM endpoint)
+- **DuckDB-on-server** for SQL/tabular analytics (same engine as Tier 2)
+- **Optional Apache AGE on Postgres** for property-graph users with existing Postgres infrastructure
+- **Optional TerminusDB** as vault-mirror for git-style versioning
+
+Required:
+- **Operational complexity**: running 2–4 server processes vs one
+- **Federation across the layered components**: Jena's SERVICE clause + DuckDB-on-server's HTTPFS + cross-engine joins
+- **vs single-engine simplicity**: at what user scale does layered Tier 3 become worth the operational cost?
+
+## Success criteria for the deliverable
+
+1. **Engine evaluation matrix** — Apache Jena Fuseki vs DuckDB-on-server+DuckPGQ vs TerminusDB-as-primary vs HelixDB vs layered Tier 3, scored on: license, governance, performance, RDF fit, SQL fit, graph traversal, ops complexity, multi-user concurrency
+2. **Recommended Tier 3 default** — single engine OR layered stack
+3. **Migration path from AGE** — for early adopters who started on AGE during the Ch 10 era
+4. **Decision on AGE's role** — drop entirely, keep as fallback for Postgres-standardized environments, or re-affirm as default if alternatives have bigger problems
+
+## Out of scope
+
+- Re-evaluating Tier 2 (DuckDB-WASM + Oxigraph + Nemo) — that's covered by [Ch 14 (Grafeo evaluation)](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) and the existing Ch 11 deliverables
+- TerminusDB's vault-mirror role — already committed in [TL;DR §2.6](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#26-terminusdb-as-optional-vault-mirror-only); this challenge could promote it to *primary* but the vault-mirror option stands either way
+- Implementation specifics — research only
+
+## Relationship to prior challenges
+
+- **Follow-on to [Ch 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)** — Ch 11 surfaced AGE concerns; this challenge acts on them
+- **Coordinates with [Ch 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/)** — Ch 14 is Tier 2-focused; this is Tier 3-focused
+- **Independent of [Ch 15](/crosswalker/agent-context/zz-challenges/15-non-git-audit-trail-alternatives/)** — different layer
+
+## Related
+
+- [Ch 11 deliverable A](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/) — recommended TerminusDB as Tier 3 default
+- [Ch 11 deliverable B](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) — recommended Apache AGE + Jena Fuseki layered
+- [Ch 11 deliverable C](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-c-engine-survey/) — recommended Apache AGE + Jena Fuseki + optional TerminusDB vault-mirror
+- [TL;DR direction log §3.2](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#32-tier-3-stack--alternatives-to-age) — where this challenge was spun up
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)

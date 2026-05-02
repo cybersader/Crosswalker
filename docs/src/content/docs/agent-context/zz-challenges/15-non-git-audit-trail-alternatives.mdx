@@ -1,0 +1,127 @@
+---
+title: "Challenge 15: Audit-trail alternatives that don't require external git tooling"
+description: "Ch 08 + Ch 13 audit-trail stack assumes git + a remote (GitHub/GitLab/etc.) — a hard assumption in air-gapped, locked-down enterprise, or government environments. Evaluate Obsidian-plugin-native audit-trail approaches that don't require external git, GitHub, or CLI tooling. Recommend keep / replace / layer vs the Ch 08+13 default."
+tags: [research, audit, evidence-mapping-links, compliance, attestation, foundation]
+date: 2026-05-02
+sidebar:
+  label: "15 · Non-git audit trail"
+---
+
+## Why this exists
+
+The [Ch 08 + Ch 13 audit-trail commitment](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) (signed commits + RFC 3161 TSA + S3 Object Lock WORM + FRE 902(13) PDF + in-toto attestations) is technically rigorous but **assumes git is in use, and assumes a remote** (GitHub/GitLab/Forgejo/etc.) — neither of which is universal:
+
+- **Air-gapped environments** — federal, defense, intelligence; internal git remotes may be allowed but external (GitHub/GitLab.com) is blocked
+- **Locked-down enterprise** — IT policies that restrict CLI tooling installation; users may have Obsidian but not git
+- **Solo practitioners** — small GRC consultants who don't want to learn git just to use Crosswalker
+- **Vault-only workflows** — users who keep their Obsidian vault on a local disk or USB stick, sync via filesystem only (Syncthing, iCloud, OneDrive), no git involved
+
+In all these contexts, the Ch 08+13 stack either requires significant effort to deploy or simply isn't possible. Crosswalker should not require external git+GitHub+CLI tooling for users to make a defensible audit-trail claim.
+
+## What to investigate
+
+### 1. Obsidian-plugin-native cryptographic chain-of-custody
+
+Architecturally simplest: a write-only file inside the vault (`.audit/chain.jsonl`) where each entry is a cryptographic chain link.
+
+Each entry contains:
+- `prev_hash`: SHA-256 of the previous entry
+- `event`: `{type, timestamp, file_path, file_hash_before, file_hash_after, author_id, ...}`
+- `signature`: signed by an in-vault key or external signing service
+
+The chain is append-only by Crosswalker's plugin enforcement (the plugin holds an exclusive lock and refuses to modify history). Verification re-walks the chain and checks every signature.
+
+Required:
+- **Threat model**: who is this audit trail defending against? An honest auditor verifying the user's diligence (low bar — chain of custody enough)? An adversarial insider who has filesystem write access (high bar — chain alone insufficient without external timestamping)?
+- **Key management**: where does the signing key live? In-vault (encrypted with vault password)? In OS keychain? In a hardware token (YubiKey, secure enclave)?
+- **Plugin enforcement vs filesystem reality**: Crosswalker's plugin can enforce append-only at the plugin layer, but the user can still `rm` the chain file outside Obsidian. How tamper-evident is "the chain file is missing"?
+- **Comparison to git's append-only model**: git's threat model is fundamentally similar (the user can `rm -rf` the .git folder); the difference is the *culture* and *tooling* expectations. Quantify.
+
+### 2. Distributed/CRDT-based audit alternatives
+
+What if there's no central git remote but multiple users share the audit trail via CRDT sync?
+
+- **Yjs + y-webrtc**: peer-to-peer sync of an append-only Y.Array of audit entries
+- **OrbitDB**: IPFS-backed peer-to-peer database with built-in append-only log type
+- **GUN**: graph CRDT with WebRTC peer-to-peer; mature production fleet
+- **automerge-repo**: Automerge with a sync server abstraction
+
+Required:
+- **Multi-party tamper evidence**: in a P2P CRDT, every peer holds a copy; tampering requires coordinating with all peers. How does this map onto SAS 142's "external party" attribute?
+- **Latency/availability for solo users**: P2P needs at least one other peer; what's the UX for a solo user with no peers?
+- **Conflict resolution for audit entries**: in normal CRDTs, conflicts merge. For audit chains, conflicts may indicate tampering. How does this work?
+
+### 3. Decentralized timestamping (without git)
+
+- **OpenTimestamps directly on file hashes**: anchor a file's SHA-256 to Bitcoin without going through git. The OTS proof file is just a `.ots` sidecar.
+- **OpenTimestamps batch service**: timestamp the entire `.audit/chain.jsonl` periodically.
+- **Sigstore Rekor without gitsign**: Rekor accepts arbitrary attestations via `cosign attach attestation`, not just git commits. Crosswalker could push file-hash attestations to Rekor via plugin without git.
+- **W3C Verifiable Credentials with VC Data Integrity**: signed, timestamped credentials anchoring file hashes; works with no git involvement.
+
+Required:
+- **Auditor familiarity**: same concerns as before — financial-statement audit familiarity is low for blockchain/Sigstore/VC; rising in EU under eIDAS 2.0.
+- **Bandwidth/latency**: OTS confirmation takes hours-to-days; Rekor is sub-second; VC issuance is sub-second.
+- **Offline mode**: in air-gapped environments, all of these are impossible. The audit trail in air-gap *cannot* have an external timestamp; the user must accept that limitation.
+
+### 4. Existing Obsidian plugins for audit-trail-grade integrity
+
+Survey:
+- **`obsidian-edit-history`** — file edit history plugin; not designed for audit trail but maintains diff history per file
+- **`obsidian-git`** — wraps git; would be transparent to user but fundamentally still git-based
+- **`obsidian-jsoncanvas`** — not relevant
+- **`obsidian-version-history`** — community plugin; what's the integrity guarantee?
+- **`obsidian-livesync`** — CRDT-based live sync; could be repurposed
+
+Required:
+- For each: what's the integrity guarantee, the threat model, the verification UX?
+- Could any of them be augmented with cryptographic chaining + external timestamping to become audit-trail-grade?
+
+### 5. Standalone signing not tied to git
+
+If the user just wants signed file snapshots without git or CLI:
+
+- **GPG/SSH signing in-plugin**: Crosswalker plugin holds the user's signing key (encrypted), signs every modified file on save with `signature.sig` sidecar.
+- **Sigstore in-plugin**: same but using Fulcio's ephemeral certs via an OIDC flow inside Obsidian.
+- **VC Data Integrity in-plugin**: each evidence-link state change emits a signed VC; the chain is the sequence of VCs.
+
+Required:
+- **In-plugin key custody**: encrypted with vault password? With a passphrase prompt at session start? Hardware-token integration?
+- **Trust establishment**: how does an external auditor verify the signing key's binding to a real-world identity without GitHub's verified-keys infrastructure?
+
+### 6. The threshold question
+
+What level of audit-trail rigor does Crosswalker need to *promise* to be useful for compliance?
+
+- **Tier-floor**: "This vault has version history" — every edit recorded with timestamp + author + diff. No tamper-evidence beyond the user's own discipline.
+- **Tier-credible**: "This vault has tamper-evident version history" — cryptographic chain + signatures, but anchored only to the vault itself; user can still destroy the vault and reconstruct, just leaves traces.
+- **Tier-defensible**: "This vault has audit-grade tamper-evident history with external time anchor" — adds RFC 3161 TSA or OpenTimestamps; survives even if user destroys local state.
+- **Tier-court-defensible**: "Self-authenticating under FRE 902(13)/(14)" — adds qualified-person certification; defensible at trial.
+
+Required: explicitly map each Crosswalker user persona to the tier-floor they need, and design accordingly. Most solo GRC consultants need "tier-credible"; federal authorisation packages need "tier-court-defensible."
+
+## Success criteria for the deliverable
+
+1. **Threat model framework** — for each user persona (solo consultant, locked-down enterprise, air-gapped fed, multi-tenant team), what's the tier of audit-trail rigor needed?
+2. **Architecture options matrix** — for each tier, list 2–3 viable architectures (in-plugin chain, CRDT-distributed, OTS-anchored, etc.) with pros/cons
+3. **Recommendation** — which option(s) Crosswalker should ship as default, configurable, and not-recommended
+4. **Migration path** from the Ch 08+13 git-based stack to a non-git option, OR a hybrid where both coexist
+5. **What the user-facing UX looks like** — is there a single "Audit-ready" badge that turns green when minimum tier is met? Per-tier configuration?
+
+## Out of scope
+
+- Implementation details of any chosen architecture
+- Specific vendor selection
+- Replacing the Ch 08+13 stack; this challenge evaluates whether *additional* options should exist alongside
+
+## Relationship to prior challenges
+
+- **Follow-on to [Ch 08](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/) and [Ch 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)** — those committed to a git-centric audit trail; this evaluates the alternatives for environments where git isn't viable
+- **Coordinates with the deferred CRDT live-edit team mode** — Yjs/Loro/Automerge analyses surfaced in Ch 11/12 are relevant input
+- **Relates to [Ch 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/)** — cr-sqlite (CRDT SQLite) was flagged there; if Ch 14 picks cr-sqlite for collaborative editing, audit trail leverages the same primitive
+
+## Related
+
+- [Ch 13 deliverable: Modern attestation primitives](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — the predecessor stack; assumed git
+- [Ch 08 deliverable: Git history audit-trail tenability](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/) — the predecessor; documented git's limitations but kept it as substrate
+- [TL;DR direction log §3.1](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#31-tier-1-audit-trail--alternatives-to-gitgithub) — where this challenge was spun up
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
