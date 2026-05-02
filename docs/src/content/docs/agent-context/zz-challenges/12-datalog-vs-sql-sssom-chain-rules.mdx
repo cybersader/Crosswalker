@@ -1,0 +1,104 @@
+---
+title: "Challenge 12: Datalog vs SQL for SSSOM chain-rule derivation"
+description: "Narrow fork-in-the-road. The core spine derivation engine — the thing that composes pairwise mappings through a pivot using SSSOM's 22 chain rules — could be Datalog (cleaner provenance, native fit) or recursive CTE (broader engine support, simpler ops). Pick one, with rationale."
+tags: [research, architecture, query-engine, sssom, derivation, foundation]
+date: 2026-05-02
+sidebar:
+  label: "12 · Datalog vs SQL for chain rules"
+---
+
+## Why this exists
+
+The Crosswalker [pairwise + pivot crosswalk commitment](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#21-pairwise--optional-inheritable-pivot-challenge-06-resolution) requires a *derivation engine* — the component that composes pairwise mappings through a pivot/spine using the SSSOM chain rules (22 distinct rules per the SSSOM chain-rules document). Two viable approaches:
+
+1. **Datalog** — Native fit. The OxO2 paper (EMBL-EBI, 2025; arXiv 2506.04286) implements SSSOM chain rules in Nemo (Datalog). RCE2 (the rule OxO2 most-uses) is a textbook Datalog rule. Cleaner provenance via Datalog's native rule-firing trace
+2. **Recursive CTE** — Broader engine support (every SQL DB has it). Challenge 10's deliverable picked this path. Less expressive than Datalog for variable-depth traversal with provenance
+
+This is a **direct fork in the road**. The choice ripples into the Tier 2/3 engine selection ([Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)) and into the audit-trail story (a clean `derivation_path` field per derived edge requires the engine to expose its rule-firing trace).
+
+## What to investigate
+
+### 1. Formal comparison of expressiveness
+
+Express the SSSOM chain rules in both forms:
+
+- **Datalog**: write RCE2 (and at least 3 other representative rules) as Datalog clauses with provenance. Show how `derived_from` (SSSOM PR #537) populates from rule firings
+- **Recursive CTE**: write the same rules as recursive SQL CTEs targeting DuckDB or Postgres syntax. Show how `derivation_path` populates as a UDF or a `list_append` accumulator
+
+Compare:
+
+- Lines of code per rule
+- Readability for a fresh contributor
+- Edge-case handling (cycles, ambiguity, non-termination)
+- Provenance fidelity — does the rule firing show *which* rule fired, in what order, on what input?
+
+### 2. Performance characteristics
+
+Theoretical (no benchmarks required, but *characterize* the cost models):
+
+- Depth-2 to depth-5 chain composition on representative dataset sizes (10K, 100K, 1M mappings)
+- Cycle detection cost (Datalog's bottom-up fixed-point vs CTE's `visited` array)
+- Recursion-depth limits (Datalog has none; SQL engines vary — Postgres unlimited, DuckDB unlimited, sql.js capped)
+- Memory footprint at fixed-point convergence
+
+### 3. Engine availability
+
+Constrain by what engines run in the deployment shapes Challenge 11 will pick:
+
+- **Browser-side (Tier 2)**: which Datalog engines run in WASM? Nemo has WASM. Soufflé's WASM story?
+- **Server-side (Tier 3)**: every Datalog engine is available; SQL is universal
+- **Cross-tier consistency**: if Tier 2 uses Datalog and Tier 3 uses Postgres+SQL, what's the cost of maintaining two derivation paths?
+
+### 4. Provenance and audit-trail implications
+
+Challenge 08 (and the eventual [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) follow-on) require every derived edge to carry an auditable `derivation_path`:
+- Which input edges contributed?
+- Which chain rule fired?
+- What was the inherited confidence / staleness?
+
+Datalog engines often natively expose this (OxO2 records "derived under rule X" per derivation). SQL recursive CTEs require explicit accumulator construction. Compare:
+
+- Cleanliness of the resulting `derivation_path` field
+- Cost of injecting provenance into recursive CTE accumulators
+- Compatibility with SSSOM's pending `derived_from` slot
+
+### 5. Maintainability
+
+- Which is easier for a fresh contributor to read, debug, and extend?
+- Which has better tooling (debuggers, profilers, query plans)?
+- Which is more failure-mode-stable under bad input data?
+
+### 6. Hybrid possibilities
+
+- **Datalog produces materialized derived rows; SQL queries them**: Datalog runs at materialization time, results live in a SQL table, downstream queries are pure SQL. Best of both?
+- **SQL produces base mappings; Datalog computes closures on demand**: opposite layering
+- **Both are wrong; use a different paradigm entirely** (e.g., Apache Arrow's stream-graph computation)
+
+## Success criteria for the deliverable
+
+1. **Worked example**: at least 4 SSSOM chain rules expressed in both Datalog and recursive CTE
+2. **Provenance comparison**: concrete `derivation_path` field examples from both
+3. **Performance characterization**: theoretical cost analysis with O() complexity per chain depth and dataset size
+4. **Engine-availability matrix**: which Datalog engines / SQL engines support what's needed, in WASM and server contexts
+5. **Recommendation**: Datalog primary / SQL primary / hybrid — with explicit rationale on which axis breaks the tie
+6. **Migration path** if Challenge 10's recursive-CTE direction is overturned
+
+## Out of scope
+
+- Specific Datalog engine selection (Nemo vs Soufflé vs Datomic) — covered by [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)
+- Tier 1 materialized-folder generator design (uses whichever engine wins; Tier 1 doesn't run derivation queries directly)
+- Real-data benchmarks (Challenge 02 territory)
+
+## Relationship to prior challenges
+
+- **Narrows from [Challenge 10](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/)**: Ch 10 picked recursive CTE without considering Datalog seriously
+- **Coordinates with [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)**: Ch 11 picks the engine; Ch 12 picks the *paradigm* the engine must support
+- **Independent of [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)**: different layer
+
+## Related
+
+- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/) — predecessor; recursive-CTE-only treatment
+- [Challenge 11: Tier 2/3 engine deep survey](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) — coordinates
+- [05-01 §2.1 pairwise + optional inheritable pivot](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#21-pairwise--optional-inheritable-pivot-challenge-06-resolution) — the commitment that requires a derivation engine
+- SSSOM chain-rules document and the OxO2 paper (arXiv 2506.04286) — primary external references
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
