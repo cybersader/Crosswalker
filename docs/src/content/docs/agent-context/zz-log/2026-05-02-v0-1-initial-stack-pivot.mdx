@@ -1,0 +1,188 @@
+---
+title: "v0.1 initial-stack pivot — Progressive Tier Architecture, simple default + back-pocket research"
+description: "Ch 18 + Ch 19 deliverables landed and produced a v0.1 build-target pivot. The third-wave commitments (Tier 2 layered DuckDB+Oxigraph+Nemo, Tier 3 Fuseki/oxigraph-server, 4-tier audit with T2 OTS default) are reframed as researched back-pocket — ready when needed, not the v0.1 default. v0.1 ships Tier 1 (markdown + YAML STRM, in-memory JS Map) + Tier 2 sqlite-wasm sidecar bundled together (~1.2 MB total). The architectural safety guarantee — Tier 2/3 are projections of Tier 1, fully recoverable from canonical files — is now explicit and load-bearing. Reaffirms the existing roadmap's Progressive Tier Architecture pillar."
+tags: [foundation, decisions, direction, v0-1, tier-architecture, stack, pivot]
+date: 2026-05-02
+sidebar:
+  label: "05-02 · v0.1 stack pivot"
+  order: -20260502.7
+---
+
+:::tip[Read this for the v0.1 build target]
+This log is the **canonical v0.1 stack commitment**. The same-day [TL;DR direction commitments](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) and [third-wave architectural shifts log](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) capture the *research outputs* that converged earlier today; this log captures *what we actually build first*.
+
+**The third-wave research is not invalidated** — it's reframed as back-pocket-ready (opt-in companion plugins, available when users outgrow the v0.1 default). What changed is the build-target boundary, not the research direction.
+:::
+
+## §1 Why this log exists
+
+Two more fresh-agent research deliverables landed today after the third-wave processing was committed and pushed:
+
+- **[Ch 18 — Tier 2-Lite SSSOM rule subset and scale ceiling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/)**: confirms the sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE stack is comfortably viable up to ~100K mappings — well above the realistic upper bound for any GRC vault. Rule-by-rule expressivity matrix: 4 ✅ tractable / 4 ⚠️ caveat-tractable / 1 ❌ hard wall (recursive SHACL with mutual negation, which the typical user never needs).
+- **[Ch 19 — Over-engineering stress test](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/)**: adversarial verdict that the architecture has lost the property of "the simpler thing becomes the default because it's more adoptable." Five concrete arguments — competitive landscape hides complexity, SSSOM has zero GRC adoption, audit trail over-specified vs FRE 902/SOC 2/ISO 27001, 5 MB bundle is 10–50× Obsidian median, recursive CTE handles the realistic data volume in single-digit ms. Concrete simple-default proposal in §9 of the deliverable.
+
+The user's directive: *"the goal here is to actually find an initial tech stack and architecture to go with and to start developing, but to have these other ideas in our back pocket."*
+
+This log captures that pivot. **It is the centerpiece v0.1 commitment.**
+
+### What this pivot is *not*
+
+- ❌ A rollback of the third-wave research. Ch 11/14/15/16 deliverables stay verbatim. The third-wave §7.2 sign-off stays valid for "back-pocket research direction."
+- ❌ A drop of the layered stack. DuckDB-WASM + Oxigraph + Nemo + Comunica + Fuseki + the 4-tier audit model + AGE/TerminusDB Tier 3 options stay in the project's research record, ready as opt-in companion plugins when needed.
+- ❌ A drift from foundation commitments. STRM + SSSOM crosswalk edge semantics (hybrid resolution below); Junction Notes from Ch 07; pairwise + optional pivot from Ch 06; StewardshipProfile rename + meta-schema lifecycle commitment — *all preserved*.
+
+### What this pivot *is*
+
+- ✅ A formal commitment to ship the existing roadmap's [Progressive Tier Architecture pillar](/crosswalker/reference/roadmap/) at v0.1 specificity: **Tier 1 (files only, validation) → Tier 2 (files + sidecar SQLite via sql.js WASM) → Tier 3 (server-based)**. Files always source of truth. Each tier shares the same schemas.
+- ✅ A correction of the third-wave's Tier 2 drift (DuckDB-WASM + Oxigraph + Nemo as production) back to the existing roadmap's Tier 2 (`@sqlite.org/sqlite-wasm` sidecar).
+- ✅ An *explicit* statement of the architectural safety guarantee that was always implicit: **Tier 2 and Tier 3 are projections of Tier 1; deletable; recoverable from canonical files. The tool works without them.** That safety property is what justifies bundling Tier 2 in v0.1 — users can't lose data by deleting projections.
+
+## §2 The architectural safety guarantee (load-bearing principle)
+
+This is the *single most important architectural property* in Crosswalker. Promoted from implicit to explicit:
+
+> **Tier 1 (canonical files) is the source of truth. Tier 2 and Tier 3 are projections — fully deletable, fully recoverable from Tier 1.**
+>
+> **Delete the .sqlite file → the plugin reprojects it from Tier 1 on next vault load.**
+>
+> **Delete the server entirely → restart from git history, projection rebuilds.**
+>
+> **Tier 1 alone is functional** (slow on large vaults, but functional). Tier 2/3 add performance and integration capabilities; they are never required for the tool to work.
+
+This property is what enables the **Progressive Tier Architecture** to be safely additive: shipping Tier 2 in v0.1 doesn't trap the user, because they can always delete it without losing data. Performance optimizations and integration features (export pipelines, perspective engines, multi-framework joins, server federation) are layered on top of the canonical files; the canonical files are what survives.
+
+Practically:
+
+- **Tier 1 (canonical, must-work)**: markdown files with YAML frontmatter in the user's Obsidian vault. Single source of truth for every crosswalk mapping, evidence link, and metadata field.
+- **Tier 2 (projection, recoverable)**: `@sqlite.org/sqlite-wasm` sidecar in OPFS-backed storage. Auto-projected from Tier 1 on vault load. Holds derived tables (closure cache, indexes for joins, vector embeddings via sqlite-vec). Deletable; reprojected on next load.
+- **Tier 3 (projection, recoverable)**: optional server (Postgres+JSONB+CTE recommended boring-tech default; or Fuseki / oxigraph-server / TerminusDB / AGE per the [Ch 16 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/)). Out of v0.1 scope; documented as a deployment option.
+
+This load-bearing principle traces back to the Foundation roadmap pillar: *"Files always source of truth. Each tier shares the same schemas. We accept the ceiling at Tier 1 and scale through tiers when needed, rather than abandoning files."* The v0.1 pivot makes that pillar concrete at v0.1 boundary.
+
+## §3 v0.1 stack — what we build first
+
+| Concern | Tier 1 (canonical, must-work) | Tier 2 (projection, recoverable, default-bundled) |
+|---|---|---|
+| **Storage** | Markdown files with YAML frontmatter; one file per crosswalk mapping or per control (author's choice). [Junction notes](/crosswalker/concepts/terminology/#core-terms) (13-field schema, Ch 07) for evidence links. | `@sqlite.org/sqlite-wasm` sidecar (~600 KB) projecting Tier 1 frontmatter into queryable tables. Auto-projects on vault load. Deletable. |
+| **Predicate vocabulary** | [STRM](/crosswalker/reference/registry/strm/) (NIST IR 8477) — `is_equivalent_to`, `is_broader_than`, `is_approximate_to`, `intersects_with`, `no_relationship` — as the user-facing `predicate_id`. | Same; SQL queries filter on the same predicate vocab. |
+| **Index** | In-memory JS Map built at vault-load time from frontmatter. Works without Tier 2 — slow on large vaults but functional. | Indexed SQLite tables with covering indexes on `(predicate_id, subject_id)` etc. |
+| **Query** | Native Obsidian search + Dataview-style queries on frontmatter. | Recursive CTE for transitive closure + multi-framework joins + coverage matrices + perspective views. Per [Ch 18 §1](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/), 4 ✅ tractable rule types + 4 ⚠️ caveat-tractable cover the realistic GRC workload comfortably under 100K mappings. |
+| **Export pipelines** | (Tier 1 alone: slow — JS streaming over markdown frontmatter.) | **STRM-shaped TSV in NIST IR 8278A r1 OLIR template shape** + OSCAL JSON profile export. Optional: SSSOM-flavored TSV emission for academic interop. SQL-driven. |
+| **Audit trail** | Git commits + Ed25519-signed releases for shared mapping bundles. Default = **T1 (signed git history)**, NOT T2 OpenTimestamps. Auto-generated FRE 902(13) certification PDF available on demand. Compliance-export mode (opt-in) layers OTS / RFC 3161 / Sigstore Rekor / eIDAS QTSA / in-toto. | Tier 2 adds query-able audit-event records but doesn't change the trust root. |
+| **Bundle target** | Plugin core under 500 KB compressed. | Sqlite-wasm sidecar ~600 KB. **Total ~1.2 MB compressed** — 4× under the third-wave 5 MB three-engine stack; comfortably within Obsidian plugin ecosystem norms. |
+| **Plugin scope** | A single, focused import wizard + crosswalk-render plugin + Tier 2 sidecar projector. | Performance enhancements (DuckDB-WASM, Oxigraph, Nemo, Comunica federation) live in **separate companion plugins** released later. |
+
+### Tier 1 standalone path
+
+A user who deletes the .sqlite sidecar (or runs in a restricted-CSP / Obsidian-Mobile environment that disables the sidecar) gets a working but slower experience: in-memory JS Map indexing, Dataview-style queries on frontmatter, no transitive-closure performance optimization, no SQL export. **The plugin still loads, still renders crosswalks as wikilinks, still imports CSV/XLSX, still produces git commits.** The Tier 1 path is the safety floor.
+
+This is the property the [Ch 19 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/) was attacking when it argued for "no WASM in the default" — but the user's calibration is that Tier 2 sqlite-wasm sidecar is *expected for practical use*, and the safety guarantee (deletable, recoverable from Tier 1) makes bundling it risk-free.
+
+## §4 What changed since the third-wave log
+
+| Third-wave commitment | v0.1 disposition |
+|---|---|
+| Tier 2 layered stack (DuckDB-WASM + Oxigraph + Nemo, ~5 MB) | **Reframed as back-pocket** — opt-in "Crosswalker Power Query" companion plugin in v1.0+. v0.1 Tier 2 = sqlite-wasm sidecar (returns to existing roadmap's stated Tier 2). |
+| Tier 3 default (Apache Jena Fuseki / oxigraph-server) | **Reframed as deployment option** — Tier 3 not in v0.1 plugin scope at all. Documented in the [Ch 16 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) with Postgres+JSONB+CTE as the recommended boring-tech default. |
+| 4-tier audit-trail model with T2 OpenTimestamps as default | **Reframed as compliance-export mode (opt-in)** — v0.1 default is T1 (git + signed commits + on-demand FRE 902(13) PDF). T2 OTS / T3 options surface only when user explicitly enables compliance-export mode for an audit. Direct contradiction of third-wave §7.2 sign-off, user-authorized 2026-05-02. |
+| Comunica + N3 + HDT federation add-on | **Reframed as v1.0+ companion plugin** — opt-in, not in v0.1 scope. |
+| Tier 2-Lite (sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE) | **Promoted from "alternate stack" to default-bundled v0.1 Tier 2 sidecar** per user calibration. Ch 18's expressivity matrix and scale ceiling cover the realistic GRC vault size comfortably. |
+| Junction Notes (13-field schema for evidence links, Ch 07) | **Preserved unchanged**. Ch 19's framing of them as "complexity" was a misread of the de-entanglement architectural property. |
+| STRM + SSSOM crosswalk edge semantics commitment | **Hybrid resolution** — see §6 below. STRM as user-facing wire format; SSSOM as internal validation envelope. Both emittable. |
+| StewardshipProfile rename + meta-schema lifecycle | **Preserved unchanged**. Rename ripples still deferred; commitment stands. |
+
+## §5 Back pocket — researched, ready when needed
+
+Treat as opt-in companion plugins to ship after v0.1 lands. Each is **fully researched** — the deliverables stay valuable as ready-made designs. Frame as "performance enhancements and integrations for users who outgrow v0.1," not as canonical defaults.
+
+| Concern | Source deliverable | When to ship |
+|---|---|---|
+| **DuckDB-WASM + Oxigraph + Nemo layered Tier 2** | [Ch 11 deliverables](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/), [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) | When a user vault exceeds Tier 2-Lite's ~100K mapping ceiling (per [Ch 18 migration triggers](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/)) OR demands recursive SHACL / multi-stratum Datalog / SPARQL property paths. v1.0+ companion plugin. |
+| **Comunica + N3 + HDT federation** | [Ch 14 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) | When users want cross-vault, cross-org, or external SPARQL endpoint queries. v1.0+ companion plugin. |
+| **Tier 3 server stack** (Fuseki / oxigraph-server / DuckDB-on-server / TerminusDB / AGE / Postgres+JSONB+CTE) | [Ch 16 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) | When a multi-team GRC organization wants a shared server. v2.0+ deployment guide. Default recommendation: Postgres + JSONB + recursive CTE (boring tech). |
+| **4-tier audit-trail upgrade profiles** | [Ch 15 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) | When a user explicitly enables compliance-export mode for an audit. T2 OTS for "defensible," T3 (eIDAS QTSA / Sigstore Rekor / FRE 902(13) PDF + S3 Object Lock) profiles for "court-defensible." Opt-in profile picker. |
+| **OSCAL native support** | [TL;DR §3.3](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#33-oscal-native-support--placement-in-the-web-of-webs) | After core working (per user 2026-05-02). Document OSCAL into Crosswalker's mental model via [`reference/registry/oscal`](/crosswalker/reference/registry/oscal/) page. Phase 2+. |
+| **LinkML schema substrate** | [Ch 12b deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) | Parked. Future challenge if interest renews. |
+| **IPLD content-addressed crosswalk bundles** | [Ch 12b deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) | Long-horizon idea. |
+| **PQC dual-sign migration** | [Ch 15 deliverable §5.6](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) | 2027 onward (Ed25519 → ML-DSA-44 dual-sign). Ahead of NIST IR 8547 2035 deadline. |
+
+## §6 SSSOM ↔ STRM resolution — hybrid
+
+Adopted **option (c) hybrid** per user 2026-05-02:
+
+- **User-facing wire format = STRM-shaped TSV in NIST IR 8278A r1 OLIR template shape.** This is what the user authors, sees, exports, and shares with auditors / NIST OLIR submissions / SCF integrations. Excel-friendly CSV with header columns aligned to the OLIR template — submittable to NIST OLIR directly from a Crosswalker vault.
+- **Internal validation envelope = SSSOM.** The plugin's import / validation / round-trip pipeline uses SSSOM schema (sssom-py-compatible) under the hood. SSSOM's tooling benefit (round-trip, RDF interop, sssom-py compare for byte-stable round-trip tests) is preserved for any user who wants academic / biomedical-ontology interop.
+
+Both wire formats are emittable. The hybrid sidesteps the inversion question that [Ch 19](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/) raised. Ch 19 itself conceded: *"STRM-shaped TSV (which is also valid SSSOM TSV — they are not in conflict, just prioritized differently)."*
+
+The longstanding [Crosswalk edge semantics commitment (STRM + SSSOM)](/crosswalker/concepts/terminology/#matching--alignment-terms) is **preserved** in this resolution — STRM stays as the predicate vocabulary; SSSOM stays as the metadata envelope. What changed is *which is foreground in the user-facing artifact*.
+
+## §7 Junction Notes — preserved per Ch 07
+
+Junction notes (one markdown file per evidence-link edge, 13-field flat-YAML frontmatter schema isomorphic to OSCAL `by-component`) are the **canonical evidence-link substrate** committed in [Ch 07's resolution log (2026-04-10)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/).
+
+[Ch 19 framed junction notes as "complexity"](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/) and called for collapsing them into inline frontmatter on source documents. **This is a misread of the architectural reason for junction notes**: they *de-entangle* evidence from crosswalks. Crosswalks are mapping_set rows in STRM-TSV / SSSOM-TSV; evidence links are per-document attestations stored in junction-note Markdown files. Mixing them into source-document frontmatter loses the de-entanglement, the queryability, and the OSCAL `by-component` isomorphism.
+
+**Ch 07 resolution stands. v0.1 ships junction notes for evidence links.**
+
+## §8 Audit trail default = T1
+
+Direct contradiction of [third-wave §7.2 sign-off](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#72-confirmed-defaults--user-sign-off-received-2026-05-02). User-authorized 2026-05-02 via Q4: *"T1 (recommended, contradicts third-wave §7.2)."*
+
+Rationale (per Ch 19 §3): FRE 902(13)/(14) requires hash + qualified-person certification. SOC 2, ISO 27001, FedRAMP do not require external timestamping of mapping artifacts. Git + signed commits + on-demand FRE 902(13) PDF *exceeds* what these frameworks demand. T2 OpenTimestamps and T3 (eIDAS QTSA / Sigstore Rekor v2 / S3 Object Lock + FRE 902(13) PDF / in-toto) are genuinely useful for users with explicit regulatory threats — but bundling them in the v0.1 default would penalize the 90% of users who don't need them.
+
+**v0.1 default**: git + signed commits.
+**Compliance-export mode (opt-in)**: profile picker exposes T2 OTS or T3 (US litigation / EU regulated / Federal ATO / supply-chain), each pre-configuring 4–6 settings per the [Ch 15 deliverable §E](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/).
+
+## §9 Open follow-on questions
+
+User said *"if we need to do more research sessions, then let's go for it."* Default is **none-needed before v0.1 development begins**.
+
+Items genuinely worth research before/during v0.1 development:
+
+| Candidate | Status | Why |
+|---|---|---|
+| **Ch 20 (SSSOM ↔ STRM inversion validation)** | Not spun up — hybrid resolution sidesteps the inversion question | Both wire formats emittable; user-facing default is STRM. No inversion needed. |
+| **Junction-note round-trip with sssom-py** | Implementation task, not research | Ch 18 §4 already specifies the harness. |
+| **OSCAL ↔ Crosswalker mental-model documentation** | Documentation task | Update [`reference/registry/oscal`](/crosswalker/reference/registry/oscal/) — listed as deferred in TL;DR §3.3. |
+| **Comunica honest+practical assessment** | Research candidate | User flagged Comunica as "seems bulky or overengineered" in third-wave §7.2; conditional confirmation pending honest assessment before v1.0 companion plugin work. |
+| **DB-choice architecture page** ("why Tier 1 + sqlite-wasm sidecar, not pure graph DB") | Documentation task | Cross-link from `architecture/file-based-graph-database.mdx`. |
+
+None of these block v0.1 development. They become more valuable after the v0.1 plugin lands and creates real implementation pressure.
+
+## §10 Roadmap implications
+
+The v0.1 pivot **reaffirms** the existing roadmap's [Progressive Tier Architecture pillar](/crosswalker/reference/roadmap/) and gives it concrete shape:
+
+- **v0.1 (Foundation phase)**: Tier 1 (markdown + YAML STRM, in-memory JS Map) + Tier 2 (`@sqlite.org/sqlite-wasm` sidecar, ~600 KB) bundled. ~1.2 MB total. Tier 1 standalone path preserved.
+- **v1.0+ (Crosswalks phase)**: companion plugins for layered Tier 2 (DuckDB-WASM + Oxigraph + Nemo "Power Query"), Comunica federation, compliance-export mode (T2 OTS / T3 audit profiles).
+- **v2.0+ (Evolution / Community phase)**: Tier 3 deployment guide (Postgres + JSONB + recursive CTE recommended; Fuseki / oxigraph-server / TerminusDB / AGE as alternatives), OSCAL native export, OAEI ontology-alignment integrations, community config registry.
+
+Per existing convention, roadmap edits are listed-only here; not yet applied to actual roadmap. Items to add when the roadmap is updated:
+
+- **A0 NEW Foundation item**: v0.1 stack — Tier 1 + Tier 2 sqlite-wasm sidecar bundled. ~1.2 MB total.
+- **A1 update**: existing "Progressive tier architecture" Foundation pillar formalized at v0.1 specificity.
+- **A2 update**: SSSOM↔STRM resolution as hybrid (c).
+- **A3 reaffirm**: Junction Notes per Ch 07.
+- **A4 NEW load-bearing principle**: Tier 1 canonical / Tier 2/3 are recoverable projections. Documented as architectural safety guarantee.
+- **A5 reframe**: third-wave commitments (DuckDB+Oxigraph+Nemo Tier 2, 4-tier audit T2 OTS default, Tier 3 Fuseki/oxigraph-server) as v1.0+ companion plugins, not v0.1 build target.
+
+## §11 Related
+
+- **Inputs**:
+  - [Ch 18 deliverable: Tier 2-Lite SSSOM rule subset](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/)
+  - [Ch 19 deliverable: Over-engineering stress test](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/)
+- **Reframes**:
+  - [TL;DR direction commitments](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) — top-of-file callout points to this log
+  - [Third-wave architectural shifts log](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) — top-of-file callout points to this log; §7.2 sign-off retained as back-pocket-research-direction confirmation
+- **Foundational alignment** (verified in alignment audit before pivot):
+  - [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — "Files, not databases", "Spec before code", "Platform architecture, not plugin monolith"
+  - [Roadmap Foundation phase](/crosswalker/reference/roadmap/) — Progressive Tier Architecture pillar already commits to "Tier 1 (files only) → Tier 2 (files + sidecar SQLite via sql.js WASM) → Tier 3 (server-based). Files always source of truth."
+  - [Crosswalk edge semantics commitment](/crosswalker/concepts/terminology/#matching--alignment-terms) — STRM predicate vocab + SSSOM envelope, both preserved
+  - [Ch 06 resolution: pairwise + optional pivot (synthetic spine)](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/)
+  - [Ch 07 resolution: junction notes for evidence links](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)
+  - [Ontology diff primitives (graph change atoms)](/crosswalker/concepts/zz-glossary/datalog/) — the data-movement layer underneath SSSOM/STRM
+  - [StewardshipProfile commitment + meta-schema lifecycle](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/)
+- **Predecessors** (full research record from same day):
+  - [Bloated 2026-05-02 direction log](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) — second-wave (Ch 08–13) research record
+  - [2026-05-01 Foundation commitments and follow-on research log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/)
