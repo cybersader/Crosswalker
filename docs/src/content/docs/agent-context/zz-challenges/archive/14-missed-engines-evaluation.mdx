@@ -1,11 +1,17 @@
 ---
-title: "Challenge 14: Missed engines evaluation — Grafeo, Minigraf, CozoDB, SurrealDB, Comunica, cr-sqlite"
-description: "Phase 2 engine evaluation. Multiple engines surfaced during Challenge 11 research that were absent from the original brief — most consequentially Grafeo (pure-Rust LPG+RDF, all major query languages, vector index, WASM bindings, potentially collapses the layered Tier 2 stack to a single engine). Verify viability and recommend keep-the-Ch11-stack, swap-one-engine, or full-collapse-to-single-engine."
-tags: [research, architecture, query-engine, tier-2, tier-3, follow-on, foundation]
+title: "Challenge 14: Missed engines evaluation — Grafeo, Minigraf, CozoDB, SurrealDB, Comunica, cr-sqlite (archived)"
+description: "Phase 2 engine evaluation. Multiple engines surfaced during Challenge 11 research that were absent from the original brief — most consequentially Grafeo (pure-Rust LPG+RDF, all major query languages, vector index, WASM bindings, potentially collapses the layered Tier 2 stack to a single engine). RESOLVED 2026-05-02 — see callout."
+tags: [research, architecture, query-engine, tier-2, tier-3, follow-on, foundation, archived]
 date: 2026-05-02
 sidebar:
-  label: "14 · Missed engines"
+  label: "14 · Missed engines (archived)"
 ---
+
+:::tip[Resolved 2026-05-02 — archived]
+This challenge has been **resolved** and the brief is **archived for reference**. A fresh-agent research session targeted at this brief produced the [Ch 14 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/), which recommended **keep the Ch 11 layered Tier 2 stack as production**, add **Tier 2-Lite** (sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE) for low-end / Obsidian Mobile, add **Comunica + N3 + HDT** as opt-in federation layer, and **track Grafeo and Minigraf** with explicit, falsifiable migration triggers. SurrealDB rejected (BSL + 12.6 MB bundle); cr-sqlite and CozoDB rejected as stalled. Crosswalker committed to that direction in the **[2026-05-02 third-wave architectural shifts log §2](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#2-ch-14--tier-2-stack-confirmed-and-extended)** and the [TL;DR §2.1](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#21-tier-2-layered-stack--duckdb-wasm--oxigraph--nemo-confirmed).
+
+**This challenge brief is preserved as originally written** so it stays re-runnable. If a future agent wants to stress-test the Tier 2 commitment under different assumptions (e.g., once Grafeo reaches v1.0 and the migration triggers fire), they can re-run this brief with that delta.
+:::
 
 ## Why this exists
 

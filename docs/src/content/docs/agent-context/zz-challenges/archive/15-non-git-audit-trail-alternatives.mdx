@@ -1,11 +1,17 @@
 ---
-title: "Challenge 15: Audit-trail alternatives that don't require external git tooling"
-description: "Ch 08 + Ch 13 audit-trail stack assumes git + a remote (GitHub/GitLab/etc.) — a hard assumption in air-gapped, locked-down enterprise, or government environments. Evaluate Obsidian-plugin-native audit-trail approaches that don't require external git, GitHub, or CLI tooling. Recommend keep / replace / layer vs the Ch 08+13 default."
-tags: [research, audit, evidence-mapping-links, compliance, attestation, foundation]
+title: "Challenge 15: Audit-trail alternatives that don't require external git tooling (archived)"
+description: "Ch 08 + Ch 13 audit-trail stack assumes git + a remote (GitHub/GitLab/etc.) — a hard assumption in air-gapped, locked-down enterprise, or government environments. RESOLVED 2026-05-02 — see callout."
+tags: [research, audit, evidence-mapping-links, compliance, attestation, foundation, archived]
 date: 2026-05-02
 sidebar:
-  label: "15 · Non-git audit trail"
+  label: "15 · Non-git audit trail (archived)"
 ---
+
+:::tip[Resolved 2026-05-02 — archived]
+This challenge has been **resolved** and the brief is **archived for reference**. A fresh-agent research session targeted at this brief produced the [Ch 15 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/), which recommended **adopting a 4-tier model (T0 floor / T1 credible / T2 defensible / T3 court-defensible)** with **OpenTimestamps `.ots` on signed chain checkpoints as the new T2 default** and the Ch 08+13 git+RFC3161+S3-Object-Lock+FRE 902 stack repositioned as one of three T3 options (others: eIDAS QTSA + W3C VC for EU; Sigstore Rekor v2 + in-toto for supply-chain). Plus a crypto-agile PQC migration plan 2026→2032 ahead of the NIST IR 8547 2035 deadline, and a single audit-ready badge UX with progressive disclosure. Crosswalker committed to that direction in the **[2026-05-02 third-wave architectural shifts log §4](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#4-ch-15--audit-trail-4-tier-model-adopted-git-stack-repositioned)** and the [TL;DR §3.1](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#31-tier-1-audit-trail--4-tier-model-with-opentimestamps-t2-default).
+
+**This challenge brief is preserved as originally written** so it stays re-runnable. If a future agent wants to stress-test the 4-tier model under different assumptions (e.g., once EUDI Wallet QES is broadly available, or once Rekor v2 matures), they can re-run this brief with that delta.
+:::
 
 ## Why this exists
 

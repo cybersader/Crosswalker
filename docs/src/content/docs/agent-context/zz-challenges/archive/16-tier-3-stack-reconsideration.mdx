@@ -1,11 +1,17 @@
 ---
-title: "Challenge 16: Tier 3 stack reconsideration — alternatives to Apache AGE"
-description: "Apache AGE was Challenge 10's Tier 3 default but the 2026-05-02 research wave surfaced concerns: Bitnine→SKAI Worldwide pivot away from databases, slow release cadence, Postgres ABI break in 17.1 affecting AGE. Reconsider Tier 3 against alternatives already on the radar (Apache Jena Fuseki, DuckDB-on-server + DuckPGQ, TerminusDB-as-primary, HelixDB) plus any others."
-tags: [research, architecture, query-engine, tier-3, server, foundation]
+title: "Challenge 16: Tier 3 stack reconsideration — alternatives to Apache AGE (archived)"
+description: "Apache AGE was Challenge 10's Tier 3 default but the 2026-05-02 research wave surfaced concerns: Bitnine→SKAI Worldwide pivot, PG 17.1 ABI break, slow release cadence. RESOLVED 2026-05-02 — see callout."
+tags: [research, architecture, query-engine, tier-3, server, foundation, archived]
 date: 2026-05-02
 sidebar:
-  label: "16 · Tier 3 reconsideration"
+  label: "16 · Tier 3 reconsideration (archived)"
 ---
+
+:::tip[Resolved 2026-05-02 — archived]
+This challenge has been **resolved** and the brief is **archived for reference**. A fresh-agent research session targeted at this brief produced the [Ch 16 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/), which recommended **demoting Apache AGE from Tier 3 default to optional fallback** (kept for Postgres-standardized environments because its in-Postgres property has no substitute), **promoting Apache Jena Fuseki as the new Tier 3 default**, and **documenting oxigraph-server as the lighter same-API alternative** (architectural symmetry: same engine as Tier 2, just `oxigraph serve`). The recommended power-user upgrade path is **layered Fuseki + DuckDB-on-server**. **TerminusDB v12** is documented as opt-in vault-mirror with small-vendor (DFRNT) risk explicitly flagged. HelixDB, ArcadeDB, and SurrealDB were placed on the watchlist but not adopted. Plain Postgres + JSONB + recursive CTEs is documented as a supported "boring tech" minimal Tier 3. Crosswalker committed to that direction in the **[2026-05-02 third-wave architectural shifts log §3](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#3-ch-16--tier-3-default-flipped-from-age-to-fusekioxigraph-server)** and the [TL;DR §3.2](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#32-tier-3-stack--default-flipped-from-age-to-fusekioxigraph-server).
+
+**This challenge brief is preserved as originally written** so it stays re-runnable. If a future agent wants to stress-test the Tier 3 commitment under different assumptions (e.g., once HelixDB matures, or if Apache AGE governance recovers), they can re-run this brief with that delta.
+:::
 
 ## Why this exists
 
