@@ -1,0 +1,291 @@
+---
+title: "Direction commitments (TL;DR) — what's locked in, what's still researching"
+description: "Concise concluding artifact for 2026-05-02. Distills the long direction log into a clear actionable list: 5 confirmed commitments, 3 items needing more research (with new challenges spun up), 1 item parked. Includes engine pros/cons tables, web-of-webs placement for Nemo (build-pipeline tier) and OSCAL (export boundary), and a plain-English explanation of SLSA targeting."
+tags: [foundation, decisions, direction, tldr]
+date: 2026-05-02
+sidebar:
+  label: "05-02 · Direction commitments (TL;DR)"
+  order: -20260502.5
+---
+
+:::tip[Read THIS log first]
+The [companion 2026-05-02 direction log](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) is the full research record from today's research waves (9 fresh-agent deliverables across Ch 08–13). It got long. **This log is the short concluding artifact** — what's actually decided, what still needs research, what's parked.
+
+If you only read one log from today, read this one.
+:::
+
+## Status at a glance
+
+| # | Item | Status | Where |
+|---|---|---|---|
+| 1 | Tier 2 layered stack (DuckDB-WASM + Oxigraph + Nemo) | ✅ Committed (provisional, pending Ch 14 Grafeo eval) | [§2.1](#21-tier-2-layered-stack--duckdb-wasm--oxigraph--nemo-provisional) |
+| 2 | Tier 1 audit-trail bar | ⏳ Partly committed; **non-git alternatives need more research** → Challenge 15 | [§3.1](#31-tier-1-audit-trail--alternatives-to-gitgithub) |
+| 3 | Datalog (Nemo) for SSSOM derivation — placement explained | ✅ Committed | [§2.2](#22-datalog-nemo-for-sssom-chain-rule-derivation) |
+| 4 | Sigstore/gitsign as configurable alternative | ✅ Committed | [§2.3](#23-sigstoregitsign-as-configurable-alternative) |
+| 5 | SLSA targeting L1→L2→L3 — explanation added | ✅ Committed | [§2.4](#24-slsa-targeting-l1l2l3-explained) |
+| 6 | Materialized-folder Tier 1 generator | ✅ Committed | [§2.5](#25-materialized-folder-tier-1-generator) |
+| 7 | Tier 3 default — AGE looks slow; **need alternative research** → Challenge 16 | ⏳ Deferred | [§3.2](#32-tier-3-stack--alternatives-to-age) |
+| 8 | TerminusDB as vault-mirror only | ✅ Committed | [§2.6](#26-terminusdb-as-optional-vault-mirror-only) |
+| 9 | LinkML as canonical schema substrate | 🅿️ Parked (idea bucket) | [§4.1](#41-linkml-as-canonical-schema-substrate-idea-bucket) |
+| 10 | OSCAL native support — web-of-webs placement | ⏳ Mapped here; promotion to architectural concern pending | [§3.3](#33-oscal-native-support--placement-in-the-web-of-webs) |
+| 11 | Grafeo evaluation | ⏳ User running fresh-agent research directly | [§3.4](#34-grafeo-evaluation-user-running) |
+
+**Score**: 5 confirmed (#1, #3, #4, #5, #6, #8 — six actually). 3 deferred-with-research (#2, #7, #10). 2 user-driven (#11 user, #9 parked).
+
+## §2 Confirmed commitments
+
+### 2.1 Tier 2 layered stack — DuckDB-WASM + Oxigraph + Nemo (provisional)
+
+**Provisional pending [Challenge 14](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) (Grafeo evaluation, user-running).** If Grafeo proves out, this 3-engine stack collapses to one engine and we revisit.
+
+#### What was chosen and why (with alternatives that lost)
+
+**Analytical / SQL surface — DuckDB-WASM**
+
+| | DuckDB-WASM (chosen) | Polars-WASM | sql.js | DataFusion-WASM | ClickHouse-local |
+|---|---|---|---|---|---|
+| Bundle | ~3.2 MB Brotli (lazy-loaded) | tens of MB (Pyodide) | ~1.5 MB | ~10s of MB | n/a (no WASM) |
+| License | MIT | MIT | Public domain | Apache-2.0 | Apache-2.0 |
+| Project health | DuckDB Foundation, weekly releases | **Alpha; "not for production"** | Active but slow | Experimental WASM playground | Active; no WASM port |
+| Joins/pivots | Native PIVOT/UNPIVOT/window | Native | Limited | Yes | Yes |
+| Recursive CTE | Yes (USING KEY since May 2025) | No | Yes (basic) | Yes | n/a |
+| **Verdict** | **Pick** | Reject (alpha) | Fallback only | Reject (size + experimental) | Reject (no WASM) |
+
+**RDF / SPARQL surface — Oxigraph-WASM**
+
+| | Oxigraph-WASM (chosen) | Comunica + N3 + HDT | Apache Jena Fuseki | GraphDB (Ontotext) | Stardog |
+|---|---|---|---|---|---|
+| Bundle | ~3-4 MB | ~200 KB gzipped | n/a (JVM server) | n/a | n/a |
+| License | Apache-2.0/MIT | Apache-2.0/MIT | Apache-2.0 | Commercial | Commercial |
+| SPARQL 1.1 | Full + RDF 1.2 preview | Full + federation | Full + RDFS/OWL inference | Full + best OWL reasoning | Full + OWL+ICV |
+| Browser/Embedded | Yes (in-memory only on Wasm) | Yes (TS-native, lighter) | No | No | No |
+| **Verdict** | **Pick (current)** | **Re-evaluate in Ch 14** — could be lighter | Tier 3 sidecar option | Reject (commercial) | Reject (commercial) |
+
+**Datalog / SSSOM derivation engine — Nemo**
+
+| | Nemo (chosen) | Soufflé | CozoDB | RDFox | Differential Datalog |
+|---|---|---|---|---|---|
+| License | Apache-2.0/MIT | UPL-1.0 | MPL-2.0 | Commercial | MIT (archived) |
+| WASM | **Yes (shipping)** | No (C++→native) | Yes (in-memory only) | No (JVM/native) | Archived |
+| Production validation | **EBI's OxO2 (1.16M mappings → 49.5K inferences in 17 min on a laptop)** | Industry-grade for static analysis | Slowing in 2024–2025 | Highest-quality OWL 2 RL reasoner | VMware archived |
+| Provenance support | Native ("tracing") | Yes | Yes | Best-in-class (why-provenance) | Yes |
+| **Verdict** | **Pick** | Reject (no WASM) | Re-evaluate in Ch 14 | Reject (commercial) | Reject (archived) |
+
+#### Why "layered" and not "single engine"?
+
+Crosswalker has **three different mathematics** at Tier 2:
+- Tabular pivots (analyst spreadsheet) → SQL → DuckDB
+- Ontology semantics (RDF, SKOS, SSSOM standards) → SPARQL → Oxigraph
+- Logical derivation (SSSOM chain rules over crosswalk edges) → Datalog → Nemo
+
+Forcing all three onto a single engine produces 30% great-fit code and 70% awkward workarounds.
+
+**Caveat**: Grafeo (in Challenge 14) claims to do all three (SQL/PGQ + SPARQL + Cypher + GQL + vector). If it works, the layered stack collapses to one engine.
+
+### 2.2 Datalog (Nemo) for SSSOM chain-rule derivation
+
+#### Where Nemo lives in the architecture (web-of-webs mapping)
+
+Nemo is **not a query engine for live user queries**. It is a **build-pipeline tier** between Tier 1 (canonical files) and Tier 2 (query surface):
+
+```
+Tier 1 (canonical files)
+    │
+    │  Markdown + SSSOM TSV
+    │  (asserted crosswalk edges only)
+    ▼
+┌─────────────────────────────────────────────────────────┐
+│  Build-pipeline tier  ← NEMO LIVES HERE                 │
+│                                                         │
+│  Nemo applies SSSOM chain rules:                        │
+│    if A→[skos:exactMatch]→B  AND  B→[skos:closeMatch]→C │
+│    then derive A→[skos:closeMatch]→C                    │
+│    with provenance: derivation_path = [edge1, edge2]    │
+│                                                         │
+│  Output: NEW derived edges saved alongside              │
+│  asserted edges in the canonical files                  │
+└─────────────────────────────────────────────────────────┘
+    │
+    │  Asserted + derived edges (both in files)
+    ▼
+Tier 2 (query surface, in-Obsidian)
+    │
+    │  DuckDB-WASM queries asserted + derived edges as SQL
+    │  Oxigraph queries the same graph as RDF/SPARQL
+    │
+    ▼
+End user sees a complete crosswalk
+```
+
+#### In web-of-webs terms
+
+From the [orientation log's web-of-webs framing](/crosswalker/agent-context/zz-log/2026-05-01-foundation-state-of-play/):
+
+- The **source-ontology webs** (NIST/CIS/MITRE/etc.) start with only their *own* internal edges (hierarchy, references)
+- **Crosswalk edges** between source-ontology webs are *asserted* by the user (or imported from SCF/OLIR)
+- **Derived crosswalk edges** are produced by Nemo composing pairwise mappings through chains — including chains that route through the optional pivot/spine web
+
+So Nemo's job: **densify the crosswalk web by computing transitive closures over asserted edges using SSSOM chain rules**. It runs as a build step (not on every query); derived edges are saved to canonical files alongside asserted ones.
+
+This matches EBI's OxO2 architecture exactly. Crosswalker is essentially "OxO2 for compliance frameworks."
+
+### 2.3 Sigstore/gitsign as configurable alternative
+
+For commit signing when git is in use. **GPG/SSH stays default**; Sigstore is an optional swap-in for teams that want federated OIDC-backed signing (cleanest path to SLSA L3).
+
+Caveat: assumes git is in use at all — see [§3.1](#31-tier-1-audit-trail--alternatives-to-gitgithub) on whether that assumption holds in some environments.
+
+### 2.4 SLSA targeting L1→L2→L3 (explained)
+
+**SLSA = Supply-chain Levels for Software Artifacts** ([slsa.dev/spec/v1.0/](https://slsa.dev/spec/v1.0/)). Originally a software-build-integrity framework; we apply it analogically to compliance evidence pipelines.
+
+The progression Crosswalker targets:
+
+| Version | SLSA Target | What's required | Cost |
+|---|---|---|---|
+| **v0.1** | **L1** | Documented build process; emit a provenance file alongside each commit (just an in-toto SLSA-Provenance JSON). | Trivial — already implicit in git+commit-signing; just needs an in-toto Provenance predicate emitted on commit |
+| **v1.0** | **L2** | Provenance generation runs in a "hosted" context (CI workflow), digitally signed with a key the user can't forge. | Modest — requires a Crosswalker-managed pre-commit hook or CI workflow signing the provenance |
+| **v2.0+** | **L3** | Hardened build with non-extractable signing keys (Fulcio's ephemeral certs are the cleanest way). Requires gitsign + Fulcio + Rekor (Sigstore). | Significant — requires either a managed Crosswalker SaaS-style verifier service OR gitsign with OIDC; this is the architectural argument for Sigstore at v2.0+ |
+
+**Why this matters**: L1/L2/L3 is **auditor vocabulary**. Saying "we target SLSA Build L2 by v1.0" gives a SOC 2 / ISO 27001 auditor a familiar handle. It's a credibility lever, not an engineering checklist.
+
+### 2.5 Materialized-folder Tier 1 generator
+
+Plugin auto-generates Bases-compatible folders containing pre-joined/merged data so users can browse cross-tabs that Bases otherwise cannot compute (no joins, no pivots in Bases). Survives any Tier 2 engine choice — concept is independent of engine selection.
+
+### 2.6 TerminusDB as optional vault-mirror only
+
+If a user wants Git-style branch/diff/merge over the curated crosswalk graph, TerminusDB can be deployed as a **parallel governance database** that reads from the canonical Markdown vault. It is **not** the system of record; **not** the default Tier 3.
+
+## §3 Needs more research (with new challenges spun up)
+
+### 3.1 Tier 1 audit-trail — alternatives to git/GitHub
+
+#### What was committed in Ch 13
+
+Ch 08 + Ch 13 stack: signed commits + RFC 3161 TSA + S3 Object Lock WORM + FRE 902(13) PDF cert + in-toto attestations.
+
+#### Why this isn't fully committed yet
+
+The user's concern: this **assumes git + a remote (GitHub/GitLab/etc.)** which may not be possible in air-gapped, locked-down enterprise, or government environments where:
+- External git remotes are blocked
+- CLI tooling installation is restricted
+- All audit infrastructure must live inside the Obsidian plugin
+
+Could there be an **Obsidian-plugin-native audit trail** that doesn't depend on git or external services?
+
+#### Spin up Challenge 15
+
+[Challenge 15: Non-git audit-trail alternatives](/crosswalker/agent-context/zz-challenges/15-non-git-audit-trail-alternatives/) — Obsidian-plugin-native approaches.
+
+Required scope: evaluate plugin-only audit trail (write-only file with cryptographic chain inside vault), distributed alternatives (CRDT-based history, OrbitDB, GUN), decentralized timestamping without git (OpenTimestamps direct file anchoring), in-Obsidian Sigstore client (no git), existing Obsidian plugins like `obsidian-edit-history` for integrity, etc.
+
+Recommend: keep Ch 08+13 stack as default OR replace OR layer.
+
+### 3.2 Tier 3 stack — alternatives to AGE
+
+#### What's wrong with AGE
+
+The 05-02 research wave surfaced AGE concerns:
+- **Apache AGE governance**: Bitnine Co. (Korean parent) acquired in Dec 2024, renamed SKAI Worldwide, **pivoted away from databases toward AI advertising**. Primary commercial sponsor is no longer in the database business.
+- **Postgres ABI risk**: AGE was directly hit by the PG 17.1 ABI break in November 2024
+- **Slow release cadence**: ~one major release per supported PG line per year; PG 18 support PR was open from October 2025 with slow movement
+- **Single-vendor anchored**: while Apache 2.0, the governance is single-sponsor
+
+#### Tier 3 alternatives that were already researched (in the bloated 05-02 log)
+
+| Engine | License | Health | Why not yet pick |
+|---|---|---|---|
+| **Apache AGE** (current default) | Apache-2.0 | ⚠️ slow, sponsor pivoted | Concerns above |
+| **Apache Jena Fuseki** | Apache-2.0 | A — ASF, mature | Strong contender; SPARQL+RDFS/OWL inference; JVM-only (server fine) |
+| **TerminusDB** | Apache-2.0 (since v4) | DFRNT stewardship since 2025 | Already committed as vault-mirror in §2.6; but could be primary |
+| **HelixDB** | AGPL | YC-funded | AGPL is restrictive; not yet evaluated |
+| **DuckDB-on-server + DuckPGQ** | MIT | Active, weekly releases | DuckPGQ stable on native; one-engine-across-tiers story |
+| **Memgraph** | BSL 1.1 | Active | Not OSI open source |
+| **NebulaGraph** | Apache-2.0 | Distributed-server | Might be overkill |
+| **ArangoDB** | BSL 1.1 (since 2024) | Active | Not OSI open source |
+| **FalkorDB** | SSPL | Active, GraphRAG focus | Not OSI open source |
+
+#### Spin up Challenge 16
+
+[Challenge 16: Tier 3 stack reconsideration — alternatives to AGE](/crosswalker/agent-context/zz-challenges/16-tier-3-stack-reconsideration/) — narrow brief: AGE-vs-Jena-vs-DuckDB-on-server-vs-other. Don't lock in AGE today.
+
+### 3.3 OSCAL native support — placement in the web-of-webs
+
+#### Where OSCAL fits in the architecture
+
+OSCAL is **not an internal data model**. It is a **federally-recognized wire format** for export/import:
+
+```
+Tier 1 (canonical Crosswalker vault)
+    │
+    │  Markdown + SSSOM TSV (internal source of truth)
+    │
+    ▼
+═════════════════════════════════════════════════════════
+EXPORT/IMPORT BOUNDARY  ← OSCAL LIVES HERE
+═════════════════════════════════════════════════════════
+    │
+    │  Crosswalker exports source-ontology webs as OSCAL `catalog` JSON
+    │  Crosswalker exports crosswalk edges as OSCAL `mapping` records
+    │     (Control Mapping Model, currently NIST pre-release)
+    │  Crosswalker exports evidence-link junction notes as
+    │     `assessment-result/observation` records
+    │
+    │  AND vice versa (OSCAL imports into Crosswalker vault)
+    │
+    ▼
+External GRC tooling, federal authorisation packages,
+agency consumers (FedRAMP, ATO packages, etc.)
+```
+
+#### In web-of-webs terms
+
+OSCAL is the **wire format between Crosswalker's web-of-webs and external federal GRC systems**. It is not part of the web-of-webs *itself*; it is the *edge of* it — the export/import boundary where the internal SSSOM-flavored data is reshaped into NIST's preferred JSON/XML/YAML formats.
+
+In the orientation log's web-of-webs diagram, OSCAL is the *port* through which:
+- Source-ontology webs ↔ NIST OSCAL catalogs (machine-readable control catalogs)
+- Crosswalk edges ↔ OSCAL Control Mapping Model records
+- Evidence-vault web ↔ OSCAL Assessment Results
+
+#### Why we'd promote it from "feature" to "architectural concern"
+
+| Consideration | Argument |
+|---|---|
+| **FedRAMP RFC-0024** | Mandates machine-readable authorisation packages by Sept 2026. Federal customers will require OSCAL. |
+| **Credibility multiplier** | Even non-federal customers see OSCAL native support as evidence of auditor-grade data modeling. |
+| **Adjacent ecosystem** | Many commercial GRC tools (Hyperproof, Drata, Vanta, AuditBoard, RegScale) already produce OSCAL output. Crosswalker as OSCAL bridge = useful glue. |
+| **No internal compromise** | We don't change SSSOM-internally; OSCAL is just a serializer/deserializer. |
+
+#### What "promotion" actually means
+
+- Add `crosswalker import oscal <file>` and `crosswalker export oscal --type {catalog,profile,ssp,ar,...}` commands
+- Make OSCAL round-trip a tested feature (not best-effort)
+- Add Foundation roadmap item for OSCAL native support
+
+**Decision pending user input** — once you signal yes/no, this becomes a §2.x commitment or stays in §3.
+
+### 3.4 Grafeo evaluation (user-running)
+
+User is running fresh-agent research sessions on Grafeo directly. [Challenge 14 brief](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/) is the framing.
+
+When the deliverable lands, we revisit §2.1 Tier 2 layered-stack provisional commitment.
+
+## §4 Parked
+
+### 4.1 LinkML as canonical schema substrate (idea bucket)
+
+Major architectural pivot. [Ch 12b deliverable B](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) made the strongest argument: LinkML auto-generates JSON Schema, OWL, SHACL, Pydantic, TypeScript from a single YAML; SSSOM is *itself* defined in LinkML; could be Crosswalker's "Tier 0".
+
+**Real benefit**: decouples engines from schema authority. Every engine becomes a serializer/deserializer plugin against the canonical LinkML schema rather than a competing schema authority.
+
+**Cost**: cascading commitment across every Crosswalker schema (StewardshipProfile, junction-note 13-field, FrameworkConfig, `_crosswalker` metadata, etc.).
+
+**Park for now.** Spin up a future Challenge 17 if interest renews after Ch 14/15/16 land.
+
+## §5 Related
+
+- [2026-05-02 direction log (full)](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) — bloated research record for 9 fresh-agent deliverables. Don't read for normal navigation; read this TL;DR instead. Used as the input artifact for §2/§3/§4 above.
+- [05-01 commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) — predecessor; pairwise+pivot, junction-notes-by-tier, StewardshipProfile rename, meta-schema commitment
+- [05-01 orientation log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-state-of-play/) — the web-of-webs framing referenced in §2.2 (Nemo placement) and §3.3 (OSCAL placement)
+- [Active challenges](/crosswalker/agent-context/zz-challenges/) — Ch 14 (Grafeo, user-driven), **Ch 15 NEW** (non-git audit trail), **Ch 16 NEW** (Tier 3 alternatives)
