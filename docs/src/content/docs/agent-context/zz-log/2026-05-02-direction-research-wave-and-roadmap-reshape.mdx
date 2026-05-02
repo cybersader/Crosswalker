@@ -20,7 +20,7 @@ Yesterday's pair of logs ([orientation AM](/crosswalker/agent-context/zz-log/202
 
 Today, three things converge:
 
-1. **The 08/09/10 research deliverables landed**, all dropped into the chat by the project owner from fresh-agent research sessions and preserved as `.workspace/2026-05-02-challenge-{08,09,10}-*.md` files (gitignored, repo-local).
+1. **The 08/09/10 research deliverables landed**, all dropped into the chat by the project owner from fresh-agent research sessions and now preserved verbatim under [`agent-context/zz-research/`](/crosswalker/agent-context/zz-research/) as public, URL-shareable pages so external research sessions can be pointed at them directly.
 2. **A critical reading of those deliverables** surfaced substantive gaps — particularly in Challenge 10's tech-stack coverage. The deliverables make decisions on a shortlist that doesn't exhaust the design space; the gap is non-trivial because the choice of analytical/graph engine touches every downstream architectural question.
 3. **The roadmap still reads as it did 2026-04-10**, with Challenge 06 still listed as "biggest open question" (now resolved) and no entries for the StewardshipProfile rename, the meta-schema commitment, the new 08/09/10 challenges, or what comes next.
 
@@ -32,7 +32,7 @@ Three fresh-agent research deliverables, all 2026-05-02:
 
 ### 2.1 Challenge 08 — Git history as a compliance audit trail (verdict: augment, not replace)
 
-**Full deliverable**: `.workspace/2026-05-02-challenge-08-git-audit-trail-research.md`. **Brief**: [Challenge 08](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/).
+**Full deliverable**: [Ch 08: Is git history a tenable compliance audit trail?](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/). **Brief**: [Challenge 08](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/).
 
 **Headline finding**: bare signed-commit + branch-protection git fails on four of five core audit-evidence standards (SAS 142 "susceptibility to management bias," PCAOB AS 1105 IPE controls, ISO 27001 A.8.15 tamper-resistance against privileged insiders, SOX §802 WORM expectation). It satisfies the **integrity** leg via the Merkle DAG but fails the **trusted-time** and **non-repudiation** legs because the author controls the timestamp and the repository is internally written.
 
@@ -52,7 +52,7 @@ Three fresh-agent research deliverables, all 2026-05-02:
 
 ### 2.2 Challenge 09 — UUID / CWUUID cross-cutting identifier strategy
 
-**Full deliverable**: `.workspace/2026-05-02-challenge-09-uuid-cwuuid-research.md`. **Brief**: [Challenge 09](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/).
+**Full deliverable**: [Ch 09: UUID/CWUUID cross-cutting identifier strategy](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/). **Brief**: [Challenge 09](/crosswalker/agent-context/zz-challenges/09-uuid-cwuuid-cross-cutting-strategy/).
 
 **Headline finding**: layered scheme. **UUIDv7** (RFC 9562, May 2024) for almost everything Crosswalker generates; **content-addressed sha256 CIDs** only where the entity *is* its content (spine snapshots, schema releases); **CURIEs** for external references (controls, frameworks, ORCIDs); **ORCID CURIEs verbatim** for SSSOM author/reviewer slots. **"CWUUID" is a display convention, not a new algebra** — every CW-minted ID is a canonical UUIDv7 stored in YAML frontmatter; `cw:` prefix and short hex suffixes are UI affordances only.
 
@@ -72,7 +72,7 @@ The deliverable is **substantively complete**. Minor gaps flagged in §3.2 below
 
 ### 2.3 Challenge 10 — Graph→tabular bridging engine for the web-of-webs
 
-**Full deliverable**: `.workspace/2026-05-02-challenge-10-graph-tabular-research.md` (truncated copy; full content in chat history). **Brief**: [Challenge 10](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/).
+**Full deliverable**: [Ch 10: Graph→tabular bridging engine for the web-of-webs](/crosswalker/agent-context/zz-research/2026-05-02-challenge-10-graph-tabular/). **Brief**: [Challenge 10](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/).
 
 **Headline finding**: hybrid 3-tier strategy.
 
@@ -295,7 +295,7 @@ Concrete edits to land in `docs/src/content/docs/reference/roadmap/index.mdx` �
 - Filename rule: human-readable + `--cw<6-hex>` suffix on collision-prone classes
 - Six-class minimum viable Foundation set (vault, ontology web, ontology node, junction note, spine snapshot CID, SSSOM author CURIE)
 - OSCAL round-trip: preserve incoming `@uuid` verbatim; mint UUIDv7 only for new entities
-- Links to deliverable in `.workspace/2026-05-02-challenge-09-uuid-cwuuid-research.md`
+- Links to [deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/)
 
 **B2. NEW: "Tier 2/3 engine deep survey"** — research item
 - Links to [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)
@@ -419,9 +419,10 @@ This list is intentionally non-exhaustive. The pattern: when a Foundation questi
 
 **The research wave (today's deliverables):**
 
-- `.workspace/2026-05-02-challenge-08-git-audit-trail-research.md` (gitignored)
-- `.workspace/2026-05-02-challenge-09-uuid-cwuuid-research.md` (gitignored)
-- `.workspace/2026-05-02-challenge-10-graph-tabular-research.md` (gitignored)
+- [Ch 08 deliverable: Is git history a tenable compliance audit trail?](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/)
+- [Ch 09 deliverable: UUID/CWUUID cross-cutting identifier strategy](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/)
+- [Ch 10 deliverable: Graph→tabular bridging engine for the web-of-webs](/crosswalker/agent-context/zz-research/2026-05-02-challenge-10-graph-tabular/)
+- [Ch 06 deliverable: Pairwise vs synthetic spine](/crosswalker/agent-context/zz-research/2026-05-01-challenge-06-pairwise-spine/) (predecessor; resolved 2026-05-01)
 
 **The challenges (briefs):**
 

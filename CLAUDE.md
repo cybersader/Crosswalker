@@ -328,6 +328,24 @@ The `.workspace/` folder at the repo root is **gitignored** — it holds local w
 
 **Key difference from `zz-log/`:** Workspace docs are messy, in-progress, and local. Log entries are clean, decided, and public.
 
+## Research Deliverables (`agent-context/zz-research/`)
+
+Long-form research deliverables produced by fresh-agent ("deep research") sessions in response to a [research challenge](#research-challenges-agent-contextzz-challenges). Once a deliverable is accepted as input to a decision log, it is moved out of `.workspace/` (gitignored, pre-decision) and into `docs/src/content/docs/agent-context/zz-research/` as a public, URL-shareable page.
+
+**Why public**: external research-mode Claude sessions (and other readers) need to be able to reference the predecessor deliverable when running follow-on research. A gitignored copy is invisible to them.
+
+**File naming**: `YYYY-MM-DD-challenge-NN-<slug>.md`. Date is the day the deliverable landed; challenge number matches the [brief](#research-challenges-agent-contextzz-challenges).
+
+**Format**: plain markdown (`.md`) — these are dense long-form documents and we don't want MDX parsing edge cases for tables, code blocks, em-dashes, or special characters. Frontmatter just needs `title`, `description`, `tags`, `date`, `sidebar.label`, `sidebar.order` (negative date-encoded for reverse-chronological).
+
+**Preservation**: deliverables are not edited after publication except for typo/formatting fixes that don't change content. Critical assessment and follow-on direction live in the corresponding `zz-log/` entry.
+
+**Lifecycle:**
+- Pre-publication drafts live in gitignored `.workspace/`
+- When a deliverable is accepted as input to a decision log → publish to `zz-research/` with frontmatter
+- Cite from the decision log via `/crosswalker/agent-context/zz-research/...` URL
+- Hand external research sessions the URL plus the brief URL when spinning up follow-on work
+
 ## Extended Documentation
 
 For detailed project knowledge, architecture decisions, and roadmap, see `.claude/` folder:
