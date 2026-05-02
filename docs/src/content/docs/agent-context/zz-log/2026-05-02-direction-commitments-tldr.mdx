@@ -24,17 +24,17 @@ A third research wave (Ch 14/15/16) landed later on 2026-05-02 and produced thre
 |---|---|---|---|
 | 1 | Tier 2 layered stack (DuckDB-WASM + Oxigraph + Nemo) — confirmed; **extended** with Tier 2-Lite alternate + Comunica federation add-on by Ch 14 | ✅ Confirmed | [§2.1](#21-tier-2-layered-stack--duckdb-wasm--oxigraph--nemo-confirmed) |
 | 2 | Tier 1 audit-trail — **4-tier model adopted by Ch 15**; T2 OpenTimestamps default; git stack repositioned as one of three T3 options | ✅ Confirmed | [§3.1](#31-tier-1-audit-trail--4-tier-model-with-opentimestamps-t2-default) |
-| 3 | Datalog (Nemo) for SSSOM derivation — placement explained | ✅ Committed | [§2.2](#22-datalog-nemo-for-sssom-chain-rule-derivation) |
+| 3 | [Datalog](/crosswalker/concepts/zz-glossary/datalog/) (Nemo) for SSSOM derivation — placement explained | ✅ Committed | [§2.2](#22-datalog-nemo-for-sssom-chain-rule-derivation) |
 | 4 | Sigstore/gitsign as configurable alternative (now scoped to T3 architecture C) | ✅ Committed | [§2.3](#23-sigstoregitsign-as-configurable-alternative) |
 | 5 | SLSA targeting L1→L2→L3 — explanation added | ✅ Committed | [§2.4](#24-slsa-targeting-l1l2l3-explained) |
 | 6 | Materialized-folder Tier 1 generator | ✅ Committed | [§2.5](#25-materialized-folder-tier-1-generator) |
 | 7 | Tier 3 default — **flipped by Ch 16**: Apache Jena Fuseki primary + oxigraph-server same-API alternative; AGE retained as fallback | ✅ Confirmed | [§3.2](#32-tier-3-stack--default-flipped-from-age-to-fusekioxigraph-server) |
 | 8 | TerminusDB as vault-mirror only — small-vendor (DFRNT) risk explicitly flagged by Ch 16 | ✅ Committed | [§2.6](#26-terminusdb-as-optional-vault-mirror-only) |
 | 9 | LinkML as canonical schema substrate | 🅿️ Parked (idea bucket) | [§4.1](#41-linkml-as-canonical-schema-substrate-idea-bucket) |
-| 10 | OSCAL native support — web-of-webs placement | ⏳ Mapped here; promotion to architectural concern pending user input | [§3.3](#33-oscal-native-support--placement-in-the-web-of-webs) |
+| 10 | OSCAL native support — wire format on export/import boundary | ✅ Yes (after core); deferred to Phase 2+; document via [`registry/oscal`](/crosswalker/reference/registry/oscal/) page mapping OSCAL into Crosswalker mental model | [§3.3](#33-oscal-native-support--placement-in-the-web-of-webs) |
 | 11 | Grafeo evaluation — **resolved by Ch 14 deliverable**; track in long-horizon list with explicit migration triggers; do not adopt yet | ✅ Resolved | [§3.4](#34-grafeo-evaluation--resolved-by-ch-14) |
 
-**Score after third wave**: 8 confirmed (#1, #2, #3, #4, #5, #6, #7, #8). 1 pending user input (#10 OSCAL). 1 parked (#9 LinkML). 1 resolved-track (#11 Grafeo).
+**Score after third wave + sign-off**: 9 confirmed (#1, #2, #3, #4, #5, #6, #7, #8, #10). 1 parked (#9 LinkML). 1 resolved-track (#11 Grafeo). #10 OSCAL deferred to Phase 2+ but committed-in-principle.
 
 See the [third-wave architectural shifts log](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) for the deltas behind #1, #2, #7, and #11.
 
@@ -93,6 +93,8 @@ Forcing all three onto a single engine produces 30% great-fit code and 70% awkwa
 **Caveat**: Grafeo (in Challenge 14) claims to do all three (SQL/PGQ + SPARQL + Cypher + GQL + vector). If it works, the layered stack collapses to one engine.
 
 ### 2.2 Datalog (Nemo) for SSSOM chain-rule derivation
+
+> [Datalog](/crosswalker/concepts/zz-glossary/datalog/) is a declarative logic-programming language — you write *rules* like "if A maps to B and B maps to C, then A maps to C with min confidence" once, and the engine derives all consequences. See the [verbose Datalog glossary entry](/crosswalker/concepts/zz-glossary/datalog/) for the full explainer of why we use it instead of plain SQL.
 
 #### Where Nemo lives in the architecture (web-of-webs mapping)
 
@@ -273,7 +275,12 @@ In the orientation log's web-of-webs diagram, OSCAL is the *port* through which:
 - Make OSCAL round-trip a tested feature (not best-effort)
 - Add Foundation roadmap item for OSCAL native support
 
-**Decision pending user input** — once you signal yes/no, this becomes a §2.x commitment or stays in §3.
+**Decision (received 2026-05-02): ✅ yes, but after core working.** User read on OSCAL: it sounds a lot like a custom schema we map *to* (i.e., a wire format on the export/import boundary, not an internal model). Treat it as that, document it in Crosswalker's mental-model vocabulary, and don't promote it to architectural concern *until the core SSSOM-internal pipeline is solid*.
+
+**Action items**:
+- Update [`reference/registry/oscal.mdx`](/crosswalker/reference/registry/oscal/) to map OSCAL into Crosswalker's mental model (web-of-webs framing; map OSCAL-native terms to Crosswalker synonyms — `catalog` ↔ source-ontology web, `Control Mapping Model` ↔ crosswalk edges, `Assessment Result` ↔ junction notes / evidence-vault web)
+- Cross-link from any page that mentions OSCAL back to that page
+- Roadmap placement: deferred until core export/import boundary is well-defined; flagged for Phase 2+ rather than Foundation
 
 ### 3.4 Grafeo evaluation — resolved by Ch 14
 

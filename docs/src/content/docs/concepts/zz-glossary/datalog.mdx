@@ -1,0 +1,80 @@
+---
+title: Datalog
+description: A declarative logic-programming language used in Crosswalker (via the Nemo engine) for SSSOM chain-rule derivation. Conceptually "SQL with built-in recursion + smart join optimization."
+tags: [query-language, engine, sssom, datalog]
+sidebar:
+  label: "Datalog"
+---
+
+## TL;DR
+
+**Datalog is a declarative query/rule language**: you write *rules* about what's true, the engine figures out everything that follows. It's been around since the 1970s (originated as a sublanguage of Prolog) and is the theoretical underpinning of how relational databases evaluate joins.
+
+In Crosswalker it's used for one specific job — **deriving new SSSOM mappings from existing ones**. If `NIST CSF Identify` maps to `ISO 27002 Risk Assessment` and `ISO 27002 Risk Assessment` maps to `MITRE ATT&CK Reconnaissance`, Crosswalker can derive `NIST CSF Identify → MITRE ATT&CK Reconnaissance` automatically with a confidence score that's the minimum of the two source confidences.
+
+You write that rule once:
+
+```
+derived(a, c, min(c1, c2)) :- mapping(a, b, c1), mapping(b, c2, _).
+```
+
+The Datalog engine handles the rest — including **chains of any length** without you having to write a loop.
+
+## Why Crosswalker uses it
+
+The alternative is plain SQL with `WITH RECURSIVE` (a "recursive CTE"). Both can express transitive closure. Datalog wins on three things that matter to Crosswalker:
+
+1. **Stratified negation** — Datalog can say "find mappings A→C that are NOT derivable through any intermediate B" naturally. SQL recursive CTEs can fake this with `NOT EXISTS` / `LEFT JOIN` but the queries get ugly fast.
+2. **Aggregation inside recursion** — Datalog rules can compute `min(confidence_a, confidence_b)` *as part of* the rule. Recursive CTEs handle this but with awkward window functions.
+3. **Magic-set rewriting** — modern Datalog engines (Nemo, CozoDB) automatically optimize chain queries by working backward from what you asked for. Recursive CTEs don't do this; they materialize the full transitive frontier.
+
+For Crosswalker at scale (10⁶+ mappings with branching factor over 5), the difference is real. At small scale (≤10⁵ mappings) recursive CTE is fine — which is why [Tier 2-Lite](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/) drops Datalog and uses recursive CTE instead.
+
+## Engine choice: Nemo
+
+Per the [Ch 12 Datalog vs SQL deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/), Crosswalker uses **[Nemo](https://github.com/knowsys/nemo)** — a Rust Datalog engine from TU Dresden with native WASM support, stratified negation, existential rules, and W3C-tested OBDA semantics. It's the Datalog engine in the Tier 2 layered stack.
+
+Sister Datalog engines on the watchlist:
+- **CozoScript** (CozoDB) — superset of Datalog with built-in graph algorithms (PageRank, Dijkstra, Yen-K) and HNSW vector queries integrated as first-class joins. Rejected for adoption due to maintenance signal weakening — see [Ch 14 §2.3](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/).
+- **WOQL** (TerminusDB) — Datalog with `path()`, `dot()`, `slice()` operators. Relevant only if TerminusDB is adopted.
+- **Datalevin** (Clojure/JVM) — best-in-class query optimizer; not WASM, so out of scope for Tier 2.
+- **Minigraf** (bi-temporal Datalog) — pre-1.0, single-maintainer; on the [Ch 14 trigger B](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#24-migration-triggers-ch-14-7--preserved-verbatim-for-discoverability) watchlist for SSSOM bi-temporal history queries.
+
+## How it relates to other Crosswalker query layers
+
+```
+Crosswalker query stack (where each language lives)
+
+Tier 2 (browser, full stack)
+├── DuckDB-WASM        →  SQL (analytics, joins, Parquet)
+├── Oxigraph-WASM      →  SPARQL (RDF, federated queries)
+└── Nemo-WASM          →  DATALOG (SSSOM chain-rule derivation)  ← us
+
+Tier 2-Lite (low-end / Obsidian Mobile)
+└── sqlite-wasm        →  SQL with recursive CTEs (Datalog substitute)
+
+Tier 3 (server)
+├── Apache Jena Fuseki →  SPARQL
+├── oxigraph-server    →  SPARQL (same engine as Tier 2 Oxigraph)
+├── DuckDB-on-server   →  SQL + SQL/PGQ
+└── (optional) TerminusDB →  WOQL Datalog
+```
+
+In words: Datalog fills a gap that SQL and SPARQL each do imperfectly. SQL is great at joins but awkward at recursion. SPARQL is great at graph patterns but limited at rule-level aggregation. Datalog handles both.
+
+## When Datalog is not the right tool
+
+- **Tier 2-Lite**: bundle size matters more than expressivity. Use recursive CTE.
+- **Local user-facing queries**: SPARQL is easier to write by hand and Oxigraph is fast enough. Use SPARQL.
+- **Analytical rollups** (coverage matrices, predicate distributions): use DuckDB SQL.
+- **Federation across multiple endpoints**: Comunica + SPARQL `SERVICE` is the right abstraction.
+
+Datalog is reserved for **derivation rules** — the place where its expressivity premium pays off.
+
+## Further reading
+
+- [Ch 12 deliverable A: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) — the full evaluation that picked Nemo
+- [Ch 18: Tier 2-Lite SSSOM rule subset and scale ceiling](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/) — defines which rules survive without Datalog
+- [Third-wave architectural shifts log §2](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#2-ch-14--tier-2-stack-confirmed-and-extended) — where Nemo was confirmed in the Tier 2 stack
+- [Nemo (TU Dresden)](https://github.com/knowsys/nemo) — the Rust Datalog engine Crosswalker uses
+- [Datalog Wikipedia](https://en.wikipedia.org/wiki/Datalog) — academic background
