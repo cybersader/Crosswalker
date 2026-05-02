@@ -18,6 +18,14 @@ If you only read one log from today, read this one.
 A third research wave (Ch 14/15/16) landed later on 2026-05-02 and produced three substantively directional shifts: Tier 2 confirmed-and-extended, Tier 3 default flipped from AGE to Fuseki/oxigraph-server, audit-trail 4-tier model adopted with OpenTimestamps as new T2 default. **See the [direction third-wave architectural shifts log](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/)** for the deltas. Sections §2.1, §3.1, §3.2, §3.4 below have been updated to reflect the new defaults.
 :::
 
+:::caution[Reframed by v0.1 stack pivot — read this first for the build target]
+Two more deliverables (Ch 18 + Ch 19) landed later 2026-05-02 and produced a v0.1 build-target pivot. The third-wave commitments captured below are now **back-pocket research** (opt-in companion plugins for v1.0+); the **actual v0.1 build target** is in **[the v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)**.
+
+Specifically: v0.1 ships Tier 1 (markdown + YAML STRM, in-memory JS Map) + Tier 2 (`@sqlite.org/sqlite-wasm` sidecar, ~600 KB) bundled together (~1.2 MB total). The third-wave's layered Tier 2 stack (DuckDB + Oxigraph + Nemo, ~5 MB), Tier 3 server matrix, and 4-tier audit with T2 OTS default are reframed as **researched and ready-when-needed**, not v0.1 defaults. The architectural safety guarantee — Tier 2 and Tier 3 are projections of Tier 1, fully recoverable — is now explicit and load-bearing.
+
+The third-wave research is *not invalidated*; it's reframed at the build-target boundary. Sections below remain valid as research direction; for what gets built first, see the v0.1 pivot log.
+:::
+
 ## Status at a glance
 
 | # | Item | Status | Where |
@@ -37,6 +45,8 @@ A third research wave (Ch 14/15/16) landed later on 2026-05-02 and produced thre
 **Score after third wave + sign-off**: 9 confirmed (#1, #2, #3, #4, #5, #6, #7, #8, #10). 1 parked (#9 LinkML). 1 resolved-track (#11 Grafeo). #10 OSCAL deferred to Phase 2+ but committed-in-principle.
 
 See the [third-wave architectural shifts log](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) for the deltas behind #1, #2, #7, and #11.
+
+**v0.1 build-target reframe**: rows #1 (Tier 2 layered stack), #2 (Tier 1 audit-trail T2 OTS default), #4 (Sigstore/gitsign Tier 3 audit option), #7 (Tier 3 default), #8 (TerminusDB vault-mirror), #10 (OSCAL native) are all **back-pocket research / opt-in companion plugins or future phases**, not v0.1 build target. The v0.1 stack is in the [v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) §3. Rows #3 (Datalog placement), #5 (SLSA targeting), #6 (materialized-folder generator), #9 (LinkML parked), #11 (Grafeo) are unaffected by the v0.1 pivot.
 
 ## §2 Confirmed commitments
 

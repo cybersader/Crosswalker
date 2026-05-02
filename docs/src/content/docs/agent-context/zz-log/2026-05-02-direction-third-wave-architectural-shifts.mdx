@@ -12,6 +12,12 @@ sidebar:
 This log captures the *delta* introduced by the third research wave (Ch 14/15/16) on top of the [TL;DR direction commitments](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/). Read the TL;DR first for the canonical "where we're at"; read this for "what changed today and why."
 :::
 
+:::caution[Reframed by v0.1 stack pivot]
+Two more deliverables (Ch 18 + Ch 19) landed later 2026-05-02 and pivoted the v0.1 build target. The "✅ Confirmed" defaults captured in this log — Tier 2 layered DuckDB+Oxigraph+Nemo, Tier 3 Fuseki/oxigraph-server, 4-tier audit with T2 OpenTimestamps default — are now **back-pocket research** (opt-in companion plugins, available when users outgrow v0.1). The actual v0.1 build target is the **[v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)**: Tier 1 (markdown + YAML STRM, in-memory JS Map) + Tier 2 (sqlite-wasm sidecar, ~600 KB) bundled together (~1.2 MB total).
+
+The §7.2 sign-off remains valid as **confirmation that these research directions are sound** for back-pocket use. The reframe is at the v0.1 build-target boundary, not at the research-validity level. Items here are *researched and ready when needed*, not invalidated.
+:::
+
 ## §1 Why this log exists
 
 Three more fresh-agent research deliverables landed today, all spun up earlier in the same day in response to user feedback on the second wave (Ch 11/12/13):
@@ -275,10 +281,14 @@ These should be applied to the [Roadmap reference](/crosswalker/reference/roadma
 
 ### 7.2 Confirmed defaults — user sign-off received 2026-05-02
 
-- ✅ **Tier 3 default flip** (this log §3) — Fuseki primary + oxigraph-server alternative + AGE as fallback. **Confirmed.**
-- ✅ **Tier 1 audit 4-tier model + T2 OTS default** (this log §4) — T0/T1/T2/T3 model + OpenTimestamps as new T2 default + git stack as one of three T3 options. **Confirmed.**
-- ✅ **Tier 2 stack + Tier 2-Lite alternate** (this log §2) — Ch 11 layered stack as production + sqlite-wasm Tier 2-Lite alternate stack. **Confirmed.**
-- ⏳ **Comunica + N3 + HDT federation add-on** (this log §2) — **conditional** confirmation. User flagged that Comunica/SPARQL "seem bulky or overengineered" and asked for an honest, practical assessment before locking in. **Action**: write a Comunica honest-and-practical assessment page (under `architecture/` or as a fresh-agent research task) before treating this as a committed default. The simplicity-default principle (simpler-thing-becomes-default-because-more-adoptable) needs an explicit defense for Comunica or it gets dropped from the recommended stack.
+:::note[v0.1 reframe]
+These confirmations remain valid as **confirmation that the research directions are sound for back-pocket use** (i.e., as opt-in companion plugins for v1.0+). They are *not* the v0.1 build target. The v0.1 stack is in the **[v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)** §3.
+:::
+
+- ✅ **Tier 3 default flip** (this log §3) — Fuseki primary + oxigraph-server alternative + AGE as fallback. **Confirmed for back-pocket / Tier 3 deployment guide. Tier 3 is not in v0.1 plugin scope at all.**
+- ✅ **Tier 1 audit 4-tier model + T2 OTS default** (this log §4) — T0/T1/T2/T3 model + OpenTimestamps as new T2 default + git stack as one of three T3 options. **Confirmed for the menu of audit upgrade profiles. v0.1 default = T1 (git + signed commits); T2/T3 surface as opt-in compliance-export mode** per the [v0.1 pivot log §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#8-audit-trail-default--t1).
+- ✅ **Tier 2 stack + Tier 2-Lite alternate** (this log §2) — Ch 11 layered stack as production + sqlite-wasm Tier 2-Lite alternate stack. **Reframed**: Tier 2-Lite (sqlite-wasm sidecar) is *promoted to default-bundled v0.1 Tier 2*; the layered DuckDB+Oxigraph+Nemo stack is *back-pocket as v1.0+ companion plugin*. See [v0.1 pivot log §3 + §5](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#3-v01-stack--what-we-build-first).
+- ⏳ **Comunica + N3 + HDT federation add-on** (this log §2) — **conditional** confirmation. User flagged that Comunica/SPARQL "seem bulky or overengineered" and asked for an honest, practical assessment before locking in. **Action**: write a Comunica honest-and-practical assessment page (under `architecture/` or as a fresh-agent research task) before treating this as a committed default. The simplicity-default principle (simpler-thing-becomes-default-because-more-adoptable) needs an explicit defense for Comunica or it gets dropped from the recommended stack. **Per v0.1 pivot: Comunica federation is v1.0+ companion plugin scope, not v0.1.**
 
 ### 7.3 Follow-on candidates (briefs not yet spun up)
 
