@@ -1,0 +1,125 @@
+---
+title: "Challenge 11: Tier 2/3 graph + analytical engine deep survey"
+description: "Re-evaluate the Tier 2 and Tier 3 engine choice from Challenge 10 against the full design space — Datalog engines, production triple stores, versioned graph databases (TerminusDB especially), other property graphs, embedded analytical engines, vector+graph hybrids, streaming/incremental MV systems, virtual/federated approaches, and query unification layers."
+tags: [research, architecture, query-engine, tier-2, tier-3, foundation]
+date: 2026-05-02
+sidebar:
+  label: "11 · Tier 2/3 engine deep survey"
+---
+
+## Why this exists
+
+[Challenge 10's deliverable](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#23-challenge-10--graphtabular-bridging-engine-for-the-web-of-webs) made the Tier 2/3 engine call (DuckDB-WASM + Apache AGE) on the basis of a 9-engine shortlist. Whole classes of relevant systems were not engaged with at all — Datalog engines, production triple stores, versioned graph databases, vector+graph hybrids, streaming/incremental view-maintenance systems, virtual/federated approaches.
+
+For a multi-year compliance tool whose primary value is *durability of a curated dataset*, locking in the engine choice on an incomplete shortlist is premature. This challenge re-evaluates against the full design space.
+
+## What to investigate
+
+### 1. Engines NOT covered in Challenge 10 — full evaluation matrix
+
+For each system below, score the same Challenge 10 axes (graph fit, tabular fit, browser/Obsidian compatibility, bundle size, license, project health) plus three new axes (RDF semantics fit, native versioning support, vector+graph hybrid):
+
+**Datalog engines (high priority — direct fit for SSSOM chain rules):**
+- [Soufflé](https://souffle-lang.github.io/)
+- [Nemo](https://github.com/knowsys/nemo) — already used by OxO2 for SSSOM derivation
+- Differential Datalog
+- Datomic / Datomic Pro
+- RDFox (commercial; instructive for design)
+
+**Production triple stores (RDF-native, relevant for SSSOM/SKOS/STRM):**
+- Apache Jena Fuseki
+- GraphDB (Ontotext)
+- Virtuoso
+- RDF4J
+- Stardog
+- AnzoGraph
+- Blazegraph
+
+**Versioned graph databases (high priority — TerminusDB especially):**
+- **TerminusDB** — Git-style branching/diff/merge over RDF; *uncannily aligned* with Crosswalker's files-canonical ethos. Demands first-class evaluation
+- Dolt (relational, but versioned-DB pattern worth understanding)
+
+**Other property graphs:**
+- Memgraph
+- NebulaGraph
+- ArangoDB
+- Dgraph
+- FalkorDB (formerly RedisGraph; vector+graph hybrid)
+- OrientDB
+
+**Embedded analytical engines (Tier 1.5 / alternative to DuckDB-WASM):**
+- Polars-WASM (Rust→WASM, native joins/pivots, no SQL required)
+- DataFusion (Apache Arrow ecosystem)
+- LanceDB
+- ClickHouse-local (clickhouse-local in browser?)
+- Velox
+
+**Vector + graph hybrids (relevant for AI-assisted features):**
+- Weaviate
+- Qdrant
+- Milvus
+- FalkorDB+vec
+- KuzuDB had vector — confirm fork status (see §3 below)
+
+**Streaming / incremental MV systems:**
+- Materialize
+- Differential Dataflow
+- Snowflake Dynamic Tables
+- ksqlDB
+
+**Virtual / federated:**
+- Ontop (SPARQL-over-relational)
+- Trino
+- Dremio
+
+**Query unification:**
+- GraphQL gateway (compiles to SQL/Cypher/SPARQL per backend)
+- Substrait
+
+### 2. Architectural questions Challenge 10 didn't ask
+
+- **TerminusDB as Tier 2 or Tier 3 primary** — its versioned-graph-with-diff-and-merge model maps directly onto Crosswalker's "files canonical, derived stores rebuildable" ethos. Should be evaluated as a top contender, not glossed
+- **Polars-WASM as Tier 1.5** — bundle-size-sensitive users could get real joins/pivots without DuckDB's 6 MB. Doc treats it only as a renderer-side helper
+- **GraphQL as a tier-agnostic query surface** — a unified query layer that abstracts the engine choice across tiers
+- **CRDT layer for the deferred live-edit team mode** — Yjs / Automerge / Loro
+- **WASM bundle optimization strategies** — tree-shaking, code-splitting, on-demand loading. Concrete plan, not vague gestures
+- **LLM/NL-query architecture** — where does the LLM live? Sidecar API? In-browser? Local? How does it bind to whichever engine is at Tier 2?
+- **Datalog vs recursive CTE for the *core* SSSOM chain-rule derivation** — overlaps with [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/); coordinate but don't duplicate
+
+### 3. Verify Challenge 10's empirical claims
+
+- **"KuzuDB archived 10 October 2025"** — load-bearing for the entire engine choice. Verify upstream state, the "bighorn" community fork status (Kineviz fork), and whether any other production-grade fork has emerged
+- **"DuckDB-WASM ~3.2 MB compressed"** — confirm against current build; bundle has grown over releases
+- **"DuckPGQ extension not yet WASM-friendly"** — check current state of the SQL/PGQ extension
+- **Apache AGE PostgreSQL version compatibility window** — current AGE supports Postgres 11–18; confirm
+
+## Success criteria for the deliverable
+
+1. **Engine evaluation matrix** covering ≥15 engines from §1 above on the unified scoring axes
+2. **TerminusDB explicit deep dive** — does it deserve to be the Tier 2 or Tier 3 primary?
+3. **Recommendation against Challenge 10's call**: keep DuckDB+AGE, replace, layer (e.g., Datalog-on-top-of-AGE), or hybrid (e.g., DuckDB-WASM + TerminusDB option)
+4. **Verification of empirical claims** in Challenge 10 with citations
+5. **Bundle size strategy** for whichever Tier 2 engine is recommended — concrete tree-shaking / code-splitting / on-demand-loading plan
+6. **Migration / re-decision triggers** — under what conditions should this decision be revisited (e.g., KuzuDB fork stabilizes for 12+ months)
+
+## Out of scope
+
+- Actual benchmarks against representative GRC data — separate work item, see [Challenge 02](/crosswalker/agent-context/zz-challenges/02-architecture-at-scale/)
+- Specific UI design for the query-builder layer
+- Implementation details of any chosen engine
+- The Datalog vs SQL fork for the *core derivation engine* — see [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/) for that narrower question
+- The audit-trail attestation primitives — see [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)
+
+## Relationship to prior challenges
+
+- **Supersedes** the engine-selection portion of [Challenge 10](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/). Challenge 10's broader 3-tier architecture (materialized folders → embedded engine → server) stands; this challenge re-decides *which* embedded engine and *which* server stack
+- **Coordinates with [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/)** — Challenge 12 is narrower (Datalog vs SQL for chain rules specifically); Challenge 11 is broader (the whole engine survey)
+- **Independent of [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)** — different layer of the architecture
+
+## Related
+
+- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/) — predecessor; engine shortlist this challenge expands
+- [Challenge 12: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/) — sibling; narrow fork-in-the-road
+- [05-02 Direction log §3.1 Challenge 10 gap inventory](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#31-challenge-10-has-substantive-gaps) — the source of this challenge's scope
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
+- Research deliverable Crosswalker is reacting to: `.workspace/2026-05-02-challenge-10-graph-tabular-research.md`

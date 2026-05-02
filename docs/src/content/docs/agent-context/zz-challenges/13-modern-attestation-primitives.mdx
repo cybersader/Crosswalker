@@ -1,0 +1,133 @@
+---
+title: "Challenge 13: Modern attestation primitives (Sigstore, in-toto, SLSA, OpenTimestamps, VCs)"
+description: "Narrower follow-on to Challenge 08. Evaluate the modern attestation stack — Sigstore for federated signing, in-toto for review attestations, SLSA for supply-chain framing, OpenTimestamps as alternative/complement to RFC 3161, W3C Verifiable Credentials for the qualified-person certification — and recommend whether these subsume, complement, or are skipped vs Challenge 08's TSA + WORM + cert-export Tier 1 plan."
+tags: [research, audit, evidence-mapping-links, compliance, attestation, foundation]
+date: 2026-05-02
+sidebar:
+  label: "13 · Modern attestation primitives"
+---
+
+## Why this exists
+
+[Challenge 08's deliverable](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#21-challenge-08--git-history-as-a-compliance-audit-trail-verdict-augment-not-replace) recommends augmenting bare git with three Tier 1 hardening layers (RFC 3161 trusted timestamps, S3 Object Lock WORM mirror, FRE 902(13) qualified-person certification report). The recommendation is implementable today and would close the SAS 142 / PCAOB AS 1105 / ISO 27001 A.8.15 / SOX §802 gaps the deliverable identifies.
+
+But Challenge 08 deliberately stayed inside the "git + TSA + S3" toolchain. **A whole layer of modern attestation primitives — Sigstore, in-toto, SLSA, OpenTimestamps, W3C Verifiable Credentials — got at most a passing mention.** Some of these are recent enough (Sigstore reached v1.0 in 2022; SLSA v1.0 was published in April 2023) that Challenge 08's prior-art survey doesn't reflect their current maturity.
+
+If, for example, Sigstore-backed federated OIDC signing replaces user-managed GPG/SSH keys, that's a Tier 1 architectural difference (fundamentally different UX, different trust model, different operational story) — not a polish item. Worth knowing before locking in Challenge 08's recommendation.
+
+This challenge runs the parallel evaluation.
+
+## What to investigate
+
+### 1. Sigstore vs RFC 3161 + GPG/SSH for the per-commit signing-and-timestamping primitive
+
+[Sigstore](https://www.sigstore.dev/) provides:
+- **Cosign / gitsign** — federated, OIDC-backed signing (Google, GitHub, Microsoft as identity providers)
+- **Rekor** — a public transparency log (Merkle-tree append-only)
+- **Fulcio** — short-lived certificate authority binding OIDC identity → signing key
+
+Compare against Challenge 08's "GPG/SSH signing + RFC 3161 TSA" stack:
+
+- **Trust model**: federated OIDC vs user-managed key
+- **UX cost**: one-time `gcloud auth` style flow vs SSH key generation + GPG keyring management
+- **Key rotation / revocation**: short-lived Sigstore certs auto-rotate; long-lived GPG/SSH keys require manual rotation discipline
+- **Audit verifiability**: Rekor public log vs locally-held TSA receipts
+- **Standards posture**: which is a recognized "external party" under SAS 142 ¶A22's management-bias attribute?
+- **Deployment**: Sigstore requires public OIDC integration (acceptable in most enterprise contexts; impossible in air-gapped). RFC 3161 has free public TSAs but also self-hostable.
+
+### 2. in-toto attestations vs simple commit messages for the review/approval chain
+
+[in-toto](https://in-toto.io/) is the standard for structured attestations of "this evidence was reviewed by X using process Y at time Z." Adopted by SLSA as the framing primitive.
+
+Crosswalker's evidence-link junction notes encode review state via the `reviewer` and `review_date` frontmatter fields plus the commit signature and message. An in-toto attestation would encode the same information as a structured, signed predicate that can be queried, verified, and audited as a first-class artifact.
+
+Investigate:
+- in-toto attestation schemas relevant to evidence review (SLSA Provenance v1, Build Provenance, custom predicates for compliance use)
+- Cost of generating in-toto attestations per evidence-link state change (one extra signed file per commit)
+- Storage: in-toto attestations alongside commits or in a separate `.attestations/` directory?
+- Verifiability: does in-toto + Sigstore give a clean "show me the audit chain for this evidence-link" UX?
+- Backward path: can in-toto attestations co-exist with Challenge 08's PDF Audit Authenticity Report, or do they replace it?
+
+### 3. SLSA Level 1–4 mapping
+
+[SLSA v1.0](https://slsa.dev/spec/v1.0/) is the supply-chain integrity framework. Originally for software builds but the principles map cleanly onto compliance evidence pipelines.
+
+Map Crosswalker against SLSA levels:
+- **L1**: documented build process — does Crosswalker meet this for evidence-link generation?
+- **L2**: hosted, generated provenance — what would it cost to provide this?
+- **L3**: hardened build, non-falsifiable provenance — TSA + WORM + Sigstore would get here
+- **L4**: two-party review for all changes — possible for high-stakes vaults; what's the UX?
+
+Recommend a target SLSA level for v0.1, v1.0, v2.0+ Crosswalker.
+
+### 4. OpenTimestamps vs RFC 3161 TSAs
+
+[OpenTimestamps](https://opentimestamps.org/) anchors arbitrary file hashes to the Bitcoin blockchain via a free, decentralized timestamping service. Compare against RFC 3161:
+
+- **Trust anchor**: Bitcoin proof-of-work history vs CA-issued certificate
+- **Cost**: free vs free (most public TSAs are free)
+- **Verifiability**: requires Bitcoin-aware tooling vs requires PKIX-aware tooling (both have widespread support)
+- **Recognition under SAS 142**: is "Bitcoin block at height N includes a Merkle root of my commit hash" a credible "external party" attestation? Auditor familiarity?
+- **Latency**: OpenTimestamps takes hours-to-days to anchor (Bitcoin block time); RFC 3161 is sub-second
+- **Permanence**: Bitcoin chain effectively permanent; CA TSA receipts last as long as the CA's archive
+
+Recommend: replace, complement, skip.
+
+### 5. W3C Verifiable Credentials for the qualified-person certification
+
+Challenge 08 recommends a built-in PDF/JSON Audit Authenticity Report that doubles as a FRE 902(13) qualified-person certification. [W3C Verifiable Credentials](https://www.w3.org/TR/vc-data-model-2.0/) provide a more structured alternative:
+
+- A VC issued by the qualified person (declarant) to the audit chain
+- Cryptographically signed; verifiable independent of the report's PDF format
+- Standard predicate vocabulary for credential claims
+- Compatible with DID-based identity (deferred for Crosswalker; relevant for cross-vault federation)
+
+Compare:
+- VC vs PDF/JSON for the actual artifact handed to an external auditor
+- Auditor familiarity (PDF universal; VC still emerging)
+- Standards alignment (VC is W3C; PDF certification report is purely a UI choice)
+- Implementation cost (issuing VCs vs generating PDFs)
+
+### 6. AWS QLDB / Azure Confidential Ledger / immudb deeper evaluation
+
+Challenge 08 dismisses these in one paragraph each. They're worth a deeper look as managed alternatives to "git + S3 Object Lock":
+
+- **AWS QLDB** — managed append-only ledger with cryptographic verification. Status note: AWS announced deprecation in mid-2024. Confirm current state; if dead, drop from consideration
+- **Azure Confidential Ledger** — managed append-only ledger backed by SGX/TEE attestation
+- **immudb** — open-source append-only ledger with cryptographic chaining; self-hostable
+
+For each: does it provide guarantees the git + TSA + WORM stack doesn't, at a cost worth paying?
+
+## Success criteria for the deliverable
+
+1. **Decision per primitive**: replace, complement, or skip vs Challenge 08's stack
+   - Sigstore: replace GPG/SSH + RFC 3161? Augment? Skip?
+   - in-toto: replace commit messages for review chain? Augment? Skip?
+   - SLSA: target level for each Crosswalker version (v0.1, v1.0, v2.0+)
+   - OpenTimestamps: replace RFC 3161? Complement? Skip?
+   - W3C VCs: replace PDF certification report? Augment? Skip?
+2. **Tier 1 minimum bar revision**: revise Challenge 08's "5 required Tier 1 hardening layers" if any of the above replaces or augments
+3. **Net architectural impact** — if Sigstore is adopted, what does the Tier 1 audit-trail UX look like? If VCs are adopted, what changes in the export flow?
+4. **Auditor-familiarity rating** for each primitive (PDF and RFC 3161 are universal; Sigstore growing; OpenTimestamps niche; VCs emerging)
+5. **Resolution to Challenge 08's "augment" recommendation** — confirm, refine, or supersede
+
+## Out of scope
+
+- Implementation details of any chosen primitive
+- Specific vendor selection (e.g., AWS vs Azure vs GCP for Confidential Ledger)
+- Zero-knowledge proof systems and other exotic cryptography (overkill for this stage)
+- Detailed cost modeling per primitive at GRC document volumes
+
+## Relationship to prior challenges
+
+- **Narrows from [Challenge 08](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/)**: Ch 08 covered the standards landscape; Ch 13 covers modern attestation primitives Ch 08 didn't deeply engage with
+- **Independent of [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) and [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/)**: different layer of the architecture
+- **Gates the Tier 1 audit-trail commitment**: per [05-02 direction log §5](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#direction-posture--adopt-or-defer-per-topic), the Tier 1 audit-trail bar is *deferred* pending this challenge's outcome
+
+## Related
+
+- [Challenge 08: Git audit-trail tenability](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/) — predecessor
+- [05-02 Direction log §3.3 Challenge 08 omissions](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#33-challenge-08--two-real-omissions) — the source of this challenge's scope
+- [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
+- Research deliverable Crosswalker is reacting to: `.workspace/2026-05-02-challenge-08-git-audit-trail-research.md`
+- External primary references: Sigstore (sigstore.dev), in-toto (in-toto.io), SLSA v1.0 (slsa.dev/spec/v1.0/), OpenTimestamps (opentimestamps.org), W3C VC Data Model 2.0
