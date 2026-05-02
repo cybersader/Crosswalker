@@ -1,0 +1,301 @@
+---
+title: "Direction third-wave shifts — Tier 3 default flipped, Tier 2 confirmed-and-extended, audit-trail 4-tier model adopted"
+description: "Third research wave (Ch 14/15/16) landed 2026-05-02 and produced three substantively directional shifts. This log captures the deltas vs the same-day TL;DR commitments log. Ch 14 confirms the Ch 11 layered Tier 2 stack as production and adds Tier 2-Lite (sqlite-wasm) plus Comunica federation; Ch 16 flips the Tier 3 default from Apache AGE to Apache Jena Fuseki / oxigraph-server with layered Fuseki+DuckDB as power-user upgrade; Ch 15 adopts a 4-tier audit-trail model (T0/T1/T2/T3) with OpenTimestamps as the new T2 default and the Ch 08+13 git stack repositioned as one of three T3 options."
+tags: [foundation, decisions, direction, third-wave, tier-2, tier-3, audit, architecture]
+date: 2026-05-02
+sidebar:
+  label: "05-02 · Direction third-wave shifts"
+  order: -20260502.6
+---
+
+:::tip[Read this AFTER the TL;DR]
+This log captures the *delta* introduced by the third research wave (Ch 14/15/16) on top of the [TL;DR direction commitments](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/). Read the TL;DR first for the canonical "where we're at"; read this for "what changed today and why."
+:::
+
+## §1 Why this log exists
+
+Three more fresh-agent research deliverables landed today, all spun up earlier in the same day in response to user feedback on the second wave (Ch 11/12/13):
+
+- [Ch 14: Missed engines evaluation](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — Phase 2 follow-on to Ch 11 (Grafeo, Minigraf, CozoDB, SurrealDB, Comunica, cr-sqlite, sqlite-vec)
+- [Ch 15: Audit-trail alternatives without external git tooling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) — Obsidian-plugin-native, air-gap-friendly approaches
+- [Ch 16: Tier 3 stack reconsideration](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) — alternatives to Apache AGE
+
+Each one is *substantively directional* — i.e., shifts a previously-tentative TL;DR commitment into a definite default (or, in the case of Ch 16, flips the default outright). Rather than re-bloat the TL;DR, this log captures the shifts and the reasoning. The TL;DR has been surgically updated to reflect the new defaults with pointers to the relevant section here.
+
+## Status at a glance — what changed since the TL;DR
+
+| Area | TL;DR state (earlier today) | Third-wave state | Section |
+|---|---|---|---|
+| **Tier 2 stack** | Provisional — pending Ch 14 Grafeo eval | ✅ Confirmed: layered DuckDB-WASM + Oxigraph + Nemo as production. **Extended** with Tier 2-Lite (sqlite-wasm) alternate stack and Comunica federation add-on. | [§2](#2-ch-14--tier-2-stack-confirmed-and-extended) |
+| **Tier 3 default** | Deferred — AGE concerns surfaced; Ch 16 spinning up | ✅ **Default flipped**: Apache Jena Fuseki primary + oxigraph-server same-API alternative. AGE retained as Postgres-shop fallback. | [§3](#3-ch-16--tier-3-default-flipped-from-age-to-fusekioxigraph-server) |
+| **Tier 1 audit trail** | Partly committed — non-git alternatives needed; Ch 15 spinning up | ✅ **4-tier model adopted** (T0/T1/T2/T3). Default: T2 with OpenTimestamps. Git stack repositioned as one of three T3 options. | [§4](#4-ch-15--audit-trail-4-tier-model-adopted-git-stack-repositioned) |
+| **Grafeo evaluation** | User running directly | ✅ Resolved as part of Ch 14 deliverable (verdict: track in long-horizon list with explicit migration triggers; do not adopt yet) | [§2.2](#22-engines-evaluated--per-engine-verdicts) |
+| **OSCAL native support** | ⏳ Pending user yes/no | ⏳ Still pending — not addressed by this wave | TL;DR §3.3 unchanged |
+| **LinkML schema substrate** | 🅿️ Parked (idea bucket) | 🅿️ Still parked | TL;DR §4.1 unchanged |
+
+**Net**: 3 commitments lift from "deferred / provisional" to "confirmed default", with the Tier 3 commitment being a true *flip* rather than a refinement. 1 deferred item (OSCAL) is still pending. 1 parked item (LinkML) is still parked.
+
+## §2 Ch 14 — Tier 2 stack confirmed and extended
+
+### 2.1 Verdict summary
+
+The hypothesis driving Ch 14 was that one of seven recently-surfaced engines might collapse, replace, or augment the layered Tier 2 stack chosen in Ch 11. The fresh agent's bottom-line verdict:
+
+> **Keep the Ch 11 layered stack as production Tier 2 today.** Begin a parallel **Tier 2-Lite** track based on `wa-sqlite/sqlite-wasm` + `sqlite-vec` + recursive-CTE SSSOM reasoning for low-end deployments and Obsidian Mobile. **Track Grafeo and Minigraf** as serious "potential collapse" candidates with named, falsifiable triggers; do not adopt either yet.
+
+In other words: the Tier 2 architecture moves from "1 stack" to "1 primary + 1 alternate + 1 federation add-on", with an explicit watchlist for collapse candidates.
+
+```
+Crosswalker Tier 2 (post-Ch 14)
+├── PRIMARY (default — confirmed)
+│   ├── DuckDB-WASM            (~6.4 MB / 18 MB EH bundle — analytics, SQL, joins, Parquet)
+│   ├── Oxigraph-WASM          (~3 MB — local SPARQL 1.1, RDF I/O, canonicalization)
+│   └── Nemo-WASM              (Datalog for SSSOM chain rules, stratified negation)
+│
+├── ADD-ON (new, opt-in — federation)
+│   └── Comunica + N3 + HDT    (~250–300 KB gz core — federated query meta-engine,
+│                                Linked-Data-Fragments client, GraphQL-LD)
+│
+└── ALTERNATE (new, low-end / mobile)
+    └── sqlite-wasm (OPFS) + sqlite-vec + simple-graph + recursive-CTE
+        (≈1.5–2 MB compressed, no Datalog/SPARQL, suitable up to ~10⁵ mappings)
+```
+
+### 2.2 Engines evaluated — per-engine verdicts
+
+| Engine | Verdict | One-line reason |
+|---|---|---|
+| **Grafeo** (GrafeoDB/grafeo) | (c) Track in long-horizon list | Impressive surface area (LPG+RDF+six query languages+HNSW+CDC+WASM), but ~6 months old, v0.5.x, ~582 stars, single-sponsor, vendor-only benchmarks, no W3C SPARQL conformance proof. Adoption risk outweighs consolidation benefit today. |
+| **Minigraf 1.0** (project-minigraf/minigraf) | (c) Track in long-horizon list | Bi-temporal Datalog is excellent SSSOM fit; but single-maintainer, 1.0 just released, prior project (RecallGraph) abandoned. Pilot in sandbox, not production. |
+| **CozoDB** | (d) Reject for new adoption; (c) keep on watchlist | No release since v0.7 in Oct 2023; browser-persistence issue #213 unresolved since 2023; maintainer focus shifted. Not safe for 3-year horizon. |
+| **SurrealDB-WASM** | (d) Reject | BSL 1.1 (federal procurement blocker for OSI-OSS users); `@surrealdb/wasm` v1.4.1 is **12.6 MB unpacked** — exceeds the entire 10–12 MB Tier 2 budget by itself. Mismatch is structural. |
+| **Comunica + N3 + HDT** | (b) **Adopt as Tier 2 add-on for federation only** | Don't replace Oxigraph for local SPARQL (Oxigraph is faster — see WasmTree paper, openreview.net/pdf?id=CXLmXMb2TJ); but Comunica's federated query over heterogeneous sources (SPARQL endpoints, TPF, Solid pods, HDT) is a strategic capability Oxigraph cannot reach. ~258 KB unpacked for `query-sparql-solid` v5.0.1. |
+| **cr-sqlite** | (d) Reject | Last meaningful commit Oct 2024; maintainer (Matt Wonlaw) shifted to TreeSQL/Materialite/typed-sql. Yjs covers the same ground with healthier ecosystem. |
+| **sqlite-vec + simple-graph + sqlite-wasm** | (b) **Adopt as Tier 2-Lite alternate stack** | Realistically under 2 MB compressed; mature components (sqlite-vec sponsored by Mozilla Builders; official `@sqlite.org/sqlite-wasm` first-class OPFS); recursive-CTE chain rules workable up to ~10⁵ mappings. Tradeoff: lose native Datalog/SPARQL — acceptable for the long tail (Obsidian Mobile, low-end laptops, restricted-CSP). |
+
+### 2.3 What's new vs the TL;DR
+
+Three additive changes to the Tier 2 architecture:
+
+1. **Tier 2-Lite alternate stack** for low-end / Obsidian Mobile / restricted-CSP environments. ~5–8× smaller bundle (~600 KB compressed vs ~5 MB). SSSOM rule subset & scale ceiling need a dedicated brief — see [§7 follow-on candidates](#7-follow-on-candidates).
+2. **Comunica federation add-on** for cross-vault, cross-org, and external SPARQL endpoint queries. Genuinely additive — Oxigraph stays primary for local queries.
+3. **Explicit migration triggers** for Grafeo (would collapse Tier 2 to 1 engine if it materializes) and Minigraf (would add as bi-temporal SSSOM-history sub-component). Triggers are written below so they're discoverable when the next deliverable lands.
+
+The three engines that the user might have hoped would *collapse* the stack (Grafeo, SurrealDB, CozoDB) all failed to do so on this evaluation. Two failed for license/bundle/health reasons (SurrealDB, CozoDB); Grafeo failed for maturity reasons but earned a watchlist slot with explicit triggers.
+
+### 2.4 Migration triggers (Ch 14 §7) — preserved verbatim for discoverability
+
+**Trigger A — "Grafeo collapses Tier 2"**: migrate Tier 2 to a single Grafeo runtime if **all** of: (1) v1.0.0 with stable API commitment; (2) W3C SPARQL 1.1 conformance ≥ 95% on public test suite with public CI dashboard; (3) `edge` Cargo profile produces a `.wasm` ≤ 4 MB compressed on a published reproducible build; (4) ≥ 10 distinct contributors with ≥ 5 commits each over 12 consecutive months OR foundation adoption (Apache, Eclipse, NumFOCUS, OSGeo); (5) ≥ 3 independent organizations (not founder/sponsor) publish production case studies; (6) independent reproduction of SNB benchmark numbers within 50% of vendor claim.
+
+**Trigger B — "Minigraf earns SSSOM bi-temporal niche"**: adopt Minigraf as Tier 2 add-on (alongside, not replacing) for SSSOM history queries if **all**: license confirmed Apache-2.0 or MIT; Datalog spec published with stratified negation/aggregation/recursion safety; second committed maintainer joins, sustaining commits past 1.0 for 12 months; ≥ 1 other production deployment exists.
+
+**Trigger C — "CozoDB revival"**: reconsider if v0.8 ships with first-class OPFS or IndexedDB persistence in WASM build, AND release cadence resumes ≥ 1 release per quarter for 12 months.
+
+**Trigger D — "Tier 2-Lite ships now"**: **already triggered.** Build sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE Tier 2-Lite alongside current Tier 2.
+
+**Trigger E — "Comunica federation"**: **already triggered.** Add `@comunica/query-sparql` as opt-in federation layer.
+
+**Trigger F — "SurrealDB conversion"**: reconsider only if SurrealDB drops BSL for Apache-2.0 across all releases (not 4-year-rolling reversion) AND publishes a stripped-down WASM build under 4 MB.
+
+## §3 Ch 16 — Tier 3 default flipped from AGE to Fuseki/oxigraph-server
+
+### 3.1 Verdict summary
+
+The Ch 16 fresh agent's bottom line:
+
+> **Demote Apache AGE from Tier 3 default to optional fallback.** The recommended Tier 3 default is **Apache Jena Fuseki** as the single canonical server, with **oxigraph-server as a drop-in lighter alternative** (because it is already in the Tier 2 stack and shares its codebase). The recommended power-user upgrade path is **layered Fuseki + DuckDB-on-server**. **TerminusDB** available as opt-in vault-mirror for users who want git-style branch/diff semantics on the server side.
+
+### 3.2 Why the flip
+
+The user's reaction earlier today ("AGE is just slow in development it seemed — so I'm not sure about AGE for [Tier 3 default]") was substantiated:
+
+| Concern | Evidence |
+|---|---|
+| **Sponsor pivot** | Bitnine Co. acquired Dec 2024, renamed SKAI Worldwide Jan 2025, **pivoted to AI advertising/content production**. Loss of primary contributing employer. |
+| **PG ABI risk realized** | Nov 14, 2024 PG 17.1 ABI break (added `bool ri_needLockTagTuple` to `ResultRelInfo`) hit AGE alongside TimescaleDB; community shipped 17.2 as emergency repair. AGE inherits Postgres ABI risk surface that Fuseki/Oxigraph do not. |
+| **Slow release cadence** | Issue #2229 (PG 18 support) filed Oct 2, 2025; PG 18 support landed late 2025/early 2026. 3–6 month lag is acceptable but per-PG-line release model bottlenecked on PMC capacity. |
+| **Reduced upstream activity** | AGE board minutes (Apache Whimsy) explicitly note "the project continues to have reduced activity when compared to the same period Year-over-Year"; no new PMC members or committers in recent quarters. |
+
+### 3.3 New default: Fuseki primary + oxigraph-server as same-API alternative
+
+The architectural insight that Ch 10 and Ch 11 underweighted: **`oxigraph serve` is a server**. The Tier 2 engine running with `serve` mode produces Tier 3 capability with no new dependency. This means:
+
+- The query language is identical across Tier 2 and Tier 3 (SPARQL 1.1)
+- Migration between tiers is `dump`/`load` of the same RocksDB store
+- Exactly *one* engine to learn, tune, secure, upgrade
+- Single Rust binary or Docker container — substantially smaller than Fuseki's JVM footprint
+
+**The two-default recommendation:**
+
+| Profile | Engine | Why |
+|---|---|---|
+| **Default (small GRC team, ≤500k mappings)** | Apache Jena Fuseki | Apache TLP governance (multi-employer PMC, no key-person risk); ~2 decades of releases; SPARQL 1.1 + RDFS/OWL inference + SHACL; the safest 5–10-year bet on the list |
+| **Same-API lighter alternative** | oxigraph-server | Architectural symmetry with Tier 2; smaller footprint; Apache 2.0; 1.6k+ stars; single-maintainer (Tpt) but "small enough to fork" property mitigates risk |
+
+### 3.4 Power-user upgrade: layered Fuseki + DuckDB-on-server
+
+For multi-team, mixed SQL+graph workloads, multi-million mappings:
+
+- **Fuseki** for RDF/SPARQL (canonical SSSOM endpoint)
+- **DuckDB-on-server** for SQL/tabular analytics (audit reports, coverage matrices, control-mapping rollups)
+- Federated via SPARQL `SERVICE` clauses (cleanest cross-engine join pattern; shipped feature, not glue code) and DuckDB `httpfs` / `postgres_scanner`
+
+**Crossover point**: layering pays off above ~250k mappings with mixed workloads; below that, layering is pure overhead.
+
+### 3.5 Other engines — quick verdicts
+
+| Engine | Verdict |
+|---|---|
+| **TerminusDB v12** | Opt-in vault-mirror for users who want server-side git-style branch/diff. **Small-vendor (DFRNT) risk explicitly flagged** — same structural risk pattern as AGE/Bitnine. |
+| **HelixDB** | Watch but do not adopt. AGPL + YC-stage + custom DSL. First-party MCP is the genuine differentiator. |
+| **ArcadeDB** | Watch but do not adopt. Apache-2.0 multi-model with built-in MCP, but small contributor base. |
+| **SurrealDB** | Watch but do not adopt. BSL license is the procurement blocker. |
+| **Postgres + JSONB + recursive CTEs** | **Document as supported "boring tech" minimal Tier 3** for shops that don't want a graph engine. SSSOM doesn't *require* one. |
+| **Apache AGE** | Kept as supported fallback for Postgres-standardized environments. Through ≥ 1 Crosswalker major version cycle (~12 months); demote to "community-maintained" thereafter. |
+
+### 3.6 Migration path from AGE — the SSSOM-canonical payoff
+
+The architectural property that makes AGE→Fuseki migration painless: **mappings are canonically SSSOM (markdown + YAML in the vault)**, so any database is by definition a *projection* of the canonical files, not the source of truth. Migration is therefore "rebuild the projection on the new engine from the same SSSOM files," not "translate AGE data to Fuseki data."
+
+Concrete steps (from Ch 16 §5):
+
+1. Dump AGE for safety (`SELECT * FROM cypher(...)` exported via `\copy` to JSONL) — insurance, not migration data
+2. Re-run Crosswalker's SSSOM→RDF projector against the canonical vault into Fuseki / oxigraph-server (same projector code path that Tier 2 uses)
+3. Spot-check round-trip on 50 mappings — confirm semantic equivalence
+4. Cutover read-traffic; keep AGE running read-only 60–90 days as fallback; decommission
+
+This is a real architectural payoff — not a coincidence. The Foundation commitment to "files-canonical, engines are projections" turns engine swaps into projection re-runs.
+
+## §4 Ch 15 — Audit-trail 4-tier model adopted; git stack repositioned
+
+### 4.1 The 4-tier model
+
+The fresh agent's bottom line for Ch 15:
+
+> **The git-based stack should remain available but stop being primary.** Default tier becomes **"Credible"** — in-vault append-only `.audit/chain.jsonl` hash chain signed by an Ed25519 plugin key. Layer **OpenTimestamps `.ots` sidecars on the chain checkpoint** as the default external time anchor — the only well-understood, fully decentralized, offline-buffered, license-free, cli-free option that makes legal sense in both US and EU contexts. **Promote git+RFC 3161+S3 Object Lock to "Court-Defensible Tier" but as one of two/three options**, the others being eIDAS-qualified TSA + W3C VC Data Integrity (EU), and Sigstore Rekor v2 + in-toto (supply-chain).
+
+The 4 tiers:
+
+| Tier | Name | What it means | Plain-English guarantee |
+|---|---|---|---|
+| **T0** | Floor | "Version history exists" — Edit History plugin or Obsidian Sync | No cryptographic guarantee. Sufficient only for revert-the-bad-edit. |
+| **T1** | Credible | `.audit/chain.jsonl` with prev_hash links + Ed25519 signatures, vault-anchored | Detects offline tampering up to the moment of key compromise. No external time anchor. |
+| **T2** | Defensible | T1 + periodic checkpoints OpenTimestamped or RFC-3161-stamped | Survives wholesale rewrites because Bitcoin/TSA holds chain-head copy. |
+| **T3** | Court-Defensible | T2 + (a) FRE 902(13) certification PDF; or (b) eIDAS-qualified e-signature/timestamp; or (c) S3 Object Lock WORM; or (d) Sigstore Rekor v2 entry | Self-authenticating per FRE 902(13)/(14). Defensible at trial. |
+
+### 4.2 New default: T2 with OpenTimestamps; chain.jsonl as universal substrate
+
+**The architectural trick that makes git/non-git coexistence painless**: treat **`.audit/chain.jsonl` as the ground truth in *both* modes**. In git mode, the chain is committed alongside the notes; commits provide an additional snapshot layer but the chain is what carries entry-level signatures and timestamps. In non-git mode, the chain is the only artifact.
+
+This means migration is a no-op for the chain itself: the same `chain.jsonl` works in both modes. What changes is whether `git commit` runs after each batched edit, whether in-toto attestation predicates are appended, whether checkpoints are mirrored to S3 Object Lock, whether the FRE 902(13) PDF is auto-generated at engagement close.
+
+**New default**: T2 with OpenTimestamps. Cost zero, fail-soft (queue stamps if offline; upgrade to "final" later), works everywhere git doesn't.
+
+### 4.3 Git stack repositioned: one of three T3 options
+
+The Ch 08+13 git+RFC3161+S3-Object-Lock+FRE 902 stack is **kept** as a first-class option but **no longer default**:
+
+| T3 option | Best for | Trade-off |
+|---|---|---|
+| **A. T2.B + S3 Object Lock WORM + signed FRE 902(13) PDF** (the existing Ch 08+13 stack, git-optional now) | US litigation; financial-services contexts where auditors specifically request "WORM + 902(13) PDF" | Requires S3 or Object-Lock-capable provider; high auditor familiarity in US |
+| **B. T2.A + eIDAS-qualified TSA + DataIntegrityProof per evidence-link + EUDI Wallet QES** | EU regulator-facing tenants; EU AI Act / DORA / NIS2 entities | Requires eIDAS QTSP; pays off in 2027+ when EUDI Wallet matures |
+| **C. T2.C + in-toto attestation predicate per evidence-link + Sigstore keyless via OIDC + (optional) Trillian-Tessera self-witnessed log** | Supply-chain-savvy contexts (CISO who already knows SLSA/in-toto) | Requires HTTPS at sign time (bad for air-gapped); will become mainstream as Rekor v2 matures |
+
+### 4.4 Per-persona tier mapping (Ch 15 §A)
+
+| Persona | Recommended tier | Why (regulation-grounded) |
+|---|---|---|
+| Solo GRC consultant (US) | **T2** | SAS 142 elevates external information; OTS shifts evidence from "management" toward "external". T3 only when litigation use case appears. |
+| Solo GRC consultant (EU) | **T2 + VC Data Integrity** | eIDAS 2.0 makes VC + EUDI Wallet the strategic identity layer; building VC into chain now makes 2027+ qualified-signature upgrades a config change, not a rewrite. |
+| Locked-down enterprise IT user | **T1 + deferred T2 anchoring** | NIST SP 800-53 AU-9/AU-10 require non-repudiation. If a TSA URL is reachable, achieve T2; otherwise queue checkpoints and stamp later. |
+| Federal / air-gapped | **T2 via PIV signing + delayed OTS upon crossing the air gap** | NIST SP 800-53 Rev 5 AU-10(2), SSDF, FedRAMP baseline. PIV anchors signatures in already-trusted federal PKI. |
+| Multi-tenant team | **T2 + FROST t-of-n co-signing per tenant** | SOC 2 logical-access separation; SAS 142 independence; FROST means a rogue senior cannot unilaterally rewrite history. |
+| EU AI Act high-risk deployer / DORA / NIS2 | **T3 with eIDAS-qualified TSA** | Article 12+19 require automatic, retained, regulator-producible logs; DORA Art 17 + NIS2 Art 21 reinforce. |
+
+### 4.5 PQC migration plan timeline
+
+NIST FIPS 203/204/205 published Aug 13 2024; NIST IR 8547 sets 2035 deprecation deadline for quantum-vulnerable algorithms. Crosswalker timeline (well ahead of NIST):
+
+| Year | Step |
+|---|---|
+| **2026** | Ship Ed25519 in-vault keys (Argon2id-wrapped, `@noble/curves`) for T1 default |
+| **2027** | Begin dual-signing checkpoints with Ed25519 + ML-DSA-44 (NIST Level 2). Add `key_id` field to chain entries for crypto-agility. |
+| **2030** | Deprecate Ed25519-only checkpoints. New checkpoints must be dual or ML-DSA-only. |
+| **2032** | Fully PQC for new checkpoints. Existing Ed25519 history remains verifiable. |
+| **2035** | NIST deadline. Crosswalker has ~3 years of buffer past full PQC adoption. |
+
+Per-entry signing with ML-DSA at edit-event granularity adds ~2.4 KB per entry (vs 64 B Ed25519). At 10⁵ entries/year that is ~240 MB/year — argues for **checkpoint-level PQC signing rather than per-entry** until storage and verification economics improve.
+
+### 4.6 UX commitment: single audit-ready badge with progressive disclosure
+
+The user-facing UX rules from Ch 15 §E (preserved verbatim because the honesty bar matters):
+
+- **Single "Audit-ready: T2 Defensible" chip** in the status bar (color-coded: gray T0, blue T1, green T2, gold T3). Click opens a tier explainer.
+- **Honest tier-floor messaging**: T0 ("version history exists") is **not** "audit-ready" — the badge says so. A user who hasn't enabled the audit module sees "Audit-ready: T0 — version history only. Click to enable."
+- **Per-tier progressive configuration**: T1 = one toggle + key-creation wizard; T2 = time-anchor selection (default OTS); T3 = profile picker ("US litigation", "EU regulated", "Federal ATO", "Supply-chain") with each profile pre-configuring 4-6 settings.
+- **Verification UX**: in-plugin verifier ("Verify chain" command); external CLI verifier (`crosswalker-verify`) with zero Obsidian dependencies; court-export command produces a single PDF (FRE 902(13) certification template + chain segment + signature manifests + OTS proofs + qualified-person declaration).
+- **Avoiding false confidence**: never say "tamper-proof" — always "tamper-evident"; never display "verified" without specifying *what* was verified; when OTS stamps are pending, badge shows "T2 (pending)" with honest "Bitcoin will confirm in ~1-6 hours."
+
+## §5 Updated commitments table — delta vs TL;DR
+
+| TL;DR row | Old state | New state (after third wave) |
+|---|---|---|
+| #1 Tier 2 layered stack | ✅ Committed (provisional, pending Ch 14) | ✅ **Confirmed** + extended with Tier 2-Lite alternate and Comunica federation add-on |
+| #2 Tier 1 audit-trail bar | ⏳ Partly committed; Ch 15 spinning up | ✅ **4-tier model adopted**; T2 OTS default; git stack as one of three T3 options |
+| #3 Datalog (Nemo) for SSSOM | ✅ Committed | ✅ Unchanged (no contradicting evidence in Ch 14) |
+| #4 Sigstore/gitsign as configurable | ✅ Committed | ✅ Unchanged (now scoped to T3 architecture C; folded into Ch 15 §C) |
+| #5 SLSA targeting L1→L2→L3 | ✅ Committed | ✅ Unchanged |
+| #6 Materialized-folder Tier 1 generator | ✅ Committed | ✅ Unchanged |
+| #7 Tier 3 default | ⏳ Deferred; Ch 16 spinning up | ✅ **Default flipped: Fuseki primary + oxigraph-server alternative; AGE as fallback** |
+| #8 TerminusDB as vault-mirror only | ✅ Committed | ✅ Reaffirmed; small-vendor (DFRNT) risk explicitly flagged |
+| #9 LinkML | 🅿️ Parked | 🅿️ Still parked |
+| #10 OSCAL native support | ⏳ Pending user yes/no | ⏳ Still pending — not addressed by this wave |
+| #11 Grafeo evaluation | ⏳ User running | ✅ Resolved as part of Ch 14 deliverable; track in long-horizon list with Trigger A |
+
+**Score after third wave**: 8 confirmed (#1, #2, #3, #4, #5, #6, #7, #8). 1 deferred (#10 OSCAL still pending user input). 1 parked (#9 LinkML). 1 resolved-track (#11).
+
+## §6 Roadmap deltas (proposed; not yet applied)
+
+Per the user's earlier guidance, roadmap edits are a separate commit. Items the third wave proposes adding/modifying:
+
+- **B6 (existing, Tier 2 layered stack Foundation item)**: lift "(provisional)" qualifier; add explicit Tier 2-Lite and Comunica federation sub-items
+- **B7 (new Foundation item) — Tier 2-Lite alternate stack**: sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE; document SSSOM rule subset and scale ceiling
+- **B8 (new Foundation item) — Comunica federation add-on**: opt-in for cross-vault, cross-org, external SPARQL endpoint queries
+- **B9 (existing, Tier 3 stack Foundation item)**: **flip** primary from Apache AGE to Apache Jena Fuseki / oxigraph-server (same-API alternative); demote AGE to fallback; document layered Fuseki+DuckDB as power-user upgrade
+- **B10 (existing, Tier 1 audit-trail Foundation item)**: rewrite to "4-tier model (T0/T1/T2/T3); T2 OTS default; git stack as one of three T3 options"; add per-persona tier mapping
+- **B11 (new Foundation item) — PQC migration plan 2026→2032**: crypto-agility (algorithm identifier in every signed object); Ed25519 → dual Ed25519+ML-DSA-44 (2027) → ML-DSA-only (2032); ahead of NIST IR 8547 2035 deadline
+
+These should be applied to the [Roadmap reference](/crosswalker/reference/roadmap/) and `ROADMAP.md` at the repo root in a separate pass.
+
+## §7 Items still pending user input or follow-on
+
+### 7.1 Pending user decision
+
+- **OSCAL native support promotion** (TL;DR §3.3) — still pending user yes/no. Not addressed by this wave. Once you signal yes/no this becomes a TL;DR §2.x commitment or stays in §3.
+
+### 7.2 Confirmed defaults pending explicit user sign-off
+
+- **Tier 3 default flip** (this log §3) — confirm Fuseki primary + oxigraph-server alternative + AGE as fallback. **[Confirm? Y/N]**
+- **Tier 1 audit 4-tier model + T2 OTS default** (this log §4) — confirm T0/T1/T2/T3 model + OpenTimestamps as new T2 default + git stack as one of three T3 options. **[Confirm? Y/N]**
+- **Tier 2 stack confirmation + Tier 2-Lite + Comunica add-on** (this log §2) — confirm Tier 2-Lite alternate stack + Comunica federation. **[Confirm? Y/N]**
+
+### 7.3 Follow-on candidates (briefs not yet spun up)
+
+| Candidate | Status | Why |
+|---|---|---|
+| **Ch 17 candidate (LinkML scope)** | Defer until requested | User signaled "idk about that"; major architectural pivot |
+| **Ch 18 candidate (Tier 2-Lite SSSOM rule subset)** | Worth spinning up; pending user signal | Ch 14 explicitly flags missing scope definition for which SSSOM rules work under recursive-CTE evaluation and the scale ceiling |
+| **Ch 19 candidate (PQC dual-sign protocol detail)** | Defer toward 2027 | Ch 15 sketches Ed25519+ML-DSA-44 dual-signing; deeper brief on library readiness and protocol design |
+| **Ch 20 candidate (eIDAS 2.0 / EUDI Wallet integration profile)** | Defer | Ch 15 flags as 2027+ profile when EUDI rollout matures |
+
+## §8 Related
+
+- [TL;DR direction commitments](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) — concise canonical "where we're at" (updated to reflect the third-wave deltas with pointers to this log)
+- [Bloated 05-02 direction log](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) — full research record from the second wave (Ch 08–13)
+- [Ch 14 deliverable: Missed engines evaluation](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/)
+- [Ch 15 deliverable: Audit-trail alternatives without external git tooling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/)
+- [Ch 16 deliverable: Tier 3 stack reconsideration](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/)
+- [Archived Challenge 14](/crosswalker/agent-context/zz-challenges/archive/14-missed-engines-evaluation/)
+- [Archived Challenge 15](/crosswalker/agent-context/zz-challenges/archive/15-non-git-audit-trail-alternatives/)
+- [Archived Challenge 16](/crosswalker/agent-context/zz-challenges/archive/16-tier-3-stack-reconsideration/)
+- [Roadmap (where the deltas in §6 will land)](/crosswalker/reference/roadmap/)

@@ -8,10 +8,12 @@ sidebar:
   order: -20260502
 ---
 
-:::caution[This log is bloated — read the TL;DR instead]
-**👉 [2026-05-02 Direction commitments (TL;DR)](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) is the concise concluding artifact.** What's locked in, what's still researching, what's parked — in one short page with engine pros/cons tables and web-of-webs placement for Nemo and OSCAL.
+:::caution[This log is bloated — read the TL;DR and third-wave log instead]
+**👉 [2026-05-02 Direction commitments (TL;DR)](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/)** is the concise concluding artifact — what's locked in, what's still researching, what's parked.
 
-This long log is the **research record** for the bloated 9-deliverable research wave. Read it for context; act from the TL;DR.
+**👉 [2026-05-02 Direction third-wave shifts log](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/)** captures the deltas from the *third* research wave (Ch 14/15/16) that landed later on 2026-05-02 — Tier 2 confirmed-and-extended, Tier 3 default flipped from AGE to Fuseki/oxigraph-server, audit-trail 4-tier model adopted with OpenTimestamps as the new T2 default.
+
+This long log is the **research record** for the second-wave bloated 9-deliverable research wave (Ch 08–13). Read it for context; act from the TL;DR + third-wave log.
 :::
 
 ## Table of contents
@@ -303,20 +305,32 @@ These are major architectural pivots, **not adopted today**. Catalogued in [§10
 ✅ **RESOLVED by 1 fresh-agent deliverable**. Confirms Ch 08 Tier 1 stack; adds in-toto attestations as mandatory; offers Sigstore/gitsign as configurable alternative; SLSA L1→L2→L3 progression. Summarized in §2.6; critical read in §3.6.
 - [Ch 13](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — modern attestation primitives
 
-### 4.4 Challenge 14 (NEW) — Missed engines evaluation
+### 4.4 Challenge 14 — Missed engines evaluation
 
-🆕 **Spun up today as Phase 2 follow-on to Ch 11**. Engines surfaced *during* Ch 11 research that were absent from the original brief — most consequentially **Grafeo** (potential game-changer that could collapse the layered Tier 2 stack to a single engine). Plus Minigraf, CozoDB, SurrealDB-WASM, Comunica + N3 + HDT, cr-sqlite, sqlite-vec.
+✅ **RESOLVED by 1 fresh-agent deliverable later on 2026-05-02 (third wave)**. Verdict: keep Ch 11 layered Tier 2 stack as production; add Tier 2-Lite (sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE) and Comunica + N3 + HDT federation as additive extensions; track Grafeo and Minigraf with explicit, falsifiable [migration triggers](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#24-migration-triggers-ch-14-7--preserved-verbatim-for-discoverability); reject SurrealDB (BSL + 12.6 MB bundle), cr-sqlite (stalled Oct 2024), CozoDB (no release since v0.7 in 2023). Synthesized in [third-wave log §2](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#2-ch-14--tier-2-stack-confirmed-and-extended).
+- [Ch 14 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — missed engines evaluation
+- [Archived Challenge 14 brief](/crosswalker/agent-context/zz-challenges/archive/14-missed-engines-evaluation/)
 
-[Challenge 14: Missed engines evaluation](/crosswalker/agent-context/zz-challenges/14-missed-engines-evaluation/)
+### 4.5 Challenge 15 — Audit-trail alternatives without external git tooling
 
-Required scope: verify Grafeo's WASM viability + W3C SPARQL conformance + project health; evaluate Minigraf's bi-temporal Datalog vs Nemo; assess CozoDB resumption; flag SurrealDB BSL license tradeoffs; benchmark Comunica+N3 bundle size vs Oxigraph-WASM; evaluate cr-sqlite for collaborative editing.
+✅ **RESOLVED by 1 fresh-agent deliverable later on 2026-05-02 (third wave)**. Verdict: adopt 4-tier model (T0/T1/T2/T3) with **OpenTimestamps `.ots` on signed chain checkpoints** as new T2 default; reposition the Ch 08+13 git+RFC3161+S3-Object-Lock+FRE 902 stack as one of three T3 options (others: eIDAS QTSA + W3C VC for EU; Sigstore Rekor v2 + in-toto for supply-chain). Crypto-agile PQC migration plan 2026→2032 ahead of NIST IR 8547 2035 deadline. Synthesized in [third-wave log §4](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#4-ch-15--audit-trail-4-tier-model-adopted-git-stack-repositioned).
+- [Ch 15 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) — non-git audit-trail alternatives
+- [Archived Challenge 15 brief](/crosswalker/agent-context/zz-challenges/archive/15-non-git-audit-trail-alternatives/)
 
-### 4.5 (informational) Possible future challenges identified
+### 4.6 Challenge 16 — Tier 3 stack reconsideration
 
-Not spun up today; flagged for user signal:
-- **Challenge 15** (potential) — LinkML adoption as canonical schema substrate (per Ch 12b §2.3)
-- **Challenge 16** (potential) — IPLD content-addressed crosswalk distribution (per Ch 12b §4.2)
-- **Challenge 17** (potential) — Reactive/incremental computation for derived crosswalks (Feldera/DBSP/Materialize)
+✅ **RESOLVED by 1 fresh-agent deliverable later on 2026-05-02 (third wave)**. Verdict: **demote Apache AGE from default to optional fallback**; promote Apache Jena Fuseki as new Tier 3 default; document oxigraph-server as the lighter same-API alternative (architectural symmetry: same engine as Tier 2, just `oxigraph serve`); document layered Fuseki + DuckDB-on-server as power-user upgrade path; TerminusDB v12 as opt-in vault-mirror with small-vendor (DFRNT) risk explicitly flagged. Synthesized in [third-wave log §3](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#3-ch-16--tier-3-default-flipped-from-age-to-fusekioxigraph-server).
+- [Ch 16 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) — Tier 3 stack reconsideration
+- [Archived Challenge 16 brief](/crosswalker/agent-context/zz-challenges/archive/16-tier-3-stack-reconsideration/)
+
+### 4.7 (informational) Possible future challenges identified
+
+Not spun up; flagged for user signal:
+- **Ch 17 candidate** — LinkML adoption as canonical schema substrate (per Ch 12b §2.3)
+- **Ch 18 candidate** — Tier 2-Lite SSSOM rule subset and scale ceiling (per Ch 14 §2.7) — most actionable follow-on
+- **Ch 19 candidate** — PQC dual-sign protocol detail (per Ch 15 §5.6) — defer toward 2027
+- **Ch 20 candidate** — eIDAS 2.0 / EUDI Wallet integration profile (per Ch 15 §3.1) — defer to 2027+
+- (older) IPLD content-addressed crosswalk distribution (per Ch 12b §4.2); reactive/incremental computation for derived crosswalks (Feldera/DBSP/Materialize)
 
 ## Direction posture
 
