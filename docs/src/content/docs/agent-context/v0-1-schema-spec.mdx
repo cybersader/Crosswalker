@@ -1,0 +1,779 @@
+---
+title: "v0.1 schema spec — the four interconnected schemas"
+description: "Unified design document for the v0.1 build target. Specifies the four interconnected schemas (_crosswalker metadata, FrameworkConfig, junction notes, Tier 2 sidecar SQL) that v0.1 implementation will build against. Per Foundation phase: must be designed together; getting any wrong is expensive to fix later."
+sidebar:
+  order: 47
+  label: "v0.1 schema spec"
+tags: [schema, foundation, v0-1, architecture]
+---
+
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
+
+## §1 Why this page exists
+
+The [Foundation phase](/crosswalker/reference/roadmap/) intro states: *"The three interconnected schemas (_crosswalker metadata, FrameworkConfig, [StewardshipProfile](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/)) must be designed together — getting any wrong is expensive to fix later."* The [v0.1 stack-pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) makes this concrete by committing to a buildable Tier 1 + Tier 2 sidecar architecture.
+
+This page is the **unified spec** the v0.1 codebase will be built against. It pulls the four interconnected schemas into one place:
+
+1. **`_crosswalker` metadata** — the per-note frontmatter Crosswalker writes onto generated control / mapping / evidence files. Tier 1 canonical. (Extends [constraint-enforcement § Metadata tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers).)
+2. **FrameworkConfig** — the import config that drives generation. Tier 1 canonical, JSON/YAML on disk. (Extends [config-schema-design § Proposed FrameworkConfig](/crosswalker/agent-context/config-schema-design/#proposed-frameworkconfig).)
+3. **Junction note 13-field schema** — the per-edge markdown file that holds evidence-link metadata. Tier 1 canonical. ([Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/).)
+4. **Tier 2 sidecar SQL schema** — the projection of Tier 1 frontmatter into a queryable SQLite store. Tier 2, deletable, recoverable from Tier 1.
+
+The earlier-written [config-schema-design](/crosswalker/agent-context/config-schema-design/) and [constraint-enforcement](/crosswalker/agent-context/constraint-enforcement/) pages stay as background design rationale; this page is the consolidated v0.1 build target.
+
+:::tip[Architectural safety guarantee]
+Tier 2 sidecar SQL is *always* a projection of Tier 1 frontmatter. Delete the .sqlite file → the projector reprojects it from canonical files on next vault load. Tier 1 alone is functional. See [v0.1 stack-pivot §2](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#2-the-architectural-safety-guarantee-load-bearing-principle).
+:::
+
+## §2 The schemas at a glance
+
+```
+                    Tier 1 (canonical, source of truth)
+   ┌───────────────────────────────────────────────────────────┐
+   │  Markdown files in the Obsidian vault, with YAML          │
+   │  frontmatter per the schemas below.                       │
+   │                                                            │
+   │  ┌────────────────┐  ┌──────────────────┐  ┌────────────┐ │
+   │  │ Control note   │  │ Junction note    │  │ Framework- │ │
+   │  │ (NIST AC-2.md) │  │ (one per         │  │ Config     │ │
+   │  │                │  │  evidence edge)  │  │ (JSON/YAML │ │
+   │  │ frontmatter:   │  │                  │  │  on disk)  │ │
+   │  │  _crosswalker: │  │ frontmatter:     │  │            │ │
+   │  │   {schema-3}   │  │  13-field schema │  │ {schema-2} │ │
+   │  │  + STRM        │  │  {schema-3}      │  │            │ │
+   │  │  predicate     │  │                  │  │            │ │
+   │  │  fields        │  │ body:            │  │            │ │
+   │  │                │  │  prose narrative │  │            │ │
+   │  └────────────────┘  └──────────────────┘  └────────────┘ │
+   └─────────────────────────────┬─────────────────────────────┘
+                                 │
+                                 │  Auto-projected on vault load
+                                 │  (deletable; reproject on demand)
+                                 │
+                                 ▼
+                    Tier 2 (sqlite-wasm sidecar projection)
+   ┌───────────────────────────────────────────────────────────┐
+   │  @sqlite.org/sqlite-wasm + sqlite-vec                     │
+   │                                                            │
+   │  Tables: mappings · junction_notes · controls · frameworks │
+   │  Indexes: covering on (predicate_id, subject_id) etc.      │
+   │  {schema-4}                                                │
+   └───────────────────────────────────────────────────────────┘
+```
+
+**Cross-schema invariants** (load-bearing):
+
+- Every field in the Tier 2 SQL schema must be derivable from Tier 1 frontmatter.
+- Every Tier 1 frontmatter field that needs to be queryable in Tier 2 must be a flat scalar or a wikilink (no nested objects, no inline expressions). [Bases-queryable](/crosswalker/concepts/metadata-ecosystem/) constraint.
+- `_crosswalker` metadata is *additive* — it never overwrites user-authored frontmatter, only adds keys under `_crosswalker:`.
+- Junction notes are *generated*, but users can edit them; v0.1 generation is non-destructive (read git history to confirm).
+- FrameworkConfig is *user-authored* (or imported from a community config); the plugin does not auto-generate FrameworkConfigs.
+
+## §3 `_crosswalker` metadata schema (per-note frontmatter)
+
+Every note Crosswalker generates carries a `_crosswalker` frontmatter block. It is **additive only** — no other top-level frontmatter keys are touched.
+
+### TypeScript shape
+
+```typescript
+interface CrosswalkerMetadata {
+  // Identity & provenance (mandatory)
+  schema_version: 'crosswalker-v1';   // pinned per StewardshipProfile commitment
+  source_file: string;                 // 'nist-800-53-r5.csv'
+  source_hash: string;                 // sha256 of source bytes (sha256:abc123...)
+  import_date: string;                 // ISO 8601 (2026-05-03T14:30:00Z)
+  config_id: string;                   // FrameworkConfig.id (see §4)
+
+  // Framework binding (mandatory for control notes)
+  framework_id: string;                // 'nist-800-53-r5'
+  framework_version: string;           // 'Rev 5 Update 1'
+  control_id?: string;                 // 'AC-2' (if this note is a control)
+
+  // Lifecycle (optional, written when relevant)
+  status?: 'active' | 'deprecated' | 'archived' | 'superseded';
+  previous_ids?: string[];             // ['AC-2(legacy)'] for ID-aliasing on rename
+  superseded_by?: string;              // wikilink target if status='superseded'
+  generated_by?: string;               // 'crosswalker-0.2.0' (tool version)
+
+  // History (optional, append-only)
+  history?: HistoryEvent[];
+}
+
+interface HistoryEvent {
+  event: 'imported' | 're-imported' | 'renamed' | 'superseded';
+  date: string;                        // ISO 8601
+  source?: string;                     // for imports: the source file
+  changes?: string[];                  // for re-imports: diff summary
+  note?: string;                       // free-text annotation
+}
+```
+
+### YAML on-disk shape (canonical)
+
+```yaml
+---
+# user-authored fields (never touched by Crosswalker)
+title: "Account Management (AC-2)"
+aliases: ["AC-2"]
+
+# STRM predicate fields (the user-facing wire format — see §6)
+is_equivalent_to: ["[[ISO27001/A.5.16]]"]
+is_broader_than: ["[[CIS/IG1-5.1]]"]
+
+# Crosswalker-managed (additive only)
+_crosswalker:
+  schema_version: crosswalker-v1
+  source_file: nist-800-53-r5.csv
+  source_hash: sha256:a7b2f9c1e8d3...
+  import_date: 2026-05-03T14:30:00Z
+  config_id: nist-800-53-r5
+  framework_id: nist-800-53-r5
+  framework_version: "Rev 5 Update 1"
+  control_id: AC-2
+  status: active
+  generated_by: crosswalker-0.2.0
+---
+
+# AC-2 Account Management
+
+[user-authored or generated body...]
+```
+
+### Mandatory vs optional fields
+
+| Field | Required for | Notes |
+|---|---|---|
+| `schema_version` | All `_crosswalker`-bearing notes | Enables migration on schema bumps |
+| `source_file` | All | Provenance |
+| `source_hash` | All | Re-import / staleness detection |
+| `import_date` | All | Audit trail |
+| `config_id` | All | Links to FrameworkConfig |
+| `framework_id` + `framework_version` | Control notes & framework-bound mapping notes | Optional for evidence-only notes |
+| `control_id` | Control notes only | The `predicate_id` namespace for STRM crosswalk fields |
+| `status` | Optional | Defaults to `active` if absent |
+| Other lifecycle fields | Optional | Written when state transitions occur |
+
+### Schema-version migration policy
+
+Per the [meta-schema lifecycle commitment](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) ("Crosswalker eats own dog food"): every internal schema is versioned. When the schema bumps from `crosswalker-v1` to `crosswalker-v2`, a migration script:
+
+1. Reads all `_crosswalker:` blocks
+2. Detects the old `schema_version`
+3. Applies a per-version migration function (additive transform: add new fields with defaults; rename fields with aliasing entry in `previous_ids`; never destructive)
+4. Writes the new `_crosswalker:` block back, preserving non-Crosswalker frontmatter unchanged
+
+The migration is idempotent (re-running on already-migrated data is a no-op) and resumable (per-file state-tracked).
+
+## §4 FrameworkConfig schema (import config)
+
+A FrameworkConfig is JSON/YAML on disk that drives the import wizard. One config per framework; can be saved, shared, version-controlled, and matched against incoming source files via fingerprinting.
+
+### TypeScript shape
+
+```typescript
+interface FrameworkConfig {
+  // === Identity ===
+  schema_version: 'framework-config-v2';
+  id: string;                          // 'nist-800-53-r5' (machine-readable, stable)
+  name: string;                        // 'NIST SP 800-53 Rev 5'
+  version: string;                     // 'Rev 5 Update 1'
+  description?: string;
+  tags?: string[];                     // ['compliance', 'nist', 'security-controls']
+  author?: string;                     // for shared configs
+  upstream_url?: string;               // canonical source URL
+
+  // === Source matching (for fingerprint-based auto-detection) ===
+  source_file_patterns?: string[];     // glob patterns: ['sp800-53*.xlsx', 'NIST_800-53_*.csv']
+  fingerprint_columns?: string[];      // columns whose presence identifies this framework
+  expected_min_rows?: number;          // sanity check
+  expected_max_rows?: number;
+
+  // === Sheet selection (XLSX only) ===
+  sheets?: SheetConfig[];
+
+  // === Column mapping & roles ===
+  columns: ColumnConfig[];
+
+  // === Transforms ===
+  transforms?: TransformConfig[];
+
+  // === Output preferences ===
+  output: OutputConfig;
+
+  // === StewardshipProfile reference (for evolution tracking, optional in v0.1) ===
+  stewardship_profile_id?: string;     // links to StewardshipProfile registry entry
+
+  // === Crosswalk definitions (link this framework to others) ===
+  crosswalks?: CrosswalkConfig[];
+
+  // === Sharing metadata ===
+  exported_at?: string;                // ISO 8601
+  exported_from?: string;              // 'crosswalker-0.2.0'
+  compatibility?: string;              // minimum plugin version (semver)
+}
+
+interface SheetConfig {
+  name: string;                        // 'SP 800-53 Revision 5'
+  header_row?: number;                 // 0-indexed, default 0
+  purpose: 'primary' | 'mapping' | 'supplementary';
+  merge_key?: string;                  // column to join on when merging sheets
+}
+
+interface ColumnConfig {
+  source_name: string;                 // exact column header in source file
+  role: ColumnRole;
+  output_field?: string;               // where it lands in frontmatter (default = role-derived)
+  transforms?: TransformConfig[];      // column-specific transforms
+  required?: boolean;                  // import fails if column missing
+}
+
+type ColumnRole =
+  | 'control_id'                       // primary key for control notes
+  | 'control_name'                     // title
+  | 'control_text'                     // body content
+  | 'hierarchy'                        // determines folder nesting (multiple allowed)
+  | 'frontmatter'                      // arbitrary frontmatter field
+  | 'tag'                              // emit as tag
+  | 'crosswalk_target'                 // value identifies a crosswalk target node
+  | 'evidence_link'                    // value is a wikilink to an evidence document
+  | 'metadata'                         // SSSOM/STRM metadata field (confidence, mapping_date, etc.)
+  | 'ignore';
+
+interface TransformConfig {
+  type: 'tag-aggregation' | 'id-normalization' | 'hierarchical-ffill'
+      | 'preamble-extraction' | 'split' | 'join' | 'regex-replace'
+      | 'lowercase' | 'uppercase' | 'trim' | 'array-from-delimited'
+      | 'date-parse' | 'number-parse' | 'lookup' | 'custom';
+  params: Record<string, unknown>;
+  // 24 transform types per the Foundation transform engine commitment;
+  // 'custom' allows JSONata or Arquero escape hatches
+}
+
+interface OutputConfig {
+  base_path: string;                   // 'Frameworks/NIST-800-53-r5'
+  folder_structure: 'flat' | 'hierarchical';
+  filename_template: string;           // '{control_id}.md'
+  note_template?: string;              // Handlebars template for body; default = built-in
+  empty_handling: 'skip' | 'create_with_placeholder' | 'merge';
+  array_handling: 'wikilinks' | 'tags' | 'inline_list';
+  key_naming_style: 'snake_case' | 'kebab-case' | 'camelCase';
+}
+
+interface CrosswalkConfig {
+  // Per-config crosswalk definitions; produces crosswalk edges as STRM-predicate frontmatter
+  source_framework: string;            // self-reference: this config's id
+  target_framework: string;            // target framework id
+  source_column: string;               // column in source data that identifies the link
+  target_match_column?: string;        // column in target framework to match against
+  match_mode: 'exact' | 'array_contains' | 'regex' | 'fuzzy';
+  predicate: 'is_equivalent_to' | 'is_broader_than' | 'is_narrower_than'
+           | 'is_approximate_to' | 'intersects_with' | 'no_relationship';
+  link_direction: 'source_to_target' | 'target_to_source' | 'bidirectional';
+  default_metadata?: SssomMetadata;    // applied to all generated edges
+}
+
+interface SssomMetadata {
+  // SSSOM envelope fields (see §6 for the full hybrid resolution)
+  mapping_justification?: string;      // SEMAPV vocabulary
+  confidence?: number;                 // 0.0 - 1.0
+  author_id?: string[];                // ORCIDs for SSSOM authors
+  mapping_date?: string;               // ISO 8601
+  mapping_tool?: string;               // 'crosswalker-0.2.0'
+  predicate_modifier?: 'NOT';
+  comment?: string;
+}
+```
+
+### Example: NIST 800-53 r5 FrameworkConfig
+
+```yaml
+schema_version: framework-config-v2
+id: nist-800-53-r5
+name: NIST SP 800-53 Rev 5
+version: Rev 5 Update 1
+upstream_url: https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final
+tags: [compliance, nist, security-controls, federal]
+
+source_file_patterns:
+  - "sp800-53*.xlsx"
+  - "NIST_800-53_*.csv"
+fingerprint_columns:
+  - "Control Identifier"
+  - "Control Name"
+expected_min_rows: 900
+expected_max_rows: 1500
+
+columns:
+  - source_name: "Control Identifier"
+    role: control_id
+    required: true
+  - source_name: "Control Name"
+    role: control_name
+    required: true
+  - source_name: "Control Text"
+    role: control_text
+  - source_name: "Family"
+    role: hierarchy
+  - source_name: "Discussion"
+    role: frontmatter
+    output_field: discussion
+
+transforms:
+  - type: id-normalization
+    params: { regex: '^(\w{2})-(\d+)(?:\((\d+)\))?$', format: '$1-$2$3' }
+
+output:
+  base_path: Frameworks/NIST-800-53-r5
+  folder_structure: hierarchical
+  filename_template: "{control_id}.md"
+  empty_handling: skip
+  array_handling: wikilinks
+  key_naming_style: snake_case
+
+crosswalks:
+  - target_framework: iso-27001-2022
+    source_column: "ISO 27001 Annex A Mapping"
+    match_mode: array_contains
+    predicate: is_equivalent_to
+    link_direction: bidirectional
+    default_metadata:
+      mapping_justification: "semapv:LexicalMatching"
+      mapping_tool: "crosswalker-0.2.0"
+```
+
+### Migration from v1 (current code) to v2
+
+Current `src/types/config.ts` defines `CrosswalkerConfig` for column mapping in a single import session. v2 wraps it:
+
+- v1 `CrosswalkerConfig` becomes v2's `columns` + `output` + `transforms` (existing fields lifted)
+- v2 adds: `id`, `version`, `source_file_patterns`, `fingerprint_columns`, `crosswalks`, `stewardship_profile_id`, `schema_version`
+- The fingerprint-based config matching (current code uses content-derived fingerprint) is preserved; v2 adds explicit `source_file_patterns` for filename-based matching as a faster pre-check
+
+Migration script:
+1. Read existing v1 saved configs
+2. Wrap each in a v2 envelope, generating an `id` from the `name` field
+3. Set `schema_version: framework-config-v2`
+4. Empty `crosswalks: []` and `source_file_patterns: []` for now (user fills in)
+5. Write back
+
+## §5 Junction note 13-field schema (per evidence-link edge)
+
+Per [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/): evidence links are **edge-as-note reified** — one markdown file per evidence→control relationship.
+
+### TypeScript shape
+
+```typescript
+interface JunctionNote {
+  // === The 13 stored fields ===
+
+  // Mandatory (5)
+  link_type: 'evidence_link';          // discriminator; future link types may exist
+  evidence: string;                    // wikilink: '[[Evidence/MFA-Policy]]'
+  control: string;                     // wikilink: '[[Frameworks/NIST-800-53-r5/AC-2]]'
+  framework: string;                   // 'nist-800-53-r5' (denormalized for Bases query)
+  status: 'implemented' | 'partial' | 'planned' | 'alternative' | 'not-applicable';
+
+  // Optional (8)
+  confidence?: number;                 // 0.0 - 1.0
+  evidence_type?: 'policy-document' | 'automated-scan' | 'test-result'
+                | 'configuration' | 'log-export' | 'interview'
+                | 'architecture-review' | 'attestation';
+  method?: string;                     // free-text or controlled vocab: 'manual-review', 'config-scan'
+  reviewer?: string;                   // wikilink to person note: '[[People/Alice]]'
+  review_date?: string;                // ISO 8601
+  responsible?: string;                // wikilink: '[[People/Bob]]' (responsible party)
+  collected?: string;                  // ISO 8601 (when evidence was collected)
+  expires?: string;                    // ISO 8601 (when evidence becomes stale)
+
+  // === Computed at query time (not stored) ===
+  freshness?: 'fresh' | 'stale' | 'expired' | 'not-set';
+
+  // === Optional (for review chains) ===
+  supersedes?: string;                 // wikilink to previous junction note
+
+  // === Standard Crosswalker fields ===
+  _crosswalker?: CrosswalkerMetadata;  // junction notes also carry this
+}
+```
+
+### YAML on-disk shape
+
+```yaml
+---
+link_type: evidence_link
+
+# Endpoints (mandatory)
+evidence: "[[Evidence/MFA-Policy]]"
+control: "[[Frameworks/NIST-800-53-r5/AC-2]]"
+framework: nist-800-53-r5
+
+# Status
+status: implemented
+confidence: 0.85
+evidence_type: policy-document
+method: manual-review
+
+# People & dates
+reviewer: "[[People/Alice]]"
+review_date: 2026-04-15
+responsible: "[[People/Bob]]"
+collected: 2026-04-10
+expires: 2027-04-10
+# freshness: computed at query time from review_date + expires
+
+_crosswalker:
+  schema_version: crosswalker-v1
+  generated_by: crosswalker-0.2.0
+  source_file: evidence-imports/policies-2026-04.csv
+  import_date: 2026-04-15T09:12:00Z
+---
+
+# MFA Policy implements AC-2
+
+[Implementation narrative — what OSCAL calls the implementation statement.
+Free-form prose describing how the evidence demonstrates the control.
+This is what the auditor actually reads. Git history on this one file
+is the audit record of every status change, reviewer reassignment, and
+narrative update.]
+```
+
+### Filename convention
+
+`Junctions/{control_framework}/{control_id}--{evidence_slug}.md` — e.g., `Junctions/nist-800-53-r5/AC-2--MFA-Policy.md`.
+
+The composite filename (control + evidence) makes diff-on-rename easy and prevents collision when one piece of evidence implements multiple controls.
+
+### Mandatory vs optional fields (rule)
+
+- **Mandatory (5)**: `link_type`, `evidence`, `control`, `framework`, `status`. Plugin generation refuses to create a junction note missing any of these. Bases queries assume their presence.
+- **Optional (8)**: `confidence`, `evidence_type`, `method`, `reviewer`, `review_date`, `responsible`, `collected`, `expires`. Pluginrenders missing as `null`/empty.
+- **Computed**: `freshness` derived from `review_date` + `expires` at query time (Tier 1: in-memory; Tier 2: SQL view).
+
+### OSCAL `by-component` mapping
+
+The 13-field schema is structurally isomorphic to OSCAL's `by-component` assembly per [Ch 07 deliverable](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/). The OSCAL export pipeline is straightforward field-rename. See [`reference/registry/oscal`](/crosswalker/reference/registry/oscal/) for the mapping table once the OSCAL mental-model doc lands.
+
+## §6 STRM + SSSOM hybrid wire format (crosswalk edges)
+
+Per the [v0.1 stack-pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#6-sssom--strm-resolution--hybrid): user-facing wire format is **STRM-shaped**; SSSOM remains the **internal validation envelope**.
+
+Crosswalk edges between framework controls are stored as **STRM predicate frontmatter on control notes** (not as separate junction notes — junction notes are *evidence* links, distinct from crosswalks).
+
+### STRM predicates (user-facing, frontmatter keys)
+
+The 5 STRM relationships from NIST IR 8477:
+
+| Predicate | Frontmatter key | Semantics |
+|---|---|---|
+| Equal To | `is_equivalent_to` | A ≡ B (semantic equivalence) |
+| Subset Of | `is_narrower_than` | A ⊂ B (A is a special case of B) |
+| Superset Of | `is_broader_than` | A ⊃ B (A subsumes B) |
+| Intersects With | `is_approximate_to` | A ∩ B ≠ ∅ but A ≠ B |
+| No Relationship | `no_relationship` | A ⊥ B (used for explicit "not related" assertions) |
+
+Plus SSSOM `predicate_modifier`:
+- `is_equivalent_to_NOT: ["[[X]]"]` represents `predicate_modifier: NOT` — explicit negation per SSSOM spec
+
+### YAML on-disk shape (control note example)
+
+```yaml
+---
+title: AC-2 Account Management
+
+# STRM predicate frontmatter (the user-facing wire format)
+is_equivalent_to: ["[[Frameworks/ISO-27001-2022/A.5.16]]"]
+is_broader_than: ["[[Frameworks/CIS-Controls-v8/IG1-5.1]]"]
+is_approximate_to:
+  - target: "[[Frameworks/MITRE-ATT&CK/T1078]]"
+    confidence: 0.7
+    mapping_justification: "semapv:ManualMappingCuration"
+
+_crosswalker:
+  schema_version: crosswalker-v1
+  framework_id: nist-800-53-r5
+  control_id: AC-2
+  # ... rest
+---
+```
+
+Two formats supported:
+1. **Simple wikilink array**: `is_equivalent_to: ["[[X]]", "[[Y]]"]` — when no per-edge metadata is needed (the 90% case).
+2. **Object array with metadata**: when an edge needs `confidence`, `mapping_justification`, `mapping_date`, etc.
+
+The object form is fully SSSOM-compatible; the simple wikilink form is the SSSOM minimal envelope (just the predicate triple).
+
+### TSV exports
+
+The plugin emits two TSV variants from the same source data:
+
+- **STRM-TSV (OLIR-template-shaped)**: columns match NIST IR 8278A r1 OLIR template (Source Document, Source Element, Relationship, Target Document, Target Element, Strength, Comments). Excel-friendly. **Default user-facing export.** Submittable to NIST OLIR directly.
+- **SSSOM-TSV**: columns match SSSOM spec (subject_id, predicate_id, object_id, mapping_justification, confidence, author_id, mapping_date, comment, etc.). Round-trip-compatible with `sssom-py`. Optional academic emission.
+
+Both come from the same in-memory representation; the SSSOM envelope is *always* validated internally even when the STRM-TSV export is what the user sees. This is the hybrid resolution — STRM-foreground, SSSOM-internal.
+
+### OSCAL JSON profile export
+
+The third export format. Structured per OSCAL's `profile` and `mapping` assemblies. Round-trip with NIST's OSCAL toolchain. Documentation in `reference/registry/oscal/` (TODO).
+
+## §7 Tier 2 sidecar SQL schema (sqlite-wasm projection)
+
+The Tier 2 sidecar is a **deletable, recoverable projection** of Tier 1 frontmatter into SQLite tables. It exists to enable performant queries (transitive closure, multi-framework joins, coverage matrices, perspective views) that are awkward over markdown frontmatter.
+
+**Recovery property** (load-bearing): if `.crosswalker.sqlite` is missing, corrupted, or stale, the projector rebuilds it from canonical Tier 1 on next vault load. This is what makes Tier 2 risk-free to bundle in v0.1.
+
+### DDL
+
+```sql
+-- ================================================================
+-- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
+-- Schema version: tier2-sqlite-v1
+-- ================================================================
+
+PRAGMA journal_mode = WAL;          -- or TRUNCATE on OPFS per Ch 18
+PRAGMA foreign_keys = ON;
+PRAGMA synchronous = NORMAL;
+
+-- Schema versioning table
+CREATE TABLE IF NOT EXISTS schema_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+INSERT OR REPLACE INTO schema_meta(key, value) VALUES
+  ('schema_version', 'tier2-sqlite-v1'),
+  ('projected_at', strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+  ('crosswalker_version', '0.2.0');
+
+-- ================================================================
+-- Frameworks: one row per FrameworkConfig the vault knows about
+-- ================================================================
+CREATE TABLE IF NOT EXISTS frameworks (
+  id              TEXT PRIMARY KEY,         -- 'nist-800-53-r5'
+  name            TEXT NOT NULL,            -- 'NIST SP 800-53 Rev 5'
+  version         TEXT NOT NULL,            -- 'Rev 5 Update 1'
+  base_path       TEXT NOT NULL,            -- 'Frameworks/NIST-800-53-r5'
+  upstream_url    TEXT,
+  config_id       TEXT NOT NULL,            -- references FrameworkConfig.id
+  imported_at     TEXT NOT NULL,            -- ISO 8601
+  control_count   INTEGER NOT NULL DEFAULT 0
+);
+
+-- ================================================================
+-- Controls: one row per control note (Tier 1 file with control_id)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS controls (
+  -- Composite key: framework + control_id (for cross-framework uniqueness)
+  framework_id    TEXT NOT NULL,
+  control_id      TEXT NOT NULL,            -- 'AC-2'
+  -- Provenance
+  vault_path      TEXT NOT NULL UNIQUE,     -- 'Frameworks/NIST-800-53-r5/AC-2.md'
+  source_hash     TEXT NOT NULL,            -- sha256 of source row
+  -- Display
+  title           TEXT NOT NULL,            -- 'Account Management'
+  -- Hierarchy (denormalised)
+  hierarchy_path  TEXT,                     -- 'Access Control / Account Management'
+  parent_control  TEXT,                     -- for enhancements: 'AC-2' for 'AC-2(1)'
+  -- Lifecycle
+  status          TEXT NOT NULL DEFAULT 'active',
+                  -- CHECK: active | deprecated | archived | superseded
+  superseded_by   TEXT,                     -- vault_path of replacement
+  -- Timestamps
+  imported_at     TEXT NOT NULL,            -- ISO 8601
+  modified_at     TEXT NOT NULL,            -- ISO 8601 (last vault file mtime)
+  PRIMARY KEY (framework_id, control_id),
+  FOREIGN KEY (framework_id) REFERENCES frameworks(id) ON DELETE CASCADE
+);
+
+-- ================================================================
+-- Mappings: one row per crosswalk edge (STRM predicate triple)
+-- This is the table Ch 18 §1.2 SQL examples query against.
+-- ================================================================
+CREATE TABLE IF NOT EXISTS mappings (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- The triple
+  subject_id      TEXT NOT NULL,            -- composite: 'nist-800-53-r5/AC-2'
+  predicate_id    TEXT NOT NULL,            -- 'is_equivalent_to' (STRM predicate)
+  object_id       TEXT NOT NULL,            -- composite: 'iso-27001-2022/A.5.16'
+  -- SSSOM envelope (validation-internal)
+  confidence      REAL,                     -- 0.0 - 1.0
+  mapping_justification TEXT,               -- SEMAPV vocabulary
+  author_id       TEXT,                     -- pipe-delimited ORCIDs
+  mapping_date    TEXT,                     -- ISO 8601
+  mapping_tool    TEXT,
+  predicate_modifier TEXT,                  -- 'NOT' or NULL
+  comment         TEXT,
+  -- Bi-temporal (optional; v0.1 ships the columns, v1.0+ uses them)
+  valid_time_start TEXT,                    -- ISO 8601 — when mapping became true
+  valid_time_end   TEXT,                    -- ISO 8601 — when mapping ceased to be true
+  -- Provenance: which Tier 1 file this edge was extracted from
+  source_path     TEXT NOT NULL,            -- 'Frameworks/NIST-800-53-r5/AC-2.md'
+  source_hash     TEXT NOT NULL
+);
+
+-- Covering indexes per Ch 18 §2.3 (recursive CTE workload)
+CREATE INDEX IF NOT EXISTS idx_mappings_pred_subj
+  ON mappings(predicate_id, subject_id);
+CREATE INDEX IF NOT EXISTS idx_mappings_pred_obj
+  ON mappings(predicate_id, object_id);
+CREATE INDEX IF NOT EXISTS idx_mappings_subj_pred
+  ON mappings(subject_id, predicate_id);
+CREATE INDEX IF NOT EXISTS idx_mappings_valid_time
+  ON mappings(valid_time_start, valid_time_end)
+  WHERE valid_time_start IS NOT NULL;
+
+-- ================================================================
+-- Junction notes: one row per evidence-link edge (per §5)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS junction_notes (
+  vault_path      TEXT PRIMARY KEY,         -- 'Junctions/nist-800-53-r5/AC-2--MFA-Policy.md'
+  -- The 5 mandatory fields
+  link_type       TEXT NOT NULL DEFAULT 'evidence_link',
+  evidence        TEXT NOT NULL,            -- wikilink target
+  control         TEXT NOT NULL,            -- wikilink target
+  framework_id    TEXT NOT NULL,
+  status          TEXT NOT NULL,
+                  -- CHECK: implemented|partial|planned|alternative|not-applicable
+  -- The 8 optional fields
+  confidence      REAL,                     -- 0.0 - 1.0
+  evidence_type   TEXT,
+                  -- CHECK: policy-document|automated-scan|test-result|configuration
+                  --       |log-export|interview|architecture-review|attestation
+  method          TEXT,
+  reviewer        TEXT,                     -- wikilink to person note
+  review_date     TEXT,                     -- ISO 8601
+  responsible     TEXT,                     -- wikilink to person note
+  collected       TEXT,                     -- ISO 8601
+  expires         TEXT,                     -- ISO 8601
+  -- Optional review chain
+  supersedes      TEXT,                     -- vault_path of previous
+  -- Provenance
+  source_hash     TEXT NOT NULL,
+  modified_at     TEXT NOT NULL,
+  FOREIGN KEY (framework_id) REFERENCES frameworks(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_junction_control ON junction_notes(control);
+CREATE INDEX IF NOT EXISTS idx_junction_evidence ON junction_notes(evidence);
+CREATE INDEX IF NOT EXISTS idx_junction_framework_status
+  ON junction_notes(framework_id, status);
+
+-- ================================================================
+-- Computed view: junction_notes with freshness
+-- ================================================================
+CREATE VIEW IF NOT EXISTS junction_notes_with_freshness AS
+SELECT
+  jn.*,
+  CASE
+    WHEN jn.expires IS NULL AND jn.review_date IS NULL THEN 'not-set'
+    WHEN jn.expires IS NOT NULL AND jn.expires < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+      THEN 'expired'
+    WHEN jn.review_date IS NOT NULL
+         AND jn.review_date < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-180 days')
+      THEN 'stale'
+    ELSE 'fresh'
+  END AS freshness
+FROM junction_notes jn;
+
+-- ================================================================
+-- Closure cache (lazy materialization per Ch 18 §2.5)
+-- Populated on demand by recursive-CTE queries.
+-- ================================================================
+CREATE TABLE IF NOT EXISTS closure_cache (
+  subject_id      TEXT NOT NULL,
+  predicate_id    TEXT NOT NULL,
+  object_id       TEXT NOT NULL,
+  confidence_min  REAL,
+  shortest_depth  INTEGER NOT NULL,
+  computed_at     TEXT NOT NULL,            -- ISO 8601 (mtime check on invalidation)
+  PRIMARY KEY (subject_id, predicate_id, object_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_closure_obj_pred
+  ON closure_cache(object_id, predicate_id);
+
+-- ================================================================
+-- Vector embeddings for semantic similarity (sqlite-vec, optional)
+-- Only populated if user enables the embedding feature.
+-- ================================================================
+-- This is a virtual table from the sqlite-vec extension:
+-- CREATE VIRTUAL TABLE IF NOT EXISTS control_embeddings
+--   USING vec0(embedding FLOAT[384]);
+-- (Loading sqlite-vec is a v0.1+ optional add-on; defer concrete DDL.)
+```
+
+### Projection rules (Tier 1 → Tier 2)
+
+The projector (a TypeScript module in `packages/core/`) executes on vault load:
+
+1. **Detect missing/stale state**: if `.crosswalker.sqlite` doesn't exist, or `schema_meta.projected_at` is older than the vault's most recent Tier 1 mtime, reproject.
+2. **Walk frameworks**: for each `FrameworkConfig` in the vault, insert/upsert into `frameworks`.
+3. **Walk control notes**: for each `.md` file with `_crosswalker.control_id` set, insert/upsert into `controls`.
+4. **Extract crosswalk edges**: for each control note, parse STRM predicate frontmatter (`is_equivalent_to`, etc.) and insert one `mappings` row per wikilink target. Object form (with metadata) is parsed into the SSSOM envelope columns.
+5. **Walk junction notes**: for each `.md` file with `link_type: evidence_link`, insert/upsert into `junction_notes`.
+6. **Invalidate closure cache** if any `mappings` row changed.
+
+Projection is idempotent. Re-running on an unchanged vault is a no-op (mtime check + content hash).
+
+### Schema-version migration
+
+When the Tier 2 SQL schema bumps from `tier2-sqlite-v1` to `tier2-sqlite-v2`:
+- Simplest path: drop the .sqlite, reproject from canonical Tier 1.
+- Faster path: per-version `ALTER TABLE` migration.
+- v0.1 ships only `tier2-sqlite-v1`; the migration mechanism is documented but not exercised yet.
+
+## §8 Cross-schema invariants & constraints
+
+These are the rules the projector and the import wizard both have to respect:
+
+1. **Tier 1 is canonical**: every Tier 2 column has a Tier 1 source. No data lives only in Tier 2.
+2. **Frontmatter is flat-scalar or wikilink**: enforces Bases-queryability of the Tier 1 path. Object-form metadata on STRM predicates is permitted because it round-trips through SSSOM; the projector flattens it into Tier 2 SSSOM-envelope columns.
+3. **`_crosswalker` is additive**: never overwrites user-authored top-level frontmatter.
+4. **Mandatory junction note fields**: `link_type`, `evidence`, `control`, `framework`, `status`. Plugin generation refuses to create incomplete notes.
+5. **STRM predicates are the only crosswalk vocabulary**: user-facing crosswalk frontmatter keys MUST be one of the 5 STRM predicates (or their `_NOT` modifier form). SKOS predicates rejected as base vocab; SSSOM is internal validation only.
+6. **Schema versions on every artifact**: every persisted schema (FrameworkConfig, `_crosswalker`, junction note, Tier 2 SQL) carries a `schema_version` for migration. "Crosswalker eats own dog food."
+7. **Composite IDs in Tier 2**: `subject_id` / `object_id` in `mappings` are framework-qualified (`nist-800-53-r5/AC-2`) to enable cross-framework queries without ID collision.
+8. **Source-hash provenance**: every projected row carries `source_hash` (sha256 of the originating Tier 1 byte content) so re-import detects changes byte-accurately.
+
+## §9 Build sequence
+
+The four schemas land in this order in v0.1 implementation:
+
+1. **`_crosswalker` metadata v2** — extend existing `src/generation/generation-engine.ts` to write the v2 fields. Lowest-risk: this is just a frontmatter shape change.
+2. **Junction note 13-field schema** — implement junction-note generation as a new code path in the generation engine. Triggered by FrameworkConfig with crosswalks that target evidence documents.
+3. **FrameworkConfig v2** — refactor `src/types/config.ts` to the v2 shape. Migration script for existing v1 saved configs.
+4. **Tier 2 sidecar SQL projector** — new module in `packages/core/`. Auto-runs on vault load. Lazy closure cache + sqlite-vec embedding integration.
+
+Each step has a corresponding test:
+- Round-trip test: write Tier 1 frontmatter, project to Tier 2 SQL, query, confirm semantic equivalence to source data.
+- Idempotency test: project twice; second projection is a no-op.
+- Recovery test: delete the .sqlite, reload, confirm reprojection produces byte-identical state.
+
+## §10 Open sub-decisions (deferred from this spec)
+
+Items flagged in [Ch 07's "remaining open sub-decisions"](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) and elsewhere that this spec does **not** lock in:
+
+1. **UUID enterprise resilience scope** — Ch 09 settled UUIDv7 + sha256 + CURIEs; the *enterprise* scope (cross-tenant ID stability) needs a separate design pass.
+2. **Multi-editor conflict resolution** — when two users edit the same junction note simultaneously, what does the merge look like? Out of v0.1 scope; v1.0+ collaboration story.
+3. **Inline-Dataview migration script for v0 vaults** — for users who have notes with the legacy `key:: value` syntax. Out of v0.1 scope.
+4. **Tested vault scale threshold documentation** — Ch 18 gives a model; need empirical confirmation in real vaults of varying size.
+5. **OSCAL ↔ Crosswalker mental-model documentation** — `reference/registry/oscal/` page extension. Listed in roadmap Foundation tasks.
+6. **`StewardshipProfile` v2 schema** — separate from this spec but referenced via `FrameworkConfig.stewardship_profile_id`. Per the [05-01 commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/), the schema design pass is deferred until after v0.1 schemas land.
+
+## §11 Related
+
+- **Decision logs**:
+  - [v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the stack commitment this spec implements
+  - [Evidence-link edge model synthesis (Ch 07)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction note schema source
+  - [04-10 Foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — STRM + SSSOM crosswalk edge semantics
+  - [05-01 Foundation commitments + meta-schema lifecycle](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) — "schemas are versioned, migration-aware"
+- **Research deliverables**:
+  - [Ch 09 deliverable: identifier strategy](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/)
+  - [Ch 18 deliverable: Tier 2-Lite scale ceiling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — informs Tier 2 SQL design
+- **Earlier design pages** (background, partly superseded by this unified spec):
+  - [Config schema design](/crosswalker/agent-context/config-schema-design/) — original FrameworkConfig draft
+  - [Constraint enforcement & metadata tiers](/crosswalker/agent-context/constraint-enforcement/) — original `_crosswalker` metadata tiers
+- **External references**:
+  - [STRM (NIST IR 8477)](/crosswalker/reference/registry/strm/) — predicate vocabulary
+  - [SSSOM spec](/crosswalker/reference/registry/sssom/) — internal validation envelope
+  - [OSCAL](/crosswalker/reference/registry/oscal/) — junction-note isomorphism (`by-component`)
+  - [Datalog glossary](/crosswalker/concepts/zz-glossary/datalog/) — context for query layers above this schema
