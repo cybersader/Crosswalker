@@ -7,6 +7,10 @@ sidebar:
   label: "18 · Tier 2-Lite scope"
 ---
 
+:::tip[Resolved 2026-05-02 — archived]
+Resolved by the [Ch 18 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/): rule-by-rule expressivity matrix (4 ✅ tractable / 4 ⚠️ caveat / 1 ❌ hard wall), engineering scale model (~100K mappings ceiling), migration trigger spec, round-trip data-loss analysis, user-facing scope statement. Tier 2-Lite (sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE) is **promoted to default-bundled v0.1 Tier 2 sidecar** per the [v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/). Brief preserved as originally written.
+:::
+
 ## Why this exists
 
 The [Ch 14 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) §2.7 recommends adopting **sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE** as a "Tier 2-Lite" alternate stack for environments where the full Ch 11 layered stack (DuckDB-WASM + Oxigraph + Nemo, ~5 MB compressed) is too heavy: **Obsidian Mobile** (no Electron, no native WASM threading), **low-end laptops**, **restricted-CSP / locked-down enterprise** environments where COOP/COEP can't be set, and **air-gapped users** who can't load larger artifacts.

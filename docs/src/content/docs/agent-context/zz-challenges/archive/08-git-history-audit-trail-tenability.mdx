@@ -7,6 +7,10 @@ sidebar:
   label: "08 · Git audit-trail tenability"
 ---
 
+:::tip[Resolved 2026-05-02 — archived]
+Resolved by the [Ch 08 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/) (augment-not-replace verdict: TSA + WORM + cert-export at Tier 1) and absorbed into the [v0.1 stack-pivot §3.1 audit-trail decision](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) (T1 = git + signed commits as v0.1 default; T2/T3 audit profiles as opt-in compliance-export mode). Follow-on at [archived Ch 13 (modern attestation primitives)](/crosswalker/agent-context/zz-challenges/archive/13-modern-attestation-primitives/) and [archived Ch 15 (non-git audit alternatives)](/crosswalker/agent-context/zz-challenges/archive/15-non-git-audit-trail-alternatives/). Brief preserved as originally written.
+:::
+
 ## The assignment
 
 The [04-10 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) committed to **git history as the audit trail** for evidence-link state changes (status transitions, reviewer attribution, review dates, supersedes chains), with three hardening measures: signed commits, branch protection, and periodic external snapshots. This commitment was reaffirmed in the [2026-05-01 Foundation commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) but with explicit caution from the project owner — **"I'm honestly not sure git history is tenable for audit trail."**
