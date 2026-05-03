@@ -1,0 +1,140 @@
+---
+title: "Challenge 20: First-principles primitive for the import side — what's the formal foundation under ImportRecipe?"
+description: "We've committed to first-principles representations on the edge model side: STRM (set-theory predicates), ontology diff primitives (9 graph-edit atoms), SSSOM (canonical envelope). The import side has only a practical, ad-hoc recipe shape. The question: what's the *first-principles primitive* for describing how source data (CSV / XLSX / JSON / RDF / OSCAL / etc.) is translated into the canonical Tier 1 markdown + frontmatter + folder + wikilink representation? The primitive layer probably exists — schema mapping theory, tree transducers, functorial data migration, W3C RML, lenses, etc. — but it isn't named or chosen yet."
+tags: [research, foundation, schema, import, primitives, data-transformation, formal-foundation]
+date: 2026-05-03
+sidebar:
+  label: "20 · Import primitive formal foundation"
+---
+
+## Why this exists
+
+Crosswalker has invested heavily in **first-principles representations on the edge / output side**:
+
+- **[STRM](/crosswalker/reference/registry/strm/)** — 5 set-theory predicates (Equal-To, Subset-Of, Superset-Of, Intersects-With, No-Relationship). Crosswalker's *predicate primitive*.
+- **[Ontology diff primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)** — 9 atomic graph-edit operations (provably complete per graph edit distance literature). Crosswalker's *change primitive*.
+- **[SSSOM](/crosswalker/reference/registry/sssom/)** — the canonical row-schema envelope for crosswalk edges. Crosswalker's *metadata-envelope primitive*.
+
+But the **import side** has nothing equivalent. The current [ImportRecipe schema](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config) is a practical, ad-hoc shape: identity fields, source-file patterns, sheet selection, column-role assignments (`id` / `label` / `body` / `hierarchy` / `property` / `edge_target` / `metadata` / `ignore`), transforms (24 types, ChunkyCSV-style operations + JSONata escape hatch), output configuration. It's *workable*, but it isn't *primitive* in the same way STRM and the diff atoms are.
+
+The user's intuition (verbatim 2026-05-03):
+
+> "In the same way that we've defined a first principles representation using STRM and our primitives, the import one needs to probably be just as primitive unless I'm misunderstanding how it operates. I think the schema and everything should ultimately represent the fundamentals of what's needed. My (maybe foolish) hunch would be that it will somehow relate to describing the actual data formats and structure and translation. Maybe in the same way that I made a tool in my GitHub called ChunkyCSV that translates nested JSON to tabular CSV-type data."
+
+The user is gesturing at something real. **The primitive layer for "import" is well-studied in CS** — it has multiple competing formalisms, each with different tradeoffs. Crosswalker hasn't picked one. The current ImportRecipe is at the *application* layer (column roles, transform types) without an explicit grounding in any formal foundation.
+
+This challenge is to identify the right primitive layer and propose how ImportRecipe should be re-expressed against it.
+
+## The question, sharply
+
+**What is the minimal first-principles primitive for describing how source data is translated into the canonical Tier 1 markdown + frontmatter + folder + wikilink representation?**
+
+Sub-questions a fresh agent should answer:
+
+1. **Which formal framework best fits Crosswalker's needs?** (See §2 for the candidates.)
+2. **What are the primitive operations** the formal framework reduces to? (Analogous to STRM's 5 predicates or the diff engine's 9 atoms.)
+3. **How does the recipe schema look** if it's expressed natively against the chosen primitive? (Concrete TypeScript / YAML sketch.)
+4. **How does it compose with our existing first-principles representations?** (STRM, SSSOM envelope, ontology diff primitives.)
+5. **Is bidirectionality (lens-like) achievable?** Crosswalker projects Tier 1 → Tier 2 (sqlite-wasm) and exports Tier 1 → STRM-TSV / SSSOM-TSV / OSCAL JSON. If recipes are bidirectional transformations, round-trip integrity becomes a free property.
+
+## Candidate formalisms to evaluate
+
+The fresh agent should walk this list, note maturity / tooling / fit, and pick (or hybrid) the best match:
+
+### Theoretical foundations
+
+| Formalism | What it is | Why it might fit | Why it might not |
+|---|---|---|---|
+| **Tree transducers** (Engelfriet, Filé; macro / multi-bottom-up tree transducers) | Formal automata that map labeled trees to labeled trees. Decades of theory. | YAML, JSON, XML, OSCAL are all trees. CSV-with-hierarchy is also a tree. Crosswalker's output is also a tree (folder structure + frontmatter). Tree-to-tree mapping is exactly what we do. | Steep learning curve. Existing implementations are research-grade (TTT, Treebag); not production-ready. |
+| **Functorial data migration** (Spivak, Categorical Query Language / CQL) | Schemas as categories; migrations as functors. Proven sound. | Provably correct round-trips (Σ, Π, Δ migrations). CQL has tooling. Could give Crosswalker recipe-as-functor with formal guarantees. | Category-theoretic; high cognitive overhead for recipe authors. Not many GRC users will write functors. |
+| **Lenses / bidirectional transformations (bx)** (Foster, Pierce; Boomerang) | A lens is a paired (forward, backward) function over data, with provable round-trip laws. | Bidirectional: import (source → vault) + export (vault → STRM-TSV / OSCAL) come from one definition. Round-trip integrity is built in. | Designing well-behaved lenses is non-trivial. JSON lenses (Jolie, Hugo, etc.) are research projects; mainstream traction limited. |
+| **Datalog-as-ETL** (Aho-Ullman; modern: Soufflé, DDLog, Datafun) | Express transformations as Datalog rules; records are facts; output is derived facts. | Already in Crosswalker's stack (Nemo for SSSOM derivation). Could unify import + derivation. Declarative. Composable. | Awkward for prose body content. Better at relational than tree-shaped data. |
+| **Algebraic effects + handlers** (Plotkin, Pretnar) | Effects as composable units, handlers as transformers. | Modern, theoretically clean. Could express "load CSV", "parse XLSX", "transform", "emit markdown" as composable effects. | Niche outside FP research community; few production tools. |
+
+### Practical declarative DSLs
+
+| DSL / format | What it is | Why it might fit | Why it might not |
+|---|---|---|---|
+| **JSONata** | Declarative query and transformation language for JSON. Used by IBM Cloud Functions, AWS States. | Production-ready. NPM package available. Well-documented. Can transform CSV-as-JSON to nested JSON. Already mentioned as escape hatch in the v0.1 ImportRecipe. | Not a primitive *layer* — it's a *language*. Doesn't natively model schemas or schemas-of-schemas. JSON-only by default (CSV via pre-processor). |
+| **JQ** | Stream-oriented JSON filter language. | Composable, mature, ubiquitous. Pipeable filters. | Same as JSONata: language, not primitive. Stream-oriented model awkward for batch transforms. |
+| **Jolt** (Bazaarvoice) | Declarative JSON-to-JSON transformation language. JSON-as-DSL. | Recipes-as-data. Specs are JSON, version-controllable, shareable. | Limited to JSON↔JSON. CSV handling needs a preprocessor. |
+| **JSONiq** | XQuery for JSON. W3C-lineage. | Mature theory (FLWOR). Can express joins, recursion, nesting. | Overkill for typical Crosswalker recipe. Verbose. |
+| **YARRRML / RML** (Linked Data community; W3C draft RML) | YAML-flavored Triples Map Language. Declarative mapping from heterogeneous sources (CSV, XLSX, JSON, XML, RDB) to RDF triples. | **Strongest single-formalism fit.** Designed exactly for "source X → triples + target schema." Mature; has tools (rmlmapper, Matey, Yatter). YAML-friendly. Composable. Source-format-agnostic. | Outputs RDF, not Markdown + folders + wikilinks. Adapter layer needed. |
+| **R2RML** (W3C Rec) | Relational-database-to-RDF mapping language. RDF subset of RML. | W3C standard. Production-mature (Ontop, Stardog, Mastro). | RDB-only. CSV / JSON need RML wrapper. Doesn't model output beyond triples. |
+| **CSVW** (W3C CSV on the Web) | Metadata for CSV data: typing, annotations, transformations. | W3C standard. Designed for the canonical "CSV + metadata" use case. Could shape Crosswalker's CSV path nicely. | CSV-only. Doesn't compose well with XLSX/JSON ingestion. |
+| **XSLT 3.0** | Mature XML transformation language. | Battle-tested. Comprehensive. | XML-shaped thinking. Awkward for non-XML sources. |
+| **Pandas / Arquero** | Imperative dataframe transformations in Python / JS. | Production tooling. Wide ecosystem. | Imperative, not declarative. Recipe-as-code, not recipe-as-data. |
+
+### Practical ETL frameworks
+
+| Tool | What it is | Why it might fit | Why it might not |
+|---|---|---|---|
+| **dlt** (Data Load Tool, dlthub.com) | Python ETL framework with declarative resource definitions. Open source. | Modern, declarative, schema-aware. Handles incremental loads. | Python-only. Crosswalker is TypeScript / Bun. |
+| **dbt** | SQL-based transformation tool. Recipe-like; jinja templates. | Production-mature. Recipe-as-data. | SQL-only output; not a fit for markdown vault generation. |
+| **Singer / Meltano** | EL framework with taps (sources) and targets (sinks). JSON-spec-defined taps. | Composable source plugins. | Heavy infrastructure. Tap-and-target model is overkill for a plugin. |
+| **Apache NiFi / StreamSets** | Visual data pipelines. | Mature, declarative. | GUI tools, not recipe-as-data. |
+| **dpapathanasiou / ChunkyCSV** | The user's tool — translates nested JSON ↔ tabular CSV. | Direct precedent. Simple, focused. The user's intuition for what the import primitive looks like. | Not a formalism per se; a specific transformation. Could be one *instance* of a more general primitive. |
+
+### Reference architecture: how OxO2 + SSSOM-Transform handle this
+
+The [OxO2 paper (Harmse et al. 2025)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) treats SSSOM as the canonical *target* and uses Nemo Datalog rules to *derive* mappings. The [SSSOM/Transform language](https://incenp.org/dvlpt/sssom-java/sssom-ext/sssom-transform.html) (Java tooling) defines a declarative recipe for "given source ontology pair X and Y, here's how to produce SSSOM mappings." This is **the closest existing formal precedent** for what Crosswalker's ImportRecipe should look like — and it is *also* Datalog-flavored, which composes naturally with our Tier 2 (Nemo) commitment.
+
+## Constraints the formalism must satisfy
+
+The fresh agent's recommendation must honor these constraints:
+
+1. **Declarative, not code**. Recipes are data — JSON / YAML / TOML — version-controllable, shareable, diff-able. Not TypeScript code.
+2. **Composable**. Recipes can build on each other (extends / overrides / mixins).
+3. **Source-format diverse**. Must handle the realistic source landscape: CSV, TSV, XLSX (with sheets, merged cells, header offsets), JSON, JSON-LD, RDF (Turtle, N-Triples, JSON-LD), OSCAL XML/JSON/YAML.
+4. **Round-trip-friendly**. The recipe should ideally be invertible — given the canonical Tier 1 output, regenerate STRM-TSV / SSSOM-TSV / OSCAL JSON. Lens-like behavior preferred but not required.
+5. **Composes with existing first-principles representations**. Plays nicely with STRM predicates, SSSOM envelope, junction notes, ontology diff primitives. Doesn't duplicate or contradict.
+6. **Recipe-author-friendly**. The 90% case (ImportRecipe for NIST 800-53) shouldn't require a PhD in category theory. Power users can opt into more formal expressivity.
+7. **Implementable in TypeScript / Bun on Obsidian**. No JVM-only dependencies. WASM is acceptable. Pure-JS preferred.
+8. **Minimum dependencies**. Keep the v0.1 plugin under the ~1.2 MB bundle target.
+
+## What the deliverable should produce
+
+1. **Verdict** — pick a formalism (or argue for a hybrid).
+2. **The primitive operations** — analogous to STRM's 5 predicates or the diff engine's 9 atoms. What are the irreducible primitives the formalism reduces to? (E.g., for tree transducers: relabel, project, copy, restructure, fold, etc.)
+3. **Concrete recipe schema sketch** — TypeScript + YAML example for an actual ImportRecipe (e.g., NIST 800-53 r5) expressed against the chosen primitive. Compare-and-contrast with the [v0.1 ImportRecipe schema](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config).
+4. **Composability story** — how does this primitive layer compose with STRM, SSSOM envelope, ontology diff primitives? Does it subsume any of them, or is it strictly orthogonal?
+5. **Bidirectionality answer** — is round-trip Tier 1 ↔ (STRM-TSV / SSSOM-TSV / OSCAL JSON) expressible as a single recipe, or are forward and backward separate?
+6. **Migration path** — concrete plan for moving the v0.1 ImportRecipe schema (which is *practical* and *ad-hoc*) to the recommended primitive-grounded version. Phased OR rip-and-replace OR coexist?
+7. **What we'd lose** — if the recommendation simplifies dramatically, what existing v0.1 recipe capabilities does it sacrifice? Any features the user audience needs that the formalism can't express?
+8. **Adversarial sanity check** — would a competent recipe author look at the recommended schema and bounce, or adopt? Be honest about the cognitive-load tradeoff.
+
+## What this does NOT need to answer
+
+- Implementation specifics (data structures, performance, library choices) — those are downstream.
+- Whether to ship v0.1 ImportRecipe before this lands (the answer is *yes, ship the practical schema; let this challenge inform v1.0+ refinement*).
+- Re-evaluating STRM, SSSOM, junction notes, ontology diff primitives — those are committed.
+
+## Relationship to v0.1 implementation
+
+**Defer-not-block.** The [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) ships a practical ImportRecipe shape that's adequate for CSV / XLSX / JSON / OSCAL ingestion. Ch 20's deliverable informs **v1.0+ refinement** — when the practical schema hits expressive limits, or when round-trip / bidirectional / multi-source-format needs surface, the formal primitive layer becomes the migration target.
+
+In other words: v0.1 may end up being expressed in a primitive-grounded form *retroactively*, by re-deriving the practical recipe shape from the chosen formalism and showing the two are equivalent. That's a fine outcome. The point of Ch 20 is to surface the formal layer, not to block v0.1 on it.
+
+## Relationship to prior challenges
+
+- **Conceptually parallel to Ch 06** (synthetic spine resolution) — both are "what's the architectural primitive at this layer?"
+- **Builds on Ch 12** (Datalog vs SQL for SSSOM chain rules) — Datalog as a transformation primitive is one of the candidate formalisms here.
+- **Independent of Ch 14/15/16** (engine survey, audit trail, Tier 3) — those are stack decisions; this is a representation decision.
+- **Could subsume parts of "Transform engine" Foundation roadmap item** — the 24-transform-types list might fall out as instances of a smaller primitive set.
+
+## Related
+
+- [v0.1 schema spec — ImportRecipe section](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config) — the practical-but-ad-hoc current shape
+- [v0.1 schema spec — column roles](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config) — `id` / `label` / `body` / `hierarchy` / etc.
+- [Ontology diff primitives (Ch 04 + 04-09 atomic operations)](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) — the change-primitive precedent this challenge mirrors
+- [STRM registry entry](/crosswalker/reference/registry/strm/) — the predicate-primitive precedent
+- [SSSOM registry entry](/crosswalker/reference/registry/sssom/) — the envelope-primitive precedent
+- [SSSOM/Transform language](https://incenp.org/dvlpt/sssom-java/sssom-ext/sssom-transform.html) — closest existing formal precedent
+- [W3C RML draft](https://rml.io/specs/rml/) — Triples Map Language for heterogeneous-source-to-RDF mapping
+- [W3C R2RML Recommendation](https://www.w3.org/TR/r2rml/) — the RDB subset of RML
+- [W3C CSVW](https://www.w3.org/TR/tabular-data-primer/) — CSV on the Web
+- [JSONata documentation](https://docs.jsonata.org/) — declarative JSON transformation language
+- [Boomerang lenses paper (Foster et al.)](https://www.cs.cornell.edu/~jnfoster/papers/boomerang-tlcc.pdf) — bidirectional-transformation foundations
+- [Spivak — Categorical Query Language (CQL)](https://categoricaldata.net/) — functorial data migration
+- [dpapathanasiou / ChunkyCSV (user's tool)](https://github.com/dpapathanasiou) — practical-precedent touchstone (verify exact GitHub URL)
+- [Roadmap: Transform engine](/crosswalker/reference/roadmap/) — the Foundation item this might subsume
