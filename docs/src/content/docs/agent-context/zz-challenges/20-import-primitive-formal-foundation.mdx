@@ -73,7 +73,8 @@ The fresh agent should walk this list, note maturity / tooling / fit, and pick (
 | **dbt** | SQL-based transformation tool. Recipe-like; jinja templates. | Production-mature. Recipe-as-data. | SQL-only output; not a fit for markdown vault generation. |
 | **Singer / Meltano** | EL framework with taps (sources) and targets (sinks). JSON-spec-defined taps. | Composable source plugins. | Heavy infrastructure. Tap-and-target model is overkill for a plugin. |
 | **Apache NiFi / StreamSets** | Visual data pipelines. | Mature, declarative. | GUI tools, not recipe-as-data. |
-| **dpapathanasiou / ChunkyCSV** | The user's tool — translates nested JSON ↔ tabular CSV. | Direct precedent. Simple, focused. The user's intuition for what the import primitive looks like. | Not a formalism per se; a specific transformation. Could be one *instance* of a more general primitive. |
+| **ChunkyCSV** (user's tool, github.com/cybersader) | Translates nested JSON ↔ tabular CSV. | Direct precedent. Simple, focused. User's intuition for what the import primitive looks like. | Not a formalism per se; a specific transformation. Could be one *instance* of a more general primitive. |
+| **JSONaut** (user's tool, github.com/cybersader) | Companion to ChunkyCSV — JSON manipulation / transformation utility. | Same precedent class — practical, hands-on ETL the user already authored. May contain logic that ports into Crosswalker's transform engine directly. | Same caveat: tool, not formalism. Worth mining for primitives. |
 
 ### Reference architecture: how OxO2 + SSSOM-Transform handle this
 
@@ -136,5 +137,5 @@ In other words: v0.1 may end up being expressed in a primitive-grounded form *re
 - [JSONata documentation](https://docs.jsonata.org/) — declarative JSON transformation language
 - [Boomerang lenses paper (Foster et al.)](https://www.cs.cornell.edu/~jnfoster/papers/boomerang-tlcc.pdf) — bidirectional-transformation foundations
 - [Spivak — Categorical Query Language (CQL)](https://categoricaldata.net/) — functorial data migration
-- [dpapathanasiou / ChunkyCSV (user's tool)](https://github.com/dpapathanasiou) — practical-precedent touchstone (verify exact GitHub URL)
+- **ChunkyCSV** + **JSONaut** (user's tools at github.com/cybersader) — practical-precedent touchstones the user has already authored. Worth mining for primitives during the deliverable. Per user 2026-05-03: "I think I may have to port that logic into this codebase and/or do more research on that."
 - [Roadmap: Transform engine](/crosswalker/reference/roadmap/) — the Foundation item this might subsume
