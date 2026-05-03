@@ -1,0 +1,479 @@
+---
+title: "Import primitive formal foundation — Ch 20 synthesis (wargaming setup, not a decision log)"
+description: "Three Ch 20 fresh-agent deliverables landed 2026-05-03. Runs A and C converge on a transformation-algebra primitive set (5–6 primitives, RML/YARRRML retargeted to Tier-1, MTT-justified). Run B operates at a complementary boundary-semantics layer (ref/resolve/bind/seal, Backpack-style holes/fills, Nix content addressing). User declined to make Path A vs Path B v0.1 decisions yet — this log is a wargaming setup, not a decision-driver. Centerpiece: 7 concrete worked examples spanning simple-CSV to external-API-protocol scenarios; explicit wargaming questions; reference baseline (Obsidian Importer plugin) of overly-simplified import; the protocol-surface insight that Crosswalker's import side may be a protocol, not just internal Obsidian-plugin logic."
+tags: [foundation, import, primitive, etl, mtt, lenses, rml, wargaming, synthesis]
+date: 2026-05-03
+sidebar:
+  label: "05-03 · Ch 20 import primitive synthesis"
+  order: -20260503.0
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[This log is a wargaming setup, not a decision log]
+Three Ch 20 deliverables landed today. They surface an architectural choice with multiple defensible paths. Per user 2026-05-03: *"I haven't thoroughly read [the research] yet... I need EXAMPLES of what this looks like in practice... this definitely needs more research and discussion and decisioning and wargaming."*
+
+This log captures the convergence, the layer-split, the concrete examples needed to evaluate options, and the wargaming questions the user wants to walk through. **It does NOT decide between Path A and Path B for v0.1, does NOT pick the surface DSL flavor, does NOT pick the Manifest language.** Those are deferred to a future discussion pass.
+:::
+
+## §1 Why this log exists
+
+The user ran [Challenge 20: Import primitive formal foundation](/crosswalker/agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/) and received **three independent fresh-agent deliverables** plus a **substantive user/agent dialog** that crystallized two architectural insights. The four artifacts:
+
+- [Ch 20a — T1TMA (Tier-1 Term-Map Algebra)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/) — 6 primitives, YARRRML-retargeted, MTT-justified, lens-contracted
+- [Ch 20b — Boundary semantics (`ref/resolve/bind/seal`)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-b-boundary-semantics/) — 4-primitive boundary contract, Backpack/Nix-style content addressing
+- [Ch 20c — 5+4 primitive set (RML retargeted)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-c-rml-retargeted/) — 5 import primitives + 4 output sinks, s-t tgds + MTT + functorial migration justified
+- [Ch 20 dialog — ETL + fundamental forms](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-dialog-etl-and-fundamental-forms/) — user/agent exchange validating "data has fundamental forms; ETL is mapping between forms; the primitives are tree transducers"
+
+This synthesis log is the wargaming setup the user explicitly asked for. It anchors the discussion at concrete examples and walks through scenarios where each architectural choice exhibits its tradeoffs.
+
+## §2 The reference baseline — what we're improving on
+
+Per user: *"the [Obsidian Importer](https://github.com/obsidianmd/obsidian-importer) plugin is an example of an overly simplified process of what importing could look like."*
+
+The Obsidian Importer plugin (and most vendor importers) demonstrates what a "simple" import looks like:
+
+| What it does | What's wrong with it |
+|---|---|
+| File-format-specific code paths (one for Notion, one for Bear, one for Roam, etc.) | Adding a new format means writing new code; no recipe abstraction |
+| Hardcoded mapping from source structure to vault structure | No schema; the mapping rules live in the plugin's source code, not as data |
+| No provenance recording — generated notes don't know where they came from | Re-import is destructive; no Merkle history; "what changed" is unanswerable |
+| No identity model — two imports of the same source produce different vaults | Collaborators can't merge; sharing recipes is impossible |
+| No protocol surface — only Obsidian-internal logic can pull data in | External systems (MCP servers, agents, custom CLIs, APIs) have no standardized way to push data into a Crosswalker vault |
+| Limited to file-on-disk sources | Can't ingest from URLs, Git repos, MCP resources, or live APIs without extra plumbing |
+
+**This is the bar to clear.** Any v0.x architecture for Crosswalker's import side must solve at least the provenance, identity, recipe-as-data, and protocol-surface problems — because those are the four that *durably* differentiate Crosswalker from "yet another importer plugin." The deliverables below all address these to varying depths.
+
+## §3 The user's framing — graph-aware ETL with a protocol surface
+
+Three architectural insights from the [user/agent dialog](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-dialog-etl-and-fundamental-forms/):
+
+### 3.1 Crosswalker is graph-aware, semantically-constrained, format-diverse ETL
+
+User question: *"So what I'm essentially building is an ETL engine for importing frameworks and ontologies into my Crosswalker system."* — Confirmed. The agent sharpened: it's distinct from generic tabular ETL (dbt, dlt, Singer) in three structural ways:
+
+1. **Graph-aware output**: records aren't flat rows, they're nodes in a graph. A NIST 800-53 control has typed relationships (parent family, child enhancements, related controls, mapped-to controls in other frameworks). Generic ETL frameworks assume tabular-in tabular-out; Crosswalker's ETL must produce a graph.
+2. **Semantically-constrained target**: the target schema isn't arbitrary — it's the Tier-1 representation that downstream systems (STRM, SSSOM, ontology diff, Nemo derivation) consume with expectations. The target shape is closed by design.
+3. **Format-diverse sources**: the same conceptual entity arrives in many serializations. NIST 800-53 r5 ships as CSV, XLSX, OSCAL JSON, OSCAL XML, PDF. The ETL primitive must abstract over physical format while preserving conceptual mapping.
+
+### 3.2 Data has fundamental forms; ETL is mapping between forms
+
+User question: *"Am I oversimplifying when I think of ETL as changing the shape of the data?"* — No. The agent confirmed and sharpened the insight to its formal foundation:
+
+- Every data format reduces to a small number of structural forms: **tables** (depth-2 trees), **trees** (the universal form), **graphs** (trees-of-adjacency-lists when serialized).
+- Tables and graphs are **special cases of labeled trees**. The universal structural form is the labeled tree.
+- ETL is **tree-to-tree transformation**.
+- The primitive operations of tree-to-tree transformation are **macro tree transducer** rules — provably 5 irreducible operations (Engelfriet/Vogler 1985, Fülöp/Vogler 1998) that compute exactly the primitive recursive functions on trees.
+- **ChunkyCSV** (the user's earlier tool) is a tree transducer specialized for the table↔tree depth crossing. **JSONaut** (the user's other tool) is a tree-to-tree transducer specialized for JSON manipulation. Both are concrete instances of the general primitive.
+
+The user arrived at this insight from first-principles intuition; the formal literature converges on the same answer from the theoretical direction. Both directions licensing the same primitive set is the strongest first-principles evidence available.
+
+### 3.3 The import surface is potentially a protocol, not just Obsidian-internal logic
+
+User: *"The goal is to have a system where you could define transforms or maybe in the future idk — we can architect other connections (doesn't need to be logic that lives in Obsidian) to pull data in."*
+
+This is significant. The deliverables describe the import primitive as a recipe/transformation algebra living *inside* Crosswalker. But the user's framing imagines the import side as a **protocol surface**: external systems (MCP servers, agent extractors, custom CLIs, APIs, third-party tools) connect to Crosswalker's import side directly and push data in. The recipe layer remains, but it can also be invoked *by external systems* through a typed protocol.
+
+This insight **strengthens the case for Run B's boundary-semantics layer** — when sources are external systems rather than local files, content-addressing, sealed manifests, capability-typed effects, and Merkle provenance matter *more*, not less. It also activates the [platform-not-monolith pillar](/crosswalker/concepts/what-makes-crosswalker-unique/) ("Spec / Library / Integrations") that's already a Foundation commitment.
+
+## §4 The convergence — Layer B (transformation algebra)
+
+Runs A and C give *essentially the same answer* at the transformation-algebra layer. Side-by-side:
+
+| Aspect | Run A (T1TMA) | Run C (5+4 primitive set) |
+|---|---|---|
+| Primitive count | **6** (ITERATE, REFERENCE, TEMPLATE, BIND, JOIN, INVERT) | **5 + 4 sinks** (Source, Term, Map, Join, Function + path/frontmatter/body/wikilink) |
+| Output vocabulary | Closed Tier-1 slot vocab: id, label, body.section, frontmatter.k, links.role, folder, aliases, tags, metadata.sssom-key | 4 sinks: path, frontmatter[k], body[region], wikilink[role] |
+| Bidirectionality | INVERT primitive (sixth op) for opt-in lens `put` | `bidirectional: true` annotation flag at NoteMap level |
+| Surface DSL | YARRRML-shaped YAML | YARRRML-flavored YAML |
+| Expression sub-language | JSONata | JSONata (in `Function` primitive) |
+| Tabular type profile | CSVW | CSVW (via `Source.options`) |
+| Bundle target | ~480 KB total | ~620 KB total |
+| Theoretical justification | MTT primitive recursion + Foster/Pierce lens semantics | s-t tgds (Fagin/Kolaitis/Popa) + MTT + functorial data migration |
+| Reject list | CQL/FDM (too academic), full Boomerang (no JS impl), Datalog-as-DSL (Datalog stays for derivation), pure JSONata/Jolt (no source/sink abstraction) | Same |
+| Adopt list | RML/YARRRML shape; CSVW; JSONata; SSSOM/T-style filter→action | Same |
+| NIST 800-53 worked example | Yes, OSCAL CSV path | Yes, OSCAL JSON path |
+
+**The two are essentially the same recommendation stated from slightly different angles.** Run A names INVERT as a sixth primitive; Run C makes bidirectionality an annotation. Otherwise the architectural shape is identical: **YARRRML retargeted from RDF triples to Tier-1 Notes, with the Tier-1 sink vocabulary as the closure constraint, JSONata as the expression layer, CSVW as the tabular type profile, MTT as the completeness theorem, and Foster lenses as the round-trip contract.**
+
+This convergence is the strongest signal. When two independent fresh-agent runs reach the same architectural recommendation through slightly different paths (Run A starts from "what's the minimal complete primitive for tree-to-tree transformation"; Run C starts from "what does data exchange theory say is the minimal s-t tgd for this problem"), it's evidence that the count and shape are right.
+
+## §5 The complementary layer — Layer A (boundary semantics)
+
+[Run B](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-b-boundary-semantics/) operates at a *different* layer. Not transformation algebra — *boundary semantics*. It answers a different question.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    LAYER A — BOUNDARY SEMANTICS                  │
+│                            (Run B)                               │
+│                                                                  │
+│   Question: How does an artifact CROSS into the vault?           │
+│                                                                  │
+│   Primitives: ref → resolve → bind → seal                        │
+│                                                                  │
+│   Concerns: identity (content-digest), provenance (Merkle DAG),  │
+│             trust (signed roots), capability (sealed manifests), │
+│             versioning (digest + alias), determinism             │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                │  Layer A produces a verified,
+                                │  trusted, content-addressed artifact.
+                                │  Layer B then reshapes it.
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  LAYER B — TRANSFORMATION ALGEBRA                │
+│                          (Runs A + C)                            │
+│                                                                  │
+│   Question: How is the artifact RESHAPED into Tier-1 Notes?      │
+│                                                                  │
+│   Primitives: Source / Term / Map / Join / Function (+ INVERT)   │
+│                                                                  │
+│   Output sinks: path / frontmatter / body / wikilink             │
+│                                                                  │
+│   Concerns: format-diverse iteration, term construction,         │
+│             cross-source joins, declarative transforms,          │
+│             optional lens-style round-trip                       │
+└──────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+                       Tier-1 Note tuples
+                       (markdown + YAML + folders + wikilinks)
+                                │
+                                ▼
+                       STRM, SSSOM, junction notes,
+                       ontology diff, Nemo derivation
+                       (all *consumers* of Tier-1)
+```
+
+The two layers compose cleanly. Layer A handles *what makes the import legal at the vault boundary*; Layer B handles *what makes the import expressible as a transformation*. Recipe authors interact primarily with Layer B (the YARRRML-shaped DSL); Layer A is enforced by the runtime (hash-pinning, sandbox, manifest-sealing).
+
+**The user's "external connections / protocol surface" insight strengthens Layer A's case dramatically.** When sources are external systems (MCP servers, APIs, agent extractors, custom CLIs) rather than local files, the boundary semantics matter more — provenance, content-addressing, sandboxed effects, and capability typing become the load-bearing properties. A vendor-style local-file-only importer can ignore Layer A; a protocol-based system cannot.
+
+## §6 Concrete worked examples — the wargaming gallery
+
+This section is the centerpiece. Walk through each scenario and observe what each architectural choice does.
+
+### Example 1 — Importing a NIST 800-53 r5 CSV (the simplest case)
+
+**The source**: a CSV with columns `Control Identifier, Control Name, Control Text, Family, Discussion, Related Controls`.
+
+**Vendor importer (Obsidian Importer baseline)**:
+
+```javascript
+// imaginary code — this is what the vendor pattern looks like
+parseCsv(file).rows.forEach(row => {
+  vault.create(`Frameworks/NIST/${row['Control Identifier']}.md`,
+               `# ${row['Control Name']}\n\n${row['Control Text']}`);
+});
+```
+
+Mapping rules live in the plugin source code. No recipe. No provenance. Re-imports overwrite.
+
+**v0.1 practical ImportRecipe** ([current spec §4](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config)):
+
+```yaml
+schema_version: import-recipe-v1
+id: nist-800-53-r5
+columns:
+  - source_name: "Control Identifier"
+    role: id
+  - source_name: "Control Name"
+    role: label
+  - source_name: "Control Text"
+    role: body
+  - source_name: "Family"
+    role: hierarchy
+  - source_name: "Related Controls"
+    role: edge_target
+output:
+  base_path: Frameworks/NIST 800-53 r5
+  filename_template: "{control_id}.md"
+  array_handling: wikilinks
+```
+
+Recipe-as-data; column roles + 24 transform types; works for the 90% case.
+
+**v0.2 primitive-grounded recipe** (Runs A + C convergent):
+
+```yaml
+recipe: '1.0'
+id: urn:crosswalker:recipe:nist-800-53-r5
+
+sources:
+  catalog_csv:
+    access: ./input/nist-800-53-r5.csv
+    formulation: csvw
+    csvw:
+      tableSchema:
+        primaryKey: ["Control Identifier"]
+
+mappings:
+  control:
+    source: catalog_csv
+    binds:
+      - slot: id
+        get: { template: "nist:{`Control Identifier`}" }
+      - slot: label
+        get: { reference: "`Control Name`" }
+      - slot: { kind: body, section: "Statement", order: 1 }
+        get: { reference: "`Control Text`" }
+      - slot: folder
+        get: { template: "Frameworks/NIST 800-53 r5/{`Family`}" }
+      - slot: { kind: links, role: "related", targetMapping: control }
+        multi: true
+        get:
+          jsonata: '$split(`Related Controls`, /,\s*/).("nist:" & $)'
+```
+
+What Path A vs Path B does to this example:
+- **Path A** (ship v0.1 practical, migrate to v0.2): authors write the v0.1 form now, gets auto-transpiled to v0.2 in 6 months. Recipe migration is mechanical.
+- **Path B** (v0.1 primitive-grounded from start): authors write the v0.2 form from day one. ~5 lines longer than v0.1.
+
+What Layer A adds (orthogonal to Path A/B): the recipe references `nist-800-53-r5.csv` by content-digest, not just filename. Provenance is recorded. Re-imports are typed deltas, not destructive overwrites.
+
+### Example 2 — Importing OSCAL JSON (tree-shaped source, format diversity)
+
+**Same recipe primitives, different `formulation`**:
+
+```yaml
+sources:
+  catalog_oscal:
+    access: ./input/NIST_SP-800-53_rev5_catalog.json
+    formulation: jsonpath
+    iterator: "$..controls[*]"           # walks every nesting level
+
+mappings:
+  control:
+    source: catalog_oscal
+    filter: { function: isControl, args: [{ reference: "class" }] }
+    binds:
+      - slot: id
+        get: { reference: "id" }
+      - slot: { kind: body, section: "Statement", order: 1 }
+        get:
+          jsonata: "$join(parts[name='statement'].prose, '\\n\\n')"
+      # ... etc
+```
+
+The conceptual mapping is the same as Example 1. Only the `formulation` and the access expressions change. **The recipe author doesn't rewrite their entire recipe just because the source format changed.** This is the format-diversity property — the user's framing #3.1 made concrete.
+
+What this shows: the primitive set's `formulation` parameterization absorbs format diversity for free. Vendor importer pattern requires a new code path; v0.1 practical requires column-role rewrites; v0.2 primitive-grounded requires only the formulation switch.
+
+### Example 3 — Importing from an MCP server / external API
+
+**The protocol-surface case.** A Crosswalker recipe whose Source is a URI pointing at an MCP resource:
+
+```yaml
+sources:
+  scf_master:
+    access: "mcp://compliance-research-server/scf/2025-Q4"
+    formulation: oscal-json
+    iterator: "$.catalog.groups[*].controls[*]"
+
+mappings:
+  control:
+    source: scf_master
+    # ... same shape as before
+```
+
+**Layer A is what makes this work safely.** The MCP server returns an artifact; Layer A:
+1. `ref` constructs a typed reference: `(mcp://compliance-research-server/scf/2025-Q4, FrameworkSig, sha256:abc...)`.
+2. `resolve` calls into the MCP server in a sandboxed environment with declared trust roots, fetches bytes, canonicalizes, hashes, verifies digest matches pin.
+3. `bind` materializes Tier-1 notes via Layer B's transformation algebra.
+4. `seal` records the manifest the import was sealed against.
+
+If the MCP server returns different bytes the next time, the digest mismatch is caught. If the server is compromised, the trust-root verification catches it. If two collaborators import from the same MCP source, content-addressing collapses the result. **Without Layer A, none of these properties hold for an external-system source.**
+
+This is also the example that activates the user's "other connections, doesn't need to be logic that lives in Obsidian" framing. The MCP server is not Obsidian-internal logic; it's an external system that *speaks the import protocol*. The recipe is invariant under whether the source is a local file or an external system — Layer A handles the boundary, Layer B handles the reshape.
+
+### Example 4 — Re-import / version bump
+
+**NIST CSF 1.1 → 2.0** (a real upgrade that broke crosswalks across the GRC industry).
+
+**Vendor importer**: re-runs the importer; either silently overwrites the old vault content, or duplicates with version suffixes the user has to clean up. No record of *what changed*.
+
+**v0.1 practical**: re-imports produce a new set of notes; the user runs git diff to figure out what changed. Possible but manual.
+
+**v0.2 + Layer A**: the import is a typed delta. Layer A computes:
+- Old digest: `sha256:abc...` (NIST CSF 1.1)
+- New digest: `sha256:def...` (NIST CSF 2.0)
+- Both are first-class artifacts in the vault's import history
+- A *Migration Crosswalk* artifact is automatically proposed: edges where both endpoints have a content-equivalent in the old version map automatically; edges where the target was renamed/restructured surface as user-review tasks
+- The ontology diff engine (the existing 9 atomic graph-edit primitives) decomposes the change into adds/removes/relabels/restructures
+- Provenance is monotonically extended; nothing is destroyed
+
+This is what "re-import as typed delta against an immutable substrate" means in practice. **Without Layer A, this scenario is the most painful re-import experience in compliance work today.**
+
+### Example 5 — Two collaborators importing the same framework
+
+**Without Layer A**: Alice imports NIST CSF 2.0 from `https://nist.gov/csf-2.0.json` on Monday. Bob imports the same URL on Tuesday. NIST silently fixed a typo Tuesday morning. Alice's vault and Bob's vault have *different* notes. Their crosswalks reference different controls. Merging their vaults is a nightmare.
+
+**With Layer A**: both Alice and Bob's recipes pin the source to `sha256:abc...`. If NIST changed the bytes, Bob's import is *refused* with a digest mismatch error — he must explicitly accept the new digest, which creates a new typed artifact. Alice and Bob's vaults are observationally indistinguishable; merging is trivial.
+
+This is the **collaboration safety property**. It's foundational for the user's "platform architecture, not plugin monolith" pillar — sharing recipes across organizations only works if recipes are content-addressed.
+
+### Example 6 — An AI agent reasoning over Crosswalker imports
+
+**Without Layer A or v0.2**: agent reads notes one by one, infers structure from frontmatter heuristics, frequently hallucinates schema details.
+
+**With Layer B (v0.2 primitive-grounded)**: agent loads the recipe and instantly knows the shape of every generated note (closed slot vocabulary; declared frontmatter keys; declared body sections; declared wikilink roles). No hallucination space.
+
+**With Layer A (sealed manifests)**: agent loads the vault's `crosswalker.yaml` plus manifest files (a few KB total) and knows the *shape* of the entire vault without reading any framework body. Progressive disclosure is built into the architecture. The agent can run "find all controls where evidence is older than 90 days" by reading materialized note frontmatter, with no need to load body text. If it needs a body, it reads exactly one note.
+
+This addresses one of the user's stated audience requirements: AI agents need to reason over Crosswalker without hallucinating. The closed slot vocabulary plus sealed manifests give them ground truth.
+
+### Example 7 — External system pulls data INTO Crosswalker via a protocol
+
+**The user's "other connections" insight made concrete.** An external compliance-data scraper (running outside Obsidian, perhaps as a daemon in a CI pipeline or an MCP server) wants to push data into a Crosswalker vault.
+
+**Without a protocol surface**: external systems can only write files to the vault directory and hope Obsidian picks them up. No typing, no validation, no provenance, no schema enforcement.
+
+**With Layer A as a protocol**: the external system speaks Crosswalker's import protocol:
+
+```typescript
+// Pseudocode: external system POSTing into Crosswalker
+const importRequest = {
+  apiVersion: 'crosswalker/v1',
+  ref: {
+    uri: 'internal://my-scraper/nist-800-53-update-2026-q2',
+    integrity: 'sha256:...'
+  },
+  expects: 'manifests/framework.v1',
+  recipe: { /* embedded ImportRecipe per Layer B */ },
+  trust: {
+    signers: ['internal-scraper-key'],
+    attestations: ['sigstore:...']
+  },
+  classification: 'internal'
+};
+
+// Crosswalker validates, runs Layer A pipeline, executes Layer B,
+// emits Tier-1 deltas, records provenance.
+crosswalker.import(importRequest);
+```
+
+The recipe is the *same* recipe a human author would write. The external system is just another source — bound by the same boundary semantics, the same transformation algebra, the same Tier-1 contract. **This is what "platform architecture, not plugin monolith" means for the import side specifically.**
+
+What this scenario reveals: Layer A is the *protocol* and Layer B is the *language*. Together they make Crosswalker's import side a typed surface that any client (human author, MCP server, scraper, agent extractor) can speak. Without both layers, the import side is Obsidian-internal logic with all the brittleness that implies.
+
+## §7 Composability with existing first-principles representations
+
+Each deliverable confirmed strict orthogonality with Crosswalker's existing primitives. Consolidated:
+
+| Existing primitive | Relationship to Ch 20 import primitive |
+|---|---|
+| **STRM (5 set-theory predicates)** | STRM operates on edges between Tier-1 entities. The import primitive *produces* those entities and the `links.<role>` edges that STRM may then label. Strictly orthogonal. |
+| **SSSOM (canonical row-schema envelope)** | SSSOM is one possible *output schema* the import primitive emits into. A NoteMap whose path sink is `*.sssom.tsv` produces SSSOM rows. The 22 SSSOM chain rules continue to live in Nemo (downstream). |
+| **Junction notes (13-field schema, Ch 07)** | Junction notes are *generated* by the import primitive when a Map binds into the canonical 13-field shape. The schema lives in the slot vocabulary; the production lives in the import primitive. |
+| **Ontology diff primitives (9 atomic graph-edit ops)** | Diff consumes two Tier-1 vault states. The import primitive *produces* those states. When a re-import runs, diff compares old vs new Tier-1 trees; the 9-atom edit script is the change set. |
+| **Nemo Datalog (SSSOM derivation)** | Nemo runs *over* already-imported Tier-1 facts. Import produces facts; Nemo derives further facts. Same OxO2 architectural split (declarative ingest, then Datalog inference). |
+| **StewardshipProfile + meta-schema lifecycle** | Recipes themselves are first-class versioned schemas; the meta-schema lifecycle commitment ("Crosswalker eats own dog food") applies to the import recipe schema. |
+
+**The Ch 20 primitives sit strictly upstream of all existing Crosswalker primitives.** They produce the substrate the existing primitives consume. No competition; no overlap.
+
+## §8 Wargaming questions to walk through
+
+Per the user's directive to wargame before deciding. Each question maps to one or more worked examples in §6. For each, evaluate what each architectural choice (Path A vs Path B; Layer A scope: full / minimal / deferred) does to the scenario.
+
+### W1: "What does it cost when an upstream framework changes?"
+
+- **Vendor importer**: Re-import; silent overwrite or duplicates. No provenance. Manual reconciliation.
+- **v0.1 practical**: Re-import; user runs git diff. Can work if the user is disciplined.
+- **v0.2 + Layer A**: Typed delta against immutable substrate; Migration Crosswalk auto-proposed; ontology diff engine decomposes change into 9 atoms. **(Example 4)**
+
+Wargame: **how often will frameworks actually change in Crosswalker's deployment context?** NIST CSF: every few years (1.1 → 2.0). NIST 800-53: every 4–5 years (Rev 4 → Rev 5). MITRE ATT&CK: continuously updated. CIS Controls: every 1–2 years. SCF: monthly. **The answer determines how load-bearing Layer A is.** If users are typically on a single framework for years, Layer A's cost may exceed its benefit. If they're aggregating dozens of fast-moving frameworks (SCF case), Layer A becomes essential.
+
+### W2: "What happens when two recipes target the same vault?"
+
+- **Vendor importer**: Whichever ran last wins. No conflict detection.
+- **v0.1 practical**: Recipes have output paths; collisions result in overwrites or import errors.
+- **v0.2 + Layer A**: Recipes produce Tier-1 deltas; the sheaf-theoretic gluing model from Run B catches overlapping assertions on shared sub-contexts as well-defined conflicts (pushout fails to be a sheaf). **(Example 5 generalized)**
+
+Wargame: **how often will vaults have overlapping import recipes?** Very common in GRC: a vault with NIST 800-53 + ISO 27001 + SCF will have controls that are referenced from multiple recipes (the SCF recipe wants to write `links.maps_to_nist` on every NIST control). Without a conflict-detection model, this becomes painful at scale.
+
+### W3: "What happens when an agent is wrong about which version it imported?"
+
+- **Vendor importer**: Agent reads notes; no version metadata; agent guesses; agent hallucinates.
+- **v0.1 practical**: Agent can read `_crosswalker.framework_version` frontmatter; better, but still requires the agent to know the schema.
+- **v0.2 + Layer A**: Agent reads sealed manifest; *typed* knowledge of which version, which digest, which provenance chain. **(Example 6)**
+
+Wargame: **how often will agents be the consumer of the import?** Increasingly: the user's stated audience includes "AI agents that increasingly assist [GRC teams]." Agents need typed context, not heuristic frontmatter. This is where Layer A's progressive-disclosure property pays dividends.
+
+### W4: "What does it look like when an external system wants to push data INTO Crosswalker?"
+
+- **Vendor importer**: External system writes raw markdown files to the vault directory; no validation; no provenance; no protocol.
+- **v0.1 practical**: Same — there's no protocol surface; external systems are reduced to filesystem writes.
+- **v0.2 + Layer A**: External system speaks the import protocol; recipes are invariant; boundary semantics hold. **(Example 7 — the user's "other connections" insight)**
+
+Wargame: **does the user actually want external systems to push data into Crosswalker?** Yes — that was the explicit framing. *"The goal is to have a system where you could define transforms or maybe in the future idk — we can architect other connections (doesn't need to be logic that lives in Obsidian) to pull data in."* This is a v1.0+ feature, but it's a load-bearing architectural concern *now* because retrofitting a protocol surface onto a system that wasn't designed for one is dramatically more expensive than designing it in from the start.
+
+### W5: "What's the failure mode of each architectural choice at 1×, 10×, 100× current scale?"
+
+- **At 1× (one framework, single user)**: vendor importer suffices; v0.1 practical and v0.2 are both overkill.
+- **At 10× (handful of frameworks, small team)**: v0.1 practical handles it; vendor importer breaks on collaboration; v0.2 is well-scoped.
+- **At 100× (dozens of frameworks, large org, multi-tenant, agents-in-the-loop)**: vendor importer is unusable; v0.1 practical strains; v0.2 + Layer A is the only architecture that *durably* scales.
+
+Wargame: **which scale does Crosswalker target?** The user's stated audience (GRC consultants, internal auditors, security architects, AI agents) plus the "build something DURABLE" directive points firmly at 100×. That argues for v0.2 + Layer A as the v0.1 build target — but the cost is real.
+
+## §9 Open architectural questions (not decisions yet)
+
+What's deferred for user discussion. Each is consequential; none is being decided in this commit.
+
+| Question | Options | Pinging |
+|---|---|---|
+| **v0.1 path** | Path A: ship v0.1 practical, transpile to v0.2 later. Path B: pivot v0.1 to primitive-grounded from the start. | Affects build velocity vs avoid-throwaway-vocabulary. Both deliverables explicitly recommend Path A; user has not decided. |
+| **Layer A scope** | (a) Full `ref/resolve/bind/seal` + content-addressing + Manifest sealing + sandboxed effects. (b) Minimal subset (digest + provenance recording only). (c) Defer entirely to v1.0+. | Run B makes a strong case but adds substantial cognitive and implementation cost. The protocol-surface insight tilts toward (a); pragmatism tilts toward (b) or (c). |
+| **Surface DSL flavor** | YARRRML-shaped (Run A + C convergence); Dhall-typed (Run B compatible); hybrid. | YARRRML has community + tooling; Dhall has stronger typing; hybrid is the most flexibility but adds complexity. |
+| **Manifest language choice** | Dhall (typed, total, importable, hash-pinnable; small JS/TS impl exists); JSON Schema (huge ecosystem, weaker types, no native imports); CUE (between, growing JS support). | Run B leans Dhall but acknowledges tooling cost. JSON Schema is pragmatic. CUE is the conservative middle. |
+| **Markdown+frontmatter canonicalization standard** | RFC 8785 covers JSON; nothing equivalent for Markdown. Crosswalker may need to define one. | Small but real spec work. Required for any content-addressing of Markdown notes. |
+| **"Concept" / "node" / "control" rename for the generated note** | Likely moot because the primitive set's domain-neutral sink vocabulary handles this implicitly. | Worth a final confirmation when the schema spec is rewritten. |
+| **Spin up Ch 21 specifically for "external connections / protocol surface" research?** | Given the user's directional input on protocol surface, a dedicated brief is reasonable. | Defer pending user signal. |
+
+## §10 Updated schema-spec implications (listed; not applied)
+
+What *would* change in the [v0.1 schema spec §4 (ImportRecipe)](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config) under each path. **This is preparation, not application.**
+
+**If Path A** (ship v0.1 practical, migrate to v0.2 later):
+- v0.1 schema stays as-is.
+- A new `reference/spec/import/T1TMA-1.0.md` document captures the v0.2 target spec.
+- A v0.1 → v0.2 transpiler tracks development as a planned tooling deliverable.
+
+**If Path B** (v0.1 primitive-grounded from the start):
+- Replace v0.1 schema spec §4 (ImportRecipe) with the T1TMA / 5+4 primitive set.
+- v0.1 = `Source / Term / Map / Join / Function` over `path / frontmatter / body / wikilink` sinks.
+- The 8 column-roles + 24 transform types are eliminated; the 24 transforms become a stdlib of named JSONata + GREL functions.
+- Bundle target adjusts from "under 500 KB plugin core" to "~480 KB recipe runtime + JSONata lazy-loaded ~140 KB peer dep + ~80 KB FNML stdlib" ≈ ~700 KB plugin core.
+
+**If Layer A also adopted at v0.1**:
+- Add a new schema spec section §0 covering boundary semantics (`crosswalker.yaml` vault root manifest, `imports/*.import.md` import declarations, content-digest provenance frontmatter on every materialized note).
+- Bundle adds: canonicalization library (~100 KB), digest computation (~50 KB), manifest validator (Dhall ~200 KB or JSON Schema ~80 KB).
+
+## §11 Related
+
+**Inputs**:
+- [Ch 20a deliverable: T1TMA](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/)
+- [Ch 20b deliverable: Boundary semantics](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-b-boundary-semantics/)
+- [Ch 20c deliverable: 5+4 primitive set](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-c-rml-retargeted/)
+- [Ch 20 dialog: ETL + fundamental forms](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-dialog-etl-and-fundamental-forms/)
+- [Original Ch 20 brief (archived)](/crosswalker/agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/)
+
+**Crosswalker primitives the import primitive composes with**:
+- [STRM registry entry](/crosswalker/reference/registry/strm/)
+- [SSSOM registry entry](/crosswalker/reference/registry/sssom/)
+- [Junction notes (Ch 07 resolution)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)
+- [Ontology diff primitives (atomic operations research)](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)
+- [v0.1 schema spec — current ImportRecipe section](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config)
+
+**Related research deliverables cited in the Ch 20 work**:
+- [Ch 11 deliverables (engine survey)](/crosswalker/agent-context/zz-research/) — Nemo as the Datalog derivation tier downstream of import
+- [Ch 12 deliverables (Datalog vs SQL for SSSOM chain rules)](/crosswalker/agent-context/zz-research/) — confirms the architectural split between import and derivation tiers
+- [Ch 14 deliverable (missed engines)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — Comunica federation as a downstream consumer
+
+**Project framing**:
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — particularly the "Platform architecture, not plugin monolith" pillar that the protocol-surface insight activates
+- [v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the "DURABLE / built from the ground up" directive comes from here
+- [Roadmap: Foundation phase](/crosswalker/reference/roadmap/) — where the import primitive eventually lands
+
+**User's prior tools (cited as practical-precedent touchstones)**:
+- [ChunkyCSV](https://github.com/cybersader) — table↔tree depth-crossing tree transducer
+- [JSONaut](https://github.com/cybersader) — JSON tree-to-tree transducer

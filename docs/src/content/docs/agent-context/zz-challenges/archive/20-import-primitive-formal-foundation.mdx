@@ -1,11 +1,24 @@
 ---
-title: "Challenge 20: First-principles primitive for the import side — what's the formal foundation under ImportRecipe?"
-description: "We've committed to first-principles representations on the edge model side: STRM (set-theory predicates), ontology diff primitives (9 graph-edit atoms), SSSOM (canonical envelope). The import side has only a practical, ad-hoc recipe shape. The question: what's the *first-principles primitive* for describing how source data (CSV / XLSX / JSON / RDF / OSCAL / etc.) is translated into the canonical Tier 1 markdown + frontmatter + folder + wikilink representation? The primitive layer probably exists — schema mapping theory, tree transducers, functorial data migration, W3C RML, lenses, etc. — but it isn't named or chosen yet."
-tags: [research, foundation, schema, import, primitives, data-transformation, formal-foundation]
+title: "Challenge 20: First-principles primitive for the import side (archived)"
+description: "First-principles primitive for ImportRecipe. RESOLVED 2026-05-03 by three fresh-agent deliverables + a substantive user/agent dialog. See callout."
+tags: [research, foundation, schema, import, primitives, data-transformation, formal-foundation, archived]
 date: 2026-05-03
 sidebar:
-  label: "20 · Import primitive formal foundation"
+  label: "20 · Import primitive (archived)"
 ---
+
+:::tip[Resolved 2026-05-03 — archived]
+This challenge has been **resolved** and the brief is **archived for reference**. Three fresh-agent research sessions targeted at this brief produced three independent deliverables plus a substantive user/agent dialog:
+
+- [Ch 20a deliverable: T1TMA (Tier-1 Term-Map Algebra)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/) — 6 primitives, YARRRML retargeted, MTT-justified, lens-contracted
+- [Ch 20b deliverable: Boundary semantics (`ref/resolve/bind/seal`)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-b-boundary-semantics/) — 4-primitive boundary contract, Backpack/Nix-style content addressing
+- [Ch 20c deliverable: 5+4 primitive set (RML retargeted)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-c-rml-retargeted/) — 5 primitives + 4 sinks, s-t tgds + MTT + functorial migration justified
+- [Ch 20 dialog: ETL + fundamental forms](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-dialog-etl-and-fundamental-forms/) — user/agent exchange validating "data has fundamental forms; ETL is mapping between forms; the primitives are tree transducers"
+
+The deliverables are synthesized in the **[2026-05-03 import-primitive formal foundation synthesis log](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/)**, which treats Runs A and C as *convergent at the transformation-algebra layer* (RML retargeted to Tier-1; 5–6 primitives over 4 sinks) and Run B as *complementary at the boundary-semantics layer* (`ref/resolve/bind/seal` upstream of the transformation algebra). User explicitly declined to decide between Path A and Path B for v0.1 yet — the synthesis log is a wargaming setup with 7 worked examples, not a decision log.
+
+**This challenge brief is preserved as originally written** so it stays re-runnable. If a future agent wants to re-run this brief with different constraints (narrower scope, different bundle target, different surface-DSL preferences), they can.
+:::
 
 ## Why this exists
 

@@ -185,6 +185,16 @@ The migration is idempotent (re-running on already-migrated data is a no-op) and
 
 ## §4 ImportRecipe schema (import config)
 
+:::caution[Practical v0.1 design — may be reframed by Ch 20 synthesis]
+The ImportRecipe shape below is the **practical v0.1 design** (8 column-roles + 24 transform types). Three Ch 20 fresh-agent deliverables landed 2026-05-03 and recommend a **primitive-grounded redesign** rooted in RML/YARRRML retargeted to Tier-1 Notes, with macro-tree-transducer theoretical justification.
+
+See the **[Ch 20 import-primitive synthesis log](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/)** for the convergent direction (Layer B: 5–6 transformation-algebra primitives over 4 output sinks) and the complementary boundary-semantics layer (Layer A: `ref/resolve/bind/seal` content-addressing + sealed manifests).
+
+**User has not yet decided** whether v0.1 ships the practical shape and migrates to v0.2 primitive-grounded later (Path A) or pivots v0.1 to primitive-grounded from the start (Path B). The synthesis log is a wargaming setup, not a decision log; concrete examples in §6 of that log walk through what each architectural choice does to typical scenarios.
+
+The §4 below stays as the **practical v0.1 reference**; treat it as the starting shape. Anything depending on the import primitive should also read the synthesis log to understand the open architectural questions.
+:::
+
 A ImportRecipe is JSON/YAML on disk that drives the import wizard. One per ontology; can be saved, shared, version-controlled, and matched against incoming source files via fingerprinting.
 
 ### TypeScript shape
