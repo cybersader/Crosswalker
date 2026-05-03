@@ -21,39 +21,85 @@ Every significant decision gets a dated entry in the [decision log](/crosswalker
 
 ---
 
-## Current phase: Foundation
+## Current phase: Foundation → v0.1 build target
 
 ## Foundation — "Get the architecture right"
 
-Architecture decisions before more code. The three interconnected schemas (_crosswalker metadata, [FrameworkConfig](/crosswalker/agent-context/config-schema-design/), EvolutionPattern) must be designed together — getting any wrong is expensive to fix later. [Decision: architecture first](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#4-architecture-decisions-before-more-ui-code)
+Architecture decisions before more code. The three interconnected schemas (_crosswalker metadata, [FrameworkConfig](/crosswalker/agent-context/config-schema-design/), [StewardshipProfile](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) née EvolutionPattern) must be designed together — getting any wrong is expensive to fix later. [Decision: architecture first](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#4-architecture-decisions-before-more-ui-code)
 
-**Research & spec** (iterative, philosophical, first-principled):
+After three research waves on 2026-05-02 and the [v0.1 stack-pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/), Foundation is now organised around a concrete **v0.1 build target** plus the genuinely-still-open spec items.
 
-- [ ] **[Ontology diff primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)** — define the [9 atomic operations + 4 recognized composites](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) (also known as: graph change atoms, structural change primitives). [Provably complete](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) per graph edit distance literature. The mathematical foundation — "what changed?" [First principles](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) · [Glossary](/crosswalker/concepts/zz-glossary/)
-- [ ] **[EvolutionPattern](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) vs transformation recipes** — investigate whether the [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) (also: framework handling profile, stewardship profile) is needed alongside per-version-transition transformation records. Could storing the actual transformation per version change (e.g., "NIST r5→r6: these IDs renamed, these merged") replace or complement the framework-level classification? Both may coexist — [research item](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/). [User-first maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/)
-- [ ] **[SEACOW](https://github.com/cybersader/cyberbase) + [folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync) prior-art integration** — the project owner has already built two tools that wrestle with the hierarchy-vs-graph tension Crosswalker is facing. **SEACOW** is a meta-framework for knowledge organization inside filesystem primitives (lives in `cyberbase`), and **folder-tag-sync** is a working Obsidian plugin that layers polyhierarchy onto the filesystem via synchronized tags. Decide what Crosswalker reuses (SEACOW vocabulary, folder-tag-sync regex engine, the "primary folder + parallel tag hierarchy" UX pattern) vs. lets evolve in parallel. Research item — see [04-10 SEACOW + folder-tag-sync prior-art log](/crosswalker/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/).
-- [ ] **Evidence-framework edge model (the *other* edge type)** — **Direction committed** per the [2026-04-10 evidence-link edge model synthesis log](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/), which distilled 2 research sessions targeted at [Challenge 07](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/). Evidence links are stored as **junction notes** (one markdown file per edge, edge-as-note reification) with a 13-field flat-YAML frontmatter schema isomorphic to [OSCAL](/crosswalker/reference/registry/oscal/)'s `by-component` assembly. Three orthogonal status dimensions: `status` (5 OSCAL values: implemented/partial/planned/alternative/not-applicable) + `freshness` (4 computed values: fresh/stale/expired/not-set) + `evidence_type` (8 values: policy-document, automated-scan, test-result, configuration, log-export, interview, architecture-review, attestation). Git history with 3 hardening measures (signed commits, branch protection, periodic external snapshots) is the audit trail. [SSSOM](/crosswalker/reference/registry/sssom/) dual-confidence scoring is borrowed. The original [link metadata system](/crosswalker/agent-context/link-metadata-system/) inline-Dataview syntax is **superseded** by this commitment. **Remaining open sub-decisions** (design work, not research): (1) UUID enterprise resilience scope, (2) Tier 2 sql.js sidecar SQL schema mapping, (3) [synthetic spine (Challenge 06)](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) integration question — direct or through-spine, (4) tested vault scale threshold documentation, (5) mandatory vs optional field marking, (6) multi-editor conflict resolution, (7) inline-Dataview migration script for v0 vaults.
-- [ ] **Evidence mapping workflow** — the broader surface around the edge model above: how evidence gets imported / authored / linked, how status transitions work (covered → partial → planned → deprecated), how reviewer attribution and review dates are captured, how coverage gaps are surfaced, and what the UX looks like for a GRC analyst mapping a policy document to multiple controls across multiple frameworks. The [Python tool's original link-metadata system](/crosswalker/agent-context/link-metadata-system/) sketched one approach; the Obsidian plugin needs a refreshed version informed by the edge-model decision above and the [Obsidian Bases direction research](/crosswalker/reference/roadmap/) (how evidence queries get surfaced as tables/dashboards). [Evidence mapping for GRC teams](/crosswalker/getting-started/grc-teams/) is the user-facing slice; this roadmap item tracks the design commitment behind it.
-- [ ] **Crosswalk edge semantics commitment (STRM + SSSOM)** — lock in the vocabulary and metadata envelope every crosswalk edge must carry. The [04-10 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) identified two layers that work together: **[STRM](/crosswalker/reference/registry/strm/)** (the 5 set-theory relationships from NIST IR 8477 + SCF + OSCAL) as the **required `predicate_id` vocabulary**, and **[SSSOM](/crosswalker/reference/registry/sssom/)** (Matentzoglu et al., *Database*, 2022) as the **row-schema envelope** that every edge sits inside — mandatory `mapping_justification`, optional `confidence`, `author_id`, `mapping_date`, `mapping_tool`, and `predicate_modifier` for negation. [SKOS](/crosswalker/reference/registry/skos/) is rejected as the base vocabulary (deliberately too vague for compliance-grade audit) but kept as an export format via [YAML-LD / LinkML](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#file-first-is-valid-at-current-scale). Decision has to be made before any crosswalk authoring features ship.
-- [ ] **Pairwise crosswalks vs synthetic spine architecture** — the biggest open architectural question from the [04-10 foundation synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#the-synthetic-spine-is-the-missing-architectural-insight). Every mature compliance meta-framework (SCF, UCF, DESM, Hyperproof) converged independently on hub-and-spoke mapping through a canonical intermediate ontology (the "spine") instead of O(n²) pairwise crosswalks. Investigate whether Crosswalker should adopt a spine, which candidate (inherit SCF, distill via FCA, handcraft), and critically — **the long-term resilience and audit-grade trustworthiness** of synthetic mapping spines (governance longevity, error-propagation blast radius, provenance-chain trust for transitively-derived crosswalks, exit strategy if the spine maintainer disappears). [Research challenge brief](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) · [Synthesis log section](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#the-synthetic-spine-is-the-missing-architectural-insight)
-- [ ] **[FrameworkConfig v2 schema](/crosswalker/agent-context/config-schema-design/)** — evolution metadata, sheet selection, custom transforms, crosswalk definitions. Config-as-code format (JSON/YAML) as [source of truth](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth); UI edits config files. [Current schema design](/crosswalker/agent-context/config-schema-design/)
-- [ ] **[_crosswalker metadata v2](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers)** — version tracking, source hash, status field, evolution profile reference, migration history. Progressive [metadata tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers) (minimal → standard → extended → temporal)
-- [ ] **Migration strategy matrix** — given evolution pattern + old/new version → recommended [SCD type](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) + handling strategy
-- [ ] **As-code data format research** — define primitives for representing configs, evolution profiles, and migration rules as version-controllable files
-- [ ] **[Layered architecture design](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)** — spec (universal) → library/SDK (implementations) → integrations (Obsidian plugin, CLI, framework drivers). [Architecture vision](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/)
-- [ ] **[Progressive tier architecture](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/)** *(pillar)* — Tier 1 (files only + validation) → Tier 2 (files + sidecar SQLite via sql.js WASM) → Tier 3 (server-based: PocketBase, Postgres). **Files always source of truth. Each tier shares the same schemas.** This is the committed answer to Tier-1 file-canonical ceiling limits (Obsidian query-layer performance, graph-view caps, V8 heap) — we accept the ceiling at Tier 1 and scale through tiers when needed, rather than abandoning files. [Pluggable layers](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) · [Ceiling documented in 04-10 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#files-canonical-has-a-real-ceiling)
-- [ ] **[Distribution architecture](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/)** — pnpm monorepo: `@crosswalker/core` (pure logic) + plugin (Obsidian wrapper) + CLI (Node.js `fs` wrapper). VaultAdapter interface bridges platforms. [Research](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/)
-- [ ] **Graph scope decision** — directed graphs now (covers 95% of use cases). Research DAGs and hypergraph support for future extension. [Pluggable layers: Thread 2](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-2-beyond-hierarchical-taxonomies)
-- [ ] **Obsidian Bases direction research** — Dataview is deprecated. Understand Bases API for building the viewing/querying layer on top of native Obsidian capabilities instead of custom UI. Datacore is a backup option to investigate if Bases turns out to be insufficient. Reconciling the "3–5K note" ceiling the research literature cites against Dataview with what Bases can actually handle is part of this item. [Context in 04-10 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#files-canonical-has-a-real-ceiling)
-- [ ] **Monorepo restructure** — extract ~50-60% of current codebase into `packages/core/`, keep plugin UI in `packages/plugin/`, create `packages/cli/`. After spec work, not before. [Sequence rationale](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/#decision-when-to-restructure)
-- [ ] **[Transform engine](/crosswalker/design/transformation/)** — custom build (14 engines evaluated, none fit). 24 transform types, ChunkyCSV-style operations, optional [Arquero](https://github.com/uwdata/arquero)/[JSONata](https://jsonata.org/) escape hatches. [Ontology lifecycle: Import](/crosswalker/concepts/ontology-lifecycle/#import) · [Research](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/)
+:::tip[Architectural safety guarantee — load-bearing principle]
+**Tier 1 (canonical files) is the source of truth. Tier 2 and Tier 3 are projections — fully deletable, fully recoverable from Tier 1.** Delete the .sqlite, the plugin reprojects on next vault load. Delete the server, restart from git history. Tier 1 alone is functional (slow on large vaults, but functional). Performance enhancements and integration features layer on top of canonical files; the canonical files are what survives.
 
-**Infrastructure:**
+This property is what enables the [Progressive Tier Architecture](#-progressive-tier-architecture-confirmed) to be safely additive: shipping Tier 2 in v0.1 doesn't trap the user. See [v0.1 stack-pivot log §2](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#2-the-architectural-safety-guarantee-load-bearing-principle).
+:::
+
+### v0.1 build target — what ships first
+
+Concrete, shippable. ~1.2 MB total. Tier 1 + Tier 2 sqlite-wasm sidecar bundled together.
+
+**v0.1 stack** ([full commitment](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#3-v01-stack--what-we-build-first)):
+
+- [ ] **Tier 1 storage**: markdown files with YAML frontmatter; [STRM](/crosswalker/reference/registry/strm/) predicate vocabulary (`is_equivalent_to`, `is_broader_than`, `is_approximate_to`, `intersects_with`, `no_relationship`); [junction notes](/crosswalker/concepts/terminology/#core-terms) (13-field schema, [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)) for evidence links
+- [ ] **Tier 1 in-memory index**: plain JS Map built at vault-load time over frontmatter; works without Tier 2 (slow on large vaults but functional)
+- [ ] **Tier 2 sqlite-wasm sidecar projector**: `@sqlite.org/sqlite-wasm` (~600 KB) + sqlite-vec; auto-projects from Tier 1 on vault load; deletable; reprojected on next load. Per [Ch 18 expressivity matrix](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/), 4 ✅ tractable rule types + 4 ⚠️ caveat-tractable cover the realistic GRC workload comfortably under 100K mappings
+- [ ] **Crosswalk-render plugin**: Dataview-style queries on frontmatter for the Tier 1 path; recursive CTE over Tier 2 sidecar for transitive closure / multi-framework joins / coverage matrices / perspective views
+- [ ] **STRM-shaped TSV exporter** (NIST IR 8278A r1 OLIR template shape, Excel-friendly CSV) + **OSCAL JSON profile exporter** + **SSSOM-flavored TSV emission** (optional, for academic interop). Hybrid SSSOM↔STRM resolution per [v0.1 pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#6-sssom--strm-resolution--hybrid)
+- [ ] **Audit trail (T1 default)**: git commits + Ed25519-signed releases for shared mapping bundles; auto-generated FRE 902(13) certification PDF available on demand. Per [v0.1 pivot §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#8-audit-trail-default--t1)
+- [ ] **Bundle target**: under 500 KB plugin core + ~600 KB sqlite-wasm sidecar = ~1.2 MB compressed total
+
+**Plugin scope**: a single, focused import wizard + crosswalk-render plugin + Tier 2 sidecar projector. Performance enhancements (DuckDB-WASM, Oxigraph, Nemo, Comunica federation) live in [separate companion plugins](#performance--v10-companion-plugins) released later.
+
+### ✅ Resolved Foundation decisions
+
+These are committed direction, with deliverables and decision logs. They feed v0.1 and beyond.
+
+- ✅ **[Crosswalk edge semantics — STRM + SSSOM](/crosswalker/concepts/terminology/#matching--alignment-terms)** — STRM (NIST IR 8477) as required `predicate_id` vocabulary; SSSOM as row-schema envelope. Hybrid resolution: STRM-shaped TSV is the user-facing wire format, SSSOM is the internal validation envelope. Both emittable. [v0.1 pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#6-sssom--strm-resolution--hybrid) · [04-10 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish)
+- ✅ **[Junction notes for evidence links](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)** — one markdown file per edge, 13-field flat-YAML schema, isomorphic to OSCAL `by-component`. Three orthogonal status dimensions (`status` × `freshness` × `evidence_type`). [Ch 07 archive](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/)
+- ✅ **[Pairwise crosswalks + optional inheritable pivot](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#21-pairwise--optional-inheritable-pivot-challenge-06-resolution)** — pairwise-first; SCF available as inheritable spine for users who want hub-and-spoke. [Ch 06 archive](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/)
+- ✅ **[Progressive Tier Architecture](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) (confirmed)** — Tier 1 (files canonical) → Tier 2 (sqlite-wasm sidecar) → Tier 3 (optional server). Files always source of truth. Each tier shares the same schemas. **v0.1 ships Tier 1 + Tier 2 bundled.** [Ceiling rationale](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#files-canonical-has-a-real-ceiling)
+- ✅ **[Distribution architecture (research done)](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/)** — pnpm monorepo: `@crosswalker/core` + plugin + CLI; VaultAdapter interface bridges platforms. *Implementation: monorepo restructure remains an open task below.*
+- ✅ **[StewardshipProfile rename + meta-schema lifecycle commitment](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/)** — EvolutionPattern renamed to StewardshipProfile; "Crosswalker eats own dog food" — every internal schema is versioned and migration-aware. *Rename ripples deferred (~24 file edits).*
+- ✅ **[Audit trail floor — Tier 1 = git + signed commits](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#8-audit-trail-default--t1)** — git commits + Ed25519-signed releases + on-demand FRE 902(13) PDF. T2 OpenTimestamps and T3 audit profiles surface as opt-in compliance-export mode in v1.0+. [Ch 08 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/) · [Ch 13 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) · [Ch 15 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) · [Ch 19 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/)
+- ✅ **[Identifier strategy](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/)** — UUIDv7 + sha256 CIDs + CURIEs (ORCID for SSSOM authors); CWUUID is display-only. [Ch 09 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/)
+
+### Genuinely-still-open Foundation items
+
+These are design / spec items that need work before/during v0.1 implementation. Most are documentation or schema specifics, not architectural questions.
+
+**Schema spec work**:
+
+- [ ] **[FrameworkConfig v2 schema](/crosswalker/agent-context/config-schema-design/)** — evolution metadata, sheet selection, custom transforms, crosswalk definitions. Config-as-code format (JSON/YAML) as [source of truth](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth); UI edits config files
+- [ ] **[_crosswalker metadata v2](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers)** — version tracking, source hash, status field, StewardshipProfile reference, migration history. Progressive [metadata tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers) (minimal → standard → extended → temporal)
+- [ ] **Tier 2 sidecar SQL schema** — concrete schema for the sqlite-wasm sidecar's projection of canonical Tier 1 frontmatter. Open sub-decision flagged in the [evidence-link edge model synthesis log](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) (item 2 of remaining open sub-decisions)
+- [ ] **Migration strategy matrix** — given StewardshipProfile + old/new version → recommended [SCD type](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) + handling strategy
+
+**Implementation infrastructure**:
+
+- [ ] **Monorepo restructure** — extract ~50-60% of current codebase into `packages/core/`, keep plugin UI in `packages/plugin/`, create `packages/cli/`. [Sequence rationale](/crosswalker/agent-context/zz-log/2026-04-03-distribution-architecture-research/#decision-when-to-restructure)
+- [ ] **Obsidian Bases direction research** — Dataview is deprecated. Understand Bases API for the viewing/querying layer on native Obsidian capabilities. Datacore as backup option. [Context in 04-10 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#files-canonical-has-a-real-ceiling)
+- [ ] **[Transform engine](/crosswalker/design/transformation/)** — custom build (14 engines evaluated, none fit). 24 transform types, ChunkyCSV-style operations, optional [Arquero](https://github.com/uwdata/arquero)/[JSONata](https://jsonata.org/) escape hatches. [Research](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/)
+- [ ] **[Ontology diff primitives implementation](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)** — implement the [9 atomic operations + 4 recognized composites](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) as the structural diff engine. Spec is settled; implementation remains.
+
+**Documentation tasks** (surfaced 2026-05-02; non-blocking but valuable):
+
+- [ ] **OSCAL ↔ Crosswalker mental model** — extend [`reference/registry/oscal`](/crosswalker/reference/registry/oscal/) to map OSCAL terms (`catalog` ↔ source-ontology web, `Control Mapping Model` ↔ crosswalk edges, `Assessment Result` ↔ junction notes) into Crosswalker's vocabulary. Per [TL;DR §3.3](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/#33-oscal-native-support--placement-in-the-web-of-webs)
+- [ ] **DB-choice architecture page** — extend [`architecture/file-based-graph-database`](/crosswalker/concepts/file-based-graph-database/) explaining why Tier 1 + sqlite-wasm sidecar is the right choice (and why not pure graph DB). Per third-wave [§3.3](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#3-ch-16--tier-3-default-flipped-from-age-to-fusekioxigraph-server)
+- [ ] **Comunica honest+practical assessment** — per [third-wave §7.2](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#72-confirmed-defaults--user-sign-off-received-2026-05-02), Comunica federation conditional confirmation pending honest assessment before v1.0 companion plugin work
+- [ ] **StewardshipProfile rename ripples** — propagate the rename across ~24 docs files where the old "EvolutionPattern" term still appears
+
+**Research items remaining** (not v0.1-blocking):
+
+- [ ] **[SEACOW + folder-tag-sync prior-art integration](/crosswalker/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/)** — decide what Crosswalker reuses from the project owner's prior tools
+- [ ] **Graph scope decision** — directed graphs now (covers 95% of use cases). DAG and hypergraph support deferred. [Pluggable layers: Thread 2](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-2-beyond-hierarchical-taxonomies)
+- [ ] **[StewardshipProfile vs transformation recipes](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/)** — investigate whether per-version-transition transformation records replace or complement framework-level classification. Both may coexist.
+
+**Infrastructure** (non-blocking):
 
 - [ ] **PII scanning in CI/CD** — automated detection of personal paths, secrets, API keys before push
-- [ ] Bug fixes and polish on current MVP
 - [ ] Expand E2E smoke tests minimally (don't test wizard UI — [it will change](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#6-e2e-testing-after-architecture))
-- [ ] **Fluid layout scaling** — replace rigid Nova breakpoints (768/1152px) with `clamp()` CSS so spacing adapts to browser zoom. Current fix: extended breakpoint to 1152px. Full fix: fluid custom properties for `--sl-nav-height`, `--sl-content-pad-x`, typography scale. ~3-5 hours.
+- [ ] **Fluid layout scaling** — replace rigid Nova breakpoints (768/1152px) with `clamp()` CSS. ~3-5 hours.
 
 ---
 
@@ -81,6 +127,33 @@ The [evidence mapping](/crosswalker/getting-started/grc-teams/) workflow — the
 - [ ] **Batch re-import** — update existing framework folders with [version awareness](/crosswalker/concepts/framework-versioning/) and diff preview. [Resilience patterns](/crosswalker/agent-context/data-model-resilience/)
 - [ ] **[FrameworkConfig](/crosswalker/agent-context/config-schema-design/) presets** — per-framework configs with sheet selection, custom transforms, column overrides. Community-contributed via the as-code format.
 - [ ] **CLI implementation** — headless import, crosswalk generation, batch operations
+
+---
+
+## Performance — "v1.0+ companion plugins"
+
+Performance enhancements and integration capabilities researched on 2026-05-02 (third research wave) and reframed by the [v0.1 stack-pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) as **opt-in companion plugins** that ship after v0.1 lands. Each is fully researched; the deliverables are ready-made designs.
+
+These are not v0.1 build target. They are v1.0+ work for users who outgrow the Tier 2 sqlite-wasm sidecar default.
+
+- [ ] **"Crosswalker Power Query" companion plugin** — DuckDB-WASM + Oxigraph-WASM + Nemo-WASM layered Tier 2 stack (~5 MB compressed). Triggered when a user vault exceeds Tier 2-Lite's ~100K mapping ceiling (per [Ch 18 migration triggers](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/#3-migration-trigger-spec)) OR demands recursive SHACL / multi-stratum Datalog / SPARQL property paths. [Ch 11 deliverables A/B/C](/crosswalker/agent-context/zz-research/) · [Ch 14 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/)
+- [ ] **Comunica federation companion plugin** — Comunica + N3 + HDT for cross-vault, cross-org, external SPARQL endpoint queries. ~250–300 KB gzipped core. *Conditional* — see [third-wave §7.2](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#72-confirmed-defaults--user-sign-off-received-2026-05-02): user flagged Comunica as "seems bulky or overengineered"; honest-and-practical assessment needed before locking in
+- [ ] **Compliance-export mode** — opt-in profile picker exposing T2 OpenTimestamps and T3 audit options ("US litigation", "EU regulated", "Federal ATO", "Supply-chain") per the [Ch 15 deliverable §E](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/). Each profile pre-configures 4–6 settings. v0.1 default remains T1 (git + signed commits).
+- [ ] **Migration trigger UX** — status-bar indicator and modal prompts for "you've outgrown Tier 2-Lite" per [Ch 18 §3.2](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/#3-migration-trigger-spec). Detects performance / scale / feature triggers; suppressed on platforms that can't migrate (Obsidian Mobile)
+- [ ] **PQC dual-sign migration** — Ed25519 → ML-DSA-44 dual-sign starting 2027 per [Ch 15 §5.6](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) crypto-agility plan. Ahead of NIST IR 8547 2035 deadline.
+
+---
+
+## Deployment — "v2.0+ Tier 3 server guide"
+
+Server-tier deployment options for users who genuinely need a shared multi-team server. Documented as a deployment guide rather than bundled into the plugin.
+
+- [ ] **Default recommendation: Postgres + JSONB + recursive CTE** — boring tech, broadly operable, "you probably don't need anything fancier." Per [Ch 16 deliverable §2.3](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/)
+- [ ] **Apache Jena Fuseki + oxigraph-server** — same-API alternative for users who want SPARQL natively (oxigraph-server uses the same engine as the v0.1 Tier 2, just with `serve` mode). Architectural symmetry with Tier 2.
+- [ ] **Layered Fuseki + DuckDB-on-server** — power-user upgrade path for multi-team mixed SQL+graph workloads, multi-million mappings. Federated via SPARQL `SERVICE` and DuckDB `httpfs` / `postgres_scanner`
+- [ ] **TerminusDB v12** — opt-in vault-mirror for users who want server-side git-style branch/diff. Small-vendor (DFRNT) risk explicitly flagged
+- [ ] **Apache AGE on Postgres** — supported fallback for Postgres-standardized environments. AGE's killer feature (graph queries inside an existing Postgres instance) has no substitute
+- [ ] **Migration from AGE** — for early adopters who started on AGE during the Ch 10 era. The SSSOM-canonical files-first architecture turns "migrate from AGE" into "re-run the projector against the new engine," not "translate AGE data" — see [Ch 16 §5](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/)
 
 ---
 
@@ -119,6 +192,18 @@ Build the ecosystem around the spec.
 
 Every significant architectural decision is captured with rationale in the [log](/crosswalker/agent-context/zz-log/):
 
+**Recent (2026-05-02 / 2026-05-03)** — three research waves + v0.1 stack pivot:
+
+- [**v0.1 initial-stack pivot**](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — Tier 1 + Tier 2 sqlite-wasm sidecar bundled as v0.1; layered third-wave engines reframed as v1.0+ companion plugins. **Read this for the v0.1 build target.**
+- [Direction third-wave architectural shifts](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) — Ch 14/15/16 deltas (Tier 2 confirmed-and-extended, Tier 3 default flipped to Fuseki/oxigraph-server, audit-trail 4-tier model). Reframed as back-pocket research by the v0.1 pivot.
+- [Direction commitments TL;DR](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) — concise concluding artifact for the second research wave (Ch 11/12/13)
+- [Direction research wave + roadmap reshape](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) — full research record for the second wave
+- [05-01 Foundation commitments + follow-on research](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) — pairwise + optional pivot, junction-notes-by-tier, StewardshipProfile rename, meta-schema lifecycle commitment
+- [Evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction notes commitment (Ch 07 resolution)
+- [04-10 Foundation research synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/) — STRM + SSSOM crosswalk edge semantics, files-canonical ceiling, synthetic spine question
+
+**Earlier (2026-04)** — first-principles foundations:
+
 - [Vision alignment decisions](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/) — 10 foundational decisions
 - [Deep research synthesis](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/) — ontology meta-tools, plugin state, E2E testing
 - [Architectural direction](/crosswalker/agent-context/zz-log/2026-04-03-architectural-direction-exploration/) — the "what are we building?" question
@@ -127,7 +212,7 @@ Every significant architectural decision is captured with rationale in the [log]
 - [User-first ontology maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) — entity-aligned experience design
 - [Primitives depth + pluggable layers](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/) — detection, decisioning, custom transforms
 
-See also: [ROADMAP.md on GitHub](https://github.com/cybersader/crosswalker/blob/main/ROADMAP.md)
+See also: [ROADMAP.md on GitHub](https://github.com/cybersader/crosswalker/blob/main/ROADMAP.md), [research deliverables](/crosswalker/agent-context/zz-research/), [research challenges](/crosswalker/agent-context/zz-challenges/)
 
 ---
 
