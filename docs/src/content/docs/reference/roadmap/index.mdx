@@ -39,6 +39,8 @@ This property is what enables the [Progressive Tier Architecture](#-progressive-
 
 Concrete, shippable. ~1.2 MB total. Tier 1 + Tier 2 sqlite-wasm sidecar bundled together.
 
+**Build against the unified [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)** — the four interconnected schemas (`_crosswalker` metadata, FrameworkConfig v2, junction note 13-field schema, Tier 2 sidecar SQL) in one place.
+
 **v0.1 stack** ([full commitment](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#3-v01-stack--what-we-build-first)):
 
 - [ ] **Tier 1 storage**: markdown files with YAML frontmatter; [STRM](/crosswalker/reference/registry/strm/) predicate vocabulary (`is_equivalent_to`, `is_broader_than`, `is_approximate_to`, `intersects_with`, `no_relationship`); [junction notes](/crosswalker/concepts/terminology/#core-terms) (13-field schema, [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)) for evidence links
@@ -70,9 +72,11 @@ These are design / spec items that need work before/during v0.1 implementation. 
 
 **Schema spec work**:
 
-- [ ] **[FrameworkConfig v2 schema](/crosswalker/agent-context/config-schema-design/)** — evolution metadata, sheet selection, custom transforms, crosswalk definitions. Config-as-code format (JSON/YAML) as [source of truth](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth); UI edits config files
-- [ ] **[_crosswalker metadata v2](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers)** — version tracking, source hash, status field, StewardshipProfile reference, migration history. Progressive [metadata tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers) (minimal → standard → extended → temporal)
-- [ ] **Tier 2 sidecar SQL schema** — concrete schema for the sqlite-wasm sidecar's projection of canonical Tier 1 frontmatter. Open sub-decision flagged in the [evidence-link edge model synthesis log](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) (item 2 of remaining open sub-decisions)
+- [x] **[Unified v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)** *(2026-05-03)* — the four interconnected schemas designed together as the v0.1 build target. Implementation of the four schemas below proceeds against this spec.
+- [ ] **[FrameworkConfig v2 schema](/crosswalker/agent-context/v0-1-schema-spec/#4-frameworkconfig-schema-import-config)** — implement the v2 shape in `src/types/config.ts`; migration script for v1 saved configs
+- [ ] **[_crosswalker metadata v2](/crosswalker/agent-context/v0-1-schema-spec/#3-_crosswalker-metadata-schema-per-note-frontmatter)** — extend `src/generation/generation-engine.ts` to write the v2 fields; idempotent migration for existing notes
+- [ ] **[Junction note 13-field schema](/crosswalker/agent-context/v0-1-schema-spec/#5-junction-note-13-field-schema-per-evidence-link-edge)** — implement junction-note generation as new code path in the generation engine; non-destructive, git-history-preserving
+- [ ] **[Tier 2 sidecar SQL schema](/crosswalker/agent-context/v0-1-schema-spec/#7-tier-2-sidecar-sql-schema-sqlite-wasm-projection)** — new `packages/core/` projector module; auto-runs on vault load; lazy closure cache
 - [ ] **Migration strategy matrix** — given StewardshipProfile + old/new version → recommended [SCD type](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) + handling strategy
 
 **Implementation infrastructure**:
