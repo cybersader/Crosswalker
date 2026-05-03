@@ -1,10 +1,22 @@
 ---
-title: Config schema design
-description: Proposed FrameworkConfig and LinkConfig structures for the plugin's configuration system.
+title: Config schema design (historical proposal)
+description: Original FrameworkConfig and LinkConfig proposals from April 2026. Superseded by the unified v0.1 schema spec (which renames FrameworkConfig → ImportRecipe).
 sidebar:
   order: 46
-tags: [import-config, frameworks-mapping, architecture]
+tags: [import-config, frameworks-mapping, architecture, historical]
 ---
+
+:::caution[Superseded by the v0.1 schema spec]
+This page is the **original proposal** for `FrameworkConfig` from April 2026. It is preserved as historical design rationale.
+
+The **canonical, current spec** is the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/), which:
+- Renames `FrameworkConfig` → **`ImportRecipe`** for general-ontology positioning ([naming history](/crosswalker/agent-context/v0-1-schema-spec/#naming-history-frameworkconfig--importrecipe))
+- Renames `framework_id`/`framework_version` → `ontology_id`/`ontology_version` in `_crosswalker` metadata
+- Renames `LinkConfig` → `CrosswalkConfig` (a sub-element of `ImportRecipe`)
+- Consolidates `_crosswalker` metadata, junction notes, and Tier 2 sidecar SQL into the same unified spec
+
+Build against the v0.1 schema spec. This page documents the design path that led there.
+:::
 
 ## Current state
 

@@ -38,13 +38,16 @@ Concrete, shippable. ~1.2 MB total. Tier 1 + Tier 2 sqlite-wasm sidecar bundled 
 - [x] StewardshipProfile rename + meta-schema lifecycle commitment (rename ripples deferred)
 - [x] Audit trail floor: git + signed commits as v0.1 default; T2/T3 audit profiles as opt-in compliance-export mode in v1.0+
 - [x] Identifier strategy (Ch 09) — UUIDv7 + sha256 CIDs + CURIEs (ORCID for SSSOM authors); CWUUID is display-only
+- [x] **Unified v0.1 schema spec (2026-05-03)** — the four interconnected schemas designed together: _crosswalker metadata v2, ImportRecipe (formerly FrameworkConfig), junction note 13-field schema, Tier 2 sidecar SQL. https://cybersader.github.io/crosswalker/agent-context/v0-1-schema-spec/
+- [x] **FrameworkConfig → ImportRecipe rename (2026-05-03)** — type renamed for general-ontology positioning; field renames: framework_id → ontology_id, framework_version → ontology_version, config_id → recipe_id, junction-note `framework` field → `ontology`. Folder convention stays user-controlled.
 
 ### Genuinely-still-open Foundation items
 
-**Schema spec work:**
-- [ ] FrameworkConfig v2 schema — evolution metadata, sheet selection, custom transforms
-- [ ] _crosswalker metadata v2 — version tracking, source hash, StewardshipProfile reference
-- [ ] Tier 2 sidecar SQL schema (concrete schema for the sqlite-wasm projection)
+**Schema implementation work (build against the v0.1 schema spec):**
+- [ ] ImportRecipe v1 schema in src/types/config.ts (formerly FrameworkConfig v2); migration script for legacy v1 saved configs
+- [ ] _crosswalker metadata v2 implementation in src/generation/generation-engine.ts; idempotent migration helper
+- [ ] Junction note generation as new code path in generation engine; non-destructive, git-history-preserving
+- [ ] Tier 2 sidecar SQL projector — new packages/core/ module; auto-runs on vault load; lazy closure cache
 - [ ] Migration strategy matrix — StewardshipProfile + version delta → SCD type + handling
 
 **Implementation infrastructure:**
