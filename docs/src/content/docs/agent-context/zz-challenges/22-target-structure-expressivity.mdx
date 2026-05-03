@@ -1,0 +1,299 @@
+---
+title: "Challenge 22: Target-structure expressivity in import recipes — folder vs heading vs tag vs wikilink, and how recipes compose them"
+description: "Ch 20 settled the import primitive's transformation algebra (5–6 primitives over 4 output sinks). Ch 21 is investigating build-vs-buy. This challenge addresses an orthogonal-but-load-bearing question Ch 20 underweighted: how does a recipe author express *target structure*? Same source ontology can land in the vault as folder hierarchy, heading hierarchy within fewer files, tag-based parallel hierarchy, wikilink-graph (flat files), or any composition of these. Strictly orthogonal to STRM/SSSOM/junction-notes/diff primitives — they live at the identity + edge-semantics layers; this is the address + layout layer with one coupling point (concept-id → wikilink-address rendering). Anchor on SEACOW + folder-tag-sync (user's prior tools) and the broader 'information science with Obsidian as the knowledge platform' meta-project frame."
+tags: [research, foundation, import, target-structure, polyhierarchy, seacow, obsidian, information-science]
+date: 2026-05-03
+sidebar:
+  label: "22 · Target-structure expressivity"
+---
+
+## Why this exists
+
+User's framing 2026-05-03:
+
+> *"The structure of an import can arrive in all sorts of ways. It could be that some structure is folder based, maybe you want tags too, maybe you want after a certain depth to be markdown heading based. These are all parts of the import, ETL, or ingestion engine."*
+
+> *"All of my tools that I've built gather around the same goal of getting at the essence of information science here with Obsidian as the knowledge platform."*
+
+[Challenge 20](/crosswalker/agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/) settled the *transformation algebra* — five primitives over four sinks (`path`, `frontmatter`, `body`, `wikilink`). [Challenge 21](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) is investigating *build vs buy*. This challenge addresses a third, orthogonal question Ch 20 underweighted:
+
+**How does a recipe author express *target structure* — the multiple legitimate ways the same source ontology can lay out in an Obsidian vault?**
+
+Same NIST 800-53 r5 catalog could land in the vault as:
+
+- **All-folders**: `Frameworks/NIST 800-53 r5/AC/AC-2.md`, one file per control, deep folder nesting
+- **Mostly-headings**: a single `NIST 800-53 r5.md` file with `## Access Control` → `### AC-2` → `#### AC-2(1)` — one file, hierarchy is internal
+- **Tag-driven flat**: every control as a flat file in `Controls/`, hierarchy carried entirely in tags `#framework/nist/ac/ac-2`
+- **Hybrid**: top 2 levels (framework + family) as folders, control as file, enhancements as headings within the control file
+- **Wikilink-graph**: flat files, no folders or tags; hierarchy emerges from `[[parent]]`/`[[child]]` wikilinks alone
+
+These are all *legitimate* projections of the same source ontology. Different users will pick different targets based on:
+- Vault size constraints (heading-heavy keeps file count low)
+- Query layer preferences (tag-heavy maximizes Bases queryability)
+- Workflow style (folder-heavy matches GRC consultant filesystem habits)
+- Cross-referencing density (wikilink-heavy fits PKM-shaped workflows)
+
+**The recipe should express this choice.** Ch 20 mentioned `path` as a sink but treated it as a single-mechanism (folder + filename) decision. Real recipes need to compose folder + heading + tag + wikilink as parallel/nested hierarchies, with the recipe author specifying which mechanism applies at which level.
+
+## The orthogonality clarification — why STRM and friends are NOT coupled with this
+
+Worth pinning explicitly because the user surfaced this concern:
+
+| Layer | Examples | Target-structure dependent? |
+|---|---|---|
+| **Identity** | Concept IDs (CURIEs, sha256 CIDs from [Ch 09](/crosswalker/agent-context/zz-challenges/archive/09-uuid-cwuuid-cross-cutting-strategy/)) | **No** — stable across all imports |
+| **Edge semantics** | STRM 5 predicates, SSSOM envelope, junction-note 13-field schema, ontology diff 9 atoms | **No** — operate on concept IDs, not file paths |
+| **Address rendering** | "given concept-id X, what's its wikilink target in *this* vault?" | **Yes** — the single coupling point |
+| **Layout** | folder/heading/tag/wikilink-graph hierarchy choice | **Yes** — what this challenge is about |
+
+The whole STRM / SSSOM / junction-note / diff stack lives at the identity + edge-semantics layers. They never care about file paths — they care about `nist:AC-2`. Two recipes that import the same NIST 800-53 with completely different target structures produce vaults whose **STRM edges, SSSOM rows, and junction notes are semantically identical** — only the wikilink targets (the *rendered addresses*) differ.
+
+The single coupling point: an **address-rendering function** that, given a concept identity and the recipe's target-structure choice, produces a wikilink address (file path + optional heading anchor + optional aliases). STRM/SSSOM/junction-notes call that function but don't define it.
+
+This means Ch 22 can be designed as a **clean sibling to Ch 20** with one tiny well-defined interface, without renegotiating any committed primitive at the edge level.
+
+## What to investigate
+
+### 1. The four hierarchy mechanisms
+
+For each, characterize:
+
+**Folder hierarchy** (`Frameworks/NIST/AC/AC-2.md`)
+- Pros: matches filesystem-shaped GRC workflows; excellent for git diff readability; native Obsidian folder navigation
+- Cons: filesystem path-length limits (Windows MAX_PATH); folders are mono-hierarchical (a control belongs to one place); rename cascades
+- When right: deep semi-stable hierarchies with low cross-referencing density
+
+**Markdown heading hierarchy** (`NIST.md` with `## AC` → `### AC-2`)
+- Pros: keeps file count manageable for very-deep ontologies (MITRE ATT&CK has ~2,500 nodes); leverages Obsidian heading anchors `[[NIST#AC-2]]`; easier to migrate between heading depths
+- Cons: harder to do per-concept frontmatter (only one frontmatter per file); harder for AI agents to parse (need section extraction); poor cross-referencing
+- When right: shallow ontologies with many leaf concepts that share metadata; printable / single-document export use cases
+
+**Tag hierarchy** (`#framework/nist/ac/ac-2`)
+- Pros: parallel to folder structure — same content can live in `Controls/AC-2.md` AND have `#framework/nist/ac/ac-2`; Obsidian's nested-tag UI is mature; SEACOW's "primary folder + parallel tag hierarchy" pattern was authored for this
+- Cons: Bases queryability is good but inconsistent; tags aren't first-class wikilink targets; nested-tag conventions vary
+- When right: when the user wants polyhierarchy (a control belongs to multiple categories simultaneously)
+
+**Wikilink-graph hierarchy** (flat files; hierarchy = `[[parent]]`/`[[child]]` wikilinks)
+- Pros: maximally graph-shaped; matches the Obsidian graph view; no rename cascade; fully polyhierarchical
+- Cons: requires explicit hierarchy edges (Tier 2 sidecar must materialize them); no native filesystem affordance; users lose folder navigation
+- When right: when the ontology IS a graph rather than a tree (heavily cross-referenced; many-to-many parents)
+
+### 2. Composition rules — recipes that mix mechanisms
+
+The interesting case is *not* picking one mechanism but *composing* them. Examples to evaluate:
+
+```yaml
+# Recipe that uses folders for top-N levels, headings below, with parallel tags
+target_structure:
+  hierarchy:
+    - levels: [0, 1]               # framework + family
+      mechanism: folder
+    - levels: [2]                  # control
+      mechanism: file
+    - levels: [3, 4]               # enhancements
+      mechanism: heading
+  parallel_tags:                   # SEACOW-style parallel hierarchy
+    - source: family
+      tag_pattern: "framework/{framework_id}/{family_lower}"
+    - source: tags_column
+      tag_pattern: "{tag}"
+```
+
+Or:
+
+```yaml
+# Recipe that puts everything in tags + wikilinks; flat folder
+target_structure:
+  hierarchy:
+    - levels: all
+      mechanism: file               # all controls as flat files
+      folder: "Controls/"
+  parallel_tags:
+    - source: full_path
+      tag_pattern: "{level1}/{level2}/{level3}"
+  parent_wikilinks: true            # add [[parent]] in frontmatter
+```
+
+The challenge brief should ask: what's the *minimum-expressive* recipe schema that handles all four mechanisms in arbitrary composition? What's the closed grammar for *level-to-mechanism* mappings? Where does it bottom out (heading depth limits, tag depth limits, filesystem depth limits)?
+
+### 3. The address-rendering function — the one coupling point
+
+Define formally. Given:
+- A concept identity (a CURIE: `nist:AC-2(1)`)
+- A recipe's target-structure choice
+- The current vault state
+
+The function returns:
+- A primary address (file path, possibly with heading anchor): `Frameworks/NIST/AC/AC-2.md#AC-2(1)`
+- A wikilink-target string: `[[Frameworks/NIST/AC/AC-2#AC-2(1)]]` or `[[AC-2#AC-2(1)]]` (with aliases)
+- Optionally additional addresses (tag emissions, alternate wikilink targets via aliases)
+
+This function is what **STRM, SSSOM, junction-notes call when they need to render a wikilink to a concept identity**. The function is the entire interface between Ch 22 (target structure) and the existing edge-level primitives.
+
+Investigate: what's the cleanest signature for this function? What does it need to be parameterized by? Should it be deterministic given (recipe, identity) only, or does it need vault-state context (e.g., to choose between full-path and short-form wikilink based on uniqueness)?
+
+### 4. Prior art — SEACOW + folder-tag-sync (user's own tools)
+
+Two pieces of prior art that already exist in the user's portfolio:
+
+**[SEACOW](https://github.com/cybersader/cyberbase)** — the user's meta-framework for "knowledge organization inside filesystem primitives." Per the [Foundation roadmap research item](https://cybersader.github.io/crosswalker/reference/roadmap/), it's already on the project's prior-art-integration list. SEACOW likely contains:
+- A vocabulary for the four hierarchy mechanisms
+- A framework for "primary + parallel" hierarchy composition
+- Prior thinking on the polyhierarchy problem
+
+**[folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync)** — the user's working Obsidian plugin that *synchronizes* folder hierarchy with tag hierarchy bidirectionally. It contains:
+- A regex engine for pattern-based folder↔tag mapping
+- The "primary folder + parallel tag hierarchy" UX pattern empirically validated
+- A live working implementation of one composition rule (folder→tag mirroring)
+
+The deliverable should:
+- Read both repos and extract their primitives
+- Decide what Crosswalker reuses (SEACOW vocabulary; folder-tag-sync regex engine) vs lets evolve in parallel
+- Map SEACOW's vocabulary onto the four hierarchy mechanisms above
+
+### 5. Prior art — JSONaut + ChunkyCSV (user's transformation tools)
+
+These are already cited as ETL precedents in [Ch 20 dialog](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-dialog-etl-and-fundamental-forms/). For target-structure specifically, they may contain:
+- ChunkyCSV's "depth crossing" logic — how it decides which JSON nesting level becomes a row vs a sub-row
+- JSONaut's rendering decisions for nested vs flat output
+
+Investigate whether either tool already implements primitives that map onto the address-rendering function.
+
+### 6. Survey of existing import / vault-template tooling
+
+How do existing tools handle target-structure?
+
+- **Obsidian Importer plugin** (the [Ch 21 baseline](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/)) — almost certainly hardcodes target structure per source
+- **Notion-to-MD / Notion-to-Obsidian** — varies; some flatten; some preserve nested pages as folders
+- **obsidian-vault-template-template** (user's own) — a template-vault pattern; may already encode hierarchy choices
+- **obsidian-secops-vault-template** (user's own) — same
+- **notion-to-obsidian-github-sync** (user's own) — same
+- **Crosswalker's existing import wizard** (current code) — the [v0.1 schema spec §4 ImportRecipe](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config) has a `hierarchy` column-role; investigate what that role actually does and whether it covers any of the four mechanisms
+- **W3C RML's `subjectMap` and `graphMap`** — RML can express which named graph a triple lands in; analogous to choosing a "container" for a concept; *does not* directly express folder vs heading vs tag because RML targets RDF
+- **JSON-LD `@context` and `@id` patterns** — minting subject IRIs from records; the closest mainstream analog to address-rendering
+
+For each, characterize:
+- Which mechanisms it supports
+- Whether it allows composition
+- Whether the rule is *recipe-author-controlled* or hardcoded
+
+### 7. Composition with Ch 20's primitive set
+
+Ch 20 settled the transformation primitives. This challenge plugs in like so:
+
+```
+Ch 20 primitives        Ch 22 contribution
+
+Source     ──────▶
+Term       ──────▶
+Map        ──────▶  produces concept identities + raw payloads
+Join       ──────▶
+Function   ──────▶
+                          │
+                          ▼
+                  Ch 22: target-structure projection
+                  (address-rendering function applied
+                   per concept-id + recipe target-structure)
+                          │
+                          ▼
+                  Tier-1 Note tuples
+                  (path, frontmatter, body, wikilink)
+                  ─── with ADDRESSES rendered per Ch 22's rules
+```
+
+Ch 22 doesn't replace Ch 20's `path` and `wikilink` sinks; it *parameterizes them*. The recipe's `target_structure:` block is consumed by an internal address-renderer; Ch 20's BIND primitive emits values that the renderer then routes to the right combination of (file path, heading anchor, tag, wikilink target).
+
+Investigate: does this fit cleanly into Ch 20's primitive set (just a renderer-layer wrapping `path` and `wikilink` sinks)? Or does Ch 22 surface a new primitive (`STRUCTURE-PROJECT` or similar)?
+
+### 8. Long-term thinking — content-addressing implications (Ch 20b boundary semantics)
+
+[Ch 20b's boundary-semantics deliverable](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-b-boundary-semantics/) recommends content-addressing imported artifacts. **Question**: does the target-structure choice affect the content digest?
+
+- If digest is computed over the *rendered Tier-1 markdown* (after target-structure projection), then digest depends on target structure, and two recipes with different target structures produce different vault digests for the *same source*.
+- If digest is computed over the *canonicalized concept-identity store* (before address rendering), then digest is target-structure-independent — same source produces same digest regardless of which recipe rendered it.
+
+The second is *much* better for collaboration ("Alice and Bob import the same source with different target structures; their concept-identity-level state is identical"). It also means the address-rendering function must be deterministic and reproducible, but its output is *not* part of the canonical state — it's a presentation-layer projection.
+
+This pins an architectural property worth confirming: **target structure is a *view* over the canonical concept-identity store, not part of the canonical state itself.** Ch 22's deliverable should validate or push back on this framing.
+
+### 9. The information-science framing — broader meta-project context
+
+Per the user 2026-05-03:
+
+> *"All of my tools that I've built gather around the same goal of getting at the essence of information science here with Obsidian as the knowledge platform."*
+
+Crosswalker, ChunkyCSV, JSONaut, SEACOW, folder-tag-sync, obsidian-vault-template-template, obsidian-secops-vault-template, notion-to-obsidian-github-sync — these are a portfolio of tools converging on the same applied-information-science project: **how do you make Obsidian (or any plaintext knowledge substrate) carry the structure that knowledge work actually demands, without losing the simplicity that makes plaintext valuable?**
+
+Target-structure expressivity is part of that meta-project. The deliverable should:
+- Ground in the broader portfolio framing (SEACOW is the explicit theory; the other tools are concrete instances)
+- Reference [what makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — particularly the "Files, not databases" pillar and the "platform architecture, not plugin monolith" pillar (this is plugin-internal logic that may also be exposed as a protocol)
+- Position Ch 22's recommendations as one piece of a larger applied-information-science research program
+
+This isn't just "let's add target-structure flexibility" — it's "let's apply the user's existing first-principles work on knowledge organization to Crosswalker's import primitive."
+
+## Success criteria for the deliverable
+
+1. **Closed grammar for target-structure recipes** — the recipe schema (YAML/TypeScript) that handles folder + heading + tag + wikilink mechanisms in arbitrary composition, with explicit level-to-mechanism mappings.
+
+2. **Address-rendering function specification** — formal signature; deterministic-vs-context-dependent decision; how it's invoked by STRM/SSSOM/junction-notes/diff (the one coupling point).
+
+3. **Concrete worked examples** — same NIST 800-53 r5 source rendered four different ways, side-by-side. Show what the vault looks like in each case. Demonstrate that STRM edges and SSSOM rows are semantically identical across all four.
+
+4. **SEACOW + folder-tag-sync integration plan** — what does Crosswalker reuse from these prior tools? Vocabulary, regex engine, UX pattern, code? What evolves in parallel?
+
+5. **Composition with Ch 20 primitives** — does target-structure plug into the existing primitive set as a parameterization layer over `path` and `wikilink` sinks, or surface a new primitive?
+
+6. **Content-addressing answer** — confirm or push back on "target structure is a view, not part of canonical state."
+
+7. **Migration path from current ImportRecipe `hierarchy` column-role** — the v0.1 schema spec has an existing `hierarchy` role; the deliverable should specify how it maps onto the four-mechanism framing.
+
+8. **Adversarial sanity check** — is this over-engineered? Could Crosswalker ship "folder-only target structure" for v0.1 and add the other mechanisms in v1.0+ without painful migration? When does the simple default actually fail?
+
+## What this does NOT need to answer
+
+- STRM / SSSOM / junction-note / diff semantics — orthogonal; left unchanged
+- Edge-level primitive vocabulary — committed
+- Build vs buy at the engine level — that's [Ch 21](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/)
+- Boundary semantics (`ref/resolve/bind/seal`) — Ch 20b; out of scope here
+- Concrete library choices for tag-pattern matching, heading-anchor rendering, etc. — implementation detail
+
+## Out of scope
+
+- Reimplementing SEACOW or folder-tag-sync from scratch — the goal is integration / vocabulary reuse
+- Bidirectional vault-shape transformations (changing target structure on an existing vault) — that's a v1.0+ migration tool
+- The protocol-surface question (Path D from Ch 21) — orthogonal
+
+## Relationship to prior challenges
+
+- **Sibling to [Ch 20](/crosswalker/agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/) and [Ch 21](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/)**. Ch 20 = transformation algebra. Ch 21 = build vs buy. Ch 22 = target-structure expressivity. Three orthogonal questions about the same import primitive.
+- **Validates / extends [SEACOW + folder-tag-sync prior-art integration](https://cybersader.github.io/crosswalker/reference/roadmap/)** — already on the Foundation roadmap as a research item.
+- **Strictly orthogonal to [STRM](/crosswalker/reference/registry/strm/), [SSSOM](/crosswalker/reference/registry/sssom/), [junction notes (Ch 07)](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/), and [ontology diff primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/)** — they live at the identity + edge-semantics layers; Ch 22 lives at the address + layout layer with one coupling point.
+- **Sharpens [Ch 21's](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) build-vs-buy verdict** — target-structure expressivity is the kind of thing off-the-shelf ETL engines (dbt, dlt, Singer, Airbyte) cannot handle. Adds a dimension to Ch 21's evaluation matrix.
+
+## Related
+
+**Crosswalker context**:
+- [Ch 20 import-primitive synthesis log](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/) — the transformation algebra Ch 22 plugs into
+- [Ch 21 build-vs-buy](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) — sibling challenge; target-structure expressivity is one of its evaluation dimensions
+- [Ch 20a deliverable: T1TMA](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/) — the closed sink vocabulary Ch 22 parameterizes
+- [Ch 20b deliverable: Boundary semantics](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-b-boundary-semantics/) — content-addressing and the "target structure as view" question
+- [v0.1 schema spec — current `hierarchy` column-role](/crosswalker/agent-context/v0-1-schema-spec/#4-importrecipe-schema-import-config) — what's there now and what changes
+
+**User's portfolio (the "applied information science with Obsidian" meta-project)**:
+- [SEACOW](https://github.com/cybersader/cyberbase) — meta-framework for knowledge organization inside filesystem primitives
+- [folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync) — bidirectional folder↔tag synchronization
+- [ChunkyCSV](https://github.com/cybersader) — table↔tree depth-crossing tree transducer
+- [JSONaut](https://github.com/cybersader) — JSON tree-to-tree transducer
+- [obsidian-vault-template-template](https://github.com/cybersader) — vault templates
+- [obsidian-secops-vault-template](https://github.com/cybersader) — secops vault template
+- [notion-to-obsidian-github-sync](https://github.com/cybersader) — Notion→Obsidian sync
+
+**Project framing**:
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — particularly the "Files, not databases" and "Platform architecture, not plugin monolith" pillars
+- [SEACOW + folder-tag-sync prior-art integration](https://cybersader.github.io/crosswalker/reference/roadmap/) — already on the Foundation roadmap
+
+**Edge-level primitives that are orthogonal but call into Ch 22's address-rendering function**:
+- [STRM registry](/crosswalker/reference/registry/strm/) — predicate vocabulary
+- [SSSOM registry](/crosswalker/reference/registry/sssom/) — envelope schema
+- [Junction notes / Ch 07 archive](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/) — evidence-link edge model
+- [Ontology diff primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) — 9 atomic graph-edit ops
