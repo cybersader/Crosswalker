@@ -1,0 +1,179 @@
+---
+title: Vault hierarchy primitives — folder, heading, tag, wikilink-graph
+description: Obsidian provides four orthogonal mechanisms for representing hierarchy in a vault. Real recipes compose them. The target-structure choice is what determines how a source ontology lands in Tier 1.
+sidebar:
+  order: 8
+  label: "Hierarchy primitives"
+tags: [vault, obsidian, hierarchy, polyhierarchy, target-structure, primitives]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Obsidian (and any plain-text Markdown vault) gives Crosswalker **four orthogonal mechanisms** for representing hierarchy. The same source ontology can be projected through any of them — or through compositions of them — and the choice is the import recipe author's. These four mechanisms are the load-bearing structural primitives that the import side of Crosswalker has to compose. STRM, SSSOM, junction notes, and the ontology diff primitives all operate on *concept identity* and don't care which mechanism a recipe chooses; the choice only affects how concept identities render as wikilink addresses ([Challenge 22](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/)).
+
+## The four primitives
+
+### 1. Folder hierarchy
+
+Path-based. The vault filesystem carries the hierarchy.
+
+```
+Frameworks/
+  NIST 800-53 r5/
+    AC - Access Control/
+      AC-1.md
+      AC-2.md
+      AC-2(1).md
+```
+
+| Property | Value |
+|---|---|
+| Cardinality | Mono-hierarchical (each note has exactly one folder path) |
+| Native Obsidian affordance | Sidebar tree navigation, file explorer |
+| Wikilink target shape | `[[Frameworks/NIST 800-53 r5/AC - Access Control/AC-2]]` (or just `[[AC-2]]` if globally unique) |
+| Diff-friendliness | Excellent — `git diff` shows file-level changes clearly |
+| Failure modes | Filesystem path-length limits (Windows MAX_PATH); rename cascades break wikilinks; can't represent polyhierarchy |
+
+**When right**: deep semi-stable hierarchies with low cross-referencing density. The default for compliance frameworks where a control belongs to exactly one family.
+
+### 2. Markdown heading hierarchy
+
+Within-file. A single Markdown note encodes hierarchy through nested headings.
+
+```markdown
+# NIST 800-53 r5
+
+## AC - Access Control
+
+### AC-1 - Policy and Procedures
+[control text...]
+
+### AC-2 - Account Management
+[control text...]
+
+#### AC-2(1) - Automated System Account Management
+[enhancement text...]
+```
+
+| Property | Value |
+|---|---|
+| Cardinality | Mono-hierarchical within a file |
+| Native Obsidian affordance | Heading anchor wikilinks (`[[NIST 800-53 r5#AC-2]]`); outline view |
+| Wikilink target shape | `[[NIST 800-53 r5#AC-2]]` or `[[NIST 800-53 r5#AC-2(1)]]` |
+| Diff-friendliness | Good but coarser — rename of one heading shows as multiple line changes |
+| Failure modes | Hard to give per-concept frontmatter (one frontmatter per file); harder for AI agents to extract specific concepts (need section parsing); less effective for cross-vault sharing of individual concepts |
+
+**When right**: very deep ontologies where one-file-per-concept produces too many files (MITRE ATT&CK has thousands of nodes); shallow ontologies where many leaf concepts share metadata; printable / single-document export use cases.
+
+### 3. Tag hierarchy
+
+Cross-cutting. Tags carry a parallel hierarchy that doesn't depend on file location.
+
+```yaml
+---
+title: AC-2 — Account Management
+tags:
+  - framework/nist-800-53-r5
+  - framework/nist-800-53-r5/ac-access-control
+  - framework/nist-800-53-r5/ac-access-control/ac-2
+  - cross-cutting/access-control
+  - cross-cutting/identity-management
+---
+```
+
+| Property | Value |
+|---|---|
+| Cardinality | **Polyhierarchical** — a concept can carry many tag paths simultaneously |
+| Native Obsidian affordance | Nested-tag panel; tag-based search |
+| Wikilink target shape | Tags are not wikilink targets (they're a parallel index) |
+| Diff-friendliness | Good — frontmatter line changes |
+| Failure modes | [Bases queryability](/crosswalker/concepts/metadata-ecosystem/) is good but inconsistent; tag conventions vary across communities; can't carry edge metadata (the link from MFA-Policy → AC-2 needs more than a tag) |
+
+**When right**: when the user wants polyhierarchy (the same concept legitimately belongs to multiple categories at once); cross-cutting concerns (tagging by domain, not just by framework family); building parallel views over the same flat file set.
+
+This is exactly what [SEACOW](https://github.com/cybersader/cyberbase) and [folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync) (Crosswalker project owner's prior tools) explore — the "primary folder + parallel tag hierarchy" UX pattern where folders carry the canonical path and tags carry parallel polyhierarchical views.
+
+### 4. Wikilink-graph hierarchy
+
+Edge-based. Flat files (no folders, no headings as hierarchy); the hierarchy emerges from explicit `[[parent]]` / `[[child]]` wikilinks.
+
+```yaml
+---
+title: AC-2 — Account Management
+parent: "[[AC - Access Control]]"
+children:
+  - "[[AC-2(1) - Automated System Account Management]]"
+  - "[[AC-2(2) - Automated Temporary and Emergency Account Management]]"
+---
+```
+
+| Property | Value |
+|---|---|
+| Cardinality | **Maximally polyhierarchical and graph-shaped** — multiple parents, multiple children, arbitrary relations |
+| Native Obsidian affordance | Graph view; backlinks panel; canvas |
+| Wikilink target shape | `[[AC-2]]` flat |
+| Diff-friendliness | Excellent — wikilink edges are line-level frontmatter changes |
+| Failure modes | No filesystem affordance (no folder navigation); user loses sidebar tree; requires explicit parent/child edge maintenance; Tier 2 sidecar must materialize the hierarchy from edges to make it queryable |
+
+**When right**: when the source ontology IS a graph rather than a tree; heavily cross-referenced material; many-to-many parents; PKM-shaped workflows where the user already thinks in wikilinks rather than folders.
+
+## Composition — real recipes mix these
+
+The mechanisms are orthogonal, so a single import recipe can use multiple at once. Common compositions:
+
+| Composition | Example |
+|---|---|
+| **Folder + tag (parallel)** | `Frameworks/NIST/AC/AC-2.md` with frontmatter `tags: [framework/nist/ac/ac-2, cross-cutting/auth]` — primary folder for canonical path, tags for polyhierarchical views. The SEACOW pattern. |
+| **Folder (top) + heading (within)** | Top 2 levels as folders (`Frameworks/NIST/`), then leaf concepts as files, then enhancements as headings within those files (`AC-2.md` with `## AC-2(1)`, `## AC-2(2)`). Reduces file count without losing folder navigation. |
+| **Flat files + wikilink-graph** | All concepts as flat files in `Concepts/`; hierarchy carried entirely in `parent:` / `children:` frontmatter wikilinks. Maximally graph-shaped; loses folder navigation. |
+| **Folder + wikilink-graph (hybrid)** | Folders for organizational chunks (frameworks, evidence, people); wikilinks within frontmatter for typed cross-cutting relationships (a control's `mapped_to:` set). |
+| **Tag-only flat** | All concepts as flat files in `Controls/`; hierarchy carried entirely in nested tags. Best for vaults that prioritize Bases queryability over filesystem navigation. |
+
+The right composition depends on:
+- Vault size (heading-heavy keeps file count low)
+- Query layer preferences (tag-heavy maximizes [Bases](/crosswalker/concepts/metadata-ecosystem/) queryability)
+- Workflow style (folder-heavy matches GRC consultant filesystem habits)
+- Cross-referencing density (wikilink-heavy fits PKM workflows)
+- Whether the source ontology is genuinely a tree (folders fine) or a graph (wikilinks needed)
+
+## Why this matters for Crosswalker
+
+Crosswalker is fundamentally an *ingestion target* — its load-bearing primitive is the [Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/) (Markdown + YAML frontmatter + folder layout + wikilinks). Whether a recipe author uses one mechanism or composes all four, the **concept identity is invariant** — `nist:AC-2` refers to the same concept whether it's stored at `Frameworks/NIST/AC/AC-2.md`, as a `## AC-2` heading inside `NIST.md`, as a flat `AC-2.md` with tags, or as an edge `[[AC-2]]` from a parent.
+
+The [edge-level primitives](/crosswalker/concepts/terminology/#matching--alignment-terms) (STRM predicate vocabulary, SSSOM envelope, junction-note 13-field schema, ontology diff atoms) all operate on **concept identity** and don't care which hierarchy mechanism a recipe chose. The single coupling point between the hierarchy mechanism and the edge layer is the **address-rendering function**: given a concept identity and a recipe's target-structure choice, the function returns the wikilink target string that STRM, SSSOM, and junction notes emit into frontmatter and body.
+
+The full target-structure expressivity question — including how a recipe declares which mechanism applies at which level, and how compositions are spelled — is the subject of [Challenge 22: Target-structure expressivity in import recipes](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/).
+
+## Identity vs address
+
+The architectural property that makes the four-primitive composition work is the separation between *identity* and *address*:
+
+| Layer | Stable across target-structure choices? |
+|---|---|
+| Concept identity (CURIE: `nist:AC-2(1)`; sha256 CID) | ✅ Stable |
+| Edge semantics (STRM predicates, SSSOM rows, junction notes, diff atoms) | ✅ Stable — operate on identity, not address |
+| Address rendering (wikilink target string) | ❌ Recipe-controlled |
+| Vault layout (folder / heading / tag / wikilink mix) | ❌ Recipe-controlled |
+
+Two recipes that import the same NIST 800-53 catalog with completely different hierarchy primitives produce vaults whose **STRM edges, SSSOM rows, and junction notes are semantically identical** — only the wikilink targets and folder/heading/tag layouts differ.
+
+This is why Crosswalker can sit on top of any of the four mechanisms (or any composition) without changing its edge-level commitments. The address-rendering function is the entire interface between target structure and edge semantics.
+
+## Prior art and related concepts
+
+The polyhierarchy problem — how to layer multiple parallel hierarchies on a single substrate — has been worked on extensively in two relevant prior tools by the Crosswalker project owner:
+
+- **[SEACOW](https://github.com/cybersader/cyberbase)** is a meta-framework for knowledge organization inside filesystem primitives. It articulates the vocabulary for combining folder + tag hierarchies and the "primary + parallel" composition pattern.
+- **[folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync)** is a working Obsidian plugin that bidirectionally synchronizes folder hierarchy with tag hierarchy via regex rules. It is a live implementation of one composition rule: folder→tag mirroring.
+
+Crosswalker reuses these patterns. The [Foundation roadmap](/crosswalker/reference/roadmap/) tracks SEACOW + folder-tag-sync prior-art integration as an explicit research item.
+
+## Related
+
+- [The problem](/crosswalker/concepts/problem/) — where polyhierarchy is first introduced as the hierarchy-vs-graph tension
+- [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — Obsidian vault as a graph substrate
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — frontmatter, Dataview, Bases, tags
+- [Terminology](/crosswalker/concepts/terminology/) — definitions for related terms (typed link, hierarchy column, etc.)
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the Tier 1 schema these primitives compose into
+- [Challenge 22 — Target-structure expressivity](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/) — the open research question on how recipes compose these mechanisms
+- [Schema matching](/crosswalker/concepts/schema-matching/) — adjacent: how *concepts* are matched across ontologies (orthogonal to how they're laid out in the vault)
