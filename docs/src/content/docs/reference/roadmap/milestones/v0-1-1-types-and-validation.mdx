@@ -56,6 +56,7 @@ Make the schema artifacts `spec/tier1.schema.json` and `spec/recipe.schema.json`
 - [ ] AJV catches malformed recipes with line + column error messages users can act on
 - [ ] CI fails (red) if any fixture violates `tier1.schema.json`
 - [ ] Re-running `bun run codegen` after a schema bump regenerates types deterministically (no manual edits needed)
+- [ ] **E2E**: `tests/e2e/validation.spec.ts` passes (`bun run e2e`) — load a malformed recipe via the import wizard; assert that an AJV error surfaces in a user-facing Notice rather than silently corrupting Tier 1 output (see [testing-patterns](/crosswalker/agent-context/agent-tooling/) skill)
 
 ## Files to touch
 

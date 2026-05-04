@@ -51,6 +51,26 @@ When work begins on a milestone, flip its status to "In progress" + start checki
 
 Top-level [roadmap](/crosswalker/reference/roadmap/) shows phases and high-level direction. Milestone pages contain the implementation detail without bloating the top-level view. Each milestone has a stable URL → linkable from PRs, decision logs, code comments, agent prompts. AI agents can be pointed at a single milestone page for focused work.
 
+## E2E coverage requirement
+
+**Every milestone gets at least one E2E spec** that proves the feature works in real Obsidian. The harness is `wdio-obsidian-service` via `bun run e2e`; the smoke baseline lives at `tests/e2e/smoke.spec.ts` and validates: Obsidian launches, plugin loads, commands register.
+
+Per-milestone E2E spec — verbatim from the [testing-patterns skill](https://github.com/cybersader/crosswalker/blob/main/.claude/skills/testing-patterns/SKILL.md):
+
+| Milestone | New E2E spec |
+|---|---|
+| v0.1.1 | `validation.spec.ts` — malformed recipe → AJV Notice |
+| v0.1.2 | `render.spec.ts` — recipe w/ folder+heading mechanisms → correct vault structure |
+| v0.1.3 | `re-import.spec.ts` — managed overwritten + user_preserve preserved |
+| v0.1.4 | `crosswalks.spec.ts` — junction notes + STRM enum enforced |
+| v0.1.5 | `sidecar.spec.ts` — `.crosswalker.sqlite` projects + recovers on delete |
+| v0.1.6 | `bases-queries.spec.ts` — emitted Bases query renders in note body |
+| v0.1.7 | `export.spec.ts` — STRM TSV columns + OSCAL JSON schema valid |
+| v0.1.8 | `audit.spec.ts` — git commit produced + signed manifest verifies |
+| v0.1-RC | full smoke against bundled plugin pre-submission |
+
+If a milestone closes without its E2E spec passing, that's a violation of the milestone success criteria — flip status back to In progress.
+
 ## Architectural foundation for these milestones
 
 All 9 milestones build on the [2026-05-04 design phase commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/):

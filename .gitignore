@@ -53,6 +53,11 @@ npm-debug.log*
 # Portagenty publishing tool — local state
 *.portagenty.toml
 
+# wdio-obsidian-service downloaded Obsidian builds + test results
+.obsidian-cache/
+test-results/
+.wdio-vscode-service/
+
 # Local workspace — folder tracked (so contributors get it), contents ignored
 .workspace/*
 !.workspace/.gitkeep

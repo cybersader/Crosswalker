@@ -1,283 +1,145 @@
 ---
-name: testing-patterns
-description: Use when writing tests, analyzing test results, or improving test coverage. Provides conventions for workflow testing, comment syntax, and improvement patterns.
+description: Crosswalker testing patterns — Jest unit tests for logic, WebdriverIO + wdio-obsidian-service for E2E plugin behavior, Playwright for docs site, and obsidian-cli for headless scripted operations. Use when writing new tests, deciding which surface fits a behavior, or troubleshooting test infra.
+user_invocable: true
 ---
 
-# Testing Patterns
+# Crosswalker testing patterns
 
-Domain expertise for testing AI agent workflows. Use this when writing tests, analyzing results, or planning test improvements.
+Four testing surfaces. Each has a specific shape of behavior it validates well; using the wrong one creates either flaky tests or coverage gaps.
 
----
+## Trigger phrases
 
-## Quick Reference
+- "write a test for..."
+- "how should I test this?"
+- "the wdio harness is failing"
+- "/test-pattern"
 
-| Concept | Pattern |
-|---------|---------|
-| Test categories | Adoption, Modularity, Portability, Intuitiveness, Docs, Deterministic |
-| Comment syntax | `%%PASS%%`, `%%FAIL%%`, `%%NOTE%%`, `%%TODO%%`, `%%QUESTION%%` |
-| Results format | `RESULTS.md` with category tables |
-| Improvement loop | Test → Comment → Report → Improve → Repeat |
+## The four surfaces
 
----
+| Surface | What it validates | Speed | Fidelity | When to reach for it |
+|---|---|---|---|---|
+| **Jest unit tests** (`tests/*.test.ts`) | Pure logic — parsers, transforms, schema validation, render() determinism | Fast (ms) | Low (mocked) | Default — always start here for any pure-function code |
+| **WebdriverIO + wdio-obsidian-service** (`tests/e2e/*.spec.ts`) | Real plugin behavior in real Obsidian — command registration, modal flows, vault state changes | Slow (seconds per test) | High (real Obsidian) | Every milestone has at least one E2E spec proving "the feature works in Obsidian"; integration smoke tests |
+| **Playwright** (`docs/tests/*.spec.ts`) | Docs site rendering — pages return 200, console-clean, sidebar links resolve, theme classes present | Medium | High (real browser) | Docs-side changes — components, theme, content additions that must render |
+| **obsidian-cli** (planned, not yet wired) | Headless scripted Obsidian operations — "open vault, run command, capture output, exit" | Medium | High (real Obsidian, no UI) | When you want to script a behavior without driving the UI; CI fixture validation |
 
-## Test Category Framework
+## When to use each
 
-### Category A: Adoption Tests
-**Core question:** Can someone new get productive quickly?
+### Jest unit (`bun run test`)
 
-Good adoption tests measure:
-- Time to first useful interaction
-- Clarity of entry points (README, Quick Start)
-- Error recovery when setup goes wrong
-- Minimal viable setup path
+- Parsers (`csv-parser.test.ts`)
+- Settings shapes (`settings-data.test.ts`)
+- Render() determinism (planned, milestone v0.1.2)
+- Frontmatter merge semantics (planned, milestone v0.1.3)
+- Schema validation (planned, milestone v0.1.1)
 
-### Category B: Modularity Tests
-**Core question:** Can you use pieces independently?
+Convention: mirror `src/<module>.ts` → `tests/<module>.test.ts`.
 
-Good modularity tests validate:
-- Single skill works without scaffold
-- Single agent works without other agents
-- No hidden dependencies between components
-- Partial installation is viable
+### WebdriverIO E2E (`bun run e2e`)
 
-### Category C: Portability Tests
-**Core question:** Does it work across tools and projects?
+- Smoke: plugin loads + commands registered (`tests/e2e/smoke.spec.ts`)
+- Import wizard flow: open command, select file, configure, generate (planned)
+- Settings UI: open settings, change a value, persist (planned)
+- Re-import idempotency: import twice, no duplicates (planned, milestone v0.1.3)
+- Cross-framework crosswalk linking: import two frameworks, verify wikilinks resolve (planned, milestone v0.1.4)
 
-Good portability tests verify:
-- Same skill works in Claude Code AND OpenCode
-- Drop into existing project without conflicts
-- Global vs local priority works correctly
-- No tool-specific assumptions baked in
+Convention: `tests/e2e/<feature>.spec.ts`. **Every v0.1 milestone gets at least one E2E spec.**
 
-### Category D: Intuitiveness Tests
-**Core question:** Do things work as expected?
+### Playwright (`cd docs && bun run test:local`)
 
-Good intuitiveness tests check:
-- Natural language triggers right behavior
-- Users can discover what's available
-- Same input produces consistent output
-- No surprising side effects
+- Smoke (10 tests): homepage loads, nav, sidebar, search, content pages
+- Deployment (4 tests): HTTP 200, no console errors, no failed assets, meta tags
 
-### Category E: Documentation Tests
-**Core question:** Are docs accurate and helpful?
+Convention: `docs/tests/*.spec.ts`. Don't add unless docs UX changes.
 
-Good documentation tests verify:
-- Links work and point to real content
-- Examples actually execute
-- No stale or outdated information
-- Cross-references are valid
+### obsidian-cli (planned)
 
-### Category F: Deterministic Checks
-**Core question:** Can we validate programmatically?
+For headless scripted operations where you don't need to drive the UI:
+- CI fixture validation: open test-vault, run "Crosswalker: Import structured data" against a known CSV, dump generated frontmatter to stdout, diff against expected
+- Bulk operations: open multiple vaults, run a command on each, exit
+- Reproducibility checks: assert that running the import command produces byte-identical output across two runs
 
-Good deterministic tests are:
-- Scriptable (bash/grep/find)
-- Repeatable (same result every time)
-- Fast (run on every change)
-- Clear (pass/fail, no ambiguity)
+Setup deferred until first concrete use case (likely CI fixture validation in Wave 2). When activated, will live alongside `bun run e2e` as a parallel testing surface — same plugin, different harness.
 
----
+## WebdriverIO E2E pattern (live, working)
 
-## Test Structure Template
+`wdio.conf.mts` configuration:
 
-Every test should have:
+- Spec discovery: `tests/e2e/**/*.spec.ts`
+- Vault: `test-vault/` (sandboxed by service — copied to `test-vault-XXXXXX/` per run; don't assert exact name)
+- Plugin: auto-loaded via `plugins: ['.']`
+- Pre-build: `onPrepare` runs `bun run build` before tests
+- Cache: `.obsidian-cache/` (gitignored) — downloaded Obsidian builds
+- Failure screenshots: `test-results/failure-<timestamp>.png` (gitignored)
 
-```markdown
-### [ID]: [Test Name]
+Standard test shape:
 
-**Goal:** [One sentence - what success looks like]
+```typescript
+import { browser } from '@wdio/globals';
+import { expect } from 'expect';
 
-**Setup:**
-1. [Prerequisite step]
-2. [Prerequisite step]
-
-**Steps:**
-1. [Action to take]
-2. [Action to take]
-3. [Action to take]
-
-**Pass Criteria:**
-- [ ] [Checkable criterion]
-- [ ] [Checkable criterion]
-- [ ] [Checkable criterion]
-
-**Results:**
-| Tool | Pass? | Notes |
-|------|-------|-------|
-| Claude Code | | |
-| OpenCode | | |
-
-**Comments:** %%Add observations here%%
+describe('feature name', function () {
+  it('does the thing', async () => {
+    const info = await browser.executeObsidian(({ app }) => {
+      // Code runs in Obsidian's renderer process; `app` is the Obsidian app instance
+      return {
+        someState: app.vault.getName(),
+        // ... whatever you need to assert
+      };
+    });
+    expect(info.someState).toBeTruthy();
+  });
+});
 ```
 
----
+**Triggering plugin commands**:
 
-## Comment Syntax
-
-Use Obsidian-compatible comments for inline test feedback:
-
-| Comment | When to Use | Example |
-|---------|-------------|---------|
-| `%%PASS: message%%` | Test passed as expected | `%%PASS: Skill loaded on first try%%` |
-| `%%FAIL: message%%` | Test failed | `%%FAIL: Agent didn't trigger, manual invoke needed%%` |
-| `%%NOTE: message%%` | Interesting observation | `%%NOTE: OpenCode behaves differently here%%` |
-| `%%TODO: message%%` | Action needed | `%%TODO: Add edge case for empty input%%` |
-| `%%QUESTION: message%%` | Needs clarification | `%%QUESTION: Is this expected behavior?%%` |
-
-**Collecting comments:**
-```bash
-grep -r "%%" test-workspace/ --include="*.md"
+```typescript
+await browser.executeObsidianCommand('crosswalker:import-structured-data');
 ```
 
-**Comment best practices:**
-- Be specific - include what you expected vs what happened
-- Include context - tool, scenario, input
-- One observation per comment
-- Keep comments near the relevant test section
+**Asserting on UI elements**:
 
----
-
-## RESULTS.md Format
-
-Track results in a structured table by category:
-
-```markdown
-## Category A: Adoption
-
-| ID | Test | Claude Code | OpenCode | Last Run |
-|----|------|-------------|----------|----------|
-| A01 | Fresh Start | PASS | PASS | 2025-12-24 |
-| A02 | Minimal Setup | PASS | FAIL | 2025-12-24 |
-
-### A02 Notes
-- OpenCode: [specific issue observed]
-- Action: [what needs to change]
+```typescript
+const modal = browser.$('.modal-container');
+await expect(modal).toExist();
 ```
 
-**Status values:**
-- `PASS` - All criteria met
-- `FAIL` - One or more criteria failed
-- `PARTIAL` - Some criteria met, some unclear
-- `SKIP` - Not applicable or blocked
-- `TODO` - Not yet tested
+## Common gotchas
 
----
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Expected: "test-vault"` `Received: "test-vault-skBTQt"` | wdio-obsidian-service sandboxes the vault with random suffix | Match by prefix: `expect(name).toMatch(/^test-vault/)` |
+| `bun run e2e` hangs forever | Obsidian binary download in progress | First run downloads ~150 MB; subsequent runs use cache |
+| `app.plugins.plugins` TypeScript error | Internal Obsidian API not in `@types/obsidian` | Use `// @ts-expect-error` comment; documented in `obsidian-typings` |
+| `bun run e2e` fails with display error on bare WSL | No DISPLAY environment variable | WSLg works on Win11; CI uses headless via `xvfb-run` (planned for Wave 2) |
+| Plugin changes not reflected in test | `onPrepare` ran build before edits | Either re-run `bun run e2e` or save+restart watch with `bun run dev` |
 
-## Improvement Loop
+## Per-milestone E2E requirement
 
-```
-1. Run tests
-   └── Add %%comments%% as you go
+Each v0.1 milestone (v0.1.1 → v0.1-RC) carries an E2E success criterion:
 
-2. Generate report
-   └── Run /test-report to aggregate findings
+| Milestone | E2E spec adds |
+|---|---|
+| v0.1.1 (types + AJV) | `validation.spec.ts` — load a malformed recipe, expect AJV error surfaces in user-facing notice |
+| v0.1.2 (render() v1) | `render.spec.ts` — import a recipe with folder+heading mechanisms, assert correct vault structure |
+| v0.1.3 (engine integration) | `re-import.spec.ts` — import twice; verify managed frontmatter overwritten + user_preserve preserved |
+| v0.1.4 (junction notes + crosswalks) | `crosswalks.spec.ts` — import NIST CSF + 800-53; assert junction notes generated; assert STRM predicate enforced |
+| v0.1.5 (Tier 2 sidecar) | `sidecar.spec.ts` — import; verify `.crosswalker.sqlite` exists; delete it; reload vault; verify reprojection |
+| v0.1.6 (Bases query layer) | `bases-queries.spec.ts` — open a generated note; verify embedded query renders |
+| v0.1.7 (exporters) | `export.spec.ts` — generate; export STRM TSV; verify columns; export OSCAL JSON; verify schema |
+| v0.1.8 (audit trail) | `audit.spec.ts` — generate; verify git commit produced; verify signed manifest if signing enabled |
+| v0.1-RC | full smoke against the bundled plugin to confirm community-plugin-submission readiness |
 
-3. Analyze patterns
-   └── What's failing? What's unclear?
+## Skills cross-references
 
-4. Prioritize fixes
-   └── Critical failures > Edge cases > Polish
-
-5. Implement changes
-   └── Fix the actual issue, not just the symptom
-
-6. Re-run affected tests
-   └── Verify the fix works
-
-7. Repeat
-   └── Until all priority tests pass
-```
-
----
-
-## Writing Good Pass Criteria
-
-**Bad criteria (vague):**
-- [ ] It works
-- [ ] The skill loads
-- [ ] User can do the thing
-
-**Good criteria (specific, checkable):**
-- [ ] Skill permission prompt appears within 3 seconds
-- [ ] Skill content visible in response (quote specific text)
-- [ ] No error messages in output
-- [ ] Total time < 5 minutes (timed)
-
-**Criteria guidelines:**
-1. **Observable** - Can be seen or measured
-2. **Binary** - Pass or fail, no "mostly works"
-3. **Independent** - Each criterion stands alone
-4. **Specific** - Exact values, not ranges
-
----
-
-## Common Testing Anti-Patterns
-
-### Testing What You Built, Not What Users Need
-**Problem:** Tests verify internal mechanics, not user value
-**Fix:** Start with user goal, work backward to what to test
-
-### Assuming Success
-**Problem:** Only testing happy path
-**Fix:** Include error cases, edge cases, recovery scenarios
-
-### Vague Criteria
-**Problem:** "It should work" is not testable
-**Fix:** Specify exact expected behavior
-
-### Testing in Isolation Only
-**Problem:** Components work alone but fail together
-**Fix:** Include integration tests across components
-
-### Not Recording Findings
-**Problem:** Run tests, forget results
-**Fix:** Always update RESULTS.md and add %%comments%%
-
----
-
-## Deterministic Check Patterns
-
-### File Structure Validation
-```bash
-# Skills in correct format
-find .claude/skills -name "SKILL.md" -type f | wc -l
-
-# No loose skill files
-find .claude/skills -maxdepth 1 -name "*.md" -type f
-```
-
-### YAML Field Validation
-```bash
-# Check for required fields in agent
-grep -l "^name:" .claude/agents/**/*.md
-grep -l "^description:" .claude/agents/**/*.md
-grep -l "^tools:" .claude/agents/**/*.md
-```
-
-### Link Validation
-```bash
-# Find all wikilinks
-grep -oh '\[\[[^]]*\]\]' *.md | sort | uniq
-
-# Check if targets exist (manual or scripted)
-```
-
-### Naming Consistency
-```bash
-# Directory name should match YAML name field
-for dir in .claude/skills/*/; do
-  name=$(basename "$dir")
-  grep "^name: $name" "$dir/SKILL.md" || echo "Mismatch: $dir"
-done
-```
-
----
+- `synthesis-log` — when E2E uncovers an architectural decision worth logging
+- `docs-testing` — Playwright docs-site testing
+- `docs-site` — Astro/Starlight authoring (relevant if E2E test breaks because docs structure changed)
 
 ## Related
 
-- `TESTING.md` - Active test scenarios
-- `RESULTS.md` - Test result tracking
-- `/validate` command - Run deterministic checks
-- `/test` command - Interactive test runner
-- `/test-report` command - Aggregate findings
-- `test-improver` agent - Proactive improvement suggestions
+- `wdio.conf.mts` — WebDriver config
+- `tests/e2e/smoke.spec.ts` — baseline smoke spec; reference shape for new specs
+- [wdio-obsidian-service docs](https://github.com/jesse-r-s-hines/wdio-obsidian-service)
+- [WebdriverIO docs](https://webdriver.io/)
