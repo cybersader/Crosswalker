@@ -107,6 +107,7 @@ These all work standalone if you prefer not to use the orchestrator:
 | `bun run lint` | ESLint with obsidian-plugin rules |
 | `bun run lint:fix` | Auto-fix lint issues |
 | `bun run e2e` | Plugin E2E tests (WebdriverIO, requires Obsidian) |
+| `bun run fixtures` | Regenerate Tier 1 test fixtures into `test-vault/Frameworks/NIST-mini/` from `tools/fixtures/synthetic/nist-mini.csv` |
 | `cd docs && bun run dev` | Docs Astro dev server |
 | `cd docs && bun run build` | Docs production build → `docs/dist` |
 | `cd docs && bun run preview` | Serve the built dist locally |
@@ -129,6 +130,15 @@ crosswalker/
 ├── tests/                    # Plugin Jest unit tests
 ├── test-vault/               # Embedded Obsidian vault
 │   └── .obsidian/plugins/crosswalker/    # Build output lives here
+├── spec/                     # Machine-readable contracts (load-bearing)
+│   ├── tier1.schema.json     # Canonical Tier 1 vault shape — what producers emit
+│   ├── recipe.schema.json    # Recipe DSL — Ch 22 closed grammar
+│   ├── primitives/           # (Stub) one schema per transformation primitive
+│   └── README.md
+├── tools/                    # Dev / test infrastructure (not shipped)
+│   ├── generate-fixtures.ts  # CSV → Tier 1 markdown fixture generator
+│   ├── fixtures/synthetic/   # Hand-authored sample CSVs (committed)
+│   └── README.md
 ├── docs/                     # Astro Starlight docs site
 │   ├── src/
 │   │   ├── content/docs/     # .mdx content files
@@ -141,7 +151,7 @@ crosswalker/
 │   └── tags.yml              # Controlled tag vocabulary
 ├── scripts/
 │   └── serve.mjs             # The bun run serve orchestrator
-├── frameworks_to_obsidian.py # Python CLI (secondary tool)
+├── frameworks_to_obsidian.py # Python CLI (external producer example)
 ├── .claude/                  # AI agent historical context (CLAUDE.md, numbered knowledge base)
 ├── .github/workflows/        # CI/CD — docs deploy, plugin release
 ├── CLAUDE.md                 # Root-level agent instructions

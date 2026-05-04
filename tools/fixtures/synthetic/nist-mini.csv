@@ -1,0 +1,9 @@
+id,name,family,family_name,parent,description
+AC-1,Policy and Procedures,AC,Access Control,,"Develop, document, and disseminate access control policy and procedures to facilitate the implementation of the access control policy and the associated controls."
+AC-2,Account Management,AC,Access Control,,"Define and document the types of accounts allowed and prohibited by the system; assign account managers; require approvals for requests to create accounts; create, enable, modify, disable, and remove accounts."
+AC-2(1),Automated System Account Management,AC,Access Control,AC-2,Support the management of system accounts using automated mechanisms.
+AC-2(2),Automated Temporary and Emergency Account Management,AC,Access Control,AC-2,Automatically remove or disable temporary and emergency accounts after an organization-defined time period for each type of account.
+AC-3,Access Enforcement,AC,Access Control,,"Enforce approved authorizations for logical access to information and system resources in accordance with applicable access control policies."
+AU-1,Policy and Procedures,AU,Audit and Accountability,,"Develop, document, and disseminate audit and accountability policy and procedures."
+AU-2,Event Logging,AU,Audit and Accountability,,Identify the types of events that the system is capable of logging in support of the audit function.
+AU-3,Content of Audit Records,AU,Audit and Accountability,,"Ensure that audit records contain information that establishes what type of event occurred, when the event occurred, where the event occurred, the source of the event, the outcome of the event, and the identity of any individuals or subjects associated with the event."
