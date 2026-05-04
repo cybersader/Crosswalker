@@ -1,0 +1,228 @@
+---
+title: "Import engine design — closing the design phase before concrete work begins"
+description: "Synthesizes the ETL/import-engine architecture conversation into committed design. Schema is the load-bearing primitive; bundled engine is convenience; external producers target the schema directly; marketplace fills the messy-source gap. Engine signature: (source × target_schema × recipe) → Tier 1. Five-axis recipe selection (depth, mechanism, filter, granularity, projection). Four orthogonal hierarchy primitives (folder/heading/tag/wikilink-graph). ~40-primitive transformation catalog. Concrete next steps: pillar pages + machine-readable spec + recipe DSL + reference engine."
+tags: [foundation, design, etl, import-engine, schema-first, marketplace, recipe-dsl, ready-for-implementation]
+date: 2026-05-04
+sidebar:
+  label: "05-04 · Import engine design"
+  order: -20260504.0
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::tip[The design phase closes here]
+This log synthesizes the import-engine architecture conversation that ran across Ch 20 / Ch 21 / Ch 22 plus a series of conversational refinements 2026-05-03 / 2026-05-04. Once the pillar pages and machine-readable spec sketched at the bottom of this log are in place, **concrete implementation work begins**.
+:::
+
+## §1 The reframe — schema as the load-bearing primitive
+
+The single most consequential architectural decision of this design phase:
+
+> **Crosswalker's load-bearing primitive is the Tier 1 target schema. ETL is optional convenience. External ETL is fine.**
+
+This dissolves several previously-open questions in one move:
+
+| Open question | Resolved by reframe |
+|---|---|
+| Build vs buy ETL engine? | **Neither is load-bearing.** Specify the schema; ship a thin reference engine for the zero-config case; let users produce Tier 1 with whatever ETL they prefer (Python, dbt, dlt, ChunkyCSV, hand-written, GPT) |
+| Custom DSL vs familiar one? | The schema *is* the contract. Producers use any expression language as long as the output conforms |
+| Where do recipes live? | Only matters for the bundled reference engine. External users keep recipes wherever — the schema doesn't care |
+| In-plugin TS vs external Python? | **Both.** Tiny in-plugin engine for "open vault, click import CSV, done" UX. External tools for power users / batch / CI / agents |
+| Protocol surface (Path D from [Ch 21](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/))? | Falls out naturally — the protocol IS the schema. Anyone speaking it is a producer; Crosswalker is the canonical receiver |
+
+The architectural precedent is strong: HTML (browsers don't care how you produce it), JSON Schema, OpenAPI, SBOM formats (SPDX/CycloneDX), Markdown itself. **The spec is the artifact; the engines are commodity.**
+
+## §2 The architectural commitments
+
+Four pieces, layered cleanly:
+
+### 2.1 The Tier 1 target schema (load-bearing contract)
+
+The Tier 1 representation Crosswalker actually defines. Composed of:
+
+- Markdown files with YAML frontmatter
+- Folder layout (composable with the other [hierarchy mechanisms](/crosswalker/concepts/hierarchy-primitives/))
+- [STRM](/crosswalker/reference/registry/strm/) predicate vocabulary for crosswalk edges
+- [SSSOM](/crosswalker/reference/registry/sssom/) envelope for crosswalk metadata
+- [Junction notes](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) (13-field schema) for evidence links
+- `_crosswalker` metadata block for provenance
+- The closed sink vocabulary from [Ch 20](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/) (`path`, `frontmatter[k]`, `body[region]`, `wikilink[role]`)
+
+This contract MUST be expressible as a machine-readable artifact (`tier1.schema.json` or LinkML) so external producers can validate output mechanically.
+
+### 2.2 The bundled reference ingestion engine (convenience layer)
+
+A thin in-plugin reference engine that handles the 80% case ("open vault, import CSV, done") with no external tooling. Signature:
+
+```
+engine(
+  source,           // parsed input (CSV, XLSX, JSON, OSCAL, RDF, etc.)
+  target_schema,    // Tier 1 contract (machine-readable spec)
+  recipe            // user's multi-axis selection
+) → Tier 1 vault
+```
+
+Three inputs, one output. **The engine has no hardcoded knowledge of any source ontology.** All per-source decisions live in the recipe.
+
+The bundled engine has a tabular-versus-tree asymmetry it should *lean into* and acknowledge the limit of:
+
+| Source shape | Bundled engine handles? |
+|---|---|
+| **Tree** (JSON, YAML, JSON-LD, OSCAL JSON, XML) | Yes — inherent structure means reshape primitives suffice |
+| **Tabular with hierarchy column** (well-formed CSV) | Yes — basic interpretation rules cover most cases |
+| **Tabular without hierarchy** (ad-hoc CSV, XLSX with merged cells) | Maybe — depends on recipe complexity; falls back to marketplace |
+| **Prose** (PDF, HTML) | No — left to external tools |
+
+### 2.3 External producers (anyone, any language)
+
+External ETL tools target the schema directly. Python+Polars+DuckDB; dbt; dlt; ChunkyCSV; JSONaut; bash scripts; LLM-driven extractors; bespoke per-org code. Output conforms to the Tier 1 contract. Crosswalker validates and accepts.
+
+This is **not a downgrade** — it's the platform-architecture pattern from [what makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) made operational. The bundled engine is one valid producer. Many others are also valid.
+
+### 2.4 Marketplace of pre-transformed ontology bundles (community pattern)
+
+> *"Once someone transforms an ontology once, then it's transformed."*
+
+For ontologies with messy tabular sources that the bundled engine can't handle, the community one-time-transforms once and shares the result. Each marketplace bundle ships:
+
+- The original source URL + version pin (`nist:csf-2.0` + sha256)
+- The recipe used (so it's re-runnable when upstream updates)
+- The pre-built Tier 1 vault content
+- A migration crosswalk (when the bundle updates)
+
+`crosswalker install nist-csf-2.0` becomes the user-facing flow. The user doesn't write a recipe; they install someone else's working one. This is **the architectural answer to the tabular-source problem** — the bundled engine doesn't need to handle every weird XLSX because the community handles each one once.
+
+## §3 Five-axis recipe selection
+
+The recipe carries the per-source flexibility. Five orthogonal axes the recipe author controls:
+
+| # | Axis | What it controls | Example for NIST CSFv2 |
+|---|---|---|---|
+| **1** | **Depth** | How many levels of the source tree to materialize | User A: Functions + Categories only (2 deep). User B: + Subcategories (3 deep). User C: + Implementation Examples (4 deep). |
+| **2** | **Hierarchy mechanism** | Which of folder / heading / tag / wikilink-graph carries hierarchy | User A: folders. User B: folders top-2, headings within. User C: tags only. |
+| **3** | **Inclusion filter** | Which branches/subtrees to include or exclude | "Only the Govern and Identify Functions, not Detect/Respond/Recover" |
+| **4** | **Per-level granularity** | What's captured at each level (full body vs label-only vs collapsed) | "Categories get a stub note; Subcategories get full body + frontmatter" |
+| **5** | **Cross-cutting projection** | Which source fields become frontmatter vs body vs tags vs wikilinks | "Implementation guidance → body section. Reference IDs → frontmatter. Functions → parallel tag." |
+
+These compose. The same NIST CSFv2 source produces dramatically different vault outputs depending on the recipe — the engine is uniform; recipes carry the decisions.
+
+The recipe-DSL surface needs to express these five axes concisely. Open question (see §6).
+
+## §4 The four hierarchy primitives
+
+Documented in [`concepts/hierarchy-primitives`](/crosswalker/concepts/hierarchy-primitives/). Brief recap:
+
+| # | Primitive | Cardinality | When right |
+|---|---|---|---|
+| **1** | **Folder** | Mono-hierarchical (one path per note) | Deep semi-stable hierarchies; matches GRC consultant filesystem habits |
+| **2** | **Markdown heading** | Mono-hierarchical within file | Very deep ontologies (MITRE ATT&CK ~thousands of nodes); shallow ontologies sharing metadata |
+| **3** | **Tag** | Polyhierarchical (multiple parents) | Cross-cutting concerns; parallel views over same flat file set |
+| **4** | **Wikilink-graph** | Maximally graph-shaped | Genuinely graph-shaped ontologies; PKM-style workflows |
+
+Real recipes compose these. The full target-structure expressivity question is the subject of [Ch 22](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/). For this design log: the four mechanisms are the *primitive Obsidian affordances* the engine has to work with; recipes choose which to use at which level.
+
+## §5 The transformation primitive catalog
+
+The bundled engine's transformation vocabulary. ~40 primitives in nine categories, drawing on the convergent answer from RML/YARRRML, JSONata, Bento/Bloblang, SSSOM/T, Cribl-style processors, the user's own ChunkyCSV + JSONaut tools, and macro tree transducer theory:
+
+| Category | Primitives | Notes |
+|---|---|---|
+| **Path** | project, get, set, walk, descend, parent | MTT-derived structural ops |
+| **Reshape** | restructure, rename, flatten, unflatten, merge, split | Tree-to-tree shape changes |
+| **String** | regex extract / replace, split, join, trim, case-convert, slugify, template-interpolate | Cribl/Bento parity |
+| **Type** | parse-date, parse-number, parse-bool, coerce, format-date, format-number | Standard coercions |
+| **Filter** | predicate, when, reject, distinct | Predicate-based selection |
+| **Aggregate** | group-by, count, sum, min, max, concat, sort | Reductions |
+| **Reference** | lookup, expand-curie, contract-curie, resolve-wikilink, join-on-key | Cross-record resolution; address-rendering for Ch 22 lands here |
+| **Generate** | template, hash, uuid, slug, increment | Synthesizing values |
+| **Validate** | type-check, required, cardinality, schema-conform, regex-match | Constraint enforcement |
+| **Cross-structural** | tabularize (tree→rows), treeify (rows→tree), edge-extract, pivot, unpivot | The format-boundary primitives — ChunkyCSV territory |
+
+Total bundle cost stays well under 500 KB. JSONata as the expression sub-language gives the recipe author an open escape hatch for anything not in the catalog.
+
+The exact catalog (with input/output JSON Schemas per primitive) is the spec work that needs to happen before implementation.
+
+## §6 Architectural commitments — settled vs still-open
+
+### Settled (no further research needed; ready for spec work)
+
+- ✅ **Schema is the load-bearing primitive; ETL is convenience** (§1)
+- ✅ **Engine signature**: `(source × target_schema × recipe) → Tier 1` (§2.2)
+- ✅ **External producers welcome**; the schema is the protocol (§2.3)
+- ✅ **Marketplace** as architectural answer to messy-source problem (§2.4)
+- ✅ **Five recipe axes** (depth, mechanism, filter, granularity, projection) (§3)
+- ✅ **Four hierarchy mechanisms** as the Obsidian primitives the recipe composes over (§4)
+- ✅ **~40-primitive transformation catalog** by category (§5)
+- ✅ **JSONata as expression sub-language** within recipes
+- ✅ **Tier 1 schema must be machine-readable** (JSON Schema or LinkML), not just a docs page
+
+### Still open (decision needed before or during implementation)
+
+| Open | Options | Default lean |
+|---|---|---|
+| **Bundled engine implementation language** | TypeScript/Bun (in-plugin); Python (external CLI); both | Both — tiny TS in-plugin reference engine for zero-config UX; Python CLI for power users / CI / agents. The "external connections, doesn't need to be Obsidian-internal" framing applies. |
+| **Recipe DSL surface syntax** | YARRRML-shaped YAML; Dhall-typed; JSON Schema with discriminated unions; hybrid | YARRRML-shaped YAML (familiar to data-engineering audiences; mature toolchain) |
+| **Recipe storage location** | `.crosswalker/recipes/` in vault; plugin user-data dir; user choice | `.crosswalker/recipes/` in vault — git-versions with content; matches files-canonical principle |
+| **Marketplace mechanism** | GitHub repo (v0.1); built-in registry (v1.0+); Obsidian community plugins (v1.0+) | GitHub repo at v0.1 (simplest); built-in registry once usage justifies it |
+| **Target_schema as data vs hardcoded** | Hardcoded (v0.1 simplicity); declarative dialect spec (longer-term) | Hardcoded for v0.1 reference engine; declarative dialect spec for v1.0+ when community variants emerge |
+| **Architectural fork resolution from new Ch 21 deliverable** (Python+Polars+DuckDB external recommendation) | Adopt for external tier; in-plugin TS for v0.1 reference; both validated | Validated: external Python is one valid producer (per §2.3); v0.1 reference engine stays TS/Bun in-plugin per the [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) |
+
+These are concrete decisions for spec/implementation time, not blockers for moving forward.
+
+## §7 What this means for v0.1
+
+The [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) committed to:
+
+- TypeScript/Bun bundled Obsidian plugin (~1.2 MB)
+- Tier 1 + Tier 2 sqlite-wasm sidecar
+- Markdown + YAML frontmatter as canonical
+- STRM-shaped TSV / OSCAL JSON / SSSOM-flavored TSV exports
+
+This design log **adds**, doesn't override, the v0.1 commitment. v0.1 ships:
+
+1. **The Tier 1 target schema** (`tier1.schema.json` machine-readable + `design/import-engine` human-readable pillar)
+2. **The bundled reference ingestion engine** (in-plugin TS, ~480 KB, handles tree-shaped sources cleanly + simple tabular)
+3. **A starter recipe library** for canonical sources (NIST 800-53, ISO 27002, MITRE ATT&CK basic)
+4. **A schema validator** (anyone's Tier 1 output can be validated against the spec)
+
+Not in v0.1 (deferred to v1.0+):
+- Marketplace registry mechanism (just a GitHub repo at v0.1)
+- Declarative target-schema dialects (hardcoded for v0.1)
+- External-Python ETL CLI (users hand-author Python if they need it; bundled engine handles the easy 80%)
+- Full lens-style round-trip (forward-only at v0.1; INVERT primitive deferred)
+
+## §8 Concrete next steps — what closes the design phase
+
+Ready for implementation only after these land:
+
+| # | Artifact | Location | Status |
+|---|---|---|---|
+| 1 | **Vault hierarchy primitives concept page** | `concepts/hierarchy-primitives` | ✅ written 2026-05-04 |
+| 2 | **ETL-and-import concept pillar** | `concepts/etl-and-import` (new) | TODO — frames the schema-as-primitive + marketplace + tabular asymmetry |
+| 3 | **Import engine design pillar** | `design/import-engine` (new — supersedes stale `design/transformation`) | TODO — the engine signature + recipe DSL + transformation catalog + reference implementation plan |
+| 4 | **Architecture pillar update** | `design/architecture` (existing, stale) | TODO — Tier 1/2/3 + safety guarantee + the engine's place in it |
+| 5 | **Import wizard feature page** | `features/import-wizard` (existing, stale) | TODO — refocus as "the bundled reference engine UI" |
+| 6 | **Tier 1 schema spec — machine-readable** | `spec/tier1.schema.json` (or LinkML at `spec/tier1.linkml.yaml`) | TODO — the contract external producers target |
+| 7 | **Recipe DSL spec — machine-readable** | `spec/recipe.schema.json` | TODO — the multi-axis selector |
+| 8 | **Transformation primitive library spec** | `spec/primitives/` (one JSON Schema per primitive) | TODO — input/output contracts for each of ~40 primitives |
+| 9 | **Starter recipe library** | `recipes/starter/` (NIST 800-53, ISO 27002, MITRE ATT&CK) | TODO |
+
+When (1)–(9) are in place, **the implementation work has a complete spec to build against**. No further design conversations needed.
+
+After (1)–(9):
+
+- Wire the bundled reference engine into the existing Obsidian plugin
+- Replace the current import wizard's hardcoded behavior with recipe-driven behavior
+- Ship v0.1 with two or three working starter recipes
+- Iterate from real usage
+
+## §9 Related
+
+- [Concepts: hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the four Obsidian mechanisms recipes compose over
+- [Concepts: what makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — the Spec / Library / Integrations three-layer commitment that this design fully realizes
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the practical Tier 1 shape that will be machine-readable-ified
+- [v0.1 stack pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the in-plugin TS commitment
+- [Ch 20 import-primitive synthesis](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/) — the wargaming setup that fed this design
+- [Ch 22 target-structure expressivity](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/) — the open research that informs the recipe DSL
+- [Ch 21 build-vs-buy](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) — answered structurally by §1's reframe
+- User's prior tools: [SEACOW](https://github.com/cybersader/cyberbase), [folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync), [ChunkyCSV](https://github.com/cybersader), [JSONaut](https://github.com/cybersader) — the practical-precedent portfolio that grounds the design
