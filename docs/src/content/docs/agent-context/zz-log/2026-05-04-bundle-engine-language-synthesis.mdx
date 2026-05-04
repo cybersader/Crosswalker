@@ -1,0 +1,129 @@
+---
+title: "Bundle engine language — synthesis (Ch 23 resolution; Path A for v0.1, Path C reserved for v0.5+)"
+description: "Synthesizes the Ch 23 adversarial deliverable into committed v0.1 architecture. Path A (Pure TS in-plugin) adopted; Path C (Hybrid: optional external producer) reserved for v0.5+; Path B / D / E / F rejected. Two irreversible constraints justify the verdict: mobile-Obsidian portability without forks + survival of a niche GRC plugin in a small-contributor OSS world. Adopts 8 of 9 deliverable commitments; explicitly rejects the esbuild-over-Bun recommendation — Crosswalker stays Bun end-to-end per the v0.1 stack pivot. Captures the runtime-agnostic recipe schema commitment as the single most important architectural property: get the recipe interface right and engine-language choices become reversible."
+tags: [foundation, design, etl, import-engine, runtime, language-choice, ch-23-resolution, ready-for-implementation]
+date: 2026-05-04
+sidebar:
+  label: "05-04 · Bundle engine language synthesis"
+  order: -20260504.2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::tip[This log resolves Challenge 23]
+The [Ch 23 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/) settled the bundle-engine language question. This log captures what's adopted, what's rejected, and what the v0.1 build target looks like as a result. With Ch 23 resolved, items 3 and 7 of the [2026-05-04 import engine design log §8 next-steps](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/#8-concrete-next-steps--what-closes-the-design-phase) cascade-unblock.
+:::
+
+## §1 The verdict
+
+**Path A (Pure TypeScript in-plugin) for v0.1; Path C (Hybrid: optional external producer) reserved as v0.5+ extension.** All other paths rejected.
+
+Two irreversible constraints force the answer:
+
+1. **Mobile-Obsidian portability without forks.** Obsidian on iOS/Android runs Capacitor, not Electron — no subprocess, no node-native deps, no Python. A non-portable v0.1 silently locks out every iPad-only Obsidian user and creates a permanent support tax.
+2. **Survival of a niche GRC plugin in a small-contributor OSS world.** The Obsidian plugin contributor pool is overwhelmingly TS-fluent. A Rust or JVM core does not get drive-by PRs.
+
+Of the six paths the deliverable evaluated, only Path A clears both constraints with no marginal-or-worse score. Path C clears them only by making the external producer opt-in and desktop-only. Paths B / D / E / F each fail at least one of the two.
+
+## §2 What's adopted (8 of 9 commitments from the deliverable)
+
+The deliverable's §9 ("Final Recommendation and Concrete v0.1 Stack") lists 9 specific commitments. Eight are adopted as-is:
+
+| # | Commitment | Status |
+|---|---|---|
+| 1 | Engine in TypeScript | ✅ Adopted |
+| 2 | v0.1 bundle composition: JSONata 2.x + AJV 8 + ajv-formats + js-yaml 4 + papaparse 5 + nanoid + engine code. Target: under 300 KB minified, under 120 KB gzipped | ✅ Adopted |
+| 3 | Defer XLSX to v0.2 (SheetJS tree-shaken read-only mode behind lazy import). Target after addition: under 500 KB minified | ✅ Adopted |
+| 4 | Declare `isDesktopOnly: false`. Use `Platform.isDesktopApp` to gate features that require desktop APIs | ✅ Adopted |
+| 5 | Run engine on main thread with cooperative yielding (`await new Promise(setTimeout)`). Don't depend on Web Workers (currently unreliable in Obsidian) | ✅ Adopted |
+| 6 | Define and version the recipe schema as runtime-agnostic. JSON Schema + AJV for validation. Documented semantics so a future Rust port (Path D) or Python validator could be written without changing user files | ✅ Adopted — **the single most important commitment** (see §4) |
+| 7 | Reserve a `producer` field in the recipe schema for v0.5+ Path C. Don't implement yet, but reserve the namespace so external producers are non-breaking to add | ✅ Adopted |
+| 8 | Use RMLMapper as a semantics oracle, not a runtime. Validate Crosswalker's `iterate`/`reference`/`join` semantics against the RML reference on shared subsets — gives confidence the surface DSL is well-defined without paying the JVM tax | ✅ Adopted |
+| 9 | At v0.5: add Path C as opt-in. Reference Python producer (Polars + DuckDB + openpyxl) in sibling repo. JSON-lines streaming protocol over stdin/stdout. Gate behind desktop check. Document explicitly that recipes using producers are non-portable to mobile | ✅ Adopted as *future direction* (not v0.1 work) |
+
+## §3 What's rejected from the deliverable (1 of 9)
+
+The deliverable's commitment #1 contained a sub-recommendation: *"built with esbuild (not Bun — Bun's three-year-old single-vendor governance is a 5-year risk)"*.
+
+**This sub-recommendation is rejected. Crosswalker stays Bun end-to-end.**
+
+| Aspect | Deliverable position | Adopted position | Rationale |
+|---|---|---|---|
+| Engine source language | TypeScript | TypeScript | Agreed |
+| Production bundler | esbuild | **Bun** | The current stack is already Bun-end-to-end per the [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/). Switching production bundlers for a hypothetical 5-year governance risk is a non-trivial pivot for an event that may not occur, against a tool that is working today. The deliverable's "5-year drift risk" is real but speculative; the cost of pivoting is concrete and current. **Punt: revisit at v0.5 if Bun's governance posture changes.** |
+
+This is a deliberate disagreement, not a silent omission. Future agents reading this should not interpret the v0.1 codebase's Bun usage as an oversight — it is a recorded decision against the deliverable's recommendation, made on 2026-05-04.
+
+## §4 The most important commitment: runtime-agnostic recipe schema
+
+The deliverable's closing section makes the core architectural argument explicit:
+
+> *"The single most important structural decision is therefore not which engine language to pick — it's committing to a runtime-agnostic recipe schema so that the v0.1 TS engine, the v0.5 Python producer, and any hypothetical future Rust/WASM core all evaluate identical user-authored recipes to identical vault outputs. Get that interface right and every other choice in this challenge becomes reversible."*
+
+This is the architecturally load-bearing commitment, not the language choice. It compounds the [schema-as-primitive reframe](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience) from the broader design phase: **Crosswalker has two contracts, both runtime-agnostic** —
+
+- **Tier 1 schema** = the contract between any *producer* (engine, external Python, agent, custom code) and the resulting *vault*
+- **Recipe schema** = the contract between a *user-authored recipe* and any conformant *engine implementation*
+
+Both are JSON-Schema-shaped, machine-readable, language-agnostic. Engine implementations come and go. The contracts persist. Every architectural choice that flows from this becomes reversible: if v3.0 wants a Rust→WASM core for performance reasons, recipes from v0.1 still work. If v2.0 wants to deprecate JSONata in favor of jq, only the expression sub-language changes — the recipe envelope is stable.
+
+## §5 Specific v0.1 build-target locks
+
+Restated as the ground truth for implementation work starting now:
+
+```
+Plugin runtime          : Bun (build) + esbuild internally if Bun's bundler isn't used directly
+Engine language         : TypeScript
+Engine location         : In-plugin main.js
+Engine execution model  : Main thread with cooperative yielding
+Engine dependencies     : jsonata 2.x, ajv 8 + ajv-formats, js-yaml 4, papaparse 5, nanoid
+v0.1 size target        : under 300 KB minified, under 120 KB gzipped (no XLSX)
+v0.2 size target        : under 500 KB minified (SheetJS tree-shaken read-only added)
+Mobile portability      : Required. isDesktopOnly: false. Platform.isDesktopApp gate for desktop-only features
+Recipe expression layer : JSONata 2.x
+Recipe schema           : JSON Schema, runtime-agnostic, validated by AJV
+External producers      : v0.5+. `producer` field reserved in recipe schema. Mobile-incompatible by design
+RMLMapper               : Reference oracle during recipe-DSL design. Never a runtime users install
+```
+
+## §6 Reconciliation of Ch 20 / Ch 21 / Ch 23
+
+Three challenges, three apparent stack assumptions:
+
+| Challenge | Stack assumption | Reconciled as |
+|---|---|---|
+| [Ch 20 deliverable A](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/) | Pure TS, ~480 KB | The v0.1 product |
+| [Ch 21 deliverable](/crosswalker/agent-context/zz-research/) | External Python + Polars + DuckDB | The v0.5+ optional producer |
+| Ch 23 deliverable | Path A for v0.1; Path C for v0.5+ | The sequencing decision that puts both above into temporal order |
+
+**Sequencing, not architecture.** Ch 20-A was right *for v0.1*. Ch 21 was right *for v0.5+*. Neither was wrong; they described different temporal slices. Ch 23's contribution is forcing the explicit recognition that v0.1 must ship and stabilize alone — building two runtimes simultaneously without users is the predictable way for a small-OSS project to die before v1.0.
+
+## §7 What this unblocks
+
+The [2026-05-04 import engine design log §8 next-steps](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/#8-concrete-next-steps--what-closes-the-design-phase) treats Ch 23 as a precondition for items 3 and 7. With Ch 23 resolved:
+
+| Item | What was blocked | Now unblocked |
+|---|---|---|
+| #3 — `design/import-engine` pillar | Engine signature + recipe DSL + transformation catalog + reference implementation plan | ✅ Can proceed; commit to TS + Bun + JSONata + AJV |
+| #7 — `spec/recipe.schema.json` (machine-readable) | Recipe DSL surface choice ambiguity | ✅ Can proceed; runtime-agnostic JSON Schema is the explicit shape |
+
+Items 4, 5, 6, 8, 9 were not blocked by Ch 23. They proceed independently.
+
+## §8 What this does NOT do
+
+- **Does not commit Crosswalker to building a Python producer** — that's a v0.5+ direction reserved by the `producer` recipe field. v0.1 work focuses entirely on the TS engine + Tier 1 schema + recipe schema.
+- **Does not commit JSONata as a permanent expression layer** — JSONata is the v0.1 choice. If it becomes a liability (single-org governance, slowed maintenance), the recipe schema's runtime-agnostic shape allows swapping the expression sub-language without breaking the envelope.
+- **Does not commit a specific surface DSL** — the recipe schema is the contract, not the surface. YARRRML-shaped YAML remains the leaning surface, but the schema sits below the surface.
+- **Does not commit to specific bundle splits** — the under-300-KB and under-500-KB numbers are targets, not contracts. Implementation may discover the engine fits in less or needs slightly more; the principle (mobile-portable, JSONata-based, schema-validated) is what's load-bearing.
+
+## §9 Related
+
+- [Ch 23 deliverable (verbatim)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/) — the source of the verdict
+- [Ch 23 brief (archived)](/crosswalker/agent-context/zz-challenges/archive/23-bundle-engine-language/) — original assignment
+- [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — broader design phase that Ch 23 closes a §6 question on
+- [2026-05-02 v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the prior commitment to TS/Bun in-plugin that Ch 23's resolution validates and extends
+- [2026-05-03 import-primitive synthesis](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/) — Ch 20 wargaming setup (the algebraic primitives Ch 23's TS engine implements)
+- [Ch 21 — Build vs buy ETL engine](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) — meta-question above engine language
+- [ETL and import (concept pillar)](/crosswalker/concepts/etl-and-import/) — the schema-as-primitive framing that compounds with §4's runtime-agnostic-recipe commitment
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the four target-structure mechanisms the engine must produce
+- [Agent tooling](/crosswalker/agent-context/agent-tooling/) — the progressive-disclosure space agents use when helping users author recipes

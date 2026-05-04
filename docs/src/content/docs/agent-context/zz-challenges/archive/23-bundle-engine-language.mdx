@@ -1,13 +1,23 @@
 ---
-title: "Challenge 23: Bundle engine implementation language — TypeScript in-plugin vs external Python vs hybrid, with realistic 5-year survival, distribution, and platform-portability stress tests"
-description: "Ch 20 settled what the import primitive should LOOK like (graph-aware ETL, ~5–6 algebraic primitives over a closed Tier-1 sink vocabulary, MTT-justified). Ch 21 settled the build-vs-buy meta-question (Compose: bundled engine + external producers + marketplace). This challenge asks the question both deferred: in WHAT LANGUAGE / RUNTIME does the bundled engine actually live? Pure in-plugin TypeScript (~480 KB; runs in Obsidian renderer)? External Python CLI (matches Ch 21's Polars+DuckDB stack; user installs Python)? Hybrid (small TS engine for tree-shaped sources in-plugin; external Python or other for advanced cases)? Or something else (Rust→WASM, Go→WASM, JVM)? Critically assess all paths against bundle-size budget, install friction, debuggability, ecosystem maturity, mobile-Obsidian portability, agent-author ergonomics, governance/sustainability, 5-year drift risk."
-tags: [research, foundation, import, etl, runtime, language-choice, governance, sustainability, bundle-size, mobile-portability]
+title: "Challenge 23: Bundle engine implementation language (archived)"
+description: "Bundle engine language — TypeScript in-plugin vs external Python vs hybrid vs Rust/Go-WASM vs JVM. RESOLVED 2026-05-04: Path A (Pure TS in-plugin) for v0.1; Path C (Hybrid: optional external producer) reserved for v0.5+. See callout."
+tags: [research, foundation, import, etl, runtime, language-choice, governance, sustainability, bundle-size, mobile-portability, archived]
 date: 2026-05-04
 sidebar:
-  label: "23 · Bundle engine language"
+  label: "23 · Bundle engine language (archived)"
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::tip[Resolved 2026-05-04 — archived]
+This challenge has been **resolved** and the brief is **archived for reference**. A single adversarial fresh-agent deliverable settled the question:
+
+- [Ch 23 deliverable: Bundle engine implementation language](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/) — Path A (Pure TS in-plugin) for v0.1; Path C (Hybrid: optional external producer) reserved for v0.5+; rejects Path B / D / E / F as primary engines. Two irreversible constraints force the answer: mobile-Obsidian portability without forks + survival of a niche GRC plugin in a small-contributor OSS world. Includes empirical bundle-size figures, 8-dimension scoring matrix, migration cost analysis, 5-year survival projection, adversarial self-critique, and 9 specific v0.1 commitments.
+
+The deliverable is synthesized in the **[2026-05-04 bundle engine language synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/)** which adopts 8 of the 9 commitments and explicitly disagrees with one — the deliverable's recommendation to swap Bun for esbuild on the production build is rejected; Crosswalker stays Bun end-to-end per the [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/).
+
+**This challenge brief is preserved as originally written** so it stays re-runnable. If a future agent wants to re-run with different constraints (e.g., desktop-only target, accepted Python-install friction, performance-bound workload), the brief is unchanged.
+:::
 
 ## Why this exists
 

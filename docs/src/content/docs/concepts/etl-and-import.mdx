@@ -207,11 +207,12 @@ Items the architecture has *named* but not yet *committed*:
 
 | Question | Default lean | Status |
 |---|---|---|
-| Bundle engine implementation language | Hybrid (TS in-plugin + Python external) | [Ch 23](/crosswalker/agent-context/zz-challenges/23-bundle-engine-language/) — research pending |
+| Bundle engine implementation language | Pure TypeScript in-plugin (Path A) for v0.1; Hybrid (Path C — opt-in external Python producer) for v0.5+ | ✅ **RESOLVED 2026-05-04** — see [Ch 23 synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/). Mobile-Obsidian portability + small-OSS contributor pool forced the verdict |
 | Surface DSL flavor | YARRRML-shaped (declarative); v0.1 may ship a simpler subset | Open |
 | Marketplace mechanism | Either in-repo registry or companion repo; both viable | Deferrable |
 | Hardcoded vs declarative dialect spec | Declarative (the dialect IS data even when only one ships) | Provisionally settled |
 | `target_schema` as JSON Schema (machine-readable) vs prose | Machine-readable | Settled |
+| Recipe schema runtime-agnostic | JSON Schema + AJV; JSONata 2.x as expression sub-language; engine implementations swappable without breaking user files | ✅ **Settled 2026-05-04** per Ch 23 §4 — the single most important architectural commitment of the design phase |
 | External-producer protocol surface (push-into-Crosswalker via MCP) | Defer until Tier 1 schema lands | Open |
 
 See the [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) for the canonical state of these decisions.
@@ -224,6 +225,7 @@ See the [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/
 - [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — current Tier 1 contract; the load-bearing primitive this page describes
 - [Ch 20 synthesis log](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/) — the wargaming setup for the formal transformation algebra
 - [Ch 21 — Build vs buy ETL engine](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) — the meta-question above the engine implementation
-- [Ch 23 — Bundle engine language](/crosswalker/agent-context/zz-challenges/23-bundle-engine-language/) — TS in-plugin vs external Python vs hybrid
+- [Ch 23 — Bundle engine language (archived)](/crosswalker/agent-context/zz-challenges/archive/23-bundle-engine-language/) — resolved 2026-05-04: Path A for v0.1, Path C for v0.5+
+- [2026-05-04 Ch 23 synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — committed v0.1 stack lock + runtime-agnostic recipe schema commitment
 - [2026-05-04 design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — the canonical state of import-engine commitments
 - [Terminology](/crosswalker/concepts/terminology/) — definitions for ingest-related terms

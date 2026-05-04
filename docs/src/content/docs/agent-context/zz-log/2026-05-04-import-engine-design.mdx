@@ -162,7 +162,7 @@ User reactions to these open decisions (received 2026-05-04 after this log first
 
 | Open | Options | Default lean | Status / user signal |
 |---|---|---|---|
-| **Bundled engine implementation language** | TypeScript/Bun (in-plugin); Python (external CLI); Hybrid; Rust/Go-WASM; JVM | Hybrid (TS in-plugin + external Python) | **Research-needed** — user flagged this as "could be dicey." Spun up [Ch 23](/crosswalker/agent-context/zz-challenges/23-bundle-engine-language/) for focused investigation against bundle-size, mobile portability, install friction, contributor pool, 5-year drift |
+| **Bundled engine implementation language** | TypeScript/Bun (in-plugin); Python (external CLI); Hybrid; Rust/Go-WASM; JVM | Hybrid (TS in-plugin + external Python) | ✅ **RESOLVED 2026-05-04** by [Ch 23 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/). Verdict: Path A (Pure TS in-plugin) for v0.1; Path C (Hybrid: optional external Python producer) reserved for v0.5+. 8 of 9 commitments adopted; Bun-stays disagreement recorded in [synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/). Two irreversible constraints forced the answer: mobile-Obsidian portability + small-OSS contributor pool |
 | **Recipe DSL surface syntax** | YARRRML-shaped YAML; Dhall-typed; JSON Schema with discriminated unions; hybrid | YARRRML-shaped YAML | User unfamiliar with YARRRML; ELI5 explainer landed inline in [ETL and import § YARRRML, explained simply](/crosswalker/concepts/etl-and-import/#yarrrml-explained-simply); dedicated explainer page deferred to [agent-tooling](/crosswalker/agent-context/agent-tooling/) section as the recipe DSL choice firms up |
 | **Recipe storage location** | `.crosswalker/recipes/` in vault; plugin user-data dir; user choice | `.crosswalker/recipes/` in vault — git-versions with content; matches files-canonical principle | Settled |
 | **Marketplace mechanism** | In-repo registry (subfolder of main repo); companion repo (e.g., `crosswalker-recipes`); built-in registry UI (v1.0+); Obsidian community plugins (v1.0+) | Either in-repo subfolder or companion repo; both viable | User-confirmed flexible — *"built in registry in repo would be nice or I just make an additional repo where you can copy paste or download them"*. Deferrable until implementation forces a pick |
@@ -202,15 +202,16 @@ Ready for implementation only after these land:
 |---|---|---|---|
 | 1 | **Vault hierarchy primitives concept page** | `concepts/hierarchy-primitives` | ✅ written 2026-05-04 |
 | 2 | **ETL-and-import concept pillar** | `concepts/etl-and-import` (new) | ✅ written 2026-05-04 — frames the schema-as-primitive + marketplace + tabular asymmetry; includes inline YARRRML ELI5 |
-| 3 | **Import engine design pillar** | `design/import-engine` (new — supersedes stale `design/transformation`) | TODO — the engine signature + recipe DSL + transformation catalog + reference implementation plan |
+| 3 | **Import engine design pillar** | `design/import-engine` (new — supersedes stale `design/transformation`) | UNBLOCKED 2026-05-04 by [Ch 23 resolution](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/). Engine signature + recipe DSL + transformation catalog + reference implementation plan can now commit to TS + Bun + JSONata + AJV |
 | 4 | **Architecture pillar update** | `design/architecture` (existing, stale) | TODO — Tier 1/2/3 + safety guarantee + the engine's place in it |
 | 5 | **Import wizard feature page** | `features/import-wizard` (existing, stale) | TODO — refocus as "the bundled reference engine UI" |
 | 6 | **Tier 1 schema spec — machine-readable** | `spec/tier1.schema.json` (or LinkML at `spec/tier1.linkml.yaml`) | TODO — the contract external producers target |
-| 7 | **Recipe DSL spec — machine-readable** | `spec/recipe.schema.json` | TODO — the multi-axis selector |
+| 7 | **Recipe DSL spec — machine-readable** | `spec/recipe.schema.json` | UNBLOCKED 2026-05-04 by [Ch 23 resolution](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/). Runtime-agnostic JSON Schema; JSONata 2.x as expression sub-language; reserve `producer` field for v0.5+. The single most important architectural commitment per Ch 23 §4 |
 | 8 | **Transformation primitive library spec** | `spec/primitives/` (one JSON Schema per primitive) | TODO — input/output contracts for each of ~40 primitives |
 | 9 | **Starter recipe library** | `recipes/starter/` (NIST 800-53, ISO 27002, MITRE ATT&CK) | TODO |
-| 10 | **Ch 23 — Bundle engine language research** | `zz-challenges/23-bundle-engine-language` | ✅ brief landed 2026-05-04; deliverable pending |
+| 10 | **Ch 23 — Bundle engine language research** | `zz-challenges/archive/23-bundle-engine-language` (archived) | ✅ deliverable landed 2026-05-04; [synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) adopts 8 of 9 commitments; brief archived |
 | 11 | **Agent-tooling progressive-disclosure section** (header + getting-started; bodies fill as #6–#9 land) | `agent-context/agent-tooling/` | ✅ skeleton landed 2026-05-04 |
+| 12 | **Ch 23 synthesis log** — committed v0.1 stack lock | `zz-log/2026-05-04-bundle-engine-language-synthesis` | ✅ landed 2026-05-04 |
 
 When (1)–(9) are in place, **the implementation work has a complete spec to build against**. No further design conversations needed.
 
