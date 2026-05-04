@@ -100,18 +100,30 @@ These all work standalone if you prefer not to use the orchestrator:
 
 | Command | Description |
 |---------|-------------|
+| **Plugin** | |
 | `bun run dev` | Plugin watch mode, outputs to `test-vault` |
 | `bun run build` | Plugin production build (type-check + bundle) |
 | `bun run test` | Plugin Jest unit tests |
 | `bun run test:watch` | Plugin unit tests in watch mode |
-| `bun run lint` | ESLint with obsidian-plugin rules |
+| `bun run lint` | ESLint with obsidian-plugin rules (required for community plugin submission) |
 | `bun run lint:fix` | Auto-fix lint issues |
 | `bun run e2e` | Plugin E2E tests (WebdriverIO, requires Obsidian) |
+| **Orchestrator** (interactive menu wraps the workflows below) | |
+| `bun run serve` | Interactive 8-mode menu — docs dev, plugin watch, parallel both, tunnel sharing, tests, MDX check |
+| `bun run serve:docs` | Shortcut: docs Astro dev server (mode 1) |
+| `bun run serve:plugin` | Shortcut: plugin watch build (mode 4) |
+| `bun run serve:both` | Shortcut: docs dev + plugin watch in parallel (mode 5) |
+| `bun run serve:share` | Shortcut: docs dev + Tailscale tunnel (mode 6) |
+| **Fixtures + spec** | |
 | `bun run fixtures` | Regenerate Tier 1 test fixtures into `test-vault/Frameworks/NIST-mini/` from `tools/fixtures/synthetic/nist-mini.csv` |
+| **Docs** | |
 | `cd docs && bun run dev` | Docs Astro dev server |
 | `cd docs && bun run build` | Docs production build → `docs/dist` |
 | `cd docs && bun run preview` | Serve the built dist locally |
 | `cd docs && bun run test:local` | Docs Playwright E2E tests |
+| `bun run check:mdx` | Lightweight MDX syntax pre-check (catches bare braces, unclosed tags, frontmatter YAML errors) — fast (~1–2s) |
+| **Release** | |
+| `bun run version` | Bumps version in `manifest.json` + `versions.json`; stages git changes for commit |
 
 See the [testing page](/crosswalker/development/testing/) for details on each test surface.
 

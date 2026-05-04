@@ -265,6 +265,47 @@ Settings types in `src/settings/settings-data.ts`:
 - Config export/import for sharing
 - OSCAL export
 
+## Documentation update reminders
+
+Static checklist — when you touch certain paths, also update related docs/state. **This is judgment-required cross-doc reminders.** Mechanical patterns (lint must pass, MDX must build, schema must validate, fixtures must match canonical regen) live in CI gates instead, not here.
+
+### Path-keyed reminders
+
+| When you touch... | ...also update |
+|---|---|
+| `spec/*.schema.json` | `docs/src/content/docs/agent-context/v0-1-schema-spec.mdx`; bump `$id` major version if breaking; regenerate fixtures (`bun run fixtures`) |
+| `tools/generate-fixtures.ts` or `tools/fixtures/synthetic/*.csv` | Run `bun run fixtures`; verify generated `test-vault/Frameworks/NIST-mini/*.md` validates against `spec/tier1.schema.json` |
+| `src/render/**` | Round-trip determinism test (milestone v0.1.2 success criteria) |
+| `src/generation/generation-engine.ts` | Re-import safety test (managed/user_preserve frontmatter merge semantics) |
+| `ROADMAP.md` ↔ `docs/src/content/docs/reference/roadmap/index.mdx` | Mirror updates between root + KB (the dual-source convention) |
+| `docs/src/content/docs/reference/roadmap/milestones/v0-1-N-*.mdx` | Flip status in the milestone hub status table at `milestones/index.mdx` |
+| Resolved a research challenge | Archive brief to `zz-challenges/archive/` with resolution callout; write synthesis log to `zz-log/`; update `zz-research/index.md`; update design log §6 "Still open" + §8 "Next steps" tables (use the `synthesis-log` skill) |
+| New architectural commitment | Memory file (`project_*.md`); `CHANGELOG.md` `[Unreleased]` entry; design log update |
+| `package.json` scripts | Document in `docs/src/content/docs/development/setup.mdx` build-commands table |
+| New `.claude/skills/*` | Verify YAML frontmatter present (description triggers discovery); reference in `.claude/CLAUDE.md` skills list |
+| `concepts/*.mdx` (new pillar) | Cross-link from related pages; add to relevant indexes |
+| Substrate / engine choice changes | Verify still aligned with the 6 architectural commitments (see `.claude/CLAUDE.md` § v0.1 architectural commitments); if change is real, requires synthesis log + migration triggers |
+
+### Pre-commit run-list
+
+Before committing, run the matching commands:
+
+| Files changed | Command |
+|---|---|
+| `src/**` | `bun run lint` + `bun run test` |
+| `docs/**` (any `.mdx`) | `cd docs && bun run build` |
+| `tools/fixtures/synthetic/**` (CSV changes) | `bun run fixtures` |
+| `spec/**` | `bun run fixtures` (regenerate) + verify `bun run build` |
+
+### Why this lives here (the design rule)
+
+Patterns are encoded by **detection profile**:
+
+- **Mechanical** (computer detects unambiguously) → CI gate (Wave 2 of the workflow audit). Examples: lint, MDX `<digit` patterns, schema well-formedness, fixture drift via diff.
+- **Judgment** (requires human/agent context) → this checklist + `.github/pull_request_template.md`. Examples: "if you resolved a challenge, write a synthesis log"; "if you bumped a spec `$id` major, also update consumer pages."
+
+Mixing them up creates two failure modes: judgment items in CI fail wrong (false positives erode trust); mechanical items in checklists slip through silently. Keep them separate.
+
 ## Roadmap Conventions
 
 The roadmap lives in two places that must stay in sync:
