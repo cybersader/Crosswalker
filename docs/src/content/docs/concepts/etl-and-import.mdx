@@ -1,0 +1,229 @@
+---
+title: ETL and import — schema as primitive, ETL as convenience
+description: Crosswalker's hardest job is taking arbitrary external structure and landing it as canonical Tier 1. The architecture commits to a machine-readable schema as the load-bearing primitive, with a bundled ETL engine, external producers, and a community marketplace as the four orthogonal pieces. This page frames the whole import space.
+sidebar:
+  order: 9
+  label: "ETL and import"
+tags: [etl, import, recipe, schema, primitive, marketplace, yarrrml, transforms]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The import side is the hardest part of Crosswalker. *Everything* a user wants to do — query, crosswalk, evidence, version, share — flows through whatever they already have, in whatever shape it arrives, and lands in the [Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/). Get the import boundary right and the rest of the architecture works. Get it wrong and no amount of cleverness downstream rescues it.
+
+This page frames how Crosswalker thinks about that boundary.
+
+## The reframe — schema is the primitive, ETL is convenience
+
+Most ingestion tools start with the engine and treat the output schema as a configuration knob. Crosswalker inverts that:
+
+> **The Tier 1 schema is the primitive.** Crosswalker is, before anything else, an *ingestion target* — a precise, machine-readable contract that says what canonical Markdown + frontmatter + folder layout + wikilinks looks like. The engine that produces conforming output is convenience. Anyone can produce conforming output any way they like.
+
+Architectural precedents for this stance: HTML, JSON Schema, OpenAPI, SBOM (SPDX/CycloneDX), CSVW, Markdown itself. Each is a *receiving format* — the spec is the load-bearing artifact; the producer ecosystem grew around it.
+
+Translated to Crosswalker:
+
+| Layer | Status |
+|---|---|
+| **Tier 1 schema** (the contract) | Load-bearing primitive. Machine-readable JSON Schema. |
+| **Bundled ETL engine** (the convenience) | Optional implementation that produces Tier 1 from common source shapes. |
+| **External producers** (custom code, dbt, Python, scrapers, MCP servers) | First-class citizens. Anything that emits valid Tier 1 is welcome. |
+| **Community marketplace** (pre-transformed bundles) | Once an ontology is shaped to Tier 1, it stays shaped. Communities share `.zip`s of Tier 1 directories. |
+
+This reframe collapses several open architectural questions (build vs buy, DSL choice, in-plugin vs external runtime, recipe location) into one commitment. The engine becomes swappable; the schema does not.
+
+## Why import is the hardest part
+
+A bullet list of what import has to do correctly, in approximate order of how often it goes wrong:
+
+- **Format diversity** — CSV, XLSX, JSON, YAML, OSCAL, RDF, MCP server, scraped HTML, OneNote, Notion export. Each has its own tabular-vs-tree shape and its own dirtiness.
+- **Tabular-to-tree depth crossing** — most messy sources are flat tables that *encode* a tree (parent-id columns, dotted IDs, prefix conventions). Recovering the tree is non-trivial and source-specific.
+- **Identity stability** — the same concept may appear in three sources with three IDs. Tier 1 needs a single canonical identity (CURIE + sha256 CID) per concept; recipe authors decide the canonicalization.
+- **Polysemic target choice** — even after the source is parsed, the recipe author has to choose how it lands: folder hierarchy? heading hierarchy? tag hierarchy? wikilink-graph? Some composition? See [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/).
+- **Depth control** — the same source supports different vault shapes depending on how deep the user wants the hierarchy materialized. NIST CSF 2.0 imported "two layers deep" produces one vault; "all the way to subcategories" produces a different one. Both are valid.
+- **Provenance** — Tier 1 needs to record where every concept came from, when, with what version, and (eventually) signed by whom.
+- **Re-import** — version bumps must produce a *diff* against the prior import, not a silent overwrite or a duplicate vault.
+- **Round-trip** — exporting Tier 1 back to source-shape (or to OSCAL, or to SSSOM) must work without information loss for the round-trip subset.
+
+No off-the-shelf ETL tool does all of these. Tools come close on subsets — dbt nails reproducibility-and-tabular-transform; RML nails schema-mapping-to-graphs; MCP nails external-source-integration. None target Markdown-vault polyhierarchy with provenance and round-trip as a first-class destination.
+
+This is why the import boundary needs first-principles thinking, not a "pick the popular ETL framework and hope" approach.
+
+## The four architectural pieces
+
+Crosswalker's import space breaks into four orthogonal pieces. They compose; users adopt as much or as little as they want.
+
+### 1. The Tier 1 schema (machine-readable contract)
+
+Single source of truth for what canonical Crosswalker output looks like. Spelled as JSON Schema (or equivalent — CUE, Dhall) so any external tool can validate against it without bespoke parsers. Contains:
+
+- File-naming rules
+- Frontmatter shape (required + optional fields, types, allowed values)
+- Folder layout conventions (when applicable)
+- Wikilink target shape and resolution rules
+- Provenance fields (source ref, ingestion timestamp, recipe used, content hash)
+- Identity rules (CURIE format, sha256 CID computation)
+
+Anything that emits valid Tier 1 — produced however — is a Crosswalker-conformant import. The schema is the entire interface.
+
+### 2. The bundled ETL engine (convenience)
+
+A lightweight recipe runtime built into the plugin (or accessible via CLI) that handles the common 80% of imports without leaving Obsidian:
+
+- Common formats out of the box (CSV, XLSX, JSON, YAML)
+- Closed primitive vocabulary for transforms
+- Recipe authoring through the import wizard UI
+- Schema validation on output before write
+
+This is what most users will use most of the time. The engine is *not* the primitive — it's just a producer of valid Tier 1, like any other producer. Power users who outgrow it can step into option 3 below without changing how anything downstream of Tier 1 works.
+
+The exact engine implementation (in-plugin TS vs external Python vs hybrid) is open research — see [Challenge 23](/crosswalker/agent-context/zz-challenges/23-bundle-engine-language/).
+
+### 3. External producers (custom transforms)
+
+When the bundled engine isn't enough — messy source, unusual transform, domain-specific cleanup — users run their own toolchain (Python + Polars, dbt, Jupyter notebooks, custom scrapers, MCP servers, AI-agent-driven extraction) and emit Tier 1 directly. They use the schema as the contract.
+
+This path is *first-class*, not a fallback. Crosswalker explicitly does not try to be the universal ETL engine. It tries to be the *universal target*.
+
+The user's own [ChunkyCSV](https://github.com/cybersader) and [JSONaut](https://github.com/cybersader) are examples of external producers — purpose-built ETL tools that could be configured to emit Tier 1 without being absorbed into Crosswalker's codebase.
+
+### 4. The community marketplace (transform once, share forever)
+
+Once an ontology is transformed to Tier 1, *it stays transformed*. There is no reason every NIST 800-53 user should re-do the import. Crosswalker treats community-shared, pre-transformed Tier 1 bundles as a load-bearing piece of the architecture, not a nice-to-have:
+
+- Someone (the maintainer of an ontology, or an early adopter) does the transformation work once.
+- They publish the resulting Tier 1 directory as a `.zip` or git repo.
+- Other users download it and have a working vault in seconds, with no recipe authoring at all.
+- When the upstream ontology updates, the maintainer publishes a new bundle; downstream users pull a diff.
+
+This pattern is the *answer* to the messy-source problem. The bundled engine handles tree-shaped sources well (JSON, YAML, OSCAL); the marketplace fills the gap for messy tabular sources (the original NIST 800-53 XLSX, MITRE ATT&CK matrices) by community-shared pre-transformation. A user with NIST CSF 2.0 doesn't need to fight the spreadsheet — they download the pre-transformed bundle.
+
+| Mechanism | Where it lives | Notes |
+|---|---|---|
+| In-repo registry | Subfolder of Crosswalker repo | Tight integration; CI validates every bundle on merge; PRs from community mix with engine PRs |
+| Companion repo | Separate `crosswalker-recipes` (or `crosswalker-bundles`) repo | Cleaner separation; independent versioning; easier for non-engine contributors |
+
+Either works; the choice is deferrable. Both are GitHub-based, both are copy-paste-or-clone usable.
+
+## The five-axis recipe selection
+
+Even after a source is parsed, every recipe makes five orthogonal choices about how the source lands as Tier 1:
+
+| Axis | Question | Examples |
+|---|---|---|
+| **Depth** | How many levels of the source hierarchy materialize as vault structure? | NIST CSF 2.0: "two layers deep" vs "all the way to subcategories" |
+| **Mechanism** | Which of the four [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) carry the structure? | Folder, heading, tag, wikilink-graph, or composition |
+| **Filter** | Which subset of the source is imported? | "Only AC family controls" / "only HIGH-baseline controls" / "all" |
+| **Granularity** | One file per leaf concept, or one file per group with leaves as headings? | Per-control file vs per-family file |
+| **Projection** | Which fields of each concept land as frontmatter, body, wikilink, or are dropped? | Control text → body; control ID → frontmatter; baseline → tag |
+
+These five axes are why "the recipe" is a non-trivial declarative artifact, not a single transform expression. They're also the reason a single source ontology can produce many legitimately-different vaults — and why Crosswalker can't just "auto-import" a source without recipe author input.
+
+## The ~40-primitive transformation catalog
+
+Underneath the recipe, the bundled engine implements a closed set of transformation primitives. Comprehensive but small. Drawn from RML/YARRRML, FNML, JSONata, dbt, and the user's prior tooling. Grouped by category:
+
+| Category | Primitives (illustrative) |
+|---|---|
+| **Source iteration** | iterate-rows, iterate-records, iterate-tree-nodes, iterate-paths, iterate-grouped |
+| **Identity / ID synthesis** | curie-from-pattern, sha256-cid, uuid-v7, slugify, normalize-id |
+| **Field projection** | project, rename, drop, default, coerce-type, parse-date |
+| **String transforms** | trim, lowercase, uppercase, replace, split, join, regex-extract, regex-replace |
+| **Tree-from-flat** | parent-id-to-tree, dotted-id-to-tree, prefix-to-tree, indent-to-tree |
+| **Joins / lookups** | inner-join, left-join, lookup-table, fuzzy-match, alias-resolve |
+| **Address rendering** | folder-path, heading-anchor, tag-path, wikilink-target |
+| **Validation / guard** | require-field, allowed-values, type-check, schema-validate |
+| **Provenance** | record-source-ref, record-version, record-timestamp, record-hash |
+
+A recipe is a pipeline (or DAG) of these primitives. Composition is what makes the engine *complete enough* — Macro Tree Transducer theory (per [Ch 20 deliverable A](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/)) tells us roughly 5–6 algebraic operators are sufficient; the ~40 above unfold those operators into named, recipe-author-friendly forms.
+
+The catalog is not finalized. It is the active design surface.
+
+## YARRRML, explained simply
+
+Several of the Ch 20 deliverables recommended **YARRRML** as the surface DSL for recipes. This is a real choice the user has flagged for further evaluation. Here's the plain-English version:
+
+> YARRRML is a YAML format for writing data-mapping recipes. You write a YAML file that says "this column in my CSV maps to this property in the output, with this transform." That's it.
+
+The complicated-looking name comes from "YAML for RDF Mapping Language" — its original use was generating RDF triples. But the *structure* (sources / mappings / transforms / sinks) is widely useful even if you ignore the RDF heritage and retarget to Markdown notes.
+
+A toy YARRRML-shaped recipe (not real syntax — illustrative):
+
+```yaml
+sources:
+  controls: { type: csv, file: NIST_800-53_r5.csv }
+
+mappings:
+  control:
+    iterator: $.controls.rows
+    target:
+      file: "Frameworks/NIST 800-53 r5/{{family}}/{{control_id}}.md"
+      frontmatter:
+        title: "{{control_id}} — {{control_name}}"
+        family: "{{family}}"
+        baseline: "{{baseline}}"
+        tags:
+          - "framework/nist-800-53-r5"
+          - "framework/nist-800-53-r5/{{family|lowercase}}"
+      body: |
+        ## Control text
+        {{control_text}}
+```
+
+Five things to notice:
+
+1. **Sources** — declare inputs once, by type and location.
+2. **Mappings** — for each row/record/node, declare the output target.
+3. **Templates** — `{{...}}` interpolates fields with optional filters (`|lowercase`).
+4. **Sinks** — `file`, `frontmatter`, `body`, `tags`. Closed vocabulary; same vocabulary covers any domain.
+5. **No code** — this is data, not Python. An AI agent can read, generate, modify, and validate it.
+
+**Why it's a strong candidate**: 12+ years of refinement; mature tooling (Matey editor, parsers); tree-shaped recipes are easier to validate, diff, version, and share than imperative scripts. Anyone — author, agent, validator — can reason about a YAML file mechanically.
+
+**Why it's not a foregone conclusion**: YARRRML's RDF heritage may bring vocabulary baggage; retargeting to Markdown sinks needs a dialect; a custom Crosswalker-native DSL might fit better; or JSON Schema + plain JSONata might be enough without the YARRRML wrapper.
+
+A dedicated explainer page lives at [agent-context/agent-tooling/yarrrml-explained](/crosswalker/agent-context/agent-tooling/) (TODO — coming as the Ch 23 research and recipe-DSL design firm up).
+
+## How this connects to the rest of Crosswalker
+
+Edge-level concerns (STRM predicates, SSSOM rows, junction notes, ontology diff atoms) operate on **concept identity** and don't care which import mechanism produced the vault. The single coupling point is the **address-rendering function** that turns a concept identity into a wikilink target string given the recipe's hierarchy-primitive choices. See [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) for that separation.
+
+This means the import-side architecture (this page) is *strictly orthogonal* to the edge-side architecture. A user could import the same NIST 800-53 catalog with three completely different recipes and three completely different vault layouts; the resulting STRM/SSSOM/junction-note structure would be semantically identical.
+
+## Where this came from — broader portfolio context
+
+Crosswalker's stance on import — "schema as primitive, ETL as convenience, marketplace as community escape hatch" — emerged from a portfolio of related tools the user has built over time, all aimed at applied information science with Obsidian as the platform:
+
+- **[ChunkyCSV](https://github.com/cybersader)** — CSV-shaped tabular ETL with tree transducer flavor. Precedent for the "tabular sources need first-class tree-recovery" axis.
+- **[JSONaut](https://github.com/cybersader)** — declarative JSON transformation. Precedent for the "external producers should be able to emit Tier 1 without bespoke Crosswalker code" axis.
+- **[SEACOW](https://github.com/cybersader/cyberbase)** — meta-framework for knowledge organization in filesystem primitives. Precedent for the "primary folder + parallel tag hierarchy" composition pattern.
+- **[folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync)** — Obsidian plugin that bidirectionally syncs folder hierarchy with tag hierarchy. Precedent for live composition rules between two of the four hierarchy primitives.
+
+Crosswalker is not these tools rebranded — it is the *general ingestion target* their patterns point at. The marketplace pattern in particular is the answer to the question that ChunkyCSV and JSONaut individually pose: "we keep doing this transform every time someone imports the same source — why?"
+
+## Open design questions
+
+Items the architecture has *named* but not yet *committed*:
+
+| Question | Default lean | Status |
+|---|---|---|
+| Bundle engine implementation language | Hybrid (TS in-plugin + Python external) | [Ch 23](/crosswalker/agent-context/zz-challenges/23-bundle-engine-language/) — research pending |
+| Surface DSL flavor | YARRRML-shaped (declarative); v0.1 may ship a simpler subset | Open |
+| Marketplace mechanism | Either in-repo registry or companion repo; both viable | Deferrable |
+| Hardcoded vs declarative dialect spec | Declarative (the dialect IS data even when only one ships) | Provisionally settled |
+| `target_schema` as JSON Schema (machine-readable) vs prose | Machine-readable | Settled |
+| External-producer protocol surface (push-into-Crosswalker via MCP) | Defer until Tier 1 schema lands | Open |
+
+See the [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) for the canonical state of these decisions.
+
+## Related
+
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — folder, heading, tag, wikilink-graph and how recipes compose them
+- [The problem](/crosswalker/concepts/problem/) — hierarchy-vs-graph tension; why ingestion target matters
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — Spec / Library / Integrations pillar that this page activates
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — current Tier 1 contract; the load-bearing primitive this page describes
+- [Ch 20 synthesis log](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/) — the wargaming setup for the formal transformation algebra
+- [Ch 21 — Build vs buy ETL engine](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) — the meta-question above the engine implementation
+- [Ch 23 — Bundle engine language](/crosswalker/agent-context/zz-challenges/23-bundle-engine-language/) — TS in-plugin vs external Python vs hybrid
+- [2026-05-04 design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — the canonical state of import-engine commitments
+- [Terminology](/crosswalker/concepts/terminology/) — definitions for ingest-related terms

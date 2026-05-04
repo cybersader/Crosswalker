@@ -1,0 +1,176 @@
+---
+title: "Challenge 23: Bundle engine implementation language — TypeScript in-plugin vs external Python vs hybrid, with realistic 5-year survival, distribution, and platform-portability stress tests"
+description: "Ch 20 settled what the import primitive should LOOK like (graph-aware ETL, ~5–6 algebraic primitives over a closed Tier-1 sink vocabulary, MTT-justified). Ch 21 settled the build-vs-buy meta-question (Compose: bundled engine + external producers + marketplace). This challenge asks the question both deferred: in WHAT LANGUAGE / RUNTIME does the bundled engine actually live? Pure in-plugin TypeScript (~480 KB; runs in Obsidian renderer)? External Python CLI (matches Ch 21's Polars+DuckDB stack; user installs Python)? Hybrid (small TS engine for tree-shaped sources in-plugin; external Python or other for advanced cases)? Or something else (Rust→WASM, Go→WASM, JVM)? Critically assess all paths against bundle-size budget, install friction, debuggability, ecosystem maturity, mobile-Obsidian portability, agent-author ergonomics, governance/sustainability, 5-year drift risk."
+tags: [research, foundation, import, etl, runtime, language-choice, governance, sustainability, bundle-size, mobile-portability]
+date: 2026-05-04
+sidebar:
+  label: "23 · Bundle engine language"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Why this exists
+
+Two prior challenges resolved adjacent questions and explicitly deferred this one:
+
+- **[Ch 20 — Import primitive formal foundation](/crosswalker/agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/)** settled *what shape* the import primitive should take. Three convergent fresh-agent deliverables; ~5–6 algebraic primitives over a closed Tier-1 sink vocabulary; MTT-justified completeness; YARRRML-shaped surface DSL; JSONata expressions. **Deliverable A assumed pure TypeScript (~480 KB pure-TS bundle in-plugin).**
+- **[Ch 21 — Build vs buy ETL engine](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/)** settled the *build-vs-buy meta-question*. Path C (Compose): a bundled lightweight engine + external producers + community marketplace. **Ch 21's research deliverable assumed external Python with Polars + DuckDB stack.**
+
+Those two assumptions — pure TS in-plugin, vs external Python with Polars+DuckDB — **are not mutually compatible** without an explicit architectural choice. The user flagged this directly:
+
+> *"Bundle engine implementation could be dicey — would need to research that. I'm not familiar with [the architecture deliverable's stack assumptions], so we would need to create a research log page that intuitively explains [it] like I'm five."*
+
+> *"The import process or ingestion piece is SO important because it takes whatever you're building and allows you to get it into Obsidian primitives. It's one of the hardest parts right."*
+
+This challenge picks up that explicit research need.
+
+## The framing
+
+The bundled engine has to satisfy **five non-negotiable constraints** that any candidate language/runtime must clear:
+
+| # | Constraint | Why it's hard |
+|---|---|---|
+| 1 | Runs reliably in Obsidian's plugin sandbox (Electron renderer process) | Plugins ship as `main.js` ≤ 1.2 MB after minification; node-binary deps don't always work; mobile (iOS/Android) is Capacitor.js, not Electron — completely different sandbox |
+| 2 | Handles tree-shaped sources entirely in-plugin | The "easy case" should never require leaving Obsidian. JSON, YAML, OSCAL — these are the 60% case |
+| 3 | Provides an escape hatch for the messy-tabular hard case (the user's "I'll use custom Python when I need more") | NIST 800-53 XLSX with merged cells, MITRE ATT&CK matrices, scraped Notion exports — these may legitimately require a non-plugin runtime |
+| 4 | Stays maintainable by a small open-source contributor pool for 5–10 years | No business model funding 24/7 maintenance; survives contributor turnover |
+| 5 | Delivers AI-agent-friendly recipe authoring (recipes are data, not imperative code; agents should be able to read, generate, modify, validate them mechanically) | Heavy imperative-script approaches break this property; declarative DSLs preserve it |
+
+Six paths are worth honest evaluation. None are obviously dominant; each has live failure modes:
+
+| Path | Bundled engine runtime | External-producer runtime | What it costs |
+|---|---|---|---|
+| **A. Pure TS in-plugin** (Ch 20-A's assumption) | TypeScript / Bun-built bundle ≤ 480 KB | None bundled; users handwrite their own external scripts | Zero install friction for 60% case; nothing for the 40% messy-tabular case; mobile-Obsidian-compatible |
+| **B. External Python + light TS shim in-plugin** | Tiny TS shim (recipe parser, validator, schema-write); heavy lifting via subprocess | Bundled Python CLI (Polars + DuckDB + papaparse-equivalent) | High install friction (users install Python); breaks on iOS/Android; matches Ch 21 deliverable's stack assumptions |
+| **C. Hybrid** | TS for tree-shaped sources in-plugin (the easy case); messy-tabular cases delegate to optional external runtime | Optional Python (or other) CLI for advanced cases | Moderate complexity (two runtimes); good ergonomics on common case; degrades gracefully for hard cases; **likely default answer** |
+| **D. Rust → WASM in-plugin** | Rust source compiled to WASM bundle; recipe runtime in Rust | Same WASM bundle CLI for external use | High build complexity; great runtime perf; small bundle; ecosystem less mature for Bun/Obsidian; few contributors comfortable in Rust |
+| **E. Go → WASM in-plugin** | Go source compiled to WASM | Same | Bigger WASM bundles than Rust (~1–4 MB); easier contributor pool than Rust; underwhelming Bun integration |
+| **F. JVM-based (e.g., RMLMapper-Java)** | None in-plugin (JVM doesn't fit the sandbox) | Java CLI | High install friction; battle-tested implementations exist (RMLMapper-Java is the reference RML engine); no in-plugin story; bad fit for Obsidian users who don't already have JVM |
+
+The user's working hypothesis (**"declarative likely more though from sound of it"** + **"if we have a target way of defining things... then that could help determine how the structure is translated"**) leans toward Path A or Path C — the recipe is data, the engine reads data, and complexity stays out of the recipe surface. But the *implementation language* of that engine is what this challenge is about.
+
+## What to investigate
+
+### 1. Bundle-size empirical reality (A vs C vs D vs E)
+
+The 1.2 MB Obsidian plugin budget is hard. How realistic is each path?
+
+- Pure TS implementation of the Ch 20-A primitives (iterate / reference / template / bind / join / invert) plus JSONata embedding plus papaparse plus xlsx — **measure**, don't assume. Ch 20-A's "~480 KB" figure was an estimate, not a built artifact. What's the actual minified+gzipped bundle when implemented?
+- Rust → WASM equivalent — typical WASM tooling overhead for a recipe runtime; can `wasm-bindgen` + JSONata-equivalent-in-Rust come in under 500 KB?
+- Go → WASM equivalent — Go's GC + runtime adds 1–3 MB minimum; likely disqualifying for in-plugin
+- Hybrid (Path C) — only the in-plugin TS shim must fit budget; the external runtime has no budget constraint
+
+### 2. Mobile-Obsidian portability (the often-forgotten constraint)
+
+Obsidian on iOS/Android runs via Capacitor.js, not Electron. **No subprocess. No node-native deps. No Python.** Plugins that work on desktop and break on mobile are a known failure mode for the Obsidian community.
+
+- Pure TS in-plugin (Path A) — works on mobile by default
+- External Python (Path B) — completely broken on mobile; not even degraded mode possible
+- Hybrid (Path C) — works on mobile for tree-shaped sources; messy-tabular path fails gracefully (user notified, told to do the import on desktop)
+- Rust/Go → WASM (D/E) — should work on mobile; needs empirical confirmation
+- JVM (F) — broken on mobile
+
+This constraint may make Path B unviable as the *default*, even if it's the right *opt-in* runtime.
+
+### 3. Install friction reality check
+
+How many users will actually install Python (or any external runtime) just to use Crosswalker?
+
+- Crosswalker is positioned to compliance-focused users, GRC consultants, security researchers — these audiences vary in CLI comfort
+- The Obsidian community has a long history of "if it requires installing X, half the users won't" feedback
+- Survey/data: how do other Obsidian plugins handle external runtimes? (e.g., Obsidian Local REST API has a similar story; Templater has DataviewJS-equivalent built in; Pandoc Plugin requires Pandoc install)
+- What's the "graceful failure" UX when an external runtime is missing? Plugin shows clear instructions? Falls back to in-plugin engine for what it can handle?
+
+### 4. Debuggability and contributor friction
+
+A bundled engine that no one can debug or extend dies. Per language/runtime:
+
+- **TypeScript** — every Obsidian plugin contributor already has the toolchain; max contributor pool; Bun/esbuild fast iteration; debugger via Chrome devtools in Obsidian
+- **Python** — large community generally; smaller within Obsidian-plugin-developer audience; subprocess debugging is awkward
+- **Rust/Go → WASM** — small contributor pool comfortable with the toolchain; WASM debugging is famously bad; build pipeline is more complex
+- **JVM** — almost no Obsidian-plugin-developer overlap; effectively orphaned within this community
+
+### 5. Ecosystem maturity for the specific primitives
+
+Does the language have the libraries the engine needs at production quality?
+
+- **TS**: papaparse, xlsx (sheetjs), js-yaml, JSONata (npm), AJV (JSON Schema validator), nanoid — all production-grade
+- **Python**: pandas / Polars / DuckDB / pyyaml / pydantic / jsonata-python — production-grade; richer in some areas
+- **Rust**: csv crate, serde_yaml, calamine (xlsx), rsoa (JSONata-equivalent partial); generally less mature for the *exact* primitives the engine needs
+- **Go**: encoding/csv, gopkg.in/yaml, excelize; thin on JSONata-equivalent
+
+### 6. Five-year drift risk
+
+Each language/runtime has a different drift profile over 5–10 years:
+
+- **TS / npm**: rapid churn (npm package abandonment is real); but the *core* (papaparse, AJV) has 10+ year track records; node 20+ stable
+- **Bun**: 3 years old; rapid feature growth; long-term governance question (single-vendor ish)
+- **Python**: very stable (Python 3.10+ syntax has been stable for years); Polars has rapid growth, possible breakage
+- **Rust**: stable language; ecosystem still evolving; cargo lockfiles are reliable
+- **WASM**: standard is stable; tooling chain (wasm-bindgen, wasm-pack) churn is moderate
+
+### 7. Agent-author ergonomics
+
+The user has explicitly flagged that recipes should be agent-authorable as data. The *engine* language matters less for this than the *recipe* surface — but the engine language affects:
+
+- Whether agents can run the engine themselves (TS in-plugin: maybe via WSL/devtools; Python external: yes via subprocess; WASM: yes via Node/Bun)
+- Whether agents can debug their own recipes (engine error messages quality is language-dependent)
+- Whether agents can fix bugs in the engine (TS: most agents fluent; Python: most agents fluent; Rust/Go/JVM: less agent-friendly)
+
+### 8. Governance / sustainability — who maintains what when
+
+If the engine is in TS (Path A or C), it lives in the Crosswalker repo and is maintained by Crosswalker contributors. If it's in Python (Path B), it likely lives in a separate package — and the question is whether the same contributor pool maintains both. Path D/E (WASM) introduces a third codebase: source language + WASM bindings.
+
+This question is downstream of Ch 21's "Compose" verdict. Composing across a language boundary multiplies governance overhead.
+
+## Deliverable shape
+
+A focused research report (~3,000–5,000 words) covering:
+
+1. **Constraint validation** — confirm or refute the five non-negotiables. Especially: is mobile-Obsidian portability really required, or is "desktop-only" acceptable?
+2. **Path-by-path scoring** on the eight investigation dimensions above. Tabular comparison.
+3. **Empirical bundle-size estimates** for at least Path A (pure TS) and Path D (Rust → WASM). If a quick prototype is feasible (a single primitive: `iterate-csv-rows + project-fields + write-tier1-file`), measure rather than estimate.
+4. **Recommendation with explicit trade-off acknowledgement.** What's the recommended path for v0.1? What's the migration path if the v0.1 choice turns out wrong at v1.0?
+5. **Migration cost analysis** — if v0.1 ships Path C (Hybrid) and we later decide Path A is sufficient (or vice versa), what's the cost of that pivot? Recipes are data and should survive engine changes; but the *engine implementation effort* is non-recoverable.
+6. **Survival projection at 5 years** — for each path, which contributor profile keeps it alive? What goes wrong first if maintenance lapses?
+
+## Anti-patterns to watch for
+
+- **"Just pick TypeScript because Obsidian plugins are TypeScript"** — this is the path of least *intellectual* resistance, not necessarily the right path. The deliverable should justify TS rather than default to it.
+- **"Just pick Python because the data tooling is mature"** — same critique inverted. Mobile-Obsidian portability and install friction are real constraints.
+- **"Hybrid solves everything"** — Path C is the *likely* answer but it's also the most complex path. The deliverable should make Path C earn the recommendation against pure-TS-only or external-Python-only as alternatives.
+- **"Rust/WASM is the future"** — possibly true; not a substitute for empirical bundle-size measurement and contributor-pool assessment.
+- **"We should ship the engine in language X because the Ch 20 / Ch 21 deliverable assumed X"** — both deliverables made tactical assumptions, not strategic recommendations on this axis.
+
+## Reference points the agent should pull from
+
+- [Ch 20 Deliverable A](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/) — assumed pure TS, ~480 KB
+- [Ch 20 Deliverable B](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-b-boundary-semantics/) — boundary-semantics layer; runtime-agnostic
+- [Ch 20 Deliverable C](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-c-rml-retargeted/) — RML-retargeted; runtime-agnostic
+- [Ch 21 — Build vs buy ETL engine](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) — build-vs-buy meta-question; Compose verdict
+- [Ch 21 deliverable](/crosswalker/agent-context/zz-research/) — assumed Python + Polars + DuckDB
+- [v0.1 stack pivot log (2026-05-02)](/crosswalker/agent-context/zz-log/) — the prior commitment to "radically simplify with narrow tiered escape hatch" that this challenge implements at the language layer
+- [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — current canonical state of import-engine commitments; this challenge unblocks §6 Q1
+- [ETL and import (concept pillar)](/crosswalker/concepts/etl-and-import/) — the four architectural pieces; mobile-portability is implicit in "the bundled engine"
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — what the engine has to produce
+- Real Obsidian plugin precedents that face similar runtime questions: Templater, DataviewJS, Smart Connections, Obsidian Importer, Pandoc Plugin
+
+## Critical / adversarial framing
+
+The agent should steelman each path before recommending, and should specifically attack:
+
+- The TS-purity assumption as Obsidian-plugin-developer cargo-culting
+- The external-Python assumption as ignoring mobile-Obsidian users
+- The Hybrid recommendation as "having the cake and eating it too" — interrogate what *real* edge cases break Hybrid
+- The deferred decision — if it's *really* deferrable, which choices are reversible vs irreversible? Recipe DSL choice is reversible (transpile); engine language choice is partly irreversible (existing engine code doesn't port)
+
+A strong deliverable identifies the *one or two* properties on which path choice is irreversible and recommends the path that gets *those* right, even if other properties are second-best.
+
+## Related
+
+- [Ch 20 archive](/crosswalker/agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/) — what the engine should *do*
+- [Ch 21](/crosswalker/agent-context/zz-challenges/21-build-vs-buy-etl-engine/) — *whose codebase* the engine should live in
+- [Ch 22](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/) — what the engine has to *produce*
+- This challenge — what *language / runtime* the engine is implemented in
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — the architectural framing this challenge fits into
+- [2026-05-04 design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — current open decisions; this challenge resolves §6 Q1

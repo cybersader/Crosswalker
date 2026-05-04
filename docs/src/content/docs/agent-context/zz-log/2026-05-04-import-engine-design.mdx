@@ -158,14 +158,17 @@ The exact catalog (with input/output JSON Schemas per primitive) is the spec wor
 
 ### Still open (decision needed before or during implementation)
 
-| Open | Options | Default lean |
-|---|---|---|
-| **Bundled engine implementation language** | TypeScript/Bun (in-plugin); Python (external CLI); both | Both — tiny TS in-plugin reference engine for zero-config UX; Python CLI for power users / CI / agents. The "external connections, doesn't need to be Obsidian-internal" framing applies. |
-| **Recipe DSL surface syntax** | YARRRML-shaped YAML; Dhall-typed; JSON Schema with discriminated unions; hybrid | YARRRML-shaped YAML (familiar to data-engineering audiences; mature toolchain) |
-| **Recipe storage location** | `.crosswalker/recipes/` in vault; plugin user-data dir; user choice | `.crosswalker/recipes/` in vault — git-versions with content; matches files-canonical principle |
-| **Marketplace mechanism** | GitHub repo (v0.1); built-in registry (v1.0+); Obsidian community plugins (v1.0+) | GitHub repo at v0.1 (simplest); built-in registry once usage justifies it |
-| **Target_schema as data vs hardcoded** | Hardcoded (v0.1 simplicity); declarative dialect spec (longer-term) | Hardcoded for v0.1 reference engine; declarative dialect spec for v1.0+ when community variants emerge |
-| **Architectural fork resolution from new Ch 21 deliverable** (Python+Polars+DuckDB external recommendation) | Adopt for external tier; in-plugin TS for v0.1 reference; both validated | Validated: external Python is one valid producer (per §2.3); v0.1 reference engine stays TS/Bun in-plugin per the [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) |
+User reactions to these open decisions (received 2026-05-04 after this log first landed) are recorded in the **Status / user signal** column.
+
+| Open | Options | Default lean | Status / user signal |
+|---|---|---|---|
+| **Bundled engine implementation language** | TypeScript/Bun (in-plugin); Python (external CLI); Hybrid; Rust/Go-WASM; JVM | Hybrid (TS in-plugin + external Python) | **Research-needed** — user flagged this as "could be dicey." Spun up [Ch 23](/crosswalker/agent-context/zz-challenges/23-bundle-engine-language/) for focused investigation against bundle-size, mobile portability, install friction, contributor pool, 5-year drift |
+| **Recipe DSL surface syntax** | YARRRML-shaped YAML; Dhall-typed; JSON Schema with discriminated unions; hybrid | YARRRML-shaped YAML | User unfamiliar with YARRRML; ELI5 explainer landed inline in [ETL and import § YARRRML, explained simply](/crosswalker/concepts/etl-and-import/#yarrrml-explained-simply); dedicated explainer page deferred to [agent-tooling](/crosswalker/agent-context/agent-tooling/) section as the recipe DSL choice firms up |
+| **Recipe storage location** | `.crosswalker/recipes/` in vault; plugin user-data dir; user choice | `.crosswalker/recipes/` in vault — git-versions with content; matches files-canonical principle | Settled |
+| **Marketplace mechanism** | In-repo registry (subfolder of main repo); companion repo (e.g., `crosswalker-recipes`); built-in registry UI (v1.0+); Obsidian community plugins (v1.0+) | Either in-repo subfolder or companion repo; both viable | User-confirmed flexible — *"built in registry in repo would be nice or I just make an additional repo where you can copy paste or download them"*. Deferrable until implementation forces a pick |
+| **Target_schema as data vs hardcoded** | Hardcoded (v0.1 simplicity); declarative dialect spec (longer-term) | **Declarative-ready architecture, single dialect at v0.1.** v0.1 ships ONE canonical dialect, but the dialect IS itself machine-readable JSON Schema (data, not code). Community-authored variants become a v1.0+ feature without engine rework | User-leaned declarative: *"declarative likely more though from sound of it"*. Adopting declarative-ready architecture; deferring user-authored variant UX |
+| **External-producer protocol surface** (push-into-Crosswalker via MCP / external scrapers / agent-driven extraction) | Defer; design now; defer with stub | Defer until Tier 1 schema is machine-readable; the schema IS most of the protocol | Open — likely picks itself up once Tier 1 schema lands as JSON Schema |
+| **Agent-tooling / progressive-disclosure space** | Within KB (`agent-context/agent-tooling/`); separate repo for agent-consumption material | KB section to start; split out if volume justifies | Skeleton landed at [agent-context/agent-tooling/](/crosswalker/agent-context/agent-tooling/) 2026-05-04; bodies fill as the underlying specs land |
 
 These are concrete decisions for spec/implementation time, not blockers for moving forward.
 
@@ -198,7 +201,7 @@ Ready for implementation only after these land:
 | # | Artifact | Location | Status |
 |---|---|---|---|
 | 1 | **Vault hierarchy primitives concept page** | `concepts/hierarchy-primitives` | ✅ written 2026-05-04 |
-| 2 | **ETL-and-import concept pillar** | `concepts/etl-and-import` (new) | TODO — frames the schema-as-primitive + marketplace + tabular asymmetry |
+| 2 | **ETL-and-import concept pillar** | `concepts/etl-and-import` (new) | ✅ written 2026-05-04 — frames the schema-as-primitive + marketplace + tabular asymmetry; includes inline YARRRML ELI5 |
 | 3 | **Import engine design pillar** | `design/import-engine` (new — supersedes stale `design/transformation`) | TODO — the engine signature + recipe DSL + transformation catalog + reference implementation plan |
 | 4 | **Architecture pillar update** | `design/architecture` (existing, stale) | TODO — Tier 1/2/3 + safety guarantee + the engine's place in it |
 | 5 | **Import wizard feature page** | `features/import-wizard` (existing, stale) | TODO — refocus as "the bundled reference engine UI" |
@@ -206,6 +209,8 @@ Ready for implementation only after these land:
 | 7 | **Recipe DSL spec — machine-readable** | `spec/recipe.schema.json` | TODO — the multi-axis selector |
 | 8 | **Transformation primitive library spec** | `spec/primitives/` (one JSON Schema per primitive) | TODO — input/output contracts for each of ~40 primitives |
 | 9 | **Starter recipe library** | `recipes/starter/` (NIST 800-53, ISO 27002, MITRE ATT&CK) | TODO |
+| 10 | **Ch 23 — Bundle engine language research** | `zz-challenges/23-bundle-engine-language` | ✅ brief landed 2026-05-04; deliverable pending |
+| 11 | **Agent-tooling progressive-disclosure section** (header + getting-started; bodies fill as #6–#9 land) | `agent-context/agent-tooling/` | ✅ skeleton landed 2026-05-04 |
 
 When (1)–(9) are in place, **the implementation work has a complete spec to build against**. No further design conversations needed.
 

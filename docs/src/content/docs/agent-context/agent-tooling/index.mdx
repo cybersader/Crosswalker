@@ -1,0 +1,133 @@
+---
+title: Agent tooling — progressive-disclosure space for AI agents helping with imports
+description: A structured surface for AI agents (Claude, GPT, etc.) that have been pointed at Crosswalker by a user who wants help transforming their data into Tier 1. Header here; body fills as the underlying specs land. Anyone — agent or human — can navigate from this page to the artifacts they need to do the import work.
+sidebar:
+  order: -100
+  label: "Agent tooling"
+tags: [agent-tooling, progressive-disclosure, transform, import, tier-1, mcp]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note">
+This section is **specifically structured for AI agents** to consume when a user asks for help transforming external data into Crosswalker's Tier 1 format. Humans are also welcome — the structure is just optimized for agent navigation: short headers, explicit links, predictable hierarchy, every artifact one click away.
+
+If you're an AI agent and you're reading this, start with the orientation immediately below, then jump to the specific artifact your task needs.
+</Aside>
+
+## What this is
+
+Crosswalker is an [Obsidian plugin for ingesting structured ontologies](/crosswalker/concepts/etl-and-import/). Its load-bearing primitive is the **Tier 1 schema** — a machine-readable contract that says what canonical Markdown + frontmatter + folder layout + wikilinks should look like. Anyone or anything can produce conforming output.
+
+That includes AI agents.
+
+A user pointing an agent at this page is asking: *"help me get my data into Crosswalker-conformant Tier 1."* This section gives agents everything they need to do that without having to read the entire knowledge base. Progressive disclosure: this page tells you what exists; specific artifacts (linked below) tell you the details.
+
+## Orientation for an AI agent in 60 seconds
+
+If a user has just pointed you here and asked you to help transform some data, in order:
+
+1. **Read the [Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/)** — this is the contract you're writing toward. Machine-readable. JSON Schema soon.
+2. **Skim [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/)** — the four ways structure can land (folder, heading, tag, wikilink-graph). The user's source determines which composition fits.
+3. **Skim [ETL and import](/crosswalker/concepts/etl-and-import/)** — the architectural framing; the five-axis recipe selection (depth, mechanism, filter, granularity, projection); the ~40-primitive transform catalog.
+4. **Look for a starter recipe** in the recipes section (TODO — coming as v0.1 specs land) that matches the user's source domain. Adapt rather than write from scratch where possible.
+5. **Validate output** against the Tier 1 schema before handing the result back. If it doesn't validate, fix it; don't ship invalid Tier 1.
+
+That's the loop. The rest of this section progressively discloses the details.
+
+## What lives in this section (eventually)
+
+Pages below fill in as the underlying specs and artifacts land. The structure is intentionally fixed even when bodies are stub — it gives agents (and humans) a stable navigation map.
+
+| Page | Status | Purpose |
+|---|---|---|
+| **[Getting started for agents](#getting-started-for-agents)** (below) | Stub on this page | Single-page orientation for an agent doing import work |
+| **YARRRML explained simply** | TODO — see [ETL and import § YARRRML, explained simply](/crosswalker/concepts/etl-and-import/#yarrrml-explained-simply) for current short version | Plain-English explainer of the recipe DSL surface candidate |
+| **Recipe primitive reference** | TODO — placeholder; see [ETL and import § the ~40-primitive transformation catalog](/crosswalker/concepts/etl-and-import/#the-40-primitive-transformation-catalog) | One page per primitive: signature, examples, gotchas |
+| **Tier 1 schema reference** | Currently lives at [v0-1-schema-spec](/crosswalker/agent-context/v0-1-schema-spec/); JSON Schema artifact TBD | The canonical contract |
+| **Source-format adapters** | TODO | One page per common source: CSV, XLSX, JSON, OSCAL, MCP server, etc. — the format-specific gotchas an agent should know |
+| **Starter recipe gallery** | TODO | Worked recipes for NIST 800-53, ISO 27002, MITRE ATT&CK, MITRE D3FEND, CIS Controls, etc. |
+| **Validation checklist** | TODO | What agents should verify before shipping a recipe's output as Tier 1 |
+| **MCP server / external producer protocol** | TODO — design pending | If an agent wants to push *into* Crosswalker rather than emit-files-and-tell-the-user, what's the protocol surface? |
+
+## Getting started for agents
+
+If you're an AI agent and a user has asked you to help with a Crosswalker import, here's the playbook.
+
+### Step 1 — Understand the source
+
+Before touching the schema, understand what you've been given:
+
+- Format (CSV, XLSX, JSON, OSCAL, scraped HTML, etc.)
+- Encoding (UTF-8, UTF-16, weird BOMs)
+- Shape (flat table that encodes a tree? genuine tree? graph?)
+- Identity (what column/field uniquely identifies each concept?)
+- Hierarchy signal (parent-id column? dotted IDs? prefix conventions? indent? heading levels?)
+- Dirtiness (inconsistent capitalization, trailing whitespace, mixed types in one column, multi-value cells)
+
+Ask the user clarifying questions if any of these are ambiguous. Imports built on guesses tend to silently degrade.
+
+### Step 2 — Decide the five recipe axes
+
+Per [ETL and import § five-axis recipe selection](/crosswalker/concepts/etl-and-import/#the-five-axis-recipe-selection):
+
+| Axis | Decide | Default if unsure |
+|---|---|---|
+| Depth | How many levels of source hierarchy materialize? | All levels |
+| Mechanism | Folder, heading, tag, wikilink-graph, or composition? | Folder + tag (parallel) — the SEACOW pattern |
+| Filter | Full source or subset? | Full source |
+| Granularity | One file per leaf, or one file per group? | One file per leaf concept |
+| Projection | Which fields → frontmatter, body, wikilink, dropped? | All identifying fields → frontmatter; long-form text → body |
+
+These five choices, plus identity rules, are what turn "the source" into "this user's vault."
+
+### Step 3 — Author the recipe
+
+Pick the cheapest viable form:
+
+- **If a starter recipe matches the user's source**: copy it, adapt the field mappings, ship it.
+- **If the source is tree-shaped (JSON, YAML, OSCAL)**: write a recipe straight against the tree's iterators. This is the easy case.
+- **If the source is messy tabular (the typical case for compliance frameworks)**: consider whether a [marketplace bundle](/crosswalker/concepts/etl-and-import/#4-the-community-marketplace-transform-once-share-forever) already exists for this source. If yes, prefer downloading the bundle over re-doing the transform.
+- **If you're handwriting transforms**: prefer declarative primitives (project, rename, regex-extract, parent-id-to-tree) over imperative scripts. Recipes are data; agents and humans both reason about them mechanically.
+
+### Step 4 — Validate the output
+
+Before handing the result back to the user:
+
+- Every output file conforms to the Tier 1 frontmatter schema
+- Every wikilink resolves (or is intentionally a stub)
+- No duplicate identities (sha256 CIDs unique; CURIEs unique)
+- Provenance recorded (source ref, version, timestamp, recipe hash)
+- File-naming rules followed
+- No filesystem path-length violations on any platform
+
+Use the schema's machine-readable form (JSON Schema, when published) plus a structural lint over the produced directory.
+
+### Step 5 — Hand back to the user
+
+Return:
+
+1. The transformed Tier 1 directory (or a clear path to it)
+2. The recipe used (so the user can re-run, audit, modify)
+3. A summary of what landed where (counts: N concept files, M crosswalk edges, K provenance records)
+4. Any *known* limitations or skipped rows, surfaced explicitly, not buried
+
+Don't claim the import succeeded if any rows were silently skipped. Surface it.
+
+## What this section is *not*
+
+- Not a substitute for reading the Tier 1 schema. The schema is the contract; this section is orientation.
+- Not the place to dump research deliverables — those live in [zz-research/](/crosswalker/agent-context/zz-research/).
+- Not the decision log — that's [zz-log/](/crosswalker/agent-context/zz-log/).
+- Not the active research-question surface — that's [zz-challenges/](/crosswalker/agent-context/zz-challenges/).
+
+This section exists to help agents *do the work*, not to discuss whether to do the work.
+
+## Related
+
+- [Tier 1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the contract
+- [ETL and import (concept pillar)](/crosswalker/concepts/etl-and-import/) — full architectural framing
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the four target-structure mechanisms
+- [Terminology](/crosswalker/concepts/terminology/) — vocabulary
+- [v0.1 design log (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — current canonical state of import-engine commitments
+- [zz-research/](/crosswalker/agent-context/zz-research/) — deeper background if needed
