@@ -1,0 +1,151 @@
+---
+title: "Tier 2 substrate — synthesis (Ch 24 resolution; canonical SQLite + sqlite-vec stays; Turso/libSQL/Limbo all rejected)"
+description: "Synthesizes the Ch 24 adversarial deliverable. REJECT migration to libSQL-WASM (Q1); REJECT documenting Turso Cloud as Tier 3 option (Q2); WATCH but DO NOT ADOPT Turso Database / Limbo (Q3). Key insight elevated to load-bearing principle: vector-layer portability — sqlite-vec is decoupled from substrate, libSQL native vector is not. This makes substrate choice modular: a future migration to canonical SQLite + sqlite-vec on a different runtime (Limbo, Tier 3 server) preserves vector data without re-embedding. Five explicit migration triggers locked. Establishes the long-horizon watch register pattern for substrates considered and not adopted."
+tags: [foundation, design, tier-2, substrate, sqlite, sqlite-vec, libsql, turso, limbo, ch-24-resolution, modularity, vendor-risk, ready-for-implementation]
+date: 2026-05-04
+sidebar:
+  label: "05-04 · Tier 2 substrate synthesis"
+  order: -20260504.4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::tip[This log resolves Challenge 24]
+The [Ch 24 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-24-turso-libsql-evaluation/) settled the Tier 2 substrate question. This log captures what's adopted, what's rejected, what migration triggers are locked in for re-evaluation, and the *modularity* principle the deliverable elevated as load-bearing.
+:::
+
+## §1 The verdict
+
+| Question | Verdict | Confidence |
+|---|---|---|
+| **Q1** — Migrate Tier 2 to libSQL-WASM for v0.1 / v0.2? | **REJECT.** Stay on `@sqlite.org/sqlite-wasm` + `sqlite-vec`. | High |
+| **Q2** — Document Turso Cloud as Tier 3 option? | **REJECT for v1.0.** Substrate mismatch + vendor governance flux. Add a "considered and not adopted" note instead. | Medium-high |
+| **Q3** — Track Turso Database / Limbo? | **WATCH, DO NOT ADOPT.** Pre-1.0 beta. Add to long-horizon substrate register. Review at v1.0 + 12 months or on listed public signals. | High |
+
+The Ch 24 deliverable did exactly what an adversarial fresh-agent assessment should — steelmanned each migration argument and rejected it on the merits, not by reflex. The verdicts are upheld unanimously. There are no commitments to roll back.
+
+## §2 Why all three rejections are correct (in one breath each)
+
+**Q1 — libSQL-WASM rejection.** No bundle-size benefit. No portability benefit. Vector-search parity claim contradicted by independent benchmark (Bambini, Aug 2025: libSQL DiskANN didn't complete on 100K × 384-dim vectors; sqlite-vec scanned in ~57 ms). Vendor-trajectory signal is *negative* — Turso has publicly stated *"libSQL is actively maintained, but new features are being developed in Turso [Database]"*; `@libsql/libsql-wasm-experimental` is at version 0.0.3. Adopting an artifact whose vendor has publicly downgraded it is the textbook scenario the SurrealDB / AGE / Bun precedents were designed to detect.
+
+**Q2 — Turso Cloud Tier 3 rejection.** Substrate mismatch with the (now-confirmed) canonical Tier 2. Vendor governance is in flux during the libSQL → Limbo pivot. Postgres + pgvector already covers the "I want a real server with vector + SQL" axis. Edge-replication is interesting but not a Crosswalker user need (single-user or small-team Obsidian vaults).
+
+**Q3 — Limbo watch-don't-adopt.** Pre-1.0 beta. Not file-format-compatible with classic SQLite at every layer (compatibility is an aspiration, verified by deterministic-simulation testing — excellent for finding bugs, not for proving completeness). Single-vendor governance, however well-funded. Every Crosswalker query would need to be re-validated against Limbo's bytecode generation.
+
+## §3 The deepest insight — vector-layer decoupling as a modularity principle
+
+The Ch 24 deliverable §5 surfaced a property that is *more important* than the Q1 rejection itself:
+
+> **sqlite-vec is portable across SQLite forks and rewrites; libSQL native vector is not.**
+
+Concrete consequences:
+
+| Future scenario | What survives if we use sqlite-vec | What survives if we use libSQL native vector |
+|---|---|---|
+| Limbo ships a stable WASM build in 2027 | ✅ sqlite-vec moves with us (Limbo targets SQLite extension ABI compat) | ❌ Re-embed everything; libSQL native vector data is opaque shadow tables |
+| Tier 3 deploys to Postgres + pgvector | ✅ Vectors copy across with adapter | ❌ Same — re-embed |
+| sqlite-vec maintenance lapses | We can fork it (~5 KLOC pure C, MIT, multi-sponsor: Mozilla Builders + Fly.io + Turso + SQLite Cloud + Shinkai) | ❌ Forking libSQL is a substrate-scale undertaking |
+| Crosswalker decides to support multiple substrates simultaneously (the user's "modular system" goal) | ✅ Vector layer is the same across substrates | ❌ Vector layer is locked to one substrate |
+
+**This is the modularity property the user explicitly asked for.** From the user's confirmation message: *"as long as we're designing a modular system (which I think we are) where we could try with other database backends to test for improvements or additional capability."*
+
+The Crosswalker stack is now load-bearing-ly modular along three orthogonal axes:
+
+| Axis | Modular property | Where committed |
+|---|---|---|
+| **Recipe schema ↔ engine implementation** | Engine is swappable; recipe contract is stable | [Ch 23 §4](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#4-the-most-important-commitment-runtime-agnostic-recipe-schema) |
+| **Tier 1 schema ↔ producer toolchain** | Anyone can produce Tier 1; the schema is the contract | [ETL and import § the reframe](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience) |
+| **Vector data ↔ substrate** | sqlite-vec stays; substrate can be swapped | This log §3 (Ch 24 §5) |
+
+These three together are what make the system genuinely portable across implementation choices. None of them was free; each came from rejecting a single-vendor convergence shortcut.
+
+## §4 What's locked in (specific v0.1 substrate commitments)
+
+| Aspect | v0.1 lock |
+|---|---|
+| Tier 2 substrate | `@sqlite.org/sqlite-wasm` (canonical, foundation-governed) |
+| Vector layer | `sqlite-vec` (Alex Garcia + Mozilla Builders + Fly.io + Turso + SQLite Cloud + Shinkai sponsorship) |
+| Vector index | Brute-force scan + `sqlite-vec`'s DiskANN ANN release (alpha) when needed |
+| WASM packaging | Custom static-link build of `@sqlite.org/sqlite-wasm` with `sqlite-vec` compiled in |
+| Persistence | OPFS via `opfs-sahpool` VFS (works on Capacitor without COOP/COEP — the mobile path) |
+| File format | Vanilla SQLite (3.x) — readable by `sqlite3` CLI, DB Browser for SQLite, every SQLite tool |
+| Tier 3 documented options | Postgres / Fuseki / oxigraph-server / TerminusDB / AGE — *not* Turso Cloud |
+| Long-horizon watch register | Limbo / Turso Database; first entry on the substrate watch list |
+
+## §5 Migration triggers — when to revisit
+
+The deliverable §2.10 + §3.5 + §4.4 spelled out specific triggers. Locking them in here so future-us has a deterministic re-evaluation path rather than an "it depends" feeling:
+
+**Q1 (Tier 2 substrate) — re-open if any TWO occur:**
+
+1. **sqlite-vec maintenance lapse** — no release for 12+ months AND no community fork has gained traction
+2. **libSQL becomes the de facto standard** — SQLite upstream takes libSQL's vector type, OR `@libsql/libsql-wasm` (without "-experimental") reaches 1.0 with stability commitments, OR libSQL's vector index outperforms sqlite-vec on a published reproducible benchmark
+3. **Obsidian itself adopts libSQL** (Obsidian Sync / Bases / core)
+4. **Turso governance stabilizes around libSQL** — public dated commitment to libSQL as a peer to Turso Database with separate dedicated engineering
+5. **A non-Turso fork of libSQL emerges with multi-stakeholder governance** — the "Valkey moment"
+
+**Q2 (Turso Cloud Tier 3) — re-open if EITHER occurs:**
+
+- Q1 triggers fire (substrate alignment story changes)
+- Turso publicly recommits Turso Cloud to long-term libSQL backend support
+
+**Q3 (Limbo adoption) — re-open at v1.0 + 12 months OR if any occurs:**
+
+- Limbo reaches versioned 1.0 with documented file-format compatibility test pass
+- Non-Turso fork or alternative steward emerges (governance diversification)
+- Major Obsidian ecosystem tool (core, Dataview, Bases) adopts Limbo
+- Limbo's WASM ships stable versioned npm with feature-set matching Tier 2 needs (FTS5, recursive CTEs, vector, OPFS, SAH-pool)
+
+These triggers are *specific and falsifiable*. None of them is "it feels like it's time."
+
+## §6 The long-horizon watch register pattern
+
+The Ch 24 deliverable proposed a "long-horizon substrates under observation" appendix as the right home for Limbo. This synthesis adopts that pattern more broadly: the [embedded-vs-server-substrates concept page](/crosswalker/concepts/embedded-vs-server-substrates/) now hosts a watch register section listing substrates Crosswalker has *evaluated and chosen not to adopt today*, with conditions for re-evaluation.
+
+Initial entries:
+
+| Entry | Category | Status |
+|---|---|---|
+| **Turso Database / Limbo** | Single-file embedded relational | Watch; review v1.0 + 12 months |
+| **kuzu** | Embedded property graph (Cypher); single-file | Watch; revisit if recursive-CTE-on-SQLite hits expressivity wall |
+| **LanceDB** | Embedded columnar vector DB | Watch; revisit if `sqlite-vec` becomes insufficient or unmaintained |
+| **DuckDB-PGQ** | Property graph extension to DuckDB | Watch; revisit if DuckDB-WASM becomes Tier 2 alternative |
+| **Datalevin** | Embedded multi-model (Clojure) | Watch; niche |
+
+Two adjacent watch entries (not substrate, but adjacent file-based-tool decisions):
+
+| Entry | Category | Status |
+|---|---|---|
+| **jj / jujutsu** | Version control system (git-compatible front-end + standalone backend) | Watch; complementary to git for recipe versioning, audit trail, marketplace bundle history |
+| **Stoolap** | Modern columnar OLAP-on-SQLite-style | Watch via [Ch 12b deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/); revisit if Tier 2 outgrows recursive-CTE patterns |
+
+The pattern is: explicit, dated, reasoned non-adoption with conditions for revisit is itself documentation. Cargo-culting would be refusing to revisit; conservatism with explicit triggers is engineering discipline.
+
+## §7 What this does NOT do
+
+- **Does not foreclose Turso products forever.** All three migration-trigger sets above are designed to fire deterministically if the underlying signals change. The rejections are dated 2026-05-04, not eternal.
+- **Does not deprecate canonical SQLite as "best forever."** SQLite is what survives Crosswalker's specific constraints today. Tier 2 substrate choice is reversible — the recipe schema, Tier 1 contract, and (per this log §3) vector layer are all portable across substrate choices.
+- **Does not rule out future libSQL-flavored Tier 3.** If Turso governance stabilizes and Tier 2 still benefits from canonical SQLite, libSQL-as-Tier-3 alongside Postgres remains plausible — it just isn't justified today.
+- **Does not reject DuckDB-WASM, Oxigraph (library), or Nemo as future Tier 2 alternatives.** Those remain in the [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) "researched back-pocket" register — separate decision lineage, not closed by Ch 24.
+
+## §8 Implications for the user's "modular system" goal
+
+The user explicitly asked: *"as long as we're designing a modular system (which I think we are) where we could try with other database backends to test for improvements or additional capability."*
+
+Three concrete responses to that goal:
+
+1. **The system IS modular today** — the runtime-agnostic recipe schema (Ch 23 §4), schema-as-primitive Tier 1 contract, and now vector-layer-decoupled-from-substrate (Ch 24 §5) make every implementation choice swappable.
+2. **The substrate-experimentation surface** — once Tier 2's TS engine is shipping against canonical SQLite, alternative substrates (DuckDB-WASM, Oxigraph, libSQL, Limbo) can be evaluated via parallel Tier 2 implementations targeting the same recipe schema and vector layer. This is a clean experimentation harness, not a substrate lock-in.
+3. **Watch register as deferred experimentation** — entries in §6 above are exactly the candidates for "try with other database backends to test for improvements." The triggers are the falsifiable conditions for moving an entry from "watch" to "evaluate," and from "evaluate" to "adopt or reject."
+
+## §9 Related
+
+- [Ch 24 deliverable (verbatim)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-24-turso-libsql-evaluation/) — the source of the verdict
+- [Ch 24 brief (archived)](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/) — original assignment
+- [Embedded vs server substrates (concept pillar)](/crosswalker/concepts/embedded-vs-server-substrates/) — broader landscape and watch register
+- [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the prior canonical-SQLite Tier 2 commitment that Ch 24 reaffirms
+- [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/) — Tier 2 sidecar SQL DDL
+- [Ch 18 — Tier 2-Lite scale ceiling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — what the SQLite stack delivers (~100K mappings)
+- [Ch 23 — bundle engine language synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — adjacent decision: TS in-plugin engine; runtime-agnostic recipe schema commitment that Ch 24 §5's modularity principle compounds
+- [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — broader design phase; this log resolves §6's Tier 2 substrate row
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — Spec / Library / Integrations philosophy that the modularity property serves

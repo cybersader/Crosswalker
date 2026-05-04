@@ -550,8 +550,8 @@ The Tier 2 sidecar is a **deletable, recoverable projection** of Tier 1 frontmat
 
 **Recovery property** (load-bearing): if `.crosswalker.sqlite` is missing, corrupted, or stale, the projector rebuilds it from canonical Tier 1 on next vault load. This is what makes Tier 2 risk-free to bundle in v0.1.
 
-:::note[Substrate choice — open research]
-The current v0.1 substrate commitment is `@sqlite.org/sqlite-wasm` (canonical SQLite, foundation-governed). [Challenge 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) opened 2026-05-04 evaluates whether to migrate Tier 2 to **libSQL** (Turso's SQLite fork, native vector search, native replication) or stay on canonical. The DDL below is substrate-agnostic if libSQL's SQLite-compat claim holds; the *decision* is which substrate ships v0.1. Tracking this here so future readers know the choice is under active evaluation, not silently committed.
+:::tip[Substrate choice — settled 2026-05-04]
+v0.1 substrate is `@sqlite.org/sqlite-wasm` + `sqlite-vec` (canonical, foundation-governed). [Challenge 24](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/) evaluated libSQL-WASM, Turso Cloud (Tier 3), and Turso Database / Limbo, and **rejected all three**. See the [Tier 2 substrate synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) for the verdict + 5 explicit migration triggers locked in for re-evaluation. Key insight: vector layer (`sqlite-vec`) is *decoupled from substrate* — portable across canonical SQLite, libSQL, Limbo, Postgres+pgvector — which is what makes the v0.1 substrate choice modular rather than locked-in.
 :::
 
 ### DDL

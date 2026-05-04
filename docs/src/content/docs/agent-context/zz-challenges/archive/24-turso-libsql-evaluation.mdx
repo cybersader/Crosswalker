@@ -1,13 +1,23 @@
 ---
-title: "Challenge 24: Turso / libSQL evaluation — should Tier 2 stay on sqlite.org sqlite-wasm or migrate? Should Tier 3 list Turso Cloud as an option? Adversarial framing — what problem does Turso solve that Crosswalker actually has?"
-description: "The current v0.1 Tier 2 substrate is `@sqlite.org/sqlite-wasm` (~600 KB) — bedrock canonical SQLite. Turso (libSQL — a 2-year-old SQLite fork with native replication, edge distribution, built-in vector search, and a Rust rewrite called Turso Database / Limbo) markets itself as a SQLite successor. This challenge asks the strict question: does anything in Crosswalker's actual architecture want what libSQL/Turso offers that canonical sqlite-wasm doesn't already give us? And separately: should Tier 3 options include hosted Turso Cloud alongside Postgres / Fuseki / oxigraph-server / TerminusDB? Critically assess against bundle size, mobile-Obsidian portability, single-vendor governance risk, SQLite-compat divergence, and the marketplace use case."
-tags: [research, foundation, tier-2, tier-3, sqlite, libsql, turso, governance, sustainability, vendor-risk, vector-search, edge-replication]
+title: "Challenge 24: Turso / libSQL evaluation (archived)"
+description: "Tier 2 substrate question: stay on sqlite.org sqlite-wasm or migrate to libSQL? RESOLVED 2026-05-04: REJECT all three Qs. Stay on canonical SQLite + sqlite-vec; do not list Turso Cloud as Tier 3 option; watch but do not adopt Turso Database / Limbo. See callout."
+tags: [research, foundation, tier-2, tier-3, sqlite, libsql, turso, governance, sustainability, vendor-risk, vector-search, edge-replication, archived]
 date: 2026-05-04
 sidebar:
-  label: "24 · Turso / libSQL evaluation"
+  label: "24 · Turso / libSQL (archived)"
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::tip[Resolved 2026-05-04 — archived]
+This challenge has been **resolved** and the brief is **archived for reference**. An adversarial fresh-agent deliverable settled all three questions:
+
+- [Ch 24 deliverable: Adversarial evaluation of Turso / libSQL for Crosswalker](/crosswalker/agent-context/zz-research/2026-05-04-challenge-24-turso-libsql-evaluation/) — REJECT migration to libSQL-WASM (Q1); REJECT documenting Turso Cloud as Tier 3 option (Q2); WATCH but DO NOT ADOPT Turso Database / Limbo (Q3). Two key findings: (a) `@libsql/libsql-wasm-experimental` is at version 0.0.3 — Turso has publicly de-prioritized libSQL in favor of Limbo; (b) independent Bambini benchmark (Aug 2025) showed libSQL DiskANN didn't complete on 100K × 384-dim vectors while sqlite-vec scanned in ~57 ms. Deepest insight: vector-layer portability — sqlite-vec is decoupled from substrate, libSQL native vector is not.
+
+The deliverable is synthesized in the **[2026-05-04 Tier 2 substrate synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)** which adopts all three rejections, locks five explicit migration triggers for re-evaluation, and elevates the *vector-layer-decoupled-from-substrate* property as a load-bearing modularity commitment.
+
+**This challenge brief is preserved as originally written** so it stays re-runnable.
+:::
 
 ## Why this exists
 

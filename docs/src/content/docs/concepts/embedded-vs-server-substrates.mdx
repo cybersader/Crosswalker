@@ -9,6 +9,12 @@ tags: [substrate, embedded, file-based, sqlite, oxigraph, duckdb, kuzu, vector, 
 
 import { Aside } from '@astrojs/starlight/components';
 
+:::tip[Substrate decisions — settled]
+**Tier 2** = `@sqlite.org/sqlite-wasm` + `sqlite-vec` (canonical, foundation-governed). [Ch 24 (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) rejected libSQL-WASM migration, Turso Cloud as Tier 3 listing, and near-term Limbo adoption. The deepest Ch 24 insight is *modularity-via-decoupled-vector-layer* — `sqlite-vec` works across canonical SQLite, libSQL, Limbo, and Postgres+pgvector with adapters. The substrate is therefore swappable without losing vector data.
+
+Five explicit [migration triggers](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit) are locked in for re-evaluation.
+:::
+
 ## The architectural pattern
 
 Most databases are *servers* — long-running processes that own a private directory of files you must not touch directly. The user talks to the server via a network socket; the database files are an implementation detail.
@@ -49,7 +55,7 @@ Yes. Embedded DBs exist across every major data model. Here's the landscape, gro
 | **[SQLite](https://sqlite.org/wasm/doc/trunk/index.md)** (`@sqlite.org/sqlite-wasm`) | Single-file `.sqlite` / `.db` | Canonical. Foundation-governed. ✅ **Tier 2 v0.1 commitment.** Per [Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/), comfortably to ~100K mappings |
 | **libSQL** (Turso) | Single-file (claims SQLite compat) | SQLite soft-fork; native vector + replication. **Under evaluation** — see [Ch 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
 | **DuckDB(-WASM)** | Single-file `.duckdb` | Analytical/columnar instead of OLTP. Was in the [third-wave Tier 2 stack](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/); deferred from v0.1 per the [stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) (kept as researched back-pocket) |
-| **Stoolap** | Single-file | Modern columnar OLAP-on-SQLite-style. Long-horizon track via [Ch 12b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) |
+| **Stoolap** | Single-file | Modern Go-based embedded SQL DB; column-store + row-store hybrid; HTAP (transactional + analytical in one engine); built for embedded use via Go API. Long-horizon track via [Ch 12b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) — interesting if Crosswalker outgrows recursive-CTE patterns on `sqlite-wasm` and wants single-file analytical performance without DuckDB's bundle weight |
 | **Turso Database / Limbo** | Single-file (Rust rewrite of SQLite) | Pre-1.0; experimental. Long-horizon track via [Ch 24 Q3](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
 
 ### Graph — RDF / triplestore
@@ -156,17 +162,42 @@ Every Tier 3 candidate (Postgres, Fuseki, oxigraph-server, TerminusDB, AGE) is a
 
 [The marketplace pattern](/crosswalker/concepts/etl-and-import/#4-the-community-marketplace-transform-once-share-forever) ships **Tier 1 only** — directory of Markdown files. Substrate-irrelevant. A user who downloads a community-shared NIST 800-53 bundle gets a directory of `.md` files; their local Tier 2 reprojects them into whatever single-file SQLite they have. Server-database substrates can't do this — the data lives inside the server's private storage.
 
-## What Crosswalker has *not* yet evaluated
+## Long-horizon watch register
 
-Worth flagging for future research challenges:
+Substrates and adjacent file-based tools that Crosswalker has *evaluated and chosen not to adopt today*, with conditions for re-evaluation. The pattern: explicit, dated, reasoned non-adoption with falsifiable triggers is itself documentation. Cargo-culting would be refusing to revisit; conservatism with explicit triggers is engineering discipline.
 
-- **kuzu** — modern embedded property graph DB. If Cypher-shaped queries become important and recursive-CTE-on-SQLite isn't enough, kuzu is the most credible single-file alternative
-- **LanceDB** — embedded columnar vector DB. Stronger for vector-heavy workloads than `sqlite-vec`
-- **PouchDB / RxDB** — JS embedded document DBs. Not currently relevant since Tier 1 IS the document store, but worth knowing about for future cross-vault sync features
-- **Datalevin** — Clojure embedded multi-model. Niche but architecturally interesting
-- **DuckDB-PGQ** — if DuckDB-WASM gets activated as a Tier 2 alternative, the PGQ extension would give property-graph queries on the same substrate
+### Substrates under observation
 
-None of these are blockers for v0.1; they're "watch list" items that may matter for v1.0+.
+| Entry | Category | Status | Re-evaluation trigger |
+|---|---|---|---|
+| **Turso Database / Limbo** | Single-file embedded relational (Rust rewrite of SQLite, BETA) | Watch | Pre-1.0 stable; non-Turso fork or alternative steward emerges; Obsidian core / Dataview / Bases adopts Limbo. Review at v1.0 + 12 months. Per [Ch 24 §7](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit) |
+| **libSQL-WASM** | SQLite soft fork; native vector + replication | Reject (Q1 of Ch 24) | sqlite-vec lapses + libSQL becomes de facto standard, OR Obsidian itself adopts libSQL, OR Turso recommits libSQL as long-term peer to Limbo |
+| **Turso Cloud / sqld** | Hosted edge-replicated libSQL Tier 3 option | Reject (Q2 of Ch 24) | Q1 triggers fire OR Turso publicly recommits Cloud to long-term libSQL backend |
+| **kuzu** | Embedded property graph (Cypher); single-file `.kz` | Watch | Recursive-CTE-on-SQLite pattern hits expressivity wall on user-relevant graph queries; kuzu reaches 1.0 with stable file format; multi-stakeholder governance signal |
+| **LanceDB** | Embedded columnar vector DB; Rust core | Watch | sqlite-vec maintenance lapses OR Crosswalker grows into AI-heavy semantic-search workloads where columnar vector storage matters |
+| **DuckDB-PGQ** | Property graph extension on DuckDB single-file | Watch | DuckDB-WASM becomes Tier 2 alternative (back-pocket activated); user-facing graph queries need a non-recursive-CTE substrate |
+| **Stoolap** | Modern Go-based embedded HTAP (column + row hybrid); single-file | Watch | Recursive-CTE-on-SQLite hits analytical performance wall; user wants single-file analytical engine without DuckDB's ~2.5–3 MB bundle |
+| **Datalevin** | Clojure embedded multi-model | Watch | Niche; architecturally interesting; revisit if Crosswalker grows a Clojure-flavored ecosystem |
+| **PouchDB / RxDB** | JS embedded document DBs (IndexedDB-backed) | Watch | Future cross-vault sync features; Tier 1 is already a document store, but these could power "live-sync between two users editing the same crosswalk" workflows |
+
+### Adjacent file-based tools — version control
+
+Crosswalker's audit trail commitment ([Ch 08 + Ch 13 + Ch 15](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/)) is **git** as the v0.1 default — signed commits over Tier 1 markdown, with optional layered attestation primitives (RFC 3161, Sigstore Rekor v2 + in-toto, eIDAS QTSA + W3C VC) for higher compliance tiers. This is a settled commitment; the watch register tracks emerging alternatives.
+
+| Entry | Category | Status | Why it matters for Crosswalker |
+|---|---|---|---|
+| **jj / jujutsu** | Modern VCS; git-compatible front-end + standalone backend; "operations as data" model with first-class conflict objects and rich history rewriting | Watch | Three potential angles: **(1)** recipe versioning — recipes are YAML files that evolve continuously; jj's conflict-as-data model handles "two users edited the same recipe" more gracefully than git merges; **(2)** marketplace bundle history — pre-transformed Tier 1 bundles need version history shareable across users; jj's content-addressed history stays portable; **(3)** audit trail — jj inherits git's signed-commit story while adding richer rewrite history that some compliance models could leverage. Revisit if jj reaches 1.0, the Obsidian community adopts it, or recipe-collaboration UX becomes a v1.0 priority |
+| **Pijul** | Patch-theoretic VCS (Darcs descendant); content-addressed | Watch | More radical than jj; not git-compatible; theoretical model is elegant but adoption is small |
+| **Sapling (sl)** | Meta's Mercurial-derived VCS; git-compatible | Watch | Heavyweight; designed for monorepo workflows; less obviously relevant to Crosswalker's vault-scale use case |
+
+These are *not* blockers for v0.1. Git remains the v0.1 audit-trail substrate. The watch register exists so a future reader can see what alternatives have been considered and on what grounds they remain unadopted.
+
+### Adjacent file-based tools — content-addressed storage
+
+| Entry | Category | Status | Why it matters for Crosswalker |
+|---|---|---|---|
+| **IPLD** | Content-addressed graph data | Watch | Marketplace bundle distribution — content-addressed Tier 1 directories could be shared via IPFS without trust assumptions about the source. Per [Ch 12b deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/), long-horizon |
+| **Unison** | Content-addressed code/data; "everything is hashed" | Watch | Influential design; Unison-inspired patterns may appear in Crosswalker's recipe versioning if recipes-by-hash becomes a workflow |
 
 ## SQLite's contribution in one sentence
 
@@ -186,5 +217,6 @@ This is why the libSQL question ([Ch 24](/crosswalker/agent-context/zz-challenge
 - [Ch 14 — Missed engines](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — multi-model rejections
 - [Ch 16 — Tier 3 reconsideration](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) — Fuseki vs AGE vs TerminusDB
 - [Ch 18 — Tier 2-Lite scale ceiling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — what the SQLite stack actually delivers
-- [Ch 24 — Turso/libSQL evaluation](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) — open research; Tier 2 substrate re-examination
+- [Ch 24 — Turso/libSQL evaluation (archived)](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/) — resolved 2026-05-04: REJECT all three Qs
+- [2026-05-04 Tier 2 substrate synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — vector-layer-decoupled-from-substrate as load-bearing modularity commitment
 - [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — Spec / Library / Integrations philosophy that this substrate choice serves
