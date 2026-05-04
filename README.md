@@ -24,21 +24,44 @@ Import structured ontologies — compliance frameworks, taxonomies, any hierarch
 ## How it works
 
 ```
-Spreadsheet (CSV/XLSX)          Your Obsidian Vault
-┌──────────────────────┐        ┌──────────────────────────────┐
-│ Family │ ID   │ Name │   CW   │ Ontologies/                  │
-│ AC     │ AC-1 │ ...  │ ─────► │   NIST-800-53/               │
-│ AC     │ AC-2 │ ...  │        │     Access Control/           │
-│ AU     │ AU-1 │ ...  │        │       AC-1.md  ← frontmatter │
-└──────────────────────┘        │       AC-2.md  ← [[links]]   │
-                                │     Audit/                    │
-                                │       AU-1.md                 │
-                                └──────────────────────────────┘
+  ┌─ 1. IMPORT ───────────────────────────────────────────┐
+  │                                                       │
+  │   Spreadsheets, JSON, OSCAL, scraped pages, anything  │
+  │   structured — NIST, ISO, CIS, MITRE, your own.       │
+  │                                                       │
+  │     ▼                                                 │
+  │   Import wizard: pick a recipe — which columns        │
+  │   become folders / headings / tags / wikilinks /      │
+  │   frontmatter. Save the recipe; rerun on updates.     │
+  └────────────────────────┬──────────────────────────────┘
+                           ▼
+  ┌─ 2. VAULT ────────────────────────────────────────────┐
+  │                                                       │
+  │   Ontologies/Frameworks/                              │
+  │     NIST 800-53 r5/                                   │
+  │       AC/                                             │
+  │         AC-2.md  ─── crosswalk ───┐                   │
+  │     ISO 27001/                    │ typed link        │
+  │       A.9.2.1.md  ◄───────────────┘ + edge metadata   │
+  │                                     (predicate,       │
+  │   Evidence/                          coverage,        │
+  │     MFA-Policy.md ─ covers ──► AC-2, A.9.2.1, …       │
+  │                                                       │
+  │   Plain markdown · YAML frontmatter · git-friendly    │
+  └────────────────────────┬──────────────────────────────┘
+                           ▼
+  ┌─ 3. USE ──────────────────────────────────────────────┐
+  │                                                       │
+  │   Bases, Obsidian search, AI agents:                  │
+  │                                                       │
+  │     "Show all evidence covering AC-2"                 │
+  │     "Which ISO controls map to NIST AC family?"       │
+  │     "Coverage gaps across our frameworks"             │
+  │                                                       │
+  └───────────────────────────────────────────────────────┘
 ```
 
-**1.** Open the import wizard &nbsp;**2.** Map columns to hierarchy, metadata, and links &nbsp;**3.** Preview &nbsp;**4.** Generate
-
-Each note gets full YAML frontmatter with `_crosswalker` provenance metadata, WikiLinks for cross-references, and a folder tree matching your data's hierarchy. Recipes can mix folders, headings, tags, and wikilinks however you want, so the same framework can land as a deep folder tree, a single document with nested headings, or any combination.
+The same source can land as a deep folder tree, a single document with nested headings, a flat tag-indexed pile, or a hybrid — pick whatever shape your team works in. Each note gets full YAML frontmatter with `_crosswalker` provenance metadata, WikiLinks for cross-references, and (where you set them up) typed links carrying edge metadata for crosswalks and evidence.
 
 ## Features
 
@@ -109,6 +132,15 @@ The original Python CLI (`frameworks_to_obsidian.py`) is also included for batch
 pip install -r requirements.txt
 python frameworks_to_obsidian.py
 ```
+
+## Related projects
+
+Crosswalker fits alongside a few other tools that all aim at making Obsidian a serious knowledge platform:
+
+| Project | Role | Link |
+|---|---|---|
+| **SEACOW** | Meta-framework for organizing knowledge inside Obsidian — folder + parallel tag hierarchies, naming conventions, and curation patterns. Crosswalker recipes can default to the SEACOW dual-emit pattern (folders for canonical path, tags for cross-cutting facets). | [cybersader/seacowr-knowledge-platform-meta-framework](https://github.com/cybersader/seacowr-knowledge-platform-meta-framework) |
+| **folder-tag-sync** | Obsidian plugin that bidirectionally synchronizes folder hierarchy with tag hierarchy via regex rules. Pairs naturally with Crosswalker's dual-emit recipes — Crosswalker generates the initial folder + tag layout; folder-tag-sync keeps them in sync as you refactor by hand. | [cybersader/obsidian-folder-tag-sync](https://github.com/cybersader/obsidian-folder-tag-sync) |
 
 ## Documentation
 

@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crosswalker.dev/spec/recipe.schema.json",
+  "title": "Crosswalker Import Recipe",
+  "description": "The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.",
+  "type": "object",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/.",
+
+  "$defs": {
+    "mechanism": {
+      "type": "string",
+      "enum": ["folder", "file", "heading", "tag", "wikilink"],
+      "description": "How a source level lands in the target vault. 'folder': directory segment. 'file': leaf-bearing markdown file. 'heading': intra-file '#'-prefixed anchor. 'tag': nested tag-path segment. 'wikilink': flat file with explicit parent/child wikilink edges in frontmatter. v0.1 wires folder/file/heading; tag and wikilink as layout mechanisms are schema-reserved and ship in v0.2 (validators reject them as 'mechanism not yet implemented; coming in v0.2' in v0.1 to avoid silent corruption)."
+    },
+
+    "template": {
+      "type": "string",
+      "minLength": 1,
+      "description": "R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.",
+      "examples": [
+        "Frameworks/{catalog.name}",
+        "{family.id}",
+        "{control.id}.md",
+        "{enhancement.id} {enhancement.title}",
+        "framework/nist/{family.id|lower}/{control.id|tagsafe}"
+      ]
+    },
+
+    "level_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 6,
+      "description": "Markdown heading depth (1-6, equivalent to # through ######). Required when mechanism is 'heading'. Ignored otherwise."
+    },
+
+    "layout_entry": {
+      "type": "object",
+      "title": "Layout entry",
+      "description": "One entry of the recipe.target.layout array. Specifies how a single source level lands in the target vault. The layout array is ordered: outer source levels appear first, leaf-bearing entry appears last (typically mechanism: 'file' or 'heading' for the leaf-as-document case).",
+      "required": ["level", "mechanism", "template"],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source-level identifier. Must match an entry in recipe.source.levels. Examples: 'catalog', 'family', 'control', 'enhancement', 'taxon'."
+        },
+        "mechanism": { "$ref": "#/$defs/mechanism" },
+        "template": { "$ref": "#/$defs/template" },
+        "level_depth": { "$ref": "#/$defs/level_depth" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mechanism": { "const": "heading" } } },
+          "then": { "required": ["level_depth"] }
+        }
+      ]
+    },
+
+    "graph_edge": {
+      "type": "object",
+      "title": "Graph edge",
+      "description": "One frontmatter-encoded relationship between two concepts. Used to express hierarchy or named relations as data (parent, enhances, partOf, instanceOf, crosswalksTo) rather than as folder structure. Semantically aligned with SKOS broader/narrower and ISO 25964 BTG/BTP/BTI. Schema-reserved in v0.1; wired in v0.2.",
+      "required": ["from", "via", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "$ref": "#/$defs/template", "description": "Source-side identity template." },
+        "via": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Frontmatter property name encoding the relation. Conventional values: 'parent', 'enhances', 'partOf', 'instanceOf', 'crosswalksTo', 'broader', 'narrower'. Recipe authors pick a value that matches their query intent.",
+          "examples": ["parent", "enhances", "partOf", "instanceOf", "crosswalksTo", "broader", "narrower"]
+        },
+        "to": { "$ref": "#/$defs/template", "description": "Target-side identity template." }
+      }
+    },
+
+    "frontmatter_block": {
+      "type": "object",
+      "title": "Frontmatter projection rules",
+      "description": "What frontmatter the recipe writes onto each output note, plus which keys it preserves on re-render. The managed/user_preserve split is load-bearing: managed keys are recipe-owned (overwritten on every re-render because they are projections of canonical source state); user_preserve keys are user-owned (never overwritten because they are user annotations introduced after the import).",
+      "additionalProperties": false,
+      "properties": {
+        "managed": {
+          "type": "object",
+          "description": "Recipe-owned frontmatter. Keys → templates. Re-render overwrites these. Example: { framework: 'nist-800-53-r5', control_id: '{control.id}', family: '{family.id}' }.",
+          "additionalProperties": { "$ref": "#/$defs/template" }
+        },
+        "user_preserve": {
+          "type": "array",
+          "description": "User-owned frontmatter key patterns. Re-render preserves these untouched. Glob patterns ('*notes*') or exact keys ('reviewer', 'status', 'evidence_links'). Default if omitted: empty (no preservation).",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Frontmatter key (or glob) to preserve. Example: 'reviewer', 'status', '*-notes', '*'."
+          },
+          "examples": [["reviewer", "status", "evidence_links"], ["*notes*"], ["*"]]
+        }
+      }
+    }
+  },
+
+  "required": ["recipe", "source", "target"],
+  "additionalProperties": false,
+
+  "properties": {
+    "recipe": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Recipe identifier. Stable across re-runs. Used in _crosswalker.recipe.id provenance. Examples: 'nist-80053r5-allfolders', 'iso27001-mostly-headings', 'mitre-attack-tag-driven'."
+    },
+
+    "spec_version": {
+      "type": "string",
+      "const": "https://crosswalker.dev/spec/recipe.schema.json",
+      "description": "URI of the recipe spec this recipe conforms to. Optional in the recipe file (defaults to current spec); required when serializing a recipe for portability across producer ecosystems."
+    },
+
+    "source": {
+      "type": "object",
+      "title": "Source declaration",
+      "description": "What ontology this recipe imports. Out-of-scope: where the source bytes come from (file path, URL) — that's the producer's input, not the recipe's concern.",
+      "required": ["ontology", "levels"],
+      "additionalProperties": false,
+      "properties": {
+        "ontology": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source ontology identifier. Convention: lowercase ASCII slug. Examples: 'nist-800-53-r5', 'iso27001', 'mitre-attack', 'cri-profile-2.0'."
+        },
+        "levels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Ordered sequence of source-level identifiers, outer to inner. The recipe.target.layout array must declare a layout_entry for each level (or fewer, if some levels are flattened by the layout). Examples for NIST 800-53 r5: ['catalog', 'family', 'control', 'enhancement']. For a biology taxonomy: ['domain', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']."
+        }
+      }
+    },
+
+    "target": {
+      "type": "object",
+      "title": "Target structure",
+      "description": "How the recipe projects source data into Tier 1 vault structure. The render() function consumes this object plus a concept-identity record and produces an Address (path + wikilink target + tags + aliases + frontmatter). Pass 1 is vault-independent (deterministic, hashable); Pass 2 (link minimizer) is opt-in via linkStyle: shortest.",
+      "required": ["layout"],
+      "additionalProperties": false,
+      "properties": {
+        "layout": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/layout_entry" },
+          "description": "Ordered list, one entry per source level (outer-to-inner). The recipe author chooses each level's mechanism: which Obsidian primitive carries that level's hierarchy. Five mechanisms admitted by v0.1; folder/file/heading wired; tag/wikilink reserved for v0.2."
+        },
+        "also_emit": {
+          "type": "object",
+          "title": "Cross-cutting emissions (parallel to layout)",
+          "description": "Repeated for every output note: tags, aliases, frontmatter the recipe writes alongside the layout. Default behavior: dual-emit (folder layout + parallel tags) per the SEACOW pattern + Ranganathan faceted-classification rationale (Ch 22 §4 + §9).",
+          "additionalProperties": false,
+          "properties": {
+            "tags": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/template" },
+              "description": "Tag-path templates emitted into every note's tags array. Example: ['framework/nist/{family.id|lower}/{control.id|tagsafe}', 'cross-cutting/access-control']."
+            },
+            "aliases": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/template" },
+              "description": "Alias templates emitted into every note's aliases array. Used by Obsidian alias resolution; helps wikilinks like [[AC-2]] resolve to the correct file even if the file is named differently. Example: ['{control.id}', '{control.title}']."
+            },
+            "frontmatter": { "$ref": "#/$defs/frontmatter_block" }
+          }
+        },
+        "graph_edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/graph_edge" },
+          "description": "Frontmatter-encoded named relationships. Schema-reserved in v0.1 (validators warn 'graph_edges deferred to v0.2; ignored'); wired in v0.2."
+        },
+        "linkStyle": {
+          "type": "string",
+          "enum": ["absolute", "shortest"],
+          "default": "absolute",
+          "description": "Wikilink rendering style. 'absolute': always emit full-path form 'Folder/Sub/AC-2'; deterministic; hashable; what the canonical-state hash is computed against. 'shortest': downgrade to bare basename when unambiguous in the target vault; requires Pass 2 of render() with a VaultIndex; non-deterministic across users; deferred to v0.3."
+        }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "$comment": "Recipe (a) from Ch 22 §2.2: All-folders (the v0.1 default).",
+      "recipe": "nist-80053r5-allfolders",
+      "source": {
+        "ontology": "nist-800-53-r5",
+        "levels": ["catalog", "family", "control", "enhancement"]
+      },
+      "target": {
+        "layout": [
+          { "level": "catalog", "mechanism": "folder", "template": "Frameworks/{catalog.name}" },
+          { "level": "family", "mechanism": "folder", "template": "{family.id}" },
+          { "level": "control", "mechanism": "file", "template": "{control.id}.md" },
+          { "level": "enhancement", "mechanism": "file", "template": "{enhancement.id}.md" }
+        ],
+        "also_emit": {
+          "tags": [
+            "framework/nist-800-53-r5/{family.id|lower}/{control.id|tagsafe}"
+          ],
+          "aliases": ["{control.id}", "{control.title}"],
+          "frontmatter": {
+            "managed": {
+              "framework": "nist-800-53-r5",
+              "family": "{family.id}",
+              "control_id": "{control.id}"
+            },
+            "user_preserve": ["reviewer", "status", "evidence_links", "*notes*"]
+          }
+        }
+      }
+    },
+
+    {
+      "$comment": "Recipe (b) from Ch 22 §2.2: Mostly-headings (single-document feel). Catalog becomes a single .md file; family/control/enhancement are nested headings inside it.",
+      "recipe": "nist-80053r5-mostly-headings",
+      "source": {
+        "ontology": "nist-800-53-r5",
+        "levels": ["catalog", "family", "control", "enhancement"]
+      },
+      "target": {
+        "layout": [
+          { "level": "catalog", "mechanism": "file", "template": "Frameworks/{catalog.name}.md" },
+          { "level": "family", "mechanism": "heading", "level_depth": 2, "template": "{family.id} — {family.title}" },
+          { "level": "control", "mechanism": "heading", "level_depth": 3, "template": "{control.id} {control.title}" },
+          { "level": "enhancement", "mechanism": "heading", "level_depth": 4, "template": "{enhancement.id} {enhancement.title}" }
+        ]
+      }
+    },
+
+    {
+      "$comment": "Recipe (e) from Ch 22 §2.2: Hybrid (the realistic case). Folder for catalog/family, file for control, heading for enhancement.",
+      "recipe": "nist-80053r5-hybrid",
+      "source": {
+        "ontology": "nist-800-53-r5",
+        "levels": ["catalog", "family", "control", "enhancement"]
+      },
+      "target": {
+        "layout": [
+          { "level": "catalog", "mechanism": "folder", "template": "Frameworks/{catalog.name}" },
+          { "level": "family", "mechanism": "folder", "template": "{family.id}" },
+          { "level": "control", "mechanism": "file", "template": "{control.id}.md" },
+          { "level": "enhancement", "mechanism": "heading", "level_depth": 2, "template": "{enhancement.id} {enhancement.title}" }
+        ],
+        "also_emit": {
+          "tags": ["framework/nist-800-53-r5/{family.id|lower}"]
+        }
+      }
+    }
+  ]
+}

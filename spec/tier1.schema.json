@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crosswalker.dev/spec/tier1.schema.json",
+  "title": "Crosswalker Tier 1",
+  "description": "The canonical contract for a Crosswalker vault. Tier 1 is the load-bearing primitive: any producer (the bundled engine, an external Python script, an AI agent, an MCP server, hand-written notes) that emits files conforming to this schema produces a valid Crosswalker vault. Validation surface covers YAML frontmatter shape only — folder layout and Markdown body are recipe-defined and out of scope here. See https://crosswalker.dev/spec/recipe.schema.json for recipe shape.",
+  "type": "object",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/.",
+
+  "$defs": {
+    "curie": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*:[A-Za-z0-9._\\-()/]+$",
+      "description": "Compact URI (W3C CURIE). Format: prefix:local. Prefix is lowercase ASCII alphanumeric (plus _, -). Local part allows alphanumeric, dot, underscore, hyphen, parens, slash. Examples: nist:AC-2, nist:AC-2(1), iso27001:A.9.2.1, mitre-attack:T1078, scf:IAC-21, cwk:bdfd9a (anonymous concept identity)."
+    },
+
+    "sha256_cid": {
+      "type": "string",
+      "pattern": "^sha256-[a-f0-9]{64}$",
+      "description": "Content identifier: sha256 hash of the canonical concept-identity record (sorted CURIEs + canonicalized attribute set + canonicalized relations). Stable across vault layouts because the recipe's render() output is NOT included. See target-structure synthesis log for the canonical-state hash spec."
+    },
+
+    "iso8601_datetime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp."
+    },
+
+    "wikilink_target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The exact string that goes inside [[...]]. Pass-1 Render emits absolute (full-path) form: 'Frameworks/NIST 800-53 r5/AC/AC-2'. Pass-2 link minimizer (v0.3) may downgrade to bare basename when unambiguous. Heading anchors use '#' separator: 'NIST 800-53 r5#AC-2'. May include alias via '|': 'Frameworks/NIST 800-53 r5/AC/AC-2|AC-2'."
+    },
+
+    "tag_path": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_/-][a-zA-Z0-9_/-]*$",
+      "description": "Obsidian tag path. Slash-delimited segments. Segment characters: ASCII alphanumeric, underscore, hyphen. No spaces, no parens, no leading slash. Example: 'framework/nist-800-53-r5/ac/ac-2'."
+    },
+
+    "provenance_block": {
+      "type": "object",
+      "title": "_crosswalker provenance block",
+      "description": "Frontmatter key '_crosswalker'. Records how this note arrived in the vault. Required on any note produced by a Crosswalker producer.",
+      "required": ["spec_version", "source_ref", "produced_at"],
+      "additionalProperties": false,
+      "properties": {
+        "spec_version": {
+          "type": "string",
+          "const": "https://crosswalker.dev/spec/tier1.schema.json",
+          "description": "URI of the spec this note conforms to. Static for v0.1."
+        },
+        "source_ref": {
+          "type": "object",
+          "description": "Where this note came from. At least one of file/url/curie required.",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "file": { "type": "string", "description": "Source filename (NIST_800-53_r5.csv, oscal-bundle.json, etc.)." },
+            "url": { "type": "string", "format": "uri", "description": "Source URL if fetched remotely." },
+            "curie": { "$ref": "#/$defs/curie", "description": "Source ontology CURIE prefix (e.g., nist:_, iso27001:_)." },
+            "version": { "type": "string", "description": "Source version (rev 5, 2022, v8.1)." },
+            "source_hash": { "type": "string", "description": "Hash of the source file at import time. Format: 'sha256-{hex}'." }
+          }
+        },
+        "produced_at": { "$ref": "#/$defs/iso8601_datetime", "description": "When this note was produced." },
+        "producer": {
+          "type": "object",
+          "description": "What produced this note. Helps reconstruct provenance across producer ecosystems.",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["plugin-engine", "external-cli", "agent", "manual", "other"],
+              "description": "Producer category."
+            },
+            "name": { "type": "string", "description": "Producer identifier ('crosswalker-plugin', 'frameworks_to_obsidian.py', 'claude-agent', etc.)." },
+            "version": { "type": "string", "description": "Producer version." }
+          }
+        },
+        "recipe": {
+          "type": "object",
+          "description": "Reference to the recipe used to produce this note. Optional but strongly recommended for reproducibility.",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string", "description": "Recipe identifier ('nist-80053r5-allfolders')." },
+            "hash": { "type": "string", "description": "Hash of the recipe content at production time. Format: 'sha256-{hex}'." }
+          }
+        },
+        "concept_cid": {
+          "$ref": "#/$defs/sha256_cid",
+          "description": "Content identifier of the canonical concept-identity record. Same across recipes that produce different vault layouts from identical source data."
+        }
+      }
+    },
+
+    "concept_note_frontmatter": {
+      "type": "object",
+      "title": "Concept note frontmatter",
+      "description": "Frontmatter shape for a Tier 1 concept note (an ontology element: control, technique, term, taxon, etc.). The body of the note is recipe-defined. Recipe-managed keys live alongside user_preserve keys; the producer must not touch user_preserve keys on re-render.",
+      "required": ["curie", "_crosswalker"],
+      "properties": {
+        "curie": { "$ref": "#/$defs/curie", "description": "Canonical concept identity. Stable across vault layouts." },
+        "title": { "type": "string", "description": "Display title." },
+        "aliases": { "type": "array", "items": { "type": "string" }, "description": "Alternate names. Used by Obsidian alias resolution and external search." },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag_path" }, "description": "Obsidian tags. Recipe also_emit.tags or layout-level tag mechanism populates this." },
+        "parent": {
+          "oneOf": [
+            { "$ref": "#/$defs/wikilink_target" },
+            { "type": "array", "items": { "$ref": "#/$defs/wikilink_target" } }
+          ],
+          "description": "Hierarchy: parent concept(s). Single string or array (polyhierarchy). Wikilink target form."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/wikilink_target" },
+          "description": "Hierarchy: child concepts. Optional (may be derived from parent edges)."
+        },
+        "_crosswalker": { "$ref": "#/$defs/provenance_block" }
+      },
+      "additionalProperties": true,
+      "$comment": "additionalProperties: true because recipes write domain-specific frontmatter (control_id, family, baseline, taxon_id, etc.) that this generic schema cannot enumerate. Recipes declare which additional keys are 'managed' (recipe-owned, overwritten on re-render) vs 'user_preserve' (user annotations, never overwritten) — see recipe.schema.json target.also_emit.frontmatter."
+    },
+
+    "junction_note_frontmatter": {
+      "type": "object",
+      "title": "Junction note frontmatter (evidence link)",
+      "description": "Tier 1 evidence-link note. Each junction note represents one (subject_concept, predicate, evidence_doc) triple plus its metadata. 13-field schema per Ch 07 evidence-link edge model synthesis.",
+      "required": [
+        "curie",
+        "subject",
+        "predicate",
+        "object",
+        "_crosswalker"
+      ],
+      "properties": {
+        "curie": { "$ref": "#/$defs/curie", "description": "Junction note identity (typically auto-generated CWUUID-based CURIE)." },
+        "kind": { "type": "string", "const": "junction-note", "description": "Discriminator: junction note vs concept note." },
+        "subject": { "$ref": "#/$defs/wikilink_target", "description": "The concept being attested to (e.g., NIST AC-2)." },
+        "predicate": {
+          "type": "string",
+          "description": "Edge type. Examples: 'evidences', 'covers', 'partially_covers', 'attests', 'reviews'.",
+          "minLength": 1
+        },
+        "object": { "$ref": "#/$defs/wikilink_target", "description": "The evidence document (policy, audit report, runbook, etc.)." },
+        "coverage": {
+          "type": "string",
+          "enum": ["full", "partial", "none", "n/a"],
+          "description": "Coverage assessment. 'full': evidence fully addresses the control. 'partial': addresses part. 'none': no coverage. 'n/a': not applicable."
+        },
+        "reviewer": { "type": "string", "description": "Who reviewed this evidence link (display name, ORCID, or email)." },
+        "review_date": { "$ref": "#/$defs/iso8601_datetime", "description": "When the review happened." },
+        "status": {
+          "type": "string",
+          "enum": ["proposed", "in_review", "approved", "deprecated"],
+          "description": "Lifecycle status of this evidence link."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Reviewer's confidence in the assessment, 0.0-1.0."
+        },
+        "scope": { "type": "string", "description": "Scope qualifier: 'production', 'staging', 'EU-region', etc." },
+        "expires_at": { "$ref": "#/$defs/iso8601_datetime", "description": "When this evidence link expires (annual review cadence, etc.)." },
+        "notes": { "type": "string", "description": "Free-form reviewer notes." },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag_path" } },
+        "_crosswalker": { "$ref": "#/$defs/provenance_block" }
+      },
+      "additionalProperties": true
+    },
+
+    "crosswalk_edge_frontmatter": {
+      "type": "object",
+      "title": "Crosswalk edge frontmatter (between two concepts in different ontologies)",
+      "description": "Tier 1 crosswalk edge. Each crosswalk note represents one (concept_a, predicate, concept_b) mapping with STRM-shaped predicate vocabulary plus SSSOM-flavored metadata. Used when crosswalks are stored as separate edge notes; alternative is to embed crosswalk wikilinks directly in concept-note frontmatter (recipe choice).",
+      "required": [
+        "curie",
+        "subject_id",
+        "predicate_id",
+        "object_id",
+        "_crosswalker"
+      ],
+      "properties": {
+        "curie": { "$ref": "#/$defs/curie" },
+        "kind": { "type": "string", "const": "crosswalk-edge" },
+        "subject_id": { "$ref": "#/$defs/curie", "description": "Source-side concept CURIE (e.g., nist:AC-2)." },
+        "predicate_id": {
+          "type": "string",
+          "enum": [
+            "is_equivalent_to",
+            "is_broader_than",
+            "is_narrower_than",
+            "is_approximate_to",
+            "intersects_with",
+            "no_relationship"
+          ],
+          "description": "STRM (NIST IR 8477) predicate vocabulary. The five-or-six set-theoretic relationships between two ontology concepts."
+        },
+        "object_id": { "$ref": "#/$defs/curie", "description": "Target-side concept CURIE (e.g., iso27001:A.9.2.1)." },
+        "match_type": {
+          "type": "string",
+          "enum": ["exact", "close", "broad", "narrow", "related"],
+          "description": "SSSOM-shaped match qualifier."
+        },
+        "match_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "mapping_justification": {
+          "type": "string",
+          "description": "SSSOM mapping_justification. Examples: 'semapv:LexicalMatching', 'semapv:ManualMappingCuration', 'semapv:ML-supported-mapping'."
+        },
+        "mapping_provider": { "type": "string", "description": "Source of the mapping (e.g., 'NIST OLIR mapping CSF-2.0_to_800-53')." },
+        "mapping_date": { "$ref": "#/$defs/iso8601_datetime" },
+        "creator_id": { "type": "string", "description": "Mapper identity (display name, ORCID, email)." },
+        "review_status": {
+          "type": "string",
+          "enum": ["proposed", "in_review", "approved", "deprecated"]
+        },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/tag_path" } },
+        "_crosswalker": { "$ref": "#/$defs/provenance_block" }
+      },
+      "additionalProperties": true
+    }
+  },
+
+  "oneOf": [
+    { "$ref": "#/$defs/concept_note_frontmatter" },
+    { "$ref": "#/$defs/junction_note_frontmatter" },
+    { "$ref": "#/$defs/crosswalk_edge_frontmatter" }
+  ],
+
+  "examples": [
+    {
+      "curie": "nist:AC-2",
+      "title": "Account Management",
+      "aliases": ["AC-2", "Account Management"],
+      "tags": ["framework/nist-800-53-r5/ac/ac-2"],
+      "parent": "Frameworks/NIST 800-53 r5/AC/AC",
+      "children": [
+        "Frameworks/NIST 800-53 r5/AC/AC-2(1)",
+        "Frameworks/NIST 800-53 r5/AC/AC-2(2)"
+      ],
+      "control_id": "AC-2",
+      "control_family": "Access Control",
+      "_crosswalker": {
+        "spec_version": "https://crosswalker.dev/spec/tier1.schema.json",
+        "source_ref": {
+          "file": "NIST_SP-800-53_rev5_catalog.json",
+          "version": "rev 5",
+          "source_hash": "sha256-3a2c7e8b9d4f1c0e6b8a5d3f7c1e9b4a8d6f2c5e7b1a4d8f3c0e6b9a5d2f7c1e"
+        },
+        "produced_at": "2026-05-04T18:42:00Z",
+        "producer": { "kind": "plugin-engine", "name": "crosswalker-plugin", "version": "0.1.0" },
+        "recipe": { "id": "nist-80053r5-allfolders", "hash": "sha256-7f3c0e6b9a5d2f7c1e3a2c7e8b9d4f1c0e6b8a5d3f7c1e9b4a8d6f2c5e7b1a4d" },
+        "concept_cid": "sha256-bdfd9a8e3c0f7b2d5a8c1e4f6b9d2c5e8a1f4d7c0e3b6a9d2f5c8e1b4a7d0f3c"
+      }
+    },
+    {
+      "curie": "cwk:jn-bdfd9a",
+      "kind": "junction-note",
+      "subject": "Frameworks/NIST 800-53 r5/AC/AC-2",
+      "predicate": "covers",
+      "object": "Evidence/MFA-Policy-2026",
+      "coverage": "partial",
+      "reviewer": "alice",
+      "review_date": "2026-04-15T14:30:00Z",
+      "status": "approved",
+      "confidence": 0.85,
+      "scope": "production",
+      "_crosswalker": {
+        "spec_version": "https://crosswalker.dev/spec/tier1.schema.json",
+        "source_ref": { "file": "manual-evidence-mapping.csv" },
+        "produced_at": "2026-04-15T14:30:00Z",
+        "producer": { "kind": "manual" }
+      }
+    },
+    {
+      "curie": "cwk:cw-7e8b9d",
+      "kind": "crosswalk-edge",
+      "subject_id": "nist:AC-2",
+      "predicate_id": "is_equivalent_to",
+      "object_id": "iso27001:A.9.2.1",
+      "match_type": "close",
+      "match_confidence": 0.9,
+      "mapping_justification": "semapv:ManualMappingCuration",
+      "mapping_provider": "NIST OLIR ID:0024",
+      "mapping_date": "2026-03-01T00:00:00Z",
+      "creator_id": "0000-0001-2345-6789",
+      "review_status": "approved",
+      "_crosswalker": {
+        "spec_version": "https://crosswalker.dev/spec/tier1.schema.json",
+        "source_ref": { "url": "https://csrc.nist.gov/projects/olir/informative-references" },
+        "produced_at": "2026-05-04T19:00:00Z",
+        "producer": { "kind": "external-cli", "name": "frameworks_to_obsidian.py", "version": "0.4.2" }
+      }
+    }
+  ]
+}
