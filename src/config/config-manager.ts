@@ -10,7 +10,7 @@ import {
 	SavedConfig,
 	ConfigFingerprint,
 	ParsedData,
-	CrosswalkerConfig,
+	ImportRecipe,
 	SAVED_CONFIG_SCHEMA_VERSION
 } from '../types/config';
 
@@ -147,7 +147,7 @@ export function createSavedConfig(
 	name: string,
 	description: string,
 	parsedData: ParsedData,
-	config: Partial<CrosswalkerConfig>,
+	config: Partial<ImportRecipe>,
 	sourceType: 'csv' | 'xlsx' | 'json',
 	fileName?: string
 ): SavedConfig {

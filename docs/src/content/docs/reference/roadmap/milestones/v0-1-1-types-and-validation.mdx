@@ -15,7 +15,12 @@ Make the schema artifacts `spec/tier1.schema.json` and `spec/recipe.schema.json`
 
 ## Status
 
-📋 Planning
+✅ Done (2026-05-04). 27 unit tests + 5 validation E2E tests passing. AJV (Ajv2020) + ajv-formats wired into plugin startup; validator handles exposed on plugin instance for E2E reachability; spec/*.schema.json compiled at load with fail-fast on schema malformation. `CrosswalkerConfig` interface renamed to `ImportRecipe` across the codebase (4 source files); semantic migration to the spec-shape `ImportRecipe` deferred to v0.1.2 where `render()` lands.
+
+**Open question status (decided 2026-05-04)**:
+- ✅ Q1: Generated TS types **committed** to `src/types/generated/` for PR-diff visibility on schema impact
+- ⏸ Q2: AJV **strict mode deferred** — current setup is `strict: false`; revisit at v0.2 once we have more spec experience
+- ✅ Q3: Type rename done now (`CrosswalkerConfig` → `ImportRecipe`); semantic migration via Phase-0 compat shim deferred to v0.1.2 where the engine refactor naturally absorbs it
 
 ## Dependencies
 

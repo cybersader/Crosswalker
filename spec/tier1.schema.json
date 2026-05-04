@@ -4,7 +4,7 @@
   "title": "Crosswalker Tier 1",
   "description": "The canonical contract for a Crosswalker vault. Tier 1 is the load-bearing primitive: any producer (the bundled engine, an external Python script, an AI agent, an MCP server, hand-written notes) that emits files conforming to this schema produces a valid Crosswalker vault. Validation surface covers YAML frontmatter shape only — folder layout and Markdown body are recipe-defined and out of scope here. See https://crosswalker.dev/spec/recipe.schema.json for recipe shape.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. Discrimination by `kind` field: kind='junction-note' must match junction-note shape; kind='crosswalk-edge' must match crosswalk-edge shape; absent kind (or any other value) must match concept-note shape. Uses allOf+if/then so AJV can produce specific error messages from the matching branch.",
 
   "$defs": {
     "curie": {
@@ -221,10 +221,35 @@
     }
   },
 
-  "oneOf": [
-    { "$ref": "#/$defs/concept_note_frontmatter" },
-    { "$ref": "#/$defs/junction_note_frontmatter" },
-    { "$ref": "#/$defs/crosswalk_edge_frontmatter" }
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": { "kind": { "const": "junction-note" } },
+        "required": ["kind"]
+      },
+      "then": { "$ref": "#/$defs/junction_note_frontmatter" }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "kind": { "const": "crosswalk-edge" } },
+        "required": ["kind"]
+      },
+      "then": { "$ref": "#/$defs/crosswalk_edge_frontmatter" }
+    },
+    {
+      "if": {
+        "type": "object",
+        "not": {
+          "anyOf": [
+            { "properties": { "kind": { "const": "junction-note" } }, "required": ["kind"] },
+            { "properties": { "kind": { "const": "crosswalk-edge" } }, "required": ["kind"] }
+          ]
+        }
+      },
+      "then": { "$ref": "#/$defs/concept_note_frontmatter" }
+    }
   ],
 
   "examples": [

@@ -14,7 +14,7 @@
 import { App, TFile, TFolder, normalizePath, Notice } from 'obsidian';
 import {
 	ParsedData,
-	CrosswalkerConfig,
+	ImportRecipe,
 	GenerationResult,
 	GenerationError,
 	MappingConfig,
@@ -111,7 +111,7 @@ const CROSSWALKER_METADATA_VERSION = 1;
 export async function generateNotes(
 	app: App,
 	parsedData: ParsedData,
-	config: Partial<CrosswalkerConfig>,
+	config: Partial<ImportRecipe>,
 	options: GenerationOptions,
 	debug?: DebugLog
 ): Promise<GenerationResult> {
@@ -701,7 +701,7 @@ function generateImportId(): string {
 export function buildConfigFromWizardState(
 	columnConfigs: Map<string, { useAs: string; outputKey: string }>,
 	parsedColumns: string[]
-): Partial<CrosswalkerConfig> {
+): Partial<ImportRecipe> {
 	const hierarchy: HierarchyMapping[] = [];
 	const frontmatter: FrontmatterMapping[] = [];
 	const links: LinkMapping[] = [];
@@ -781,7 +781,7 @@ export function buildConfigFromWizardState(
  */
 export function estimateOutput(
 	parsedData: ParsedData,
-	config: Partial<CrosswalkerConfig>
+	config: Partial<ImportRecipe>
 ): { noteCount: number; folderCount: number; linkCount: number } {
 	// Note count = row count (one note per row)
 	const noteCount = parsedData.rowCount;

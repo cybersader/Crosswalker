@@ -11,6 +11,9 @@
 		"importHelpers": true,
 		"isolatedModules": true,
 		"strictNullChecks": true,
+		"resolveJsonModule": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
 		"lib": [
 			"DOM",
 			"ES5",
@@ -18,13 +21,14 @@
 			"ES7"
 		],
 		"outDir": "./dist",
-		"rootDir": "./src",
+		"rootDir": ".",
 		"paths": {
 			"@/*": ["src/*"]
 		}
 	},
 	"include": [
-		"src/**/*.ts"
+		"src/**/*.ts",
+		"spec/**/*.json"
 	],
 	"exclude": [
 		"node_modules"

@@ -1,6 +1,6 @@
 import { App, Modal, Setting, Notice } from 'obsidian';
 import CrosswalkerPlugin from '../main';
-import { ParsedData, CrosswalkerConfig, ColumnInfo, SavedConfig } from '../types/config';
+import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
 import { findMatchingConfigs, ConfigMatch } from '../config/config-manager';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
@@ -31,7 +31,7 @@ export class ImportWizardModal extends Modal {
 	selectedSheet: string | null = null;
 	parsedData: ParsedData | null = null;
 	columnInfos: ColumnInfo[] = [];
-	config: Partial<CrosswalkerConfig> = {};
+	config: Partial<ImportRecipe> = {};
 
 	// Column configuration state (captured from Step 2)
 	columnConfigs: Map<string, { useAs: string; outputKey: string }> = new Map();
@@ -702,12 +702,12 @@ export class ImportWizardModal extends Modal {
 	/**
 	 * Build a folder tree preview string from configuration
 	 */
-	buildFolderTreePreview(config: Partial<CrosswalkerConfig>): string {
+	buildFolderTreePreview(config: Partial<ImportRecipe>): string {
 		if (!this.parsedData || !config.mapping) {
 			return `${this.outputPath}/\n└── (No hierarchy configured)`;
 		}
 
-		const hierarchyColumns = config.mapping.hierarchy || [];
+		const hierarchyColumns: HierarchyMapping[] = config.mapping.hierarchy || [];
 		if (hierarchyColumns.length === 0) {
 			return `${this.outputPath}/\n└── (Flat structure - all notes in root folder)`;
 		}
@@ -718,7 +718,7 @@ export class ImportWizardModal extends Modal {
 
 		for (const row of sampleRows) {
 			let currentPath = '';
-			for (const h of hierarchyColumns.sort((a, b) => a.level - b.level)) {
+			for (const h of hierarchyColumns.sort((a: HierarchyMapping, b: HierarchyMapping) => a.level - b.level)) {
 				const value = row[h.column];
 				if (value) {
 					const segment = String(value).trim();
@@ -770,7 +770,7 @@ export class ImportWizardModal extends Modal {
 	/**
 	 * Build a sample note preview from the first row
 	 */
-	buildSampleNotePreview(config: Partial<CrosswalkerConfig>): string {
+	buildSampleNotePreview(config: Partial<ImportRecipe>): string {
 		if (!this.parsedData || this.parsedData.rows.length === 0) {
 			return '(No data to preview)';
 		}

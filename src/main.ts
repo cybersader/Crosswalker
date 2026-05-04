@@ -4,6 +4,7 @@ import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
 import { ConfigBrowserModal } from './config/config-browser-modal';
 import { DebugLog } from './utils/debug';
+import { initValidator, validateRecipe, validateTier1Frontmatter } from './validation/validator';
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -19,11 +20,21 @@ export default class CrosswalkerPlugin extends Plugin {
 	settings: CrosswalkerSettings;
 	debug: DebugLog;
 
+	// Validator handles attached to the plugin instance so E2E tests + future
+	// command implementations can call them via the plugin reference.
+	// Underlying implementation is module-level singletons in validation/validator.ts.
+	validateRecipe = validateRecipe;
+	validateTier1Frontmatter = validateTier1Frontmatter;
+
 	async onload() {
 		await this.loadSettings();
 
 		// Initialize debug logging
 		this.debug = new DebugLog(this.app, this.settings.enableDebugLog);
+
+		// Compile spec schemas (spec/tier1.schema.json + spec/recipe.schema.json)
+		// at startup. Throws fast if schema files are malformed.
+		initValidator();
 
 		// Register the main import command
 		this.addCommand({

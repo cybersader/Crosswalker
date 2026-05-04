@@ -8,7 +8,7 @@
 // Top-Level Config
 // ============================================================================
 
-export interface CrosswalkerConfig {
+export interface ImportRecipe {
 	// Metadata
 	name: string;
 	version: string;
@@ -236,10 +236,10 @@ export interface SavedConfig {
 	// ---- The Actual Configuration ----
 
 	/**
-	 * Partial CrosswalkerConfig - merged with defaults when applied.
+	 * Partial ImportRecipe - merged with defaults when applied.
 	 * Being Partial allows configs to only specify what they care about.
 	 */
-	config: Partial<CrosswalkerConfig>;
+	config: Partial<ImportRecipe>;
 }
 
 /**
