@@ -10,73 +10,98 @@ Crosswalker is a meta-system for ontology lifecycle management. Architecture dec
 - [x] Documentation site
 - [x] Unit tests + CI/CD
 
-## Foundation — "Get the architecture right" (current phase)
+## ✅ Design phase complete (2026-05-04)
 
-After three research waves on 2026-05-02 + the v0.1 stack-pivot, Foundation is now organized around a concrete v0.1 build target plus the genuinely-still-open spec items.
+The 0.1 design phase concluded with all named architectural questions resolved. Five fresh-agent research challenges (Ch 20–24) settled the import primitive's shape, build-vs-buy posture, target-structure grammar, engine implementation language, and Tier 2 substrate. Concrete implementation work begins next.
 
-**Architectural safety guarantee (load-bearing):** Tier 1 (canonical files) is the source of truth. Tier 2 and Tier 3 are projections — fully deletable, fully recoverable from Tier 1. Delete the .sqlite, the plugin reprojects on next vault load. Tier 1 alone is functional.
+**Architectural commitments:**
 
-### v0.1 build target — what ships first
+- [x] **Schema-as-primitive reframe** — Tier 1 schema is the load-bearing contract; engine + ETL are convenience. Anyone (plugin, external Python, AI agent, MCP server) emitting valid Tier 1 is a first-class producer
+- [x] **Closed 5-mechanism recipe grammar** — `folder | file | heading | tag | wikilink` × ordered layout × also_emit cross-cutting × graph_edges. Single coupling point: `render(Recipe, ConceptIdentity) → Address` modeled on RML/R2RML. Pass 1 vault-independent (deterministic, hashable); Pass 2 optional vault-state-aware link minimizer (deferred to v0.3)
+- [x] **TypeScript in-plugin engine for v0.1**, hybrid (optional Python producer) reserved for v0.5+. Path B/D/E/F rejected after adversarial evaluation. Mobile-Obsidian portability + small-OSS contributor pool are the two irreversible constraints
+- [x] **Tier 2 substrate stays on `@sqlite.org/sqlite-wasm` + `sqlite-vec`** — libSQL-WASM, Turso Cloud Tier 3 listing, Limbo near-term adoption all rejected. Five explicit migration triggers locked for re-evaluation
+- [x] **Runtime-agnostic recipe schema** as load-bearing modularity commitment — recipe contract is JSON Schema + AJV + JSONata; engine implementation is swappable; vector layer (`sqlite-vec`) decoupled from substrate
+- [x] **Output query layer**: Bases (Dataview removed from the v0.1 commitment)
+- [x] **Long-horizon watch register pattern** established for substrates and adjacent file-based tools considered and not adopted today (Limbo, kuzu, LanceDB, DuckDB-PGQ, Stoolap, Datalevin, jj/jujutsu, IPLD, Unison)
 
-Concrete, shippable. ~1.2 MB total. Tier 1 + Tier 2 sqlite-wasm sidecar bundled together.
+**Machine-readable contracts shipped:**
 
-- [ ] Tier 1 storage: markdown + YAML frontmatter; STRM predicate vocabulary; junction notes (13-field schema) for evidence links
-- [ ] Tier 1 in-memory JS Map index (works without Tier 2)
-- [ ] Tier 2 sqlite-wasm sidecar projector (`@sqlite.org/sqlite-wasm` + sqlite-vec, ~600 KB; auto-projects from Tier 1, deletable)
-- [ ] Crosswalk-render plugin (Dataview-style on Tier 1; recursive CTE on Tier 2 for transitive closure / joins / coverage matrices)
-- [ ] STRM-shaped TSV exporter (NIST IR 8278A r1 OLIR template shape) + OSCAL JSON exporter + optional SSSOM-flavored TSV emission
-- [ ] Audit trail T1 default (git commits + Ed25519-signed releases + on-demand FRE 902(13) PDF)
-- [ ] Bundle target ~1.2 MB compressed total
+- [x] `spec/tier1.schema.json` — canonical Tier 1 vault frontmatter (concept_note, junction_note, crosswalk_edge), JSON Schema 2020-12
+- [x] `spec/recipe.schema.json` — full Ch 22 grammar; 3 worked NIST 800-53 examples
+- [x] `spec/primitives/` — stub for per-primitive schemas (populates as engine ships)
 
-### Resolved Foundation decisions
+**Dev infrastructure shipped:**
 
-- [x] Crosswalk edge semantics — STRM (predicate vocab) + SSSOM (validation envelope), hybrid: STRM-shaped TSV is user-facing wire format
-- [x] Junction notes for evidence links (Ch 07 resolution) — 13-field flat-YAML schema, isomorphic to OSCAL `by-component`
-- [x] Pairwise crosswalks + optional inheritable pivot (Ch 06 resolution); SCF available as inheritable spine
-- [x] Progressive Tier Architecture (confirmed v0.1) — Tier 1 + Tier 2 sqlite-wasm sidecar bundled; Tier 1 standalone path preserved
+- [x] `tools/generate-fixtures.ts` + `tools/fixtures/synthetic/nist-mini.csv` — bootstraps reproducible test data via `bun run fixtures` without waiting for `render()`
+
+## Foundation — earlier resolved decisions
+
+Pre-Ch-20 architectural commitments. All settled and feeding v0.1 implementation.
+
+- [x] Crosswalk edge semantics — STRM (predicate vocab) + SSSOM (validation envelope), hybrid; STRM-shaped TSV is user-facing wire format
+- [x] Junction notes for evidence links (Ch 07) — 13-field flat-YAML schema, isomorphic to OSCAL `by-component`
+- [x] Pairwise crosswalks + optional inheritable pivot (Ch 06); SCF available as inheritable spine
+- [x] Progressive Tier Architecture — Tier 1 + Tier 2 sqlite-wasm sidecar bundled; Tier 1 standalone path preserved
 - [x] Distribution architecture research — pnpm monorepo (@crosswalker/core + plugin + CLI) via VaultAdapter interface; implementation pending
 - [x] StewardshipProfile rename + meta-schema lifecycle commitment (rename ripples deferred)
 - [x] Audit trail floor: git + signed commits as v0.1 default; T2/T3 audit profiles as opt-in compliance-export mode in v1.0+
 - [x] Identifier strategy (Ch 09) — UUIDv7 + sha256 CIDs + CURIEs (ORCID for SSSOM authors); CWUUID is display-only
-- [x] **Unified v0.1 schema spec (2026-05-03)** — the four interconnected schemas designed together: _crosswalker metadata v2, ImportRecipe (formerly FrameworkConfig), junction note 13-field schema, Tier 2 sidecar SQL. https://cybersader.github.io/crosswalker/agent-context/v0-1-schema-spec/
-- [x] **FrameworkConfig → ImportRecipe rename (2026-05-03)** — type renamed for general-ontology positioning; field renames: framework_id → ontology_id, framework_version → ontology_version, config_id → recipe_id, junction-note `framework` field → `ontology`. Folder convention stays user-controlled.
+- [x] **Unified v0.1 schema spec** — the four interconnected schemas (`_crosswalker` metadata, ImportRecipe, junction note, Tier 2 sidecar SQL) designed together; published at https://cybersader.github.io/crosswalker/agent-context/v0-1-schema-spec/
+- [x] FrameworkConfig → ImportRecipe rename — type renamed for general-ontology positioning
 
-### Genuinely-still-open Foundation items
+## v0.1 implementation phase — what ships first
 
-**Schema implementation work (build against the v0.1 schema spec):**
-- [ ] ImportRecipe v1 schema in src/types/config.ts (formerly FrameworkConfig v2); migration script for legacy v1 saved configs
-- [ ] _crosswalker metadata v2 implementation in src/generation/generation-engine.ts; idempotent migration helper
-- [ ] Junction note generation as new code path in generation engine; non-destructive, git-history-preserving
-- [ ] Tier 2 sidecar SQL projector — new packages/core/ module; auto-runs on vault load; lazy closure cache
-- [ ] Migration strategy matrix — StewardshipProfile + version delta → SCD type + handling
+Concrete, shippable. ~1.2 MB plugin total. Tier 1 + Tier 2 sqlite-wasm sidecar bundled together. Begins now that design phase is closed.
+
+**Implementation work (build against `spec/tier1.schema.json` + `spec/recipe.schema.json`):**
+
+- [ ] Generate TypeScript types from `spec/*.schema.json` via `json-schema-to-typescript`; replace ad-hoc `src/types/config.ts` with generated types
+- [ ] Wire AJV validator into the plugin — load both schemas at startup; validate recipes on save; validate generated frontmatter before write
+- [ ] `render()` function implementation — folder + file + heading mechanisms (Ch 22 §10 v0.1 scope); tag + wikilink layout-mechanisms schema-reserved for v0.2
+- [ ] `_crosswalker` metadata writer — extend `src/generation/generation-engine.ts` to emit the v2 fields per `spec/tier1.schema.json`; idempotent migration helper
+- [ ] Junction note generation as new code path in the generation engine; non-destructive, git-history-preserving
+- [ ] Tier 2 sqlite-wasm sidecar projector — new `packages/core/` module; auto-runs on vault load; lazy closure cache
+- [ ] Bases-shaped query render layer (Dataview replaced)
+- [ ] STRM-shaped TSV exporter (NIST IR 8278A r1 OLIR template) + OSCAL JSON profile exporter + optional SSSOM-flavored TSV emission
+- [ ] Audit trail T1 default (git commits + Ed25519-signed releases + on-demand FRE 902(13) PDF)
+- [ ] Bundle target — under 500 KB plugin core + ~600 KB sqlite-wasm sidecar = ~1.2 MB compressed total
 
 **Implementation infrastructure:**
-- [ ] Monorepo restructure (extract ~50-60% into packages/core)
-- [ ] Obsidian Bases direction research (viewing/querying layer on native capabilities)
-- [ ] Transform engine (custom build, 24 transform types)
-- [ ] Ontology diff primitives implementation (9 atomic operations + 4 recognized composites)
 
-**Documentation tasks (non-blocking):**
+- [ ] Monorepo restructure (extract ~50–60% into `packages/core`)
+- [ ] Migration strategy matrix — StewardshipProfile + version delta → SCD type + handling
+- [ ] Transform engine (custom build, ~40-primitive transformation catalog per ETL pillar §5)
+- [ ] Ontology diff primitives implementation (9 atomic operations + 4 recognized composites)
+- [ ] First starter recipes (`recipes/starter/`) — recipes (a)/(b)/(e) from Ch 22 §2.2 (NIST 800-53 r5 all-folders, mostly-headings, hybrid)
+
+**Documentation tasks (non-blocking but valuable):**
+
 - [ ] OSCAL ↔ Crosswalker mental-model documentation
-- [ ] DB-choice architecture page (why Tier 1 + sqlite-wasm sidecar, not pure graph DB)
+- [ ] DB-choice architecture page (why Tier 1 + sqlite-wasm sidecar, not pure graph DB) — partly addressed by [embedded-vs-server-substrates](https://cybersader.github.io/crosswalker/concepts/embedded-vs-server-substrates/) pillar
 - [ ] Comunica honest+practical assessment (conditional confirmation pending)
 - [ ] StewardshipProfile rename ripples (~24 docs files)
+- [ ] YARRRML ELI5 page (currently inline in ETL pillar; promote to dedicated page when recipe DSL choice firms up)
 
 **Research items remaining (not v0.1-blocking):**
-- [ ] SEACOW + folder-tag-sync prior-art integration decision
+
+- [ ] SEACOW + folder-tag-sync prior-art integration decision (auto-generated folder-tag-sync rules from dual-emit recipes per Ch 22 §4.2)
 - [ ] Graph scope decision (DAGs/hypergraphs deferred)
 - [ ] StewardshipProfile vs transformation recipes investigation
+- [ ] External-producer protocol surface (push-into-Crosswalker via MCP / agents) — likely picks up once Tier 1 schema lands as JSON Schema (now done; revisit)
 
 **Infrastructure:**
+
 - [ ] PII scanning in CI/CD
 - [ ] Expand E2E smoke tests minimally
 - [ ] Fluid layout scaling (clamp() CSS replacing rigid breakpoints)
 
-## Formats — "Import anything, transform it properly"
+## Formats — "Import anything, transform it properly" (v0.2)
 
-- [ ] Complete import wizard UI (redesigned around v2 schema)
-- [ ] XLSX parser + JSON/JSONL parser
-- [ ] Transform system (20+ types)
+- [ ] Complete import wizard UI (redesigned around recipe schema)
+- [ ] XLSX parser (SheetJS tree-shaken read-only) + JSON/JSONL parser
+- [ ] `mechanism: tag` and `mechanism: wikilink` layout-levels wired (schema-reserved at v0.1)
+- [ ] `graph_edges` wired (schema-reserved at v0.1)
+- [ ] Transform system implementation (~40 primitives across 9 categories)
 - [ ] E2E test suite (built from spec)
 
 ## Crosswalks — "Link frameworks to each other and to evidence"
@@ -86,9 +111,23 @@ Concrete, shippable. ~1.2 MB total. Tier 1 + Tier 2 sqlite-wasm sidecar bundled 
 - [ ] Batch re-import with version awareness
 - [ ] CLI implementation (headless operations)
 
+## v0.5 — "Optional external Python producer"
+
+Per [Ch 23 synthesis §9](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — Path C (Hybrid) reserved for v0.5+. Opt-in only; desktop-only by design.
+
+- [ ] Reference Python producer (Polars + DuckDB + openpyxl) in a sibling repo
+- [ ] JSON-lines streaming protocol over stdin/stdout
+- [ ] `producer` recipe field wired (schema-reserved at v0.1)
+- [ ] Gate behind `Platform.isDesktopApp`; document explicitly that recipes using producers are non-portable to mobile
+
+## Pass-2 link minimizer — "Shortest wikilink resolution" (v0.3)
+
+- [ ] Pass-2 of `render()` — consult `VaultIndex` to downgrade unambiguous full-path wikilinks to bare basenames when `linkStyle: shortest`
+- [ ] `linkStyle: shortest` wired in recipes (schema-reserved at v0.1)
+
 ## Performance — "v1.0+ companion plugins"
 
-Performance enhancements + integration capabilities researched 2026-05-02 (third research wave). Reframed by v0.1 stack-pivot as opt-in companion plugins after v0.1 lands.
+Performance enhancements + integration capabilities. Reframed by v0.1 stack-pivot as opt-in companion plugins after v0.1 lands.
 
 - [ ] "Crosswalker Power Query" companion plugin — DuckDB-WASM + Oxigraph + Nemo layered Tier 2 stack (~5 MB). For users who outgrow Tier 2-Lite's ~100K mapping ceiling or need recursive SHACL / multi-stratum Datalog / SPARQL property paths
 - [ ] Comunica federation companion plugin — Comunica + N3 + HDT for cross-vault, cross-org, external SPARQL endpoint queries (conditional — honest assessment needed)
@@ -106,6 +145,7 @@ Server-tier deployment options for users who genuinely need a shared multi-team 
 - [ ] TerminusDB v12 — opt-in vault-mirror with git-style branch/diff (small-vendor risk flagged)
 - [ ] Apache AGE on Postgres — supported fallback for Postgres-standardized environments
 - [ ] Migration from AGE for early adopters (re-projection, not translation)
+- [ ] Turso Cloud listing — REJECTED for v1.0 docs per Ch 24 Q2; revisit per migration triggers
 
 ## Evolution — "The meta-system"
 
@@ -119,7 +159,8 @@ Server-tier deployment options for users who genuinely need a shared multi-team 
 
 ## Community — "Share and scale"
 
-- [ ] Community config registry
+- [ ] Community marketplace — pre-transformed Tier 1 bundles. In-repo registry OR companion repo (deferrable). Once landed, the fixture generator gains `--from-bundle <id>` mode
+- [ ] Marketplace-driven fixtures — `bun run fixtures --from-bundle <id>` becomes the canonical "test against real published bundles" path
 - [ ] OSCAL export (deferred to Phase 2+ per 2026-05-02 user decision; document OSCAL into Crosswalker mental model first)
 - [ ] Compliance dashboards
 - [ ] Custom migration transforms (inline → named → custom scripts)
@@ -128,9 +169,25 @@ Server-tier deployment options for users who genuinely need a shared multi-team 
 - [ ] Community plugin submission
 - [ ] Spec publication (StewardshipProfile taxonomy + structural diff engine)
 
+## Long-horizon watch register
+
+Substrates and adjacent file-based tools evaluated and not adopted today, with falsifiable re-evaluation triggers per entry. See [embedded-vs-server-substrates](https://cybersader.github.io/crosswalker/concepts/embedded-vs-server-substrates/#long-horizon-watch-register) pillar for the full register.
+
+- Substrates: Limbo / Turso Database, libSQL-WASM (rejected Q1), Turso Cloud (rejected Q2), kuzu, LanceDB, DuckDB-PGQ, Stoolap, Datalevin, PouchDB/RxDB
+- Adjacent VCS: jj/jujutsu, Pijul, Sapling
+- Content-addressed: IPLD, Unison
+
 ## Decision log highlights
 
-Recent (2026-05-02 / 2026-05-03):
+Recent (2026-05-04 design-phase-complete):
+
+- Target-structure synthesis (Ch 22) — https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/
+- Tier 2 substrate synthesis (Ch 24) — https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/
+- Bundle engine language synthesis (Ch 23) — https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/
+- Import engine design — https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/
+- Import primitive formal foundation synthesis (Ch 20) — https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/
+
+Earlier:
 
 - v0.1 initial-stack pivot — https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/
 - Direction third-wave architectural shifts — https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/

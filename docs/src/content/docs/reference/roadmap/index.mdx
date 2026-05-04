@@ -21,9 +21,25 @@ Every significant decision gets a dated entry in the [decision log](/crosswalker
 
 ---
 
-## Current phase: Foundation → v0.1 build target
+## Current phase: v0.1 implementation (design phase closed 2026-05-04)
 
-## Foundation — "Get the architecture right"
+:::tip[✅ Design phase complete — 2026-05-04]
+All named architectural questions resolved through five fresh-agent research challenges (Ch 20–24). Concrete implementation work begins now. The plain-markdown mirror of this roadmap lives at [ROADMAP.md at the repo root](https://github.com/cybersader/crosswalker/blob/main/ROADMAP.md).
+
+**Architectural commitments locked:**
+- Schema-as-primitive reframe — Tier 1 schema is the load-bearing contract; engine + ETL are convenience ([ETL pillar](/crosswalker/concepts/etl-and-import/))
+- Closed 5-mechanism recipe grammar — `folder | file | heading | tag | wikilink` × layout × also_emit × graph_edges; `render(Recipe, ConceptIdentity) → Address` as single coupling point ([Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/))
+- TypeScript in-plugin engine for v0.1; Path C (optional Python producer) reserved for v0.5+ ([Ch 23 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/))
+- Tier 2 substrate stays on `@sqlite.org/sqlite-wasm` + `sqlite-vec`; libSQL/Turso Cloud/Limbo all rejected ([Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/))
+- Runtime-agnostic recipe schema as load-bearing modularity commitment
+- Output query layer: Bases (Dataview removed)
+
+**Machine-readable contracts shipped:** `spec/tier1.schema.json` + `spec/recipe.schema.json`. **Dev infrastructure:** `tools/generate-fixtures.ts` + `bun run fixtures`. See the [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) for the full state.
+
+**Long-horizon watch register** for substrates and adjacent file-based tools considered and not adopted today: see [embedded-vs-server-substrates § watch register](/crosswalker/concepts/embedded-vs-server-substrates/#long-horizon-watch-register).
+:::
+
+## Foundation — "Get the architecture right" (closed)
 
 Architecture decisions before more code. The three interconnected schemas (_crosswalker metadata, [FrameworkConfig](/crosswalker/agent-context/config-schema-design/), [StewardshipProfile](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) née EvolutionPattern) must be designed together — getting any wrong is expensive to fix later. [Decision: architecture first](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#4-architecture-decisions-before-more-ui-code)
 
