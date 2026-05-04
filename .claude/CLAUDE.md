@@ -12,30 +12,51 @@ This folder contains project documentation for Claude Code agents:
 
 ```
 .claude/
-├── CLAUDE.md              # This file - main agent instructions (committed)
-├── 00-INDEX.md            # Navigation and reading order (committed)
-├── 01-PROBLEM.md          # Core problem definition (committed)
-├── 02-ECOSYSTEM.md        # Related tools/ecosystem (committed)
-├── ...                    # Other numbered docs (committed)
+├── CLAUDE.md              # This file — main agent instructions (committed)
+├── skills/                # Reusable agent capabilities (committed)
+│   ├── docs-site/         # Astro/Starlight site authoring patterns
+│   ├── docs-testing/      # Playwright docs E2E testing
+│   ├── edit-history/      # Parse obsidian-edit-history .edtz files
+│   ├── json-canvas/       # Obsidian JSON Canvas spec
+│   ├── obsidian-bases/    # Obsidian Bases query authoring
+│   ├── obsidian-markdown/ # Obsidian-flavor Markdown patterns
+│   ├── session-log/       # Dated session-log creation
+│   └── testing-patterns/  # Test pattern library
 ├── settings.local.json    # User-specific Claude Code settings (GITIGNORED)
+└── plans/                 # Plan-mode files (GITIGNORED)
 ```
 
 **Commit Policy:**
-- ✅ All `.md` files should be committed - they contain project knowledge
-- ❌ `settings.local.json` is gitignored - contains user-specific paths/permissions
-- If sharing a project, others can create their own `settings.local.json`
+- ✅ `CLAUDE.md` and `skills/` are committed — active agent context
+- ❌ `settings.local.json` is gitignored — user-specific paths/permissions
+- ❌ `plans/` is gitignored — ephemeral plan-mode state
+
+The `.claude/` folder is intentionally lean: just the active agent instructions (this file) plus reusable skills. **Project knowledge lives in the docs site** at `docs/src/content/docs/` (published to https://cybersader.github.io/crosswalker/), not here. Earlier numbered docs (00-INDEX through 45-FRAMEWORK-MAINTENANCE-LANDSCAPE) were superseded by the docs site and removed in the 2026-05-04 cleanup.
 
 ## Knowledge Base
 
-**READ THE `.claude/` FOLDER** - Contains structured project knowledge:
-- `00-INDEX.md` - Navigation and reading order
-- `01-PROBLEM.md` - The core hierarchy vs. graph tension
-- `05-EXISTING-WORK.md` - Prior research (Frameworker history)
-- `41-QUESTIONS-RESOLVED.md` - Key decisions made
-- `10-VISION-SHORT.md` - MVP definition
-- `20-ROADMAP.md` - Development phases
+The canonical project knowledge base is the **docs site**: https://cybersader.github.io/crosswalker/
 
-Also see: `PROJECT_BRIEF.md` in parent directory.
+Recommended reading order for an agent new to the project:
+
+| Topic | Page |
+|---|---|
+| The core problem | [concepts/problem](https://cybersader.github.io/crosswalker/concepts/problem/) |
+| What makes Crosswalker unique | [concepts/what-makes-crosswalker-unique](https://cybersader.github.io/crosswalker/concepts/what-makes-crosswalker-unique/) |
+| Vault hierarchy primitives | [concepts/hierarchy-primitives](https://cybersader.github.io/crosswalker/concepts/hierarchy-primitives/) |
+| ETL and import (the schema-as-primitive pillar) | [concepts/etl-and-import](https://cybersader.github.io/crosswalker/concepts/etl-and-import/) |
+| Embedded vs server substrates | [concepts/embedded-vs-server-substrates](https://cybersader.github.io/crosswalker/concepts/embedded-vs-server-substrates/) |
+| Terminology | [concepts/terminology](https://cybersader.github.io/crosswalker/concepts/terminology/) |
+| Tradeoffs | [agent-context/tradeoffs](https://cybersader.github.io/crosswalker/agent-context/tradeoffs/) |
+| Vision | [agent-context/vision](https://cybersader.github.io/crosswalker/agent-context/vision/) |
+| v0.1 schema spec (the build target) | [agent-context/v0-1-schema-spec](https://cybersader.github.io/crosswalker/agent-context/v0-1-schema-spec/) |
+| Roadmap | [reference/roadmap](https://cybersader.github.io/crosswalker/reference/roadmap/) (mirrored at `ROADMAP.md` repo root) |
+| Decision log | [agent-context/zz-log](https://cybersader.github.io/crosswalker/agent-context/zz-log/) |
+| Research deliverables | [agent-context/zz-research](https://cybersader.github.io/crosswalker/agent-context/zz-research/) |
+| Open research challenges | [agent-context/zz-challenges](https://cybersader.github.io/crosswalker/agent-context/zz-challenges/) |
+| Agent-tooling progressive-disclosure space | [agent-context/agent-tooling](https://cybersader.github.io/crosswalker/agent-context/agent-tooling/) |
+
+The 2026-05-04 design phase concluded with five fresh-agent research challenges (Ch 20–24) settling: import primitive shape, build-vs-buy posture, target-structure grammar, engine implementation language, and Tier 2 substrate. See the [import engine design log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) for the canonical state.
 
 ## Key Decisions (Summary)
 

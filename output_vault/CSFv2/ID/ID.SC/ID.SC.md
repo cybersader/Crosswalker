@@ -1,5 +1,0 @@
----
-id: ID.SC
----
-
-%% Waypoint %%

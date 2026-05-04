@@ -3,7 +3,7 @@
  *
  * Handles saving, loading, matching, and exporting import configurations.
  *
- * Design documentation: .claude/42-CONFIG-SELECTION-DESIGN.md
+ * Design documentation: https://cybersader.github.io/crosswalker/agent-context/config-schema-design/
  */
 
 import {

@@ -1,5 +1,0 @@
----
-id: DE.DP
----
-
-%% Waypoint %%

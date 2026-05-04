@@ -3,7 +3,7 @@
  *
  * Creates folders and notes in the vault based on parsed data and configuration.
  *
- * Key design decisions (from .claude/45-FRAMEWORK-MAINTENANCE-LANDSCAPE.md):
+ * Key design decisions (see https://cybersader.github.io/crosswalker/concepts/ontology-evolution/):
  * - Include `_crosswalker` metadata block in generated notes
  * - Track `importedProperties` for safe reimport
  * - Use `sourceId` as canonical identifier

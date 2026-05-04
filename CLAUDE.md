@@ -348,10 +348,13 @@ Long-form research deliverables produced by fresh-agent ("deep research") sessio
 
 ## Extended Documentation
 
-For detailed project knowledge, architecture decisions, and roadmap, see `.claude/` folder:
-- `00-INDEX.md` - Navigation and reading order
-- `01-PROBLEM.md` - Core problem definition
-- `10-VISION-SHORT.md` - MVP definition
-- `41-QUESTIONS-RESOLVED.md` - Key decisions made
+The canonical project knowledge base is the **docs site** at https://cybersader.github.io/crosswalker/. It contains:
 
-Also see `PROJECT_BRIEF.md` for full project specification.
+- Concepts (problem framing, hierarchy primitives, ETL and import, embedded substrates, terminology)
+- Architecture decisions and design pages
+- The v0.1 schema spec
+- The decision log (`zz-log/`), research deliverables (`zz-research/`), and open research challenges (`zz-challenges/`)
+- The roadmap (mirrored at `ROADMAP.md` repo root)
+- The agent-tooling progressive-disclosure space (`agent-context/agent-tooling/`)
+
+The `.claude/` folder at the repo root contains only active agent context: `CLAUDE.md` (agent instructions) and `skills/` (reusable agent capabilities). Earlier numbered knowledge-base files were superseded by the docs site and removed in the 2026-05-04 cleanup.

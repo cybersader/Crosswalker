@@ -1,5 +1,0 @@
----
-id: RS.RP
----
-
-%% Waypoint %%

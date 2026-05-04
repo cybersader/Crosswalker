@@ -186,7 +186,7 @@ export interface ColumnInfo {
 /**
  * Current schema version for SavedConfig.
  * Increment this when making breaking changes to the schema.
- * See .claude/42-CONFIG-SELECTION-DESIGN.md for migration strategy.
+ * See https://cybersader.github.io/crosswalker/agent-context/config-schema-design/ for migration strategy.
  */
 export const SAVED_CONFIG_SCHEMA_VERSION = 1;
 
@@ -196,7 +196,7 @@ export const SAVED_CONFIG_SCHEMA_VERSION = 1;
  * Design principle: Configs are SUGGESTIONS, not mandates.
  * They pre-fill the wizard but users can always modify.
  *
- * See .claude/42-CONFIG-SELECTION-DESIGN.md for full design documentation.
+ * See https://cybersader.github.io/crosswalker/agent-context/config-schema-design/ for full design documentation.
  */
 export interface SavedConfig {
 	/**
@@ -248,7 +248,7 @@ export interface SavedConfig {
  * When a user loads a file, we create a fingerprint from the parsed data
  * and compare it against saved config fingerprints to suggest matches.
  *
- * Match scoring (see 42-CONFIG-SELECTION-DESIGN.md):
+ * Match scoring (see config-schema-design KB page):
  * - Exact column name match: 40%
  * - Normalized column match: 15%
  * - Column count similarity: 10%
