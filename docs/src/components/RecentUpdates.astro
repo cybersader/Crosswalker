@@ -1,0 +1,132 @@
+---
+/**
+ * RecentUpdates.astro
+ *
+ * Static at build time. Pulls all docs pages with a `date:` frontmatter field,
+ * sorts descending, and renders the top N as a small "Recent updates" stream.
+ * Used on the homepage to surface the latest synthesis logs / research /
+ * milestone work.
+ *
+ * Pages get included automatically when they declare `date:` in frontmatter.
+ * Convention used across:
+ *   - agent-context/zz-log/*       (synthesis / decision logs)
+ *   - agent-context/zz-research/*  (research deliverables)
+ *   - agent-context/zz-challenges/* (research challenge briefs)
+ *   - reference/roadmap/milestones/* (when given dates)
+ *   - blog/* (starlight-blog convention)
+ *   - any concept page that opts in
+ */
+
+import { getCollection } from 'astro:content';
+
+interface Props {
+  /** How many entries to render. Default 8. */
+  limit?: number;
+  /** Site base path; URLs are built as `${base}/${entry.id}/`. Default '/crosswalker'. */
+  base?: string;
+  /** Optional collection-id prefix filter (e.g., 'agent-context/zz-log' to limit to logs). */
+  prefix?: string;
+}
+
+const { limit = 8, base = '/crosswalker', prefix } = Astro.props;
+
+const allDocs = await getCollection('docs');
+
+const dated = allDocs
+  .filter((entry) => {
+    const data = entry.data as Record<string, unknown>;
+    if (!data.date) return false;
+    if (prefix && !entry.id.startsWith(prefix)) return false;
+    // Hide draft pages
+    if (data.draft === true) return false;
+    return true;
+  })
+  .map((entry) => {
+    const data = entry.data as Record<string, any>;
+    const dateRaw = data.date;
+    const dateObj = dateRaw instanceof Date ? dateRaw : new Date(dateRaw);
+    return {
+      id: entry.id,
+      title: data.title ?? entry.id,
+      description: data.description ?? '',
+      date: dateObj,
+      dateIso: dateObj.toISOString().slice(0, 10),
+    };
+  })
+  .sort((a, b) => b.date.getTime() - a.date.getTime())
+  .slice(0, limit);
+
+const TRUNC = 110;
+function truncate(s: string, n = TRUNC): string {
+  if (!s) return '';
+  if (s.length <= n) return s;
+  return s.slice(0, n).trimEnd() + '…';
+}
+---
+
+<style>
+  .cw-recent-updates {
+    margin: 3rem 0 1rem;
+  }
+  .cw-recent-updates h2 {
+    margin-bottom: 0.5rem;
+  }
+  .cw-recent-updates-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-top: 1px solid var(--sl-color-hairline);
+  }
+  .cw-recent-updates-item {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    gap: 0.75rem 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--sl-color-hairline);
+    font-size: 0.95rem;
+  }
+  .cw-recent-updates-date {
+    color: var(--sl-color-gray-3);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .cw-recent-updates-body a {
+    font-weight: 600;
+    color: var(--sl-color-text-accent);
+    text-decoration: none;
+  }
+  .cw-recent-updates-body a:hover {
+    text-decoration: underline;
+  }
+  .cw-recent-updates-snippet {
+    display: block;
+    color: var(--sl-color-gray-3);
+    font-size: 0.85rem;
+    margin-top: 0.15rem;
+    line-height: 1.4;
+  }
+
+  @media (max-width: 30rem) {
+    .cw-recent-updates-item {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
+  }
+</style>
+
+<section class="cw-recent-updates">
+  <h2>Recent updates</h2>
+  <ul class="cw-recent-updates-list">
+    {dated.map((entry) => (
+      <li class="cw-recent-updates-item">
+        <time class="cw-recent-updates-date" datetime={entry.dateIso}>{entry.dateIso}</time>
+        <div class="cw-recent-updates-body">
+          <a href={`${base}/${entry.id}/`}>{entry.title}</a>
+          {entry.description && (
+            <span class="cw-recent-updates-snippet">{truncate(entry.description)}</span>
+          )}
+        </div>
+      </li>
+    ))}
+  </ul>
+</section>
