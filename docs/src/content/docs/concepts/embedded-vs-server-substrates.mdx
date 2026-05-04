@@ -1,0 +1,190 @@
+---
+title: Embedded vs server substrates — the file-IS-the-database pattern
+description: SQLite's quiet revolution was bringing database semantics into the file-based world — "the library, not the server." Crosswalker's three-tier architecture leans hard into that philosophy. This page maps the embedded-database landscape across every data model (relational, RDF, property graph, document, key-value, vector, Datalog, multi-model) and shows which engines are file-based, which are server-only, and which Crosswalker has evaluated.
+sidebar:
+  order: 10
+  label: "Embedded vs server substrates"
+tags: [substrate, embedded, file-based, sqlite, oxigraph, duckdb, kuzu, vector, graph, datalog, architecture]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## The architectural pattern
+
+Most databases are *servers* — long-running processes that own a private directory of files you must not touch directly. The user talks to the server via a network socket; the database files are an implementation detail.
+
+A few databases reject this. They're *libraries* the application links into. The application owns the database file. Anyone can copy it, version it, mail it, diff it. SQLite's quiet revolution was proving this could work for a real DB.
+
+Crosswalker's [three-tier architecture](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) leans hard into this — Tier 1 and Tier 2 are both "the file IS the database," in two different shapes.
+
+## Two distinct file-based patterns
+
+| Pattern | Shape | Examples |
+|---|---|---|
+| **Single-file embedded DB** | One opaque (usually binary) file holds everything; library API reads/writes it | SQLite, libSQL, DuckDB, kuzu |
+| **Directory-of-text-files DB** | Many small human-readable files; the filesystem IS the database; any tool can read | Crosswalker Tier 1 ([Markdown + YAML](/crosswalker/concepts/file-based-graph-database/)), Git, Obsidian vaults |
+
+Both reject the server model. Both let `cp` / `rsync` / `git diff` / Dropbox / GitHub do the right thing without a daemon. **Tier 1 is even more file-based than SQLite** — every record is its own readable Markdown file.
+
+## How Crosswalker maps onto the axis
+
+| Tier | File model | Substrate (v0.1) | Why |
+|---|---|---|---|
+| **Tier 1** (canonical, must-work) | Directory of text files (Markdown + YAML) | Filesystem | Plain text, version-controllable, every tool can read, no server, no lock-in. The load-bearing commitment |
+| **Tier 2** (projection, recoverable) | Single-file embedded DB | `@sqlite.org/sqlite-wasm` (~600 KB) | Same anti-server philosophy, in DB-shape; deletable, reprojected from Tier 1; library not a server |
+| **Tier 3** (opt-in, recoverable) | Server with file-backing | Postgres / Fuseki / oxigraph-server / TerminusDB | Breaks the philosophy *intentionally* for power-user scale-up. Requires ops. Not in v0.1 |
+
+The reason Tier 3 is opt-in and not bundled is exactly the embedded-vs-server distinction. A server can't ship inside an Obsidian plugin.
+
+## The embedded landscape by data model
+
+The user's question: *"are there OTHER embedded databases like the ones we've talked about — graph-based, document, etc. — but embedded?"*
+
+Yes. Embedded DBs exist across every major data model. Here's the landscape, grouped by data model, with file-shape annotated and cross-linked to the Crosswalker research challenges that evaluated each.
+
+### Relational / SQL
+
+| Engine | File shape | Notes |
+|---|---|---|
+| **[SQLite](https://sqlite.org/wasm/doc/trunk/index.md)** (`@sqlite.org/sqlite-wasm`) | Single-file `.sqlite` / `.db` | Canonical. Foundation-governed. ✅ **Tier 2 v0.1 commitment.** Per [Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/), comfortably to ~100K mappings |
+| **libSQL** (Turso) | Single-file (claims SQLite compat) | SQLite soft-fork; native vector + replication. **Under evaluation** — see [Ch 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
+| **DuckDB(-WASM)** | Single-file `.duckdb` | Analytical/columnar instead of OLTP. Was in the [third-wave Tier 2 stack](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/); deferred from v0.1 per the [stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) (kept as researched back-pocket) |
+| **Stoolap** | Single-file | Modern columnar OLAP-on-SQLite-style. Long-horizon track via [Ch 12b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) |
+| **Turso Database / Limbo** | Single-file (Rust rewrite of SQLite) | Pre-1.0; experimental. Long-horizon track via [Ch 24 Q3](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
+
+### Graph — RDF / triplestore
+
+| Engine | File shape | Notes |
+|---|---|---|
+| **[Oxigraph](https://github.com/oxigraph/oxigraph)** (library mode) | Directory of RocksDB files | Rust embedded RDF triplestore. SPARQL. Per [Ch 11](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) — kept as opt-in federation layer; deferred from v0.1 bundle |
+| **HDT** (Header-Dictionary-Triples) | Single-file (binary RDF) | Read-only after build; great for shipping pre-built RDF datasets. Per [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — opt-in federation format |
+| **Apache Jena TDB** (embedded library mode) | Directory of files | Java embedded; usually wrapped by Fuseki as a server, but can run as library |
+| **rdflib** (Python) | N-Triples / Turtle text files | Embedded RDF library; emits/parses RDF text formats |
+| **N3.js** | RDF text files (Turtle / N3) | JS RDF library; small; embedded |
+| **Comunica** | Federates over local + remote sources | Per [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — opt-in federation engine; runs in browser |
+
+### Graph — property graph (Cypher / GQL flavor)
+
+| Engine | File shape | Notes |
+|---|---|---|
+| **[kuzu](https://kuzudb.com/)** | Single-file `.kz` | Modern embedded property-graph DB. Cypher. C++ core; growing JS/Python bindings. Not yet evaluated in Crosswalker KB — emerging candidate worth tracking |
+| **DuckDB-PGQ** (extension) | Lives inside DuckDB single-file | Experimental property-graph query layer over DuckDB |
+| **simple-graph** (SQL pattern) | Lives inside SQLite single-file | Per [Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — recursive-CTE pattern over SQLite; what Crosswalker actually uses for transitive closure |
+| **Apache AGE** | Postgres extension (in Postgres data dir) | NOT embedded standalone; requires Postgres. Demoted from Tier 3 default per [Ch 16](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) |
+| **Neo4j Embedded** | Directory of files (Java) | Largely retired as Neo4j has shifted to server-only |
+| **Minigraf** | Embedded property-graph (early stage) | Tracked in [Ch 11](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) and [Ch 12b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/); not adopted |
+
+### Document
+
+| Engine | File shape | Notes |
+|---|---|---|
+| **Crosswalker Tier 1** | Directory of `.md` files with YAML frontmatter | A document store where the filesystem is the index. **The canonical file-based DB Crosswalker actually ships** |
+| **PouchDB** | Browser IndexedDB / LevelDB | JS embedded document DB; CouchDB API; bidirectionally syncs with CouchDB |
+| **RxDB** | Browser IndexedDB / OPFS | JS reactive document DB; multi-storage backend |
+| **NeDB** | Single text file (JSON-lines) | Historical embedded JS document DB; abandoned |
+| **TinyDB** | Single JSON file | Python embedded document DB |
+| **DuckLake** (DuckDB JSON view) | Single DuckDB file with JSON columns | Document-shaped queries over DuckDB |
+
+### Key-value (the storage primitive most others build on)
+
+| Engine | File shape | Notes |
+|---|---|---|
+| **LevelDB** | Directory of SST files | Google's embedded KV; many higher-level DBs build on it |
+| **RocksDB** | Directory of SST files | Facebook's LevelDB fork. Oxigraph uses this internally |
+| **LMDB** | Single memory-mapped file | Compact embedded KV with B+tree; very fast reads |
+| **IndexedDB** | Browser-native | Embedded KV/document store in every browser |
+| **OPFS** (Origin Private File System) | Browser-native filesystem | What `sqlite-wasm` uses for persistence in the browser |
+
+### Vector / similarity search
+
+| Engine | File shape | Notes |
+|---|---|---|
+| **`sqlite-vec`** (Alex Garcia) | Lives inside SQLite single-file | Vector tables as SQLite extension. ✅ **Crosswalker Tier 2 v0.1 commitment** for vector search per [Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) |
+| **DuckDB VSS** (extension) | Lives inside DuckDB single-file | Vector similarity search for DuckDB |
+| **LanceDB** | Single-file (`.lance` columnar) | Embedded vector DB; Rust core; columnar; has JS bindings |
+| **chromadb (embedded mode)** | Directory of files | Python embedded vector DB; can run in-process |
+| **FAISS** | Single binary index file | In-process similarity search library; not really a DB, more an index |
+| **hnswlib** | Single binary index file | Same; index library |
+| **libSQL native vectors** | Lives inside libSQL single-file | Native vector type built into libSQL fork; the strongest specific case for migrating to libSQL per [Ch 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
+
+### Datalog / rule engines
+
+| Engine | File shape | Notes |
+|---|---|---|
+| **Nemo** | In-memory; reads/writes facts to text files | Per [Ch 12](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) — Crosswalker's chain-rule engine; deferred from v0.1 bundle, kept as researched back-pocket |
+| **Differential dataflow / Datafrog** | In-memory; library only | Rust Datalog primitives; very fast incremental |
+| **Souffle** (compiled) | Compiles Datalog → C++ binary | Heavyweight; for big static rule sets |
+| **Recursive CTE** (in SQL) | Lives in SQLite single-file | Pure SQL emulation of Datalog rules; ✅ **What Crosswalker v0.1 actually uses** per [Ch 12 + Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) |
+
+### Multi-model embedded
+
+These engines try to combine relational + graph + document + vector in one substrate. Tempting because Crosswalker has facets across multiple models — but each came with caveats.
+
+| Engine | Status in Crosswalker KB |
+|---|---|
+| **CozoDB** | ❌ Rejected per [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — no release since v0.7; project signal too weak |
+| **SurrealDB** (embedded mode) | ❌ Rejected per [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — BSL license + 12.6 MB bundle |
+| **HelixDB** | ⚠️ Tracked-but-not-adopted per [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) and [Ch 16](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/); too immature |
+| **TerminusDB** (v12) | ⚠️ Opt-in vault-mirror per [Ch 16](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/); single-vendor (DFRNT) flagged |
+| **Datalevin** (Clojure) | Not yet evaluated; embedded multi-model with Clojure focus |
+| **DuckDB** with extensions (vector + graph PGQ + JSON + FTS + geo) | ⚠️ Multi-model-via-extensions on a single substrate; in third-wave back-pocket |
+| **cr-sqlite** (CRDT SQLite) | ❌ Rejected per [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — stalled |
+| **Grafeo** | ⚠️ Follow-up tracked in [Ch 11](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/) |
+
+The pattern: multi-model embedded DBs look attractive on paper but have *consistently* failed the Crosswalker governance/maturity bar. The single-model embedded DBs (SQLite, DuckDB, Oxigraph, kuzu) have stronger track records.
+
+## Why this matters for Crosswalker design decisions
+
+Three load-bearing consequences fall out of the embedded-vs-server split:
+
+### 1. Why Tier 2 had to be SQLite (not DuckDB or Oxigraph) for v0.1
+
+DuckDB is also single-file and embedded. Oxigraph is also embedded (library mode). Why did v0.1 pivot to `sqlite-wasm` specifically?
+
+- **Bundle size** — `sqlite-wasm` ~600 KB; DuckDB-WASM ~2.5–3 MB; Oxigraph WASM larger still
+- **Governance** — sqlite.org Consortium (multi-stakeholder, 20+ years) vs DuckDB Labs (single-vendor, ~5 years) vs Oxigraph (single-maintainer)
+- **Maturity** — every Obsidian plugin developer has shipped SQLite once; far fewer have shipped DuckDB-WASM
+- **Ecosystem** — `sqlite-vec`, FTS5, recursive CTEs cover Crosswalker's actual workload per [Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/)
+
+Per the [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/), DuckDB-WASM and Oxigraph are *researched back-pocket* — ready when needed, not the v0.1 default.
+
+### 2. Why Tier 3 is opt-in and outside the plugin
+
+Every Tier 3 candidate (Postgres, Fuseki, oxigraph-server, TerminusDB, AGE) is a *server*. You can't ship a server inside an Obsidian plugin. Tier 3 always requires the user to deploy a separate process. That's the cost of getting beyond Tier 2's scale ceiling.
+
+### 3. Why "marketplace bundles" fit cleanly
+
+[The marketplace pattern](/crosswalker/concepts/etl-and-import/#4-the-community-marketplace-transform-once-share-forever) ships **Tier 1 only** — directory of Markdown files. Substrate-irrelevant. A user who downloads a community-shared NIST 800-53 bundle gets a directory of `.md` files; their local Tier 2 reprojects them into whatever single-file SQLite they have. Server-database substrates can't do this — the data lives inside the server's private storage.
+
+## What Crosswalker has *not* yet evaluated
+
+Worth flagging for future research challenges:
+
+- **kuzu** — modern embedded property graph DB. If Cypher-shaped queries become important and recursive-CTE-on-SQLite isn't enough, kuzu is the most credible single-file alternative
+- **LanceDB** — embedded columnar vector DB. Stronger for vector-heavy workloads than `sqlite-vec`
+- **PouchDB / RxDB** — JS embedded document DBs. Not currently relevant since Tier 1 IS the document store, but worth knowing about for future cross-vault sync features
+- **Datalevin** — Clojure embedded multi-model. Niche but architecturally interesting
+- **DuckDB-PGQ** — if DuckDB-WASM gets activated as a Tier 2 alternative, the PGQ extension would give property-graph queries on the same substrate
+
+None of these are blockers for v0.1; they're "watch list" items that may matter for v1.0+.
+
+## SQLite's contribution in one sentence
+
+> **Database semantics don't have to come at the cost of file-system simplicity.**
+
+The ChunkyCSV / JSONaut / SEACOW / folder-tag-sync portfolio (the project owner's prior tools — see [ETL and import § broader portfolio context](/crosswalker/concepts/etl-and-import/#where-this-came-from--broader-portfolio-context)) is essentially the same observation applied to ETL, knowledge organization, and tag/folder semantics. Crosswalker's Tier 1 is the same observation applied to ontology storage: human-readable files with structured metadata, no server, no lock-in.
+
+This is why the libSQL question ([Ch 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/)) is high-stakes despite the substrate being "another single-file SQLite-shaped thing" — single-vendor governance is exactly the dimension SQLite optimized away.
+
+## Related
+
+- [File-based graph databases](/crosswalker/concepts/file-based-graph-database/) — Obsidian vault as a graph DB; complementary view
+- [The problem](/crosswalker/concepts/problem/) — why files-not-servers matters for ontology lifecycle
+- [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — three-tier architecture commitment
+- [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/) — Tier 2 sidecar SQL DDL
+- [Ch 11 — Tier 2/3 engine deep survey](/crosswalker/agent-context/zz-challenges/archive/11-tier-2-3-engine-deep-survey/) — original triplestore + DuckDB + Nemo evaluation
+- [Ch 14 — Missed engines](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — multi-model rejections
+- [Ch 16 — Tier 3 reconsideration](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) — Fuseki vs AGE vs TerminusDB
+- [Ch 18 — Tier 2-Lite scale ceiling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — what the SQLite stack actually delivers
+- [Ch 24 — Turso/libSQL evaluation](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) — open research; Tier 2 substrate re-examination
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — Spec / Library / Integrations philosophy that this substrate choice serves
