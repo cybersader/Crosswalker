@@ -1,0 +1,87 @@
+---
+title: "v0.1.1 shipped — Type system + validation foundation"
+description: "Milestone v0.1.1 delivered 2026-05-04. AJV-based JSON Schema validation wired into plugin startup; spec/*.schema.json files compiled at load with fail-fast on malformation; `CrosswalkerConfig` interface renamed to `ImportRecipe` across the codebase. 27 unit + 13 E2E tests passing against real Obsidian v1.12.7."
+tags: [milestone-shipped, v0-1-1, validation, ajv, type-system, json-schema, import-recipe-rename]
+date: 2026-05-04
+sidebar:
+  label: "05-04 · v0.1.1 shipped"
+  order: -20260504.7
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What shipped
+
+[Milestone v0.1.1](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) — Type system + validation foundation. Status flipped to ✅ in the milestone hub.
+
+| Surface | Delivered |
+|---|---|
+| Deps | `ajv` ^8.20.0, `ajv-formats` ^3.0.1, `json-schema-to-typescript` ^15.0.4 (devDep) |
+| `tools/codegen-types.ts` | Generates TypeScript interfaces from `spec/*.schema.json` via `json-schema-to-typescript`; `bun run codegen` script wired |
+| `src/types/generated/` | Auto-generated TS types — `tier1.ts` + `recipe.ts`. Committed for PR-diff visibility on schema impact (open-question Q1) |
+| `src/validation/validator.ts` | AJV (Ajv2020 — 2020-12 draft-aware) + ajv-formats; exports `initValidator()`, `validateRecipe()`, `validateTier1Frontmatter()`; fails fast on schema-file malformation; returns `ValidationResult` with human-readable errors + raw AJV ErrorObjects |
+| `src/main.ts` | Wires `initValidator()` in `onload`; exposes `validateRecipe` + `validateTier1Frontmatter` as plugin-instance handles for E2E reachability |
+| `spec/tier1.schema.json` | Schema discriminator fixed: replaced `oneOf` with `allOf` + `if/then` on `kind` field. Junction-note + crosswalk-edge enum validation now correctly enforces STRM predicate vocabulary |
+| `tsconfig.json` | `resolveJsonModule`, `esModuleInterop`, `allowSyntheticDefaultImports` enabled; `rootDir` broadened to `.` with `spec/**/*.json` included so JSON schema imports type-check |
+| `CrosswalkerConfig` → `ImportRecipe` rename | Across 4 source files (config-manager, generation-engine, import-wizard, types/config) — pure name rename; underlying shape still v0.1.0 ad-hoc column-role structure |
+
+## Tests
+
+| Suite | Count | Passing |
+|---|---|---|
+| Jest unit (`tests/*.test.ts`) | 27 | ✅ all |
+| WebDriver E2E (`tests/e2e/*.spec.ts`) | 13 (smoke 4 + validation 5 + import-flow 4) | ✅ all |
+| **Total** | **40** | ✅ |
+
+E2E runs against real Obsidian v1.12.7 via `wdio-obsidian-service`. Build clean; bundle size stable.
+
+The `tests/e2e/import-flow.spec.ts` was added post-milestone-flip to close a testing gap noted at the v0.1.1 status check: smoke + validation tests verified the harness + validator handles, but did NOT exercise the actual import wizard flow after the type rename. The new spec verifies (a) the wizard modal opens, (b) renders without crashing, (c) browse-saved-configs modal opens, (d) plugin runtime state queryable through the renamed types. All four pass — no regression introduced.
+
+## Open-question resolutions (from milestone v0.1.1 page)
+
+| # | Question | Decided |
+|---|---|---|
+| Q1 | Generated TS types committed or gitignored? | **Committed** — PR-diff visibility on schema impact wins over drift risk |
+| Q2 | AJV strict mode now or defer? | **Deferred to v0.2** — current setup `strict: false`; revisit once we have more spec experience. Documented in milestone page |
+| Q3 | Phase-0 `hierarchy` column-role compat shim now or v0.1.2? | **Type rename done now**; semantic migration via Phase-0 shim deferred to v0.1.2 where the engine refactor naturally absorbs it |
+
+## Notable design decisions made during implementation
+
+1. **Ajv2020, not the default `Ajv` class.** Our spec files declare `$schema: "https://json-schema.org/draft/2020-12/schema"`. The default `Ajv` constructor targets Draft-07 and rejects the 2020-12 metaschema. Using `Ajv2020` from `ajv/dist/2020` was the fix. This is now documented in the validator file's comments.
+2. **`allOf` + `if/then` discrimination on `kind`, not `oneOf`.** The original schema used `oneOf` to union concept-note / junction-note / crosswalk-edge frontmatter shapes. With `additionalProperties: true` on concept-note (intentional — domain-specific frontmatter validates cleanly), junction-note + crosswalk-edge objects ALSO matched concept-note's looser shape — `oneOf` failed because the match was non-exclusive. Fix: discriminate by the `kind` field via `allOf` + `if/then`. This also produces specific error messages from the matching branch.
+3. **Validator handles attached to plugin instance.** Module-level singleton functions exist; the plugin instance just re-exports them as own-properties so E2E tests reach them via `app.plugins.plugins['crosswalker'].validateRecipe(...)`. No duplicate state.
+4. **Naming ambiguity is intentional, temporarily.** `src/types/config.ts` exports `ImportRecipe` (the v0.1.0 ad-hoc column-role shape, just renamed). `src/types/generated/recipe.ts` exports `CrosswalkerImportRecipe` (the future spec-derived shape). Both will exist through v0.1.1; the migration to the spec shape happens in v0.1.2 where `render()` lands.
+
+## Memory rules saved this session
+
+Two load-bearing principles captured to project memory:
+
+| Rule | Memory file |
+|---|---|
+| Always test thoroughly as you do things — every code change ships with thorough verification before commit | `feedback_test_thoroughly.md` |
+| No personal data in logs — public artifacts must contain no absolute paths, usernames, emails, machine names, secrets, or AI co-author attribution | `feedback_no_personal_data_in_logs.md` |
+
+## What this unblocks for v0.1.2
+
+- `render()` v1 can be implemented against the typed `ImportRecipe` interface now that AJV catches malformed recipes pre-render
+- The Phase-0 compat shim (legacy `hierarchy` column-role → `target.layout` translation) lands naturally when the generation engine refactors to call `render()` — no partial migration overhead
+- E2E `validation.spec.ts` is in place for v0.1.1's success criterion; v0.1.2's `render.spec.ts` follows the same pattern (use `executeObsidian` to invoke render handles exposed on the plugin instance)
+
+## What this does NOT do
+
+- **Does not** wire `validateTier1Frontmatter` into the generation engine pre-write — the engine still emits v0.1.0-shape frontmatter that won't validate against `spec/tier1.schema.json`. Wiring happens in v0.1.3 when the engine refactors to use `render()`'s output
+- **Does not** ship the full Ch 22 grammar implementation — recipes still use the v0.1.0 column-role shape; the new `target.layout` form is schema-reserved and rejected by validation today (correctly — no consumer can produce it yet). Activation is v0.1.2
+- **Does not** add CI gates — Wave 2 of the workflow audit (lint enforcement, MDX check, schema validation, fixture drift, roadmap drift) remains for a separate pass
+- **Does not** wire `obsidian-cli` as a parallel testing surface — flagged in the testing-patterns skill as planned; activation deferred until first concrete CI fixture-validation use case
+
+## Related
+
+- [Milestone v0.1.1 page](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) — success criteria checklist, open-question status
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+- [Ch 23 synthesis log §6 (commitment to JSON Schema + AJV)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)
+- [Testing-patterns skill](https://github.com/cybersader/crosswalker/blob/main/.claude/skills/testing-patterns/SKILL.md) — four testing surfaces; per-milestone E2E spec roadmap
+- [Project design commitments memory entry](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) — the 6 commitments this milestone implements infrastructure for
+
+## Next milestone
+
+[v0.1.2 — `render()` v1 (folder + file + heading)](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) — the pure `render(Recipe, ConceptIdentity, sourceScope) → Address` function from Ch 22 §3. Three of the five mechanisms wired (folder, file, heading); tag and wikilink schema-reserved with informative "v0.2" errors. Per-milestone E2E spec is `tests/e2e/render.spec.ts` — must pass before flipping milestone status to ✅.
