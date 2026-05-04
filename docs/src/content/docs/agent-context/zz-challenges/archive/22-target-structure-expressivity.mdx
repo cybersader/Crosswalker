@@ -1,11 +1,23 @@
 ---
-title: "Challenge 22: Target-structure expressivity in import recipes — folder vs heading vs tag vs wikilink, and how recipes compose them"
-description: "Ch 20 settled the import primitive's transformation algebra (5–6 primitives over 4 output sinks). Ch 21 is investigating build-vs-buy. This challenge addresses an orthogonal-but-load-bearing question Ch 20 underweighted: how does a recipe author express *target structure*? Same source ontology can land in the vault as folder hierarchy, heading hierarchy within fewer files, tag-based parallel hierarchy, wikilink-graph (flat files), or any composition of these. Strictly orthogonal to STRM/SSSOM/junction-notes/diff primitives — they live at the identity + edge-semantics layers; this is the address + layout layer with one coupling point (concept-id → wikilink-address rendering). Anchor on SEACOW + folder-tag-sync (user's prior tools) and the broader 'information science with Obsidian as the knowledge platform' meta-project frame."
-tags: [research, foundation, import, target-structure, polyhierarchy, seacow, obsidian, information-science]
+title: "Challenge 22: Target-structure expressivity in import recipes (archived)"
+description: "RESOLVED 2026-05-04: closed grammar of 5 mechanisms (folder/file/heading/tag/wikilink) × ordered layout × also_emit × graph_edges; render(Recipe, ConceptIdentity) → Address as single coupling point; content addressing computed BEFORE render (target structure is a view); managed/user_preserve frontmatter split; v0.1 ships full schema with folder+file+heading wired. See callout."
+tags: [research, foundation, import, target-structure, polyhierarchy, seacow, obsidian, information-science, archived]
 date: 2026-05-03
 sidebar:
-  label: "22 · Target-structure expressivity"
+  label: "22 · Target-structure (archived)"
 ---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::tip[Resolved 2026-05-04 — archived]
+This challenge has been **resolved** and the brief is **archived for reference**. An adversarial fresh-agent deliverable settled the design:
+
+- [Ch 22 deliverable: Target-structure expressivity](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) — closed grammar of 5 mechanisms (`folder | file | heading | tag | wikilink`) × ordered `layout` × `also_emit` cross-cutting × optional `graph_edges`. Single coupling point: `render(Recipe, ConceptIdentity) → Address` modeled directly on RML/R2RML's `rr:subjectMap` + `rr:template`. Pass 1 vault-independent (deterministic, hashable); Pass 2 optional vault-state-aware link minimizer. Content addressing computed over canonical concept-identity store BEFORE render — target structure is a *view*, not canonical state — directly mirroring Nix's file-system-object/store-path separation. Frontmatter split into `managed` (recipe-owned) and `user_preserve` (user annotations, never overwritten). 4-phase non-breaking migration from existing `hierarchy` column-role.
+
+The deliverable is synthesized in the **[2026-05-04 target-structure synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)** which adopts the full grammar at v0.1 (schema-paid-for-now, implementation-incremental) with `mechanism: folder | file | heading` wired in v0.1 and `tag | wikilink` as layout-levels deferred to v0.2.
+
+**This challenge brief is preserved as originally written** so it stays re-runnable.
+:::
 
 ## Why this exists
 

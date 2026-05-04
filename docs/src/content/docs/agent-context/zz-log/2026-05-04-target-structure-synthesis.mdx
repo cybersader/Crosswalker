@@ -1,0 +1,287 @@
+---
+title: "Target-structure expressivity — synthesis (Ch 22 resolution; closed 5-mechanism grammar; render() as single coupling point; target structure is a view)"
+description: "Synthesizes the Ch 22 adversarial deliverable. Adopts the closed grammar of 5 mechanisms (folder/file/heading/tag/wikilink) × ordered layout × also_emit × graph_edges. The single coupling point is render(Recipe, ConceptIdentity) → Address — a pure function modeled on RML/R2RML's rr:subjectMap. Pass 1 vault-independent (deterministic, hashable); Pass 2 optional vault-state-aware link minimizer. Content addressing computed over canonical concept-identity store BEFORE render — target structure is a *view*, not canonical state. Frontmatter split into managed (recipe-owned) and user_preserve (user annotations). 4-phase migration from existing hierarchy column-role. v0.1 ships the full schema (folder+file+heading wired; tag+wikilink layout-levels and graph_edges deferred to v0.2 as additive). The schema-paid-for-now-implementation-incremental pattern."
+tags: [foundation, design, target-structure, recipe-schema, render-function, hierarchy-primitives, content-addressing, ch-22-resolution, ready-for-implementation, library-science]
+date: 2026-05-04
+sidebar:
+  label: "05-04 · Target-structure synthesis"
+  order: -20260504.6
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::tip[This log resolves Challenge 22 — the design phase fully closes here]
+The [Ch 22 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) settled the target-structure question. With Ch 22 resolved, **all design-phase research challenges are now closed** (Ch 20 / 21 / 22 / 23 / 24). Only Ch 01 / 02 / 03 / 04 remain as long-horizon adversarial reviews; concrete v0.1 implementation work begins from this commit forward.
+:::
+
+## §1 The verdict — closed grammar adopted
+
+Crosswalker recipes use a **closed grammar** of five mechanisms × ordered layout × cross-cutting also-emit × optional graph edges. The exact shape (TypeScript surface):
+
+```typescript
+type Mechanism = "folder" | "file" | "heading" | "tag" | "wikilink";
+
+interface LayoutEntry {
+  level: string;            // matches a source-level identifier
+  mechanism: Mechanism;
+  template: string;         // R2RML-style {var} interpolation
+  level_depth?: number;     // heading depth 1..6
+}
+
+interface GraphEdge {
+  from: string;     // template
+  via: string;      // frontmatter property (parent | enhances | partOf | instanceOf | crosswalksTo)
+  to: string;       // template
+}
+
+interface ImportRecipe {
+  recipe: string;
+  source: { ontology: string; levels: string[] };
+  target: {
+    layout: LayoutEntry[];
+    also_emit?: {
+      tags?: string[];
+      aliases?: string[];
+      frontmatter?: {
+        managed?: Record<string, string>;
+        user_preserve?: string[];
+      };
+    };
+    graph_edges?: GraphEdge[];
+    linkStyle?: "absolute" | "shortest";  // default: absolute
+  };
+}
+```
+
+Why these five mechanisms, not three or seven: they are **all four ways Obsidian can encode a parent-child relationship** (folder, heading, tag, wikilink), plus the leaf-bearing primitive (file). Anything else (canvases, base files, dataview index notes) is a *view* over one of these. The grammar must therefore admit all four hierarchy primitives even if v0.1 wires up only some.
+
+Why closed not extensible: per dbt / dlt / Singer / Airbyte ETL-config heuristic, "declarative + flat wins; anything more must escape into code, never into nested config." The recipe schema deliberately rejects recursive composition, `mechanism: composite` nesting, or Turing-completeness escape hatches. The `Function` primitive from Ch 20 is the escape hatch when needed.
+
+## §2 The render() function — the single coupling point
+
+`render` is a pure function:
+
+```
+render(Recipe, ConceptIdentity, VaultIndex?) → Address
+
+ConceptIdentity = CURIE                         // e.g. nist:AC-2(1)
+VaultIndex      = OPTIONAL                       // only consulted by Pass 2
+Address = {
+  primary:        { path: Path, anchor: HeadingPath? },
+  wikilinkTarget: string,                        // exactly what goes in [[...]]
+  tags:           Set<string>,
+  aliases:        Set<string>,
+  frontmatter:    Map<string, JsonValue>
+}
+```
+
+**Two passes, by design:**
+
+| Pass | Vault-aware? | Determinism | Purpose |
+|---|---|---|---|
+| **Pass 1** (canonical) | No — pure function of `(Recipe, ConceptIdentity)` | Byte-identical output across users with identical inputs | Reproducibility; hashable; replayable; idempotent re-imports; what goes into canonical content addresses |
+| **Pass 2** (optional link minimizer) | Yes — consults `VaultIndex` for basename uniqueness | Vault-dependent | Downgrades unambiguous full-path wikilinks to bare basenames when `linkStyle: shortest` is set |
+
+This split is **the architectural call that makes the system reproducible**. Two users with identical recipes on identical source data produce byte-identical Pass 1 output regardless of what other notes happen to live in their vaults. `git diff` of generated files is meaningful. Re-runs don't rewrite links because of unrelated vault edits.
+
+**Mirrors prior art**: RML's `rr:subjectMap` with `rr:template "http://example.org/{id}"` is pure (IRI is a function of the row, not the dataset). JSON-LD `@id` minting is the same. Obsidian itself stores links in their authored form and resolves at read time. The recipe is the author; the vault is the resolver.
+
+## §3 Content addressing — target structure is a view, not canonical state
+
+**The architectural invariant**: content digests are computed over the canonical concept-identity store **before** render. Two recipes producing different on-disk layouts from the same source produce *the same* canonical-state digest.
+
+Canonical state for hashing:
+- The set of `ConceptIdentity` CURIEs (`nist:AC-2`, `nist:AC-2(1)`, …)
+- For each identity, its canonical attribute set (title, description, family, …)
+- The set of relations `(subject_curie, predicate, object_curie)`
+- An ordering canonicalisation (lexical sort)
+
+NOT canonical state: the recipe, the layout choice, paths, wikilink syntax, link-style choices, tag formatting choices, alias choices.
+
+**Direct prior-art precedent**: Nix (file-system-object → store-path), Git (tree objects), IPFS (CIDs), JSON-LD URDNA2015. Every one of these systems separates "canonical content" from "presentation," with hashes taken over the former.
+
+This is what makes Crosswalker's three modularity axes complete:
+
+| Axis | What's swappable | What's stable |
+|---|---|---|
+| **Recipe schema ↔ engine implementation** ([Ch 23 §4](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#4-the-most-important-commitment-runtime-agnostic-recipe-schema)) | Engine | Recipe contract |
+| **Tier 1 schema ↔ producer toolchain** ([ETL pillar](/crosswalker/concepts/etl-and-import/)) | Producer | Tier 1 schema |
+| **Vector data ↔ substrate** ([Ch 24 §5](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#3-the-deepest-insight--vector-layer-decoupling-as-a-modularity-principle)) | Substrate | sqlite-vec |
+| **Vault layout ↔ canonical state** (this log §3) | Recipe choice (folder/heading/tag/wikilink) | Concept-identity store |
+
+Four axes, all pointing the same way: **the artifact you'd want to migrate is decoupled from the choice you'd want to revisit.** This is what the user's "modular system" goal looks like once it's complete.
+
+## §4 The managed / user_preserve frontmatter split
+
+The deliverable §8.4 surfaced one nuance that makes the "target structure is a view" claim hold rigorously: **frontmatter content straddles the canonical/view line**.
+
+| Frontmatter category | Origin | Re-import behavior |
+|---|---|---|
+| `managed` | Recipe-owned; projection of canonical concept-identity store | **Overwrite** on re-render (it's reproducible) |
+| `user_preserve` | User annotation; new canonical state in the user's domain | **Preserve** on re-render (it's the user's own data) |
+
+Recipe declares the split:
+
+```yaml
+target:
+  also_emit:
+    frontmatter:
+      managed: { framework: "nist-80053r5", control_id: "{control.id}", family: "{family.id}" }
+      user_preserve: ["reviewer", "status", "evidence_links", "*notes*"]
+```
+
+This is the standard "destination has user data" problem in ETL (Airbyte, dbt). Crosswalker treats it as load-bearing v0.1 infrastructure: **expensive to retrofit, cheap to ship now.** The synthesis adopts this fully.
+
+## §5 v0.1 scope — schema paid for now, implementation incremental
+
+The deliverable §10.8 makes the right call: ship the **full grammar at v0.1** even though only some mechanisms are wired. This is "renting an oversized apartment and only furnishing two rooms initially," not "painting yourself into a corner."
+
+| Concern | v0.1 | v0.2 | v0.3+ |
+|---|---|---|---|
+| Recipe schema (the long-lived artifact) | **Full grammar** including all five mechanisms, `also_emit`, `graph_edges`, `linkStyle` | (no schema change) | (no schema change) |
+| `mechanism: folder` | ✅ Wired | ✅ | ✅ |
+| `mechanism: file` (leaf) | ✅ Wired | ✅ | ✅ |
+| `mechanism: heading` (with `level_depth`) | ✅ Wired | ✅ | ✅ |
+| `mechanism: tag` (as layout level) | Schema-reserved; not wired | ✅ Wired | ✅ |
+| `mechanism: wikilink` (as layout level) | Schema-reserved; not wired | ✅ Wired | ✅ |
+| `also_emit.tags` (parallel emit) | ✅ Wired | ✅ | ✅ |
+| `also_emit.aliases` | ✅ Wired | ✅ | ✅ |
+| `also_emit.frontmatter.managed` / `user_preserve` | ✅ Wired (load-bearing infrastructure) | ✅ | ✅ |
+| `graph_edges` | Schema-reserved; not wired | ✅ Wired | ✅ |
+| `linkStyle: absolute` | ✅ Default | ✅ | ✅ |
+| `linkStyle: shortest` (Pass 2 minimizer) | Not wired | Not wired | ✅ Wired |
+| Auto-generated folder-tag-sync rules | Not wired | Schema-reserved | ✅ Wired |
+| Canonical-state hash (content addressing) | ✅ Wired (load-bearing infrastructure) | ✅ | ✅ |
+| 4-phase migration from `hierarchy` column-role | Phase 0 (no-op compatibility) | Phase 1 (additive) | Phase 2 (deprecation) |
+
+**The pattern**: schema reservations cost almost nothing; implementation is incremental. The two things you cannot retrofit cheaply — the canonical-state hash and the `managed`/`user_preserve` frontmatter split — both ship from day one.
+
+## §6 SEACOW + folder-tag-sync integration
+
+The deliverable §4 surfaced a clean low-coupling integration with the user's prior tools:
+
+- **SEACOW pattern (folder + parallel tags as faceted classification)**: Crosswalker recipes default to dual-emit. The `layout` carries the dominant administrative hierarchy via folders; `also_emit.tags` carries the cross-cutting facet hierarchy. This matches Ranganathan's faceted classification and the lived practice in `cybersader/cyberbase`.
+- **folder-tag-sync rules auto-generated**: when a recipe dual-emits, Crosswalker writes a folder-tag-sync rule whose `folderPattern` and `tagPattern` are regex-compiled from the recipe templates. The two plugins compose without sharing state. Crosswalker writes recipes; folder-tag-sync keeps them consistent over the vault's lifetime as the user manually edits.
+- **Vocabulary alignment**: Crosswalker's template-filter set reuses folder-tag-sync's transformation names verbatim (`snake_case`, `strip emoji`, `strip number prefix`). Authors who already use folder-tag-sync transfer their mental model directly.
+
+This integration is deferred to v0.2 (per §5) but the schema reservation makes it non-breaking when added.
+
+## §7 Library-science framing — the four mechanisms are forced
+
+The deliverable §9 grounds the closed grammar in established library science:
+
+| Crosswalker mechanism | Library-science analogue |
+|---|---|
+| Folder | **Enumerative** classification (Dewey, LCC) — single rigid hierarchy |
+| Heading | **Sequential / structural** — Dublin Core `dcterms:tableOfContents` |
+| Tag | **Faceted** classification (Ranganathan PMEST + ISO 25964 polyhierarchy) |
+| Wikilink-graph | **Associative / relational** (SKOS `broader`/`narrower`, ISO 25964 BTG/BTP/BTI) |
+
+The four mechanisms are an Obsidian-flavoured re-derivation of the four ways library science has classified knowledge for a century. They are *forced* by Obsidian's primitives, not invented by the design.
+
+**Why this matters architecturally**: a Crosswalker that ships only `folder` is asserting GRC knowledge fits in an enumerative classification. Library science says explicitly that this fails for polyhierarchical domains — and SCF crosswalks are polyhierarchical by construction. **Therefore tag and/or wikilink-graph must be in the design from v0.1, even if not implemented immediately.** The deliverable's "ship the full grammar at v0.1" recommendation is downstream of this point.
+
+ISO 25964's BTG/BTP/BTI distinction (broader-term-generic, broader-term-partitive, broader-term-instance) is more expressive than SKOS `broader` alone. The Crosswalker `graph_edges.via` field accepts named relation types (`parent | enhances | partOf | instanceOf | crosswalksTo`) precisely to support this expressivity cheaply.
+
+## §8 Composition with Ch 20's transformation algebra
+
+Per the deliverable §7: target structure is a **parameterization layer over the existing sinks**, not a new transformation primitive.
+
+```
+Source → Term → Map → Join → Function       (Ch 20 transformation primitives)
+                                  ↓
+                        [render(recipe, identity)]   (Ch 22 — single new component)
+                                  ↓
+        ┌─────────┬──────────┬──────────┬─────────┐
+        ↓         ↓          ↓          ↓         ↓
+       path  frontmatter   body     wikilink     tag    (sinks)
+```
+
+The `path` and `wikilink` sinks gain a new *input source* (the render output) but their interfaces don't change. A new `tag` sink appears as a peer (or, equivalently, tags become a frontmatter-keyed write — minor implementation choice). The `body` sink is unchanged; heading-mechanism levels emit `#`-prefixed body content, and the layout decides the prefix count.
+
+This mirrors RML's `LogicalSource × TermMap → TriplesMap` separation. The render function is the `TermMap`; the existing transformation algebra is the `LogicalSource`; together they parameterise the sink set.
+
+## §9 4-phase migration from `hierarchy` column-role
+
+Non-breaking through Phase 2:
+
+| Phase | When | What |
+|---|---|---|
+| **0** (v0.1) | Now | Treat any recipe with `hierarchy` column-role as syntactic sugar for an equivalent `target.layout` with all-folder mechanisms. Old recipes import without modification |
+| **1** (v0.2) | Additive | Allow recipes to use new `target.layout` form. When present, it overrides `hierarchy`. Recipes can mix during transition |
+| **2** (v0.5) | Deprecation | Document `hierarchy` as legacy. Provide one-shot migration command in the plugin |
+| **3** (post-v1.0) | Removal | `hierarchy` removed from schema. Migration tool retained for old saved recipes |
+
+Users have an indefinite migration window. The schema is forward-compatible from day one.
+
+## §10 Specific v0.1 implementation locks
+
+Restated as ground truth for development work starting now:
+
+```
+Recipe schema (machine-readable JSON Schema)  → spec/recipe.schema.json
+  - 5 mechanisms enum: folder | file | heading | tag | wikilink
+  - LayoutEntry array with mandatory level/mechanism/template
+  - level_depth optional (heading 1-6)
+  - also_emit object with tags / aliases / frontmatter (managed + user_preserve)
+  - graph_edges array (schema-reserved)
+  - linkStyle: absolute | shortest (default absolute)
+
+Render function (in TS, in-plugin)            → src/render/index.ts
+  - Pure function: (Recipe, ConceptIdentity) → Address
+  - Template grammar: R2RML-style {var} interpolation
+  - Filter set: lower / upper / title / slug / tagsafe / fs-safe / truncate(N)
+  - Pass 2 (link minimizer): out of v0.1 scope
+
+Wired mechanisms                              → src/render/mechanisms/
+  - folder.ts       ✅ v0.1
+  - file.ts         ✅ v0.1
+  - heading.ts      ✅ v0.1
+  - tag.ts          ⏳ v0.2
+  - wikilink.ts     ⏳ v0.2
+
+Frontmatter manager                           → src/render/frontmatter.ts
+  - managed projection from canonical state
+  - user_preserve detection on re-render
+  - merge semantics: managed always overwritten, user_preserve always kept
+
+Canonical-state hash                          → src/identity/canonical-hash.ts
+  - sha256 over canonicalized concept-identity store
+  - inputs: CURIEs (sorted), attribute sets, relations (sorted by s,p,o)
+  - explicitly excludes recipe choice / layout / render output
+```
+
+## §11 What this does NOT do
+
+- **Does not commit to wiring `tag` or `wikilink` mechanisms in v0.1.** They are schema-reserved; users authoring recipes can include them but they fail validation cleanly with "mechanism not yet implemented; coming in v0.2" — not silent corruption.
+- **Does not commit to Pass 2 (link minimizer) in v0.1.** All v0.1 wikilinks emit full-path absolute form. Pass 2 is v0.3.
+- **Does not commit to auto-generating folder-tag-sync rules in v0.1.** That integration arrives with `mechanism: tag` wiring in v0.2.
+- **Does not foreclose v0.5+ extensions to the grammar.** The `also_emit` object is expandable (could grow `aliases-with-rules`, `outgoing-edges`, etc.) without breaking existing recipes. The mechanisms enum is closed today; if Obsidian gains a fifth hierarchy primitive (unlikely), an additive enum value is fine.
+
+## §12 Implications for the v0.1 implementation push
+
+With Ch 22 resolved, the [2026-05-04 design log §8 next-steps](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/#8-concrete-next-steps--what-closes-the-design-phase) item #7 (`spec/recipe.schema.json`) is fully unblocked AND informed:
+
+| Item | Pre-Ch22 | Post-Ch22 |
+|---|---|---|
+| #7 — `spec/recipe.schema.json` | "Recipe DSL — multi-axis selector" (vague) | **Full Ch 22 grammar in JSON Schema form** (concrete) |
+| #6 — `spec/tier1.schema.json` | "Tier 1 contract for external producers" | Same; informed by `managed`/`user_preserve` frontmatter split |
+| #8 — `spec/primitives/` | "One JSON Schema per primitive" | Now also includes one per `Mechanism` enum value (folder/file/heading/tag/wikilink) |
+| #9 — `recipes/starter/` | Starter recipes for canonical sources | Five layouts of NIST 800-53 r5 from Ch 22 §2.2 (a–e) become the regression-test corpus |
+
+This synthesis closes the design phase. The first concrete development artifact (`spec/`) lands next, in the same push that ships this log.
+
+## §13 Related
+
+- [Ch 22 deliverable (verbatim)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) — the source of the verdict
+- [Ch 22 brief (archived)](/crosswalker/agent-context/zz-challenges/archive/22-target-structure-expressivity/) — original assignment
+- [Hierarchy primitives concept page](/crosswalker/concepts/hierarchy-primitives/) — the four Obsidian mechanisms recipes compose
+- [ETL and import (concept pillar)](/crosswalker/concepts/etl-and-import/) — schema-as-primitive framing; render() is what turns Tier 1 schema into actual vault layout
+- [Ch 23 synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — engine implementation language; the runtime that hosts this render function
+- [Ch 24 synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — Tier 2 substrate; modularity axes that Ch 22's content-addressing-before-render principle compounds
+- [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — broader design phase; Ch 22 closes the last named open question
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — Spec / Library / Integrations philosophy that the grammar serves
+- RML / R2RML — `rr:subjectMap` + `rr:template` precedent for the render function
+- ISO 25964 / SKOS — polyhierarchy + `broader`/`narrower` + BTG/BTP/BTI relation types
+- Ranganathan PMEST — faceted classification justifying the `layout` + `also_emit.tags` dual-emit
+- Nix / Git / IPFS / JSON-LD URDNA2015 — content-addressing-over-canonical-form precedent
