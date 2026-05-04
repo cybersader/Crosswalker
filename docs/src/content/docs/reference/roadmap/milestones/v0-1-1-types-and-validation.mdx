@@ -1,0 +1,88 @@
+---
+title: "v0.1.1 — Type system + validation foundation"
+description: "Generate TypeScript types from spec/*.schema.json; wire AJV validator at plugin startup; validate fixtures in CI."
+sidebar:
+  order: 11
+  label: "v0.1.1 · Types + validation"
+tags: [milestone, v0-1, foundation, schema, ajv, typescript]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Make the schema artifacts `spec/tier1.schema.json` and `spec/recipe.schema.json` the *active* source of truth for plugin types and runtime validation, replacing the ad-hoc TypeScript types in `src/types/config.ts`.
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- ✅ [v0.1 design phase commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — settled
+- ✅ [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) + [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — published
+- ✅ [`bun run fixtures`](/crosswalker/development/testing/#fixtures) — running
+
+**Blocks**: v0.1.2 needs typed `Recipe` interface; v0.1.3 needs typed `Tier1ConceptNote` interface for the generation engine refactor.
+
+## Scope
+
+**In:**
+- TS type generation pipeline (`json-schema-to-typescript` or equivalent)
+- AJV validator instance loaded at plugin startup
+- Recipe validation on `loadRecipe()` (reject malformed early; show line+column errors to user)
+- Tier 1 frontmatter validation before write (`generation-engine.ts`)
+- CI step: `bun run fixtures` then validate every generated `.md` against `spec/tier1.schema.json`
+
+**Out:**
+- AJV strict-mode opt-in (defer; could be a v0.1.5+ refinement)
+- Custom format validators beyond what `ajv-formats` provides
+- Schema migration tooling (deferred to v0.1 phase 2 of the 4-phase migration plan)
+
+## Concrete tasks
+
+- [ ] Add `json-schema-to-typescript` and `ajv` + `ajv-formats` to `devDependencies`
+- [ ] Add `bun run codegen` script: generates `src/types/generated/tier1.ts` and `src/types/generated/recipe.ts` from `spec/*.schema.json`
+- [ ] Replace `src/types/config.ts` `CrosswalkerConfig` interface with the generated `ImportRecipe` type (rename ripples — see Ch 22 §10.7 4-phase migration plan)
+- [ ] Phase-0 compatibility shim: legacy `hierarchy` column-role still loads as syntactic sugar for the new `target.layout` form
+- [ ] New `src/validation/validator.ts` — exports `validateRecipe(obj)`, `validateTier1Frontmatter(obj)` using AJV instances loaded from spec
+- [ ] Wire validator into plugin startup (`main.ts`); fail-fast with clear error if a recipe is malformed
+- [ ] CI workflow step: run `bun run fixtures`, then validate every emitted markdown's frontmatter against `tier1.schema.json`
+- [ ] Unit tests in `tests/validation.test.ts` covering: valid recipe, missing required field, bad mechanism enum value, malformed CURIE, mechanism-heading-without-level_depth
+
+## Success criteria
+
+- [ ] `bun run build` produces output with **zero `any`** referring to recipe / Tier 1 frontmatter types
+- [ ] AJV catches malformed recipes with line + column error messages users can act on
+- [ ] CI fails (red) if any fixture violates `tier1.schema.json`
+- [ ] Re-running `bun run codegen` after a schema bump regenerates types deterministically (no manual edits needed)
+
+## Files to touch
+
+- `package.json` — new devDeps + `codegen` script
+- `src/types/config.ts` — replaced by generated types; legacy types removed
+- `src/types/generated/` — new (generated, gitignored OR committed for diff visibility — pick one)
+- `src/validation/validator.ts` — new
+- `src/main.ts` — wire validator at startup
+- `src/generation/generation-engine.ts` — call `validateTier1Frontmatter()` before write
+- `src/import/import-wizard.ts` — call `validateRecipe()` on save
+- `.github/workflows/*.yml` — fixture validation step
+- `tests/validation.test.ts` — new
+- `docs/src/content/docs/development/testing.mdx` — document the new CI step
+
+## Estimated effort
+
+1–2 days
+
+## Open questions
+
+- [ ] Commit generated types to git or gitignore? (Pro-commit: easier code review of schema impact. Pro-gitignore: no drift risk.)
+- [ ] AJV strict mode now or defer? (Strict catches more bugs; can be noisy initially.)
+
+## Related
+
+- [Ch 23 synthesis log §6 (commitment to JSON Schema + AJV)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) · [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json)
+- [Ch 22 synthesis §9 (4-phase migration plan)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — context for the legacy `hierarchy` shim
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)

@@ -1,0 +1,84 @@
+---
+title: "v0.1.3 — Generation engine integration"
+description: "Refactor the generation engine to call render() instead of hardcoded layout. Wire the managed/user_preserve frontmatter merge semantics. Implement the _crosswalker provenance writer per spec/tier1.schema.json."
+sidebar:
+  order: 13
+  label: "v0.1.3 · Engine integration"
+tags: [milestone, v0-1, generation-engine, frontmatter, provenance]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Connect `render()` to the existing import pipeline. After this milestone, the import wizard produces *spec-conformant* Tier 1 output: every note is validated, every `_crosswalker` provenance block is correctly populated, and re-imports preserve user-edited frontmatter (`user_preserve` keys) while overwriting recipe-managed keys.
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- [v0.1.1 — Type system + validation foundation](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/)
+- [v0.1.2 — render() v1](/crosswalker/reference/roadmap/milestones/v0-1-2-render/)
+
+**Blocks**: v0.1.4 (junction notes); v0.1.5 (sidecar projector reads from this engine's output); v0.1.7 (exporters)
+
+## Scope
+
+**In:**
+- Refactor `src/generation/generation-engine.ts` — replace hardcoded layout with `render()` calls per Ch 22
+- `_crosswalker` provenance block writer (matches `spec/tier1.schema.json` `provenance_block` $def)
+- `managed` / `user_preserve` frontmatter merge semantics (Ch 22 §8.4)
+- Idempotent re-import: re-running a recipe overwrites managed keys, preserves user keys, preserves any non-managed-non-user keys (third-party-plugin-added frontmatter survives)
+- Path collision detection — clear error when two concepts render to the same path
+- Validation hook — call `validateTier1Frontmatter()` before write; abort the import on first invalid output
+
+**Out:**
+- Junction notes (v0.1.4)
+- Crosswalk edges (v0.1.4)
+- Tier 2 sidecar updates (v0.1.5)
+- File-rename handling on recipe changes (defer; v0.2 may add a "rename detector")
+
+## Concrete tasks
+
+- [ ] Refactor `generation-engine.ts` so the inner per-row loop calls `render(recipe, identity, sourceScope)` instead of computing path/frontmatter inline
+- [ ] New `src/generation/frontmatter-merge.ts` — pure function `merge(existing, recipe-managed, recipe-user_preserve_patterns) → newFrontmatter` with the three-key semantics (managed/preserved/third-party)
+- [ ] Provenance writer — populates `_crosswalker.spec_version`, `source_ref`, `produced_at`, `producer`, `recipe`, `concept_cid`
+- [ ] Source-content hashing — read source file, sha256, write to `_crosswalker.source_ref.source_hash`
+- [ ] Recipe content hashing — sha256 of the recipe JSON (after AJV-canonicalization), write to `_crosswalker.recipe.hash`
+- [ ] Concept identity hashing — `concept_cid` per Ch 22 §8.3 (sorted CURIEs + canonical attribute set + sorted relations)
+- [ ] Validation hook — pre-write `validateTier1Frontmatter(fm)`; if invalid, abort the import with a clear error pointing at the offending row
+- [ ] Path collision detection — track every emitted path during a generation pass; abort + report on collision
+- [ ] Update wizard preview (Step 3) to use the same `render()` pipeline so preview matches actual output
+- [ ] Tests: re-run a generation against a vault that has user-edited frontmatter; verify managed keys overwritten, user keys preserved, third-party keys preserved
+
+## Success criteria
+
+- [ ] Running `bun run fixtures` then doing an Import Wizard run against the resulting `test-vault/Frameworks/NIST-mini/` produces output identical to the fixtures (round-trip determinism)
+- [ ] Re-running an import on a vault with user edits doesn't lose any user data
+- [ ] Path collisions are reported clearly, not silently overwritten
+- [ ] All output validates against `spec/tier1.schema.json`
+- [ ] Every test in `tests/generation/*.test.ts` passes (existing + new)
+
+## Files to touch
+
+- `src/generation/generation-engine.ts` — major refactor
+- `src/generation/frontmatter-merge.ts` — new
+- `src/generation/provenance.ts` — new
+- `src/generation/identity.ts` — new (CURIE + concept_cid computation)
+- `src/import/import-wizard.ts` — Step 3 preview alignment
+- `tests/generation/round-trip.test.ts` — new
+- `tests/generation/preserve.test.ts` — new
+
+## Open questions
+
+- [ ] Should `concept_cid` include user-frontmatter keys? Per Ch 22 §8.4, no — user frontmatter is canonical state of the user-annotation domain, hashed separately. Confirm at implementation
+- [ ] What's the user-facing message when a path collision is detected? Should we offer auto-suffix, or just abort?
+
+## Related
+
+- [Ch 22 synthesis §4 (managed/user_preserve)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/#4-the-managed--user_preserve-frontmatter-split)
+- [Ch 22 deliverable §8 (content addressing — target structure is a view)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/)
+- [`spec/tier1.schema.json` `provenance_block`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json)
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)

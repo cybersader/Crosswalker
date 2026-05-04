@@ -1,0 +1,81 @@
+---
+title: "v0.1.2 — render() v1 (folder + file + heading)"
+description: "Implement the pure render(Recipe, ConceptIdentity) → Address function with folder/file/heading mechanisms wired. Tag and wikilink layout-mechanisms schema-reserved for v0.2."
+sidebar:
+  order: 12
+  label: "v0.1.2 · render()"
+tags: [milestone, v0-1, render, recipe, mechanisms, ch-22]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Implement the address-rendering function from Ch 22 §3 — the *single coupling point* between the recipe and the vault layout. Pure function; deterministic; vault-independent at Pass 1; produces an `Address` per the spec. Wires three of the five mechanisms (folder, file, heading); leaves tag and wikilink schema-reserved for v0.2.
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- [v0.1.1 — Type system + validation foundation](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) (typed `Recipe` and `ConceptIdentity` interfaces required)
+
+**Blocks**: v0.1.3 (generation-engine integration) — without `render()`, the engine has no recipe-driven layout to call
+
+## Scope
+
+**In:**
+- `render(recipe, identity) → Address` pure function
+- Mechanisms wired: `folder`, `file`, `heading` (Ch 22 §10 v0.1 scope)
+- Template grammar: R2RML-style `{var}` interpolation
+- Filter set: `lower`, `upper`, `title`, `slug`, `tagsafe`, `fs-safe`, `truncate(N)` (Ch 22 §3.3)
+- Templates referencing source-level scope variables (e.g. `{control.id}`, `{family.title}`)
+- Pass 1 only — vault-independent, deterministic, hashable
+
+**Out:**
+- Mechanisms `tag` and `wikilink` as layout levels (validators warn "deferred to v0.2")
+- `graph_edges` (validators warn "deferred to v0.2")
+- Pass 2 link minimizer (`linkStyle: shortest`) — deferred to v0.3
+- Auto-generated folder-tag-sync rules — Ch 22 §4.2; arrives with v0.2 tag mechanism
+
+## Concrete tasks
+
+- [ ] New `src/render/index.ts` — exports `render(recipe, identity, sourceScope) → Address`
+- [ ] New `src/render/template.ts` — implements `{var}` interpolation + filter pipeline; closed filter set
+- [ ] Per-mechanism modules: `src/render/mechanisms/folder.ts`, `file.ts`, `heading.ts`
+- [ ] Stubs: `src/render/mechanisms/tag.ts`, `wikilink.ts` — throw "not yet implemented; coming in v0.2" when referenced by a recipe in v0.1
+- [ ] Pass-1 invariant: same `(recipe, identity, sourceScope)` always produces byte-identical `Address` output
+- [ ] Unit tests against the 3 worked NIST 800-53 examples in `spec/recipe.schema.json` (`nist-80053r5-allfolders`, `nist-80053r5-mostly-headings`, `nist-80053r5-hybrid`)
+- [ ] Determinism test — call `render()` 1000 times with the same inputs; assert identical output every time
+- [ ] Property test — for any valid recipe + identity, `Address.primary.path` survives JSON serialization round-trip
+
+## Success criteria
+
+- [ ] All 3 worked NIST examples produce expected `Address` outputs (paths, anchors, frontmatter)
+- [ ] Determinism test passes — no hidden timestamps, no `Date.now()` leaking into render output
+- [ ] Filter set closed — calling `{var|unknown_filter}` throws a recipe-validation error, not a silent miss
+- [ ] Mechanism stubs (tag, wikilink) fail fast with informative error mentioning "v0.2"
+- [ ] Test coverage > 90% for `src/render/`
+
+## Files to touch
+
+- `src/render/index.ts` — new
+- `src/render/template.ts` — new
+- `src/render/mechanisms/{folder,file,heading,tag,wikilink}.ts` — new
+- `src/render/types.ts` — new (Address, RenderResult)
+- `tests/render.test.ts` — new
+- `tests/render-determinism.test.ts` — new
+
+## Open questions
+
+- [ ] How to scope `sourceScope` (the `{control.id}` / `{family.title}` resolution context)? Likely a `Map<string, unknown>` populated by the source iteration step (upstream of render)
+- [ ] What does `render()` do when a template references an undefined variable? Throw vs. emit empty string vs. leave literal `{var}` in output
+
+## Related
+
+- [Ch 22 synthesis (recipe grammar + render function spec)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)
+- [Ch 22 deliverable §3 (formal render signature)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/)
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json)
+- [Hierarchy primitives concept page](/crosswalker/concepts/hierarchy-primitives/)
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)

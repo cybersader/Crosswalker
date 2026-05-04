@@ -1,0 +1,84 @@
+---
+title: "v0.1-RC — Bundle, polish, ship"
+description: "Bundle size verification (under 1.2 MB), mobile portability test, README polish, community plugin submission prep, release as v0.2.0 (since v0.1.0 was the existing MVP)."
+sidebar:
+  order: 19
+  label: "v0.1-RC · Ship"
+tags: [milestone, v0-1, release, bundle, community-plugins]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Ship the v0.1-implementation phase as a release. Verify bundle size, confirm mobile portability, polish remaining UX rough edges, prepare community-plugin submission. Released as **v0.2.0** since v0.1.0 was the original MVP shipped 2026-04-02.
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- All prior v0.1 milestones complete (v0.1.1 through v0.1.8)
+
+## Scope
+
+**In:**
+- Bundle size verification — measure plugin core + sqlite-wasm + sqlite-vec; target ≤ 1.2 MB compressed
+- Mobile portability test — install on Obsidian Mobile (iOS or Android via Capacitor); verify import wizard, Tier 1 generation, sidecar projection, exporters all work
+- README final polish — aligned with the design-phase-complete state; tagline preserved; jargon stripped
+- Lint clean — `bun run lint` passes for community-plugin submission rules
+- Community plugin submission prep — checklist run-through per [Obsidian Plugin Guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines)
+- Release notes — comprehensive but user-facing (no internal-vocabulary leaks per memory entry)
+- Version bump to v0.2.0 — `package.json`, `manifest.json`, `versions.json`
+
+**Out:**
+- v0.2 milestones (XLSX/JSON parsers, tag/wikilink mechanism wiring, graph_edges)
+- v0.5 external Python producer
+- Marketplace registry
+
+## Concrete tasks
+
+- [ ] Run `bun run build` in production mode; report final bundle size
+- [ ] Compare against the 1.2 MB target; if over, identify trim opportunities (lazy-load XLSX, skip SSSOM exporter unless user enables, etc.)
+- [ ] Install plugin in a real Obsidian Desktop install (not just `test-vault/`); run a full import workflow
+- [ ] Install on Obsidian Mobile; run a tree-shaped-source import (CSV); verify sidecar projects + queries work
+- [ ] `bun run lint` clean — no `obsidianmd/*` rule violations
+- [ ] README pass — verify against the "no internal vocabulary" memory rule; tagline still says "Turn your Obsidian vault into an operational GRC knowledge graph"; "How it works" diagram up-to-date
+- [ ] CHANGELOG.md update — convert "Unreleased" section to "0.2.0 — 2026-MM-DD"
+- [ ] ROADMAP.md update — flip v0.1 implementation phase status to ✅ Complete; add a "What carried forward" section
+- [ ] Archive v0.1 implementation roadmap page — move to `reference/roadmap/v0-1-implementation.mdx` per the archive convention
+- [ ] Submit to obsidianmd/obsidian-releases via PR per community plugin process
+
+## Success criteria
+
+- [ ] Bundle ≤ 1.2 MB compressed total
+- [ ] Plugin installs and runs cleanly on Obsidian Desktop AND Mobile
+- [ ] `bun run lint` exits 0
+- [ ] All v0.1.1–v0.1.8 milestones marked ✅ Done
+- [ ] PR submitted to obsidianmd/obsidian-releases for community-plugin inclusion
+
+## Files to touch
+
+- `package.json` — version bump
+- `manifest.json` — version bump
+- `versions.json` — append entry
+- `CHANGELOG.md` — finalize 0.2.0 entry
+- `ROADMAP.md` (root) — phase status flip
+- `docs/.../reference/roadmap/index.mdx` — phase status flip + archive link
+- `docs/.../reference/roadmap/v0-1-implementation.mdx` — new archive page
+- `README.md` — final polish pass
+- `docs/.../development/contributing.mdx` — verify install/contribute paths still accurate
+
+## Open questions
+
+- [ ] Is the v0.2.0 number right, or do we want v0.1.0-rc.1 → v0.1.0 (overwriting the existing 0.1.0 MVP semantically)? Lean toward v0.2.0 since the MVP shipped and is in user hands; this is genuinely the next minor
+- [ ] Community plugin submission timing — submit immediately on RC pass, or wait through a quiet "early adopter" period?
+
+## Related
+
+- [Obsidian Plugin Guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines)
+- [Obsidian Plugin Submission process](https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin)
+- [README user-facing-surface memory rule](/crosswalker/agent-context/zz-log/) — keep README jargon-free
+- [Ch 23 synthesis (`isDesktopOnly: false` commitment)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)

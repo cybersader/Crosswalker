@@ -1,0 +1,73 @@
+---
+title: "v0.1.6 — Bases query layer"
+description: "Emit Bases-shaped queries instead of Dataview-style queries. Replace the old generation-engine query templates with Bases-friendly equivalents."
+sidebar:
+  order: 16
+  label: "v0.1.6 · Bases queries"
+tags: [milestone, v0-1, bases, query-layer]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Move the v0.1 output query layer from Dataview to Bases (Obsidian's official structured-data query system). Update the templates that the plugin emits — concept-note query examples, evidence-link aggregations, coverage-matrix views — so they work natively in Bases without requiring users to install Dataview.
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (transitive queries route through the sidecar; simple frontmatter queries route through Bases natively)
+
+**Blocks**: v0.1.7 (some exporters reuse the same query layer)
+
+## Scope
+
+**In:**
+- Bases-shaped query templates the plugin emits in concept-note bodies (e.g., "Controls in this family", "Evidence covering this control")
+- Updated docs / starter recipes referencing Bases (not Dataview)
+- Compatibility check: Tier 1 frontmatter shapes (concept_note, junction_note, crosswalk_edge) are queryable in Bases without restructure
+
+**Out:**
+- Building a Bases plugin / extension — Bases is upstream Obsidian; we just emit queries that Bases can run
+- Custom Bases views beyond what Obsidian ships
+- Datacore as backup option (defer; may revisit if Bases proves limited)
+
+## Concrete tasks
+
+- [ ] Audit existing query templates in `src/generation/` and `recipes/starter/` for Dataview-style notation; list every occurrence
+- [ ] Translate each query template to Bases-shape (covered in `.claude/skills/obsidian-bases/`)
+- [ ] Verify Tier 1 frontmatter keys (`tags.contains()`, `file.hasTag()`) work as expected with Bases — note Obsidian's Bases querying nested-tag-prefix via `file.hasTag()` per Ch 22 §1.3
+- [ ] Update generation-engine templates that get inserted into concept-note bodies on import
+- [ ] Update KB pages — `concepts/metadata-ecosystem`, `getting-started/grc-teams`, `features/import-wizard` — to show Bases examples
+- [ ] Add a "Querying your imported framework" page under `features/` showing common Bases queries against Tier 1 output
+
+## Success criteria
+
+- [ ] Every emitted concept-note body that contains a query renders as a working Bases view in Obsidian
+- [ ] No Dataview-specific syntax (`dv.pages()`, `inline:: value`, `WHERE`, `FROM`) appears in plugin-emitted output
+- [ ] User can answer the canonical questions ("What evidence covers AC-2?", "Which ISO controls map to NIST AC family?") via Bases without installing extra plugins
+- [ ] Coverage matrix view (one row per control, columns showing crosswalks to other frameworks) renders in Bases
+
+## Files to touch
+
+- `src/generation/templates/` — Bases-shaped query templates
+- `src/generation/generation-engine.ts` — body-template rendering
+- `recipes/starter/*.json` — updated emitted-body templates (if applicable)
+- `docs/src/content/docs/concepts/metadata-ecosystem.mdx` — Bases focus
+- `docs/src/content/docs/features/import-wizard.mdx` — Bases examples
+- `docs/src/content/docs/getting-started/grc-teams.mdx` — example workflows
+
+## Open questions
+
+- [ ] Bases's nested-tag-prefix support — `file.hasTag('framework/nist/ac')` matches `framework/nist/ac/ac-2`? Confirm at implementation; if not, may need to emit fully-enumerated tag arrays
+- [ ] Does Bases handle wikilink-array frontmatter (`parent: [[A]]`) cleanly, or do we need to use the modern `links:` property for crosswalks?
+
+## Related
+
+- [`.claude/skills/obsidian-bases/`](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/obsidian-bases) — skill spec for Bases query authoring
+- [Concepts: metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/)
+- [Project memory: query layer is Bases (not Dataview)](/crosswalker/agent-context/zz-log/) — saved 2026-05-04
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)

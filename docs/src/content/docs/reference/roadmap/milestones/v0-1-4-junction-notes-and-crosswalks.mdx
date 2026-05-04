@@ -1,0 +1,79 @@
+---
+title: "v0.1.4 — Junction notes + crosswalk edges"
+description: "Add the junction-note (evidence-link) and crosswalk-edge code paths to the generation engine. Test against NIST CSF → 800-53 mappings."
+sidebar:
+  order: 14
+  label: "v0.1.4 · Junction + crosswalk"
+tags: [milestone, v0-1, junction-notes, crosswalks, evidence, sssom, strm]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Wire the two non-concept-note Tier 1 shapes — junction notes (evidence links, 13-field schema per [Ch 07](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)) and crosswalk edges (between two concepts in different ontologies, with STRM predicate vocabulary + SSSOM-shaped envelope) — into the generation engine. After this milestone, the plugin produces complete Tier 1 vaults that capture concepts, evidence, and crosswalks together.
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/)
+
+**Blocks**: v0.1.5 needs all three frontmatter shapes for Tier 2 SQL projection; v0.1.7 needs crosswalk edges for STRM TSV / OSCAL exports
+
+## Scope
+
+**In:**
+- Junction-note generation as a new code path — non-destructive, git-history-preserving
+- Crosswalk-edge generation when sources have crosswalk columns (e.g., NIST CSF → 800-53 mapping spreadsheet)
+- STRM predicate vocabulary enforcement (closed enum: `is_equivalent_to`, `is_broader_than`, `is_narrower_than`, `is_approximate_to`, `intersects_with`, `no_relationship`)
+- SSSOM-shaped fields on crosswalk edges (`match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `creator_id`)
+- Recipe support for junction-note + crosswalk-edge "kinds" — recipe specifies `kind: junction-note` or `kind: crosswalk-edge` in its layout
+
+**Out:**
+- Junction-note UI (read/write evidence-link form) — that's a wizard feature; defer to v0.2
+- Auto-suggested crosswalks (LLM-assisted) — community phase
+- Multi-source crosswalk derivation (chain rules) — Tier 2 sidecar concern, v0.1.5+
+
+## Concrete tasks
+
+- [ ] Extend recipe schema (`spec/recipe.schema.json`) — `target.layout[].kind` field accepting `concept | junction-note | crosswalk-edge` (default `concept`)
+- [ ] Extend `render()` — when `kind: junction-note`, produce a junction-note `Address`; when `kind: crosswalk-edge`, produce a crosswalk-edge `Address`
+- [ ] Junction-note frontmatter writer — emits the 13-field schema; includes `subject`, `predicate`, `object`, `coverage`, `reviewer`, `review_date`, `status`, `confidence`, `scope`, `expires_at`, `notes`, `tags`, `_crosswalker`
+- [ ] Crosswalk-edge frontmatter writer — emits `subject_id`, `predicate_id` (STRM enum-validated), `object_id`, `match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `mapping_date`, `creator_id`, `review_status`, `_crosswalker`
+- [ ] Add a NIST-CSF-to-800-53 starter recipe in `recipes/starter/` — produces concept notes for both ontologies + crosswalk edges between them
+- [ ] Add a crosswalk fixture CSV to `tools/fixtures/synthetic/` — small subset of CSF→800-53 mappings; `bun run fixtures:crosswalks` (or extend the existing fixtures script)
+- [ ] Tests against the new starter recipe + fixture — verify CIDs are stable across runs; verify STRM enum validation rejects bad predicates
+
+## Success criteria
+
+- [ ] Running the CSF→800-53 starter recipe produces concept notes for CSF + 800-53 + crosswalk-edge notes between them, all validating against `spec/tier1.schema.json`
+- [ ] STRM predicate vocabulary is enforced — invalid `predicate_id` rejected at validation
+- [ ] Junction notes carry the full 13-field schema with all required fields populated
+- [ ] Re-running the recipe produces byte-identical output (deterministic)
+
+## Files to touch
+
+- `spec/recipe.schema.json` — add `kind` field to LayoutEntry
+- `src/render/mechanisms/file.ts` (or new `kinds/junction-note.ts`, `kinds/crosswalk-edge.ts`)
+- `src/generation/generation-engine.ts` — kind-aware dispatch
+- `recipes/starter/nist-csf-to-800-53.json` (or .yaml) — new starter recipe
+- `tools/fixtures/synthetic/csf-800-53-crosswalk.csv` — new fixture
+- `tests/generation/junction-notes.test.ts` — new
+- `tests/generation/crosswalk-edges.test.ts` — new
+
+## Open questions
+
+- [ ] Recipe `kind` field — should it default to `concept` (least surprise) or be required (explicit)? Lean toward default `concept`
+- [ ] Crosswalk edges as separate `.md` files vs. embedded as wikilinks in concept-note frontmatter — recipe author's choice, but what's the v0.1 default?
+- [ ] Where to host the starter recipe library — `recipes/starter/` at repo root, or move to its own GitHub repo per the marketplace pattern?
+
+## Related
+
+- [Ch 07 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — 13-field junction-note schema origin
+- [STRM registry page](/crosswalker/reference/registry/strm/) — predicate vocabulary
+- [SSSOM registry page](/crosswalker/reference/registry/sssom/) — envelope shape
+- [`spec/tier1.schema.json` junction_note + crosswalk_edge defs](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json)
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)

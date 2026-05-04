@@ -1,0 +1,88 @@
+---
+title: "v0.1.5 — Tier 2 sqlite-wasm sidecar projector"
+description: "Bundle @sqlite.org/sqlite-wasm + sqlite-vec; project Tier 1 frontmatter into queryable SQL on vault load; lazy closure cache; recover-on-missing semantics."
+sidebar:
+  order: 15
+  label: "v0.1.5 · Tier 2 sidecar"
+tags: [milestone, v0-1, tier-2, sqlite, sidecar, projection, sqlite-vec]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Implement the Tier 2 sidecar projector — the deletable, recoverable SQLite projection of Tier 1 frontmatter. Auto-projects on vault load; lazy closure cache for transitive crosswalk queries; if `.crosswalker.sqlite` is missing/corrupted/stale, reproject from canonical Tier 1 on next load.
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (typed Tier 1 output to project from)
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) (all three frontmatter shapes flowing through)
+
+**Blocks**: v0.1.6 (Bases query layer reads from sidecar for transitive queries); v0.1.7 (exporters use sidecar for join-heavy queries)
+
+## Scope
+
+**In:**
+- Bundle `@sqlite.org/sqlite-wasm` + `sqlite-vec` into the plugin (custom-static-link build per Ch 24 §2.4)
+- Project Tier 1 frontmatter on vault load — populate `mappings`, `junction_notes`, `concepts`, `ontologies` tables
+- Lazy closure cache — recursive-CTE-derived transitive closure, materialized on demand
+- Recovery on missing/stale sidecar — reproject from Tier 1; abort + warn if Tier 1 itself is malformed
+- OPFS persistence via `opfs-sahpool` VFS (works on Capacitor without COOP/COEP — the mobile-portable path)
+- Runs on main thread with cooperative yielding (Web Workers unreliable per Ch 23 §9.5)
+- `Platform.isDesktopApp` gate where needed (e.g., for full XLSX read on the mobile path; not v0.1.5 concern but design accordingly)
+
+**Out:**
+- DuckDB-WASM / Oxigraph / Nemo (researched back-pocket per [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/))
+- Tier 3 server (deployment-guide concern; v2.0+)
+- libSQL / Turso / Limbo (rejected per [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/))
+- Vector-search UI in v0.1.5 — schema and storage only; query UI lands in v0.1.6 or v0.2
+
+## Concrete tasks
+
+- [ ] Custom WASM build of `@sqlite.org/sqlite-wasm` with `sqlite-vec` statically linked (per `sqlite-vec-wasm-demo` pattern)
+- [ ] New `src/tier2/sidecar.ts` — wraps the WASM, manages OPFS-backed `.crosswalker.sqlite` lifecycle
+- [ ] DDL for `mappings`, `junction_notes`, `concepts`, `ontologies` tables (matches Tier 2 SQL section in v0.1 schema spec)
+- [ ] Projector — `projectFromTier1(vault) → void`: scan vault frontmatter, upsert into sidecar tables
+- [ ] Recovery semantics — if sidecar missing or schema-version mismatch, reproject from Tier 1
+- [ ] Lazy closure cache — `closure_cache` table; populated on first transitive query; invalidated on Tier 1 changes
+- [ ] Query API — typed `query()` exports for v0.1.6/v0.1.7 to consume
+- [ ] Cooperative yielding — chunk projection work; `await new Promise(setTimeout)` between batches; yield back to UI thread
+- [ ] Bundle-size budget — measure post-static-link WASM size; target ~600 KB compressed (per Ch 24 §2.2)
+- [ ] Unit tests — round-trip projection (project, modify Tier 1, reproject, query); recovery test (delete sidecar, reload, verify auto-reprojection)
+- [ ] Mobile sanity check — open `test-vault/` on Obsidian Mobile (iOS or Android); confirm sidecar projects and queries succeed via `opfs-sahpool` VFS
+
+## Success criteria
+
+- [ ] Sidecar projects 100K mappings in under 30s on a typical desktop (per Ch 18 scale ceiling)
+- [ ] Deleting `.crosswalker.sqlite` and reloading the vault cleanly reprojects without user action
+- [ ] Recursive-CTE transitive closure query (e.g., "all controls that NIST CSF Identify maps to via any chain") returns results consistent with Tier 1 facts
+- [ ] Bundle size: plugin core + sqlite-wasm + sqlite-vec ≤ 1.2 MB compressed
+- [ ] Sidecar functions on Obsidian Mobile (Capacitor WebView) via `opfs-sahpool` VFS
+
+## Files to touch
+
+- `src/tier2/sidecar.ts` — new (lifecycle + projection + recovery)
+- `src/tier2/schema.sql` — DDL
+- `src/tier2/projector.ts` — Tier 1 → sidecar table mapping
+- `src/tier2/queries.ts` — typed query helpers (closure, joins, coverage)
+- `src/main.ts` — wire sidecar projector to `onVaultLoaded`
+- `tests/tier2/projection.test.ts` — new
+- `tests/tier2/recovery.test.ts` — new
+
+## Open questions
+
+- [ ] Which OPFS VFS variant — `opfs` (requires SharedArrayBuffer/COOP-COEP) or `opfs-sahpool` (works without)? Ch 24 §2.3 says `opfs-sahpool` is the pragmatic path
+- [ ] Closure cache invalidation — file-mtime tracking, recipe-hash tracking, or full reproject on any vault change?
+- [ ] Should we expose a `clear-sidecar` command in the command palette for users? (Useful for debugging; minimal cost.)
+
+## Related
+
+- [Ch 18 deliverable (Tier 2-Lite scale ceiling)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — 100K mapping ceiling
+- [Ch 24 synthesis (substrate decision)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)
+- [Embedded vs server substrates concept page](/crosswalker/concepts/embedded-vs-server-substrates/)
+- [v0.1 schema spec §7 (Tier 2 SQL DDL)](/crosswalker/agent-context/v0-1-schema-spec/)
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)

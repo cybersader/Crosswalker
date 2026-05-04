@@ -39,6 +39,24 @@ All named architectural questions resolved through five fresh-agent research cha
 **Long-horizon watch register** for substrates and adjacent file-based tools considered and not adopted today: see [embedded-vs-server-substrates § watch register](/crosswalker/concepts/embedded-vs-server-substrates/#long-horizon-watch-register).
 :::
 
+## v0.1 implementation milestones (active work)
+
+The v0.1 implementation phase breaks into 9 sequenced milestones. Each has its own page with concrete tasks, dependencies, and success criteria.
+
+| Milestone | Title | Effort | Status |
+|---|---|---|---|
+| [v0.1.1](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) | Type system + validation foundation | 1–2 days | 📋 Planning |
+| [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) | `render()` v1 — folder + file + heading | 3–5 days | 📋 Planning |
+| [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) | Generation engine integration | 3–5 days | 📋 Planning |
+| [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | Junction notes + crosswalk edges | 2–3 days | 📋 Planning |
+| [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Tier 2 sqlite-wasm sidecar projector | 5–8 days | 📋 Planning |
+| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer | 3–5 days | 📋 Planning |
+| [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Exporters (STRM TSV / OSCAL JSON) | 2–3 days | 📋 Planning |
+| [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) | Audit trail T1 default | 1–2 days | 📋 Planning |
+| [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) | Bundle, polish, ship | 2–3 days | 📋 Planning |
+
+Total estimate: **~3–6 weeks of focused work**. See the [milestone hub](/crosswalker/reference/roadmap/milestones/) for the full sequencing detail and dependency graph.
+
 ## Foundation — "Get the architecture right" (closed)
 
 Architecture decisions before more code. The three interconnected schemas (_crosswalker metadata, [FrameworkConfig](/crosswalker/agent-context/config-schema-design/), [StewardshipProfile](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) née EvolutionPattern) must be designed together — getting any wrong is expensive to fix later. [Decision: architecture first](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#4-architecture-decisions-before-more-ui-code)

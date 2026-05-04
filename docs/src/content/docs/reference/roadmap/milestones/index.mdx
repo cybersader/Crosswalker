@@ -1,0 +1,65 @@
+---
+title: v0.1 implementation milestones
+description: Sequenced milestone breakdown of the v0.1 implementation phase. Each milestone has its own page with goal, dependencies, scope, tasks, success criteria, and status.
+sidebar:
+  order: 5
+  label: "Milestones"
+tags: [milestone, roadmap, v0-1, planning]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The [v0.1 implementation phase](/crosswalker/reference/roadmap/#v01-implementation-phase--what-ships-first) breaks into 9 sequenced milestones. Each one has its own page with concrete tasks, dependencies, success criteria, and current status.
+
+## Status snapshot
+
+| Milestone | Title | Effort | Status |
+|---|---|---|---|
+| [v0.1.1](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) | Type system + validation foundation | 1–2 days | 📋 Planning |
+| [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) | `render()` v1 — folder + file + heading | 3–5 days | 📋 Planning |
+| [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) | Generation engine integration | 3–5 days | 📋 Planning |
+| [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | Junction notes + crosswalk edges | 2–3 days | 📋 Planning |
+| [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Tier 2 sqlite-wasm sidecar projector | 5–8 days | 📋 Planning |
+| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer | 3–5 days | 📋 Planning |
+| [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Exporters (STRM TSV / OSCAL JSON) | 2–3 days | 📋 Planning |
+| [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) | Audit trail T1 default | 1–2 days | 📋 Planning |
+| [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) | Bundle, polish, ship | 2–3 days | 📋 Planning |
+
+**Status legend**: 📋 Planning · 🚧 In progress · ✅ Done · ⏸ Blocked
+
+## Total estimate
+
+~3–6 weeks of focused work, depending on velocity. Each milestone has explicit dependencies on the previous one (each is a step on the same dependency chain), so the order is roughly fixed.
+
+## How milestones work in this roadmap
+
+Each milestone page contains:
+
+- **Goal** — one sentence
+- **Dependencies** — what must complete before this can start
+- **Scope** — what's in / what's out
+- **Concrete tasks** — checklist of work
+- **Success criteria** — verifiable outcomes (test passes, bundle size, schema validation, etc.)
+- **Files to touch** — specific paths
+- **Estimated effort** — rough day count
+- **Status** — Planning | In progress | Done | Blocked
+- **Related** — KB cross-links (decision logs, spec artifacts, concept pillars)
+
+When work begins on a milestone, flip its status to "In progress" + start checking off tasks. When it ships, flip to "Done" + add a brief retrospective note. Use this status table at the top to track at-a-glance progress.
+
+## Why hub-and-spoke
+
+Top-level [roadmap](/crosswalker/reference/roadmap/) shows phases and high-level direction. Milestone pages contain the implementation detail without bloating the top-level view. Each milestone has a stable URL → linkable from PRs, decision logs, code comments, agent prompts. AI agents can be pointed at a single milestone page for focused work.
+
+## Architectural foundation for these milestones
+
+All 9 milestones build on the [2026-05-04 design phase commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/):
+
+- [Schema-as-primitive reframe](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience) — Tier 1 schema is the load-bearing contract
+- [Closed 5-mechanism recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — Ch 22 synthesis
+- [TypeScript in-plugin engine](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — Ch 23 synthesis
+- [Tier 2 substrate = canonical sqlite-wasm + sqlite-vec](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — Ch 24 synthesis
+- [Runtime-agnostic recipe schema](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#4-the-most-important-commitment-runtime-agnostic-recipe-schema)
+- [Output query layer = Bases](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — Dataview removed
+
+Machine-readable contracts: [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) + [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json).

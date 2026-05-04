@@ -1,0 +1,75 @@
+---
+title: "v0.1.8 — Audit trail T1 default"
+description: "Wire the Tier 1 audit trail: git-commit integration, Ed25519-signed release manifests, on-demand FRE 902(13) PDF certification template."
+sidebar:
+  order: 18
+  label: "v0.1.8 · Audit trail"
+tags: [milestone, v0-1, audit, git, ed25519, fre-902, compliance]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Goal
+
+Implement the v0.1 audit trail floor — Tier 1 = git commits + Ed25519-signed releases for shared mapping bundles + auto-generated FRE 902(13) certification PDF available on demand. Per [Ch 08 synthesis](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) + [v0.1 stack pivot §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/).
+
+## Status
+
+📋 Planning
+
+## Dependencies
+
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (write-event hook needed)
+
+## Scope
+
+**In:**
+- Git-commit-on-write hook — every Tier 1 generation pass produces one commit; commit message includes recipe ID + recipe hash + concept count + summary diff
+- Ed25519 release-manifest signing — when a user publishes a Tier 1 bundle, optionally sign with their Ed25519 key; signature lives in `_crosswalker_manifest.json` at vault root
+- FRE 902(13) PDF certification — on-demand generation of a compliance-export certification template suitable for evidence submission in US litigation
+- Settings toggle — "Sign on commit" + key-management UX (point at git config or OS keychain; don't reinvent)
+
+**Out:**
+- T2 / T3 audit profiles (OpenTimestamps, RFC 3161, Sigstore Rekor v2 + in-toto, eIDAS QTSA + W3C VC) — opt-in compliance-export mode for v1.0+
+- PQC dual-sign migration — 2027+ work per [NIST IR 8547 timeline](/crosswalker/reference/roadmap/#performance--v10-companion-plugins)
+
+## Concrete tasks
+
+- [ ] Git integration — `src/audit/git-commit.ts`; uses `simple-git` or shells out to system git; produces deterministic commit messages
+- [ ] Ed25519 sign helper — `src/audit/sign.ts`; `@noble/curves` or equivalent; uses key from settings (path-to-PEM or OS keychain reference)
+- [ ] Release manifest writer — `_crosswalker_manifest.json` at vault root; includes recipe IDs + recipe hashes + Ed25519 signatures
+- [ ] FRE 902(13) PDF template — `src/audit/fre-902.ts`; produces a one-page PDF using `pdf-lib` or equivalent; includes vault hash, signed manifest, signer identity
+- [ ] Settings UI — toggle for "Sign on commit"; key-source selector (git config, file path, keychain)
+- [ ] Tests — sign + verify roundtrip; commit-on-write produces consistent message; FRE 902(13) renders without errors
+
+## Success criteria
+
+- [ ] Every successful generation pass produces exactly one git commit with deterministic message
+- [ ] Signed releases verify cleanly with `openssl` or `gpg --verify` (depending on signature format)
+- [ ] FRE 902(13) PDF includes all required fields per the FRE 902(13) statutory text
+- [ ] Settings toggle off → no signing (opt-in)
+- [ ] No Tier 2/Tier 3 audit dependencies in v0.1.8 — all that's deferred to opt-in compliance-export mode
+
+## Files to touch
+
+- `src/audit/git-commit.ts` — new
+- `src/audit/sign.ts` — new
+- `src/audit/fre-902.ts` — new (PDF template)
+- `src/audit/manifest.ts` — new (`_crosswalker_manifest.json` writer)
+- `src/main.ts` — wire commit hook to generation events
+- `src/settings/settings-tab.ts` — new audit section
+- `tests/audit/sign-verify.test.ts` — new
+
+## Open questions
+
+- [ ] Do we shell out to system git, or use a JS library? `simple-git` exists but adds a dep. Shell-out is closer to user expectations; library is more portable across environments
+- [ ] Key management UX — referencing a file path vs. integrating with macOS Keychain / Windows Credential Manager / Linux secret-service. Pick one v0.1 default; cross-platform parity is v1.0+
+- [ ] FRE 902(13) PDF — fully programmatic via `pdf-lib`, or a templated approach (JSX-PDF / hbs)?
+
+## Related
+
+- [Ch 08 deliverable (audit trail tenability)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/)
+- [Ch 13 deliverable (modern attestation primitives)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — context for v1.0+ T2/T3 work
+- [Ch 15 deliverable (4-tier audit model)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/)
+- [v0.1 stack pivot §8 (audit trail floor)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)
