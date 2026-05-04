@@ -1,0 +1,172 @@
+---
+title: "Challenge 24: Turso / libSQL evaluation — should Tier 2 stay on sqlite.org sqlite-wasm or migrate? Should Tier 3 list Turso Cloud as an option? Adversarial framing — what problem does Turso solve that Crosswalker actually has?"
+description: "The current v0.1 Tier 2 substrate is `@sqlite.org/sqlite-wasm` (~600 KB) — bedrock canonical SQLite. Turso (libSQL — a 2-year-old SQLite fork with native replication, edge distribution, built-in vector search, and a Rust rewrite called Turso Database / Limbo) markets itself as a SQLite successor. This challenge asks the strict question: does anything in Crosswalker's actual architecture want what libSQL/Turso offers that canonical sqlite-wasm doesn't already give us? And separately: should Tier 3 options include hosted Turso Cloud alongside Postgres / Fuseki / oxigraph-server / TerminusDB? Critically assess against bundle size, mobile-Obsidian portability, single-vendor governance risk, SQLite-compat divergence, and the marketplace use case."
+tags: [research, foundation, tier-2, tier-3, sqlite, libsql, turso, governance, sustainability, vendor-risk, vector-search, edge-replication]
+date: 2026-05-04
+sidebar:
+  label: "24 · Turso / libSQL evaluation"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Why this exists
+
+The [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) committed Tier 2 to `@sqlite.org/sqlite-wasm` — the canonical, foundation-governed SQLite WASM build. [Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) confirmed the stack (`sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE`) is comfortably viable to ~100K mappings. Tier 3 was documented with Postgres / Fuseki / oxigraph-server / TerminusDB / AGE as deployment options.
+
+**Turso / libSQL has not been evaluated anywhere in the KB.** The user surfaced it directly:
+
+> *"Random question, since I've forgotten, is SQLite or Turso involved anywhere? ... it proposes to be a SQLite successor it seems"*
+
+This challenge picks up that gap. It is **strictly orthogonal** to engine language (Ch 23 — already resolved as Path A: TS in-plugin) — Turso is a *substrate* question, not a *runtime* question. The bundled TS engine still runs the show; the question is which embedded-SQL substrate it talks to and whether Tier 3 has more options than currently documented.
+
+## The framing
+
+Turso the *thing* is actually three increasingly divergent things — important to disambiguate before evaluation:
+
+| What | Status | Relationship to canonical SQLite |
+|---|---|---|
+| **libSQL** | Production-ish; ~2 years old | A fork of SQLite. Started as a soft fork; has accumulated divergence (different WAL implementation, native replication, vector search extension, async API additions). File format claims compat. |
+| **Turso Cloud / sqld** | Hosted offering on libSQL | Edge-replicated libSQL servers; commercial product from Turso the company (formerly ChiselStrike). |
+| **Turso Database / Limbo** | Pre-1.0; experimental | A *full rewrite* of SQLite in Rust. Bigger divergence; not file-format-compatible with classic SQLite. Marketed as the future of SQLite by Turso. |
+
+The user's phrase "proposes to be a SQLite successor" maps most directly to **Turso Database / Limbo** (the Rust rewrite). The currently-shippable thing is **libSQL** (the soft fork). The hosted thing is **Turso Cloud**.
+
+This challenge must distinguish all three in its evaluation. They are not interchangeable.
+
+## The questions
+
+Three independent decisions, each with different stakes:
+
+| # | Question | Stakes |
+|---|---|---|
+| **Q1** | Should Tier 2 substrate **migrate from `@sqlite.org/sqlite-wasm` to libSQL-WASM** for v0.1 or v0.2? | High — Tier 2 is bundled; substrate change ripples through every projection, every query, the marketplace bundle format, the safety-guarantee story |
+| **Q2** | Should Tier 3 documented options **include Turso Cloud** alongside Postgres / Fuseki / oxigraph-server / TerminusDB / AGE? | Low — Tier 3 is opt-in; documenting an option doesn't bind anything |
+| **Q3** | Should Crosswalker **track Turso Database / Limbo** as a long-horizon option (post-v1.0) for substrate replacement once the Rust rewrite stabilizes? | Low — pure watch-don't-adopt; useful for 5-year planning |
+
+The deliverable should answer all three, but **Q1 is the load-bearing one** — the others are essentially "should we mention this in the docs."
+
+## What to investigate
+
+### 1. libSQL-WASM vs `@sqlite.org/sqlite-wasm` for Tier 2
+
+The substrate substitution question. Pin down empirically:
+
+- **Bundle size.** Current commitment: `@sqlite.org/sqlite-wasm` ~600 KB in OPFS-backed configuration. What's the equivalent libSQL-WASM bundle? (Last public figures suggested similar, but verify against current builds. Read-write-OPFS-vector configurations.)
+- **Browser / Capacitor compatibility.** Does libSQL-WASM work in Obsidian Desktop (Electron renderer) AND Obsidian Mobile (Capacitor WebView)? `@sqlite.org/sqlite-wasm` is verified to work in both. libSQL needs empirical confirmation.
+- **Extension compat.** Crosswalker's Tier 2 stack uses:
+  - **`sqlite-vec`** — vector search extension. Does libSQL ship its own native vector type that replaces it? Is there feature parity?
+  - **FTS5** — full-text search (used or planned for crosswalk text). libSQL claims compat; verify.
+  - **Recursive CTEs** — the workhorse for transitive closure (per [Ch 12](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/)). libSQL forks SQLite's CTE implementation; verify identical query plans on the rule-expressivity matrix from [Ch 18 §1](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/).
+  - **`simple-graph`** patterns (the recursive-CTE-over-tables idiom). Pure SQL; should work but verify.
+- **File format compat.** The architectural safety guarantee says Tier 2 is recoverable from Tier 1. But marketplace pattern + cross-machine portability also need: can a user open a libSQL `.db` file with vanilla `sqlite3` CLI? Can they open a `sqlite-wasm`-produced file with libSQL? (libSQL claims yes for the soft-fork; needs empirical confirmation under sqlite-vec extension data.)
+- **Concurrency model.** libSQL has an async API; the canonical SQLite WASM is sync-or-promise-shimmed. Affects engine yield-pattern (Ch 23 commitment: main-thread cooperative yielding).
+- **OPFS persistence.** Both should support OPFS-VFS; verify libSQL's story matches `@sqlite.org/sqlite-wasm`'s.
+
+### 2. Single-vendor governance risk vs sqlite.org foundation
+
+This is the dimension Ch 23 spent the most time on for engine language; same lens applies to substrate:
+
+- **`@sqlite.org/sqlite-wasm`**: SQLite Consortium / `sqlite.org` — public-domain, 20+ year track record, multi-stakeholder consortium funding (Adobe, Bloomberg, Mozilla, Mozilla Foundation, others). Bus factor: extremely high. The foundational tech of much of the software ecosystem.
+- **libSQL / Turso the company**: 2-year-old fork; commercial entity in growth phase; investor-backed; strategic interest in users adopting libSQL features that aren't in canonical SQLite (vector, replication) so users get locked into the libSQL fork. Bus factor: company-dependent.
+- **Turso Database / Limbo**: experimental Rust rewrite by the same company. Even higher single-vendor exposure.
+
+The ChunkyCSV / JSONaut owner's portfolio philosophy ([per memory and the broader portfolio framing](/crosswalker/concepts/etl-and-import/#where-this-came-from--broader-portfolio-context)) is *applied information science with plain text and resilient primitives*. Canonical SQLite (foundation-governed, file-format-stable since 2004) maps to that philosophy. libSQL (single-vendor in growth mode) does not map as naturally.
+
+The deliverable should ask: **what value does libSQL deliver that's worth taking on a single-vendor governance dependency?** If the answer is "nothing the Tier 2 stack actually needs," then Q1 is a reject.
+
+### 3. SQLite-compat divergence — where does libSQL drift from canonical?
+
+libSQL's "SQLite-compatible" claim deserves adversarial scrutiny:
+
+- **Known divergences** as of public docs: WAL implementation rewrite (for replication); native vector type; native HTTP API; embedded replicas; SQL-over-libsql-protocol. Are any of these visible to Crosswalker's queries?
+- **Extension ABI**: SQLite extensions (`sqlite-vec`, FTS5 internals) are linked at C-ABI level. Does libSQL fully implement that ABI, or are there gaps that affect Crosswalker's specific extensions?
+- **Future drift**: as libSQL accumulates Turso-specific features (Turso Database is the eventual destination), what's the deprecation story for canonical-SQLite-compat? Is it "canonical SQLite forever" or "we may break compat once Turso Database is production-ready"?
+- **Re-converge story**: if libSQL diverges further and Crosswalker wants to migrate back to canonical, what's the cost? Higher than the cost of staying.
+
+### 4. Vector search — the one feature libSQL does have that canonical SQLite doesn't
+
+Native `vector` columns + ANN indexing built into libSQL is a real value-add. Currently Crosswalker's Tier 2 uses `sqlite-vec` (Alex Garcia, MIT, recently active) for vector search. The decision matrix:
+
+| Stack | Pros | Cons |
+|---|---|---|
+| `@sqlite.org/sqlite-wasm` + `sqlite-vec` | Bedrock SQLite + Garcia's actively-maintained extension; foundation governance for the substrate | Two-component dependency; `sqlite-vec` is single-maintainer (mitigation: small, MIT, forkable) |
+| libSQL native vector | One component; vendor-integrated; expected long-term feature commitment | Single-vendor governance for both substrate AND vector; if Turso's vector design diverges from `sqlite-vec`'s API, downstream tooling breaks |
+
+The vector-search angle is the strongest specific case for libSQL. The deliverable should evaluate whether it's *strong enough alone* to justify the substrate switch, or whether `sqlite-wasm + sqlite-vec` is the better bet.
+
+### 5. Tier 3 — Turso Cloud vs documented alternatives
+
+The Tier 3 question is much lower-stakes (it's just documentation; nothing is bundled or required). Honest comparison:
+
+| Tier 3 option | Strengths | Weaknesses |
+|---|---|---|
+| **Postgres + JSONB + recursive CTE** (current "boring tech default") | Multi-stakeholder ecosystem; mature; commodity hosting; well-understood | Requires Postgres ops |
+| **Fuseki / oxigraph-server** (per [Ch 16](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/)) | RDF-native; SPARQL; aligns with SSSOM ecosystem | RDF ops, smaller community than Postgres |
+| **TerminusDB v12** (opt-in vault-mirror) | Document-graph; built-in versioning | Single-vendor (DFRNT); small adoption |
+| **Apache AGE** (optional fallback) | Cypher on Postgres | Vendor pivot risk (Bitnine) flagged historically |
+| **Turso Cloud / sqld** | Edge-replicated SQLite; same SQL semantics as Tier 2; "scale Tier 2 horizontally without changing query layer" | Single-vendor commercial; pricing model; libSQL governance issues compound at Tier 3 |
+
+The interesting angle for Turso Cloud: **if Tier 2 stays on canonical sqlite-wasm**, Turso Cloud as Tier 3 is awkward (different substrates, different SQL semantics in some edge cases). **If Tier 2 migrates to libSQL**, Turso Cloud as Tier 3 becomes a coherent same-substrate scale-up story. So Q2's answer largely depends on Q1.
+
+### 6. The marketplace pattern angle
+
+[ETL and import § the community marketplace](/crosswalker/concepts/etl-and-import/#4-the-community-marketplace-transform-once-share-forever) commits to community-shared pre-transformed Tier 1 bundles. *Tier 1 is markdown — substrate-irrelevant.* But Tier 2 is the projection cache, and:
+
+- **Marketplace bundle = Tier 1 only.** Tier 2 is reprojected per-machine. Substrate choice doesn't affect bundle portability.
+- **Cross-user query sharing.** A power user might want to share precomputed Tier 2 query views with a team. Different substrate = different `.db` file = portability question. libSQL's claim of file-format compat with vanilla SQLite mitigates this *if it holds*.
+- **Edge-replicated marketplace via Turso Cloud.** Hypothetical: a community ontology maintainer hosts the canonical Tier 2 projection on Turso Cloud; users get edge-replicated read-only access. Interesting *but* it conflates marketplace (Tier 1) with query-substrate (Tier 2) — those should stay separate per the design.
+
+The marketplace question shouldn't drive the substrate choice — Tier 1 is the marketplace primitive, not Tier 2.
+
+## Deliverable shape
+
+A focused research report (~2,000–3,000 words) covering:
+
+1. **Disambiguation.** Confirm libSQL vs Turso Cloud vs Turso Database / Limbo are kept distinct throughout.
+2. **Q1 evaluation.** Empirical bundle-size, mobile portability, extension-compat, governance, divergence-risk scoring of libSQL-WASM vs `@sqlite.org/sqlite-wasm` for Tier 2.
+3. **Q2 evaluation.** Should Tier 3 list Turso Cloud? (Low-stakes documentation question.)
+4. **Q3 evaluation.** Watch-don't-adopt status for Turso Database / Limbo over 5 years.
+5. **Recommendation.** Specific commit/reject for each of Q1, Q2, Q3 with rationale.
+6. **Migration trigger.** If Q1 = stay-on-canonical-SQLite, what *would* trigger a future re-evaluation? (e.g., `sqlite-vec` becomes unmaintained; libSQL's vector design becomes the de-facto standard; Obsidian itself adopts libSQL.)
+
+## Anti-patterns to watch for
+
+- **"Turso markets itself as the SQLite successor; we should adopt the successor"** — marketing claims aren't evidence. Canonical SQLite has not been deprecated by sqlite.org; libSQL is a fork claiming successor status.
+- **"libSQL has more features"** — feature richness isn't the right axis. The right axis is: does Crosswalker need any of those features that the current stack doesn't already deliver?
+- **"Single-vendor risk is overblown"** — Crosswalker's design phase has explicitly weighed single-vendor governance against foundation-governance multiple times (Ch 14 rejected SurrealDB partly for BSL; Ch 16 demoted AGE partly for Bitnine pivot risk; Ch 23 raised Bun's three-year-old single-vendor governance even though the user ultimately accepted Bun). The pattern matters.
+- **"Defaulting to canonical SQLite is conservative cargo-culting"** — same critique inverted. The deliverable should justify whichever recommendation it makes by hard constraints, not vibes.
+- **"Edge replication via Turso Cloud is the future of marketplace"** — this conflates Tier 1 (the marketplace primitive, plain markdown, substrate-irrelevant) with Tier 2 (the query cache).
+
+## Reference points the deliverable should pull from
+
+- [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the current Tier 2 commitment and the architectural safety guarantee
+- [Ch 18 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — Tier 2 stack scale-ceiling + rule expressivity matrix
+- [Ch 16 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) — current Tier 3 documented options
+- [Ch 14 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — vendor-pivot pattern (the SurrealDB BSL / cr-sqlite-stalled / CozoDB-no-release evidence base)
+- [Ch 23 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/) — single-vendor governance lens applied to engine language; same lens applies here
+- [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/) — Tier 2 sidecar SQL DDL (what would need to change if substrate changes)
+- libSQL repo and project documentation (current state of WASM build, extension compat, vector type, replication)
+- `@sqlite.org/sqlite-wasm` repo and SQLite Consortium funding/governance public-record
+- Empirical: build a tiny Tier-2-like Crosswalker query (recursive CTE over `mappings` table with `predicate_id` filter) on both substrates; verify identical results
+
+## Critical / adversarial framing
+
+The agent should steelman both *stay-on-canonical* and *migrate-to-libSQL* before recommending, and should specifically attack:
+
+- The ambient assumption that "newer is better"
+- The temptation to consolidate vector-search into the substrate at the cost of substrate flexibility
+- The temptation to adopt a single-vendor stack just because the marketing positioning is appealing
+- The risk of becoming an early adopter of Turso Database (Limbo) before it stabilizes
+- The reverse temptation: cargo-culting canonical SQLite when libSQL would genuinely be better
+
+A strong deliverable distinguishes "what Turso's marketing says" from "what libSQL the artifact actually delivers" from "what Crosswalker actually needs," and recommends based on the third, not the first two.
+
+## Related
+
+- [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the substrate this challenge re-examines
+- [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/) — Tier 2 sidecar SQL DDL
+- [Ch 18 — Tier 2-Lite SSSOM rule subset and scale ceiling](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — what Tier 2 has to do
+- [Ch 14 — missed engines evaluation](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) — vendor-risk pattern precedent
+- [Ch 16 — Tier 3 reconsideration](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) — current Tier 3 options
+- [Ch 23 — Bundle engine language](/crosswalker/agent-context/zz-challenges/archive/23-bundle-engine-language/) — single-vendor governance lens
+- [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — broader design context

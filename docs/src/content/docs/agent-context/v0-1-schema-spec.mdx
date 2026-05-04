@@ -550,6 +550,10 @@ The Tier 2 sidecar is a **deletable, recoverable projection** of Tier 1 frontmat
 
 **Recovery property** (load-bearing): if `.crosswalker.sqlite` is missing, corrupted, or stale, the projector rebuilds it from canonical Tier 1 on next vault load. This is what makes Tier 2 risk-free to bundle in v0.1.
 
+:::note[Substrate choice — open research]
+The current v0.1 substrate commitment is `@sqlite.org/sqlite-wasm` (canonical SQLite, foundation-governed). [Challenge 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) opened 2026-05-04 evaluates whether to migrate Tier 2 to **libSQL** (Turso's SQLite fork, native vector search, native replication) or stay on canonical. The DDL below is substrate-agnostic if libSQL's SQLite-compat claim holds; the *decision* is which substrate ships v0.1. Tracking this here so future readers know the choice is under active evaluation, not silently committed.
+:::
+
 ### DDL
 
 ```sql
