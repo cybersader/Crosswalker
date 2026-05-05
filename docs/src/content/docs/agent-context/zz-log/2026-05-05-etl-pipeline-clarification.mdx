@@ -1,0 +1,197 @@
+---
+title: "ETL pipeline clarification — ParsedData is not a tier; Tier 1 is the only intermediate format"
+description: "Clarification triggered by user confusion mid-v0.1.4 review. ParsedData is an in-memory implementation detail of the bundled engine (Path A), not a persisted intermediate format. The 'normalized format Crosswalker excels at' IS Tier 1 itself. External producers (Path B) and AI agents (Path C) write Tier 1 directly without going through ParsedData. Concept page updated; all milestones cross-linked."
+tags: [clarification, etl, parsed-data, tier-1, schema-as-primitive, three-paths, ch-22, ch-23, doc-update]
+date: 2026-05-05
+sidebar:
+  label: "05-05 · ETL pipeline clarification"
+  order: -20260505.3
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What triggered this
+
+Mid-v0.1.5 planning (right after v0.1.4 shipped), the user asked about the import process and sketched their mental model:
+
+> ontology → transformed into → some probably nested data format with schema or rules that work + ImportRecipe (config file → translates into vault primitives)
+
+They had a related project (folder-tag-sync) where the templating language is complex because it requires bidirectional bijectivity, and that work was bleeding into their mental model of Crosswalker. The specific confusion: they thought Crosswalker had a **static intermediate file format** between source and Tier 1 — a "normalized format Crosswalker excels at" that external ETL would produce and the bundled engine would consume.
+
+A diagram I drew in chat introduced the term `ParsedData` and labeled it as an implementation detail, but the labeling was insufficient — it read like a tier in the architecture. This log clears that up + bridges the architectural reframe ([schema-as-primitive](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience), [Ch 22 + Ch 23 + Ch 24](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/)) to the v0.1 implementation milestones.
+
+## The clarification
+
+| Concept | What it IS | What it ISN'T |
+|---|---|---|
+| **`ParsedData`** | An in-memory TypeScript interface (`{columns, rows, rowCount}`) used inside Path A's bundled engine during a single import session. Implementation detail. | A persisted intermediate file format. NOT a tier. NOT something external producers consume or emit. |
+| **Tier 1** | The canonical Markdown vault format on disk, conforming to [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json). The load-bearing contract. The "normalized format Crosswalker excels at." | A serialization-only artifact — it's the shared vocabulary every producer (bundled engine, external CLI, AI agent) must produce. |
+
+**The "normalized format" the user was imagining IS Tier 1 itself.** External ETL writes Tier 1 directly. There's no extra intermediate format because adding one would also require maintaining one.
+
+## The three producer paths (re-stated explicitly)
+
+Per the [schema-as-primitive commitment](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience), three independent ways to land valid Tier 1 — all first-class, all interchangeable:
+
+```
+┌─ PATH A — Bundled plugin engine (v0.1 ships this) ───────┐
+│   User CSV / XLSX / JSON                                 │
+│       │                                                  │
+│       ▼  PapaParse / xlsx / JSON.parse                   │
+│   ParsedData (in-memory, ephemeral)                      │
+│   ────────────────────────────────                       │
+│   {columns, rows, rowCount}                              │
+│   TypeScript interface; lives in RAM during one          │
+│   runImport() call. NOT a tier. NOT persisted.           │
+│       │                                                  │
+│       ▼  + Recipe → render() → Address                   │
+│   Tier 1 Markdown ◄──── canonical contract               │
+└──────────────────────────────────────────────────────────┘
+
+┌─ PATH B — External CLI producer (deferred to v0.5+) ─────┐
+│   User source data (any shape)                           │
+│       │                                                  │
+│       ▼  External tool (Python + Polars + DuckDB,        │
+│          dbt, custom scripts, ChunkyCSV, JSONaut)        │
+│   Tier 1 Markdown ◄──── canonical contract               │
+│   (writes directly; never goes through ParsedData)       │
+└──────────────────────────────────────────────────────────┘
+
+┌─ PATH C — AI agent / MCP server ─────────────────────────┐
+│   Anything (browser, API, scraped page, conversation)    │
+│       │                                                  │
+│       ▼  Whatever the agent does                         │
+│   Tier 1 Markdown ◄──── canonical contract               │
+└──────────────────────────────────────────────────────────┘
+```
+
+Path A is what v0.1 ships. Paths B and C are first-class architectural citizens — anyone emitting valid Tier 1 is a Crosswalker producer — but Crosswalker's repo doesn't ship a Path B or Path C producer in v0.1. That's deferred to v0.5+ ([Ch 23 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/)).
+
+## Why no static intermediate format
+
+Two reasons one would consider an intermediate format, and why each is rejected:
+
+| Reason to add an intermediate | Why it's rejected |
+|---|---|
+| "External producers need a normalized format the engine can ingest" | The engine doesn't ingest Tier 1 — it *produces* Tier 1. External producers also produce Tier 1. There's nothing to ingest. The schema is the contract; the format is the contract. |
+| "An intermediate format would let us validate before writing files" | Tier 1 frontmatter validation already happens pre-write inside Path A (since [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/)). External producers run their own validation against the same schema. The validator (AJV + `spec/tier1.schema.json`) is the shared validation surface. |
+
+Adding an intermediate format would *double* the contract surface — schema for the intermediate + schema for Tier 1 — without buying anything. The schema-as-primitive commitment specifically rejects this.
+
+## The Path A pipeline (per-row, fully spelled out)
+
+After [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/), the bundled engine's per-row processing:
+
+```
+ParsedData.rows[i]                  ◄── one row at a time
+        │
+        ▼
+ConceptIdentity {curie, scope}       ◄── scope = the row itself; CURIE
+        │                                derived from row.id or recipe template
+        ▼  + Recipe
+render(Recipe, ConceptIdentity)      ◄── pure function (Ch 22 §3)
+        │                                single coupling point
+        ▼
+Address {                            ◄── what render() returns
+  primary: {path, anchor?},
+  wikilinkTarget,
+  tags[], aliases[],
+  frontmatter (managed)
+}
+        │
+        ▼  + buildProvenance() + body
+validateTier1Frontmatter()           ◄── pre-write gate (v0.1.4)
+        │                                STRM predicate enforcement here;
+        │                                strict mode blocks invalid rows
+        ▼
+mergeFrontmatter(existing, new)      ◄── user_preserve survives (Ch 22 §8.4)
+        │                                review_status, reviewer, custom keys
+        ▼
+app.vault.create() / .modify()       ◄── Tier 1 file written
+```
+
+Things that look like intermediate formats but aren't:
+
+- **`ConceptIdentity {curie, scope}`** — a function-call argument; not persisted; not a contract. Just the input shape `render()` requires.
+- **`Address`** — `render()`'s return type; transient; gets composed with provenance + body and serialized to YAML+Markdown. Not persisted.
+- **`ParsedData`** — already covered above. RAM only.
+
+The only persisted thing in this pipeline is the final Tier 1 file. Everything else is in-memory transient state of one `runImport()` call.
+
+## How the v0.1 milestones map to the architecture
+
+This was the bridging gap — the architecture pages talked about three producer paths, the milestone pages talked about implementation steps, but nothing connected them explicitly. Doing so now:
+
+| Milestone | What it builds | Architectural piece |
+|---|---|---|
+| [v0.1.1](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) | AJV + `spec/*.schema.json` wired into runtime | The validator that all three producer paths use |
+| [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) | `render(Recipe, ConceptIdentity) → Address` | The single coupling point Path A uses; reference implementation Paths B/C may copy |
+| [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) | render() wired through Path A's per-row loop + `_crosswalker` provenance + user_preserve merge | Path A's bundled engine becomes spec-conformant |
+| [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | kind discriminator + native-recipe entry point + STRM enforcement gate | All 3 Tier 1 shapes (concept-note / junction-note / crosswalk-edge) producible via Path A |
+| [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (next) | `.crosswalker.sqlite` sidecar projection from Tier 1 | The Tier 1 → Tier 2 projector (deletable, recoverable) |
+| [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Tier 1 → STRM TSV / OSCAL JSON / SSSOM TSV | The round-trip-determinism boundary; round-trip via the schema, not a separate format |
+
+Path B (external Python CLI) is **not in v0.1** — it's deferred to v0.5+ per Ch 23. When it ships, it will write Tier 1 directly via the same `spec/tier1.schema.json`. The architectural shape doesn't change; just another producer joins the ecosystem.
+
+## What this clarification changes
+
+| Surface | Change |
+|---|---|
+| [`concepts/etl-and-import`](/crosswalker/concepts/etl-and-import/) | New section "The three producer paths — and what's NOT a tier" inserted after the schema-as-primitive reframe; new subsection "How Path A works inside the plugin (v0.1 implementation)" with the per-row pipeline diagram; Related section beefed up with all 6 milestones + this log + Ch 23 synthesis + research deliverables |
+| Future user-facing surfaces | Avoid using `ParsedData` in any user-facing prose. It's an implementation term internal to Path A. User docs talk about "your CSV/XLSX file" and "Tier 1 vault" — never about an intermediate format |
+
+## Why the user's confusion was reasonable
+
+The mental model "ETL produces a normalized format the engine consumes" is the *standard* mental model in industry. Most ETL tools work that way:
+
+- dbt: source → staging models → marts → reporting
+- Airbyte: source → normalized JSON → destination
+- Singer: source → SCV (Singer schema spec) → target
+
+Crosswalker deliberately doesn't. The schema-as-primitive commitment skips the intermediate-format step. This is *unusual* and the doc surface should accommodate readers who arrive with the standard mental model — calling out explicitly "we don't have an intermediate format; here's why" rather than letting them assume one exists and feel confused when it doesn't appear.
+
+The folder-tag-sync user's complementary project — where bidirectional bijectivity *requires* a complex named-slot path-template language — primed the user's expectation. In folder-tag-sync, the templating IS the contract because both sides have to recover from each other. In Crosswalker, the templating is a one-way projection mechanism inside Path A; the contract is Tier 1 itself. Different problem.
+
+## Related
+
+**Concept pages updated:**
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — new section with the three producer paths + ParsedData clarification + per-row pipeline diagram + comprehensive Related section bridging to milestones
+
+**Concept pages cross-referenced:**
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the 5 mechanisms render() dispatches over
+- [Terminology](/crosswalker/concepts/terminology/) — Tier 1, recipe, render(), CURIE, ParsedData (Path A only), provenance
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — schema-as-primitive is the differentiator
+- [Embedded vs server substrates](/crosswalker/concepts/embedded-vs-server-substrates/)
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/)
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+- [Vision](/crosswalker/agent-context/vision/)
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/)
+
+**Implementation milestones (Path A):**
+- [v0.1.1](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) — validation foundation
+- [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) — render() v1
+- [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — engine integration
+- [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — kind discriminator + STRM enforcement
+- [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — Tier 2 sidecar (next milestone)
+- [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — round-trip exporters
+
+**Design decisions (synthesis logs):**
+- [2026-05-04 import-engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — six architectural commitments
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — recipe grammar + render() signature
+- [Ch 23 synthesis (bundle/engine/language)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — Path A v0.1 / Path C v0.5+; runtime-agnostic recipe schema
+- [Ch 24 synthesis (Tier 2 substrate)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — sqlite-wasm
+- [Ch 20 synthesis (formal transformation algebra)](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/)
+
+**Delivery logs:**
+- [v0.1.3 delivery log (2026-05-05)](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-3-engine-integration-shipped/)
+- [v0.1.4 delivery log (2026-05-05)](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-4-junction-and-crosswalks-shipped/)
+
+**Research deliverables:**
+- [Ch 22 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/)
+- [Ch 23 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/)
+
+**Spec files:**
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — the contract
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — recipe shape Path A consumes
