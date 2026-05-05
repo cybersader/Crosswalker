@@ -173,6 +173,66 @@ The schema validation that *does* happen is at the **output boundary**: every ro
 
 The user's existing tools fit this gap precisely. They specialize in **input cleanup** — turning a multi-GB messy XLSX into a streaming UTF-8 CSV with stable columns and proper RFC 4180 quoting. The bundled engine specializes in **projection** — turning structured rows into Tier 1 vault notes per a recipe. Each layer does what it's good at; the boundary between them is "an iterable of records with stable columns." That's the entire contract — and it's intentionally narrow so external tools don't need Crosswalker-specific knowledge.
 
+### Transform engine depth — where the in-plugin work stops
+
+A natural follow-on question once Mode 1's input contract is clear: **how much of the messy-source-cleanup problem does Crosswalker try to solve in-plugin?** Decided 2026-05-05 (see [transform-engine-depth and input-formats decision log](/crosswalker/agent-context/zz-log/2026-05-05-transform-engine-depth-and-input-formats/) + [Ch 26](/crosswalker/agent-context/zz-challenges/archive/26-transform-engine-depth-and-input-formats/)):
+
+```
+NARROW                                                                 BROAD
+  │                                                                       │
+  ▼                                                                       ▼
+v0.1 closed     v0.2 wizard     v0.3 inline       v0.5 port jsonaut/    v1.0 full
+filter set      adds basic      JSONata expr     chunkycsv as opt-in    in-plugin
+(7 filters,     transforms      sub-language     transform engine       transform IDE
+shipped)        (rename,        (already                                 (REJECTED —
+                trim,           committed in                             scope drift;
+                regex,          Ch 23 §6;                                could exceed
+                split)          just wires)                              Crosswalker
+                                                                         itself)
+
+                                       ▲                                    ▲
+                                       │                                    │
+                                  CHOSEN                              REJECTED
+                                  STOPPING                            (likely
+                                  POINT                               permanently)
+```
+
+| Phase | Wizard offers | Recipe author authors | External tool handles |
+|---|---|---|---|
+| v0.1 (shipped) | Column-role config | Closed 7-filter templates | Everything else |
+| **v0.2** | + Column rename, value trim, regex extract, simple split | Same templates | Conditional logic, joins, lookups, flat-to-tree, fuzzy matching |
+| **v0.3** | + JSONata expression cells for advanced users | + JSONata 2.x expressions inline (`{(baseline = "HIGH") ? "high/" : "mod/"}{control_id}.md`) | Multi-source joins, time-series, complex pipelines |
+
+**Why we don't port JSONaut / ChunkyCSV:** [JSONata 2.x](https://jsonata.org/) is a TS-native, well-maintained library covering ~80% of JSONaut's declarative-transformation feature set. JSONata is the [Ch 23 §6](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) commitment. ChunkyCSV's CSV-streaming + multi-GB-cleanup features stay external — that's literally what ChunkyCSV is for, and forcing it into the plugin would be redundant. Both stay first-class Mode 1 feeders.
+
+**Why we don't build a transform IDE:** an in-plugin transform IDE would try to bundle live preview, debugging, profiling, output diff, joins UI, conditional logic UI into one experience. Each piece has a simpler v0.2/v0.3/external alternative (wizard preview, JSONata playground, generation-engine error reports, git diff, JSONata `lookup{}` syntax). Building the IDE is huge scope drift — could exceed Crosswalker itself.
+
+### v0.1 → v0.3+ input format roster
+
+The bundled engine's input formats and the rationale per format (decided 2026-05-05):
+
+| Format | Phase | Why | Stream? |
+|---|---|---|---|
+| **CSV** | v0.1 (shipped) | Universal; PapaParse handles encoding + delimiter auto-detect; ChunkyCSV's natural output | ✅ via PapaParse step + [v0.1.4.5 streaming refactor](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) |
+| **JSONL** (newline-delimited JSON) | **v0.2** | Stream-friendly (line-by-line); native types + nesting; produced by BigQuery, Spark, Databricks, dbt, JSONaut natively | ✅ trivial — split on `\n`, JSON.parse per line |
+| **JSON with iterator path** | **v0.2** | OSCAL bundles, deeply-nested ontologies; recipe declares `source.iterator: $.catalog.controls[*]` (JSONata path) | ✅ via [stream-json](https://github.com/uhop/stream-json) |
+| **XLSX** | v0.3+ (already partial) | Excel-native sources (NIST 800-53 r5 catalog ships as XLSX) | ⚠ sheet-by-sheet via xlsx package |
+| **XML / RDF / OWL** | v0.3+ if demand justifies | RDF/OWL ontologies, ISO XML feeds | ⚠ requires sax-style streaming; defer to v0.3+ |
+
+**JSONL is the v0.2 priority** because it's the genuine midway between "raw user CSV" and "fully-cleaned-input-ready-for-the-bundled-engine":
+
+| Format | Streamable | Schema fidelity | ETL ecosystem | Complexity to integrate |
+|---|---|---|---|---|
+| CSV | ✅ Trivial | ❌ Strings only | ✅ Universal | Done |
+| **JSONL** | ✅ **Trivial** | ✅ **Native types + nesting** | ✅ **Common (modern data warehouses)** | **Low (~50 LOC)** |
+| Plain JSON array | ❌ Whole-array parse | ✅ Native | ✅ Common | Medium |
+| JSON with iterator | ✅ via stream-json | ✅ Native + multi-iterator | Limited | Medium |
+| XLSX | ⚠ Sheet-by-sheet | ⚠ Type-mixed | ✅ Excel-native | Medium |
+
+JSONL is better than CSV for: nested objects, native types, nullable fields. Better than plain JSON for: streaming, no whole-file parse. ETL ecosystem alignment (modern data warehouses emit JSONL natively). ~50 LOC implementation. Big composability win.
+
+For **JSON with iterator path** (single object containing an array, like OSCAL): support via recipe `source.iterator: $.catalog.controls[*]` (JSONata-shaped path expression). Engine uses `stream-json` to navigate lazily.
+
 ### What `ParsedData` is (and isn't)
 
 The bundled engine's TypeScript code uses a small interface called `ParsedData` for the wizard's preview step:

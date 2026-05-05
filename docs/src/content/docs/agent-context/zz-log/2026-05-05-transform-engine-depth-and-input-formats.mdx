@@ -1,0 +1,273 @@
+---
+title: "Transform-engine depth + GUI line + input format roster"
+description: "Decision: stop in-plugin transform engine at closed 7-filter set + JSONata 2.x expression sub-language (Ch 23 §6 commit); wizard adds basic transforms (rename/trim/regex/split) in v0.2; full transform IDE is out-of-scope for v0.1 + v0.2 (likely permanently — drift risk into a different product). Input format roster for v0.1: CSV. v0.2: + JSONL + JSON-with-iterator-path. v0.3+: XLSX completion + XML/RDF if demand. JSONaut/ChunkyCSV stay external partners; JSONata is the in-plugin expression layer."
+tags: [decision, transform-engine, gui-depth, jsonata, jsonl, input-formats, scope-line, chunkycsv, jsonaut, ch-26]
+date: 2026-05-05
+sidebar:
+  label: "05-05 · Transform engine depth + input formats"
+  order: -20260505.6
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What this log decides
+
+Three intertwined decisions about how much of the messy-source-cleanup problem Crosswalker tries to solve in-plugin vs. defers to external tools:
+
+1. **In-plugin transform engine depth** — bundled engine ships a closed 7-filter set ([v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/)) + [JSONata 2.x](https://jsonata.org/) as the expression sub-language ([Ch 23 §6 commit](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/), wires in v0.3). **Stops there.** No in-plugin transform IDE; no port of JSONaut / ChunkyCSV.
+2. **GUI-depth line** — wizard adds *basic* transforms (column rename, value trim, regex extract, simple split) in v0.2. Anything more (joins, lookups, flat-to-tree recovery, fuzzy matching, complex conditional logic) stays as recipe-author concern (JSONata expressions in the recipe) or external-tool concern (use ChunkyCSV / JSONaut / dbt / Polars / Power Query).
+3. **Input format roster (v0.1 → v0.3+):**
+   - **v0.1**: CSV (already shipped)
+   - **v0.2**: + JSONL (newline-delimited JSON) + JSON-with-iterator-path
+   - **v0.3+**: XLSX completion (already partial) + XML/RDF if user demand justifies it
+
+The user's question that triggered this:
+
+> Also, is there not like a mid-way — like if you put it in JSON and specify entry points or whether it's JSONL or whatever, then MODE 1 can process easier? Idk. Might be a dumb idea and not make sense.
+
+**Not a dumb idea.** JSONL is genuinely the sweet spot for many cases between "raw user CSV" and "fully cleaned input ready for the bundled engine." This log makes it a v0.2 commitment.
+
+And:
+
+> Also doing a builder like jsonaut from ground up seems like a BIG lift. But "maybe" it's possible you know.
+
+Resolved: **don't build it from scratch.** The Ch 23 §6 commitment to JSONata 2.x already gives us most of what JSONaut does, in a TS-native, well-maintained library used by SAP / IBM / AWS Step Functions. Porting JSONaut would be redundant work.
+
+## Decision 1 — Transform engine depth
+
+The depth spectrum (with Crosswalker's chosen position):
+
+```
+NARROW                                                                 BROAD
+  │                                                                       │
+  ▼                                                                       ▼
+v0.1 closed     v0.2 wizard     v0.3 inline       v0.5 port jsonaut/    v1.0 full
+filter set      adds basic      JSONata expr     chunkycsv as opt-in    in-plugin
+(7 filters,     transforms      sub-language     transform engine       transform IDE
+shipped)        (rename,        (already                                 (drift risk —
+                trim,           committed in                             could exceed
+                regex,          Ch 23 §6;                                Crosswalker
+                split)          just wires)                              itself)
+
+                                       ▲                                    ▲
+                                       │                                    │
+                                  CHOSEN                              REJECTED
+                                  STOPPING                            (likely
+                                  POINT                               permanently)
+```
+
+**Why stop at v0.3:**
+
+| Concern | Detail |
+|---|---|
+| **Scope drift** | An in-plugin transform IDE could easily 10× the codebase: UI for transforms, debugging, profiling, output preview, joins UI, conditional logic UI. That's a tool-builder problem, not a knowledge-organization problem. |
+| **Crosswalker's value is downstream** | The Tier 1 schema + Bases queries + crosswalk edges + audit trail are the differentiators. Transforms are upstream; many tools already do them well. |
+| **Ecosystem already exists** | [ChunkyCSV](https://github.com/cybersader), [JSONaut](https://github.com/cybersader), dbt, Polars, Power Query, OpenRefine all solve the messy-source-cleanup problem. Crosswalker doesn't have to. |
+| **JSONata covers the inline case** | For transforms that *must* be in the recipe (computed CURIEs, derived columns from other columns), JSONata 2.x is sufficient. Conditionals, aggregations, string ops, regex, joins (limited). |
+| **Schema-as-primitive favors thin** | The architectural commitment is "Tier 1 schema is the load-bearing primitive; the engine is convenience." A heavy transform IDE turns the convenience layer into the primary product, inverting the commitment. |
+
+**Why not port JSONaut / ChunkyCSV:**
+
+- JSONata is a TS-native, well-maintained library that does ~80% of what JSONaut does (declarative JSON-to-JSON transformation, query, mutation).
+- The remaining 20% (JSONaut-specific patterns) are **better as external tools** — users with JSONaut workflows can run JSONaut, emit cleaned JSONL, hand to Crosswalker via Mode 1.
+- ChunkyCSV's CSV-cleanup features (flat-to-tree recovery, joins, regex column synthesis): some maps onto JSONata; the CSV-streaming-cleanup parts stay external (that's literally what ChunkyCSV is for).
+- Porting creates maintenance debt: JSONaut/ChunkyCSV evolve outside Crosswalker; a port has to track upstream changes or fork.
+
+## Decision 2 — GUI-depth line
+
+The wizard's transform UX progression:
+
+| Phase | What the wizard offers | What stays in recipe / external |
+|---|---|---|
+| **v0.1 (shipped)** | Column-role config (use as: hierarchy / frontmatter / link / body / title / skip); no transforms beyond the closed 7-filter set in templates | Everything else |
+| **v0.2** | + Column rename (UI-driven); + value-trim toggle; + regex extract (single capture group); + simple split (delimiter-based, single-level) | Conditional logic, joins, lookups, flat-to-tree recovery, fuzzy matching → JSONata expressions in the recipe; multi-step transforms → external tools |
+| **v0.3+** | + JSONata expression cell in the wizard (advanced users author per-column JSONata snippets directly) | Anything that needs multi-source joins, time-series, or complex conditional pipelines → external tools |
+| **v1.0+ (likely never)** | Full transform IDE with debugger, profiler, multi-step pipeline editor | — |
+
+The line is: **v0.2 wizard handles the 80% case for users with reasonably-clean CSV/JSONL inputs.** Beyond that, recipe authors hand-edit JSONata or use external ETL.
+
+**Why this scope is right:**
+
+- v0.2 wizard transforms cover what an Excel user would expect ("rename this column to X", "trim whitespace", "extract everything before the colon"). That's the cognitive ceiling for a non-coder GRC team.
+- Power users who outgrow the wizard can edit recipe JSON directly to add JSONata expressions — same recipe schema; no upgrade path required.
+- Users with truly messy sources (multi-GB XLSX with merged cells, multi-page header rows, sub-tables embedded) have ChunkyCSV / Power Query / dbt available. Forcing them through a Crosswalker wizard for those cases would be worse UX than what they already have.
+
+## Decision 3 — Input format roster
+
+Crosswalker's bundled-engine input formats and the rationale per format:
+
+| Format | Phase | Why | Streaming |
+|---|---|---|---|
+| **CSV** | v0.1 (shipped) | Universal; PapaParse handles UTF-8, BOM, RFC 4180 quoting, delimiter auto-detect; ChunkyCSV's natural output | ✅ via PapaParse step + v0.1.4.5 streaming refactor |
+| **JSONL** (newline-delimited JSON) | v0.2 (committed here) | Stream-friendly (line-by-line); native types + nesting; produced natively by BigQuery, Spark, Databricks, dbt, JSONaut | ✅ trivial — split on `\n`, JSON.parse per line |
+| **JSON with iterator path** | v0.2 (committed here) | OSCAL bundles, deeply nested ontologies; recipe declares `source.iterator: $.catalog.controls[*]` (JSONata path) | ✅ via [stream-json](https://github.com/uhop/stream-json) — stream the file, navigate via iterator path, yield records |
+| **XLSX** | v0.3+ (already partial; finish later) | Excel-native sources (NIST 800-53 r5 catalog ships as XLSX) | ⚠ sheet-by-sheet via xlsx package; per-row possible; not as clean as CSV/JSONL |
+| **Plain JSON array** | Same as JSON-with-iterator-path; just degenerate case where iterator is `$[*]` | — | Less stream-friendly than JSONL; usable for moderate sizes |
+| **XML / RDF / OWL** | v0.3+ if user demand justifies | RDF/OWL ontologies, ISO XML feeds | ⚠ requires sax-style streaming; not v0.1-RC |
+| **YAML** | Not committed | Generally a config format, not data; YAML files describing ontologies are rare | — |
+| **TOML** | Not committed | Same as YAML | — |
+| **Parquet / Avro / Arrow** | Not committed | Database-warehouse formats; users who have these already have ETL tooling that emits CSV/JSONL | Skip |
+
+### Why JSONL as the v0.2 priority
+
+JSONL is the sweet spot the user identified. Compared to other options:
+
+| Format | Streamable | Schema fidelity | ETL ecosystem | Complexity to integrate |
+|---|---|---|---|---|
+| CSV | ✅ Trivial | ❌ Strings only | ✅ Universal | Done |
+| **JSONL** | ✅ **Trivial** | ✅ **Native types + nesting** | ✅ **Common (modern data warehouses)** | **Low (~50 LOC)** |
+| Plain JSON array | ❌ Whole-array parse | ✅ Native | ✅ Common | Medium |
+| JSON with iterator | ✅ via stream-json | ✅ Native + multi-iterator | Limited | Medium |
+| XLSX | ⚠ Sheet-by-sheet | ⚠ Type-mixed | ✅ Excel-native | Medium |
+
+JSONL gets us:
+- Better than CSV: nested objects, native types, nullable fields, arrays in cells
+- Better than plain-JSON-array: stream-friendly, no whole-file parse
+- ETL ecosystem alignment: BigQuery / Spark / Databricks / dbt / JSONaut all emit JSONL natively
+- Trivial implementation: ~50 LOC for the parser; reuses the existing `AsyncIterable<Row>` consumer in the engine
+
+### What the JSONL parser looks like
+
+Sketch (deferred to v0.2 implementation):
+
+```ts
+export async function* parseJSONLStream(
+    file: File,
+): AsyncIterable<Record<string, any>> {
+    const stream = file.stream();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    for await (const chunk of streamReader(stream)) {
+        buffer += decoder.decode(chunk, { stream: true });
+        let newlineIdx;
+        while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, newlineIdx).trim();
+            buffer = buffer.slice(newlineIdx + 1);
+            if (!line) continue; // skip blank lines
+            try {
+                yield JSON.parse(line);
+            } catch (err) {
+                // Per-row error; surface in result.errors via engine
+                throw new Error(`JSONL parse error: ${err}`);
+            }
+        }
+    }
+    // Trailing line (if file doesn't end with \n)
+    if (buffer.trim()) {
+        yield JSON.parse(buffer.trim());
+    }
+}
+```
+
+The engine just consumes the AsyncIterable. No engine changes needed.
+
+## Why the user's "midway" instinct is correct
+
+The user's question frames the option-space cleanly:
+
+> if you put it in JSON and specify entry points or whether it's JSONL or whatever, then MODE 1 can process easier?
+
+Yes — and the resolution:
+
+| User's intuition | Concrete answer |
+|---|---|
+| "JSON with entry points" | JSON-with-iterator-path — ship in v0.2; recipe declares `source.iterator: $.path.to.array` (JSONata path) |
+| "Or whether it's JSONL" | JSONL — ship in v0.2; one record per line; trivial streaming |
+| "Mid-way" between raw user CSV and fully-cleaned-Tier-1 | Both JSONL and JSON-with-iterator-path ARE the midway. They're: structured-enough for the bundled engine to consume; flexible-enough for external ETL tools to produce naturally |
+
+This validates the two-mode architecture: **the input contract is shape-level (iterable of records), not format-level.** Adding new formats is just adding new parsers that produce `AsyncIterable<Row>` from the file. The engine doesn't change.
+
+## How JSONata fills the inline-transform gap
+
+Per [Ch 23 §6](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/), the recipe schema commits to JSONata 2.x as the expression sub-language for cases where the closed 7-filter template grammar isn't enough. Examples:
+
+Use cases (closed template grammar in v0.1 vs JSONata expressions in v0.3+):
+
+- **Filename = control id** — closed template handles directly (`control_id.md` interpolation)
+- **Filename = lowercased + slugified** — closed template via pipe filters (`lower`, `slug`)
+- **Filename = conditional on baseline** — not expressible in closed templates; JSONata expression with ternary `?:` operator works
+- **Frontmatter `family_name` from lookup table** — not expressible in closed templates; JSONata `lookup{key}` syntax handles single-table joins
+- **Recipe-time aggregation: `descendant_count`** — not expressible in closed templates; JSONata `$count()` aggregator works
+- **String split + index** — closed templates would need a new filter; JSONata `$split()` + array indexing works
+
+JSONata is opt-in and inline. Recipe authors who don't need it never see it. Recipe authors who do can drop a `$$` JSONata expression into any template position.
+
+Wiring deferred to v0.3 (post-v0.1-RC) — keeps v0.1 surface narrow but commits to the expression-language path.
+
+## Where JSONaut / ChunkyCSV fit in this design
+
+After this log:
+
+| Role | What | Tool |
+|---|---|---|
+| **Source-side cleanup** (messy → structured) | Streaming + cleaning + flat-to-tree + joins for multi-GB messy sources | ChunkyCSV / JSONaut / dbt / Polars / Power Query / OpenRefine — **stays external** |
+| **In-recipe inline transforms** (column-level, deterministic) | Closed 7-filter template grammar (v0.1) + JSONata expression sub-language (v0.3) | **Bundled in plugin** |
+| **Wizard GUI transforms** (basic, GUI-driven) | Column rename, trim, regex extract, simple split | **Bundled in plugin v0.2** |
+| **Output format conversion** (Tier 1 → STRM TSV / OSCAL JSON / SSSOM TSV) | Round-trip exporters | **Bundled in plugin v0.1.7** |
+
+ChunkyCSV / JSONaut / dbt / Polars are **first-class Mode 1 feeders**, not fallbacks. The two-mode architecture's value is exactly this composability: external tools handle their domain (cleanup, streaming-from-multi-GB, fuzzy joins); Crosswalker handles its domain (recipe-driven projection into Tier 1, schema validation, Bases query layer, audit trail).
+
+## Decisions taken this session
+
+| # | Decision | Status |
+|---|---|---|
+| 1 | **Transform engine depth: stop at v0.3** (closed 7 filters + JSONata expression sub-language). No transform IDE. | ✅ Decided |
+| 2 | **GUI depth line: v0.2 wizard adds basic transforms** (rename, trim, regex extract, simple split). Beyond → JSONata in recipe / external tools. | ✅ Decided |
+| 3 | **Don't port JSONaut / ChunkyCSV**. JSONata covers ~80% of JSONaut; ChunkyCSV stays an external Mode 1 feeder. | ✅ Decided |
+| 4 | **JSONL as v0.2 input format**. Trivial implementation (~50 LOC); huge composability win with modern data ecosystem. | ✅ Committed |
+| 5 | **JSON-with-iterator-path as v0.2 input format**. Recipe declares `source.iterator: $.catalog.controls[*]` (JSONata path). For OSCAL bundles, deeply-nested ontologies. | ✅ Committed |
+| 6 | **XLSX completion as v0.3+** (already partial). XML/RDF defer until user demand justifies. | ✅ Decided |
+| 7 | **JSONata 2.x wires in v0.3** (post-v0.1-RC). Ch 23 §6 commit re-confirmed. | ✅ Re-confirmed |
+
+## Open questions deferred to v0.2 / v0.3 implementation milestones
+
+| # | Question | When |
+|---|---|---|
+| Q1 | Wizard UX for column-rename — inline edit in column-config step, or separate transform-config step? | v0.2 wizard refactor milestone |
+| Q2 | JSONata 2.x runtime: bundle the full library (~50 KB) or a subset? | v0.3 wiring milestone |
+| Q3 | JSONL format detection — file extension `.jsonl` / `.ndjson` / `.json-lines` / explicit user pick in wizard? | v0.2 input-format milestone |
+| Q4 | JSON-with-iterator-path: support multiple iterators in one recipe (one for catalog, one for controls)? | v0.2 input-format milestone |
+| Q5 | When recipe uses JSONata expressions, do we still validate the recipe via AJV or does JSONata's own grammar take over? | v0.3 wiring milestone (likely both — AJV for recipe shape, JSONata's parser for expression syntax) |
+| Q6 | Do we ship a "Recipe transform reference" docs page enumerating what JSONata can do in a recipe? | v0.3 docs milestone |
+
+## Related
+
+**Concept pages:**
+- [ETL and import (two-mode architecture + input contract)](/crosswalker/concepts/etl-and-import/) — updated below in this same session with input-format roster + GUI-depth section
+- [Terminology](/crosswalker/concepts/terminology/) — JSONata, JSONL, transform engine, expression sub-language
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+- [Vision](/crosswalker/agent-context/vision/) — runtime-agnostic recipe schema + JSONata is the expression layer
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/)
+
+**Design decisions (synthesis logs):**
+- [2026-05-05 two-mode architecture decision](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/) — predecessor decision; this log refines it
+- [2026-05-05 ETL pipeline clarification](/crosswalker/agent-context/zz-log/2026-05-05-etl-pipeline-clarification/) — earlier framing
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — recipe grammar; closed 7-filter set
+- [Ch 23 synthesis §6 (bundle/engine/language)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks) — JSONata 2.x commitment
+- [Ch 20 synthesis (formal transformation algebra)](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/) — Function primitive escape hatch
+- [v0.1.4.5 streaming refactor delivery log](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-4-5-streaming-shipped/) — preceding milestone
+
+**Research challenges:**
+- [Ch 25 — Two-mode architecture and streaming (resolved)](/crosswalker/agent-context/zz-challenges/archive/25-two-mode-architecture-and-streaming/)
+- [Ch 26 — Transform engine depth + GUI line + input formats (resolved this session)](/crosswalker/agent-context/zz-challenges/archive/26-transform-engine-depth-and-input-formats/)
+
+**External tools (Mode 1 feeders — stays external):**
+- [JSONata 2.x](https://jsonata.org/) — TS-native expression language; the bundled in-recipe expression sub-language
+- [ChunkyCSV (user's tool)](https://github.com/cybersader) — CSV-streaming + cleanup; natural Mode 1 feeder
+- [JSONaut (user's tool)](https://github.com/cybersader) — JSON transformation; natural Mode 1 feeder
+- [stream-json](https://github.com/uhop/stream-json) — TS streaming JSON parser; for v0.2 JSON-with-iterator-path support
+- [PapaParse](https://www.papaparse.com/) — CSV streaming (v0.1)
+- [xlsx](https://github.com/SheetJS/sheetjs) — XLSX parsing (v0.3+ completion)
+
+**Implementation milestones touched:**
+- [v0.1.2 — render() v1](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) — closed 7-filter set lives here
+- [v0.1.4.5 — streaming refactor](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — input contract narrowed; this log clarifies what "structured" means
+- v0.2 input-format milestone (to be filed) — JSONL + JSON-with-iterator-path
+- v0.2 wizard transform milestone (to be filed) — basic transforms in GUI
+- v0.3 JSONata wiring milestone (to be filed) — expression sub-language
+
+**Further reading:**
+- [JSONata documentation](https://docs.jsonata.org/overview.html) — what users author when they need inline transforms beyond the closed filter set
+- [JSON Lines specification](https://jsonlines.org/) — the JSONL format
