@@ -19,6 +19,7 @@ The [v0.1 implementation phase](/crosswalker/reference/roadmap/#v01-implementati
 | [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) | `render()` v1 — folder + file + heading | 3–5 days | ✅ Done (2026-05-05) |
 | [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) | Generation engine integration | 3–5 days | ✅ Done (2026-05-05) |
 | [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | Junction notes + crosswalk edges | 2–3 days | ✅ Done (2026-05-05) |
+| [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) | Streaming refactor (engine accepts row iterator) | 1–2 days | 📋 Planning |
 | [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Tier 2 sqlite-wasm sidecar projector | 5–8 days | 📋 Planning |
 | [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer | 3–5 days | 📋 Planning |
 | [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Exporters (STRM TSV / OSCAL JSON) | 2–3 days | 📋 Planning |
@@ -63,6 +64,7 @@ Per-milestone E2E spec — verbatim from the [testing-patterns skill](https://gi
 | v0.1.2 | `render.spec.ts` — recipe w/ folder+heading mechanisms → correct vault structure |
 | v0.1.3 | `re-import.spec.ts` — managed overwritten + user_preserve preserved |
 | v0.1.4 | `crosswalks.spec.ts` — junction notes + STRM enum enforced |
+| v0.1.4.5 | `streaming.spec.ts` — large-CSV streaming import; bounded RAM |
 | v0.1.5 | `sidecar.spec.ts` — `.crosswalker.sqlite` projects + recovers on delete |
 | v0.1.6 | `bases-queries.spec.ts` — emitted Bases query renders in note body |
 | v0.1.7 | `export.spec.ts` — STRM TSV columns + OSCAL JSON schema valid |

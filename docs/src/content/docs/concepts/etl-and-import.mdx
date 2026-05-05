@@ -32,82 +32,131 @@ Translated to Crosswalker:
 
 This reframe collapses several open architectural questions (build vs buy, DSL choice, in-plugin vs external runtime, recipe location) into one commitment. The engine becomes swappable; the schema does not.
 
-## The three producer paths — and what's NOT a tier
+## The two-mode architecture — bundled projector or direct emission
 
-A common misconception (clarified in [the 2026-05-05 ETL pipeline clarification log](/crosswalker/agent-context/zz-log/2026-05-05-etl-pipeline-clarification/)): there is **no static intermediate file format** between the source and Tier 1. The "normalized format Crosswalker excels at" *IS* Tier 1 itself.
+Updated 2026-05-05 to clarify how external ETL tools (ChunkyCSV, JSONaut, Polars/DuckDB scripts, dbt, etc.) compose with the bundled engine. See the [2026-05-05 two-mode architecture decision log](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/) for the full rationale.
 
-Three independent ways to land valid Tier 1 — all first-class per the [schema-as-primitive commitment](#the-reframe--schema-is-the-primitive-etl-is-convenience):
+The bundled engine has **one job**: take structured rows + a recipe, and emit Tier 1 Markdown. That's it. Any producer — including users with no external tooling, ChunkyCSV pipelines, dbt projects, AI agents, MCP servers — chooses between two entry points:
+
+| Mode | Entry point | What the producer does | Streaming responsibility |
+|---|---|---|---|
+| **Mode 1 — Bundled projector** | Hand structured rows (CSV/JSON/XML/XLSX) + recipe to the bundled engine | Produces a structured input the engine knows how to iterate | Bundled engine streams per-row through `render()` → write → discard. Producer can *also* stream upstream (ChunkyCSV → CSV file) — both layers stream. |
+| **Mode 2 — Direct emission** | Bypass the bundled engine; write Tier 1 Markdown files into the vault | Produces Tier 1 Markdown end-to-end | Producer's responsibility entirely (typical: per-concept Markdown emission already streams naturally) |
+
+Both modes are **first-class architectural citizens** per the [schema-as-primitive commitment](#the-reframe--schema-is-the-primitive-etl-is-convenience). The schema (Tier 1) is the contract; the engine is convenience.
 
 ```
-┌─ PATH A — Bundled plugin engine (v0.1 ships this) ───────┐
-│   User CSV / XLSX / JSON                                 │
-│       │                                                  │
-│       ▼  PapaParse / xlsx / JSON.parse                   │
-│   ParsedData (in-memory, ephemeral)                      │
-│   ────────────────────────────────                       │
-│   {columns, rows, rowCount}                              │
-│   TypeScript interface; lives in RAM during one          │
-│   runImport() call. NOT a tier. NOT persisted.           │
-│       │                                                  │
-│       ▼  + Recipe → render() → Address                   │
-│   Tier 1 Markdown ◄──── canonical contract               │
-└──────────────────────────────────────────────────────────┘
-
-┌─ PATH B — External CLI producer (deferred to v0.5+) ─────┐
-│   User source data (any shape)                           │
-│       │                                                  │
-│       ▼  External tool (Python + Polars + DuckDB,        │
-│          dbt, custom scripts, ChunkyCSV, JSONaut)        │
-│   Tier 1 Markdown ◄──── canonical contract               │
-│   (writes directly; never goes through ParsedData)       │
-└──────────────────────────────────────────────────────────┘
-
-┌─ PATH C — AI agent / MCP server ─────────────────────────┐
-│   Anything (browser, API, scraped page, conversation)    │
-│       │                                                  │
-│       ▼  Whatever the agent does                         │
-│   Tier 1 Markdown ◄──── canonical contract               │
-└──────────────────────────────────────────────────────────┘
+                            ┌─────────────────────┐
+   USER SOURCE DATA  ───►   │  Producer of choice │
+   (any shape, any size)    │  (external or inline) │
+                            └──────────┬──────────┘
+                                       │
+                ┌──────────────────────┴──────────────────────┐
+                │                                             │
+                ▼                                             ▼
+    ┌─ MODE 1 — Bundled projector ─────┐    ┌─ MODE 2 — Direct emission ─────┐
+    │  Producer emits:                  │    │  Producer emits:                │
+    │   structured rows                 │    │   Tier 1 Markdown directly      │
+    │   (CSV / JSON / XML / XLSX)       │    │                                 │
+    │                                   │    │  Examples:                      │
+    │  Examples:                        │    │   • AI agent writes per-concept │
+    │   • User uploads raw CSV in       │    │     .md files                   │
+    │     wizard (engine parses)        │    │   • Python script renders YAML  │
+    │   • ChunkyCSV streams huge XLSX → │    │     + Markdown end-to-end       │
+    │     emits cleaned CSV             │    │   • Pre-built vault bundle      │
+    │   • JSONaut transforms messy JSON │    │     downloaded from marketplace │
+    │     → emits normalized JSON       │    │                                 │
+    │   • dbt models project SQL → CSV  │    │  Bundled engine: not invoked    │
+    │                                   │    │                                 │
+    │  Bundled engine then:             │    │                                 │
+    │    parses input (streaming) →     │    │                                 │
+    │    iterates rows →                │    │                                 │
+    │    render() per row →             │    │                                 │
+    │    writes Tier 1 file →           │    │                                 │
+    │    discards row from RAM          │    │                                 │
+    └──────────────────┬────────────────┘    └─────────────────┬───────────────┘
+                       │                                       │
+                       └─────────────────┬─────────────────────┘
+                                         │
+                                         ▼
+                        ┌────────────────────────────────────┐
+                        │         TIER 1 VAULT               │
+                        │  Markdown + YAML frontmatter        │
+                        │  conforming to                      │
+                        │  spec/tier1.schema.json             │
+                        │  ────────────────────────           │
+                        │  THE LOAD-BEARING CONTRACT          │
+                        └────────────────────────────────────┘
 ```
 
-### Two things to be precise about
+### Why both modes matter
+
+**Mode 1 lets ChunkyCSV / JSONaut / dbt / Polars scripts compose naturally.** They already produce CSV/JSON. Crosswalker just consumes that. The user doesn't have to teach their existing ETL tools how to emit Markdown — they keep doing what they're good at, and the bundled engine handles the projection layer.
+
+**Mode 2 lets AI agents and bundled-marketplace publishers emit Tier 1 end-to-end.** When an agent extracts an ontology from a corpus, it produces concepts directly — there's no natural intermediate "rows" representation. Skipping the bundled engine is the right call.
+
+### Streaming is at the engine boundary, not before it
+
+The bundled engine is **streaming-by-design** (per [v0.1.4.5 streaming refactor](/crosswalker/reference/roadmap/milestones/) — slated next): it accepts rows as an iterator/async-iterator, calls `render()` per row, writes the file, and discards the row before reading the next one. **The full source dataset never exists in RAM at once.**
+
+This is why Mode 1 + ChunkyCSV / JSONaut composes well: ChunkyCSV streams from a multi-gigabyte source, emits a smaller-but-still-streaming CSV, the bundled engine streams through that without accumulating, and the resulting Tier 1 vault is materialized on disk file-by-file. End-to-end streaming pipeline.
+
+### What `ParsedData` is (and isn't)
+
+The bundled engine's TypeScript code uses a small interface called `ParsedData` for the wizard's preview step:
+
+```ts
+interface ParsedData {
+    columns: string[];
+    rows: Row[] | AsyncIterable<Row>;  // streaming-friendly
+    rowCount?: number;
+}
+```
 
 | Concept | What it IS | What it ISN'T |
 |---|---|---|
-| **`ParsedData`** | An in-memory TypeScript interface (`{columns, rows, rowCount}`) used inside Path A's bundled engine during a single import session. Implementation detail. | A persisted intermediate file format. NOT a tier. NOT something external producers consume or emit. |
+| **`ParsedData`** | An in-memory TypeScript interface used by the wizard for preview + by the engine as the "structured rows" input shape. May wrap a complete array (small data) OR an async iterator (large data). | A persisted intermediate file format. NOT a tier. NOT something external producers consume or emit. (External producers emit CSV/JSON/XML/XLSX — formats the engine knows how to parse — or Tier 1 Markdown directly.) |
 | **Tier 1** | The canonical Markdown vault format on disk, conforming to [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json). The load-bearing contract. | A serialization-only artifact — it's the shared vocabulary every producer (bundled engine, external CLI, AI agent) must produce. |
 
-Why this matters: the "external ETL" path doesn't transform a source into some Crosswalker-specific intermediate format that the engine then digests. It transforms the source **directly into Tier 1 Markdown**. The intermediate format you might imagine (a normalized CSV/JSON) doesn't exist because making it canonical *also* makes it require maintenance. Skipping it means the schema has *one* contract, not two.
+`ParsedData` is just how the engine internally represents "the rows to iterate." It's not part of the architectural contract.
 
-### How Path A works inside the plugin (v0.1 implementation)
+### How Mode 1 works inside the plugin (v0.1 implementation)
 
-The bundled engine's per-row pipeline (after Ch 22 + Ch 23 + Ch 24 design phase, implemented in [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) + [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) + [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/)):
+The bundled engine's per-row pipeline (after Ch 22 + Ch 23 + Ch 24 design phase, implemented in [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) + [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) + [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/), with streaming wired in [v0.1.4.5](/crosswalker/reference/roadmap/milestones/)):
 
 ```
-ParsedData.rows[i]              ◄── one row at a time
-        │
-        ▼
+Row iterator                    ◄── streaming source
+(AsyncIterable<Row>)                  ChunkyCSV pipe / PapaParse step /
+   │                                   AsyncIterator<JSON record> / etc.
+   │  (one row pulled at a time)
+   ▼
+Row n
+   │
+   ▼
 ConceptIdentity {curie, scope}  ◄── scope = the row itself
-        │
-        ▼  + Recipe
+   │
+   ▼  + Recipe
 render(Recipe, Identity)        ◄── pure function (Ch 22 §3)
-        │                            single coupling point
-        ▼
-Address {                        ◄── what render() returns
+   │                                 single coupling point
+   ▼
+Address {                       ◄── what render() returns
   primary: {path, anchor?},
   wikilinkTarget,
   tags[], aliases[],
   frontmatter (managed)
 }
-        │
-        ▼  + buildProvenance() + body
+   │
+   ▼  + buildProvenance() + body
 validateTier1Frontmatter()      ◄── pre-write gate (v0.1.4)
-        │                            STRM enforcement here
-        ▼
-mergeFrontmatter(existing, new)  ◄── user_preserve survives (Ch 22 §8.4)
-        │
-        ▼
-app.vault.create() / .modify()   ◄── Tier 1 file written
+   │                                STRM enforcement here
+   ▼
+mergeFrontmatter(existing, new) ◄── user_preserve survives (Ch 22 §8.4)
+   │
+   ▼
+app.vault.create() / .modify()  ◄── Tier 1 file written
+   │
+   ▼
+Row n discarded from RAM        ◄── streaming complete; back for row n+1
 ```
 
 `render()` is the **single coupling point** between recipe and vault layout. Pass 1 is vault-independent (deterministic, hashable, replayable). Per [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/), this purity is what makes canonical-state hashing work.

@@ -1,0 +1,233 @@
+---
+title: "Two-mode import architecture decision — bundled projector + direct emission, both first-class"
+description: "Decision: Crosswalker supports two architectural modes for producing Tier 1 vaults — Mode 1 (hand structured rows to bundled engine) and Mode 2 (bypass engine, emit Tier 1 Markdown directly). Both are first-class. ChunkyCSV/JSONaut compose naturally with Mode 1. Streaming is at the engine boundary so huge inputs work. Supersedes earlier 'three producer paths' framing."
+tags: [decision, architecture, etl, import, two-mode, bundled-projector, direct-emission, streaming, schema-as-primitive, chunkycsv, jsonaut, supersedes]
+date: 2026-05-05
+sidebar:
+  label: "05-05 · Two-mode architecture"
+  order: -20260505.4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What this log decides
+
+The bundled engine has **one job**: take structured rows + a recipe, and emit Tier 1 Markdown. Producers — including the bundled wizard, external ETL tools (ChunkyCSV, JSONaut, dbt, Polars/DuckDB scripts), AI agents, MCP servers, marketplace bundles — choose between two architectural modes:
+
+| Mode | Entry point | Used by |
+|---|---|---|
+| **Mode 1 — Bundled projector** | Hand structured rows (CSV/JSON/XML/XLSX) + recipe to the bundled engine | Wizard UI; ChunkyCSV pipelines; JSONaut pipelines; dbt models; Polars scripts; any tool that already produces structured data |
+| **Mode 2 — Direct emission** | Bypass the bundled engine; write Tier 1 Markdown directly | AI agents; MCP servers; marketplace bundle publishers; anyone with end-to-end Markdown emission |
+
+**Both modes are first-class architectural citizens.** Neither is a fallback. The schema (Tier 1) is the load-bearing contract; the bundled engine is convenience for the most common path.
+
+This **supersedes** the earlier framing that I [unintentionally narrowed earlier today](/crosswalker/agent-context/zz-log/2026-05-05-etl-pipeline-clarification/) where I said external producers emit Tier 1 directly. That narrowing turned out to leave ChunkyCSV / JSONaut without a clean composition story. The two-mode framing fixes it.
+
+## What triggered the decision
+
+The user's reaction during v0.1.5 planning, after I sketched a "three producer paths" diagram that put external CLI producers in a "they emit Tier 1 directly" lane:
+
+> I am proposing that our system makes both approaches possible. For instance, maybe we just want a particular JSON or CSV or structured formats like XML and then we use logic living in obsidian to process using the import recipe (different approach than seemingly what was decided upon here).
+
+> My issue with PapaParse is that I made the ChunkyCSV and JSONaut tool because some framework data will be so large that it won't fit into memory so you have to have a "streaming" approach in the process.
+
+Two valid concerns:
+
+1. **Architecture concern**: external ETL tools shouldn't have to learn Markdown emission to be Crosswalker producers. They should be able to produce structured data that the bundled engine then projects. ChunkyCSV / JSONaut are the canonical example — they exist *specifically* to clean messy sources into structured form.
+
+2. **Streaming concern**: PapaParse-based parse currently accumulates all rows in `ParsedData.rows` before the engine starts iterating. This caps Crosswalker at ~RAM-sized inputs. ChunkyCSV / JSONaut were built to break exactly this ceiling — they stream end-to-end. The bundled engine should do the same.
+
+Both concerns point at the same architectural shape: the bundled engine is a **streaming projector** that takes a row iterator + recipe and writes Tier 1 files one at a time. External tools can either feed it (Mode 1) or skip it (Mode 2).
+
+## Why this is consistent with schema-as-primitive
+
+The [schema-as-primitive commitment](/crosswalker/concepts/etl-and-import/) says: Tier 1 is the load-bearing contract; anyone emitting valid Tier 1 is a first-class producer. Two-mode doesn't violate this:
+
+- **Mode 2 producers** emit Tier 1 directly — the schema is their contract. Pure schema-as-primitive.
+- **Mode 1 producers** emit structured rows (CSV/JSON/XML/XLSX) that the bundled engine consumes. The bundled engine's recipe + render() pipeline turns those rows into Tier 1. The schema is *still* the contract — it's just that the bundled engine is the producer doing the final emission.
+
+There is no "Tier 0.5" intermediate format in this model. The bundled engine's input is the same set of formats it has always accepted (CSV, JSON, XML, XLSX). External tools that emit those formats *don't need a new schema* — they just emit valid CSV/JSON/XML/XLSX. The recipe handles the projection.
+
+What changed is the *framing*: external ETL is now an explicitly-supported feeder for Mode 1, not just a fallback for Mode 2. ChunkyCSV emitting cleaned CSV is a first-class composition pattern, not an afterthought.
+
+## Why both modes need to exist
+
+Each mode has cases the other handles poorly:
+
+| Case | Mode 1 (bundled projector) | Mode 2 (direct emission) |
+|---|---|---|
+| User uploads NIST 800-53 r5 catalog CSV in the wizard | ✅ Native; just runs | ❌ Wizard doesn't bypass itself |
+| ChunkyCSV streams a multi-GB messy XLSX → cleaned CSV | ✅ Bundled engine consumes the cleaned CSV; recipe does projection | ❌ ChunkyCSV doesn't know Markdown |
+| dbt project produces a CSV from data warehouse | ✅ Same | ❌ Same |
+| AI agent extracts an ontology from a PDF corpus | ❌ Awkward (agent has to materialize "rows") | ✅ Native; agent emits per-concept .md files |
+| Pre-built NIST CSF 2.0 marketplace bundle (someone did the import once, shared the resulting vault) | ❌ Marketplace publisher has already done Mode 1; users just unzip | ✅ The unzip *is* direct emission |
+| MCP server fetches a live ontology and writes notes | ❌ MCP usually doesn't return tabular rows | ✅ MCP writes per-concept files |
+| Custom Python script with domain-specific cleanup | Either fits — author's choice | Either fits — author's choice |
+
+Forcing one mode would cripple half these workflows. Supporting both is the architectural commitment.
+
+## What changes in the v0.1 implementation
+
+| Surface | Change |
+|---|---|
+| **Concept page** [`concepts/etl-and-import`](/crosswalker/concepts/etl-and-import/) | Replaced "three producer paths" section with "two-mode architecture"; added end-to-end streaming pipeline diagram; clarified `ParsedData` is implementation detail (may wrap array OR async-iterator) |
+| **`ParsedData` interface** | Will accept `rows: Row[] \| AsyncIterable<Row>` instead of `rows: Row[]` only. Backwards-compatible (existing array consumers continue to work) |
+| **Bundled engine** ([v0.1.4.5 streaming refactor](/crosswalker/reference/roadmap/milestones/) — slated next) | `generateFromRecipe` accepts a row iterator; iterates lazily via `for await`; writes Tier 1 file per row; never accumulates the full source dataset in RAM |
+| **CSV parser** | `parseCSVFileStream` returns an `AsyncIterable<Row>` directly (PapaParse step callback piped to async generator) — no intermediate `ParsedData.rows[]` accumulation |
+| **Wizard preview step** | Already collects a small sample (first 10–50 rows). Continues to work as before. Streaming applies to the full-import generation pass, not the preview. |
+| **Mode 2 producers** | No code change. Emitting Tier 1 Markdown directly already works (validator runs against any frontmatter that gets read). |
+| **Documentation** | This log + concept page update + new research-challenge brief documenting the option-space + decision (filed as "challenge resolved" since the decision is taken) |
+
+## Streaming bug — what's wrong now and what fixes it
+
+Current code:
+
+```ts
+// src/import/parsers/csv-parser.ts (excerpt)
+// Streaming mode pushes each row to results.data;
+// non-streaming returns full results.data array
+const result: ParsedData = {
+    columns,
+    rows: results.data,  // ◄── full array; entire CSV in RAM
+    rowCount: results.data.length,
+    source: { type: 'csv' },
+    headerRow: 0
+};
+```
+
+Even with `streaming: true`, the rows accumulate into `results.data` before being handed to the engine. The "streaming" in current code is parse-time progress reporting; the engine boundary is still in-memory.
+
+The fix:
+
+```ts
+// New streaming path: parser yields rows as AsyncIterable
+async function* parseCSVStream(file: File): AsyncIterable<Row> {
+    const queue: Row[] = [];
+    let done = false;
+    Papa.parse(file, {
+        worker: false,  // keep on main thread; cooperative-yield friendly
+        header: true,
+        step: (results) => queue.push(results.data as Row),
+        complete: () => { done = true; }
+    });
+    while (!done || queue.length > 0) {
+        if (queue.length === 0) await new Promise(r => setTimeout(r, 0));
+        else yield queue.shift()!;
+    }
+}
+
+// Engine accepts iterator directly
+async function generateFromRecipeStreaming(
+    app: App,
+    rowSource: { columns: string[]; rows: AsyncIterable<Row> | Row[] },
+    recipe: Recipe,
+    ...
+) {
+    for await (const row of rowSource.rows) {
+        const address = render(recipe, identityFromRow(row));
+        // ... validate, merge, write
+        // row goes out of scope after this iteration; GC reclaims memory
+    }
+}
+```
+
+End-to-end memory ceiling: one row + one Tier 1 file in flight at a time, regardless of input size.
+
+This refactor is small enough to ship as **milestone v0.1.4.5** (a between-numbers patch milestone), not a major architectural pivot. Existing tests continue to pass because `ParsedData.rows: Row[]` is a degenerate case of `AsyncIterable<Row>`.
+
+## What this means for ChunkyCSV / JSONaut composition
+
+The user's existing tools are now first-class Mode 1 feeders. The composition pattern:
+
+```
+Multi-GB messy NIST source        Crosswalker plugin
+        │                                │
+        ▼                                │
+   ChunkyCSV (or JSONaut)                │
+   ─────────────────────                 │
+   • Streams messy source                │
+   • Cleans + normalizes                 │
+   • Emits structured CSV / JSON         │
+        │                                │
+        ▼                                │
+   ──── pipe / file / IPC ────►   Bundled engine
+                                  ────────────────
+                                  • Reads structured input streaming
+                                  • Recipe + render() per row
+                                  • Writes Tier 1 file per row
+                                       │
+                                       ▼
+                                  Tier 1 Vault
+```
+
+ChunkyCSV doesn't need to learn Markdown emission. The bundled engine doesn't need to learn streaming-of-multi-GB-XLSX. Each layer does what it's good at; the boundary between them is "structured rows in a known format." This is the natural composition pattern.
+
+For really custom flows where Mode 1 doesn't fit (AI-extracted ontology, scraped HTML, MCP-fetched data), Mode 2 (direct Tier 1 emission) is the escape hatch. Both modes coexist; neither dominates.
+
+## Decisions taken this session
+
+| # | Decision |
+|---|---|
+| 1 | **Two-mode architecture is canonical**. Mode 1 (bundled projector) + Mode 2 (direct Tier 1 emission). Both first-class. |
+| 2 | **No "Tier 0.5" intermediate format**. The bundled engine accepts existing structured formats (CSV/JSON/XML/XLSX); external tools that produce those formats are first-class feeders. The schema-as-primitive commitment is preserved (Tier 1 is the only canonical contract). |
+| 3 | **Streaming refactor (v0.1.4.5) is necessary for Mode 1 to be useful at scale**. Without it, the bundled engine caps at RAM-sized inputs, defeating the composition story with ChunkyCSV / JSONaut. |
+| 4 | **`ParsedData` becomes streaming-friendly**. `rows: Row[] \| AsyncIterable<Row>`. Backwards-compatible — existing wizard preview + small-data tests continue to work. |
+| 5 | **Wizard UX unchanged for Mode 1**. The wizard already wraps the bundled engine; users continue to pick a CSV/XLSX/JSON, configure the recipe, and run. The wizard transparently uses the streaming path for files larger than some threshold (e.g. >5MB). |
+| 6 | **v0.1.4.5 ships before v0.1.5**. Tier 2 sidecar projection (v0.1.5) also benefits from streaming — the projector should walk the vault file-by-file, not load all Tier 1 files into RAM. So fixing the streaming foundation first improves both surfaces. |
+
+## What's still open
+
+| # | Open question | Status |
+|---|---|---|
+| Q1 | Should we ship a v0.1 wire spec for the "structured input" formats the bundled engine accepts? E.g. a CSV-with-required-columns pattern that ChunkyCSV emits, that the engine knows how to consume without recipe editing? | Defer to v0.2+. v0.1 just accepts CSV/JSON/XML/XLSX and uses the recipe to interpret column names. |
+| Q2 | Should AsyncIterable be required, or should sync Iterable also be supported? | Both. Sync is degenerate case; existing array consumers work without changes. |
+| Q3 | How does the wizard handle the streaming case? (Can't show "100K rows imported" progress if it doesn't know the count upfront) | Use `rowCountHint` if available; otherwise show "row N processed" without a percentage. |
+| Q4 | Should we build a "pipe" UX where a user runs ChunkyCSV → Crosswalker via stdin? | Defer to v0.5+. v0.1 ships the in-Obsidian wizard path; CLI-style piping is later. |
+| Q5 | Should we build an `import-from-stream` command that accepts a file path + recipe + streams the import? | Likely yes for v0.2 — useful for AI-agent / automation flows. |
+
+## Related
+
+**Concept pages updated:**
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — full two-mode rewrite of the producer-paths section + streaming pipeline diagram + ParsedData clarification
+
+**Concept pages cross-referenced:**
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/)
+- [Terminology](/crosswalker/concepts/terminology/) — Tier 1, recipe, render(), CURIE, ParsedData, streaming
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — composability with external ETL is a differentiator
+- [Embedded vs server substrates](/crosswalker/concepts/embedded-vs-server-substrates/)
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/)
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+- [Vision](/crosswalker/agent-context/vision/)
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/)
+
+**Related architectural decisions:**
+- [2026-05-05 ETL pipeline clarification (superseded by this log)](/crosswalker/agent-context/zz-log/2026-05-05-etl-pipeline-clarification/) — narrower framing; this log expands it
+- [2026-05-04 import-engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — six architectural commitments
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — recipe grammar
+- [Ch 23 synthesis (bundle/engine/language)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — Path A v0.1, Path C v0.5+; runtime-agnostic recipe schema
+- [Ch 24 synthesis (Tier 2 substrate)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)
+
+**Implementation milestones (Mode 1 — bundled projector):**
+- [v0.1.1 — Type system + validation](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/)
+- [v0.1.2 — render() v1](/crosswalker/reference/roadmap/milestones/v0-1-2-render/)
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/)
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/)
+- **v0.1.4.5 — Streaming refactor (next; this log triggers it)**
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — also benefits from streaming
+- [v0.1.7 — Exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — STRM TSV / OSCAL JSON / SSSOM TSV (round-trip)
+
+**External producer ecosystem (Mode 1 feeders + Mode 2 emitters):**
+- [ChunkyCSV (user's tool)](https://github.com/cybersader) — natural Mode 1 feeder for messy CSV/XLSX
+- [JSONaut (user's tool)](https://github.com/cybersader) — natural Mode 1 feeder for messy JSON
+- dbt / Polars / DuckDB — Mode 1 feeders for SQL-shaped sources
+- AI agents (Claude / GPT / etc.) — Mode 2 emitters for extracted ontologies
+- MCP servers — either mode depending on data shape
+
+**Spec files:**
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — the contract
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — recipe shape
+
+**Research challenges (this decision documented as):**
+- [Ch 25 — Two-mode architecture and streaming (resolved)](/crosswalker/agent-context/zz-challenges/archive/) — to be filed; documents the option-space + decision
