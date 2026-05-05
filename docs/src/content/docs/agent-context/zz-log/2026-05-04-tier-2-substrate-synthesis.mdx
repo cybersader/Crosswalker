@@ -96,6 +96,19 @@ The deliverable §2.10 + §3.5 + §4.4 spelled out specific triggers. Locking th
 - Major Obsidian ecosystem tool (core, Dataview, Bases) adopts Limbo
 - Limbo's WASM ships stable versioned npm with feature-set matching Tier 2 needs (FTS5, recursive CTEs, vector, OPFS, SAH-pool)
 
+**Q4 (sqlite-vec WASM packaging — added 2026-05-05 during v0.1.5 planning) — re-open if ANY occurs:**
+
+This trigger applies to **how** we ship sqlite-vec, not whether. Per the [v0.1.5 milestone](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/), v0.1.5 ships **WASM-B** (vendor `sqlite-vec-wasm-demo` artifact) into `src/tier2/vendor/sqlite-vec.wasm`. This is a pragmatic v0.1 default; the plan is to migrate to npm-installable or custom-built when feasible. Re-evaluate when ANY of:
+
+- **`sqlite-vec` upstream ships an npm-installable WASM package** that composes with `@sqlite.org/sqlite-wasm` — either via static-link build script we run at install time, or as a self-contained `sqlite-wasm-with-vec` distribution from the maintainers
+- **`@sqlite.org/sqlite-wasm` gains runtime extension loading** in WASM (currently disabled for browser security; if upstream adds it, we can `bun add` both packages and load vec at runtime)
+- **Concrete need for a custom build** that the demo artifact doesn't satisfy — custom compile flags (e.g., trim unused SQLite features for size), patches to upstream SQLite or sqlite-vec, reproducible builds for compliance environments, or SQLite version mismatch with what the demo artifact ships
+- **Demo artifact is abandoned upstream** — no release for 12+ months AND no community fork has gained traction (parallel to Q1 sqlite-vec maintenance trigger but specific to the demo artifact rather than sqlite-vec itself)
+
+Migration path when triggered: replace `src/tier2/vendor/sqlite-vec.wasm` with the upstream npm package or custom-built artifact; sidecar API surface (lifecycle + projector + queries) doesn't change because vec is loaded the same way regardless of source. The vendored binary is the v0.1 default, **not a permanent commitment**.
+
+**Rollback (different from migration — for use if sqlite-vec proves problematic):** If sqlite-vec needs to be removed entirely (mobile incompatibility, vendor abandonment, security CVE without timely fix), the schema is purely additive — `concepts`, `mappings`, `junction_notes` don't depend on vec. ~30 min of code: delete vendored `.wasm`, swap to plain `@sqlite.org/sqlite-wasm` from npm, drop vec virtual tables from migrations, bump `schema_version`. Existing sidecars auto-reproject without vec. Tier 1 vault is unaffected (Tier 1 is canonical; Tier 2 reprojects). See the [v0.1.5 milestone "Rollback path" section](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) for the full step list.
+
 These triggers are *specific and falsifiable*. None of them is "it feels like it's time."
 
 ## §6 The long-horizon watch register pattern
