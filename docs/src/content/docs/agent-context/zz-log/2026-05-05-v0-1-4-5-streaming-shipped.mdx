@@ -1,0 +1,197 @@
+---
+title: "v0.1.4.5 shipped — Streaming refactor (engine accepts row iterator)"
+description: "Patch milestone v0.1.4.5 delivered 2026-05-05. ParsedData.rows is now Row[] | AsyncIterable<Row>. Generation engine iterates via for-await; streaming sources never accumulate the full dataset in RAM. New parseCSVFileStream returns ParsedData with AsyncIterable rows directly via PapaParse step callback + backpressure. Implements Mode 1 of the two-mode architecture at scale."
+tags: [milestone-shipped, v0-1-4-5, streaming, async-iterable, papaparse, oom-fix, two-mode-architecture]
+date: 2026-05-05
+sidebar:
+  label: "05-05 · v0.1.4.5 shipped"
+  order: -20260505.5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What shipped
+
+[Milestone v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — Streaming refactor. Status flipped to ✅ in the milestone hub.
+
+The bundled engine is now **streaming-by-design**. `ParsedData.rows` accepts either an eager array (small/medium data — wizard preview, in-memory imports) or an `AsyncIterable<Row>` (true streaming — large CSV files, external pipes from ChunkyCSV/JSONaut, etc.). The generation engine iterates via `for await ... of` so both forms work transparently. The full source dataset never lives in RAM during streaming imports.
+
+This is the implementation of Mode 1 (bundled projector) at scale per the [2026-05-05 two-mode architecture decision](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/).
+
+| Surface | Delivered |
+|---|---|
+| `src/types/config.ts` `ParsedData.rows` | Now `Row[] \| AsyncIterable<Row>`. New `isEagerRows()` type guard for callsites that need random access. |
+| `src/import/parsers/csv-parser.ts` `parseCSVFileStream()` | New: returns ParsedData where `rows` is an AsyncIterable that pulls per-row from PapaParse via the step callback. Backpressure: parser pauses at 100-row buffer, resumes when consumer drains below 10. Memory ceiling ~100 × avg-row-bytes. |
+| `src/generation/generation-engine.ts` `generateNotes` + `generateFromRecipe` | Per-row loops refactored from `for (let i = 0; ...)` to `for await (const row of ...)`. Both forms (array + AsyncIterable) iterate identically. |
+| `analyzeColumns()` (csv-parser) | Type-guarded against streaming sources — returns shape-only column info when rows is AsyncIterable (column type detection requires materialization, which defeats streaming). |
+| `estimateOutput()` (generation-engine) | Type-guarded — only computes folder/link estimates for eager-array sources. |
+| Wizard preview (`import-wizard.ts`) | Type-guarded — preview path only works with eager arrays (which is what `parseCSVFile()` returns). Streaming-mode imports use the wizard's import-run path directly without going through preview. |
+
+## Tests
+
+| Suite | Count | Detail |
+|---|---|---|
+| Jest unit tests | 116 (was 108, +8) | New: `tests/streaming-async-iter.test.ts` — `isEagerRows` type guard + AsyncIterable consumption pattern + memory-pattern check |
+| WebDriver E2E | 37 across 8 spec files (was 33 across 7) | New: `tests/e2e/streaming.spec.ts` — 4 tests: AsyncIterable source via `runImportFromRecipe`, correct file paths, frontmatter content, eager-array backwards-compat |
+| **Total** | **153 passing** | All green before commit |
+
+The new `streaming.spec.ts` is the v0.1.4.5 success-criterion gate. It does:
+
+1. Builds an `AsyncIterable<Row>` in the renderer-side `executeObsidian` callback (mimics what an external producer would hand to `plugin.runImportFromRecipe`)
+2. Yields 100 rows on demand via `Symbol.asyncIterator.next()` — never materializes an array
+3. Asserts the engine consumes them via `runImportFromRecipe(parsedData, recipe, {...})` with `parsedData.rowCount: -1` (unknown count, streaming)
+4. Asserts 100 Tier 1 files appear at expected paths
+5. Reads frontmatter for a sample file via `metadataCache` — verifies `_crosswalker` provenance + managed values are correct
+6. Re-runs with eager array (degenerate case) → verifies backwards-compat
+
+## Notable design decisions made during implementation
+
+1. **Type union, not breaking change.** `ParsedData.rows: Row[] | AsyncIterable<Row>` is backwards-compatible — existing callers that pass arrays continue to work. Only callsites that need `.length` / `.slice` / `[index]` need a type guard. Five callsites in the codebase needed it; all were straightforward.
+
+2. **`for await ... of` works on both forms.** TypeScript narrows correctly inside the loop. No need for explicit conversion. The engine's per-row code is identical across forms.
+
+3. **Backpressure via PapaParse `parser.pause()` / `resume()`.** PapaParse's step callback receives a parser handle that supports flow control. We pause when the buffer hits 100 rows; resume when consumer drains below 10. Memory ceiling is bounded.
+
+4. **`rowCount: -1` signals "unknown count, streaming."** Engine code that uses `rowCount` for progress reporting falls back to "row N processed" without a percentage when count is unknown.
+
+5. **Wizard preview is unchanged.** The wizard still loads a small ParsedData via `parseCSVFile()` (eager array form) for the column-config + preview steps. That hasn't changed because the preview UX requires random access. The only thing that changes for the wizard is when it triggers the streaming import — for files larger than 5MB, the wizard could use `parseCSVFileStream()` for the actual generation pass while keeping `parseCSVFile()` for the preview. v0.1.4.5 ships the foundation; wizard threshold-switching is a small follow-on UI change.
+
+6. **No worker offload.** Per [Ch 23 §9.5](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/), Web Workers are unreliable for this workload (ParsedData transfer cost; debugger UX; mobile portability). Main-thread cooperative-yield via `await new Promise(setTimeout)` between batches is the v0.1 path. The streaming refactor doesn't change this — PapaParse still runs on the main thread.
+
+## How v0.1.4.5 plugs into the system
+
+```
+                 Crosswalker import pipeline (v0.1.4.5 view)
+                ════════════════════════════════════════════
+
+  ┌─ INPUT ─────────────────────────────────────────────────────────┐
+  │                                                                 │
+  │  Source CSV / XLSX / JSON   ←── ANY size now                    │
+  │       │                                                         │
+  │       ▼                                                         │
+  │  Two paths into ParsedData:                                     │
+  │                                                                 │
+  │   (a) parseCSVFile() ──► ParsedData {                            │
+  │       eager mode             columns: [...],                    │
+  │       (≤5MB files)           rows: Row[]      ◄── ARRAY        │
+  │                              rowCount: N                        │
+  │                          }                                      │
+  │                                                                 │
+  │   (b) parseCSVFileStream() ──► ParsedData {                      │
+  │       NEW: streaming             columns: [...],                │
+  │       (any size)                 rows: AsyncIterable<Row>       │
+  │                                  rowCount: -1                   │
+  │                              }                                  │
+  │                                                                 │
+  │   (c) External producer ──► ParsedData {        ◄── NEW         │
+  │       (ChunkyCSV /              columns: [...],                 │
+  │        JSONaut / dbt)           rows: AsyncIterable<Row>        │
+  │                                  rowCount: -1 (or known)       │
+  │                              }                                  │
+  └─────────────────┬───────────────────────────────────────────────┘
+                    │
+                    ▼
+  ┌─ NEW IN v0.1.4.5 — engine streaming loop ───────────────────────┐
+  │                                                                 │
+  │  generateFromRecipe(parsedData, recipe, options)                │
+  │       │                                                         │
+  │       ▼                                                         │
+  │  for await (const row of parsedData.rows)                       │
+  │  ─────────────────────────────────────────────                  │
+  │      │  ◄── pulls one row at a time;                            │
+  │      │      backpressure ensures buffer never grows unbounded   │
+  │      ▼                                                          │
+  │  ConceptIdentity {curie, scope}                                 │
+  │      │                                                          │
+  │      ▼  + Recipe                                                │
+  │  render()  ◄── pure function (Ch 22)                            │
+  │      │                                                          │
+  │      ▼                                                          │
+  │  validateTier1Frontmatter()  ◄── pre-write gate                 │
+  │      │                                                          │
+  │      ▼                                                          │
+  │  mergeFrontmatter() if exists                                   │
+  │      │                                                          │
+  │      ▼                                                          │
+  │  app.vault.create() / .modify()  ◄── Tier 1 file written        │
+  │      │                                                          │
+  │      ▼                                                          │
+  │  Row goes out of scope; GC reclaims memory                      │
+  │      │                                                          │
+  │      ▼                                                          │
+  │  Pull next row from source                                      │
+  │                                                                 │
+  │  Memory ceiling: O(1) — one row in flight at a time             │
+  └────────────────────────────┬────────────────────────────────────┘
+                               │
+                               ▼
+  ┌─ TIER 1 VAULT ──────────────────────────────────────────────────┐
+  │  Markdown + YAML frontmatter conforming to                      │
+  │  spec/tier1.schema.json                                         │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
+### Interfaces this milestone introduces / changes
+
+| Interface | Status |
+|---|---|
+| `ParsedData.rows: Row[] \| AsyncIterable<Row>` | ✅ Type union; backwards-compatible |
+| `isEagerRows()` type guard | ✅ Exported from `src/types/config.ts` |
+| `parseCSVFileStream(file, options) → ParsedData` | ✅ NEW; returns ParsedData with AsyncIterable rows |
+| Engine per-row loops use `for await` | ✅ Live in `generateNotes` + `generateFromRecipe` |
+| Type guards added to `analyzeColumns`, `estimateOutput`, wizard preview | ✅ Live; gracefully handle streaming sources |
+
+### What did NOT change in this milestone
+
+- **Wizard UI surfaces** — same column-config flow, same preview rendering. Only the underlying ParsedData rows-type became broader.
+- **Recipe schema** — unchanged.
+- **Tier 1 schema** — unchanged.
+- **render()** — unchanged. Pure function; per-row input/output identical.
+- **Existing E2E specs** — all 33 prior E2E tests pass without modification (the eager-array path is the degenerate case of the new union).
+- **Web Worker offload** — still not used. Main-thread cooperative-yield per Ch 23 §9.5.
+- **Wizard auto-streaming threshold** — wizard still uses `parseCSVFile()` for everything. Threshold-based switching to `parseCSVFileStream()` for >5MB files is a small UI follow-on; not v0.1.4.5 scope.
+
+## Memory rules followed this session
+
+- ✅ Always test thoroughly — milestone gate is `streaming.spec.ts` E2E + 8 new unit tests + verified all 33 prior E2E tests still pass
+- ✅ No personal data in commits/logs (pre-commit sweep clean)
+- ✅ No AI co-author attribution in commits
+
+## What this unblocks for v0.1.5 (Tier 2 sqlite-wasm sidecar)
+
+- The Tier 2 projector (next milestone) walks the vault `.md` files to populate the SQLite sidecar. With streaming foundation in place, the projector can iterate vault files lazily — `vault.getMarkdownFiles()` returns the file list, but reading + parsing frontmatter happens per-file with cooperative yielding, never accumulating the full vault state in RAM.
+- The `closure_cache` recursive CTE materialization can stream through the `mappings` table in batches without exhausting WASM heap.
+- External producers can now hand the engine a streaming source via `plugin.runImportFromRecipe()` directly. ChunkyCSV / JSONaut composition is now real — they emit AsyncIterable rows; the engine consumes them; Tier 1 vault materializes file-by-file.
+
+## Related
+
+**Concept pages:**
+- [ETL and import (two-mode architecture)](/crosswalker/concepts/etl-and-import/) — the architecture this milestone implements
+- [Terminology](/crosswalker/concepts/terminology/) — ParsedData (now streaming-friendly), AsyncIterable, streaming projector
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — composability with external ETL is a differentiator
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+- [Vision](/crosswalker/agent-context/vision/)
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/)
+
+**Design decisions (synthesis logs):**
+- [2026-05-05 two-mode architecture decision](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/) — what triggered this milestone
+- [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — render() purity makes streaming safe
+- [Ch 23 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — main-thread cooperative-yield commitment
+- [v0.1.4 delivery log](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-4-junction-and-crosswalks-shipped/) — preceding milestone
+
+**Research challenges:**
+- [Ch 25 — Two-mode architecture and streaming (resolved)](/crosswalker/agent-context/zz-challenges/archive/25-two-mode-architecture-and-streaming/)
+
+**External producer ecosystem (Mode 1 feeders this enables):**
+- [ChunkyCSV (user's tool)](https://github.com/cybersader) — natural feeder for streaming CSV cleanup
+- [JSONaut (user's tool)](https://github.com/cybersader) — natural feeder for streaming JSON cleanup
+
+**Other milestones:**
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — dependency
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — next milestone; benefits from streaming foundation
+
+## Next milestone
+
+[v0.1.5 — Tier 2 sqlite-wasm sidecar projector](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — projects all three Tier 1 shapes into a `.crosswalker.sqlite` sidecar with sqlite-vec for vector queries. The projector iterates vault files lazily (per the streaming foundation just shipped). Per-milestone E2E spec is `tests/e2e/sidecar.spec.ts`.

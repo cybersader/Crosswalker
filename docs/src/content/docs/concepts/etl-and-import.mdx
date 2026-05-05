@@ -97,9 +97,81 @@ Both modes are **first-class architectural citizens** per the [schema-as-primiti
 
 ### Streaming is at the engine boundary, not before it
 
-The bundled engine is **streaming-by-design** (per [v0.1.4.5 streaming refactor](/crosswalker/reference/roadmap/milestones/) — slated next): it accepts rows as an iterator/async-iterator, calls `render()` per row, writes the file, and discards the row before reading the next one. **The full source dataset never exists in RAM at once.**
+The bundled engine is **streaming-by-design** (per [v0.1.4.5 streaming refactor](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/)): it accepts rows as an iterator/async-iterator, calls `render()` per row, writes the file, and discards the row before reading the next one. **The full source dataset never exists in RAM at once.**
 
 This is why Mode 1 + ChunkyCSV / JSONaut composes well: ChunkyCSV streams from a multi-gigabyte source, emits a smaller-but-still-streaming CSV, the bundled engine streams through that without accumulating, and the resulting Tier 1 vault is materialized on disk file-by-file. End-to-end streaming pipeline.
+
+### What "structured" actually means — the Mode 1 input contract
+
+A common follow-up question once the two-mode architecture clicks: **how does the bundled engine know an input is "clean enough"?** Is there an encoding requirement? A specific JSON shape? An XML schema?
+
+Honest answer: **the contract is shape-level, not format-level.** The engine consumes an iterable of records. Each record is `{columnName: value}`. Columns are referenced by name in the recipe's template strings (`{control_id}`, `{family.title}`). That's the entire contract.
+
+The bundled engine doesn't validate the input against a "Tier 0.5 schema" because no Tier 0.5 schema exists ([2026-05-05 two-mode architecture decision §"No Tier 0.5"](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/#why-this-is-consistent-with-schema-as-primitive) confirms this). The engine just calls `render(recipe, identityFromRow)` on each record and writes the resulting Tier 1 file. Per-row failures (missing template variable, malformed encoding, validation rejection) become per-row errors; the import continues.
+
+#### Shape requirements
+
+```ts
+// The engine consumes this:
+interface RowSource {
+    columns: string[];                              // header — column names referenced by recipe
+    rows: Iterable<Row> | AsyncIterable<Row>;       // the records
+    rowCount?: number;                              // optional; -1 or omitted if streaming
+}
+
+interface Row {
+    [columnName: string]: string | number | boolean | null | undefined | object;
+    // Nested values OK — recipe templates use dotted access: {obj.field.subfield}
+}
+```
+
+Required:
+1. **Stable columns across records** — every row has the same set of keys (missing keys default to undefined, which produces empty values)
+2. **Recipe-referenced columns are present** — if a template uses `{control_id}`, the source must have a `control_id` column
+3. **Values addressable by recipe templates** — flat strings are simplest; nested objects work via dotted access; arrays need iterator declarations in the recipe
+4. **Encoding: UTF-8** — every text format (CSV, JSON, XML, XLSX-as-CSV-export) should arrive UTF-8
+
+That's it. No strict schema validation upstream of the engine.
+
+#### Format-by-format guidance for Mode 1 producers
+
+| Format | When to use | What "clean enough" looks like |
+|---|---|---|
+| **CSV** | Tabular, flat, common ETL output, Excel exports, ChunkyCSV pipes | UTF-8; first row is header; consistent delimiter (PapaParse auto-detects `,`, `;`, `\t`, `\|`); RFC 4180 quoting for embedded commas/quotes; one logical record per row; no merged cells |
+| **JSON (array of records)** | Structured records, optionally nested, JSONaut output, dbt JSON exports | UTF-8; top-level array of objects; consistent record shape; nested objects addressable via `{a.b.c}` templates |
+| **JSON (single object with array property)** | OSCAL bundles, deeply nested ontologies | UTF-8; recipe declares the iterator path (e.g., `source.iterator: $.catalog.controls[*]` — JSONata syntax in v0.1+) |
+| **XLSX** | Excel-native sources (NIST 800-53 catalog as published) | First row is header; one sheet (recipe specifies which); flat cells — no merged cells, no formula references in cell values, no embedded sub-tables |
+| **XML / RDF / OWL** | RDF/OWL ontologies, ISO XML feeds | **Not v0.1.** Pre-convert to CSV or JSON via external tooling (the user's [SEACOW](https://github.com/cybersader/cyberbase) / [JSONaut](https://github.com/cybersader) handle this). Native XML/RDF parsing deferred to v0.2+. |
+
+#### Is JSON "the way to go" over CSV?
+
+Depends on shape. CSV is fine — and often **better** — when:
+- The source is naturally tabular (compliance frameworks: control_id, family, title, baseline, ... fit a CSV grid perfectly)
+- You're already producing CSV via Excel export, ChunkyCSV pipes, or SQL-warehouse export
+- Streaming matters (CSV streams trivially line-by-line; JSON streaming requires `stream-json` or similar)
+- File size is moderate-to-large (CSV is denser than JSON for tabular data — no key repetition per record)
+
+JSON is better when:
+- Records have **nested objects** (`{ control: { id, title, subcontrols: [...] } }`)
+- One source contains **multiple record types** (OSCAL bundle = catalog + controls + groups + parameters + back-matter — recipes pick which to iterate)
+- Values are **naturally arrays** (tags, parent CURIEs, related-control lists)
+- The source's authoritative published format is JSON (OSCAL, JSON-LD ontologies, MITRE STIX exports)
+
+For NIST 800-53 r5: **CSV is fine** (columns: control_id, family, title, baseline, ...). For NIST OSCAL JSON catalogs: **JSON is native**. For ISO 27001 controls: **CSV** if you have a tabular export; **XLSX** otherwise. For MITRE ATT&CK: **JSON (STIX)** is native; CSV exports also exist.
+
+The recipe references columns by name regardless of format. The bundled engine has parsers for each. Format choice is a producer-side decision; the engine adapts.
+
+#### Why no upfront schema validation?
+
+Two reasons:
+1. **Adding a schema for the input format would create a Tier 0.5 contract** that producers have to satisfy. That violates the schema-as-primitive commitment (Tier 1 is the *only* contract). External producers would have to learn two schemas instead of one.
+2. **Per-row error handling is cleaner than upfront rejection.** If a 50,000-row CSV has 3 malformed rows, the engine processes 49,997 rows and reports the 3 failures. An upfront schema would either reject the whole file or silently filter — both worse outcomes.
+
+The schema validation that *does* happen is at the **output boundary**: every row's rendered Tier 1 frontmatter is validated against `spec/tier1.schema.json` before being written ([v0.1.4 strict-mode validation](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/)). Bad rows produce errors; good rows produce files. The contract is enforced where it matters.
+
+#### Why ChunkyCSV / JSONaut are the right partners for messy sources
+
+The user's existing tools fit this gap precisely. They specialize in **input cleanup** — turning a multi-GB messy XLSX into a streaming UTF-8 CSV with stable columns and proper RFC 4180 quoting. The bundled engine specializes in **projection** — turning structured rows into Tier 1 vault notes per a recipe. Each layer does what it's good at; the boundary between them is "an iterable of records with stable columns." That's the entire contract — and it's intentionally narrow so external tools don't need Crosswalker-specific knowledge.
 
 ### What `ParsedData` is (and isn't)
 

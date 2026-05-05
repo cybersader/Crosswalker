@@ -164,10 +164,46 @@ export interface OutputConfig {
 // Parsed Data (from source files)
 // ============================================================================
 
+/**
+ * Type guard — checks if a ParsedData's rows are an eager array (the
+ * wizard preview / config-matching / column-analysis path) vs an
+ * AsyncIterable (the streaming-import path).
+ *
+ * Code that needs random access (`.slice()`, `[index]`, `.map()`,
+ * `.length`) should narrow via this guard before operating on rows.
+ * Streaming consumers iterate via `for await ... of` which works on
+ * both forms.
+ */
+export function isEagerRows(
+	rows: Record<string, any>[] | AsyncIterable<Record<string, any>>,
+): rows is Record<string, any>[] {
+	return Array.isArray(rows);
+}
+
+/**
+ * ParsedData — the bundled engine's structured-row input shape.
+ *
+ * `rows` may be either:
+ *  - An eager array (small/medium data — wizard preview, in-memory imports)
+ *  - An AsyncIterable (true streaming — large files via PapaParse step callback,
+ *    external pipes from ChunkyCSV/JSONaut, etc.)
+ *
+ * The generation engine consumes either form via `for await ... of`.
+ *
+ * Per the [2026-05-05 two-mode architecture decision](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/):
+ * external producers can hand a ParsedData with AsyncIterable rows directly to
+ * the bundled engine via `plugin.runImportFromRecipe()`, enabling
+ * streaming-by-design composition with external ETL tools.
+ *
+ * NOT a tier or persisted format. Implementation detail of Mode 1 (bundled
+ * projector). External producers that emit Tier 1 directly (Mode 2) never
+ * touch this interface.
+ */
 export interface ParsedData {
 	columns: string[];
-	rows: Record<string, any>[];
+	rows: Record<string, any>[] | AsyncIterable<Record<string, any>>;
 	sheetName?: string;
+	/** Total row count if known. -1 (or undefined) if streaming and count is unknown. */
 	rowCount: number;
 }
 

@@ -158,10 +158,12 @@ export async function generateNotes(
 		// (two source rows rendering to the same vault path).
 		const emittedPaths = new Set<string>();
 
-		// Process each row
-		const total = parsedData.rows.length;
-		for (let i = 0; i < parsedData.rows.length; i++) {
-			const row = parsedData.rows[i];
+		// v0.1.4.5: iterate via for-await so streaming-row sources (AsyncIterable)
+		// work alongside the eager array case. Engine never accumulates the full
+		// dataset in RAM. Per the 2026-05-05 two-mode architecture decision.
+		const total = parsedData.rowCount > 0 ? parsedData.rowCount : -1;
+		let i = 0;
+		for await (const row of parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>) {
 			const rowNum = i + 1; // 1-indexed for user display
 
 			try {
@@ -272,11 +274,13 @@ export async function generateNotes(
 				});
 				await debug?.log('Row processing error', { row: rowNum, error: errorMessage });
 			}
+
+			i += 1;
 		}
 
 		// Final progress update
 		if (options.onProgress) {
-			options.onProgress(total, total, 'Complete');
+			options.onProgress(i, total, 'Complete');
 		}
 
 	} catch (error) {
@@ -987,24 +991,28 @@ export function estimateOutput(
 	// Estimate folder count based on hierarchy
 	let folderCount = 1; // At least the base folder
 	if (config.mapping?.hierarchy && config.mapping.hierarchy.length > 0) {
-		// Count unique combinations at each level
-		const uniqueHierarchies = new Set<string>();
-		for (const row of parsedData.rows) {
-			let path = '';
-			for (const h of config.mapping.hierarchy.sort((a, b) => a.level - b.level)) {
-				const value = row[h.column];
-				if (value) {
-					path += '/' + String(value);
-					uniqueHierarchies.add(path);
+		// Count unique combinations at each level. estimateOutput is only
+		// called on the eager-array form (wizard preview); streaming sources
+		// don't have a known total ahead of generation.
+		if (Array.isArray(parsedData.rows)) {
+			const uniqueHierarchies = new Set<string>();
+			for (const row of parsedData.rows) {
+				let path = '';
+				for (const h of config.mapping.hierarchy.sort((a, b) => a.level - b.level)) {
+					const value = row[h.column];
+					if (value) {
+						path += '/' + String(value);
+						uniqueHierarchies.add(path);
+					}
 				}
 			}
+			folderCount = uniqueHierarchies.size + 1;
 		}
-		folderCount = uniqueHierarchies.size + 1;
 	}
 
-	// Estimate link count
+	// Estimate link count — eager-array path only (wizard preview)
 	let linkCount = 0;
-	if (config.mapping?.links && config.mapping.links.length > 0) {
+	if (config.mapping?.links && config.mapping.links.length > 0 && Array.isArray(parsedData.rows)) {
 		for (const row of parsedData.rows) {
 			for (const link of config.mapping.links) {
 				const value = row[link.column];
@@ -1111,10 +1119,14 @@ export async function generateFromRecipe(
 	}
 
 	const emittedPaths = new Set<string>();
-	const total = parsedData.rows.length;
+	// v0.1.4.5: streaming-friendly iteration. parsedData.rows may be either an
+	// eager array OR an AsyncIterable<Row> (true streaming from a 5MB+ CSV via
+	// PapaParse step callback, or from an external pipe). The for-await loop
+	// transparently handles both.
+	const total = parsedData.rowCount > 0 ? parsedData.rowCount : -1;
+	let i = 0;
 
-	for (let i = 0; i < parsedData.rows.length; i++) {
-		const row = parsedData.rows[i];
+	for await (const row of parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>) {
 		const rowNum = i + 1;
 
 		try {
@@ -1245,9 +1257,11 @@ export async function generateFromRecipe(
 			result.errors.push({ row: rowNum, message: errorMessage });
 			await debug?.log('Row processing error', { row: rowNum, error: errorMessage });
 		}
+
+		i += 1;
 	}
 
-	if (options.onProgress) options.onProgress(total, total, 'Complete');
+	if (options.onProgress) options.onProgress(i, total, 'Complete');
 	if (result.errors.length > 0) result.success = false;
 	result.duration = Date.now() - startTime;
 

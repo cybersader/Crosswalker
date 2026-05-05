@@ -194,12 +194,26 @@ export async function parseCSVFile(
 }
 
 /**
- * Analyze columns to detect types and gather info
+ * Analyze columns to detect types and gather info.
+ * Only meaningful for eager-array ParsedData. Streaming sources need a
+ * separate sample-collect step before column analysis.
  */
 export function analyzeColumns(data: ParsedData): ColumnInfo[] {
+	if (!Array.isArray(data.rows)) {
+		// Streaming source — return shape-only column info; type detection
+		// requires materializing rows which defeats streaming.
+		return data.columns.map(colName => ({
+			name: colName,
+			sampleValues: [],
+			detectedType: 'string' as const,
+			hasEmptyValues: false,
+			uniqueCount: 0,
+		}));
+	}
+	const eagerRows = data.rows;
 	return data.columns.map(colName => {
-		const values = data.rows.map(row => row[colName]);
-		const nonEmptyValues = values.filter(v => v !== '' && v !== null && v !== undefined);
+		const values = eagerRows.map((row: Record<string, any>) => row[colName]);
+		const nonEmptyValues = values.filter((v: any) => v !== '' && v !== null && v !== undefined);
 
 		return {
 			name: colName,
@@ -248,6 +262,148 @@ function detectColumnType(values: any[]): ColumnInfo['detectedType'] {
 	if (arrayCount / total >= threshold) return 'array';
 
 	return 'string';
+}
+
+/**
+ * Parse a CSV File as a true streaming source — returns a ParsedData where
+ * `rows` is an AsyncIterable that pulls one row at a time from PapaParse via
+ * the step callback. The full dataset never lives in RAM.
+ *
+ * Backpressure: PapaParse pauses when the internal buffer reaches HIGH_WATER
+ * rows; resumes when the consumer drains it below LOW_WATER. Memory ceiling
+ * is roughly HIGH_WATER × avg-row-bytes.
+ *
+ * Per the [2026-05-05 two-mode architecture decision](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/),
+ * this is the path the wizard uses for files larger than the 5 MB threshold
+ * (`shouldUseStreaming(file)`). External producers (ChunkyCSV, JSONaut, dbt)
+ * can also build their own AsyncIterable<Row> and hand it to the engine via
+ * `plugin.runImportFromRecipe()`.
+ */
+export function parseCSVFileStream(
+	file: File,
+	options: CSVParserOptions = {}
+): ParsedData {
+	const opts = { ...DEFAULT_OPTIONS, ...options };
+	const HIGH_WATER = 100;
+	const LOW_WATER = 10;
+
+	const buffer: Record<string, any>[] = [];
+	let columns: string[] = [];
+	let parser: { pause: () => void; resume: () => void } | null = null;
+	let parseError: Error | null = null;
+	let parseDone = false;
+	let waitingResolve: (() => void) | null = null;
+	let rowCount = 0;
+	const fileSize = file.size;
+
+	const config = {
+		delimiter: opts.delimiter || '',
+		header: true,
+		skipEmptyLines: opts.skipEmptyRows,
+		dynamicTyping: false,
+
+		step: (results: { data: unknown; meta?: { cursor?: number; fields?: string[] } }, p: { pause: () => void; resume: () => void }) => {
+			parser = p;
+			if (results.data) {
+				const raw = results.data as Record<string, unknown>;
+				// Trim whitespace from header keys lazily on first pull
+				const trimmed: Record<string, any> = {};
+				for (const [k, v] of Object.entries(raw)) {
+					trimmed[k.trim()] = v;
+				}
+				buffer.push(trimmed);
+				rowCount += 1;
+
+				// Capture columns from the first row's keys
+				if (columns.length === 0) {
+					columns = Object.keys(trimmed);
+				}
+			}
+
+			if (opts.onProgress && rowCount % (opts.chunkSize || 1000) === 0) {
+				const bytesProcessed = results.meta?.cursor || 0;
+				opts.onProgress({
+					rowsProcessed: rowCount,
+					bytesProcessed,
+					estimatedTotal: fileSize,
+					percentComplete: fileSize > 0 ? Math.round((bytesProcessed / fileSize) * 100) : undefined,
+				});
+			}
+
+			// Wake any waiting consumer
+			if (waitingResolve) {
+				const r = waitingResolve;
+				waitingResolve = null;
+				r();
+			}
+
+			// Backpressure — pause parser when buffer fills
+			if (buffer.length >= HIGH_WATER) {
+				p.pause();
+			}
+		},
+
+		complete: () => {
+			parseDone = true;
+			if (waitingResolve) {
+				const r = waitingResolve;
+				waitingResolve = null;
+				r();
+			}
+		},
+
+		error: (error: { message: string }) => {
+			parseError = new Error(`CSV streaming parse error: ${error.message}`);
+			parseDone = true;
+			if (waitingResolve) {
+				const r = waitingResolve;
+				waitingResolve = null;
+				r();
+			}
+		},
+	};
+
+	// Kick off parsing immediately. Step callback fills the buffer; consumer
+	// pulls via the async iterator below.
+	(Papa.parse as (input: File, config: object) => void)(file, config);
+
+	const rows: AsyncIterable<Record<string, any>> = {
+		[Symbol.asyncIterator]() {
+			return {
+				async next(): Promise<IteratorResult<Record<string, any>>> {
+					// Loop until we have a row, the parse errors, or the parse completes
+					// eslint-disable-next-line no-constant-condition
+					while (true) {
+						if (parseError) throw parseError;
+
+						if (buffer.length > 0) {
+							const row = buffer.shift()!;
+							// Resume parser if buffer drained below low-water mark
+							if (parser && buffer.length < LOW_WATER && !parseDone) {
+								parser.resume();
+							}
+							return { done: false, value: row };
+						}
+
+						if (parseDone) {
+							return { done: true, value: undefined as never };
+						}
+
+						// Wait for parser to push more rows or signal completion
+						await new Promise<void>((resolve) => {
+							waitingResolve = resolve;
+						});
+					}
+				},
+			};
+		},
+	};
+
+	return {
+		columns,                  // populated lazily once first row arrives
+		rows,                     // AsyncIterable
+		rowCount: -1,             // unknown until parse completes
+	};
 }
 
 /**

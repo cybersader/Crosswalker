@@ -114,12 +114,19 @@ function detectDataPatterns(parsedData: ParsedData): ConfigFingerprint['samplePa
 		{ name: 'comma_list', pattern: /^[^,]+,[^,]+/, desc: 'Comma-separated values' },
 	];
 
+	// Pattern detection requires random access — only meaningful for the eager
+	// (wizard-preview) ParsedData form. Streaming sources skip this.
+	if (!Array.isArray(parsedData.rows)) {
+		return patterns;
+	}
+	const eagerRows = parsedData.rows;
+
 	for (const column of parsedData.columns) {
 		// Get sample values for this column
-		const samples = parsedData.rows
+		const samples = eagerRows
 			.slice(0, 20)
-			.map(row => String(row[column] ?? ''))
-			.filter(v => v.length > 0);
+			.map((row: Record<string, any>) => String(row[column] ?? ''))
+			.filter((v: string) => v.length > 0);
 
 		if (samples.length === 0) continue;
 

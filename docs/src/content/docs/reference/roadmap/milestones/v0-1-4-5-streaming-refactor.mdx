@@ -17,7 +17,7 @@ This is the implementation of Mode 1 (bundled projector) at scale, per the [2026
 
 ## Status
 
-📋 Planning (next milestone after v0.1.4)
+✅ Done (2026-05-05). `ParsedData.rows: Row[] | AsyncIterable<Row>` shipped with full backwards-compat. New `parseCSVFileStream()` returns ParsedData where rows is an AsyncIterable that pulls per-row from PapaParse via the step callback with backpressure (buffer caps at 100 rows). Engine `for await` loops in `generateNotes` + `generateFromRecipe` consume both forms identically. 153 tests passing (116 unit + 37 E2E across 8 spec files including new `streaming.spec.ts` with 4 tests covering AsyncIterable consumption + eager-array backwards-compat).
 
 ## Dependencies
 

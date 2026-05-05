@@ -712,9 +712,13 @@ export class ImportWizardModal extends Modal {
 			return `${this.outputPath}/\n└── (Flat structure - all notes in root folder)`;
 		}
 
-		// Collect unique paths from data (limit to first 50 rows for performance)
+		// Collect unique paths from data (limit to first 50 rows for performance).
+		// Wizard preview only runs against eager-array ParsedData; streaming
+		// imports skip this (preview is rendered from a separately-loaded sample).
 		const paths = new Map<string, Set<string>>();
-		const sampleRows = this.parsedData.rows.slice(0, 50);
+		const sampleRows = Array.isArray(this.parsedData.rows)
+			? this.parsedData.rows.slice(0, 50)
+			: [];
 
 		for (const row of sampleRows) {
 			let currentPath = '';
@@ -768,10 +772,12 @@ export class ImportWizardModal extends Modal {
 	}
 
 	/**
-	 * Build a sample note preview from the first row
+	 * Build a sample note preview from the first row.
+	 * Only runs against eager-array ParsedData (wizard preview path); streaming
+	 * imports use a separately-loaded sample.
 	 */
 	buildSampleNotePreview(config: Partial<ImportRecipe>): string {
-		if (!this.parsedData || this.parsedData.rows.length === 0) {
+		if (!this.parsedData || !Array.isArray(this.parsedData.rows) || this.parsedData.rows.length === 0) {
 			return '(No data to preview)';
 		}
 
