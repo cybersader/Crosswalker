@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Goal
 
-Wire the two non-concept-note Tier 1 shapes — junction notes (evidence links, 13-field schema per [Ch 07](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)) and crosswalk edges (between two concepts in different ontologies, with STRM predicate vocabulary + SSSOM-shaped envelope) — into the generation engine. After this milestone, the plugin produces complete Tier 1 vaults that capture concepts, evidence, and crosswalks together.
+Wire the two non-[concept-note](/crosswalker/concepts/terminology/) [Tier 1](/crosswalker/concepts/terminology/) shapes — [junction notes](/crosswalker/concepts/terminology/) (evidence links, 13-field schema per [Ch 07 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)) and [crosswalk edges](/crosswalker/concepts/terminology/) (between two concepts in different ontologies, with [STRM](/crosswalker/reference/registry/strm/) predicate vocabulary + [SSSOM](/crosswalker/reference/registry/sssom/)-shaped envelope) — into the generation engine. After this milestone, the plugin produces complete Tier 1 vaults that capture concepts, evidence, and crosswalks together.
 
 ## Status
 
@@ -26,11 +26,11 @@ Wire the two non-concept-note Tier 1 shapes — junction notes (evidence links, 
 ## Scope
 
 **In:**
-- Junction-note generation as a new code path — non-destructive, git-history-preserving
-- Crosswalk-edge generation when sources have crosswalk columns (e.g., NIST CSF → 800-53 mapping spreadsheet)
-- STRM predicate vocabulary enforcement (closed enum: `is_equivalent_to`, `is_broader_than`, `is_narrower_than`, `is_approximate_to`, `intersects_with`, `no_relationship`)
-- SSSOM-shaped fields on crosswalk edges (`match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `creator_id`)
-- Recipe support for junction-note + crosswalk-edge "kinds" — recipe specifies `kind: junction-note` or `kind: crosswalk-edge` in its layout
+- Junction-note generation as a new code path — non-destructive, git-history-preserving (per [Ch 08 audit-trail synthesis](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/))
+- Crosswalk-edge generation when sources have crosswalk columns (e.g., [NIST CSF](/crosswalker/reference/registry/nist/) → [NIST 800-53](/crosswalker/reference/registry/nist/) mapping spreadsheet from the [NIST OLIR registry](/crosswalker/reference/registry/olir/))
+- [STRM](/crosswalker/reference/registry/strm/) predicate vocabulary enforcement (closed enum: `is_equivalent_to`, `is_broader_than`, `is_narrower_than`, `is_approximate_to`, `intersects_with`, `no_relationship`)
+- [SSSOM](/crosswalker/reference/registry/sssom/)-shaped fields on crosswalk edges (`match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `creator_id`)
+- Recipe support for junction-note + crosswalk-edge "kinds" — recipe specifies `kind: junction-note` or `kind: crosswalk-edge` in its layout (per [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/))
 
 **Out:**
 - Junction-note UI (read/write evidence-link form) — that's a wizard feature; defer to v0.2
@@ -72,8 +72,52 @@ Wire the two non-concept-note Tier 1 shapes — junction notes (evidence links, 
 
 ## Related
 
+**Concept pages:**
+- [Terminology](/crosswalker/concepts/terminology/) — junction note, crosswalk edge, STRM, SSSOM, predicate, CURIE, kind discriminator
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the 5 mechanisms; kind dispatch composes with them
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive applies to all three Tier 1 shapes
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — first-class crosswalk-edge + evidence-link primitives differentiate the architecture
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — STRM enforcement protects schema fidelity across imports
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — junction_note_frontmatter, crosswalk_edge_frontmatter `$defs`
+- [Vision](/crosswalker/agent-context/vision/) — open-ecosystem + standards-aligned vocabulary (STRM/SSSOM)
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — closed predicate vocabulary vs. open-ended
+
+**Design decisions (synthesis logs):**
 - [Ch 07 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — 13-field junction-note schema origin
-- [STRM registry page](/crosswalker/reference/registry/strm/) — predicate vocabulary
-- [SSSOM registry page](/crosswalker/reference/registry/sssom/) — envelope shape
-- [`spec/tier1.schema.json` junction_note + crosswalk_edge defs](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json)
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — kind dispatch is part of the closed 5-mechanism grammar
+- [v0.1 import-engine design (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — design-phase summary
+- [Volatility and registry (2026-04-04)](/crosswalker/agent-context/zz-log/2026-04-04-volatility-and-registry/) — STRM as closed enum; SSSOM as bibliographic envelope
+- [Foundation research synthesis (2026-04-10)](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/)
+- [v0.1.4 delivery log (2026-05-05)](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-4-junction-and-crosswalks-shipped/) — what shipped + system-design diagram + multi-framework story
+
+**Research deliverables:**
+- [Ch 22 deliverable (target-structure expressivity)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) — recipe-shape research
+- [Ch 06 deliverable (pairwise-spine model)](/crosswalker/agent-context/zz-research/2026-05-01-challenge-06-pairwise-spine/) — crosswalk-edge as pairwise relation
+- [Ch 13 deliverable (attestation primitives)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — junction notes as attestation primitives
+
+**Spec & schema files:**
+- [`spec/tier1.schema.json` junction_note_frontmatter](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json)
+- [`spec/tier1.schema.json` crosswalk_edge_frontmatter](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — STRM enum is enforced here
+- [`spec/recipe.schema.json` layout_entry.kind](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json)
+- [NIST IR 8477 (STRM source)](https://nvlpubs.nist.gov/nistpubs/ir/2024/NIST.IR.8477.pdf)
+- [SSSOM specification (Mapping Commons)](https://mapping-commons.github.io/sssom/)
+
+**Registry references:**
+- [STRM (NIST IR 8477)](/crosswalker/reference/registry/strm/) — predicate vocabulary
+- [SSSOM](/crosswalker/reference/registry/sssom/) — envelope shape
+- [OLIR (NIST mapping registry)](/crosswalker/reference/registry/olir/) — official source of CSF↔800-53 mappings
+- [NIST](/crosswalker/reference/registry/nist/) · [ISO](/crosswalker/reference/registry/iso/) · [MITRE](/crosswalker/reference/registry/mitre/) · [CIS](/crosswalker/reference/registry/cis/) · [CRI](/crosswalker/reference/registry/cri/) · [FFIEC](/crosswalker/reference/registry/ffiec/) · [SKOS](/crosswalker/reference/registry/skos/) — same recipe shape generalizes to all
+
+**Starter recipes shipped:**
+- [`recipes/starter/nist-csf-to-800-53-crosswalk.json`](https://github.com/cybersader/crosswalker/blob/main/recipes/starter/nist-csf-to-800-53-crosswalk.json)
+- [`recipes/starter/iso27001-to-800-53-crosswalk.json`](https://github.com/cybersader/crosswalker/blob/main/recipes/starter/iso27001-to-800-53-crosswalk.json)
+- [`recipes/starter/evidence-junction-notes.json`](https://github.com/cybersader/crosswalker/blob/main/recipes/starter/evidence-junction-notes.json)
+- [`recipes/starter/README.md`](https://github.com/cybersader/crosswalker/blob/main/recipes/starter/README.md) — multi-framework recipe-pattern story
+
+**Other milestones:**
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — dependency
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — what this unblocks (sidecar projects all 3 kinds)
+- [v0.1.7 — Exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — STRM TSV / OSCAL JSON exporters consume crosswalk edges
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

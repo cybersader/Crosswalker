@@ -9,9 +9,7 @@ tags: [milestone, v0-1, bases, query-layer]
 
 import { Aside } from '@astrojs/starlight/components';
 
-## Goal
-
-Move the v0.1 output query layer from Dataview to Bases (Obsidian's official structured-data query system). Update the templates that the plugin emits — concept-note query examples, evidence-link aggregations, coverage-matrix views — so they work natively in Bases without requiring users to install Dataview.
+Move the v0.1 output query layer from Dataview to [Bases](/crosswalker/concepts/metadata-ecosystem/) (Obsidian's official structured-data query system). Update the templates that the plugin emits — [concept-note](/crosswalker/concepts/terminology/) query examples, [evidence-link](/crosswalker/concepts/terminology/) aggregations, coverage-matrix views — so they work natively in Bases without requiring users to install Dataview. Per the [project memory commitment](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) (saved 2026-05-04).
 
 ## Status
 
@@ -67,7 +65,37 @@ Move the v0.1 output query layer from Dataview to Bases (Obsidian's official str
 
 ## Related
 
-- [`.claude/skills/obsidian-bases/`](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/obsidian-bases) — skill spec for Bases query authoring
-- [Concepts: metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/)
-- [Project memory: query layer is Bases (not Dataview)](/crosswalker/agent-context/zz-log/) — saved 2026-05-04
+**Concept pages:**
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases as the v0.1 query layer
+- [Terminology](/crosswalker/concepts/terminology/) — Bases, query layer, frontmatter projection
+- [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — Tier 1 frontmatter as the queryable graph
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — `file.hasTag()` nested-tag-prefix semantics ([Ch 22 §1.3](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/))
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — query layer is upstream Obsidian, not a custom plugin
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — frontmatter shapes that Bases queries against
+- [Vision](/crosswalker/agent-context/vision/)
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — Bases vs. Dataview vs. Datacore
+
+**Design decisions (synthesis logs):**
+- [v0.1 import-engine design (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — query layer commitment to Bases (Dataview removed)
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — §1.3 nested-tag-prefix semantics; tag mechanism deferred to v0.2
+- [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)
+- [Obsidian internals research (2026-04-04)](/crosswalker/agent-context/zz-log/2026-04-04-obsidian-internals-research/) — Bases capability survey
+
+**Research deliverables:**
+- [Ch 10 deliverable (graph + tabular)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-10-graph-tabular/) — query-layer fit for crosswalk data
+- [Ch 12 deliverable a (Datalog vs. SQL)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) — query-language tradeoffs
+
+**Spec & schema files:**
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — frontmatter shapes Bases queries against
+- [Obsidian Bases (official)](https://help.obsidian.md/Plugins/Bases) — upstream documentation
+
+**Skills:**
+- [`obsidian-bases` skill](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/obsidian-bases) — Bases query authoring patterns
+- [`obsidian-markdown` skill](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/obsidian-markdown)
+
+**Other milestones:**
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — dependency (transitive queries route through sidecar)
+- [v0.1.7 — Exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — what this unblocks (some exporters reuse the query layer)
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

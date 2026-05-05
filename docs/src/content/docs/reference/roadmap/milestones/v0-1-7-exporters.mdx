@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Goal
 
-Make the user's Tier 1 vault data portable. Three target formats for v0.1 — STRM-shaped TSV (the user-facing wire format), OSCAL JSON profile (for compliance-tool interop), and SSSOM-flavored TSV (optional, for academic interop). Hybrid SSSOM↔STRM resolution per [v0.1 stack pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/).
+Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable. Three target formats for v0.1 — [STRM](/crosswalker/reference/registry/strm/)-shaped TSV (the user-facing wire format from [NIST IR 8278A r1](/crosswalker/reference/registry/olir/) OLIR template), [OSCAL](/crosswalker/reference/registry/oscal/) JSON profile (for compliance-tool interop), and [SSSOM](/crosswalker/reference/registry/sssom/)-flavored TSV (optional, for academic interop). Hybrid SSSOM↔STRM resolution per [v0.1 stack pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/).
 
 ## Status
 
@@ -69,8 +69,43 @@ Make the user's Tier 1 vault data portable. Three target formats for v0.1 — ST
 
 ## Related
 
-- [STRM registry page](/crosswalker/reference/registry/strm/) — predicate vocabulary + TSV format
-- [OSCAL registry page](/crosswalker/reference/registry/oscal/) — control mapping model
-- [SSSOM registry page](/crosswalker/reference/registry/sssom/) — envelope shape
-- [Ch 19 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/) — "SSSOM has zero GRC adoption" justifies opt-in default
+**Concept pages:**
+- [Terminology](/crosswalker/concepts/terminology/) — STRM, SSSOM, OSCAL, exporter, round-trip determinism
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — exporters are the inverse of import; same schema-as-primitive principle
+- [Framework standards](/crosswalker/concepts/framework-standards/) — what exporters target
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — round-trip determinism guarantees
+- [Institutional landscape](/crosswalker/concepts/institutional-landscape/) — who consumes STRM/OSCAL/SSSOM
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — Tier 1 shapes that exporters serialize
+- [Vision](/crosswalker/agent-context/vision/) — open-ecosystem export commitment (round-trip with NIST tooling)
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — STRM as primary vs. SSSOM as opt-in
+- [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) — domain context
+
+**Design decisions (synthesis logs):**
+- [Ch 07 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction notes are isomorphic to OSCAL Control Mapping Model
+- [v0.1 stack pivot (2026-05-02) §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — STRM↔SSSOM resolution
+- [Volatility and registry (2026-04-04)](/crosswalker/agent-context/zz-log/2026-04-04-volatility-and-registry/) — STRM/SSSOM stability assessment
+- [Direction commitments (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) — exporter scope
+
+**Research deliverables:**
+- [Ch 19 deliverable (overengineering stress test)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/) — "SSSOM has zero GRC adoption" → opt-in default
+- [Ch 06 deliverable (pairwise spine)](/crosswalker/agent-context/zz-research/2026-05-01-challenge-06-pairwise-spine/) — STRM-shaped pairwise data is the wire format
+- [Ch 13 deliverable (attestation primitives)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — context for OSCAL exporter
+
+**Spec & schema files:**
+- [`spec/tier1.schema.json` crosswalk_edge_frontmatter](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — source data for STRM TSV
+- [`spec/tier1.schema.json` junction_note_frontmatter](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — source data for OSCAL profile
+
+**Registry references:**
+- [STRM (NIST IR 8477)](/crosswalker/reference/registry/strm/) — predicate vocabulary + TSV format
+- [OSCAL](/crosswalker/reference/registry/oscal/) — control mapping model (NIST published JSON Schema)
+- [SSSOM](/crosswalker/reference/registry/sssom/) — Mapping Commons envelope shape
+- [OLIR](/crosswalker/reference/registry/olir/) — NIST IR 8278A r1 OLIR template
+- [NIST](/crosswalker/reference/registry/nist/) · [ISO](/crosswalker/reference/registry/iso/) · [MITRE](/crosswalker/reference/registry/mitre/) · [CIS](/crosswalker/reference/registry/cis/) · [CRI](/crosswalker/reference/registry/cri/) · [FFIEC](/crosswalker/reference/registry/ffiec/)
+
+**Other milestones:**
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — produces the data exporters serialize
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — dependency (joins, coverage matrices use sidecar queries)
+- [v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — exporter UX overlap
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

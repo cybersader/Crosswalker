@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Goal
 
-Implement the Tier 2 sidecar projector — the deletable, recoverable SQLite projection of Tier 1 frontmatter. Auto-projects on vault load; lazy closure cache for transitive crosswalk queries; if `.crosswalker.sqlite` is missing/corrupted/stale, reproject from canonical Tier 1 on next load.
+Implement the [Tier 2](/crosswalker/concepts/terminology/) [sidecar projector](/crosswalker/concepts/embedded-vs-server-substrates/) — the deletable, recoverable SQLite projection of [Tier 1](/crosswalker/concepts/terminology/) frontmatter. Auto-projects on vault load; lazy closure cache for transitive [crosswalk](/crosswalker/concepts/terminology/) queries; if `.crosswalker.sqlite` is missing/corrupted/stale, reproject from canonical Tier 1 on next load. Per [Ch 24 substrate synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) (sqlite-wasm + sqlite-vec; libSQL/Turso/Limbo rejected).
 
 ## Status
 
@@ -81,8 +81,40 @@ Implement the Tier 2 sidecar projector — the deletable, recoverable SQLite pro
 
 ## Related
 
+**Concept pages:**
+- [Embedded vs server substrates](/crosswalker/concepts/embedded-vs-server-substrates/) — why Tier 2 is embedded (sqlite-wasm), not server-backed
+- [Terminology](/crosswalker/concepts/terminology/) — Tier 2, sidecar, projector, closure cache, OPFS
+- [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — Tier 1 is the truth; Tier 2 is a projection
+- [Consistency models](/crosswalker/concepts/consistency-models/) — projection eventual consistency, recovery semantics
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — deletable substrate is the architectural differentiator
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — §7 Tier 2 SQL DDL (mappings, junction_notes, concepts, ontologies tables)
+- [Vision](/crosswalker/agent-context/vision/) — runtime-agnostic recipe schema; Tier 2 is one consumer
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — embedded substrate vs. portability constraints
+
+**Design decisions (synthesis logs):**
+- [Ch 24 synthesis (Tier 2 substrate)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — sqlite-wasm + sqlite-vec; libSQL/Turso/Limbo all rejected
+- [Ch 23 synthesis (bundle/engine/language)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — mobile portability (`isDesktopOnly: false`); §9.5 web-worker rationale
+- [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — Tier 2 as deletable sidecar
+- [Architectural direction exploration (2026-04-03)](/crosswalker/agent-context/zz-log/2026-04-03-architectural-direction-exploration/) — embedded-substrate decision context
+
+**Research deliverables:**
 - [Ch 18 deliverable (Tier 2-Lite scale ceiling)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — 100K mapping ceiling
-- [Ch 24 synthesis (substrate decision)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)
-- [Embedded vs server substrates concept page](/crosswalker/concepts/embedded-vs-server-substrates/)
-- [v0.1 schema spec §7 (Tier 2 SQL DDL)](/crosswalker/agent-context/v0-1-schema-spec/)
+- [Ch 24 deliverable (libSQL/Turso evaluation)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-24-turso-libsql-evaluation/) — why rejected
+- [Ch 11 deliverable a (engine survey)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/) · [b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) · [c](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-c-engine-survey/) — comparative substrate survey
+- [Ch 12 deliverable b (engine landscape beyond)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/)
+- [Ch 14 deliverable (missed engines)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/)
+- [Ch 16 deliverable (Tier 3 reconsideration)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/)
+- [Ch 19 deliverable (overengineering stress test)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/)
+
+**External references:**
+- [SQLite WASM official](https://sqlite.org/wasm/doc/trunk/index.md)
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) — vector extension
+- [OPFS sahpool VFS](https://sqlite.org/wasm/doc/trunk/persistence.md#opfs-sahpool)
+
+**Other milestones:**
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — dependency (typed Tier 1 output)
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — dependency (all 3 frontmatter shapes flowing)
+- [v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — what this unblocks
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

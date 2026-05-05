@@ -9,9 +9,9 @@ tags: [milestone, v0-1, release, bundle, community-plugins]
 
 import { Aside } from '@astrojs/starlight/components';
 
-## Goal
+Ship the v0.1-implementation phase as a release. Verify bundle size, confirm mobile portability (per [Ch 23 §5 `isDesktopOnly: false` commitment](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)), polish remaining UX rough edges, prepare [community-plugin submission](https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin). Released as **v0.2.0** since v0.1.0 was the original MVP shipped 2026-04-02.
 
-Ship the v0.1-implementation phase as a release. Verify bundle size, confirm mobile portability, polish remaining UX rough edges, prepare community-plugin submission. Released as **v0.2.0** since v0.1.0 was the original MVP shipped 2026-04-02.
+This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) settled in the 2026-05-04 design phase: schema-as-primitive, closed 5-mechanism recipe grammar, TS in-plugin engine, sqlite-wasm Tier 2 substrate, runtime-agnostic recipe schema, Bases query layer.
 
 ## Status
 
@@ -77,8 +77,41 @@ Ship the v0.1-implementation phase as a release. Verify bundle size, confirm mob
 
 ## Related
 
+**Concept pages:**
+- [Problem](/crosswalker/concepts/problem/) — the framing the RC ships against
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — the differentiators the RC needs to communicate clearly to evaluators
+- [Terminology](/crosswalker/concepts/terminology/) — canonical vocabulary; check user-facing surfaces follow it
+- [Ecosystem](/crosswalker/concepts/ecosystem/) — community-plugin landscape context
+- [Operational landscape](/crosswalker/concepts/operational-landscape/) — adoption + deployment story
+
+**Agent context:**
+- [Vision](/crosswalker/agent-context/vision/) — what the RC needs to deliver against
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — known limitations to be transparent about
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the schemas RC publishes
+- [Decisions](/crosswalker/agent-context/decisions/) — architectural decisions consolidated
+
+**Design decisions (synthesis logs — the 6 architectural commitments):**
+- [v0.1 import-engine design (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — six commitments + Bases query layer
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — closed 5-mechanism grammar
+- [Ch 23 synthesis (bundle/engine/language)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — TS in-plugin engine; mobile portability; runtime-agnostic schema
+- [Ch 24 synthesis (Tier 2 substrate)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — sqlite-wasm
+- [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — overall stack
+- [README user-facing-surface rule](/crosswalker/agent-context/zz-log/) — saved 2026-05-04; keep README jargon-free
+
+**Research deliverables (RC verification context):**
+- [Ch 23 deliverable (bundle/engine/language)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/) — bundle-size + portability evidence
+- [Ch 19 deliverable (overengineering stress test)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/) — what NOT to ship in v0.1
+
+**Spec & schema files:**
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json)
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json)
+- [Six architectural commitments (memory)](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04)
+
+**External references:**
 - [Obsidian Plugin Guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines)
 - [Obsidian Plugin Submission process](https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin)
-- [README user-facing-surface memory rule](/crosswalker/agent-context/zz-log/) — keep README jargon-free
-- [Ch 23 synthesis (`isDesktopOnly: false` commitment)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)
+- [`obsidianmd/eslint-plugin`](https://github.com/obsidianmd/eslint-plugin) — community-plugin lint rules
+
+**Other milestones:**
+- [v0.1.1 through v0.1.8](/crosswalker/reference/roadmap/milestones/) — all dependencies
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

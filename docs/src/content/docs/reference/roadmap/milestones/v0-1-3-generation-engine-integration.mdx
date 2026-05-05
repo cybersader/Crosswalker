@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Goal
 
-Connect `render()` to the existing import pipeline. After this milestone, the import wizard produces *spec-conformant* Tier 1 output: every note is validated, every `_crosswalker` provenance block is correctly populated, and re-imports preserve user-edited frontmatter (`user_preserve` keys) while overwriting recipe-managed keys.
+Connect [`render()`](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) to the existing import pipeline. After this milestone, the import wizard produces *spec-conformant* [Tier 1](/crosswalker/concepts/terminology/) output: every note is validated, every `_crosswalker` [provenance](/crosswalker/concepts/terminology/) block is correctly populated, and re-imports preserve user-edited frontmatter (`user_preserve` keys per [Ch 22 §8.4](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/#4-the-managed--user_preserve-frontmatter-split)) while overwriting recipe-managed keys.
 
 ## Status
 
@@ -78,7 +78,35 @@ Connect `render()` to the existing import pipeline. After this milestone, the im
 
 ## Related
 
-- [Ch 22 synthesis §4 (managed/user_preserve)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/#4-the-managed--user_preserve-frontmatter-split)
+**Concept pages:**
+- [Terminology](/crosswalker/concepts/terminology/) — Tier 1, recipe, render(), provenance, managed/user_preserve, CURIE, concept_cid
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive; the engine is convenience around the schema contract
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — re-import safety, idempotency, user-edit preservation
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — what render() projects against
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — round-trip determinism is a differentiator
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — `_crosswalker` provenance_block, concept_note_frontmatter
+- [Vision](/crosswalker/agent-context/vision/) — file-based canonical state; engine produces it
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — strict pre-write validation vs. lenient
+
+**Design decisions (synthesis logs):**
+- [Ch 22 synthesis §4 (managed/user_preserve)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/#4-the-managed--user_preserve-frontmatter-split) — frontmatter merge semantics
+- [Ch 22 synthesis §10.7 (4-phase migration plan)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — Phase 0 compat shim rationale
+- [v0.1 import-engine design (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — design-phase summary
+- [Evidence-link edge model synthesis (Ch 07)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction-note frontmatter shape that v0.1.4 builds on
+- [v0.1.3 delivery log (2026-05-05)](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-3-engine-integration-shipped/) — what shipped + system-design diagram
+
+**Research deliverables:**
 - [Ch 22 deliverable §8 (content addressing — target structure is a view)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/)
-- [`spec/tier1.schema.json` `provenance_block`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json)
+- [Ch 09 deliverable (UUID/CWUUID)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-09-uuid-cwuuid/) — concept_cid + identity hashing context
+
+**Spec & schema files:**
+- [`spec/tier1.schema.json` provenance_block](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — `_crosswalker` shape
+- [`spec/recipe.schema.json` frontmatter_block](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — managed/user_preserve fields
+
+**Other milestones:**
+- [v0.1.1 — Type system + validation](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) — dependency
+- [v0.1.2 — render() v1](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) — dependency
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — what this unblocks
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

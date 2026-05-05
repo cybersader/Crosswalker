@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Goal
 
-Make the schema artifacts `spec/tier1.schema.json` and `spec/recipe.schema.json` the *active* source of truth for plugin types and runtime validation, replacing the ad-hoc TypeScript types in `src/types/config.ts`.
+Make the schema artifacts [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) and [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) the *active* source of truth for plugin types and runtime validation, replacing the ad-hoc TypeScript types in `src/types/config.ts`. This is the load-bearing implementation step for the [schema-as-primitive](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience) architectural commitment — the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) becomes the contract any producer must satisfy, not just the bundled engine.
 
 ## Status
 
@@ -87,8 +87,34 @@ Make the schema artifacts `spec/tier1.schema.json` and `spec/recipe.schema.json`
 
 ## Related
 
-- [Ch 23 synthesis log §6 (commitment to JSON Schema + AJV)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)
-- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
-- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) · [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json)
-- [Ch 22 synthesis §9 (4-phase migration plan)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — context for the legacy `hierarchy` shim
+**Concept pages:**
+- [ETL and import (the schema-as-primitive pillar)](/crosswalker/concepts/etl-and-import/) — why schema is the load-bearing primitive
+- [Terminology](/crosswalker/concepts/terminology/) — definitions: recipe, Tier 1, CURIE, producer, validator
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — schema-as-primitive distinguishes Crosswalker from ad-hoc importers
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — why schema validation is non-negotiable
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the build target this milestone makes runtime
+- [Vision](/crosswalker/agent-context/vision/) — runtime-agnostic recipe schema is the central modularity commitment
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — strict vs. lenient validation tradeoffs
+
+**Design decisions (synthesis logs):**
+- [v0.1 import-engine design (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — the design phase that produced the spec
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — recipe shape; §9 has the 4-phase migration plan that frames the legacy `hierarchy` shim
+- [Ch 23 synthesis (bundle/engine/language)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — §6 commits to JSON Schema + AJV + JSONata
+- [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)
+- [v0.1.1 delivery log (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-v0-1-1-validation-foundation-shipped/) — what shipped + system-design diagram
+
+**Research deliverables:**
+- [Ch 22 deliverable (target-structure expressivity)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/)
+- [Ch 23 deliverable (bundle/engine/language)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/)
+- [Ch 20 deliverable a (T1TMA primitives)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-a-t1tma/)
+
+**Spec & schema files:**
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — Tier 1 frontmatter contract
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — recipe shape
+- [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/schema)
+
+**Other milestones:**
+- [v0.1.2 — render() v1](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) — what this milestone unblocks
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

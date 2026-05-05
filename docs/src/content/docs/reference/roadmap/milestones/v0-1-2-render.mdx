@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 ## Goal
 
-Implement the address-rendering function from Ch 22 §3 — the *single coupling point* between the recipe and the vault layout. Pure function; deterministic; vault-independent at Pass 1; produces an `Address` per the spec. Wires three of the five mechanisms (folder, file, heading); leaves tag and wikilink schema-reserved for v0.2.
+Implement the address-rendering function from [Ch 22](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) §3 — the *single coupling point* between the [recipe](/crosswalker/concepts/terminology/) and the vault layout. Pure function; deterministic; vault-independent at Pass 1; produces an `Address` per the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/). Wires three of the five [mechanisms](/crosswalker/concepts/hierarchy-primitives/) (folder, file, heading); leaves tag and wikilink schema-reserved for v0.2.
 
 ## Status
 
@@ -74,8 +74,34 @@ Implement the address-rendering function from Ch 22 §3 — the *single coupling
 
 ## Related
 
-- [Ch 22 synthesis (recipe grammar + render function spec)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)
-- [Ch 22 deliverable §3 (formal render signature)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/)
-- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json)
-- [Hierarchy primitives concept page](/crosswalker/concepts/hierarchy-primitives/)
+**Concept pages:**
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the 5 mechanisms (folder, file, heading, tag, wikilink) render() dispatches over
+- [ETL and import (schema-as-primitive)](/crosswalker/concepts/etl-and-import/) — why render() is the only coupling point between recipe and vault
+- [Terminology](/crosswalker/concepts/terminology/) — render(), Address, mechanism, template, ConceptIdentity, SourceScope
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — the closed 5-mechanism grammar is the architectural distinguisher
+
+**Agent context:**
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — Address shape, recipe shape
+- [Vision](/crosswalker/agent-context/vision/) — runtime-agnostic recipe schema; render() is the canonical reference implementation
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — closed grammar vs. open extensibility
+
+**Design decisions (synthesis logs):**
+- [Ch 22 synthesis (target-structure expressivity)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — recipe grammar + render() function spec; the design contract this milestone implements
+- [Ch 23 synthesis (TS in-plugin engine)](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — why render() is TypeScript and runs in-plugin
+- [v0.1 import-engine design (2026-05-04)](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — design-phase summary
+- [v0.1.2 delivery log (2026-05-05)](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-2-render-shipped/) — what shipped + system-design diagram
+
+**Research deliverables:**
+- [Ch 22 deliverable (target-structure expressivity)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) — §3 has the formal render signature
+- [Ch 23 deliverable (bundle/engine/language)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/) — chooses TS + AJV + JSONata
+- [Ch 20 deliverable c (RML retargeted)](/crosswalker/agent-context/zz-research/2026-05-03-challenge-20-deliverable-c-rml-retargeted/) — R2RML lineage of the `{var|filter}` template grammar
+
+**Spec & schema files:**
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — layout_entry, mechanism, template `$defs`
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — what render() ultimately produces
+
+**Other milestones:**
+- [v0.1.1 — Type system + validation foundation](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) — dependency
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — what render() unblocks
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — kind dispatch extends render()
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)

@@ -9,9 +9,7 @@ tags: [milestone, v0-1, audit, git, ed25519, fre-902, compliance]
 
 import { Aside } from '@astrojs/starlight/components';
 
-## Goal
-
-Implement the v0.1 audit trail floor — Tier 1 = git commits + Ed25519-signed releases for shared mapping bundles + auto-generated FRE 902(13) certification PDF available on demand. Per [Ch 08 synthesis](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) + [v0.1 stack pivot §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/).
+Implement the v0.1 [audit trail](/crosswalker/concepts/terminology/) floor — [Tier 1](/crosswalker/concepts/terminology/) = git commits + Ed25519-signed releases for shared mapping bundles + auto-generated FRE 902(13) certification PDF available on demand. Per [Ch 08 synthesis (audit-trail tenability)](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) + [v0.1 stack pivot §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) + [Ch 15 4-tier audit model](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/).
 
 ## Status
 
@@ -68,8 +66,37 @@ Implement the v0.1 audit trail floor — Tier 1 = git commits + Ed25519-signed r
 
 ## Related
 
-- [Ch 08 deliverable (audit trail tenability)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/)
-- [Ch 13 deliverable (modern attestation primitives)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — context for v1.0+ T2/T3 work
-- [Ch 15 deliverable (4-tier audit model)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/)
+**Concept pages:**
+- [Terminology](/crosswalker/concepts/terminology/) — audit trail, T1/T2/T3 audit profiles, Ed25519, FRE 902(13), in-toto, RFC 3161
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — git commits as the lifecycle audit
+- [Institutional landscape](/crosswalker/concepts/institutional-landscape/) — who consumes audit artifacts (regulators, attesters)
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — provenance + versioning context
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — git-native audit trail differentiates from db-backed competitors
+
+**Agent context:**
+- [Vision](/crosswalker/agent-context/vision/) — file-based canonical state enables git-native audit
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/) — T1 (git) vs. T2 (OpenTimestamps/RFC 3161) vs. T3 (Sigstore Rekor + in-toto, eIDAS QTSA)
+- [Decisions](/crosswalker/agent-context/decisions/)
+
+**Design decisions (synthesis logs):**
+- [Direction research wave (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) — Ch 08 synthesis lives here; audit-trail tenability call
 - [v0.1 stack pivot §8 (audit trail floor)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)
+- [Direction third-wave architectural shifts (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) — T1/T2/T3 model emerges
+- [Direction commitments TLDR (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/)
+
+**Research deliverables:**
+- [Ch 08 deliverable (audit trail tenability)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/) — git audit trail viability assessment
+- [Ch 15 deliverable (non-git audit trail / 4-tier model)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) — T2/T3 alternatives for v1.0+
+- [Ch 13 deliverable a (modern attestation primitives)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-13-deliverable-a-attestation-primitives/) — Sigstore, in-toto, eIDAS
+
+**External references:**
+- [FRE 902(13) statutory text](https://www.law.cornell.edu/rules/fre/rule_902) — self-authenticating electronic records
+- [NIST IR 8547 PQC migration timeline](https://csrc.nist.gov/pubs/ir/8547/ipd) — context for 2027+ dual-sign work
+- [Ed25519 RFC 8032](https://datatracker.ietf.org/doc/html/rfc8032)
+- [in-toto specification](https://in-toto.io/)
+- [Sigstore Rekor v2](https://docs.sigstore.dev/logging/overview/)
+
+**Other milestones:**
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — dependency (write-event hook)
+- [v0.1-RC — Bundle, polish, ship](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — what this unblocks
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)
