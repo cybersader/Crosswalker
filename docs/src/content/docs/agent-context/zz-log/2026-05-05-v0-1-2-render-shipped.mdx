@@ -49,6 +49,120 @@ E2E tests run against real Obsidian v1.12.7 via `wdio-obsidian-service`. Build c
 5. **Stubs for tag + wikilink mechanisms throw informative errors.** Rather than silent no-ops or generic "not implemented", they explain *what to use instead* (e.g., `also_emit.tags` for emitting tags when the layout mechanism is not tag) and *when the deferred feature ships* (v0.2). Prevents misdiagnosis.
 6. **`render()` exposed on plugin instance for E2E reachability.** Module-level pure function; the plugin instance just forwards a handle. No duplicate state.
 
+## How render() v1 plugs into the system
+
+Per [Ch 22 §3](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/#2-the-render-function--the-single-coupling-point), `render()` is the **single coupling point** between recipe (the user's declarative spec) and vault layout (the actual files Tier 1 contains). Everything upstream of render is recipe + source-data validation; everything downstream is bytes-on-disk.
+
+```
+                Crosswalker import pipeline (component view)
+                ═══════════════════════════════════════════
+
+  ┌─ INPUT ────────────────────────────────────────────────────┐
+  │                                                            │
+  │   Source data               Recipe (YAML / JSON)           │
+  │   CSV / XLSX / JSON         spec/recipe.schema.json        │
+  │   ─────────────────         ────────────────────────       │
+  │         │                            │                     │
+  │         ▼                            ▼                     │
+  │   ┌─ Parser ─┐              ┌─ AJV validator ─┐ ◄── v0.1.1 │
+  │   │ PapaParse │              │ initValidator()  │          │
+  │   │ (csv);    │              │ Ajv2020 + 2020-12│          │
+  │   │ xlsx etc. │              └────────┬─────────┘          │
+  │   └─────┬─────┘                       │                    │
+  │         │                             │                    │
+  │         ▼                             ▼                    │
+  │   ParsedData                  Recipe (typed)               │
+  │   (rows, columns,             from src/types/generated/    │
+  │    column-info)               recipe.ts                    │
+  │                                                            │
+  └─────────────┬───────────────────────────┬──────────────────┘
+                │                           │
+                │     for each row ◄────────┤
+                │                           │
+                ▼                           ▼
+  ┌─ THE COUPLING POINT (Ch 22) ──────────────────────────────┐
+  │                                                            │
+  │       ConceptIdentity      +     Recipe                    │
+  │       { curie, scope }                                     │
+  │              │                       │                     │
+  │              └───────────┬───────────┘                     │
+  │                          ▼                                 │
+  │               ┌──────────────────────┐                     │
+  │               │      render()        │  ◄── v0.1.2 SHIPPED │
+  │               │   PURE FUNCTION      │                     │
+  │               │   (no I/O, no vault  │                     │
+  │               │    state, hashable)  │                     │
+  │               └──────────┬───────────┘                     │
+  │                          ▼                                 │
+  │               Address                                      │
+  │               ───────                                      │
+  │               primary.path     'Frameworks/.../AC-2.md'    │
+  │               primary.anchor   optional                    │
+  │               wikilinkTarget   absolute form (Pass-1)      │
+  │               tags             [from also_emit.tags]       │
+  │               aliases          [from also_emit.aliases]    │
+  │               frontmatter      { curie, …managed }         │
+  │                                                            │
+  └─────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+  ┌─ OUTPUT ──────────────────────────────────────────────────┐
+  │                                                            │
+  │   ┌─ Generation Engine ─┐  ◄── v0.1.3 (next milestone)    │
+  │   │ • write at          │                                  │
+  │   │   address.primary.  │                                  │
+  │   │   path              │                                  │
+  │   │ • merge frontmatter │                                  │
+  │   │   (managed +        │                                  │
+  │   │   user_preserve)    │                                  │
+  │   │ • write _crosswalker│                                  │
+  │   │   provenance        │                                  │
+  │   └──────────┬──────────┘                                  │
+  │              ▼                                             │
+  │   TIER 1 — Markdown + YAML frontmatter (canonical)         │
+  │                                                            │
+  └──────────────┬────────────────────────────────────────────┘
+                 │  (later milestones)
+                 │
+                 ├─► v0.1.5 ─ sqlite-wasm projector ─► TIER 2  │
+                 ├─► v0.1.6 ─ Bases queries read T1+T2         │
+                 ├─► v0.1.7 ─ STRM TSV / OSCAL JSON exporters  │
+                 └─► v0.1.8 ─ git commits + signed manifests   │
+```
+
+### Interfaces this milestone introduces
+
+| Interface | Defined in | Consumers (current + planned) |
+|---|---|---|
+| `Recipe` (loose runtime shape) | `src/render/index.ts` | render() itself; v0.1.3 generation engine; future external producers via `spec/recipe.schema.json` |
+| `ConceptIdentity` | `src/render/types.ts` | render(); v0.1.3 engine builds one per source row from CURIE + scope variables |
+| `SourceScope` | `src/render/types.ts` | Populated upstream of render — typically `{ catalog: {...}, family: {...}, control: {...} }` per source level |
+| `Address` (render output) | `src/render/types.ts` | v0.1.3 engine writes notes from this; v0.1.4 junction notes consume it; v0.1.5 sidecar projects from frontmatter; v0.1.7 exporters read tags / aliases / managed frontmatter |
+| `RenderError` | `src/render/template.ts` | Surfaced to user via Obsidian Notice in v0.1.3 (the milestone E2E asserts the AJV-Notice path); thrown by template engine + mechanisms for any pre-write failure |
+| Template grammar (`{var\|filter\|filter}`) | `src/render/template.ts` | Recipe authors writing `target.layout[].template`, `also_emit.tags[]`, `also_emit.aliases[]`, `also_emit.frontmatter.managed` values |
+| Plugin-instance handle `plugin.render` | `src/main.ts` | E2E tests (already exercising 6 cases); v0.1.3 generation engine refactor will call this internally; future commands that want one-off rendering |
+
+### What did NOT change in this milestone
+
+- **Tier 1 schema** (`spec/tier1.schema.json`) — render() produces an `Address`, not a Tier 1 frontmatter object directly. The generation engine in v0.1.3 maps Address → Tier 1 frontmatter via the merge logic. The two schemas remain decoupled: render's output is layout-shaped; Tier 1 is content-shaped.
+- **Recipe schema** (`spec/recipe.schema.json`) — no changes. render() consumes the same shape AJV validated in v0.1.1. The schema still allows `tag` / `wikilink` mechanism values; render() rejects them with informative deferral errors. This is correct: the *spec* admits the future grammar; the *runtime* implements a subset.
+- **Plugin command surface** — still two commands (`import-structured-data`, `browse-saved-configs`). Render is internal infrastructure; users don't invoke it directly.
+- **Generation engine** (`src/generation/generation-engine.ts`) — still uses the v0.1.0 column-role logic. The refactor to call render() per row is the entire scope of v0.1.3.
+- **Validator wiring** — already calls `validateRecipe()` at recipe load (v0.1.1). v0.1.3 adds `validateTier1Frontmatter()` calls pre-write once the engine emits spec-shaped frontmatter via render's Address.
+
+### Where the architecture is "alive" now
+
+| Tier | Status |
+|---|---|
+| Recipe-shape contract (machine-readable, validated, typed in code) | ✅ Live since v0.1.1 |
+| Address-shape contract (what render produces) | ✅ Live since v0.1.2 (this milestone) |
+| Tier 1 frontmatter contract (machine-readable, validated, typed) | ✅ Live since v0.1.1; not yet emitted by the generation engine |
+| Generation engine consuming render() | 🚧 v0.1.3 (next) |
+| Tier 2 sidecar | 📋 v0.1.5 |
+| Output query layer (Bases) | 📋 v0.1.6 |
+| Exporters (STRM TSV / OSCAL JSON) | 📋 v0.1.7 |
+| Audit trail | 📋 v0.1.8 |
+
 ## Worked example output
 
 From the unit + E2E tests, here are the three NIST examples from `spec/recipe.schema.json` rendered against `nist:AC-2`:
