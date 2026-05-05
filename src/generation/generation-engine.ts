@@ -24,6 +24,10 @@ import {
 	LinkMapping
 } from '../types/config';
 import { DebugLog } from '../utils/debug';
+import { render, RenderError, renderTemplate } from '../render';
+import { legacyConfigToRecipe } from './legacy-recipe-shim';
+import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
+import { buildProvenance } from './provenance';
 
 // ============================================================================
 // Types
@@ -145,6 +149,14 @@ export async function generateNotes(
 			await ensureFolderExists(app, options.basePath);
 		}
 
+		// v0.1.3: translate the legacy v0.1.0 config shape into a Ch 22 Recipe
+		// once before the per-row loop. The recipe is what render() consumes.
+		const recipe = legacyConfigToRecipe(config as ImportRecipe);
+
+		// Track paths emitted in THIS generation pass to detect collisions
+		// (two source rows rendering to the same vault path).
+		const emittedPaths = new Set<string>();
+
 		// Process each row
 		const total = parsedData.rows.length;
 		for (let i = 0; i < parsedData.rows.length; i++) {
@@ -157,14 +169,17 @@ export async function generateNotes(
 					options.onProgress(i, total, `Processing row ${rowNum}`);
 				}
 
-				// Build note data from row
-				const noteData = buildNoteData(
+				// v0.1.3: build path + base frontmatter via render(); body/link
+				// content still comes from the existing column-role logic for
+				// backward-compat. Engine-level body refactor is deferred to a
+				// future milestone where body templates land formally.
+				const noteData = buildNoteDataViaRender(
 					row,
 					rowNum,
 					mapping,
 					options,
-					importId,
-					parsedData.columns
+					recipe,
+					config.name ?? 'unknown',
 				);
 
 				// Skip if no valid path generated
@@ -175,6 +190,17 @@ export async function generateNotes(
 					});
 					continue;
 				}
+
+				// Path collision detection — fail loud rather than silently
+				// overwriting one row's output with another's.
+				if (emittedPaths.has(noteData.path)) {
+					result.errors.push({
+						row: rowNum,
+						message: `Path collision: ${noteData.path} already produced by an earlier row in this import. Two source rows resolve to the same target file. Adjust your filename template or hierarchy mappings to disambiguate.`,
+					});
+					continue;
+				}
+				emittedPaths.add(noteData.path);
 
 				// Check if file exists
 				const fullPath = normalizePath(noteData.path);
@@ -193,7 +219,28 @@ export async function generateNotes(
 						result.success = false;
 						continue;
 					}
-					// 'replace' mode - will overwrite below
+					// 'replace' mode — merge with existing frontmatter so
+					// user-edited keys (reviewer, status, etc.) survive
+					// re-import. Per Ch 22 §8.4 managed/user_preserve split.
+					try {
+						const existingFm = await readExistingFrontmatter(app, existingFile);
+						if (existingFm && Object.keys(existingFm).length > 0) {
+							const managedKeys = computeManagedKeys(noteData.frontmatter, []);
+							noteData.frontmatter = mergeFrontmatter(
+								existingFm,
+								noteData.frontmatter,
+								managedKeys,
+							);
+						}
+					} catch (mergeErr) {
+						// Frontmatter parse/merge failure is non-fatal; fall
+						// back to writing the new frontmatter as-is. Log so
+						// the user can investigate if user-keys are lost.
+						await debug?.log('Frontmatter merge failed; using new frontmatter as-is', {
+							path: fullPath,
+							error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
+						});
+					}
 				}
 
 				// Ensure parent folder exists
@@ -255,11 +302,161 @@ export async function generateNotes(
 }
 
 // ============================================================================
-// Note Building
+// Note Building (v0.1.3 — render() + legacy column-role logic)
 // ============================================================================
 
 /**
- * Build note data from a single row
+ * Read existing frontmatter for a file via Obsidian's metadata cache.
+ * Returns an empty object if the file has no frontmatter or the cache hasn't
+ * indexed it yet. Errors during retrieval surface as exceptions.
+ */
+async function readExistingFrontmatter(app: App, file: TFile): Promise<Record<string, unknown>> {
+	const cache = app.metadataCache.getFileCache(file);
+	const fm = cache?.frontmatter;
+	if (!fm || typeof fm !== 'object') return {};
+
+	// Strip Obsidian's internal `position` key from the result. The metadata
+	// cache attaches it to track where in the file the frontmatter lives;
+	// it's not part of the user-visible YAML.
+	const result: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(fm)) {
+		if (k !== 'position') result[k] = v;
+	}
+	return result;
+}
+
+/**
+ * Build note data from a single row using render() for path + base
+ * frontmatter, then layering link + body content from the legacy column-role
+ * logic.
+ *
+ * v0.1.3: this is the new code path that uses spec-driven Recipe + Address.
+ * The body/link content building still uses the v0.1.0 buildNoteData internals
+ * because body templates haven't migrated to spec yet (deferred to a later
+ * milestone where body becomes a recipe-defined `also_emit.body` or similar).
+ */
+function buildNoteDataViaRender(
+	row: Record<string, any>,
+	rowNum: number,
+	mapping: MappingConfig,
+	options: GenerationOptions,
+	recipe: ReturnType<typeof legacyConfigToRecipe>,
+	ontologyId: string,
+): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number } {
+	// 1. Build a CURIE for this row. Strategy: ontology + filename stem.
+	//    The filename is whatever the recipe's leaf file template resolves to.
+	const filenameStem = deriveFilenameStem(row, mapping, rowNum);
+	const curie = `${slugifyForCurie(ontologyId)}:${filenameStem}`;
+
+	// 2. render() expects a SourceScope object — the row IS the scope (column
+	//    names map to template variables).
+	let address;
+	try {
+		address = render(recipe, { curie, scope: row as Record<string, unknown> });
+	} catch (err) {
+		if (err instanceof RenderError) {
+			throw new Error(`render() failed for row ${rowNum}: ${err.message}`);
+		}
+		throw err;
+	}
+
+	// 3. Combine basePath with the recipe-relative path render() produced.
+	const fullPath = options.basePath
+		? normalizePath(`${options.basePath}/${address.primary.path}`)
+		: normalizePath(address.primary.path);
+
+	// 4. Frontmatter starts from render's output (curie + managed keys).
+	const frontmatter: Record<string, any> = { ...address.frontmatter };
+
+	// 5. Layer in link content + body content from the legacy column-role
+	//    logic. We delegate to buildNoteData but only use its frontmatter
+	//    additions (links → frontmatter location) and body string.
+	const legacy = buildNoteData(row, rowNum, mapping, options, '', []);
+	for (const [k, v] of Object.entries(legacy.frontmatter)) {
+		// Skip _crosswalker — we'll write a fresh provenance block below.
+		// Skip keys already set by render's also_emit (managed wins).
+		if (k === '_crosswalker') continue;
+		if (!(k in frontmatter)) frontmatter[k] = v;
+	}
+
+	// 6. Always write a fresh _crosswalker provenance block per
+	//    spec/tier1.schema.json. Captures the source ref + producer +
+	//    recipe-id at this generation time.
+	frontmatter._crosswalker = buildProvenance(
+		{
+			sourceFile: options.sourceFileName,
+			sourceVersion: options.frameworkVersion,
+			recipeId: options.configId ?? recipe.recipe,
+		},
+		PLUGIN_VERSION,
+	);
+
+	return {
+		path: fullPath,
+		frontmatter,
+		body: legacy.body,
+		sourceRow: rowNum,
+	};
+}
+
+/**
+ * Pulled from buildNoteData's filename logic — returns the stem (no .md) for
+ * use in CURIE generation.
+ */
+function deriveFilenameStem(
+	row: Record<string, any>,
+	mapping: MappingConfig,
+	rowNum: number,
+): string {
+	let filename = '';
+	if (mapping.filename?.template) {
+		// Use the new render template engine ({var|filter} syntax). Legacy
+		// configs that used `{{var}}` mustache-style won't interpolate via
+		// renderTemplate — they get caught by the empty-result fallback
+		// below and resolved to row-N.
+		try {
+			filename = renderTemplate(mapping.filename.template, row as Record<string, unknown>);
+		} catch {
+			// Template variable missing — fall through to first-frontmatter fallback
+			filename = '';
+		}
+	}
+	if (!filename && mapping.frontmatter && mapping.frontmatter.length > 0) {
+		const firstValue = row[mapping.frontmatter[0].column];
+		if (firstValue) filename = String(firstValue);
+	}
+
+	if (!filename) {
+		filename = `row-${rowNum}`;
+	}
+
+	// Strip .md if the template included it; CURIE local part doesn't want it
+	if (filename.endsWith('.md')) {
+		filename = filename.slice(0, -3);
+	}
+	return sanitizeFileName(filename);
+}
+
+/**
+ * Slugify a string for use as a CURIE prefix (must match the schema's
+ * `^[a-z][a-z0-9_-]*` pattern from spec/tier1.schema.json $defs/curie).
+ */
+function slugifyForCurie(input: string): string {
+	const lower = String(input).toLowerCase();
+	const cleaned = lower.replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '');
+	// Ensure first char is a letter (schema requires)
+	return /^[a-z]/.test(cleaned) ? cleaned : `cw-${cleaned}`;
+}
+
+// Plugin version constant — populated from manifest.json. esbuild bundles
+// the import via the JSON loader.
+import manifest from '../../manifest.json';
+const PLUGIN_VERSION = manifest.version;
+
+/**
+ * Build note data from a single row (v0.1.0 column-role logic; preserved
+ * for body/link content. v0.1.3 routes path + base frontmatter through
+ * render() instead — see buildNoteDataViaRender above).
  */
 function buildNoteData(
 	row: Record<string, any>,

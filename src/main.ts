@@ -9,6 +9,7 @@ import { render } from './render';
 import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './generation/frontmatter-merge';
 import { buildProvenance } from './generation/provenance';
+import { generateNotes } from './generation/generation-engine';
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -35,6 +36,15 @@ export default class CrosswalkerPlugin extends Plugin {
 	mergeFrontmatter = mergeFrontmatter;
 	computeManagedKeys = computeManagedKeys;
 	buildProvenance = buildProvenance;
+
+	/**
+	 * runImport — exposed for E2E tests to invoke a full generation pass
+	 * against a known parsedData + config. Wraps the public `generateNotes`
+	 * export with the plugin's app + debug instances.
+	 */
+	runImport = async (parsedData: any, config: any, options: any) => {
+		return generateNotes(this.app, parsedData, config, options, this.debug);
+	};
 
 	async onload() {
 		await this.loadSettings();

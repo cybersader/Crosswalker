@@ -1,0 +1,198 @@
+---
+title: "v0.1.3 shipped — Generation engine integration"
+description: "Milestone v0.1.3 delivered 2026-05-05. Generation engine refactored to call render() per row via the Phase-0 legacy-recipe-shim. managed/user_preserve frontmatter merge wired into 'replace' mode — user-edited keys survive re-import. _crosswalker provenance block emitted per spec/tier1.schema.json. Path collision detection added. 113 tests passing (85 unit + 28 E2E)."
+tags: [milestone-shipped, v0-1-3, generation-engine, render-integration, frontmatter-merge, provenance, idempotency, ch-22-implementation]
+date: 2026-05-05
+sidebar:
+  label: "05-05 · v0.1.3 shipped"
+  order: -20260505.1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What shipped
+
+[Milestone v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — Generation engine integration. Status flipped to ✅ in the milestone hub.
+
+The generation engine no longer computes paths and frontmatter inline from column-role mappings. Instead, every row goes through:
+
+```
+legacyConfigToRecipe(config)        // once, before the loop
+    └─► Recipe (Ch 22 layout shape)
+         └─► render(recipe, identity)        // per row — pure function
+                  └─► Address                 // path + frontmatter + tags + aliases
+                       └─► merge with existing frontmatter (mergeFrontmatter)
+                            └─► add provenance (buildProvenance)
+                                 └─► write file
+```
+
+| Surface | Delivered |
+|---|---|
+| `src/generation/legacy-recipe-shim.ts` | Phase-0 translator: v0.1.0 column-role config → Ch 22 layout Recipe (folder mechanisms + file leaf + also_emit.frontmatter.managed) |
+| `src/generation/frontmatter-merge.ts` | `mergeFrontmatter()` + `computeManagedKeys()` — managed/user_preserve semantics; idempotent; always-overwrite specials (`_crosswalker`, `curie`); glob support for user_preserve patterns |
+| `src/generation/provenance.ts` | `buildProvenance()` emits `_crosswalker` block per `spec/tier1.schema.json #/$defs/provenance_block` — spec_version, source_ref, produced_at, producer (kind/name/version), optional recipe + concept_cid |
+| `src/generation/generation-engine.ts` | Refactored: per-row loop calls new `buildNoteDataViaRender()` which uses render() for path + base frontmatter; layers in legacy column-role link/body content; injects fresh provenance; merges with existing frontmatter when 'replace' mode finds an existing file |
+| Path collision detection | `emittedPaths` Set tracks paths produced in the same generation pass; second row hitting same path errors out with a clear message rather than silently overwriting |
+| Plugin instance handles | `runImport` exposed for E2E tests to invoke a full generation pass without going through the wizard UI |
+
+## Tests
+
+| Suite | Count | Passing |
+|---|---|---|
+| Jest unit (`tests/*.test.ts`) | 85 (3 generation modules + render + validation + csv-parser + settings-data) | ✅ |
+| WebDriver E2E (`tests/e2e/*.spec.ts`) | 28 across 6 spec files (smoke 4 + validation 5 + import-flow 4 + render 6 + re-import 5 + full-import-flow 4) | ✅ |
+| **Total** | **113** | ✅ |
+
+The full-import-flow E2E spec is the v0.1.3 success-criterion gate. It does:
+
+1. Imports a 3-row dataset (AC-1, AC-2, AU-1) via `plugin.runImport()` → verifies all three files exist at expected vault paths
+2. Reads AC-2's frontmatter via `app.metadataCache` → verifies the `_crosswalker` block is spec-conformant (spec_version, source_ref, producer.kind/name)
+3. Adds user keys (`reviewer: alice`, `review_date: 2026-05-05`) via `app.fileManager.processFrontMatter` → re-imports → verifies managed keys overwritten + user keys preserved
+4. Compares two consecutive imports' file content (timestamps stripped) → verifies idempotency
+
+This is the gate that turns "the modules work in isolation" (v0.1.3 partial) into "the engine actually uses them during real Obsidian file I/O" (v0.1.3 done).
+
+## Notable design decisions made during implementation
+
+1. **Phase-0 compat instead of breaking change.** The user's existing v0.1.0 column-role configs continue to work without modification. The shim is the entire migration cost — no recipe rewrites, no saved-config invalidation, no UX disruption. Per Ch 22 §10.7 four-phase migration plan, full semantic migration to `target.layout` recipes happens in Phase 1 (v0.2) when the wizard UI gets new authoring surfaces.
+
+2. **Body and link content stay in legacy logic for now.** render() outputs path + frontmatter + tags + aliases. Body templates and link mappings still use the v0.1.0 `buildNoteData` internals because body templates haven't migrated to the spec yet (deferred to a later milestone where body becomes a recipe-defined concern, possibly via `also_emit.body` or similar). This keeps the v0.1.3 scope contained.
+
+3. **Existing frontmatter merge uses Obsidian's metadataCache** (not a hand-rolled YAML parser). `app.metadataCache.getFileCache(file)?.frontmatter` returns the parsed object. We strip Obsidian's internal `position` key (which tracks where in the file frontmatter lives) before passing to `mergeFrontmatter`. This is the safest API — handles Obsidian's YAML quirks correctly.
+
+4. **Frontmatter-merge errors are non-fatal.** If reading existing frontmatter fails (corrupted YAML, transient cache miss), the engine logs the failure and falls back to writing the new frontmatter as-is. This preserves the import flow in edge cases. The test verifies the happy-path merge; future hardening can add stricter error escalation.
+
+5. **Path collision is a hard error.** When two rows render to the same path within a single generation pass, the second row errors with a clear message rather than silently overwriting the first. This catches recipe authoring mistakes early instead of producing a vault that's silently missing a row's worth of data.
+
+6. **CURIE generation is `<ontology>:<filename-stem>`.** Derived from the recipe's filename column or the first frontmatter column. Schema-valid (matches `^[a-z][a-z0-9_-]*:[A-Za-z0-9._\-()/]+$`). Future milestones may make CURIE-derivation explicit in the recipe spec for full control; v0.1.3 uses a sensible default.
+
+7. **Schema discriminator fix shipped earlier (v0.1.1) pays off here.** Tier 1 frontmatter for concept-notes has `additionalProperties: true` so domain-specific managed/user keys validate cleanly. Without that schema design, every frontmatter field would have to be enumerated upfront.
+
+## How v0.1.3 plugs into the system
+
+```
+                Crosswalker import pipeline (v0.1.3 view)
+                ════════════════════════════════════════
+
+  ┌─ INPUT (UNCHANGED) ───────────────────────────────────────┐
+  │   Source data           Recipe/Config (v0.1.0 shape)      │
+  │   CSV / XLSX / JSON     spec/recipe.schema.json           │
+  │   ────────              ────────                          │
+  │       │                       │                           │
+  │       ▼                       ▼                           │
+  │   Parser                AJV validator (recipe save)       │
+  │   (PapaParse)           initValidator() at startup        │
+  │       │                       │                           │
+  │       ▼                       ▼                           │
+  │   ParsedData            Recipe (typed)                    │
+  └───────────┬──────────────────────┬───────────────────────┘
+              │                      │
+              ▼                      ▼
+  ┌─ NEW IN v0.1.3 — engine refactor ────────────────────────┐
+  │                                                          │
+  │   generateNotes(parsedData, config, options)             │
+  │           │                                              │
+  │           ▼                                              │
+  │   ┌─ legacyConfigToRecipe(config) ─┐  ◄── ONCE pre-loop  │
+  │   │  v0.1.0 column-role            │                     │
+  │   │     → Ch 22 layout Recipe      │                     │
+  │   └────────────┬───────────────────┘                     │
+  │                │                                         │
+  │                ▼                                         │
+  │           ┌── PER ROW ──┐                                │
+  │           │             │                                │
+  │           ▼             ▼                                │
+  │   ConceptIdentity   Recipe                               │
+  │       │                 │                                │
+  │       └────────┬────────┘                                │
+  │                ▼                                         │
+  │   ┌────────────────────┐                                 │
+  │   │      render()      │  ← PURE FUNCTION (v0.1.2)       │
+  │   └─────────┬──────────┘                                 │
+  │             ▼                                            │
+  │       Address                                            │
+  │             │                                            │
+  │             ▼                                            │
+  │   buildNoteDataViaRender() ◄── NEW                       │
+  │             │                                            │
+  │             ▼                                            │
+  │   • Path = options.basePath + Address.primary.path       │
+  │   • Frontmatter = Address.frontmatter + body content     │
+  │   • Layer in legacy link content                         │
+  │   • Add buildProvenance() → _crosswalker block           │
+  │             │                                            │
+  │             ▼                                            │
+  │   IF file exists in 'replace' mode:                      │
+  │     ┌─────────────────────────────────┐                  │
+  │     │ readExistingFrontmatter(file)   │                  │
+  │     │ → mergeFrontmatter(             │                  │
+  │     │     existing, managed,          │                  │
+  │     │     computeManagedKeys())       │                  │
+  │     │ → user_preserve keys SURVIVE    │                  │
+  │     └─────────────────────────────────┘                  │
+  │             │                                            │
+  │             ▼                                            │
+  │   Path collision check (emittedPaths Set)                │
+  │             │                                            │
+  │             ▼                                            │
+  │   app.vault.create() / app.vault.modify()                │
+  │             │                                            │
+  │             ▼                                            │
+  │   TIER 1 — Markdown + YAML (canonical)                   │
+  │                                                          │
+  └─────────────┬────────────────────────────────────────────┘
+                │
+                ▼  (later milestones)
+  ┌─ DOWNSTREAM ─────────────────────────────────────────────┐
+  │  v0.1.4 ─► Junction notes + crosswalk edges              │
+  │  v0.1.5 ─► sqlite-wasm projector → Tier 2                │
+  │  v0.1.6 ─► Bases queries read T1 + T2                    │
+  │  v0.1.7 ─► STRM TSV / OSCAL JSON exporters               │
+  │  v0.1.8 ─► Audit trail (git + signed manifests)          │
+  └──────────────────────────────────────────────────────────┘
+```
+
+### Interfaces this milestone introduces / changes
+
+| Interface | Defined in | Status |
+|---|---|---|
+| `legacyConfigToRecipe()` | `src/generation/legacy-recipe-shim.ts` | ✅ Live; called once per import |
+| `mergeFrontmatter()` + `computeManagedKeys()` | `src/generation/frontmatter-merge.ts` | ✅ Live; called only on 'replace' mode against existing files |
+| `buildProvenance()` | `src/generation/provenance.ts` | ✅ Live; called per row to populate `_crosswalker` block |
+| `buildNoteDataViaRender()` | `src/generation/generation-engine.ts` | ✅ Live; replaces direct `buildNoteData` calls in the per-row loop |
+| `readExistingFrontmatter()` | `src/generation/generation-engine.ts` | ✅ Live; uses Obsidian's metadataCache |
+| `plugin.runImport(parsedData, config, options)` | `src/main.ts` | ✅ Live; primarily for E2E tests; future commands can use it too |
+| Path collision detection | inline in `generateNotes` per-row loop | ✅ Live; errors loud rather than silent overwrite |
+
+### What did NOT change in this milestone
+
+- **`buildNoteData` (legacy column-role logic)** still exists. v0.1.3's new `buildNoteDataViaRender` calls into it for body + link content. The legacy function isn't gone — it's just no longer the primary path-and-frontmatter computer. Removing it entirely is a future cleanup once body templates migrate to the spec.
+- **The wizard UI** still authors v0.1.0 column-role configs. Wizard refactor to author `target.layout` recipes directly is v0.2 territory.
+- **Recipe schema (`spec/recipe.schema.json`)** unchanged.
+- **Tier 1 schema (`spec/tier1.schema.json`)** unchanged.
+- **Validator wiring** unchanged from v0.1.1; the engine doesn't yet call `validateTier1Frontmatter` pre-write (the produced frontmatter merges legacy and managed keys; full schema conformance check is a future tightening).
+
+## Memory rules followed this session
+
+- ✅ Always test thoroughly before flipping milestone status. The full-import-flow E2E exercises real file I/O with re-import idempotency + user_preserve verification — not just module-level unit tests
+- ✅ No personal data in commits/logs (sweep clean before each push)
+- ✅ No AI co-author attribution in commits
+
+## What this unblocks for v0.1.4 (junction notes + crosswalk edges)
+
+- The engine now produces spec-conformant Tier 1 concept-note frontmatter. v0.1.4 adds two more `kind` values (`junction-note`, `crosswalk-edge`) and the engine can branch on `recipe.target.layout[].kind` to dispatch to per-kind generation paths.
+- `mergeFrontmatter` already supports junction-note + crosswalk-edge frontmatter shapes (the always-overwrite specials `_crosswalker` + `curie` work the same way).
+- `buildProvenance` is shape-agnostic — same builder serves all three kinds.
+
+## Related
+
+- [Milestone v0.1.3 page](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/)
+- [Ch 22 synthesis (target-structure grammar)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — spec authority
+- [Ch 22 §8.4 (managed/user_preserve)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/#4-the-managed--user_preserve-frontmatter-split)
+- [v0.1.2 delivery log](/crosswalker/agent-context/zz-log/2026-05-05-v0-1-2-render-shipped/) — render() shipped
+- [v0.1.1 delivery log](/crosswalker/agent-context/zz-log/2026-05-04-v0-1-1-validation-foundation-shipped/) — validation foundation
+- [`spec/tier1.schema.json` provenance_block](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json)
+
+## Next milestone
+
+[v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — adds `kind: junction-note` and `kind: crosswalk-edge` recipe support. STRM predicate vocabulary enforced at validation. CSF→800-53 starter recipe + fixture. Per-milestone E2E spec is `tests/e2e/crosswalks.spec.ts` — must pass before flipping milestone status to ✅.
