@@ -6,6 +6,9 @@ import { ConfigBrowserModal } from './config/config-browser-modal';
 import { DebugLog } from './utils/debug';
 import { initValidator, validateRecipe, validateTier1Frontmatter } from './validation/validator';
 import { render } from './render';
+import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
+import { mergeFrontmatter, computeManagedKeys } from './generation/frontmatter-merge';
+import { buildProvenance } from './generation/provenance';
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -21,12 +24,17 @@ export default class CrosswalkerPlugin extends Plugin {
 	settings: CrosswalkerSettings;
 	debug: DebugLog;
 
-	// Validator + render handles attached to the plugin instance so E2E tests
-	// + future command implementations can call them via the plugin reference.
-	// Underlying implementations are pure module exports.
+	// Validator + render + generation-module handles attached to the plugin
+	// instance so E2E tests + future command implementations can call them
+	// via the plugin reference. Underlying implementations are pure module
+	// exports.
 	validateRecipe = validateRecipe;
 	validateTier1Frontmatter = validateTier1Frontmatter;
 	render = render;
+	legacyConfigToRecipe = legacyConfigToRecipe;
+	mergeFrontmatter = mergeFrontmatter;
+	computeManagedKeys = computeManagedKeys;
+	buildProvenance = buildProvenance;
 
 	async onload() {
 		await this.loadSettings();

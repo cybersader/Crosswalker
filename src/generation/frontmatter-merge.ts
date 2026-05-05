@@ -1,0 +1,99 @@
+/**
+ * frontmatter-merge.ts — managed/user_preserve merge semantics
+ *
+ * Per Ch 22 §8.4: managed frontmatter keys are recipe-owned (overwritten on
+ * every re-render); user_preserve keys are user annotations (preserved on
+ * every re-render); third-party keys (added by other plugins or hand-edited
+ * outside the recipe's known fields) are also preserved by default.
+ *
+ * On re-import, the engine reads the existing file's frontmatter, merges it
+ * with the freshly-rendered frontmatter, and writes the merged result.
+ *
+ * This is the "destination has user data" problem from Airbyte / dbt;
+ * the answer is the same: declare what's managed; preserve everything else.
+ */
+
+/**
+ * Merge new (recipe-managed) frontmatter with existing (possibly user-edited)
+ * frontmatter, preserving user keys.
+ *
+ * @param existing      Frontmatter currently in the file (may be empty)
+ * @param managed       Frontmatter keys + values rendered from the recipe
+ * @param managedKeys   Set of keys this recipe knows it manages
+ *                      (used to identify "what to overwrite vs preserve")
+ * @returns merged frontmatter — managed keys take new values; everything else
+ *          from existing is preserved
+ *
+ * Always-preserved special keys: `_crosswalker` (provenance — always
+ * recipe-emitted; never user-edited), `curie` (concept identity — always
+ * recipe-emitted).
+ *
+ * Always-managed special keys: `_crosswalker`, `curie` (overwritten on
+ * every re-render).
+ */
+export function mergeFrontmatter(
+	existing: Record<string, unknown>,
+	managed: Record<string, unknown>,
+	managedKeys: Set<string>,
+): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
+
+	// 1. Preserve everything in `existing` that ISN'T in managedKeys
+	//    (third-party-plugin keys, user annotations, hand-edited fields)
+	for (const [k, v] of Object.entries(existing)) {
+		if (!managedKeys.has(k) && k !== '_crosswalker' && k !== 'curie') {
+			result[k] = v;
+		}
+	}
+
+	// 2. Apply managed values ONLY for keys still in managedKeys.
+	//    Keys removed from managedKeys (via user_preserve patterns) keep the
+	//    existing value, even if the recipe wrote them initially.
+	for (const [k, v] of Object.entries(managed)) {
+		if (managedKeys.has(k)) {
+			result[k] = v;
+		}
+	}
+
+	// 3. Always-overwrite specials: _crosswalker provenance + curie ID
+	//    (these are recipe-only; user_preserve cannot exempt them)
+	if ('_crosswalker' in managed) result._crosswalker = managed._crosswalker;
+	if ('curie' in managed) result.curie = managed.curie;
+
+	return result;
+}
+
+/**
+ * Compute the set of keys this recipe manages.
+ *
+ * Conservative: every key in the rendered managed object + the always-managed
+ * special keys (`_crosswalker`, `curie`). Recipes that explicitly declare
+ * `also_emit.frontmatter.user_preserve` patterns are honored upstream
+ * (the patterns get filtered OUT of `managedKeys` so they're treated as
+ * user-owned even if the recipe wrote them initially).
+ */
+export function computeManagedKeys(
+	managed: Record<string, unknown>,
+	userPreservePatterns: string[] = [],
+): Set<string> {
+	const keys = new Set<string>(Object.keys(managed));
+	keys.add('_crosswalker');
+	keys.add('curie');
+
+	// Honor user_preserve patterns — these keys are user-owned even if the
+	// recipe writes them on first import. v0.1 supports exact matches and
+	// `*`-prefix/suffix glob; full glob support comes later.
+	for (const pattern of userPreservePatterns) {
+		if (pattern.includes('*')) {
+			// Glob match: remove any existing managed key that matches
+			const re = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+			for (const k of [...keys]) {
+				if (re.test(k)) keys.delete(k);
+			}
+		} else {
+			keys.delete(pattern);
+		}
+	}
+
+	return keys;
+}
