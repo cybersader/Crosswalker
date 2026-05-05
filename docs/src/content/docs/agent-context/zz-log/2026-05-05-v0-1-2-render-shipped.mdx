@@ -1,0 +1,92 @@
+---
+title: "v0.1.2 shipped — render() v1 (folder + file + heading)"
+description: "Milestone v0.1.2 delivered 2026-05-05. Pure render(Recipe, ConceptIdentity) → Address per Ch 22 §3.1 — vault-independent, deterministic, hashable. Three of five mechanisms wired (folder, file, heading); tag + wikilink as layout mechanisms schema-reserved with informative deferral errors. 7-filter closed template pipeline (lower / upper / title / slug / tagsafe / fs-safe / truncate). 37 unit + 6 E2E tests passing including determinism (100 unit + 50 E2E iterations producing byte-identical output)."
+tags: [milestone-shipped, v0-1-2, render, recipe, mechanisms, ch-22-implementation, determinism, template-engine]
+date: 2026-05-05
+sidebar:
+  label: "05-05 · v0.1.2 shipped"
+  order: -20260505.0
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What shipped
+
+[Milestone v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) — `render()` v1 (folder + file + heading mechanisms). Status flipped to ✅ in the milestone hub.
+
+The pure-function render pipeline from [Ch 22 synthesis §3.1](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/#2-the-render-function--the-single-coupling-point) is now the single coupling point between recipes and vault layout.
+
+| Surface | Delivered |
+|---|---|
+| `src/render/types.ts` | `Address`, `ConceptIdentity`, `SourceScope` types matching Ch 22 §3.1 spec |
+| `src/render/template.ts` | R2RML-style `{var\|filter}` interpolation + 7-filter closed pipeline (`lower`, `upper`, `title`, `slug`, `tagsafe`, `fs-safe`, `truncate(N)`); dotted-path variable resolution; throws `RenderError` for unknown filter / missing var / malformed expression |
+| `src/render/mechanisms/folder.ts` | Folder mechanism — appends directory segment to `address.primary.path` |
+| `src/render/mechanisms/file.ts` | File mechanism — leaf-bearing markdown file; auto-appends `.md` if missing |
+| `src/render/mechanisms/heading.ts` | Heading mechanism — intra-file anchor; nested anchors via Obsidian's heading-range form (`Note#H1#H2`); `level_depth` 1..6 enforced |
+| `src/render/mechanisms/tag.ts` | Stub — throws informative "deferred to v0.2" error pointing users at `also_emit.tags` for the v0.1 path |
+| `src/render/mechanisms/wikilink.ts` | Stub — throws informative "deferred to v0.2" error pointing at v0.2 wikilink-graph + graph_edges work |
+| `src/render/index.ts` | Public `render()` function dispatching layout entries by mechanism, applying `also_emit` cross-cutting (tags + aliases + managed frontmatter), computing Pass-1 absolute-form `wikilinkTarget`, ensuring `curie` always lands in frontmatter |
+| `src/main.ts` | `render` exposed as plugin-instance handle for E2E reachability |
+
+## Tests
+
+| Suite | Count | Passing |
+|---|---|---|
+| Jest unit (`tests/render.test.ts`) | 37 (template engine + 3 worked NIST examples + also_emit + 6 error cases + 3 determinism) | ✅ |
+| Jest unit total (all suites) | 64 | ✅ |
+| WebDriver E2E (`tests/e2e/render.spec.ts`) | 6 (handle exposure + 2 worked recipes + also_emit + tag-deferral + 50-iteration determinism inside Obsidian) | ✅ |
+| WebDriver E2E total | 19 | ✅ |
+| **Grand total** | **83 tests across 8 spec files** | ✅ |
+
+E2E tests run against real Obsidian v1.12.7 via `wdio-obsidian-service`. Build clean.
+
+## Notable design decisions made during implementation
+
+1. **Determinism is a first-class test.** Both unit + E2E include explicit determinism checks: same `(recipe, identity)` → byte-identical `Address` output across 100 (unit) and 50 (E2E) iterations. This protects the canonical-state hashing commitment from Ch 22 §8 — if `Date.now()` or `Math.random()` ever leaks into render(), the determinism test fails red.
+2. **Filter pipeline left-to-right semantics.** `{var|lower|truncate(3)}` applies `lower` first, then `truncate(3)`. Tests cover the chained case explicitly; otherwise a future refactor that reverses pipeline order would silently break recipes.
+3. **`fs-safe` filter strips spaces too.** Windows treats trailing spaces as illegal; sync clients (OneDrive notably) misbehave above 256 bytes per Ch 22 §1.1. The filter strips `<>:"/\|?*`-and-spaces in one pass, with trailing dot/space stripped after.
+4. **Heading anchors use `#` separator (Obsidian's heading-range form).** Nested headings stack as `H1#H2#H3` in the anchor portion. `[[Note#H1#H2]]` is Obsidian's way of resolving deep anchors.
+5. **Stubs for tag + wikilink mechanisms throw informative errors.** Rather than silent no-ops or generic "not implemented", they explain *what to use instead* (e.g., `also_emit.tags` for emitting tags when the layout mechanism is not tag) and *when the deferred feature ships* (v0.2). Prevents misdiagnosis.
+6. **`render()` exposed on plugin instance for E2E reachability.** Module-level pure function; the plugin instance just forwards a handle. No duplicate state.
+
+## Worked example output
+
+From the unit + E2E tests, here are the three NIST examples from `spec/recipe.schema.json` rendered against `nist:AC-2`:
+
+| Recipe | Output |
+|---|---|
+| (a) all-folders | path: `Frameworks/NIST 800-53 r5/AC/AC-2.md`; wikilinkTarget: `Frameworks/NIST 800-53 r5/AC/AC-2` |
+| (b) mostly-headings | path: `Frameworks/NIST 800-53 r5.md`; anchor: `AC — Access Control#AC-2 Account Management`; wikilinkTarget: `Frameworks/NIST 800-53 r5#AC — Access Control#AC-2 Account Management` |
+| (e) hybrid (folder + folder + file + heading on enhancement) | path: `Frameworks/NIST 800-53 r5/AC/AC-2.md`; anchor (for `nist:AC-2(1)`): `AC-2(1) Automated System Account Management` |
+
+## What this unblocks for v0.1.3
+
+- Generation engine integration: the engine currently writes notes from the v0.1.0 column-role config shape. v0.1.3 refactors the engine to call `render()` for each row, write to `address.primary.path`, embed body content under `address.primary.anchor` (when present), and merge `address.frontmatter` with user-preserve keys.
+- The `_crosswalker` provenance writer now has a clear `Address` to attach to.
+- Phase-0 compat shim: legacy `hierarchy` column-role configs translate to a `target.layout` shape with all-folder mechanisms — a small adapter at the engine boundary.
+
+## What this does NOT do
+
+- **Does not** wire `render()` into the generation engine yet (v0.1.3).
+- **Does not** implement Pass-2 link minimization (`linkStyle: shortest`); that's v0.3 — Pass-1 always emits absolute-form wikilinks.
+- **Does not** implement tag-as-layout-mechanism, wikilink-as-layout-mechanism, or `graph_edges` — schema-reserved through v0.1; activated v0.2.
+- **Does not** implement the `Function` primitive (Ch 20) — templates are limited to the closed 7-filter set; computation beyond that errors out.
+- **Does not** ship a `JSONata` expression layer — also Ch 20 territory; deferred until concrete need surfaces in real recipes.
+
+## Memory rules followed this session
+
+- ✅ Always test thoroughly before flipping milestone status (memory: `feedback_test_thoroughly.md`) — this milestone shipped only after all 83 tests pass
+- ✅ No personal data in logs (memory: `feedback_no_personal_data_in_logs.md`) — this log uses relative paths only
+
+## Related
+
+- [Milestone v0.1.2 page](/crosswalker/reference/roadmap/milestones/v0-1-2-render/)
+- [Ch 22 synthesis (target-structure grammar + render function spec)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)
+- [Ch 22 deliverable §3 (formal render signature)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/)
+- [v0.1.1 delivery log](/crosswalker/agent-context/zz-log/2026-05-04-v0-1-1-validation-foundation-shipped/) — predecessor milestone
+- [Hierarchy primitives concept page](/crosswalker/concepts/hierarchy-primitives/)
+- [Testing-patterns skill](https://github.com/cybersader/crosswalker/blob/main/.claude/skills/testing-patterns/SKILL.md)
+
+## Next milestone
+
+[v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — refactor `src/generation/generation-engine.ts` to call `render()` per row instead of computing path/frontmatter inline; managed/user_preserve frontmatter merge semantics; `_crosswalker` provenance writer; idempotent re-import. Per-milestone E2E spec is `tests/e2e/re-import.spec.ts` — must pass before flipping milestone status to ✅.
