@@ -24,10 +24,11 @@ import {
 	LinkMapping
 } from '../types/config';
 import { DebugLog } from '../utils/debug';
-import { render, RenderError, renderTemplate } from '../render';
+import { render, RenderError, renderTemplate, type Recipe } from '../render';
 import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
+import { validateTier1Frontmatter } from '../validation/validator';
 
 // ============================================================================
 // Types
@@ -1022,4 +1023,269 @@ export function estimateOutput(
 	}
 
 	return { noteCount, folderCount, linkCount };
+}
+
+// ============================================================================
+// v0.1.4 — Native Ch 22 Recipe Path (kind dispatch + STRM enforcement)
+// ============================================================================
+
+/**
+ * Options for generateFromRecipe — the native Ch 22 entry point. Skips the
+ * v0.1.0 column-role legacy logic entirely and runs render() against the
+ * recipe directly. Used by recipes that declare non-concept kinds
+ * (junction-note, crosswalk-edge) where the frontmatter shape is fully
+ * driven by recipe.target.also_emit.frontmatter.managed templates.
+ */
+export interface RecipeImportOptions {
+	/** Vault-relative output base path. May be empty if the recipe's layout
+	 *  templates already resolve to absolute paths. */
+	basePath: string;
+	/** How to handle existing files. */
+	overwriteMode: 'skip' | 'replace' | 'error';
+	/** Whether to create missing folders. Defaults to true. */
+	createFolders?: boolean;
+	/** Source file name for provenance. */
+	sourceFileName?: string;
+	/** Source version for provenance. */
+	sourceVersion?: string;
+	/**
+	 * If true, abort on the first row whose rendered frontmatter fails Tier 1
+	 * schema validation. Required for v0.1.4 STRM predicate enforcement on
+	 * crosswalk-edge layouts. Default: true.
+	 */
+	strictValidation?: boolean;
+	/**
+	 * Function returning the CURIE local-part for a row. Default: row.id (or
+	 * row.curie if already pre-built; or `row-N` fallback). Recipes for
+	 * non-concept kinds typically need a per-row identity (e.g., for a
+	 * crosswalk-edge: `cw-{subject}-{object}`).
+	 */
+	curieLocalPart?: (row: Record<string, unknown>, rowNum: number) => string;
+	/** CURIE prefix override. Default: recipe.source.ontology slug. */
+	curiePrefix?: string;
+	/** Progress callback. */
+	onProgress?: (current: number, total: number, message: string) => void;
+}
+
+/**
+ * Native Ch 22 recipe entry point. Renders one note per row, validates
+ * against spec/tier1.schema.json, writes to vault. Idempotent re-imports
+ * preserve user-edited frontmatter via the same managed/user_preserve merge
+ * semantics as the legacy path.
+ *
+ * v0.1.4: this path is the one used by junction-note + crosswalk-edge
+ * recipes. Concept-note recipes still flow through generateNotes (legacy
+ * column-role) for back-compat with the wizard UI; native concept recipes
+ * also work here.
+ */
+export async function generateFromRecipe(
+	app: App,
+	parsedData: ParsedData,
+	recipe: Recipe,
+	options: RecipeImportOptions,
+	debug?: DebugLog,
+): Promise<GenerationResult> {
+	const startTime = Date.now();
+	const result: GenerationResult = {
+		success: true,
+		created: [],
+		skipped: [],
+		errors: [],
+		duration: 0,
+	};
+
+	const strict = options.strictValidation ?? true;
+	const createFolders = options.createFolders ?? true;
+	const ontologyId = recipe.source?.ontology ?? recipe.recipe;
+	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
+
+	await debug?.log('generateFromRecipe: starting', {
+		recipe: recipe.recipe,
+		rowCount: parsedData.rowCount,
+		strict,
+		ontologyId,
+	});
+
+	if (createFolders && options.basePath) {
+		await ensureFolderExists(app, options.basePath);
+	}
+
+	const emittedPaths = new Set<string>();
+	const total = parsedData.rows.length;
+
+	for (let i = 0; i < parsedData.rows.length; i++) {
+		const row = parsedData.rows[i];
+		const rowNum = i + 1;
+
+		try {
+			if (options.onProgress && i % 10 === 0) {
+				options.onProgress(i, total, `Processing row ${rowNum}`);
+			}
+
+			// 1. Build CURIE for this row
+			const localPart = options.curieLocalPart
+				? options.curieLocalPart(row, rowNum)
+				: defaultCurieLocalPart(row, rowNum);
+			const curie = `${curiePrefix}:${localPart}`;
+
+			// 2. Render
+			let address;
+			try {
+				address = render(recipe, { curie, scope: row as Record<string, unknown> });
+			} catch (err) {
+				if (err instanceof RenderError) {
+					result.errors.push({ row: rowNum, message: `render() failed: ${err.message}` });
+					continue;
+				}
+				throw err;
+			}
+
+			// 3. Build full path
+			const recipePath = address.primary.path;
+			const fullPath = options.basePath
+				? normalizePath(`${options.basePath}/${recipePath}`)
+				: normalizePath(recipePath);
+
+			if (!fullPath || fullPath === '.md') {
+				result.errors.push({
+					row: rowNum,
+					message: 'Empty or invalid path produced by render(); check recipe.target.layout templates.',
+				});
+				continue;
+			}
+
+			// 4. Path collision detection
+			if (emittedPaths.has(fullPath)) {
+				result.errors.push({
+					row: rowNum,
+					message: `Path collision: ${fullPath} already produced earlier in this import. Two source rows resolve to the same target file.`,
+				});
+				continue;
+			}
+			emittedPaths.add(fullPath);
+
+			// 5. Compose frontmatter
+			const frontmatter: Record<string, any> = { ...address.frontmatter };
+			if (address.tags.length > 0) frontmatter.tags = address.tags;
+			if (address.aliases.length > 0) frontmatter.aliases = address.aliases;
+			frontmatter._crosswalker = buildProvenance(
+				{
+					sourceFile: options.sourceFileName,
+					sourceVersion: options.sourceVersion,
+					recipeId: recipe.recipe,
+				},
+				PLUGIN_VERSION,
+			);
+
+			// 6. Validate against Tier 1 schema BEFORE writing. STRM predicate
+			//    enforcement happens inside the schema's crosswalk_edge_frontmatter
+			//    enum constraint; AJV catches it here.
+			const validation = validateTier1Frontmatter(frontmatter);
+			if (!validation.valid) {
+				const errMsg = `Tier 1 validation failed for row ${rowNum} (${fullPath}): ${
+					validation.errors.length > 0 ? validation.errors.join('; ') : 'unknown'
+				}`;
+				if (strict) {
+					result.errors.push({ row: rowNum, message: errMsg });
+					continue;
+				} else {
+					await debug?.log('Validation warning (non-strict mode)', { path: fullPath, error: errMsg });
+				}
+			}
+
+			// 7. Existing-file handling + merge
+			const existingFile = app.vault.getAbstractFileByPath(fullPath);
+			if (existingFile instanceof TFile) {
+				if (options.overwriteMode === 'skip') {
+					result.skipped.push(fullPath);
+					continue;
+				} else if (options.overwriteMode === 'error') {
+					result.errors.push({ row: rowNum, message: `File already exists: ${fullPath}` });
+					result.success = false;
+					continue;
+				}
+				// 'replace' — merge with existing
+				try {
+					const existingFm = await readExistingFrontmatter(app, existingFile);
+					if (existingFm && Object.keys(existingFm).length > 0) {
+						const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
+						const managedKeys = computeManagedKeys(frontmatter, userPreserve);
+						const merged = mergeFrontmatter(existingFm, frontmatter, managedKeys);
+						Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
+						Object.assign(frontmatter, merged);
+					}
+				} catch (mergeErr) {
+					await debug?.log('Frontmatter merge failed; using new frontmatter as-is', {
+						path: fullPath,
+						error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
+					});
+				}
+			}
+
+			// 8. Ensure parent folder
+			const parentPath = getParentPath(fullPath);
+			if (parentPath && createFolders) {
+				await ensureFolderExists(app, parentPath);
+			}
+
+			// 9. Body — minimal default. Recipes can extend this in a future
+			//    milestone via `also_emit.body` or similar.
+			const body = buildDefaultBody(frontmatter, address);
+
+			// 10. Write
+			const content = buildNoteContent(frontmatter, body);
+			if (existingFile instanceof TFile) {
+				await app.vault.modify(existingFile, content);
+			} else {
+				await app.vault.create(fullPath, content);
+			}
+			result.created.push(fullPath);
+		} catch (rowError) {
+			const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
+			result.errors.push({ row: rowNum, message: errorMessage });
+			await debug?.log('Row processing error', { row: rowNum, error: errorMessage });
+		}
+	}
+
+	if (options.onProgress) options.onProgress(total, total, 'Complete');
+	if (result.errors.length > 0) result.success = false;
+	result.duration = Date.now() - startTime;
+
+	await debug?.log('generateFromRecipe: complete', {
+		success: result.success,
+		created: result.created.length,
+		skipped: result.skipped.length,
+		errors: result.errors.length,
+		duration: result.duration,
+	});
+
+	return result;
+}
+
+/**
+ * Default body for native-recipe-rendered notes. Just a heading from title or
+ * curie. Future: recipe authors will be able to declare a body template via
+ * `also_emit.body`.
+ */
+function buildDefaultBody(
+	frontmatter: Record<string, any>,
+	_address: ReturnType<typeof render>,
+): string {
+	const title = frontmatter.title ?? frontmatter.curie ?? 'Untitled';
+	return `# ${title}\n`;
+}
+
+/**
+ * Default per-row CURIE local part: row.curie's local part if present, else
+ * row.id, else row.subject_id, else row-N.
+ */
+function defaultCurieLocalPart(row: Record<string, unknown>, rowNum: number): string {
+	const candidate = row.curie ?? row.id ?? row.subject_id ?? row.control_id ?? row.code;
+	if (typeof candidate === 'string' && candidate.length > 0) {
+		// If it's already a full CURIE, take the local part
+		const colonIdx = candidate.indexOf(':');
+		const local = colonIdx > 0 ? candidate.slice(colonIdx + 1) : candidate;
+		return sanitizeFileName(local);
+	}
+	return `row-${rowNum}`;
 }

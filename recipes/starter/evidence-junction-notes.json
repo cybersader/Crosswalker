@@ -1,0 +1,39 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "evidence-junction-notes",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "source": {
+    "ontology": "evidence-mappings",
+    "levels": ["evidence"]
+  },
+
+  "target": {
+    "layout": [
+      {
+        "level": "evidence",
+        "mechanism": "file",
+        "template": "Evidence/Junctions/jn-{subject|slug}-{object|slug}.md",
+        "kind": "junction-note"
+      }
+    ],
+    "also_emit": {
+      "tags": [
+        "evidence/junction"
+      ],
+      "frontmatter": {
+        "managed": {
+          "title": "{subject} -> {object}",
+          "subject": "[[{subject}]]",
+          "predicate": "{predicate}",
+          "object": "[[{object}]]",
+          "coverage": "{coverage}",
+          "scope": "{scope}"
+        },
+        "user_preserve": ["reviewer", "review_date", "status", "confidence", "expires_at", "notes", "*notes*"]
+      }
+    }
+  },
+
+  "$comment": "Starter recipe — bulk-import evidence-link junction notes from a CSV. Each row produces one (subject_concept, predicate, evidence_doc) triple. Generic over: any concept ontology (NIST 800-53 controls, MITRE ATT&CK techniques, CIS safeguards, ISO 27001 clauses, etc.) + any evidence-doc namespace (Evidence/, Audits/, Runbooks/, etc.). Reviewer + review_date + status + confidence are user_preserve so subsequent reviewer workflow (manual edits, review automation) is not clobbered on re-import. Predicate vocabulary is open string per Tier 1 schema (junction-note predicate is not in the STRM enum); recipe authors pick covers/evidences/attests/reviews/etc. per their workflow."
+}

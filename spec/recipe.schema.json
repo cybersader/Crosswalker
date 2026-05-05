@@ -36,7 +36,7 @@
     "layout_entry": {
       "type": "object",
       "title": "Layout entry",
-      "description": "One entry of the recipe.target.layout array. Specifies how a single source level lands in the target vault. The layout array is ordered: outer source levels appear first, leaf-bearing entry appears last (typically mechanism: 'file' or 'heading' for the leaf-as-document case).",
+      "description": "One entry of the recipe.target.layout array. Specifies how a single source level lands in the target vault. The layout array is ordered: outer source levels appear first, leaf-bearing entry appears last (typically mechanism: 'file' or 'heading' for the leaf-as-document case). Per Ch 22, the leaf entry MAY declare a `kind` to produce non-concept Tier 1 shapes (junction notes for evidence links, crosswalk edges for ontology mappings); intermediate entries treat `kind` as ignored. Default `kind` is 'concept'.",
       "required": ["level", "mechanism", "template"],
       "additionalProperties": false,
       "properties": {
@@ -47,7 +47,13 @@
         },
         "mechanism": { "$ref": "#/$defs/mechanism" },
         "template": { "$ref": "#/$defs/template" },
-        "level_depth": { "$ref": "#/$defs/level_depth" }
+        "level_depth": { "$ref": "#/$defs/level_depth" },
+        "kind": {
+          "type": "string",
+          "enum": ["concept", "junction-note", "crosswalk-edge"],
+          "default": "concept",
+          "description": "Tier 1 shape produced by this layout entry. 'concept' (default): standard concept-note (control/term/taxon/etc.); produces concept_note_frontmatter per spec/tier1.schema.json. 'junction-note': evidence-link triple (subject_concept, predicate, evidence_doc); 13-field schema. 'crosswalk-edge': between-ontology mapping; STRM predicate vocabulary + SSSOM-shaped envelope. Recipe authors typically declare `kind` on the leaf layout entry only — intermediate folder/heading entries leave it default."
+        }
       },
       "allOf": [
         {

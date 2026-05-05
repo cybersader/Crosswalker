@@ -31,6 +31,8 @@ export { renderTemplate } from './template';
  * (recipes come from parsed YAML/JSON; AJV validates them upstream against
  * spec/recipe.schema.json). Internal modules use the same shape.
  */
+export type Tier1Kind = 'concept' | 'junction-note' | 'crosswalk-edge';
+
 export interface Recipe {
 	recipe: string;
 	source?: { ontology?: string; levels?: string[] };
@@ -40,6 +42,7 @@ export interface Recipe {
 			mechanism: string;
 			template: string;
 			level_depth?: number;
+			kind?: Tier1Kind;
 		}>;
 		also_emit?: {
 			tags?: string[];
@@ -131,6 +134,24 @@ export function render(recipe: Recipe, identity: ConceptIdentity): Address {
 	// 4. Always include the concept's CURIE in frontmatter
 	if (!('curie' in address.frontmatter)) {
 		address.frontmatter.curie = identity.curie;
+	}
+
+	// 5. Kind dispatch — if any layout entry declares a non-concept kind, set
+	//    the discriminator. Last non-default wins (recipe authors typically
+	//    declare kind on the leaf entry only). The frontmatter shape produced
+	//    by junction-note + crosswalk-edge layouts is fully driven by the
+	//    recipe's also_emit.frontmatter.managed templates (which write
+	//    subject/predicate/object for junctions, subject_id/predicate_id/
+	//    object_id for crosswalks). Tier 1 schema validation enforces the
+	//    kind-specific required-field set + STRM predicate enum at write time.
+	let chosenKind: Tier1Kind = 'concept';
+	for (const entry of recipe.target.layout) {
+		if (entry.kind && entry.kind !== 'concept') {
+			chosenKind = entry.kind;
+		}
+	}
+	if (chosenKind !== 'concept') {
+		address.frontmatter.kind = chosenKind;
 	}
 
 	return address;

@@ -1,0 +1,6 @@
+subject_id,predicate_id,object_id,match_type,match_confidence,mapping_justification,mapping_provider
+nist-csf:GV.OC-01,is_equivalent_to,nist:PM-1,close,0.85,semapv:ManualMappingCuration,NIST OLIR
+nist-csf:ID.AM-01,is_broader_than,nist:CM-8,broad,0.9,semapv:ManualMappingCuration,NIST OLIR
+nist-csf:PR.AC-01,is_equivalent_to,nist:AC-2,exact,0.95,semapv:ManualMappingCuration,NIST OLIR
+nist-csf:PR.AC-04,is_narrower_than,nist:AC-3,narrow,0.8,semapv:ManualMappingCuration,NIST OLIR
+nist-csf:DE.CM-01,is_approximate_to,nist:SI-4,close,0.75,semapv:ManualMappingCuration,NIST OLIR

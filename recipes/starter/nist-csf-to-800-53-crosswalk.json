@@ -1,0 +1,40 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "nist-csf-to-800-53-crosswalk",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "source": {
+    "ontology": "nist-olir",
+    "levels": ["mapping"]
+  },
+
+  "target": {
+    "layout": [
+      {
+        "level": "mapping",
+        "mechanism": "file",
+        "template": "Crosswalks/CSF-to-800-53/cw-{subject_id|slug}-{object_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "tags": [
+        "crosswalk/csf-to-800-53"
+      ],
+      "frontmatter": {
+        "managed": {
+          "title": "{subject_id} -> {object_id}",
+          "subject_id": "{subject_id}",
+          "predicate_id": "{predicate_id}",
+          "object_id": "{object_id}",
+          "match_type": "{match_type}",
+          "mapping_justification": "{mapping_justification}",
+          "mapping_provider": "{mapping_provider}"
+        },
+        "user_preserve": ["review_status", "creator_id", "match_confidence", "*notes*"]
+      }
+    }
+  },
+
+  "$comment": "Starter recipe for v0.1.4 — produces crosswalk-edge notes between NIST CSF subcategories and NIST 800-53 controls. Schema-conformant against spec/recipe.schema.json. STRM predicate vocabulary enforced by Tier 1 schema validation at write time. SSSOM-shaped envelope (match_type, match_confidence, mapping_justification, mapping_provider). user_preserve guards review_status + creator_id + free-form notes against being overwritten on re-import. Intended consumption: produces notes that downstream Bases queries can join CSF-side and 800-53-side concept notes."
+}

@@ -9,7 +9,7 @@ import { render } from './render';
 import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './generation/frontmatter-merge';
 import { buildProvenance } from './generation/provenance';
-import { generateNotes } from './generation/generation-engine';
+import { generateNotes, generateFromRecipe } from './generation/generation-engine';
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -44,6 +44,16 @@ export default class CrosswalkerPlugin extends Plugin {
 	 */
 	runImport = async (parsedData: any, config: any, options: any) => {
 		return generateNotes(this.app, parsedData, config, options, this.debug);
+	};
+
+	/**
+	 * runImportFromRecipe — v0.1.4 native Ch 22 recipe entry. Bypasses the
+	 * v0.1.0 column-role legacy logic and runs render() against the recipe
+	 * directly. Used by junction-note + crosswalk-edge recipes (and any
+	 * concept recipe authored natively without the wizard).
+	 */
+	runImportFromRecipe = async (parsedData: any, recipe: any, options: any) => {
+		return generateFromRecipe(this.app, parsedData, recipe, options, this.debug);
 	};
 
 	async onload() {

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "iso27001-to-800-53-crosswalk",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "source": {
+    "ontology": "nist-olir",
+    "levels": ["mapping"]
+  },
+
+  "target": {
+    "layout": [
+      {
+        "level": "mapping",
+        "mechanism": "file",
+        "template": "Crosswalks/ISO27001-to-800-53/cw-{subject_id|slug}-{object_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "tags": [
+        "crosswalk/iso27001-to-800-53"
+      ],
+      "frontmatter": {
+        "managed": {
+          "title": "{subject_id} -> {object_id}",
+          "subject_id": "{subject_id}",
+          "predicate_id": "{predicate_id}",
+          "object_id": "{object_id}",
+          "match_type": "{match_type}",
+          "mapping_justification": "{mapping_justification}",
+          "mapping_provider": "{mapping_provider}"
+        },
+        "user_preserve": ["review_status", "creator_id", "match_confidence", "*notes*"]
+      }
+    }
+  },
+
+  "$comment": "Starter recipe — ISO 27001 controls -> NIST 800-53 controls. Same shape as nist-csf-to-800-53-crosswalk; only the source ontology + tag path + folder differ. Any framework-pair crosswalk uses this template; subject_id/object_id are CURIEs (iso27001:A.9.2.1, nist:AC-2, mitre-attack:T1078, etc.) so the schema is generic over ontologies. Recipe authors swap CURIE prefixes + tag paths to author crosswalks for any pair (CIS<->800-53, MITRE<->800-53, CRI Profile<->NIST CSF, etc.)."
+}
