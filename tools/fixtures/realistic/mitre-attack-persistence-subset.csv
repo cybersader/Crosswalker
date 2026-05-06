@@ -1,0 +1,20 @@
+id,title,tactic,parent,description
+T1078,Valid Accounts,Persistence,,"Adversaries may obtain and abuse credentials of existing accounts as a means of gaining initial access, persistence, privilege escalation, or defense evasion"
+T1078.001,Default Accounts,Persistence,T1078,Adversaries may obtain and abuse credentials of a default account as a means of gaining initial access or persistence
+T1078.002,Domain Accounts,Persistence,T1078,Adversaries may obtain and abuse credentials of a domain account as a means of gaining initial access or persistence
+T1078.003,Local Accounts,Persistence,T1078,"Adversaries may obtain and abuse credentials of a local account as a means of gaining initial access, persistence, privilege escalation, or defense evasion"
+T1078.004,Cloud Accounts,Persistence,T1078,Adversaries may obtain and abuse credentials of a cloud account as a means of gaining initial access or persistence
+T1098,Account Manipulation,Persistence,,"Adversaries may manipulate accounts to maintain or elevate access to victim systems — actions can include adding new accounts, modifying group membership, or changing credentials"
+T1098.001,Additional Cloud Credentials,Persistence,T1098,Adversaries may add adversary-controlled credentials to a cloud account to maintain persistent access to victim accounts and instances within the environment
+T1098.002,Additional Email Delegate Permissions,Persistence,T1098,Adversaries may grant additional permission levels to maintain persistent access to an adversary-controlled email account
+T1098.003,Additional Cloud Roles,Persistence,T1098,An adversary may add additional roles or permissions to an adversary-controlled cloud account to maintain persistent access to a tenant
+T1098.004,SSH Authorized Keys,Persistence,T1098,Adversaries may modify the SSH authorized_keys file to maintain persistence on a victim host
+T1136,Create Account,Persistence,,Adversaries may create an account to maintain access to victim systems
+T1136.001,Local Account,Persistence,T1136,Adversaries may create a local account to maintain access to victim systems
+T1136.002,Domain Account,Persistence,T1136,Adversaries may create a domain account to maintain access to victim systems
+T1136.003,Cloud Account,Persistence,T1136,Adversaries may create a cloud account to maintain access to victim systems
+T1505,Server Software Component,Persistence,,Adversaries may abuse legitimate extensible development features of servers to establish persistent access to systems
+T1505.001,SQL Stored Procedures,Persistence,T1505,Adversaries may abuse SQL stored procedures to establish persistent access to systems
+T1505.003,Web Shell,Persistence,T1505,Adversaries may backdoor web servers with web shells to establish persistent access to systems
+T1543,Create or Modify System Process,Persistence,,Adversaries may create or modify system-level processes to repeatedly execute malicious payloads as part of persistence
+T1543.003,Windows Service,Persistence,T1543,Adversaries may create or modify Windows services to repeatedly execute malicious payloads as part of persistence

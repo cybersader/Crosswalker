@@ -8,22 +8,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-06, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 are ✅ shipped; v0.1.5 (Tier 2 sidecar) is mid-milestone (Phase 1+2 done, Phase 3 next).
 
-### v0.1.5 — Tier 2 sqlite-wasm sidecar projector (2026-05-06, mid-milestone — Phase 1+2 done)
+### v0.1.5 — Tier 2 sqlite-wasm sidecar projector (2026-05-06, ✅ Done — all 6 phases)
 
-Phase 1 (substrate scaffolding) + Phase 2 (projector) complete. WASM-A path: plain `@sqlite.org/sqlite-wasm` (sqlite-vec deferred — see [WASM-A pivot synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/)).
+SQL projection layer of the Crosswalker pipeline now live: deletable-recoverable `.crosswalker.sqlite` sidecar, projector populates `concepts`/`mappings`/`junction_notes`/`ontologies` tables from canonical Tier 1, three typed query helpers + lazy closure cache via recursive CTE per Ch 18 §2, settings-toggleable auto-projection on vault load. WASM-A path (plain `@sqlite.org/sqlite-wasm`); sqlite-vec deferred with calendar-anchored 2026-11-06 revisit. Realistic-framework integration tests (NIST 800-53 / NIST CSF / ISO 27001 / MITRE ATT&CK) pass. See [delivery log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/).
 
-- `src/tier2/sidecar.ts` — sqlite-wasm lifecycle via Blob URL load (Obsidian app:// URL workaround); OPFS sahpool VFS
-- `src/tier2/migrations.ts` — schema_version + drop-and-recreate migration (correct because Tier 2 is purely a Tier 1 projection)
-- `src/tier2/schema.sql` — full DDL per [v0.1 schema spec §7](https://cybersader.github.io/crosswalker/agent-context/v0-1-schema-spec/#7-tier-2-sidecar-sql-schema-sqlite-wasm-projection): schema_meta, ontologies, concepts, mappings, junction_notes, closure_cache + indexes + junction_notes_with_freshness view
-- `src/tier2/projector.ts` — kind-aware Tier 1 → Tier 2 projection. Walks `app.vault.getMarkdownFiles()` lazily; reads frontmatter via `app.metadataCache.getFileCache`; dispatches by `kind` (default → concepts; junction-note → junction_notes; crosswalk-edge → mappings); cooperative yielding every 50 files; idempotent INSERT OR REPLACE. Closure cache invalidated after mappings writes
-- `plugin.openTier2()` + `plugin.runProjection()` exposed as instance handles
-- Palette command: "Crosswalker: Clear Tier 2 sidecar (reproject from canonical Tier 1 on next open)"
-- Esbuild target bumped ES2018 → ES2020 (sqlite-wasm uses BigInt literals)
-- esbuild.config.mjs copies sqlite-wasm artifacts (`sqlite3.wasm` + `sqlite3.mjs`) into plugin distribution at build time
-- wdio.conf.mts `before` hook copies tier-2 artifacts into the test vault's plugin dir (obsidian-launcher only copies main.js + manifest.json + styles.css by default)
-- E2E: `tests/e2e/sidecar-phase-1-smoke.spec.ts` (6/6 pass — substrate scaffolding) + `tests/e2e/sidecar-phase-2-projection.spec.ts` (7/7 pass — projector + idempotency)
+**Phase 1 — substrate scaffolding** (`src/tier2/sidecar.ts` + `migrations.ts` + `schema.sql`)
 
-**WASM-A pivot (2026-05-06)**: Originally chose WASM-B (vendor `sqlite-vec-wasm-demo` to ship vec from day 1). Integration hit a 5-issue emscripten env-detection chain in Obsidian's Electron renderer (the demo artifact is for plain web browsers, not Electron's hybrid `window`+`process` environment). Reverted to WASM-A (plain sqlite-wasm) with sqlite-vec deferred. Calendar-anchored revisit: 2026-11-06. See [WASM-A pivot synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) + [Ch 24 §5 Q4](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit).
+- sqlite-wasm via Blob URL load (Obsidian app:// URL workaround)
+- OPFS sahpool VFS (mobile-portable; no COOP/COEP)
+- `tier2-sqlite-v1` schema; drop-and-recreate migration on version mismatch
+- DDL per [v0.1 schema spec §7](https://cybersader.github.io/crosswalker/agent-context/v0-1-schema-spec/#7-tier-2-sidecar-sql-schema-sqlite-wasm-projection)
+- `plugin.openTier2()` instance handle exposed
+- esbuild target ES2018 → ES2020 (sqlite-wasm uses BigInt literals)
+- wdio.conf.mts `before` hook copies tier-2 artifacts into temp test vault (obsidian-launcher only copies main.js + manifest.json + styles.css)
+
+**Phase 2 — projector** (`src/tier2/projector.ts`)
+
+- Walks `app.vault.getMarkdownFiles()` lazily via [streaming foundation](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/)
+- Kind-aware dispatch: concept → concepts; junction-note → junction_notes; crosswalk-edge → mappings
+- Idempotent INSERT OR REPLACE keyed on `vault_path` / `source_path UNIQUE`
+- Cooperative yielding every 50 files
+- Closure cache invalidation after any mappings change (`DELETE FROM closure_cache`)
+- FNV-1a content hashing for change detection
+- `plugin.runProjection()` exposed as instance handle
+
+**Phase 3 — query API + closure cache** (`src/tier2/queries.ts`)
+
+- `getConceptsByOntology(db, ontologyId)` — flat list ordered by curie
+- `crosswalkBetween(db, subjOnt, objOnt, predicateId?)` — direct edges (CURIE-prefix LIKE on subject/object)
+- `closureFromConcept(db, startCurie, predicateId?, maxDepth=10)` — transitive closure via recursive CTE per [Ch 18 §2 R2a](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) patterns: path-string anti-join cycle detection (`instr(path, '|' || target || '|') = 0`); `MIN(depth)` aggregation; predicate filter in BOTH base + recursive arms
+- Lazy closure-cache materialization: cache keyed on `(start_curie, predicate_filter, target_curie, shortest_depth)`; first call computes + populates; subsequent calls hit cache
+- `plugin.queryConcepts/Crosswalk/Closure()` exposed
+- Closure-cache row-shape bug caught on self-review (initial design had per-edge rows requiring recursive cache walks; fixed before shipping by reinterpreting cache columns as start/predicate-filter/target/shortest-depth)
+
+**Phase 4 — plugin integration**
+
+- `app.workspace.onLayoutReady()` triggers `autoProjectOnLayoutReady()` per Ch 24 §2 recovery property
+- Settings: `enableTier2Projection` toggle (default true) + `tier2SidecarPath` text input (default `.crosswalker.sqlite`)
+- Settings UI: new "Tier 2 sidecar" section in settings tab
+- Palette command `crosswalker:clear-tier-2-sidecar` — closes handle, deletes file, next access reprojects
+- `openSidecar` + `clearSidecar` respect `settings.tier2SidecarPath`
+
+**WASM-A pivot (2026-05-05 → 2026-05-06)**
+
+Originally chose WASM-B (vendor `sqlite-vec-wasm-demo` to ship vec from day 1). Integration hit a 5-issue emscripten env-detection chain in Obsidian's Electron renderer — the demo artifact is for plain web browsers, not Electron's hybrid `window`+`process` environment. Reverted to WASM-A (plain sqlite-wasm) with sqlite-vec deferred. Calendar-anchored revisit: **2026-11-06**. See [WASM-A pivot synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) + [Ch 24 §5 Q4](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit).
+
+**Realistic-framework integration tests** (`tests/e2e/realistic-frameworks.spec.ts` — 9 tests)
+
+5 synthetic-but-structurally-correct fixtures modeled on real frameworks: NIST 800-53 r5 AC family (22 controls; parens in CURIEs); NIST CSF 2.0 GOVERN+IDENTIFY (25 entries; dotted IDs); ISO 27001:2022 subset (15 clauses; em-dashes; UTF-8); MITRE ATT&CK Persistence subset (19 techniques; dotted sub-technique IDs); CSF→800-53+ISO OLIR-shaped crosswalk (30 edges). Verifies multi-framework vault state + cross-ontology projection + cross-framework crosswalk queries + closure across the graph. See `tools/fixtures/realistic/README.md`.
+
+**Workflow ecosystem** (built during this milestone)
+
+- 3 new skills: `synthesis-log`, `delivery-log`, `wikilink-crawl`
+- 2 new agents: `pre-commit-reviewer`, `milestone-starter`
+- 4 CI gates ⏸ Calendar revisit 2026-08-06
+- 5-agent + 3-skill + 4-CI-gate ecosystem designed in [workflow audit log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-06-workflow-audit-and-agent-design/)
+
+**Test counts**: 116 unit + ~64 E2E across 13 spec files = ~180 tests total, all green.
+
+**v0.1-RC blockers carried forward** (per delivery log §"Realistic-fixture testing — gap audit"): full-catalog scale tests; real-source CSV stress; mobile sanity; OLIR-scale crosswalk; closure scale verification; `fs-safe` filter investigation; bundle size verification.
 
 ### v0.1.4.5 — Streaming refactor (2026-05-05, ✅ Done)
 

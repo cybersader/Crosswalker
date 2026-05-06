@@ -1,0 +1,289 @@
+---
+title: "v0.1.5 shipped — Tier 2 sqlite-wasm sidecar projector"
+description: "Milestone v0.1.5 delivered 2026-05-06 across 6 phases. SQL projection layer of the Crosswalker pipeline now live: deletable-recoverable .crosswalker.sqlite sidecar, projector populates concepts/mappings/junction_notes/ontologies tables from canonical Tier 1, three typed query helpers + lazy closure cache via recursive CTE per Ch 18 §2, settings-toggleable auto-projection on vault load. WASM-A path (plain @sqlite.org/sqlite-wasm); sqlite-vec deferred with calendar-anchored 2026-11-06 revisit. Realistic-framework integration tests (NIST 800-53 / NIST CSF / ISO 27001 / MITRE ATT&CK) pass."
+tags: [milestone-shipped, v0-1-5, tier-2, sqlite-wasm, projector, recursive-cte, closure-cache, wasm-a]
+date: 2026-05-06
+sidebar:
+  label: "05-06 · v0.1.5 shipped"
+  order: -20260506.3
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What shipped
+
+[Milestone v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — Tier 2 sqlite-wasm sidecar projector. Status flipped to ✅ in the milestone hub. Six phases complete:
+
+| Phase | Deliverable |
+|---|---|
+| Phase 1 — substrate scaffolding | sqlite-wasm via Blob URL load (Obsidian app:// URL workaround); OPFS sahpool VFS; schema migrations applied at open; `plugin.openTier2()` entry point |
+| Phase 2 — projector | `src/tier2/projector.ts` walks vault `.md` files lazily via [streaming foundation](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/); kind-aware dispatch; idempotent INSERT OR REPLACE; closure cache invalidation on mappings change |
+| Phase 3 — query API + closure cache | `src/tier2/queries.ts` with three typed helpers (`getConceptsByOntology`, `crosswalkBetween`, `closureFromConcept`); recursive CTE with path-string anti-join cycle detection per [Ch 18 §2](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/); lazy cache materialization keyed on `(start_curie, predicate_filter, target_curie, shortest_depth)` |
+| Phase 4 — plugin integration | `app.workspace.onLayoutReady()` triggers `autoProjectOnLayoutReady()` per Ch 24 §2 recovery property; settings UI (`enableTier2Projection` toggle + `tier2SidecarPath` text input); palette command `crosswalker:clear-tier-2-sidecar` |
+| Phase 5 — tests | Per-phase E2E specs absorbed into milestone-level coverage (no separate Phase 5 spec needed) |
+| Phase 6 — delivery log + status flip | This log + milestone hub status table flipped + CHANGELOG roll-up |
+
+| Surface | Delivered |
+|---|---|
+| `src/tier2/sidecar.ts` | Lifecycle: sqlite-wasm init via Blob URL load + locateFile; OPFS sahpool VFS; in-memory fallback for sandbox |
+| `src/tier2/migrations.ts` | `tier2-sqlite-v1` schema; drop-and-recreate strategy on version mismatch |
+| `src/tier2/schema.sql` | DDL per [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/#7-tier-2-sidecar-sql-schema-sqlite-wasm-projection) — schema_meta, ontologies, concepts, mappings, junction_notes, closure_cache + indexes + junction_notes_with_freshness view |
+| `src/tier2/projector.ts` | Tier 1 → Tier 2 read-only projection; cooperative yielding every 50 files; FNV-1a content hashing for change detection |
+| `src/tier2/queries.ts` | Typed query helpers + lazy closure cache + recursive CTE |
+| `src/main.ts` | `plugin.openTier2()` / `runProjection()` / `queryConcepts/Crosswalk/Closure()` instance handles + onLayoutReady auto-trigger + `clear-sidecar` palette command |
+| `src/settings/settings-{data,tab}.ts` | `enableTier2Projection` (default true) + `tier2SidecarPath` (default `.crosswalker.sqlite`) |
+| `package.json` | `@sqlite.org/sqlite-wasm@3.53.0-build1` (WASM-A path; sqlite-vec deferred) |
+| `esbuild.config.mjs` | Target ES2020 (sqlite-wasm uses BigInt); copies `.wasm` + `.mjs` to plugin distribution at build time |
+| `wdio.conf.mts` | New `before` hook copies tier-2 artifacts into the temp test vault (obsidian-launcher hardcodes copying only main.js + manifest.json + styles.css) |
+| `tools/fixtures/realistic/*.csv` | 5 realistic-framework fixtures (NIST 800-53 AC family, NIST CSF 2.0 GOVERN+IDENTIFY, ISO 27001:2022 subset, MITRE ATT&CK Persistence subset, CSF→800-53+ISO crosswalk) |
+
+## Tests
+
+| Suite | Count | Notes |
+|---|---|---|
+| Jest unit | 116 | Unchanged (no new unit-level logic — Tier 2 work tested at E2E level) |
+| WebDriver E2E | ~64 across 13 spec files | New: `sidecar-phase-{1-smoke, 2-projection, 3-queries, 4-integration}.spec.ts` (22 tests) + `realistic-frameworks.spec.ts` (9 tests) |
+| **Total** | **~180 tests** | All green before commit |
+
+The realistic-framework spec is the v0.1.5 milestone-level integration gate. It exercises:
+
+- **Volume**: 22 NIST AC controls + 25 CSF subcategories + 15 ISO clauses + 19 MITRE techniques + 30 crosswalk edges = ~110 rows total
+- **Special chars in CURIEs**: parens (`AC-2(1)`, `AC-2(11)`), dots (`GV.OC-01`, `A.5.1`, `T1078.001`)
+- **Real CSV quirks**: RFC-4180 quoted commas (e.g., `"Information security awareness, education and training"`), em-dashes, long descriptions
+- **Multi-framework vault**: 4 ontologies (`nist`, `nist-csf`, `iso27001`, `mitre-attack`) + crosswalks coexisting in one vault
+- **Cross-framework crosswalk queries**: `queryCrosswalk('nist-csf', 'nist')` returns the OLIR-shaped edges
+- **Closure across the graph**: `queryClosure('nist-csf:GV.OC-01')` reaches both `nist` + `iso27001` ontologies via direct edges
+
+## Notable design decisions made during implementation
+
+1. **WASM-A pivot (2026-05-05 → 2026-05-06)** — original WASM-B path (vendor `sqlite-vec-wasm-demo`) hit a 5-issue emscripten env-detection chain in Obsidian's Electron renderer (the demo artifact is for plain web browsers, not Electron's hybrid `window`+`process` environment). Reverted to plain `@sqlite.org/sqlite-wasm`; sqlite-vec deferred with [calendar-anchored 2026-11-06 revisit](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/). Substrate commitment intact (Ch 24 §4 substrate is still sqlite-wasm + sqlite-vec); just sequenced separately.
+
+2. **Blob URL load for the sqlite-wasm `.mjs`** — Obsidian's `app://` URLs can't be dynamic-imported as ES modules. The `.mjs` is read as text via the vault adapter, wrapped in a Blob with `application/javascript` MIME, and dynamic-imported via the Blob URL. The `.wasm` is loaded via `locateFile` callback returning Obsidian's `getResourcePath` URL.
+
+3. **wdio service file-copy gap** — `obsidian-launcher` hardcodes copying only `manifest.json` + `main.js` + `styles.css` (verified at `obsidian-launcher/dist/chunk-DSNG7BMO.js:1535-1538`). Custom `.wasm` + `.mjs` artifacts get missed. Added a wdio `before` hook to copy them manually into the temp test vault.
+
+4. **Closure-cache row semantics** — initial design had per-edge cache rows (each row encodes one mapping in the chain). This required recursive cache walks at read time, defeating the cache. **Caught on self-review**; fixed before shipping by reinterpreting cache columns as `(start_curie, predicate_filter, target_curie, shortest_depth)` so a single non-recursive `WHERE subject_id = $start AND predicate_id = $pred` returns the full closure. The wikilink-crawl skill was created in response to this near-miss — crawling Ch 18 §2.5 upfront would have surfaced the correct pattern.
+
+5. **Recipe forward-links to milestones added to spec page** — gap discovered during this session: the v0.1 schema spec didn't link forward to implementing milestones. Fixed in [Phase 3 commit](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/). Future agents arriving at the spec can now follow forward to implementation, not just backward to design history.
+
+6. **Kind-aware ontology derivation** — initial projector used `_crosswalker.source_ref.curie` as primary source for ontology ID, but that field defaults to `'unknown:_'` when no `sourceFileName` is passed. Caused concept ontology rows to all show as `'unknown'`. Fixed by preferring `fm.curie` prefix (the concept's authoritative identity) over `_crosswalker.source_ref.curie` (just provenance). Crosswalk-edges register both subject AND object ontologies.
+
+7. **Closure cache invalidation strategy** — `DELETE FROM closure_cache` after any mappings change in projector. Simple and correct; mtime-based per-row invalidation is a future optimization. The schema already has `computed_at` columns for that.
+
+## How v0.1.5 plugs into the system
+
+```
+                Crosswalker pipeline (v0.1.5 view)
+                ════════════════════════════════════
+
+  ┌─ INPUT (UNCHANGED via prior milestones) ─────────────────┐
+  │   Source CSV/JSON → Parser → ParsedData → render() →    │
+  │   Engine → Markdown + YAML frontmatter on disk          │
+  │   (v0.1.1, v0.1.2, v0.1.3, v0.1.4, v0.1.4.5)            │
+  └──────────────────────┬───────────────────────────────────┘
+                         │
+                         ▼
+  ┌─ TIER 1 (canonical, on disk) ────────────────────────────┐
+  │   .md files w/ YAML frontmatter; spec/tier1.schema.json  │
+  │   conformant. THE source of truth. git-tracked.          │
+  └──────────────────────┬───────────────────────────────────┘
+                         │
+                         │  ◄── NEW IN v0.1.5
+                         │
+              app.workspace.onLayoutReady()
+                         │
+                         ▼
+              autoProjectOnLayoutReady()
+                  (settings-toggleable;
+                   skip if user disabled)
+                         │
+                         ▼
+                  openTier2()
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │  src/tier2/         │
+              │  ─────────────────  │
+              │  • sidecar.ts       │  Open .crosswalker.sqlite via
+              │    (lifecycle)      │  Blob URL load + OPFS sahpool VFS
+              │                     │
+              │  • migrations.ts    │  Apply tier2-sqlite-v1 DDL
+              │    (schema)         │  (drop-and-recreate on mismatch)
+              │                     │
+              │  • projector.ts     │  Walk vault .md files lazily;
+              │    (Tier 1 → T2)    │  dispatch by kind:
+              │                     │    concept → concepts table
+              │                     │    junction-note → junction_notes
+              │                     │    crosswalk-edge → mappings
+              │                     │  Cooperative yield every 50 files
+              │                     │  DELETE FROM closure_cache after
+              │                     │  any mappings write
+              │                     │
+              │  • queries.ts       │  3 typed helpers + lazy closure
+              │    (T2 → user)      │  cache materialization via
+              │                     │  recursive CTE
+              └──────────┬──────────┘
+                         │
+                         ▼
+  ┌─ TIER 2 (.crosswalker.sqlite) ───────────────────────────┐
+  │   schema_meta(version='tier2-sqlite-v1')                  │
+  │   ontologies / concepts / mappings / junction_notes       │
+  │   closure_cache (lazy materialized)                       │
+  │   junction_notes_with_freshness (computed view)           │
+  │                                                           │
+  │   Recovery property (Ch 24 §2): file deletable; reproject │
+  │   from Tier 1 on next openTier2() — risk-free to bundle.  │
+  └──────────┬──────────────────────────────────────────┬─────┘
+             │ READ                                      │
+             ▼                                           ▼
+  ┌─ Plugin instance handles ─┐         ┌─ Palette command ─┐
+  │ plugin.openTier2()         │         │ Crosswalker:      │
+  │ plugin.runProjection()     │         │   Clear Tier 2    │
+  │ plugin.queryConcepts(ont)  │         │   sidecar         │
+  │ plugin.queryCrosswalk()    │         │   (closes handle  │
+  │ plugin.queryClosure()      │         │    + deletes file │
+  │                             │         │    + reprojects   │
+  │ For: E2E tests; v0.1.6     │         │    on next access)│
+  │   Bases templates;         │         └────────────────────┘
+  │   v0.1.7 exporters;        │
+  │   future commands          │
+  └────────────────────────────┘
+
+  ┌─ DEFERRED (Ch 24 §5 Q4 — calendar revisit 2026-11-06) ───┐
+  │   sqlite-vec extension (vector embeddings, semantic      │
+  │   similarity queries). Original v0.1.5 plan was WASM-B   │
+  │   (vendor sqlite-vec-wasm-demo); reverted to WASM-A      │
+  │   after 5-issue emscripten chain proved demo artifact    │
+  │   is incompatible with Electron's hybrid renderer.       │
+  │   Schema reserves `concept_embeddings` vec0 virtual      │
+  │   table for additive re-introduction.                    │
+  └──────────────────────────────────────────────────────────┘
+
+  ┌─ DOWNSTREAM (later milestones) ──────────────────────────┐
+  │  v0.1.6 — Bases templates query Tier 2 SQL helpers       │
+  │  v0.1.7 — Exporters serialize Tier 2 mappings (STRM TSV) │
+  │           + junction_notes (OSCAL JSON profile)          │
+  │  v0.1.8 — Audit trail (git + Ed25519); orthogonal        │
+  │           to Tier 2                                      │
+  │  v0.1-RC — Bundle size + mobile portability + lint       │
+  └──────────────────────────────────────────────────────────┘
+```
+
+## Interfaces this milestone introduces / changes
+
+| Interface | Status |
+|---|---|
+| `src/tier2/sidecar.ts:openSidecar()` + `clearSidecar()` | ✅ Live |
+| `src/tier2/projector.ts:projectFromTier1()` | ✅ Live |
+| `src/tier2/queries.ts:{getConceptsByOntology, crosswalkBetween, closureFromConcept}` | ✅ Live |
+| `src/tier2/queries.ts` types: `ConceptRow`, `MappingRow`, `ClosureEntry` | ✅ Exported |
+| `plugin.tier2Handle: SidecarHandle \| null` | ✅ Live |
+| `plugin.openTier2()` / `runProjection()` / `queryConcepts()` / `queryCrosswalk()` / `queryClosure()` | ✅ Live |
+| `crosswalker:clear-tier-2-sidecar` palette command | ✅ Live |
+| Settings: `enableTier2Projection` + `tier2SidecarPath` | ✅ Live |
+| `tier2-sqlite-v1` schema (DDL in `src/tier2/schema.sql` + `migrations.ts`) | ✅ Live |
+| `concept_embeddings` vec0 virtual table | ⏸ Reserved (commented-out DDL); revisit 2026-11-06 |
+
+## What did NOT change in this milestone
+
+- **Tier 1 schema** unchanged — the same `spec/tier1.schema.json` from v0.1.4
+- **Recipe schema** unchanged — same `spec/recipe.schema.json` from v0.1.4
+- **render()** unchanged — pure function from v0.1.2
+- **Generation engine** unchanged — same `generateNotes` + `generateFromRecipe` from v0.1.4 (but now benefits from streaming foundation v0.1.4.5)
+- **Existing E2E tests** — all 33 prior E2E tests pass without modification
+
+## Memory rules followed this session
+
+- ✅ Always test thoroughly — Phase-1 smoke + Phase-2 projection + Phase-3 queries + Phase-4 integration + realistic-framework integration all green; full E2E suite verified at end of each phase
+- ✅ No personal data in commits/logs (every commit pre-swept)
+- ✅ Brevity preference — terse table-heavy logs; ASCII diagrams over prose architecture descriptions
+- ✅ Cross-link aggressively — every term linked; ## Related sections present
+- ✅ Log all decisions — WASM-A pivot got its own synthesis log; workflow audit got its own log; calendar revisits captured in memory
+
+## What this unblocks for v0.1.6 — Bases query layer
+
+- **Concept-note bodies can now reference Tier 2 SQL queries** for transitive closure / coverage matrix patterns. Bases queries directly over Tier 1 frontmatter still work for flat key/value cases; Tier 2 SQL helpers handle multi-ontology joins + recursive closure.
+- **The query-routing decision** ("flat → Bases over T1; complex → SQL over T2") becomes implementable in v0.1.6 recipe templates.
+- **`junction_notes_with_freshness` view** is ready for v0.1.6 / v0.1.7 to surface coverage-staleness UI.
+- **`closure_cache` warm-up pattern** — first transitive query computes; subsequent queries hit cache. v0.1.6 templates can rely on sub-second performance for repeat queries.
+
+## Workflow ecosystem state at v0.1.5 ship
+
+| Component | Status |
+|---|---|
+| `synthesis-log` skill | ✅ |
+| `delivery-log` skill | ✅ (this log written via the new skill) |
+| `wikilink-crawl` skill | ✅ |
+| `pre-commit-reviewer` agent | ✅ |
+| `milestone-starter` agent | ✅ |
+| CI gates | ⏸ Calendar revisit 2026-08-06 |
+| `pre-push-reviewer` agent | 📋 Deferred |
+| `kb-structure-guardian` agent | 📋 Deferred |
+
+Both agents would have helped shorten this milestone's catch-up cycles. The `pre-commit-reviewer` is now ready to use on every commit going forward.
+
+## Related
+
+**Concept pages:**
+- [System architecture](/crosswalker/concepts/system-architecture/) — Layer 3 (Projection) is what v0.1.5 builds
+- [Embedded vs server substrates](/crosswalker/concepts/embedded-vs-server-substrates/) — sqlite-wasm vs alternatives
+- [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — Tier 1 = canonical; Tier 2 = derived
+- [Terminology](/crosswalker/concepts/terminology/)
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
+
+**Agent context:**
+- [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/#7-tier-2-sidecar-sql-schema-sqlite-wasm-projection) — Tier 2 SQL DDL spec
+- [Vision](/crosswalker/agent-context/vision/)
+
+**Design decisions (synthesis logs):**
+- [Ch 24 — Tier 2 substrate synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — substrate commitment + 6 migration triggers
+- [WASM-A pivot synthesis](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) — sqlite-vec deferred 2026-11-06
+- [Two-mode architecture](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/) — Mode 1 (bundled projector) vs Mode 2 (direct emission)
+- [Workflow audit + agent design](/crosswalker/agent-context/zz-log/2026-05-06-workflow-audit-and-agent-design/) — process improvements applied during this milestone
+
+**Research deliverables:**
+- [Ch 18 — Tier 2-Lite scale model](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — closure cache patterns; recursive CTE engineering scale model
+- [Ch 24 — Turso/libSQL evaluation](/crosswalker/agent-context/zz-research/2026-05-04-challenge-24-turso-libsql-evaluation/) — substrate evaluation that landed on canonical sqlite-wasm
+
+**Spec files:**
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — Tier 1 frontmatter contract (the source the projector reads)
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — recipe shape
+
+**Implementation milestones:**
+- [v0.1.4.5 — Streaming refactor](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — dependency (projector iterates lazily)
+- [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — dependency (3 Tier 1 shapes)
+- [v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — what this unblocks
+
+**Realistic-framework fixtures (test surface):**
+- [`tools/fixtures/realistic/README.md`](https://github.com/cybersader/crosswalker/blob/main/tools/fixtures/realistic/README.md)
+- 4 framework fixtures + 1 crosswalk fixture exercising NIST 800-53 r5 / NIST CSF 2.0 / ISO 27001:2022 / MITRE ATT&CK
+
+## Next milestone
+
+[v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — translate the v0.1.0 Dataview-shaped query templates that get embedded in concept-note bodies to Bases-shaped queries; add docs page on common Bases queries against Tier 1 + Tier 2; update generation-engine body templates. Per-milestone E2E spec: `tests/e2e/bases-queries.spec.ts` — emitted concept-note bodies render as working Bases views.
+
+## Realistic-fixture testing — gap audit + v0.1-RC blockers
+
+User flagged 2026-05-06: were the tests thorough enough for real-world framework data? Honest audit:
+
+- ✅ **Volume** — covered (110 rows across 4 frameworks + 30 crosswalk edges)
+- ✅ **Special chars in CURIEs** — covered (parens, dotted IDs)
+- ✅ **CSV quirks** — covered (RFC-4180 quoting, em-dashes, long descriptions)
+- ✅ **Multi-framework vault** — covered (4 ontologies + crosswalks + closure)
+- ⚠ **Full-catalog scale** (NIST 800-53 r5 = 1006 controls; CSF 2.0 = ~100 subcategories; MITRE = ~900 techniques; ISO 27001 = 93 controls) — NOT covered. The 22-row AC-family slice + 25-row CSF GOVERN+IDENTIFY slice prove the patterns work but don't stress at full-catalog scale.
+- ⚠ **Real CSV chaos** — partial. Real NIST 800-53 r5 catalog CSV from the official source has multi-line cells with paragraph-formatted Supplemental Guidance, embedded markdown-like formatting, version-suffix annotations. We test RFC-4180 quoted commas + em-dashes; NOT the full chaos.
+- ⚠ **`fs-safe` filter behavior** — empirically observed (2026-05-06) that the filter does NOT replace hyphens in filenames. Source code `[<>:"/\\|?* -]` regex includes hyphen at end of char class but actual filenames preserve hyphens. NOT a blocking bug (Obsidian handles parens + hyphens fine; CURIE pattern admits both); flagged as a v0.1-RC investigation.
+- ⚠ **Crosswalk volume at OLIR-scale** — NIST OLIR repository has thousands of CSF↔800-53 mappings. Tested at 30; needs 1000-row fixture stress test before community plugin submission.
+- ⚠ **Closure scale** — tested with 30 edges; needs 100-1000 edge stress test (engineering scale model in Ch 18 §2.4 says 10K mappings + branching 3 + depth 5 → ~1-3s closure on warm cache; should verify).
+- ⚠ **Mobile (Capacitor) sanity** — deferred to v0.1-RC per milestone scope.
+- ⚠ **OSCAL bundle import** — JSON-with-iterator-path support is a v0.2 input format per the [transform-engine-depth decision log](/crosswalker/agent-context/zz-log/2026-05-05-transform-engine-depth-and-input-formats/). NIST OSCAL catalogs are JSON; we don't test JSON input yet.
+
+**v0.1-RC blocker list (carry forward to v0.1-RC scope)**:
+
+1. Full-catalog stress test (1000+ rows for NIST 800-53 r5; 100+ subcategories for CSF; 900+ techniques for MITRE)
+2. Real-source CSV stress test (download actual NIST CSV; verify multi-line cells / supplemental guidance / encoding work)
+3. Mobile (Capacitor) sanity test (per milestone Phase 4 deferral)
+4. OLIR-scale crosswalk test (1000+ edge fixture)
+5. Closure scale test (verify Ch 18 §2.4 wall-clock estimates hold)
+6. `fs-safe` filter behavior — investigate why hyphens aren't replaced; either fix or document
+7. Bundle size verification — measure final v0.1-RC plugin size against ~1.2 MB target

@@ -1,0 +1,23 @@
+id,title,family,parent,description
+AC-1,Policy and Procedures,AC,,"Develop, document, and disseminate organization-level access control policy and procedures; review and update at organization-defined frequency"
+AC-2,Account Management,AC,,Define and document the types of accounts allowed and prohibited; assign account managers; establish conditions for group and role membership
+AC-2(1),Automated System Account Management,AC,AC-2,Support the management of system accounts using automated mechanisms
+AC-2(2),Automated Temporary and Emergency Account Management,AC,AC-2,Automatically remove or disable temporary and emergency accounts after organization-defined time period
+AC-2(3),Disable Accounts,AC,AC-2,"Disable accounts when accounts have expired, are no longer associated with a user, are in violation of organizational policy, or have been inactive for a defined period"
+AC-2(4),Automated Audit Actions,AC,AC-2,"Automatically audit account creation, modification, enabling, disabling, and removal actions"
+AC-2(5),Inactivity Logout,AC,AC-2,Require users to log out when an organization-defined period of expected inactivity is reached
+AC-2(7),Privileged User Accounts,AC,AC-2,"Establish and administer privileged user accounts in accordance with role-based or attribute-based access scheme; monitor privileged role assignments; reassign or remove privileges when no longer required"
+AC-2(11),Usage Conditions,AC,AC-2,"Enforce circumstances or usage conditions for accounts including, e.g., time of day, day of week, point of origin, or types of activities permitted"
+AC-2(12),Account Monitoring for Atypical Usage,AC,AC-2,Monitor system accounts for atypical usage; report findings to designated personnel
+AC-2(13),Disable Accounts for High-risk Individuals,AC,AC-2,Disable accounts of individuals within organization-defined time period of discovery of significant risk indicators
+AC-3,Access Enforcement,AC,,Enforce approved authorizations for logical access to information and system resources in accordance with applicable access control policies
+AC-3(7),Role-based Access Control,AC,AC-3,Enforce a role-based access control policy over defined subjects and objects; control access based upon defined roles and authorized users
+AC-3(8),Revocation of Access Authorizations,AC,AC-3,Enforce the revocation of access authorizations resulting from changes to security attributes
+AC-4,Information Flow Enforcement,AC,,Enforce approved authorizations for controlling the flow of information within the system and between connected systems
+AC-5,Separation of Duties,AC,,"Identify and document organization-defined duties of individuals requiring separation; define system access authorizations to support separation of duties"
+AC-6,Least Privilege,AC,,Employ the principle of least privilege; allow only authorized accesses for users which are necessary to accomplish assigned organizational tasks
+AC-6(1),Authorize Access to Security Functions,AC,AC-6,Authorize access for organization-defined individuals or roles to defined security functions and security-relevant information
+AC-7,Unsuccessful Logon Attempts,AC,,"Enforce a limit of organization-defined consecutive invalid logon attempts by a user during a defined time period; lock the account or delay next logon prompt"
+AC-8,System Use Notification,AC,,"Display system use notification message or banner before granting access; describe the system, monitoring, and prohibited use; obtain acknowledgment"
+AC-11,Device Lock,AC,,Prevent further access to the system by initiating a device lock or terminating the session after organization-defined inactivity period
+AC-12,Session Termination,AC,,Automatically terminate user session after organization-defined trigger conditions or events occur

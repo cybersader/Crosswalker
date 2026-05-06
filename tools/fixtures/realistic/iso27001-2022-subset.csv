@@ -1,0 +1,16 @@
+id,title,clause,parent,description
+A.5.1,Policies for information security,Organizational,,"Information security policy and topic-specific policies shall be defined, approved by management, published, communicated to and acknowledged by relevant personnel and relevant interested parties — and reviewed at planned intervals"
+A.5.2,Information security roles and responsibilities,Organizational,,Information security roles and responsibilities shall be defined and allocated according to the organization's needs
+A.5.3,Segregation of duties,Organizational,,"Conflicting duties and conflicting areas of responsibility shall be segregated — to reduce opportunities for unauthorized or unintentional modification or misuse of the organization's assets"
+A.5.4,Management responsibilities,Organizational,,Management shall require all personnel to apply information security in accordance with the established information security policy
+A.5.5,Contact with authorities,Organizational,,The organization shall establish and maintain contact with relevant authorities
+A.5.7,Threat intelligence,Organizational,,"Information relating to information security threats shall be collected and analysed to produce threat intelligence — supporting risk-based decisions on prevention, detection, and response"
+A.5.10,Acceptable use of information and other associated assets,Organizational,,Rules for the acceptable use and procedures for handling information and other associated assets shall be identified
+A.5.12,Classification of information,Organizational,,"Information shall be classified according to the information security needs of the organization based on confidentiality, integrity, availability and relevant interested parties' requirements"
+A.5.15,Access control,Organizational,,Rules to control physical and logical access to information and other associated assets shall be established and implemented based on business and information security requirements
+A.5.16,Identity management,Organizational,,The full life cycle of identities shall be managed
+A.5.17,Authentication information,Organizational,,The allocation and management of authentication information shall be controlled by a management process — including advising personnel on appropriate handling of authentication information
+A.5.18,Access rights,Organizational,,"Access rights to information and other associated assets shall be provisioned, reviewed, modified and removed in accordance with the organization's topic-specific policy"
+A.5.23,Information security for use of cloud services,Organizational,,"Processes for acquisition, use, management and exit from cloud services shall be established in accordance with the organization's information security requirements"
+A.6.1,Screening,People,,"Background verification checks on all candidates to become personnel shall be carried out — proportional to the business requirements, the classification of the information to be accessed and the perceived risks"
+A.6.3,"Information security awareness, education and training",People,,"Personnel of the organization and relevant interested parties shall receive appropriate information security awareness, education and training"
