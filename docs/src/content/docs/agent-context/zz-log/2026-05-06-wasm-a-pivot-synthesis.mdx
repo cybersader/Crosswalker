@@ -1,0 +1,127 @@
+---
+title: "WASM-A pivot — synthesis (sqlite-vec deferred; calendar-anchored 2026-11-06 revisit)"
+description: "v0.1.5 substrate decision reverted from WASM-B (vendor sqlite-vec-wasm-demo) to WASM-A (plain @sqlite.org/sqlite-wasm) after the demo artifact hit a 5-issue emscripten env-detection chain in Obsidian's Electron renderer. The demo is built for plain web browsers, not Electron's hybrid window+process environment. Calendar-anchored revisit: 2026-11-06."
+tags: [foundation, design, tier-2, sqlite-vec, wasm-packaging, pivot, electron, calendar-anchored, ch-24-q4-trigger]
+date: 2026-05-06
+sidebar:
+  label: "05-06 · WASM-A pivot synthesis"
+  order: -20260506.1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::tip[This log captures an architectural pivot during v0.1.5 Phase 1]
+The user-approved [WASM-B path](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/#path-history--wasm-b-attempted-reverted-to-wasm-a-2026-05-05--2026-05-06) (vendor `sqlite-vec-wasm-demo` on 2026-05-05) hit fundamental incompatibility with Obsidian's Electron renderer during 2026-05-06 integration. Reverted to WASM-A (plain `@sqlite.org/sqlite-wasm`); sqlite-vec deferred. This is a **Ch 24 §5 Q4 trigger firing sooner than expected** — exactly the failure mode the trigger anticipated. Calendar-anchored revisit: **2026-11-06**.
+:::
+
+## §1 The verdict
+
+| Question | Verdict | Confidence |
+|---|---|---|
+| Ship vec from day 1 in v0.1.5 (WASM-B)? | **REJECT** — demo artifact incompatible with Electron renderer | High (5 issues confirmed in succession) |
+| Defer vec; ship plain sqlite-wasm in v0.1.5 (WASM-A)? | **ADOPT** — Phase 1 substrate scaffolding green; 6/6 smoke tests pass | High |
+| Calendar-anchored revisit for vec | **2026-11-06** (6 months out) | Locked |
+| Ch 24 §4 substrate commitment violated? | **No** — substrate is `@sqlite.org/sqlite-wasm + sqlite-vec`. Vec deferred *temporarily* per schema spec §7 line 733 ("v0.1+ optional add-on; defer concrete DDL"). Substrate commitment intact. | High |
+
+## §2 Why each verdict is correct
+
+**WASM-B rejection** (one breath): the `sqlite-vec-wasm-demo` artifact (v0.1.9, official from asg017) is a *demo build* (`-sENVIRONMENT=web`; debug symbols; no size optimization). Obsidian's Electron renderer is a hybrid environment — `window` (Chromium) AND `process` (Node integration) both exist. The demo's emscripten-generated env detection sees `process.versions?.node` and aborts with "not compiled for this environment". Patching that surface revealed 4 more downstream emscripten quirks (`new URL('.', blobURL)` rejection; `Module.postRun already processed` init order; etc.). Each fix exposed the next layer of mismatch. The artifact is fundamentally wrong-environment for Electron.
+
+**WASM-A adoption** (one breath): `@sqlite.org/sqlite-wasm` (the official SQLite-team build) is also web-targeted but has been hardened for Electron via well-established Obsidian-plugin precedent. Loading it via Blob URL (Obsidian's app:// URLs can't be dynamic-imported as ES modules) just works. All 6 Phase 1 substrate-scaffolding smoke tests pass on the first integration attempt. SQL projection (Tier 2's primary value) is fully operational.
+
+**Calendar revisit** (one breath): trigger-based revisit alone allows infinite postponement. A hard date (2026-11-06) forces a check even if no triggers fire — the upstream tooling could improve quietly. We commit to checking on that date OR sooner if any of the 5 listed signals fire.
+
+## §3 The 5-issue chain — what specifically broke
+
+Honest record so future-us doesn't underestimate the next attempted vec integration:
+
+| # | Issue | Root cause | Resolution attempted |
+|---|---|---|---|
+| 1 | Build target mismatch | sqlite-vec-wasm-demo uses BigInt literals (ES2020+); esbuild was set to ES2018 | Bumped esbuild target to ES2020 ✓ |
+| 2 | wdio service file copy gap | `obsidian-launcher` hardcodes copying only `manifest.json` + `main.js` + `styles.css` (verified at `node_modules/obsidian-launcher/dist/chunk-DSNG7BMO.js:1535-1538`); the additional `.wasm` + `.mjs` aren't copied to the test vault | Added wdio.conf.mts `before` hook to copy them manually ✓ |
+| 3 | Env-detection throw | Demo artifact's emscripten init does `if (typeof process !== 'undefined' && process.versions?.node) throw new Error('not compiled for this environment')`. Obsidian's renderer exposes Node integration → throws | Patched the .mjs string before Blob URL load ✓ |
+| 4 | `new URL('.', blobURL)` rejection | When loaded via Blob URL, `import.meta.url` becomes a `blob:` URL; Chromium rejects relative-URL parent computation | Patched `import.meta.url` references to a placeholder HTTPS URL ✓ |
+| 5 | `Module.postRun already processed` | Emscripten init order issue surfaced after the prior fixes. Init context is in inconsistent state | **Unresolved** — root cause not fully diagnosed; treated as evidence the demo artifact isn't tractable in this environment |
+
+After issue #5, the user accepted the WASM-A revert. The cumulative pattern (5 issues in succession, each requiring a non-trivial workaround) is itself the diagnosis: **the demo artifact is the wrong tool for this environment**. A proper vec integration needs either upstream Electron support or a custom build (WASM-C).
+
+## §4 What's locked in (revised v0.1.5 substrate commitments)
+
+| Aspect | v0.1.5 lock |
+|---|---|
+| Substrate (v0.1.5 ship state) | `@sqlite.org/sqlite-wasm@3.53.0-build1` (plain — no vec) |
+| Vector layer | **Deferred**; schema reserves the `concept_embeddings` vec0 virtual table DDL commented out for additive re-introduction |
+| WASM packaging | WASM-A (npm-installable plain sqlite-wasm; loaded via Blob URL workaround for Obsidian app:// URL constraint) |
+| Schema additivity | Concepts / mappings / junction_notes don't depend on vec → vec lands additively when re-introduced; no schema migration needed |
+| Substrate commitment from Ch 24 §4 | **Intact** — `@sqlite.org/sqlite-wasm + sqlite-vec` is still the chosen pair; vec is sequenced separately |
+| Bundle size | ~700 KB compressed plugin total (within Ch 24 §2.2 budget) |
+
+## §5 Migration triggers — when to revisit
+
+Per [Ch 24 §5 Q4 (revised in this session)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit). **Calendar-anchored revisit: 2026-11-06.** Even if no signal fires below, re-check the upstream sqlite-vec packaging state on that date.
+
+Re-evaluate when ANY of:
+
+1. **Bundle-size pressure surfaces** — community plugin reviewer pushback, mobile load-time issues, user complaints. Lower priority for WASM-A (we're under budget); will be the dominant trigger if/when WASM-B is retried.
+2. **`sqlite-vec` upstream ships a production-quality npm-installable WASM** — size-optimized, Electron-compatible, distinct from the demo. Most likely path 1.
+3. **`@sqlite.org/sqlite-wasm` ships sqlite-vec compiled in** — the SQLite team statically links sqlite-vec into their build. Aligned incentives (SQLite Inc sponsors sqlite-vec).
+4. **`@sqlite.org/sqlite-wasm` gains runtime extension loading in WASM** — currently disabled for browser security; if upstream flips it on, sqlite-vec loads as a runtime extension cleanly.
+5. **Concrete need for custom build (WASM-C)** that no off-the-shelf artifact satisfies — custom flags, patches, size trim, reproducibility for compliance.
+6. **Demo artifact is abandoned upstream** — no release for 12+ months AND no community fork has gained traction.
+
+If the 2026-11-06 checkpoint arrives and **all are still negative** → push the checkpoint another 6 months OR commit to WASM-C (custom emcc build with `-Os` + LTO + feature trim).
+
+## §6 Reconciliation with prior decisions
+
+| Prior decision | This pivot's relationship |
+|---|---|
+| [Ch 24 §4 v0.1 lock](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — substrate is `sqlite-wasm + sqlite-vec` | **Preserved.** Vec is sequenced (deferred), not abandoned. The substrate pair is still the chosen end-state. |
+| [Ch 24 §3 vector-layer decoupling](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#3-the-deepest-insight--vector-layer-decoupling-as-a-modularity-principle) | **Reinforced.** The fact that vec can be sequenced separately *because* it's purely additive in the schema is the modularity property paying dividends. |
+| [v0.1 schema spec §7 line 733](/crosswalker/agent-context/v0-1-schema-spec/) — "Loading sqlite-vec is a v0.1+ optional add-on; defer concrete DDL" | **Sanctioned.** This pivot is exactly what the spec line authorized. |
+| [Path C user instruction (2026-05-05) — ship vec from day 1](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) | **Walked back with user approval.** User explicitly accepted "if we need to revert, then we will later" framing 2026-05-05; user explicitly approved revert 2026-05-06 after reviewing the 5-issue chain. Calendar revisit (2026-11-06) is the new commitment. |
+| [v0.1.5 milestone scope](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Adjusted: "Out (deferred)" list grew with vector-search UI + embedding generation; substrate ships plain sqlite-wasm; revisit checkpoint section added. |
+
+No commitments are abandoned. The vec layer is deferred, not removed.
+
+## §7 What this does NOT do
+
+- **Does not foreclose vec ever shipping** — calendar revisit keeps the option live; rollback path is ~30 min if vec is later removed
+- **Does not change the substrate commitment** — sqlite-wasm + sqlite-vec is still the end-state
+- **Does not change the schema** — concepts / mappings / junction_notes tables don't reference vec; the `concept_embeddings` vec0 virtual table is reserved (commented-out DDL in `migrations.ts`); vec lands additively
+- **Does not change the recovery property** — Tier 2 still purely a Tier 1 projection; deletable; reprojectable
+- **Does not change Tier 1 schema** — Tier 1 is unchanged; vector embeddings would be a Tier 2-only feature when vec ships
+- **Does not invalidate Phase 2 work** — projector ships completely; v0.1.5 Phases 3-6 proceed unchanged
+
+## §8 What this unblocks
+
+- **Phase 3 (query API + closure cache)** unblocks immediately — recursive-CTE transitive closure works on plain sqlite-wasm; no vec dependency
+- **Phase 4 (plugin integration)** — `onLayoutReady` projection trigger; `clear-sidecar` command; settings toggle. All vec-independent.
+- **v0.1.6 (Bases query layer)** — vec-independent
+- **v0.1.7 (exporters STRM/OSCAL/SSSOM)** — vec-independent
+- **v0.1.8 (audit trail)** — vec-independent
+- **v0.1-RC** — ships without vec; bundle stays well under 1.2 MB
+- **2026-11-06 checkpoint** — revisit vec packaging state; sequence WASM-B retry or WASM-C custom build per signals at that time
+
+## §9 Related
+
+**Architectural decisions:**
+- [Ch 24 — Tier 2 substrate synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — substrate commitment + 5 migration triggers + Q4 (added in this session)
+- [System architecture concept page](/crosswalker/concepts/system-architecture/) — Layer 3 projection details
+- [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/) — line 733 sanctions vec deferral
+- [Two-mode architecture decision](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/) — predecessor decision in same session arc
+
+**Implementation milestone:**
+- [v0.1.5 — Tier 2 sqlite-wasm sidecar projector](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — "Path history" section captures the integration chain in detail
+
+**Concept pillars:**
+- [Embedded vs server substrates](/crosswalker/concepts/embedded-vs-server-substrates/) — long-horizon substrate watch register
+- [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — Tier 1 canonical, Tier 2 derived
+- [Terminology](/crosswalker/concepts/terminology/)
+
+**External references:**
+- [sqlite-vec GitHub](https://github.com/asg017/sqlite-vec) — upstream maintainer (asg017 / Alex Garcia)
+- [sqlite-vec-wasm-demo on npm](https://www.npmjs.com/package/sqlite-vec-wasm-demo) — the demo artifact reverted from
+- [`@sqlite.org/sqlite-wasm` on npm](https://www.npmjs.com/package/@sqlite.org/sqlite-wasm) — the WASM-A choice
+
+**Project memory:**
+- `project_wasm_vendoring_migration_trigger.md` — captures the calendar-anchored 2026-11-06 revisit + 5 future paths in likelihood order

@@ -279,8 +279,10 @@ Static checklist — when you touch certain paths, also update related docs/stat
 | `src/generation/generation-engine.ts` | Re-import safety test (managed/user_preserve frontmatter merge semantics) |
 | `ROADMAP.md` ↔ `docs/src/content/docs/reference/roadmap/index.mdx` | Mirror updates between root + KB (the dual-source convention) |
 | `docs/src/content/docs/reference/roadmap/milestones/v0-1-N-*.mdx` | Flip status in the milestone hub status table at `milestones/index.mdx` |
+| **Milestone shipped (status flipped to ✅)** | Write a delivery log via the `delivery-log` skill (`zz-log/YYYY-MM-DD-vX-Y-Z-<name>-shipped.mdx`) — must include the system-design integration diagram + cascade-unblock section + `## Related`; **AND update CHANGELOG.md `[Unreleased]`** with the milestone's user-visible/architecture-visible changes |
 | Resolved a research challenge | Archive brief to `zz-challenges/archive/` with resolution callout; write synthesis log to `zz-log/`; update `zz-research/index.md`; update design log §6 "Still open" + §8 "Next steps" tables (use the `synthesis-log` skill) |
 | New architectural commitment | Memory file (`project_*.md`); `CHANGELOG.md` `[Unreleased]` entry; design log update |
+| **Any commit (mid-milestone or full milestone)** that ships user-visible or architecture-visible behavior | If the change is significant beyond the commit message, add a `CHANGELOG.md` `[Unreleased]` entry. CHANGELOG `[Unreleased]` is the single canonical "what's coming in the next release" log — implementation deliveries DO belong here, not just architectural commitments |
 | `package.json` scripts | Document in `docs/src/content/docs/development/setup.mdx` build-commands table |
 | New `.claude/skills/*` | Verify YAML frontmatter present (description triggers discovery); reference in `.claude/CLAUDE.md` skills list |
 | `concepts/*.mdx` (new pillar) | Cross-link from related pages; add to relevant indexes |

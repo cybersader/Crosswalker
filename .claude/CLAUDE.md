@@ -34,7 +34,8 @@ The 2026-05-04 design phase concluded with five fresh-agent research challenges 
 │   ├── obsidian-bases/    # Obsidian Bases query authoring
 │   ├── obsidian-markdown/ # Obsidian-flavor Markdown patterns
 │   ├── session-log/       # Generic dated-doc creator (workspace-shared)
-│   ├── synthesis-log/     # Crosswalker zz-log discipline (project-specific)
+│   ├── synthesis-log/     # Crosswalker zz-log discipline — architectural decisions
+│   ├── delivery-log/      # Per-milestone delivery-log discipline — what shipped + integration diagram
 │   └── testing-patterns/  # Test pattern library
 ├── settings.local.json    # User-specific Claude Code settings (GITIGNORED)
 └── plans/                 # Plan-mode files (GITIGNORED)
@@ -53,6 +54,7 @@ The canonical project KB is the docs site. For an agent new to the project:
 
 | Topic | Page |
 |---|---|
+| **Read first — system architecture overview** (3 tiers, 6 layers, component-to-tier matrix) | [concepts/system-architecture](https://cybersader.github.io/crosswalker/concepts/system-architecture/) |
 | The core problem | [concepts/problem](https://cybersader.github.io/crosswalker/concepts/problem/) |
 | What makes Crosswalker unique | [concepts/what-makes-crosswalker-unique](https://cybersader.github.io/crosswalker/concepts/what-makes-crosswalker-unique/) |
 | Vault hierarchy primitives | [concepts/hierarchy-primitives](https://cybersader.github.io/crosswalker/concepts/hierarchy-primitives/) |
@@ -68,6 +70,24 @@ The canonical project KB is the docs site. For an agent new to the project:
 | Research deliverables | [agent-context/zz-research](https://cybersader.github.io/crosswalker/agent-context/zz-research/) |
 | Open research challenges | [agent-context/zz-challenges](https://cybersader.github.io/crosswalker/agent-context/zz-challenges/) |
 | Agent-tooling progressive-disclosure space | [agent-context/agent-tooling](https://cybersader.github.io/crosswalker/agent-context/agent-tooling/) |
+
+## v0.1 implementation status (as of 2026-05-06)
+
+| Milestone | Status |
+|---|---|
+| [v0.1.1](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) — Type system + validation foundation | ✅ Done (2026-05-04) |
+| [v0.1.2](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-2-render/) — render() v1 | ✅ Done (2026-05-05) |
+| [v0.1.3](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — Generation engine integration | ✅ Done (2026-05-05) |
+| [v0.1.4](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — Junction notes + crosswalk edges | ✅ Done (2026-05-05) |
+| [v0.1.4.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — Streaming refactor | ✅ Done (2026-05-05) |
+| **[v0.1.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — Tier 2 sqlite-wasm sidecar** | 🚧 Phase 1+2 done; Phase 3 (query API) next |
+| [v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer | 📋 Planning |
+| [v0.1.7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — Exporters (STRM/OSCAL/SSSOM) | 📋 Planning |
+| [v0.1.8](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — Audit trail T1 default | 📋 Planning |
+| [v0.1-RC](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — Ship | 📋 Planning |
+
+**Date-anchored revisit checkpoints:**
+- **2026-11-06** — sqlite-vec packaging revisit (per [WASM-A pivot synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) + [Ch 24 §5 Q4](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit))
 
 ## Operational rules (load-bearing for agents)
 
@@ -147,6 +167,6 @@ See `docs/src/content/docs/development/setup.mdx` for the full `bun run` referen
 
 ---
 
-**Last Updated**: 2026-05-04
+**Last Updated**: 2026-05-06 (v0.1.5 mid-milestone — Phase 1+2 done; system-architecture concept page added; WASM-A pivot logged)
 **For**: Crosswalker Obsidian Plugin Development (v0.1 implementation phase)
 **Agent Role**: Implementation & Documentation Assistant
