@@ -181,16 +181,29 @@ That's **4 of 5 gaps** — the highest-leverage agent of the bunch.
 
 ## §5 Build sequencing
 
-| # | Build | Effort | Why this order |
-|---|---|---|---|
-| 1 | `pre-commit-reviewer` agent | ~2 hr | Highest leverage; catches 4/5 observed gaps |
-| 2 | `milestone-starter` agent (uses wikilink-crawl skill) | ~1.5 hr | Catches gap #3 (the closure-cache bug class); pairs naturally with the skill we just shipped |
-| 3 | CI gates (`lint-and-validate.yml` + `fixtures-drift.yml` + `docs-build-gate.yml` + `personal-data-sweep.yml`) | ~3 hr | Mechanical patterns; CI is durable; complement (not replace) the agents |
-| 4 | `pre-push-reviewer` agent | ~1 hr | Final safety net before push; mostly redundant with `pre-commit-reviewer` + CI but valuable as backstop |
-| 5 | `kb-structure-guardian` agent | ~2 hr | Drift detection; lower urgency now (small KB); higher urgency when contributor count grows |
-| 6 | `design-moment-crawler` agent | ~1 hr | Overlap with `milestone-starter`; build only if the overlap turns out to be insufficient |
+| # | Build | Effort | Status (2026-05-06) | Why this order |
+|---|---|---|---|---|
+| 1 | `pre-commit-reviewer` agent | ~2 hr | ✅ Done 2026-05-06 | Highest leverage; catches 4/5 observed gaps |
+| 2 | `milestone-starter` agent (uses wikilink-crawl skill) | ~1.5 hr | ✅ Done 2026-05-06 | Catches gap #3 (the closure-cache bug class); pairs naturally with the skill we just shipped |
+| 3 | CI gates (`lint-and-validate.yml` + `fixtures-drift.yml` + `docs-build-gate.yml` + `personal-data-sweep.yml`) | ~3 hr | ⏸ **Deferred** — calendar-anchored revisit 2026-08-06 (3 months out) | User decision 2026-05-06: not confident in adding more GitHub Actions yet; revisit when the project has more contributors OR when the agents prove insufficient OR at v0.1-RC |
+| 4 | `pre-push-reviewer` agent | ~1 hr | 📋 Deferred | Final safety net before push; mostly redundant with `pre-commit-reviewer` + CI but valuable as backstop |
+| 5 | `kb-structure-guardian` agent | ~2 hr | 📋 Deferred | Drift detection; lower urgency now (small KB); higher urgency when contributor count grows |
+| 6 | `design-moment-crawler` agent | ~1 hr | 📋 Likely-fold-into milestone-starter | Overlap with `milestone-starter`; build only if the overlap turns out to be insufficient |
 
-**Cumulative: ~10 hours of agent + CI work for a substantial workflow improvement.** Front-load #1 + #2 (the highest-leverage 3.5 hr); rest can land incrementally.
+**Cumulative: ~10 hours of agent + CI work for a substantial workflow improvement.** Front-load #1 + #2 (the highest-leverage 3.5 hr) ✅ done. Rest can land incrementally.
+
+### CI gates revisit — 2026-08-06
+
+User decision 2026-05-06: defer the 4 CI gates (lint-and-validate / fixtures-drift / docs-build-gate / personal-data-sweep) for now. Reason: not yet confident in adding more GitHub Actions complexity to the repo while the agent-level review tier is still maturing.
+
+**Calendar-anchored revisit: 2026-08-06** (3 months out). Re-evaluate if any of:
+
+- Pre-commit-reviewer + milestone-starter agents prove insufficient (mechanical patterns slip through to push)
+- Project gains more contributors (each new contributor benefits more from CI gates than a solo dev does)
+- v0.1-RC ship-prep approaches (bundle size + lint cleanliness becomes ship-blocking; CI gates become ship-prep)
+- A specific incident (a personal data leak; an MDX-build break post-push; a fixture drift) makes the cost concrete
+
+Don't push the date past 2026-08-06 without explicit decision. CI gates are mechanical and durable — the longer they're deferred, the more expensive each "could have been caught" incident becomes.
 
 ## §6 Reconciliation with prior decisions
 

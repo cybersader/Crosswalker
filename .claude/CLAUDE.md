@@ -39,7 +39,8 @@ The 2026-05-04 design phase concluded with five fresh-agent research challenges 
 │   ├── wikilink-crawl/    # Pre-design 2-hop crawl of linked docs (READ skill; pairs with WRITE skills)
 │   └── testing-patterns/  # Test pattern library
 ├── agents/                # Project-specific subagent definitions (committed)
-│   └── pre-commit-reviewer.md  # Audits staged diff for alignment-with-conventions; flags CHANGELOG drift / missing logs / personal data / etc.
+│   ├── pre-commit-reviewer.md  # Audits staged diff for alignment-with-conventions; flags CHANGELOG drift / missing logs / personal data / etc.
+│   └── milestone-starter.md    # Pre-work context briefing — crawls milestone page + dependencies + cited Ch NN sections; produces 1-page briefing before code starts
 ├── settings.local.json    # User-specific Claude Code settings (GITIGNORED)
 └── plans/                 # Plan-mode files (GITIGNORED)
 ```
