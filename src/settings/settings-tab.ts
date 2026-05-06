@@ -252,6 +252,30 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		// Tier 2 sidecar (v0.1.5)
+		new Setting(containerEl).setName('Tier 2 sidecar').setHeading();
+
+		new Setting(containerEl)
+			.setName('Enable Tier 2 projection on vault load')
+			.setDesc('Auto-project canonical Tier 1 frontmatter into the .crosswalker.sqlite sidecar when the vault opens. Disable if you query Tier 1 directly via Bases and don\'t need fast SQL queries.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableTier2Projection)
+				.onChange(async (value) => {
+					this.plugin.settings.enableTier2Projection = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Sidecar file path')
+			.setDesc('Vault-relative path for the SQLite sidecar. Default: .crosswalker.sqlite at vault root. The file is deletable — the projector rebuilds it from canonical Tier 1 on next vault load.')
+			.addText(text => text
+				.setPlaceholder('.crosswalker.sqlite')
+				.setValue(this.plugin.settings.tier2SidecarPath)
+				.onChange(async (value) => {
+					this.plugin.settings.tier2SidecarPath = value || '.crosswalker.sqlite';
+					await this.plugin.saveSettings();
+				}));
+
 		// Debug Section
 		new Setting(containerEl).setName('Debug').setHeading();
 

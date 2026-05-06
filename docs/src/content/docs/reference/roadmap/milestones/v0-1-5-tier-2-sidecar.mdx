@@ -195,13 +195,21 @@ Six phases, each commit-able independently. Streaming foundation from [v0.1.4.5]
   8. Second closure call returns cached rows (same shape as first)
   9. runProjection invalidates closure_cache (mappings-change → cache cleared)
 
-### Phase 4: Plugin integration
+### Phase 4: Plugin integration ✅ Done (2026-05-06)
 
-- [ ] `src/main.ts` — `onLayoutReady()` triggers lazy `projectFromTier1` (deferred until vault is fully loaded; runs in background with progress notice)
-- [ ] `plugin.tier2` instance handle exposing the query API for E2E + future commands
-- [ ] `plugin.runProjection()` — E2E entry point
-- [ ] New command: `Crosswalker: Clear Tier 2 sidecar` (palette) — deletes `.crosswalker.sqlite` and triggers re-projection
-- [ ] Settings: `enableTier2Projection` toggle (default true); `tier2SidecarPath` (default `.crosswalker.sqlite` at vault root)
+- [x] `src/main.ts` — `app.workspace.onLayoutReady()` triggers `autoProjectOnLayoutReady()` which lazy-runs `projectFromTier1`. Per Ch 24 §2 recovery property — onLayoutReady is the canonical entry point that makes "if .crosswalker.sqlite is missing, the projector reprojects" real
+- [x] Settings-toggleable via `enableTier2Projection` (default true); auto-projection skipped silently if disabled
+- [x] Errors during auto-projection don't block plugin lifecycle — Tier 1 vault is still functional; user sees a Notice if errors > 0
+- [x] `plugin.openTier2()` + `plugin.runProjection()` + `plugin.queryConcepts/Crosswalk/Closure` all exposed as instance handles (shipped in Phases 1-3; verified usable in Phase 4)
+- [x] Palette command `crosswalker:clear-tier-2-sidecar` — closes handle, deletes sidecar, next access reprojects
+- [x] Settings tab: new "Tier 2 sidecar" heading section with `enableTier2Projection` toggle + `tier2SidecarPath` text input (defaults `.crosswalker.sqlite`)
+- [x] `openTier2()` now respects `settings.tier2SidecarPath`; `clearSidecar()` uses the same path
+- [x] E2E: `tests/e2e/sidecar-phase-4-integration.spec.ts` — 5/5 tests pass:
+  1. Settings include tier2 fields with sane defaults
+  2. clear-tier-2-sidecar command is registered
+  3. openTier2() respects settings.tier2SidecarPath
+  4. clear-sidecar palette command closes handle + reprojects (recovery property verified)
+  5. enableTier2Projection=false setting doesn't disable manual runProjection (only controls auto-trigger on vault load)
 
 ### Phase 5: Tests
 

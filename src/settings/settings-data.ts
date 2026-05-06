@@ -53,6 +53,12 @@ export interface CrosswalkerSettings {
 	streamingThresholdMB: number;               // File size to trigger streaming parser
 
 	// ==========================================================================
+	// Tier 2 sidecar (v0.1.5)
+	// ==========================================================================
+	enableTier2Projection: boolean;             // Auto-project Tier 1 → Tier 2 on vault load
+	tier2SidecarPath: string;                   // Vault-relative path; default '.crosswalker.sqlite'
+
+	// ==========================================================================
 	// Debug
 	// ==========================================================================
 	enableDebugLog: boolean;
@@ -103,6 +109,10 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	customTransformsPath: '',
 	maxRowsForPreview: 100,
 	streamingThresholdMB: 5,           // Use streaming for files > 5MB
+
+	// Tier 2 sidecar (v0.1.5)
+	enableTier2Projection: true,
+	tier2SidecarPath: '.crosswalker.sqlite',
 
 	// Debug
 	enableDebugLog: false,

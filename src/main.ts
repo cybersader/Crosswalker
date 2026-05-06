@@ -79,7 +79,9 @@ export default class CrosswalkerPlugin extends Plugin {
 	 */
 	openTier2 = async (): Promise<SidecarHandle> => {
 		if (this.tier2Handle) return this.tier2Handle;
-		this.tier2Handle = await openSidecar(this, this.app);
+		this.tier2Handle = await openSidecar(this, this.app, {
+			sidecarPath: this.settings.tier2SidecarPath,
+		});
 		return this.tier2Handle;
 	};
 
@@ -161,7 +163,7 @@ export default class CrosswalkerPlugin extends Plugin {
 						await this.tier2Handle.close();
 						this.tier2Handle = null;
 					}
-					await clearSidecar(this);
+					await clearSidecar(this, this.settings.tier2SidecarPath);
 					new Notice('Tier 2 sidecar cleared. Next query will reproject from Tier 1.');
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
@@ -174,7 +176,59 @@ export default class CrosswalkerPlugin extends Plugin {
 		// Register settings tab
 		this.addSettingTab(new CrosswalkerSettingTab(this.app, this));
 
+		// v0.1.5 Phase 4: auto-trigger Tier 2 projection on vault load.
+		// `onLayoutReady` fires once when the Obsidian workspace is fully
+		// initialized; safer than running on plugin onload (which may run
+		// before metadataCache has finished indexing the vault). Lazy +
+		// silent — projection runs in background, errors logged to debug
+		// log without surfacing a Notice unless something genuinely fails.
+		this.app.workspace.onLayoutReady(() => {
+			void this.autoProjectOnLayoutReady();
+		});
+
 		await this.debug.log('Crosswalker plugin loaded');
+	}
+
+	/**
+	 * Auto-projection on vault load. Per v0.1 schema spec §7 recovery
+	 * property + Ch 24 §2: "if .crosswalker.sqlite is missing, corrupted,
+	 * or stale, the projector rebuilds it from canonical Tier 1 on next
+	 * vault load." This is the entry point that makes that property real.
+	 *
+	 * Settings-toggleable via `enableTier2Projection` (default true).
+	 * Yields control to the UI thread between batches via the projector's
+	 * cooperative-yield mechanism so the workspace stays responsive.
+	 */
+	private async autoProjectOnLayoutReady(): Promise<void> {
+		if (!this.settings.enableTier2Projection) {
+			await this.debug?.log('Tier 2 auto-projection disabled in settings');
+			return;
+		}
+		try {
+			await this.debug?.log('Tier 2 auto-projection: starting');
+			const result = await this.runProjection();
+			await this.debug?.log('Tier 2 auto-projection: complete', {
+				success: result.success,
+				counts: result.counts,
+				durationMs: result.durationMs,
+			});
+			if (!result.success && result.errors.length > 0) {
+				new Notice(
+					`Tier 2 projection finished with ${result.errors.length} errors. Check debug log.`,
+					6000,
+				);
+			}
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			await this.debug?.log('Tier 2 auto-projection failed', { error: msg });
+			// Non-fatal — Tier 1 vault is still functional. Surface a notice
+			// so the user knows queries against Tier 2 may not return fresh
+			// results, but don't block the plugin lifecycle.
+			new Notice(
+				`Tier 2 projection failed (Tier 1 vault is unaffected; queries may be stale). See debug log.`,
+				6000,
+			);
+		}
 	}
 
 	onunload() {
