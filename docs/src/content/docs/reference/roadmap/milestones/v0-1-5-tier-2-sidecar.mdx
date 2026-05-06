@@ -172,14 +172,28 @@ Six phases, each commit-able independently. Streaming foundation from [v0.1.4.5]
 - [x] `plugin.runProjection()` exposed — primary E2E entry; cached sidecar handle reused
 - [x] E2E: `tests/e2e/sidecar-phase-2-projection.spec.ts` — 7 tests, all pass (counts; concept projection; crosswalk projection; junction projection; ontology upsert; idempotency; skip-non-crosswalker)
 
-### Phase 3: Query API
+### Phase 3: Query API ✅ Done (2026-05-06)
 
-- [ ] New `src/tier2/queries.ts` — typed helpers:
-  - `getControlsByOntology(ontologyId)` — flat list
-  - `findCoverageGaps(ontologyId)` — left-join `controls` × `junction_notes` where junction is null
-  - `crosswalkBetween(subjectOntology, objectOntology, predicateId?)` — direct edges between two ontologies
-  - `closureFromConcept(curie, predicateId, maxDepth)` — recursive CTE; populates `closure_cache` on first call; reads cache on subsequent calls
-- [ ] Closure cache invalidation — when projector runs and any `mappings` row changes, `DELETE FROM closure_cache`
+- [x] New `src/tier2/queries.ts` — typed helpers:
+  - [x] `getConceptsByOntology(db, ontologyId)` — flat list of concepts in the given ontology, ordered by curie
+  - [x] `crosswalkBetween(db, subjectOntology, objectOntology, predicateId?)` — direct edges between two ontologies, optionally filtered by STRM predicate
+  - [x] `closureFromConcept(db, startCurie, predicateId?, maxDepth?)` — transitive closure via recursive CTE per [Ch 18 §2 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) patterns: path-string anti-join cycle detection + `MIN(depth)` aggregation + predicate filter in both base + recursive arms
+  - [ ] `findCoverageGaps(ontologyId)` — deferred (requires wikilink resolution against junction_notes.subject string-matching; future milestone)
+- [x] Closure cache lazy materialization (Ch 18 §2.5):
+  - First call computes the recursive CTE, populates closure_cache (subject_id=start_curie, predicate_id=predicate_filter, object_id=target_curie, shortest_depth=N)
+  - Subsequent calls hit the cache directly via `WHERE subject_id = $start AND predicate_id = $pred`
+  - Projector clears closure_cache after any mappings change (`DELETE FROM closure_cache` in `projector.ts`)
+- [x] `plugin.queryConcepts(ontologyId)` + `plugin.queryCrosswalk(subj, obj, pred?)` + `plugin.queryClosure(start, pred?, maxDepth?)` exposed as instance handles
+- [x] E2E: `tests/e2e/sidecar-phase-3-queries.spec.ts` — 9 tests, all pass:
+  1. queryConcepts returns all concepts in ontology
+  2. queryCrosswalk returns direct edges (no predicate filter)
+  3. queryCrosswalk with predicate filter returns only matching edges
+  4. queryClosure (no filter) computes full reachability — verifies shortest-path semantics with multiple competing paths
+  5. queryClosure with predicate filter — verifies filter applied in both base + recursive arms; verifies shortest path correctly skips filtered-out edges
+  6. closure_cache empty after fresh projection
+  7. closure_cache populated after first closure call
+  8. Second closure call returns cached rows (same shape as first)
+  9. runProjection invalidates closure_cache (mappings-change → cache cleared)
 
 ### Phase 4: Plugin integration
 

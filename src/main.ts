@@ -12,6 +12,14 @@ import { buildProvenance } from './generation/provenance';
 import { generateNotes, generateFromRecipe } from './generation/generation-engine';
 import { openSidecar, clearSidecar, type SidecarHandle } from './tier2/sidecar';
 import { projectFromTier1, type ProjectionResult } from './tier2/projector';
+import {
+	getConceptsByOntology,
+	crosswalkBetween,
+	closureFromConcept,
+	type ConceptRow,
+	type MappingRow,
+	type ClosureEntry,
+} from './tier2/queries';
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -85,6 +93,34 @@ export default class CrosswalkerPlugin extends Plugin {
 	runProjection = async (): Promise<ProjectionResult> => {
 		const handle = await this.openTier2();
 		return projectFromTier1(this.app, handle.db, { debug: this.debug });
+	};
+
+	/**
+	 * v0.1.5 Phase 3 query API — typed SQL helpers for the v0.1.6 Bases
+	 * query layer + v0.1.7 exporters. Per
+	 * [system architecture Layer 4](https://cybersader.github.io/crosswalker/concepts/system-architecture/#layer-4--query-t1--t2--user).
+	 */
+	queryConcepts = async (ontologyId: string): Promise<ConceptRow[]> => {
+		const handle = await this.openTier2();
+		return getConceptsByOntology(handle.db, ontologyId);
+	};
+
+	queryCrosswalk = async (
+		subjectOntology: string,
+		objectOntology: string,
+		predicateId?: string,
+	): Promise<MappingRow[]> => {
+		const handle = await this.openTier2();
+		return crosswalkBetween(handle.db, subjectOntology, objectOntology, predicateId);
+	};
+
+	queryClosure = async (
+		startCurie: string,
+		predicateId?: string,
+		maxDepth?: number,
+	): Promise<ClosureEntry[]> => {
+		const handle = await this.openTier2();
+		return closureFromConcept(handle.db, startCurie, predicateId, maxDepth);
 	};
 
 	async onload() {

@@ -22,6 +22,21 @@ This page is the **unified spec** the v0.1 codebase will be built against. It pu
 
 The earlier-written [config-schema-design](/crosswalker/agent-context/config-schema-design/) and [constraint-enforcement](/crosswalker/agent-context/constraint-enforcement/) pages stay as background design rationale; this page is the consolidated v0.1 build target.
 
+### Where this spec is implemented (forward-links to milestones)
+
+Each schema section in this spec is implemented by specific [v0.1 implementation milestones](/crosswalker/reference/roadmap/milestones/):
+
+| Spec section | Implementing milestone(s) | Status |
+|---|---|---|
+| §3 `_crosswalker` metadata block | [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (provenance writer); [v0.1.1 — Type system + validation](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) (AJV) | ✅ Done |
+| §4 ImportRecipe + render() | [v0.1.2 — render() v1](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) (pure function); [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) (kind dispatch); [v0.1.4.5 — Streaming refactor](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) (AsyncIterable rows) | ✅ Done |
+| §5 Junction note 13-field schema | [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) (kind: junction-note dispatch); [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) | ✅ Done |
+| §7 Tier 2 sidecar SQL schema | [v0.1.5 — Tier 2 sqlite-wasm sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (Phase 1 substrate; Phase 2 projector; Phase 3 query API + closure cache) | 🚧 Phase 1+2+3 done |
+| §7 Recursive-CTE closure cache | [v0.1.5 Phase 3](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — see [Ch 18 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) for the algorithmic patterns and engineering scale model | 🚧 In progress |
+| §8 Cross-schema invariants | All v0.1 milestones | Enforced via test harness |
+
+**Higher-level system view**: see the [system architecture page](/crosswalker/concepts/system-architecture/) for the 6-layer view (import / storage / projection / query / export / audit) showing how each schema fits the broader pipeline.
+
 :::tip[Architectural safety guarantee]
 Tier 2 sidecar SQL is *always* a projection of Tier 1 frontmatter. Delete the .sqlite file → the projector reprojects it from canonical files on next vault load. Tier 1 alone is functional. See [v0.1 stack-pivot §2](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#2-the-architectural-safety-guarantee-load-bearing-principle).
 :::
