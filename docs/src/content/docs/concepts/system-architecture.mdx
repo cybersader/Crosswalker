@@ -1,0 +1,654 @@
+---
+title: System architecture — components, tiers, and data flow
+description: One-page canonical view of Crosswalker's architecture. Three storage tiers (source, canonical Markdown, derived SQLite); six logical layers (import, storage, projection, query, export, audit); the components inside each layer; what reads what; where to look in code + docs. Simplified TL;DR up front, progressively more detail below.
+sidebar:
+  order: 1
+  label: "System architecture"
+tags: [architecture, tiers, components, system, design, foundation, layered]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page is the canonical entry point for understanding **how Crosswalker's pieces fit together.** It consolidates information that was previously scattered across the [ETL concept](/crosswalker/concepts/etl-and-import/), the [embedded substrates concept](/crosswalker/concepts/embedded-vs-server-substrates/), the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/), and per-milestone pages.
+
+If you're new here, read this first.
+
+## TL;DR
+
+Crosswalker has **three storage tiers** and **six logical layers** that move data between them.
+
+```
+                  CROSSWALKER IN ONE DIAGRAM
+
+                     ┌─ Tier 0 — your source data ─┐
+                     │  CSV, JSON, JSONL, XLSX     │
+                     │  (your raw spreadsheets,    │
+                     │   exports, etc.)            │
+                     └────────────┬────────────────┘
+                                  │
+                          (1) IMPORT layer
+                                  │
+                                  ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │   Tier 1 — canonical Markdown vault                     │
+   │   ──────────────────────────────────────────            │
+   │   .md files with YAML frontmatter                       │
+   │   conforming to spec/tier1.schema.json                  │
+   │                                                         │
+   │   THIS IS THE TRUTH. git-tracked. Obsidian reads        │
+   │   this. Bases queries this. Exports come from this.     │
+   └─────────────────────────────────────────────────────────┘
+                                  │
+                          (3) PROJECTION layer
+                                  │
+                                  ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │   Tier 2 — SQLite sidecar (derived; deletable)          │
+   │   ──────────────────────────────────────────            │
+   │   .crosswalker.sqlite at vault root                     │
+   │   tables: ontologies, concepts, mappings,               │
+   │           junction_notes, closure_cache                 │
+   │                                                         │
+   │   PURELY A CACHE. Delete it → reprojects from Tier 1.   │
+   │   Exists because SQL queries over crosswalk closures    │
+   │   are 100× faster than walking .md files every time.    │
+   └─────────────────────────────────────────────────────────┘
+```
+
+**Three tiers, simply:**
+
+- **Tier 0** = your source data (whatever shape it arrives in)
+- **Tier 1** = the canonical Markdown vault (what Obsidian sees, what git tracks, what survives plugin uninstall) — **the source of truth**
+- **Tier 2** = a deletable SQLite cache derived from Tier 1 — **convenience for fast queries**
+
+**Six logical layers, simply:**
+
+| # | Layer | What it does | Where it operates |
+|---|---|---|---|
+| 1 | **Import** | Read source → write canonical Markdown | T0 → T1 |
+| 2 | **Storage** | Hold canonical state on disk | T1 (also T2 once projected) |
+| 3 | **Projection** | Read T1 → write T2 (the projector) | T1 → T2 |
+| 4 | **Query** | Answer user questions over T1 + T2 | T1, T2 → user |
+| 5 | **Export** | Read T1 (or T2) → write external formats | T1, T2 → external |
+| 6 | **Audit** | Track who-changed-what + integrity | git, signed manifests |
+
+The rest of this page expands each layer with diagrams, components, and code references.
+
+## The simplified picture
+
+Three rules that make the whole architecture tractable:
+
+1. **Tier 1 is canonical.** Every other tier (T0, T2, exports) is either upstream of T1 or derived from T1. Nothing important lives only in T2.
+2. **Tier 2 is deletable.** If `.crosswalker.sqlite` is missing, corrupted, or stale, the projector rebuilds it from T1 on next vault load. This is what makes Tier 2 risk-free to bundle ([Ch 24 §2](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)).
+3. **The contract is the schema, not the engine.** Anyone who can write valid [Tier 1 frontmatter](/crosswalker/agent-context/v0-1-schema-spec/) is a first-class producer ([schema-as-primitive commitment](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience)).
+
+These three rules together mean: **you can lose, replace, or reimplement everything except the Tier 1 schema and the canonical Markdown vault.** That property is what makes the architecture portable, modular, and resilient.
+
+## The three storage tiers
+
+| Tier | What it is | Lifetime | Authoritative? | Spec |
+|---|---|---|---|---|
+| **Tier 0** | Source data in whatever shape it ships (CSV, JSON, JSONL, XLSX, OSCAL, etc.) | Whenever the user has it | No — it's the input | n/a (any structured format) |
+| **Tier 1** | Canonical Markdown vault — `.md` files with YAML frontmatter | Permanent (git-tracked) | **Yes** — the source of truth | [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) |
+| **Tier 2** | `.crosswalker.sqlite` sidecar — a SQL projection of Tier 1 | Recreatable on demand | No — derived from T1 | [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/#7-tier-2-sidecar-sql-schema-sqlite-wasm-projection) |
+
+**What "canonical" means**: every field in Tier 2 has to be derivable from Tier 1 frontmatter. Every queryable Tier 1 frontmatter field has to be a flat scalar or wikilink (no nested objects, no inline expressions) so it's [Bases-queryable](/crosswalker/concepts/metadata-ecosystem/) directly without going through T2.
+
+**What's NOT a tier**:
+- `ParsedData` (the bundled engine's in-memory iteration shape) is **not a tier** — it's an implementation detail of the import layer (see [ETL concept "What ParsedData is"](/crosswalker/concepts/etl-and-import/#what-parseddata-is-and-isnt))
+- The recipe (`spec/recipe.schema.json`) is **not a tier** — it's a transformation declaration consumed by the import layer
+- The closure cache (rows in `closure_cache` table) is **not a separate tier** — it's a materialized view inside Tier 2
+
+## Layer 1 — Import (T0 → T1)
+
+**One-liner**: take a source ontology + a recipe, produce Tier 1 Markdown files.
+
+```
+                       IMPORT LAYER
+
+  Source data            ┌─ Recipe ──────────────┐
+  (T0)                   │ spec/recipe.schema.   │
+   │                     │ json — declares HOW   │
+   ▼                     │ to project source     │
+  Parser                 │ rows into vault       │
+  (PapaParse,            │ primitives            │
+   xlsx, JSON)           └───────────┬───────────┘
+   │                                 │
+   ▼                                 │
+  ParsedData                         │
+  (in-memory iter or                 │
+   AsyncIterable for                 │
+   streaming sources)                │
+   │                                 │
+   └──────────┬──────────────────────┘
+              │
+              ▼  per row
+   ┌─────────────────────────────────────────┐
+   │  ConceptIdentity {curie, scope}         │
+   │  + Recipe                               │
+   │              │                          │
+   │              ▼                          │
+   │  render() ◄── pure function (Ch 22)     │
+   │              │                          │
+   │              ▼                          │
+   │  Address (path + frontmatter +          │
+   │           tags + aliases +              │
+   │           wikilinkTarget)               │
+   │              │                          │
+   │              ▼                          │
+   │  + buildProvenance() (_crosswalker)     │
+   │              │                          │
+   │              ▼                          │
+   │  validateTier1Frontmatter() ◄── PRE-    │
+   │              │           WRITE GATE     │
+   │              ▼                          │
+   │  mergeFrontmatter() if existing file    │
+   │              │  (managed/user_preserve) │
+   │              ▼                          │
+   │  app.vault.create() / .modify()         │
+   └──────────────┬──────────────────────────┘
+                  │
+                  ▼
+              Tier 1 file
+```
+
+### Components in this layer
+
+| Component | Code | What it does |
+|---|---|---|
+| **Source parsers** | `src/import/parsers/csv-parser.ts` (+ JSONL + JSON-with-iterator-path planned for v0.2) | T0 file → `ParsedData` (eager array OR `AsyncIterable<Row>`) |
+| **Streaming foundation** | `src/import/parsers/csv-parser.ts:parseCSVFileStream` | PapaParse `step` callback → AsyncIterable with backpressure ([v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/)) |
+| **render()** | `src/render/index.ts` | Pure function `(Recipe, ConceptIdentity) → Address` ([v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/)) |
+| **Template engine** | `src/render/template.ts` | R2RML-style `{var\|filter}` interpolation; closed 7-filter set; JSONata sub-language reserved for v0.3+ |
+| **Mechanisms** | `src/render/mechanisms/{folder,file,heading,tag,wikilink}.ts` | The 5 closed [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — folder/file/heading wired in v0.1; tag/wikilink reserved for v0.2 |
+| **Kind dispatch** | `src/render/index.ts` (Tier1Kind) | `kind: concept \| junction-note \| crosswalk-edge` discriminator ([v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/)) |
+| **Generation engine** | `src/generation/generation-engine.ts:generateNotes / generateFromRecipe` | Per-row loop calling render() + provenance + validation + merge → vault.create/modify |
+| **Frontmatter merge** | `src/generation/frontmatter-merge.ts` | managed (recipe-owned, overwritten) vs user_preserve (recipe-untouched) per Ch 22 §8.4 |
+| **Provenance writer** | `src/generation/provenance.ts` | `_crosswalker` block per Tier 1 schema $defs/provenance_block |
+| **Validator (pre-write gate)** | `src/validation/validator.ts:validateTier1Frontmatter` | AJV against `spec/tier1.schema.json`. Strict mode rejects bad rows pre-write — STRM predicate enforcement happens here |
+| **Legacy-recipe shim** | `src/generation/legacy-recipe-shim.ts` | Translates v0.1.0 column-role configs → Ch 22 layout Recipe (Phase-0 compat per Ch 22 §10.7) |
+
+### Two-mode architecture
+
+The import layer supports **two architectural modes** ([decided 2026-05-05](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/)):
+
+- **Mode 1 — bundled projector**: external producer (or wizard) hands the bundled engine structured rows + recipe → engine emits Tier 1
+- **Mode 2 — direct emission**: external producer (AI agent, MCP server, marketplace bundle) writes Tier 1 Markdown directly, bypassing the bundled engine
+
+Both are first-class. ChunkyCSV / JSONaut / dbt are natural Mode 1 feeders. AI agents are natural Mode 2 emitters. See [ETL concept "two-mode architecture"](/crosswalker/concepts/etl-and-import/#the-two-mode-architecture--bundled-projector-or-direct-emission) for the full picture.
+
+### Milestones that ship this layer
+
+[v0.1.1](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) (validation), [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) (render), [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (engine), [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) (kind dispatch + STRM), [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) (streaming foundation).
+
+## Layer 2 — Storage (Tier 1 = canonical)
+
+**One-liner**: hold the truth as Markdown files on disk.
+
+```
+                       STORAGE LAYER
+
+  vault root/
+  ├── Frameworks/                         ◄── concept-note files
+  │   ├── NIST 800-53 r5/
+  │   │   ├── AC/
+  │   │   │   ├── AC-2.md            ─┐
+  │   │   │   └── AU-1.md            │ kind: concept (default)
+  │   ├── NIST CSF 2.0/              │ frontmatter: curie, title,
+  │   │   ├── PR.AC-01.md           ─┘ parent, _crosswalker, ...
+  │
+  ├── Crosswalks/                         ◄── crosswalk-edge files
+  │   ├── CSF-to-800-53/
+  │   │   ├── cw-pr-ac-01-ac-2.md   ─┐
+  │   │   └── cw-id-am-01-cm-8.md   ─┘ kind: crosswalk-edge
+  │                                    frontmatter: subject_id,
+  │                                                 predicate_id,
+  │                                                 object_id, ...
+  ├── Evidence/
+  │   └── Junctions/                      ◄── junction-note files
+  │       └── jn-ac-2-mfa-policy.md   ─── kind: junction-note
+  │                                       frontmatter: subject,
+  │                                                    predicate,
+  │                                                    object, ...
+  │
+  ├── .crosswalker.sqlite                 ◄── Tier 2 sidecar
+  │                                          (derived; deletable)
+  │
+  └── _crosswalker_manifest.json          ◄── Audit (Tier 1
+                                              floor, v0.1.8)
+```
+
+### Properties of Tier 1 storage
+
+- **File-based**: every concept, evidence link, and crosswalk is its own `.md` file
+- **YAML frontmatter is the data**: per Ch 22 §1.3, frontmatter is flat-scalar / wikilink only, not nested objects
+- **git-tracked**: every change is a commit ([v0.1.8 audit trail](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/))
+- **Obsidian-native**: files appear in the file explorer, search, graph view, Bases queries, etc., natively
+- **Survives plugin uninstall**: even with no plugins enabled, the vault is still readable Markdown
+- **Three Tier 1 shapes** discriminated by `kind` field — concept / junction-note / crosswalk-edge ([Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/))
+
+### Why files instead of a database
+
+See [`concepts/file-based-graph-database`](/crosswalker/concepts/file-based-graph-database/) for the full philosophical case. Short version: files are diffable, mergeable, exportable, archivable, attestable, and survive every tool/plugin in the stack getting replaced.
+
+## Layer 3 — Projection (T1 → T2)
+
+**One-liner**: read Tier 1 Markdown frontmatter, write rows into the SQLite sidecar.
+
+```
+                     PROJECTION LAYER
+
+  Tier 1                                      Tier 2
+  ─────────────────                           ───────────────────
+  Frameworks/                                 ┌─ ontologies ────┐
+  NIST/AC-2.md            ─────►              │ id │name │ver  │
+   curie: nist:AC-2                           └─────────────────┘
+   title: ...
+   parent: nist:AC                            ┌─ concepts ──────┐
+   _crosswalker: {...}                        │ ontology│curie│ │
+                                              │ ─path───┼──── │
+                                              │ vault_path:    │
+  Crosswalks/                                 │ Frameworks/... │
+  cw-csf-pr-ac-01-                            └─────────────────┘
+  nist-ac-2.md            ─────►
+   kind: crosswalk-edge                       ┌─ mappings ──────┐
+   subject_id: csf:PR.AC-01                   │ subj│pred│obj │ │
+   predicate_id: is_eq...                     │ id  │ id │ id │ │
+   object_id: nist:AC-2                       └─────────────────┘
+   match_type: ...
+                                              ┌─ junction_notes ─┐
+  Evidence/                                   │ vault_path│curie│ │
+  jn-ac-2-mfa.md          ─────►              │ subject│pred│obj│ │
+   kind: junction-note                        └──────────────────┘
+   subject: AC-2
+   predicate: covers                          ┌─ closure_cache ──┐
+   object: MFA-Policy                         │ subj│pred│obj │  │
+                                              │ shortest_depth│  │  ◄── populated lazily
+                                              └──────────────────┘     on first transitive
+                                                                       query
+                                              ┌─ schema_meta ────┐
+                                              │ key │ value     │
+                                              │ schema_version:  │
+                                              │ tier2-sqlite-v1  │
+                                              └──────────────────┘
+```
+
+### Components in this layer
+
+| Component | Code | What it does |
+|---|---|---|
+| **Sidecar lifecycle** | `src/tier2/sidecar.ts:openSidecar/clearSidecar` | Init sqlite-wasm; OPFS sahpool VFS; open `.crosswalker.sqlite` |
+| **Schema migrations** | `src/tier2/migrations.ts` | drop-and-recreate on version mismatch (correct because T2 is purely a T1 projection) |
+| **Schema DDL** | `src/tier2/schema.sql` | The full Tier 2 SQL schema per spec §7 |
+| **Projector** | `src/tier2/projector.ts` (Phase 2 of v0.1.5) | Walk vault `.md` files via streaming foundation; dispatch by `kind`; idempotent upsert |
+| **Closure cache** | `src/tier2/queries.ts` (Phase 3 of v0.1.5) | Recursive-CTE materialization on first transitive query; mtime-based invalidation |
+
+### Recovery property (load-bearing)
+
+If `.crosswalker.sqlite` is missing, corrupted, or stale, the projector reprojects from canonical Tier 1 on next vault load. **This is what makes Tier 2 risk-free to bundle.** Per [Ch 24 §2](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — the modularity rule that lets us swap substrates (libSQL/Limbo/server) without data migration.
+
+### Substrate
+
+`@sqlite.org/sqlite-wasm` (canonical, foundation-governed). `sqlite-vec` deferred — see the [WASM-A path notes in v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/#path-history--wasm-b-attempted-reverted-to-wasm-a-2026-05-05--2026-05-06) and the calendar-anchored 2026-11-06 revisit checkpoint in [Ch 24 §5 Q4](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit).
+
+### Milestones that ship this layer
+
+[v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (the entire projection layer).
+
+## Layer 4 — Query (T1 + T2 → user)
+
+**One-liner**: let users ask questions over their vault — flat lookups via Bases over T1, transitive/joined queries via SQL over T2.
+
+```
+                        QUERY LAYER
+
+   User question                  Routing decision
+   ─────────────                  ────────────────
+   "Show me all NIST          ─►  Bases over Tier 1 frontmatter
+    AC-family controls"           (file.hasTag('framework/nist/ac'))
+
+   "What evidence covers      ─►  Bases over Tier 1 frontmatter
+    AC-2?"                        (junction-note where subject == AC-2)
+
+   "Which CSF                 ─►  Bases (simple case) OR SQL (cross-
+    subcategories map to          ontology join)
+    NIST AC-family?"
+
+   "Show all controls         ─►  SQL recursive CTE over mappings
+    NIST CSF Identify             table (Tier 2; closure_cache
+    maps to via any chain         materialized on first call)
+    of crosswalks"
+
+   "Coverage matrix:          ─►  SQL join over concepts ×
+    every control × every         mappings × junction_notes
+    framework that maps           (Tier 2)
+    to it × evidence count"
+```
+
+### Components in this layer
+
+| Component | Code | What it does |
+|---|---|---|
+| **Bases (upstream Obsidian)** | n/a (built-in to Obsidian) | Flat YAML-frontmatter queries directly over Tier 1 — no plugin needed |
+| **SQL query helpers** | `src/tier2/queries.ts` (v0.1.5 Phase 3) | Typed `getControlsByOntology`, `findCoverageGaps`, `crosswalkBetween`, `closureFromConcept` |
+| **Bases query templates emitted in concept-note bodies** | `src/generation/templates/` (v0.1.6) | Recipe-author authors a body template; engine emits a working Bases query in each concept note |
+
+### When to use which
+
+| Question shape | Tier | Why |
+|---|---|---|
+| Flat key/value over a single note kind | **Tier 1 via Bases** | Native; no plugin; survives Tier 2 corruption |
+| Tag-prefix or single-frontmatter-field filter | **Tier 1 via Bases** | Same |
+| Multi-ontology joins | **Tier 2 via SQL** | Bases doesn't do joins; SQL does |
+| Transitive closure (chain of crosswalks) | **Tier 2 via SQL recursive CTE** | Closure cache materialized once; subsequent queries hit the cache |
+| Coverage matrix (controls × evidence × frameworks) | **Tier 2 via SQL** | Multi-table join; awkward in Bases |
+| Vector / semantic similarity | **Tier 2 via sqlite-vec** | Deferred to a future milestone (see Ch 24 §5 Q4) |
+
+The choice is the recipe author's (or query author's). Tier 1 is the default for simple queries because it survives Tier 2 corruption. Tier 2 is for when SQL's expressivity is needed.
+
+### Milestones that ship this layer
+
+[v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) (Bases templates + query API).
+
+## Layer 5 — Export (T1 → external; or T2 → external)
+
+**One-liner**: serialize Tier 1 (or Tier 2) data into external interop formats.
+
+```
+                        EXPORT LAYER
+
+   Tier 1 / Tier 2  ──►  Exporter  ──►  External format
+   ────────────────      ────────       ────────────────
+
+   crosswalk-edge        STRM          NIST IR 8278A r1
+   notes (T1)            TSV           OLIR template
+   OR mappings (T2)      exporter      (Excel-friendly TSV)
+                                        round-trip determ.
+
+   junction-note         OSCAL JSON    NIST OSCAL
+   notes (T1)            profile       Control Mapping Model
+   OR junction_notes     exporter      (.json profile)
+   (T2)
+
+   crosswalk-edge        SSSOM TSV     SSSOM (Mapping Commons)
+   notes (T1)            exporter      academic interop
+   OR mappings (T2)      (opt-in)      (TSV with metadata
+                                        header; off by default
+                                        per Ch 19 — zero GRC
+                                        adoption)
+```
+
+### Components in this layer
+
+| Component | Code | What it does |
+|---|---|---|
+| **STRM TSV exporter** | `src/export/strm-tsv.ts` (v0.1.7) | Reads T2 mappings; emits NIST IR 8278A r1 OLIR template format |
+| **OSCAL JSON exporter** | `src/export/oscal-profile.ts` (v0.1.7) | Reads T1 junction notes (or T2 junction_notes); emits OSCAL Control Mapping profile |
+| **SSSOM TSV exporter** | `src/export/sssom-tsv.ts` (v0.1.7) | Reads T2 mappings; emits SSSOM-shaped TSV; opt-in toggle |
+
+### Round-trip determinism
+
+The export layer commits to **byte-identical round-trip**: import a STRM TSV → export the resulting Tier 1 vault → STRM TSV bytes match. This is enforced by tests in v0.1.7. Importing your own export and re-exporting must be a fixed point.
+
+### Milestones that ship this layer
+
+[v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) (the entire export layer).
+
+## Layer 6 — Audit (cross-cutting)
+
+**One-liner**: track who-changed-what, when, with what integrity guarantees.
+
+```
+                         AUDIT LAYER
+
+   Tier 1 = git commits (T1 audit floor)
+            ─────────────────────────
+            Every generation pass produces one commit
+            Commit message includes recipe id + recipe hash +
+            concept count + summary diff
+            git log + git blame are the audit trail
+
+                   +
+            ────────────────────────────────────────────
+            Optional Ed25519-signed release manifests
+            for shared mapping bundles
+            (per Ch 13 attestation primitives)
+
+                   +
+            ────────────────────────────────────────────
+            On-demand FRE 902(13) certification PDF
+            (US litigation evidence-submission template)
+
+   Tier 2/Tier 3 audit profiles (deferred to v1.0+):
+            ─────────────────────────────────────────
+            T2: OpenTimestamps / RFC 3161 trusted timestamps,
+                S3 Object Lock WORM mirror
+            T3: Sigstore Rekor v2 + in-toto attestations,
+                eIDAS QTSA + W3C VC
+            All opt-in compliance-export mode (per Ch 13/15)
+```
+
+### Components in this layer
+
+| Component | Code | What it does |
+|---|---|---|
+| **git commit hook** | `src/audit/git-commit.ts` (v0.1.8) | One commit per generation pass; deterministic message |
+| **Ed25519 sign helper** | `src/audit/sign.ts` (v0.1.8) | `@noble/curves`; signs release manifests |
+| **Release manifest writer** | `src/audit/manifest.ts` (v0.1.8) | `_crosswalker_manifest.json` at vault root |
+| **FRE 902(13) PDF template** | `src/audit/fre-902.ts` (v0.1.8) | `pdf-lib`-rendered certification template |
+
+### Milestones that ship this layer
+
+[v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) (Tier 1 audit floor: git + Ed25519 + FRE 902(13)).
+
+## Component-to-tier matrix
+
+A single table of every load-bearing logical component, where it lives, and what it reads/writes:
+
+| Component | Layer | Reads | Writes | Code |
+|---|---|---|---|---|
+| Source parser | Import | T0 file | `ParsedData` (in-memory iter) | `src/import/parsers/*.ts` |
+| `render()` | Import | Recipe + ConceptIdentity | `Address` (in-memory) | `src/render/index.ts` |
+| Generation engine | Import | `ParsedData` + Recipe | Tier 1 `.md` files | `src/generation/generation-engine.ts` |
+| Validator | Import | Frontmatter object | (returns valid/invalid) | `src/validation/validator.ts` |
+| Frontmatter merge | Import | Existing frontmatter + new managed | Merged frontmatter | `src/generation/frontmatter-merge.ts` |
+| Provenance writer | Import | source ref + recipe id | `_crosswalker` block | `src/generation/provenance.ts` |
+| Tier 1 vault | Storage | (passive) | (held on disk) | n/a — files |
+| Sidecar lifecycle | Projection | (init only) | Opens `.crosswalker.sqlite`; applies migrations | `src/tier2/sidecar.ts` |
+| Projector | Projection | Tier 1 `.md` frontmatter | `ontologies`, `concepts`, `mappings`, `junction_notes` rows | `src/tier2/projector.ts` (v0.1.5 Phase 2) |
+| Closure cache populator | Projection | `mappings` table | `closure_cache` table | `src/tier2/queries.ts:closureFromConcept` |
+| Bases queries | Query | Tier 1 frontmatter | (returns user data) | n/a (upstream Obsidian) |
+| SQL query helpers | Query | Tier 2 tables | (returns user data) | `src/tier2/queries.ts` |
+| Body-query templates | Query | Recipe template | Tier 1 note body (Bases query string) | `src/generation/templates/` (v0.1.6) |
+| STRM TSV exporter | Export | T2 mappings (or T1 crosswalk-edge notes) | `.tsv` file | `src/export/strm-tsv.ts` (v0.1.7) |
+| OSCAL JSON exporter | Export | T1 junction notes (or T2) | `.json` file | `src/export/oscal-profile.ts` (v0.1.7) |
+| SSSOM TSV exporter | Export | T2 mappings | `.tsv` file | `src/export/sssom-tsv.ts` (v0.1.7) |
+| git commit hook | Audit | (write event) | git commit | `src/audit/git-commit.ts` (v0.1.8) |
+| Ed25519 signer | Audit | Release bundle | Signature on `_crosswalker_manifest.json` | `src/audit/sign.ts` (v0.1.8) |
+| FRE 902(13) PDF | Audit | Vault hash + signed manifest | `.pdf` file | `src/audit/fre-902.ts` (v0.1.8) |
+
+## Read/write data flow
+
+Which components read/write which storage tier:
+
+| Tier | Written by | Read by |
+|---|---|---|
+| **T0** (source) | the user (or external producer) | Source parser |
+| **T1** (canonical Markdown) | Generation engine; external Mode 2 producers | Bases queries; projector; exporters; git audit |
+| **T2** (SQLite sidecar) | Sidecar lifecycle (open + migrations); projector; closure cache populator | SQL query helpers; exporters (when joining over T2 tables) |
+| **External** (TSV / JSON / PDF) | Exporters; FRE 902(13) PDF generator | (downstream tools — Excel, OSCAL validators, courts) |
+
+Notice that **everything ultimately traces back to Tier 1**: T0 produces T1, T2 derives from T1, exports come from T1 (or T2 which derives from T1), audit hashes T1. No data lives only in T2.
+
+## Where to look in the codebase
+
+```
+src/
+├── main.ts                        ── Plugin entry point. Wires everything.
+│
+├── render/                        ── render() — Layer 1 single coupling point
+│   ├── index.ts                      Pure (Recipe, ConceptIdentity) → Address
+│   ├── template.ts                   {var|filter} interpolation engine
+│   ├── types.ts                      Address, ConceptIdentity, SourceScope
+│   └── mechanisms/                   The 5 closed primitives
+│       ├── folder.ts                 wired
+│       ├── file.ts                   wired
+│       ├── heading.ts                wired
+│       ├── tag.ts                    deferred to v0.2 (stub)
+│       └── wikilink.ts               deferred to v0.2 (stub)
+│
+├── import/                        ── Layer 1 (source → render input)
+│   ├── parsers/
+│   │   └── csv-parser.ts             PapaParse + streaming (v0.1.4.5)
+│   └── import-wizard.ts              The wizard UI (column-role mapping)
+│
+├── generation/                    ── Layer 1 (render output → Tier 1)
+│   ├── generation-engine.ts          Per-row loop; calls render(); writes vault
+│   ├── frontmatter-merge.ts          managed/user_preserve semantics
+│   ├── provenance.ts                 _crosswalker block writer
+│   └── legacy-recipe-shim.ts         v0.1.0 column-role → Ch 22 layout
+│
+├── validation/                    ── Layer 1 pre-write gate
+│   └── validator.ts                  AJV against spec/tier1.schema.json
+│
+├── tier2/                         ── Layer 3 (projection)
+│   ├── sidecar.ts                    sqlite-wasm lifecycle; OPFS sahpool VFS
+│   ├── schema.sql                    Tier 2 DDL (canonical .sql doc)
+│   ├── migrations.ts                 schema_version + drop-and-recreate
+│   ├── projector.ts                  Tier 1 → Tier 2 (v0.1.5 Phase 2)
+│   └── queries.ts                    Typed query API + closure cache (v0.1.5 Phase 3)
+│
+├── export/                        ── Layer 5 (T1/T2 → external)
+│   ├── strm-tsv.ts                   v0.1.7
+│   ├── oscal-profile.ts              v0.1.7
+│   └── sssom-tsv.ts                  v0.1.7
+│
+├── audit/                         ── Layer 6 (cross-cutting)
+│   ├── git-commit.ts                 v0.1.8
+│   ├── sign.ts                       v0.1.8
+│   ├── manifest.ts                   v0.1.8
+│   └── fre-902.ts                    v0.1.8
+│
+├── settings/                      ── Plugin settings (cross-layer)
+└── types/
+    └── config.ts                     ParsedData, ImportRecipe, etc.
+
+spec/
+├── tier1.schema.json              ── Tier 1 frontmatter contract
+└── recipe.schema.json             ── Recipe shape contract
+
+recipes/starter/                   ── Mode 1 starter recipes
+├── nist-csf-to-800-53-crosswalk.json
+├── iso27001-to-800-53-crosswalk.json
+├── evidence-junction-notes.json
+└── README.md                         multi-framework recipe-pattern story
+```
+
+## Where to look in the docs
+
+If you want… | Read this
+---|---
+**Quickest way to grasp the system** | This page (TL;DR section)
+**The truth about what Tier 1 must look like** | [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+**The recipe shape (transformation declaration)** | [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) + [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)
+**Why the architecture is shaped this way (the philosophy)** | [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) + [Vision](/crosswalker/agent-context/vision/)
+**Why Tier 1 is files (not a database)** | [File-based graph database concept](/crosswalker/concepts/file-based-graph-database/)
+**Why Tier 2 is sqlite-wasm (and not Turso/libSQL/Limbo)** | [Ch 24 substrate synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)
+**The closed 5-mechanism recipe grammar** | [Hierarchy primitives concept](/crosswalker/concepts/hierarchy-primitives/) + [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)
+**The two-mode architecture (bundled vs direct)** | [ETL two-mode section](/crosswalker/concepts/etl-and-import/#the-two-mode-architecture--bundled-projector-or-direct-emission) + [decision log](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/)
+**Definitions of every term used here** | [Terminology](/crosswalker/concepts/terminology/)
+**The full implementation roadmap** | [Milestones hub](/crosswalker/reference/roadmap/milestones/)
+**The 6 architectural commitments locked 2026-05-04** | [v0.1 import-engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/)
+**Why no JSONaut/ChunkyCSV port + GUI scope line** | [Transform-engine-depth log](/crosswalker/agent-context/zz-log/2026-05-05-transform-engine-depth-and-input-formats/)
+
+## How v0.1 implementation maps to this architecture
+
+```
+v0.1.1 ── Import layer types + validation foundation
+            └── AJV + spec/*.schema.json wired into runtime
+
+v0.1.2 ── Import layer: render() v1
+            └── (Recipe, ConceptIdentity) → Address (folder/file/heading)
+
+v0.1.3 ── Import layer: generation engine integration
+            └── render() wired through engine; provenance + merge
+
+v0.1.4 ── Import layer: kind dispatch (3 Tier 1 shapes)
+            └── concept / junction-note / crosswalk-edge + STRM gate
+
+v0.1.4.5 ─ Import layer: streaming refactor
+            └── ParsedData.rows accepts AsyncIterable<Row>
+            └── Engine iterates via for-await; no full-vault-in-RAM
+
+────── Layer 1 + 2 (storage) complete ──────
+
+v0.1.5 ── Projection layer: Tier 2 sqlite-wasm sidecar     ◄── WE ARE HERE
+            ├── Phase 1 (DONE): substrate scaffolding
+            ├── Phase 2: projector (Tier 1 → Tier 2 tables)
+            ├── Phase 3: query API + closure cache
+            ├── Phase 4: plugin integration
+            ├── Phase 5: tests
+            └── Phase 6: delivery log + status flip
+
+v0.1.6 ── Query layer: Bases templates + SQL helpers
+            └── Concept-note bodies emit working Bases queries
+
+v0.1.7 ── Export layer: STRM TSV + OSCAL + SSSOM
+            └── Round-trip determinism enforced
+
+v0.1.8 ── Audit layer: git + Ed25519 + FRE 902(13)
+            └── Tier 1 audit floor
+
+v0.1-RC ── Ship: bundle size, mobile, community plugin submission
+```
+
+Phase 2 of v0.1.5 (the projector) is the next unit of work — it's the bridge between "Tier 1 exists" and "fast queries are possible."
+
+## Related
+
+**Concept pages (this page links to and from):**
+
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — the import layer details + two-mode architecture
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the 5 closed mechanisms render() dispatches over
+- [Embedded vs server substrates](/crosswalker/concepts/embedded-vs-server-substrates/) — why Tier 2 is embedded
+- [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — why Tier 1 is files
+- [Terminology](/crosswalker/concepts/terminology/) — definitions for every term
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — architectural differentiators
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — how T1 changes are tracked
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases query layer context
+- [Consistency models](/crosswalker/concepts/consistency-models/) — T1 ↔ T2 consistency semantics
+
+**Agent context:**
+
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — Tier 1 + recipe + Tier 2 SQL DDL
+- [Vision](/crosswalker/agent-context/vision/) — why this architecture exists
+- [Tradeoffs](/crosswalker/agent-context/tradeoffs/)
+
+**Foundation decisions (synthesis logs — six load-bearing commitments settled 2026-05-04):**
+
+- [v0.1 import-engine design log](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) — the canonical commitments page
+- [Ch 22 — target-structure expressivity](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — recipe grammar + render()
+- [Ch 23 — bundle/engine/language](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — TS in-plugin engine + JSONata
+- [Ch 24 — Tier 2 substrate](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — sqlite-wasm + sqlite-vec + 5 migration triggers + 2026-11-06 vec revisit
+
+**Recent design decisions (2026-05-05):**
+
+- [Two-mode architecture](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/) — bundled projector + direct emission
+- [Transform-engine depth + input formats](/crosswalker/agent-context/zz-log/2026-05-05-transform-engine-depth-and-input-formats/) — JSONata sub-language; v0.2 JSONL
+- [ETL pipeline clarification](/crosswalker/agent-context/zz-log/2026-05-05-etl-pipeline-clarification/) — what ParsedData is/isn't
+
+**Implementation milestones:**
+
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)
+- [v0.1.1](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) (validation) · [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) (render) · [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (engine) · [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) (kind dispatch) · [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) (streaming)
+- [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (projection) · [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) (query) · [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) (export) · [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) (audit) · [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) (ship)
+
+**Spec files:**
+
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — what Tier 1 frontmatter must look like
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — what a recipe must look like
+
+**Registry references (frameworks the architecture is generic over):**
+
+- [STRM](/crosswalker/reference/registry/strm/) · [SSSOM](/crosswalker/reference/registry/sssom/) · [OSCAL](/crosswalker/reference/registry/oscal/) · [OLIR](/crosswalker/reference/registry/olir/)
+- [NIST](/crosswalker/reference/registry/nist/) · [ISO](/crosswalker/reference/registry/iso/) · [MITRE](/crosswalker/reference/registry/mitre/) · [CIS](/crosswalker/reference/registry/cis/) · [CRI](/crosswalker/reference/registry/cri/) · [FFIEC](/crosswalker/reference/registry/ffiec/) · [SKOS](/crosswalker/reference/registry/skos/)

@@ -6,6 +6,10 @@ sidebar:
 tags: [data-model-graph, data-model-consistency, architecture]
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip">For the full system architecture (how this layer fits with the import, projection, query, export, and audit layers), see the [system architecture page](/crosswalker/concepts/system-architecture/).</Aside>
+
 ## What kind of database is an Obsidian vault?
 
 When Crosswalker generates folders and notes with frontmatter properties and WikiLinks, it's building a **file-based graph database**. Understanding this helps explain both the power and the limitations of the approach.
