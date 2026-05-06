@@ -11,6 +11,7 @@ import { mergeFrontmatter, computeManagedKeys } from './generation/frontmatter-m
 import { buildProvenance } from './generation/provenance';
 import { generateNotes, generateFromRecipe } from './generation/generation-engine';
 import { openSidecar, clearSidecar, type SidecarHandle } from './tier2/sidecar';
+import { projectFromTier1, type ProjectionResult } from './tier2/projector';
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -72,6 +73,18 @@ export default class CrosswalkerPlugin extends Plugin {
 		if (this.tier2Handle) return this.tier2Handle;
 		this.tier2Handle = await openSidecar(this, this.app);
 		return this.tier2Handle;
+	};
+
+	/**
+	 * Run a Tier 1 → Tier 2 projection pass over the vault. Walks every
+	 * `.md` file, dispatches by `kind`, populates `concepts` /
+	 * `mappings` / `junction_notes` tables. Idempotent — re-running on
+	 * an unchanged vault produces the same Tier 2 state. Per
+	 * [system architecture Layer 3](https://cybersader.github.io/crosswalker/concepts/system-architecture/#layer-3--projection-t1--t2).
+	 */
+	runProjection = async (): Promise<ProjectionResult> => {
+		const handle = await this.openTier2();
+		return projectFromTier1(this.app, handle.db, { debug: this.debug });
 	};
 
 	async onload() {

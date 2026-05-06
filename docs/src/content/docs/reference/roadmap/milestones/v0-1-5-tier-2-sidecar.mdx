@@ -160,13 +160,17 @@ Six phases, each commit-able independently. Streaming foundation from [v0.1.4.5]
 - [ ] Smoke test: open sidecar in test-vault, run `SELECT 1`, run `SELECT vec_version()` to confirm sqlite-vec is loaded, verify success
 - [ ] Bundle-size measurement (before/after — record actual size; documented as ~2 MB compressed in v0.1.5; flag for the 6th migration trigger when reduction becomes priority)
 
-### Phase 2: Projector
+### Phase 2: Projector ✅ Done (2026-05-06)
 
-- [ ] New `src/tier2/projector.ts` — `projectFromTier1(app, db)` walks `app.vault.getMarkdownFiles()` lazily (per-file, with cooperative yielding via `await new Promise(setTimeout)` between batches of N files)
-- [ ] Per-file: read frontmatter via `app.metadataCache.getFileCache(file)?.frontmatter`; dispatch by `kind` (default `concept` → `controls` table; `junction-note` → `junction_notes`; `crosswalk-edge` → `mappings`)
-- [ ] Recipe-discovery: scan `recipes/starter/` + saved configs to populate `ontologies` table
-- [ ] Idempotent upsert (`INSERT OR REPLACE`) keyed on `vault_path` for concepts/junctions; auto-increment id for mappings
-- [ ] Provenance: store `source_hash` per row using sha256 of frontmatter JSON
+- [x] New `src/tier2/projector.ts` — `projectFromTier1(app, db, options?)` walks `app.vault.getMarkdownFiles()` lazily; cooperative yield every 50 files (`await new Promise(setTimeout)`)
+- [x] Per-file: read frontmatter via `app.metadataCache.getFileCache(file)?.frontmatter`; dispatch by `kind` (default `concept` → `concepts` table; `junction-note` → `junction_notes`; `crosswalk-edge` → `mappings`)
+- [x] Ontology population: kind-aware — concept-notes register their own ontology (from `fm.curie` prefix); crosswalk-edges register both subject + object ontologies (from `subject_id` and `object_id` prefixes). Recipe-discovery walk deferred to a future milestone (placeholder name/version/recipe_id for now)
+- [x] Idempotent upsert (`INSERT OR REPLACE`) keyed on `vault_path` for concepts/junctions; `source_path` UNIQUE for mappings
+- [x] Source-hash via FNV-1a non-cryptographic hash (cryptographic hashes for audit trail are v0.1.8 concern); excludes `_crosswalker.produced_at` so re-imports of unchanged source produce stable hashes
+- [x] Skips files without `_crosswalker` block (silently, counted as `skipped`)
+- [x] Closure cache invalidated after any mappings write
+- [x] `plugin.runProjection()` exposed — primary E2E entry; cached sidecar handle reused
+- [x] E2E: `tests/e2e/sidecar-phase-2-projection.spec.ts` — 7 tests, all pass (counts; concept projection; crosswalk projection; junction projection; ontology upsert; idempotency; skip-non-crosswalker)
 
 ### Phase 3: Query API
 
