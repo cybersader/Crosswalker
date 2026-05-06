@@ -63,6 +63,7 @@
 		"wdio-obsidian-service": "^3.0.2"
 	},
 	"dependencies": {
+		"@sqlite.org/sqlite-wasm": "^3.53.0-build1",
 		"papaparse": "^5.4.1",
 		"xlsx": "^0.18.5"
 	}

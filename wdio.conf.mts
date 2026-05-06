@@ -54,6 +54,50 @@ export const config: Options.Testrunner = {
     execSync('bun run build', { stdio: 'inherit' });
   },
 
+  /**
+   * v0.1.5 Tier 2: copy sqlite-vec-wasm-demo runtime artifacts into the
+   * isolated test vault's plugin folder. obsidian-launcher only copies
+   * main.js + manifest.json + styles.css (hardcoded list at
+   * obsidian-launcher/dist/chunk-DSNG7BMO.js:1535-1538), so we have to
+   * augment it for our extra runtime assets. Runs once after the
+   * Obsidian instance has set up the temp vault but before any test.
+   */
+  before: async function () {
+    const fs = await import('node:fs/promises');
+    const pathMod = await import('node:path');
+    const { existsSync } = await import('node:fs');
+
+    // Get the test vault's plugin directory via the browser
+    const pluginDir = await browser.executeObsidian(({ app }) => {
+      const cfg = app.vault.configDir; // '.obsidian'
+      // @ts-expect-error - adapter.basePath is internal but stable
+      const basePath = app.vault.adapter.basePath as string;
+      return `${basePath}/${cfg}/plugins/crosswalker`;
+    });
+
+    if (!existsSync(pluginDir)) {
+      console.warn(`[wdio.before] plugin dir not found in test vault: ${pluginDir}`);
+      return;
+    }
+
+    // Copy sqlite3.wasm + sqlite3.mjs from project root (where prod
+    // build outputs them per esbuild.config.mjs) into the temp vault's
+    // plugin dir. WASM-A path uses @sqlite.org/sqlite-wasm; both
+    // artifacts loaded at runtime via the plugin folder.
+    const sourceDir = path.resolve('.');
+    const filesToCopy = ['sqlite3.wasm', 'sqlite3.mjs'];
+    for (const f of filesToCopy) {
+      const src = pathMod.join(sourceDir, f);
+      const dst = pathMod.join(pluginDir, f);
+      if (existsSync(src)) {
+        await fs.copyFile(src, dst);
+      } else {
+        console.warn(`[wdio.before] source artifact missing: ${src}`);
+      }
+    }
+    console.log(`[wdio.before] copied tier-2 artifacts into ${pluginDir}`);
+  },
+
   afterTest: async function (_test: any, _context: any, { error }: any) {
     if (error) {
       const ts = Date.now();

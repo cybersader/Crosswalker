@@ -96,9 +96,16 @@ The deliverable §2.10 + §3.5 + §4.4 spelled out specific triggers. Locking th
 - Major Obsidian ecosystem tool (core, Dataview, Bases) adopts Limbo
 - Limbo's WASM ships stable versioned npm with feature-set matching Tier 2 needs (FTS5, recursive CTEs, vector, OPFS, SAH-pool)
 
-**Q4 (sqlite-vec WASM packaging — added 2026-05-05 during v0.1.5 planning) — re-open if ANY occurs:**
+**Q4 (sqlite-vec WASM packaging — added 2026-05-05; revised 2026-05-06 after WASM-B integration revert) — re-open by 2026-11-06 OR if ANY signal occurs:**
 
-This trigger applies to **how** we ship sqlite-vec, not whether. Per the [v0.1.5 milestone](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/), v0.1.5 ships **WASM-B** via `bun add sqlite-vec-wasm-demo@0.1.9` (the official upstream npm package from asg017). This is a pragmatic v0.1 default that **knowingly violates the [§2.2 ~600 KB plugin budget](#1-the-verdict)** — the demo artifact is 1.8 MB compressed. User accepted this tradeoff to ship vec from day 1 (decision: 2026-05-05). Re-evaluate when ANY of:
+This trigger applies to **how** we ship sqlite-vec, not whether. Updated trajectory:
+
+- **2026-05-05 (planned)**: ship **WASM-B** via `bun add sqlite-vec-wasm-demo@0.1.9` (official upstream npm package from asg017). Pragmatic v0.1 default; knowingly violates the [§2.2 ~600 KB plugin budget](#1-the-verdict) at 1.8 MB compressed. User accepted size tradeoff to ship vec from day 1.
+- **2026-05-06 (reverted)**: WASM-B integration hit a chain of 5 emscripten env-detection issues with the demo artifact in Obsidian's Electron renderer (build target, file-copy, env-detection throw, `import.meta.url` URL construction, postRun init order). The demo is built for plain web browsers, not Electron's hybrid `window`+`process` environment. **Reverted to WASM-A** (plain `@sqlite.org/sqlite-wasm` — official SQLite-team build, Electron-hardened by precedent). All 6 Phase 1 substrate-scaffolding smoke tests pass on WASM-A. See [v0.1.5 milestone "Path history" section](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) for the full integration-issue chain.
+
+**Calendar-anchored revisit: 2026-11-06** (6 months from the WASM-A pivot). Even if no signal fires below, re-check the upstream sqlite-vec packaging state on that date. If all signals are still negative, push the checkpoint another 6 months OR commit to WASM-C (custom emcc build).
+
+Re-evaluate when ANY of:
 
 - **Bundle-size pressure surfaces** ← *most likely trigger to fire.* Community plugin reviewers push back on plugin size, mobile load times degrade noticeably, OR users report sub-1MB plugins as preferable. v0.1.5 ships at ~2 MB compressed (vs Ch 24 §2.2 ~600 KB target).
 - **`sqlite-vec` upstream ships a production-quality npm-installable WASM package** — size-optimized (debug symbols stripped, `-Os` + LTO, feature trim), distinct from the demo artifact

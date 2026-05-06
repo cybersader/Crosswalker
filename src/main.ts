@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { Plugin, Notice } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
 import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
@@ -10,6 +10,7 @@ import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './generation/frontmatter-merge';
 import { buildProvenance } from './generation/provenance';
 import { generateNotes, generateFromRecipe } from './generation/generation-engine';
+import { openSidecar, clearSidecar, type SidecarHandle } from './tier2/sidecar';
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -56,6 +57,23 @@ export default class CrosswalkerPlugin extends Plugin {
 		return generateFromRecipe(this.app, parsedData, recipe, options, this.debug);
 	};
 
+	/**
+	 * Tier 2 sidecar handle. Lazily opened on first access (or via
+	 * runProjection() E2E entry point). Reset to null when clearSidecar
+	 * runs — next openTier2() call recreates from canonical Tier 1.
+	 */
+	tier2Handle: SidecarHandle | null = null;
+
+	/**
+	 * Lazy open the Tier 2 sidecar. Returns the cached handle if already
+	 * open. Used by E2E + future Bases-query / exporter milestones.
+	 */
+	openTier2 = async (): Promise<SidecarHandle> => {
+		if (this.tier2Handle) return this.tier2Handle;
+		this.tier2Handle = await openSidecar(this, this.app);
+		return this.tier2Handle;
+	};
+
 	async onload() {
 		await this.loadSettings();
 
@@ -84,6 +102,26 @@ export default class CrosswalkerPlugin extends Plugin {
 			}
 		});
 
+		// v0.1.5: Tier 2 sidecar — clear command
+		this.addCommand({
+			id: 'clear-tier-2-sidecar',
+			name: 'Clear Tier 2 sidecar (reproject from canonical Tier 1 on next open)',
+			callback: async () => {
+				try {
+					if (this.tier2Handle) {
+						await this.tier2Handle.close();
+						this.tier2Handle = null;
+					}
+					await clearSidecar(this);
+					new Notice('Tier 2 sidecar cleared. Next query will reproject from Tier 1.');
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					new Notice(`Failed to clear Tier 2 sidecar: ${msg}`);
+					await this.debug?.log('Tier 2 clear failed', { error: msg });
+				}
+			},
+		});
+
 		// Register settings tab
 		this.addSettingTab(new CrosswalkerSettingTab(this.app, this));
 
@@ -91,6 +129,7 @@ export default class CrosswalkerPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.tier2Handle?.close();
 		this.debug?.log('Crosswalker plugin unloaded');
 	}
 

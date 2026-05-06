@@ -1,5 +1,7 @@
 # Build output (root level)
 /main.js
+/sqlite3.wasm
+/sqlite3.mjs
 *.js.map
 
 # npm
@@ -19,6 +21,8 @@ node_modules/
 test-vault/.obsidian/plugins/crosswalker/main.js
 test-vault/.obsidian/plugins/crosswalker/manifest.json
 test-vault/.obsidian/plugins/crosswalker/styles.css
+test-vault/.obsidian/plugins/crosswalker/sqlite3.wasm
+test-vault/.obsidian/plugins/crosswalker/sqlite3.mjs
 test-vault/.obsidian/cache/
 test-vault/.obsidian/plugins/*/data.json
 

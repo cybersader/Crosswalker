@@ -1,7 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import { copyFileSync, mkdirSync, existsSync } from "fs";
+import { copyFileSync, mkdirSync, existsSync, statSync } from "fs";
 
 const banner =
 `/*
@@ -37,21 +37,56 @@ const context = await esbuild.context({
 		"@lezer/common",
 		"@lezer/highlight",
 		"@lezer/lr",
+		// v0.1.5: @sqlite.org/sqlite-wasm is dynamically imported at runtime
+		// (see src/tier2/sidecar.ts initSqlite3). External so esbuild
+		// doesn't bundle the .mjs — keeps main.js small.
+		"@sqlite.org/sqlite-wasm",
 		...builtins],
 	format: "cjs",
-	target: "es2018",
+	// es2020 required for BigInt literals used by sqlite-vec-wasm-demo
+	// (Obsidian's renderer is Chromium-based; ES2020 is safe everywhere
+	// Obsidian runs — desktop Electron + mobile Capacitor WebView)
+	target: "es2020",
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
 	outdir: outdir,
 });
 
+// v0.1.5 — Tier 2 sidecar substrate.
+// Copy @sqlite.org/sqlite-wasm's .wasm + .mjs into the plugin distribution
+// at build time. The plugin loads them at runtime via the plugin folder
+// (.mjs via Blob URL because Obsidian's app:// URLs can't be dynamically
+// imported as ES modules; .wasm via Obsidian's adapter URL).
+//
+// **WASM-A path** (decided 2026-05-06 after WASM-B integration revealed
+// emscripten env-detection issues with sqlite-vec-wasm-demo in Electron's
+// hybrid renderer). sqlite-vec is deferred to a future milestone — see
+// Ch 24 §5 Q4 for the date-bound revisit (2026-11-06).
+function copyTier2WasmArtifacts() {
+	const src = "node_modules/@sqlite.org/sqlite-wasm/dist";
+	const wasm = `${src}/sqlite3.wasm`;
+	const mjs = `${src}/index.mjs`;
+	if (!existsSync(wasm) || !existsSync(mjs)) {
+		console.warn(`[crosswalker] WARNING: ${src} artifacts missing — has \`bun install\` run? Tier 2 sidecar will not work.`);
+		return;
+	}
+	copyFileSync(wasm, outdir + "sqlite3.wasm");
+	// Rename to sqlite3.mjs for the runtime loader (sidecar.ts reads it
+	// from the plugin folder under that name).
+	copyFileSync(mjs, outdir + "sqlite3.mjs");
+	const wasmSize = statSync(outdir + "sqlite3.wasm").size;
+	console.log(`[crosswalker] copied @sqlite.org/sqlite-wasm artifact (${(wasmSize / 1024 / 1024).toFixed(2)} MB raw)`);
+}
+
 if (prod) {
 	await context.rebuild();
+	copyTier2WasmArtifacts();
 	process.exit(0);
 } else {
 	copyFileSync("manifest.json", outdir + "manifest.json");
 	copyFileSync("styles.css", outdir + "styles.css");
+	copyTier2WasmArtifacts();
 	await context.watch();
 	console.log("Watching for changes...");
 }

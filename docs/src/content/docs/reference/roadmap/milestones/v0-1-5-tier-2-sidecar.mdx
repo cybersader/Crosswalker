@@ -39,13 +39,47 @@ This collapses the practical option space to three:
 | **WASM (npm-installable)** | Upstream-shipped `sqlite-vec-wasm` npm package that composes cleanly with sqlite-wasm | ✅ Now | None — `bun add` both | ~600 KB | Doesn't exist as of 2026-05-05. Migration target — see "Migration trigger" below. |
 | **WASM-C** | Custom static-link build via emcc + autotools (the formal Ch 24 §4 lock interpretation) | ✅ Now | High — build script + CI choreography | ~600 KB | Reserved for v1.0+ if WASM-B doesn't satisfy a concrete need (custom flags, patches, size trim). |
 
-### Why WASM-B is the chosen v0.1.5 path
+### Path history — WASM-B attempted, reverted to WASM-A (2026-05-05 → 2026-05-06)
 
-Decided 2026-05-05: ship WASM-B (`bun add sqlite-vec-wasm-demo` from npm — official Alex Garcia artifact) now, with explicit migration trigger and rollback path documented.
+**2026-05-05 user decision**: ship WASM-B (`bun add sqlite-vec-wasm-demo`) with vec from day 1. Acknowledged size overrun (~2 MB compressed vs Ch 24 §2.2 ~600 KB target).
 
-**Refinement on "vendor" terminology**: the user originally approved "vendor" (copy `.wasm` into `src/tier2/vendor/`). After verification that `sqlite-vec-wasm-demo` is an official upstream npm package (v0.1.9, maintainer asg017), the implementation uses `bun add sqlite-vec-wasm-demo` instead — same `.wasm` artifact, but managed via package.json + bun.lockb rather than committed to repo history. All three user requirements (migration path, explicit callout, pull-out path) apply identically. esbuild copies the `.wasm` from `node_modules` into the plugin distribution at build time.
+**2026-05-06 integration discovery + revert to WASM-A**: during Phase 1 substrate scaffolding, the WASM-B artifact (`sqlite-vec-wasm-demo` v0.1.9) hit a chain of 5 emscripten env-detection issues in succession when loaded inside Obsidian's Electron renderer:
 
-**Bundle-size reality check (verified 2026-05-05)**: the `sqlite-vec-wasm-demo` artifact is 4.3 MB raw / **1.8 MB gzipped**. This **violates the [Ch 24 §2.2 ~600 KB plugin budget commitment](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) by ~3×.** The artifact is a *demo build* (debug symbols, extra extensions, no size optimization). User decision (2026-05-05): ship anyway, accept the size overrun for v0.1.5; revert or pivot to WASM-C (custom size-optimized build) if size becomes a real problem (community plugin review pushback, mobile load-time issues, user complaints).
+1. **Build target mismatch**: artifact uses BigInt literals (ES2020+); esbuild was set to ES2018 → bumped to ES2020
+2. **wdio service file copy**: obsidian-launcher hardcodes copying `manifest.json` + `main.js` + `styles.css` only → added a wdio `before` hook to copy `.wasm` + `.mjs`
+3. **Env-detection throw**: artifact built with `-sENVIRONMENT=web`; checks `typeof process !== 'undefined' && process.versions?.node` and throws "not compiled for this environment". Obsidian's Electron renderer exposes Node integration → patched the .mjs string to bypass
+4. **`new URL('.', blobURL)`**: artifact's `import.meta.url` becomes a Blob URL when loaded via Blob; Chromium rejects relative URL parent computation → patched `import.meta.url` references to a placeholder HTTPS URL
+5. **`Module.postRun already processed`**: emscripten init order issue surfaced after the prior fixes — final unresolved blocker
+
+The `sqlite-vec-wasm-demo` is fundamentally **a demo build for plain web browsers, not Electron's hybrid `window`+`process` renderer**. Each fix revealed the next layer of mismatch. The user-approved "we revert later" trigger fired sooner than expected.
+
+**Reverted to WASM-A**: plain `@sqlite.org/sqlite-wasm` (the official build by the SQLite team) loads cleanly in Obsidian via the Blob URL workaround — no env-detection traps, well-established Obsidian-plugin precedent. All 6 Phase 1 smoke tests pass on the WASM-A path.
+
+| Change | Before (WASM-B attempt) | After (WASM-A revert) |
+|---|---|---|
+| Substrate package | `sqlite-vec-wasm-demo@0.1.9` | `@sqlite.org/sqlite-wasm@3.53.0-build1` |
+| sqlite-vec | Compiled in (didn't load) | Deferred — see "Revisit checkpoint" below |
+| Bundle size (.wasm gzipped) | 1.8 MB | ~400 KB |
+| Plugin total compressed | ~2 MB (over Ch 24 §2.2 budget) | ~700 KB (within budget) |
+| Phase 1 smoke tests | 2/6 (4 blocked by emscripten issues) | **6/6** |
+
+### Revisit checkpoint — 2026-11-06 (6 months out) or earlier signal
+
+**Hard checkpoint**: re-evaluate sqlite-vec integration by **2026-11-06** (6 months from the WASM-A pivot). This is in addition to (not a replacement for) the [Ch 24 §5 Q4 trigger conditions](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#5-migration-triggers--when-to-revisit). Even if no signal fires, we re-check the upstream tooling state on that date.
+
+What "re-evaluate" looks like at the checkpoint:
+- Has `@sqlite.org/sqlite-wasm` shipped sqlite-vec compiled in?
+- Has Alex Garcia (sqlite-vec maintainer) shipped a production-quality `sqlite-vec-wasm` (not the demo build)?
+- Has anyone in the Obsidian-plugin ecosystem shipped a hardened wrapper?
+- Has `@sqlite.org/sqlite-wasm` enabled runtime extension loading?
+
+If any are yes → sequence the migration into the next milestone. If all are no → push the checkpoint another 6 months OR commit to WASM-C (custom build).
+
+This checkpoint is **calendar-anchored**, not just trigger-anchored, so it can't be silently postponed indefinitely. Anchored in:
+- This milestone page ("Revisit checkpoint" section above)
+- [Ch 24 synthesis log §5 Q4](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/#q4-sqlite-vec-wasm-packaging---added-2026-05-05-during-v015-planning---re-open-if-any-occurs)
+- Project memory (`project_wasm_vendoring_migration_trigger.md`)
+- v0.1.5 delivery log (when written) — must include the checkpoint in its Related section
 
 **Reasoning:**
 - **Substrate commitment satisfied immediately** — Ch 24 §4 locks `@sqlite.org/sqlite-wasm + sqlite-vec`. WASM-B ships both starting v0.1.5; no two-stage migration.
