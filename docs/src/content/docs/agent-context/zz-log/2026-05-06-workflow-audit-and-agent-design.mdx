@@ -1,0 +1,255 @@
+---
+title: "Workflow audit + agent ecosystem design (catch process gaps before they accumulate)"
+description: "Honest audit of process gaps observed during the v0.1.3 → v0.1.5 implementation phase: 3 catch-up failures that accumulated before being caught. Design for 5-agent + 3-skill + 4-CI-gate ecosystem to enforce alignment automatically. Sequenced by leverage: pre-commit-reviewer first (would have caught all 3 catch-up failures); milestone-starter second; CI gates third; lower-leverage agents deferred."
+tags: [foundation, design, workflow, agents, skills, ci, alignment, kb-discipline, pre-commit, automation]
+date: 2026-05-06
+sidebar:
+  label: "05-06 · Workflow audit + agent design"
+  order: -20260506.2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::tip[This log captures a workflow-improvement design]
+User asked during v0.1.5 Phase 3: *"Should we define any agents that help run checks and introduce new milestones... before a push we run the context through certain agents... please help me design and improve this"*. This log audits the gaps observed during v0.1.3 → v0.1.5 work and designs the agent + skill + CI ecosystem to close them. **Sequenced by leverage**, not by completeness.
+:::
+
+## §1 The verdict
+
+| Question | Verdict | Confidence |
+|---|---|---|
+| Are documentation/process gaps accumulating during implementation? | **Yes** — 3 catch-up commits in a single session for gaps that should have been caught earlier | High |
+| Can these be automated away? | **Mostly yes** — 5 agents + 3 skills + 4 CI gates cover the observed failure modes | High |
+| Build all of them now? | **No** — sequence by leverage. Build pre-commit-reviewer first (highest leverage); milestone-starter + CI gates next; defer kb-structure-guardian + pre-push-reviewer until needed | High |
+
+## §2 Observed process gaps (concrete cases from this session)
+
+| # | Failure | What was missed | Cost |
+|---|---|---|---|
+| 1 | CHANGELOG `[Unreleased]` froze at design-phase complete (2026-05-04) — 5 implementation milestones + 4 architectural decisions accumulated without entries | The path-keyed reminder in root `CLAUDE.md` only triggers on "new architectural commitment" — not on "milestone shipped." Implementation deliveries fell through the discipline gap. | ~30 min catch-up commit (`a2e4ad1`); CHANGELOG was 2 days stale |
+| 2 | No dedicated synthesis log for the WASM-B → WASM-A pivot | The synthesis-log skill triggers on architectural decisions, but I didn't invoke it. Documented the pivot in 3 places (milestone page, Ch 24 §5 Q4, project memory) but missed the canonical zz-log entry. | ~20 min catch-up; future agents would have to assemble the rationale across 3 sources instead of one |
+| 3 | Phase 3 closure-cache row schema designed without reading Ch 18 §2.5 (cited in the spec spec) | I read the schema spec §7 but didn't crawl the cited Ch 18 section. Initial cache row design was per-edge (wrong); caught on self-review and fixed. | ~30 min rework; could have been zero if Ch 18 had been crawled upfront |
+| 4 | v0.1 schema spec didn't forward-link to implementing milestones | A fresh agent could only follow backward (to design history) but not forward (to implementation). Discoverability gap. | Found in audit; fixed in same commit as Phase 3 |
+| 5 | `.claude/CLAUDE.md` "Last Updated: 2026-05-04" was stale 2 days into implementation phase | Static-date markers without an automated "is this stale?" check accumulate stale info. | ~5 min refresh; could have been caught by an automated check |
+
+**Pattern**: gaps are **mostly judgment-required** (not mechanical), so they slip past CI gates. They need an **agent-level review** that understands cross-document conventions.
+
+## §3 The 5-agent + 3-skill + 4-CI-gate ecosystem
+
+```
+                     ┌──────────────────────────────────┐
+                     │  KNOWLEDGE BASE (docs/)          │
+                     │  ────────────────────────         │
+                     │  Concept pages, synthesis logs,   │
+                     │  delivery logs, milestones, spec, │
+                     │  Ch NN deliverables               │
+                     └──────────────┬───────────────────┘
+                                    │ READ
+   ┌──────────────────┐             │             ┌─────────────────┐
+   │  Skills (READ)   │ ────────────┴──────────── │  Agents (READ)  │
+   │                  │                            │                 │
+   │ • wikilink-crawl │                            │ • milestone-    │
+   │   (already       │                            │   starter       │
+   │   shipped)       │                            │ • design-       │
+   │                  │                            │   moment-       │
+   │                  │                            │   crawler       │
+   └──────────────────┘                            │ • pre-commit-   │
+                                                   │   reviewer      │
+   ┌──────────────────┐                            │ • pre-push-     │
+   │  Skills (WRITE)  │                            │   reviewer      │
+   │                  │                            │ • kb-structure- │
+   │ • synthesis-log  │ ──────► outputs to KB ◄──── │   guardian     │
+   │ • delivery-log   │                            │                 │
+   │   (already       │                            └─────────────────┘
+   │   shipped)       │                                     │ FLAG
+   │ • session-log    │                                     ▼
+   └──────────────────┘                            ┌─────────────────┐
+                                                   │  Developer      │
+                                                   │  (acts on flags)│
+                                                   └─────────────────┘
+
+   ┌──────────────────────────────────────────────────────────┐
+   │   CI Gates (mechanical, parallel to agent-level review)  │
+   │   • lint-and-validate.yml                                │
+   │   • fixtures-drift.yml                                   │
+   │   • docs-build-gate.yml                                  │
+   │   • personal-data-sweep.yml                              │
+   └──────────────────────────────────────────────────────────┘
+```
+
+### Skills (read or write — narrow, reusable capabilities)
+
+Already shipped:
+
+| Skill | Job | Status |
+|---|---|---|
+| [`synthesis-log`](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/synthesis-log) | WRITE: dated `zz-log/` decision entry resolving a Ch NN or capturing an architectural decision | ✅ Shipped pre-2026-05-06 |
+| [`delivery-log`](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/delivery-log) | WRITE: dated `zz-log/` entry when a milestone ships, with the load-bearing system-design integration diagram | ✅ Shipped 2026-05-06 |
+| [`wikilink-crawl`](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/wikilink-crawl) | READ: 2-hop crawl of linked pages before designing/deciding/writing code | ✅ Shipped 2026-05-06 |
+
+### Agents (orchestrators that compose skills + run review logic)
+
+Each agent has a **narrow job** + a clear trigger + a clear output-shape. Numbered by **build priority**, not by execution order:
+
+| # | Agent | Trigger | Read or write? | Job | Catches gaps |
+|---|---|---|---|---|---|
+| **1** | **`pre-commit-reviewer`** | `/pre-commit` invocation OR before `git commit` | Read-only (flags issues) | Audit staged diff: implications for CHANGELOG, milestone status, related-doc updates, sweep for personal data, AI co-author attribution | Gap #1, #2, #5 |
+| **2** | **`milestone-starter`** | "Starting v0.1.X" / new milestone | Read-only (produces briefing) | Crawls milestone page + Dependencies + synthesis logs + Ch NN deliverables; produces 1-page "you-need-to-know" briefing before code | Gap #3 |
+| **3** | **`design-moment-crawler`** | "I'm about to design X" / pattern detection (new file in `src/`, schema change in `spec/`) | Read-only (produces context briefing) | Forces wikilink-crawl session before code commits | Gap #3 (overlap with milestone-starter — fold if redundant) |
+| **4** | **`kb-structure-guardian`** | After commit touching `docs/src/content/docs/`, OR weekly cron | Read-only (drift report) | Verifies cross-link discipline (every concept page has `## Related`); verifies frontmatter shape; finds orphan pages (no inbound links); verifies sidebar order consistency | Gap #4 (forward-link discoverability); future structural drift |
+| **5** | **`pre-push-reviewer`** | `/pre-push` invocation OR before `git push` | Read-only (blocks push if issues) | Runs full-suite tests; runs full docs build; verifies no personal data; verifies no AI co-author attribution in commit messages; verifies Last-Updated dates current | All gaps as final safety net |
+
+### CI gates (mechanical, no agent needed)
+
+| Gate | Trigger | Job |
+|---|---|---|
+| `lint-and-validate.yml` | PR + push to main | `bun run lint --max-warnings 0` + AJV-compile both schemas + `bun run check:mdx` |
+| `fixtures-drift.yml` | PR + push | Regenerate fixtures, `git diff --exit-code` on canonical fixtures |
+| `docs-build-gate.yml` | PR + push | `cd docs && bun run build` must pass before merge |
+| `personal-data-sweep.yml` | PR + push | grep diff for `/home/`, `/Users/`, real emails, AI co-author patterns |
+
+## §4 Agent design — `pre-commit-reviewer` (the highest-leverage one)
+
+This agent is the most-bang-for-buck because it catches the most gaps observed in this session.
+
+### Trigger
+
+- User explicitly invokes `/pre-commit` after staging changes
+- OR (future enhancement) auto-triggered by a git hook before commit
+
+### Inputs
+
+- `git status` (staged + unstaged)
+- `git diff --cached` (staged diff)
+- The most recent commit message (for context)
+
+### Audit dimensions
+
+The agent runs ~10 checks across the staged diff. For each, it produces either ✅ pass or ⚠ flag with specific file/line context:
+
+| Check | Pattern detected | Action |
+|---|---|---|
+| 1. CHANGELOG drift | Files touched in `src/` + tests pass + no entry in `CHANGELOG.md`'s `[Unreleased]` | ⚠ "consider adding a CHANGELOG entry — what user-visible/architecture-visible behavior is this commit shipping?" |
+| 2. Milestone status drift | Milestone-related code touched (`src/tier2/`, `src/render/`, etc.) + milestone page status not updated | ⚠ "if this completes a milestone phase, flip the status table on the milestone page" |
+| 3. Architectural decision implied | Substrate / engine / schema-shape change in code + no synthesis log | ⚠ "this looks like an architectural decision — did the synthesis-log skill run?" |
+| 4. New concept page added without inbound links | New file under `docs/src/content/docs/concepts/` + grep finds 0 references in other docs | ⚠ "new concept page added without cross-links — link from related concept pages" |
+| 5. Spec page change without milestone forward-link | `spec/*.schema.json` or `v0-1-schema-spec.mdx` changed + no implementing-milestone link added | ⚠ "spec change — verify forward-link to the implementing milestone exists" |
+| 6. Personal data sweep | Diff contains `/home/`, `/Users/`, gmail/outlook/etc., AI co-author patterns | ❌ BLOCK with specific file:line |
+| 7. Test runs | Code in `src/` changed without tests in `tests/` updated | ⚠ "consider whether this needs a test" |
+| 8. Stale-doc check | File modified more than 30 days ago that this commit edits + has a `Last Updated:` field that doesn't match today's date | ⚠ "bump the Last Updated date" |
+| 9. Memory-file alignment | New `project_*.md` memory file added + not referenced from `MEMORY.md` index | ⚠ "add the new memory file to MEMORY.md index" |
+| 10. Skills + cross-links | New skill in `.claude/skills/*` + `.claude/CLAUDE.md` skills list not updated | ⚠ "register the new skill in `.claude/CLAUDE.md`" |
+
+### Output shape
+
+A markdown report:
+
+```
+## Pre-commit review
+
+**Staged**: 6 files (3 src/, 2 docs/, 1 spec/)
+**Diff size**: 152 +, 28 -
+
+### ⚠ Flags
+
+1. CHANGELOG drift — `src/tier2/queries.ts` is new; CHANGELOG `[Unreleased]` not touched
+2. Milestone status — `src/tier2/queries.ts` looks like Phase 3 work; milestone page Phase 3 still says open
+
+### ✅ Passing
+
+- Personal data sweep
+- Test runs (Phase 3 E2E added)
+- Architectural decision check (no substrate change)
+
+### Recommendation
+
+Add a CHANGELOG `[Unreleased]` entry under `### v0.1.5 — Tier 2`
+section + flip Phase 3 status on the milestone page before committing.
+```
+
+The user reads the report; either fixes flags + re-runs, or commits anyway with awareness of the flagged-but-acknowledged tradeoffs.
+
+### Why this agent first
+
+Of the 5 catch-up failures observed this session, the pre-commit-reviewer would have caught:
+- ✅ #1 CHANGELOG drift (would flag)
+- ✅ #2 missing WASM-A synthesis log (would flag "looks like an architectural decision")
+- ✅ #4 spec page without forward-links (would flag)
+- ✅ #5 stale Last Updated (would flag)
+
+That's **4 of 5 gaps** — the highest-leverage agent of the bunch.
+
+## §5 Build sequencing
+
+| # | Build | Effort | Why this order |
+|---|---|---|---|
+| 1 | `pre-commit-reviewer` agent | ~2 hr | Highest leverage; catches 4/5 observed gaps |
+| 2 | `milestone-starter` agent (uses wikilink-crawl skill) | ~1.5 hr | Catches gap #3 (the closure-cache bug class); pairs naturally with the skill we just shipped |
+| 3 | CI gates (`lint-and-validate.yml` + `fixtures-drift.yml` + `docs-build-gate.yml` + `personal-data-sweep.yml`) | ~3 hr | Mechanical patterns; CI is durable; complement (not replace) the agents |
+| 4 | `pre-push-reviewer` agent | ~1 hr | Final safety net before push; mostly redundant with `pre-commit-reviewer` + CI but valuable as backstop |
+| 5 | `kb-structure-guardian` agent | ~2 hr | Drift detection; lower urgency now (small KB); higher urgency when contributor count grows |
+| 6 | `design-moment-crawler` agent | ~1 hr | Overlap with `milestone-starter`; build only if the overlap turns out to be insufficient |
+
+**Cumulative: ~10 hours of agent + CI work for a substantial workflow improvement.** Front-load #1 + #2 (the highest-leverage 3.5 hr); rest can land incrementally.
+
+## §6 Reconciliation with prior decisions
+
+| Prior decision | This log's relationship |
+|---|---|
+| [2026-05-04 workflow audit plan](https://github.com/anthropics/claude-code/issues) (the "skills durability tier framework" 2026-05-04 plan) | **Extends.** That plan focused on Wave 1 (CLAUDE.md refresh) + Wave 2 (CI gates). This log adds the **agent-level review tier** that sits between skills and CI gates. |
+| Memory rule "Log all decisions" (`feedback_log_decisions.md`) | **Reinforced.** This log is itself an instance of that rule. |
+| Memory rule "Always test thoroughly" (`feedback_test_thoroughly.md`) | **Compatible.** Pre-commit-reviewer adds non-test-runtime checks (CHANGELOG drift, milestone status) without replacing the test discipline. |
+| `.claude/CLAUDE.md` "Operational rules" | **Extends with automation.** The rules currently rely on agent self-discipline; this design adds automated enforcement. |
+| `.claude/skills/synthesis-log` + `delivery-log` + `wikilink-crawl` | **Composes with.** Skills are narrow capabilities; agents orchestrate them across multi-document audits. |
+
+## §7 What this does NOT do
+
+- **Does not replace human review** — agents flag; humans decide
+- **Does not replace tests** — pre-commit-reviewer doesn't run tests; it audits documentation/discipline alignment
+- **Does not enforce mechanical patterns better than CI** — CI gates are still the right home for lint, MDX-build, schema validation, fixture drift
+- **Does not require building all 5 agents** — the value-prop is sequencing; build in priority order
+- **Does not change anything about the existing `.claude/skills/` or memory rules** — those continue to operate; agents just orchestrate them
+
+## §8 What this unblocks
+
+- **Cleaner v0.1.6 / v0.1.7 / v0.1.8 milestone work**: pre-commit-reviewer catches gaps before they accumulate
+- **Easier onboarding for future contributors**: milestone-starter agent produces consistent context briefings
+- **Lower documentation drift**: kb-structure-guardian (when built) keeps the KB self-consistent
+- **Better release-prep discipline**: pre-push-reviewer (when built) becomes the v0.1-RC ship-ready check
+
+## §9 Related
+
+**Skills (read + write capabilities composed by agents):**
+- [`synthesis-log` skill](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/synthesis-log)
+- [`delivery-log` skill](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/delivery-log)
+- [`wikilink-crawl` skill](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/wikilink-crawl)
+
+**Memory rules (self-discipline that agents reinforce):**
+- `feedback_log_decisions.md` — log all decisions
+- `feedback_test_thoroughly.md` — every code change ships with thorough verification
+- `feedback_no_personal_data_in_logs.md` — sweep before commit
+- `feedback_link_everything.md` — aggressive cross-linking
+- `feedback_brevity_and_format.md` — terse, table-heavy
+
+**Agent context:**
+- [System architecture](/crosswalker/concepts/system-architecture/) — the doc-graph that agents navigate
+- `.claude/CLAUDE.md` — operational rules that agents enforce
+
+**Documentation update reminders (where some patterns currently live):**
+- Project root `CLAUDE.md` § "Documentation update reminders" — path-keyed table; pre-commit-reviewer agent operationalizes these
+
+**Implementation milestones (what triggered this audit):**
+- v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 — implementation phase work where the gaps observed came from
+- v0.1-RC — pre-push-reviewer (deferred) is most useful at RC time
+
+**External patterns:**
+- [Conventional Commits](https://www.conventionalcommits.org/) — pre-commit-reviewer could optionally enforce
+- [Keep a Changelog](https://keepachangelog.com/) — already followed; pre-commit-reviewer would enforce
+
+---
+
+**Next concrete steps**:
+
+1. Build `pre-commit-reviewer` agent (~2 hr) — see Task #73
+2. Test it against the v0.1.6 first commit
+3. Iterate based on real-use feedback before building #2
