@@ -1,0 +1,186 @@
+---
+title: "Bases query layer architecture — synthesis (in progress)"
+description: "Living decision document consolidating Ch 27 + Ch 28 (six fresh-agent research deliverables). Lists what's settled by three-way convergence, what divergent decisions remain (D1–D6), and what cascade work the final synthesis triggers. Updated in place as verdicts land — currently pre-decision draft."
+tags: [foundation, design, query-layer, bases, registerbasesview, materialization, ch-27-resolution, ch-28-resolution, cqrs, draft, in-progress]
+date: 2026-05-07
+sidebar:
+  label: "05-07 · Bases query layer (draft)"
+  order: -20260507
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pre-decision draft — living document]
+This log is a **working synthesis** capturing the state of decisions across Ch 27 + Ch 28 deliverables. Six fresh-agent research deliverables have landed (3 for [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/), 3 for [Ch 28](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/)). This page lists what's converged, what's still open (D1–D6), and what cascade work follows. It will be **updated in place** as verdicts lock in. The `:::caution` banner gets removed and the title's "(in progress)" suffix gets dropped once all six decisions are settled.
+:::
+
+## Why this exists
+
+The v0.1.6 Bases query layer milestone has two pre-requisite research challenges:
+- [Ch 27 — Bases query layer architecture](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/) — 3 deliverables: [27a](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/), [27b](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-b-vault-as-database-stack/), [27c](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-c-materialization-and-codeblock/)
+- [Ch 28 — Bases query layer follow-on stress test](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/) — 3 deliverables: [28a](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/), [28b](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-b-stress-test-matrix/), [28c](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/)
+
+This page consolidates the verdicts and tracks the open decisions before [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) implementation begins.
+
+## §1 Settled (no further debate — convergent across deliverables)
+
+| # | Settled commitment | Source convergence |
+|---|---|---|
+| 1 | **Hybrid architecture**: Bases as default + SQL/sidecar as escape hatch | Ch 27 a/b/c + Ch 28 a/c |
+| 2 | **Single `registerBasesView` for v0.1.6** — `crosswalkerCoverageMatrix` (one custom view, not three) | Ch 27a + Ch 28 a/c |
+| 3 | **`_crosswalker/` underscore folder convention** (Obsidian doesn't index dot-folders) | Ch 28 a/c |
+| 4 | **Mobile/Publish parity is the binding constraint** (`sqlite-wasm` + OPFS unavailable on Obsidian Mobile via Capacitor; codeblock processors never execute on Publish) | Ch 28 a/c |
+| 5 | **`metadataCache.resolvedLinks` for edge resolution** — not string LIKE; not custom projector | Ch 27c + Ch 28 a/c |
+| 6 | **Junction-note schema denormalizes `control_id` + `framework` strings** for Bases filtering | Ch 27c + Ch 28 a/c |
+| 7 | **Manifest-first [OpenTimestamps](https://opentimestamps.org/) audit model** — one `.ots` per snapshot manifest, not per row | Ch 28 a/c |
+| 8 | **Determinism is non-negotiable** for OTS to be meaningful (stable row/key ordering; byte-identical regen) | Ch 28 a/c |
+| 9 | **Junctions = audit truth; matrices = caches/projections** — never conflate | Ch 28c explicit + Ch 28a CQRS framing |
+| 10 | **Recipe lifecycle**: schema validation + provenance + `user_edited:true` flag + three-way merge | Ch 28 a/c |
+| 11 | **TaskNotes v4** is the canonical Obsidian-plugin precedent for "delete bespoke filter UI; let Bases own it" | Ch 27a + Ch 28 a/c |
+
+These are durable across all three plausible architectural framings. **They go into the synthesis verdict regardless of how D1–D6 resolve.**
+
+## §2 Decisions to make (D1–D6)
+
+| ID | Decision | Current lean | Tradeoff |
+|---|---|---|---|
+| **D1** | **Materialization in v0.1.6** (per Ch 28a) **vs defer to v0.1.8** (per Ch 28c)? | Defer to v0.1.8 | A is more pragmatic for Publish-portal use cases now; C is cleaner architecturally and cuts v0.1.6 scope significantly. Crosswalker doesn't yet have a "publish to auditor portal" workflow that demands materialization. |
+| **D2** | **Codeblock processor in v0.1.6** (per Ch 28a) **vs v0.1.7** (per Ch 28c)? | v0.1.7 | Keeps v0.1.6 minimal. `registerBasesView` covers coverage-matrix; codeblock is for ad-hoc closure queries, which are deferrable. |
+| **D3** | **Folder convention** — `Reports/_generated/` (28a) **vs** `_crosswalker/views/` + `_crosswalker/audit/` (28c)? | Split by purpose | `_crosswalker/views/` for plugin-emitted `.base` files (per 28c). `_crosswalker/audit/` for materialized audit snapshots when v0.1.8 lands. |
+| **D4** | **Adopt CQRS framing as a load-bearing architectural commitment** ("query layer ≠ snapshot layer")? | Yes | Should join the [6 v0.1 architectural commitments](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) as #7. The deepest insight from Ch 28a; reframes Ch 27's "hybrid" verdict as a clean read/write split. |
+| **D5** | **`sqlite-wasm` in v0.1.6**: hidden internal helper (BasesView calls `plugin.queryClosure`) **vs** user-facing surface? | Internal only | Already shipped in [v0.1.5 P3](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/). v0.1.6 BasesView uses it under the hood; no new user-facing SQL surface until v0.1.7. |
+| **D6** | **Memory file update** — expand `project_query_layer_bases_not_dataview.md` **vs** create new memory for CQRS framing? | Expand existing | Single file is the canonical query-layer commitment record. |
+
+**Status (per decision):**
+
+| ID | Status | Decided by | Notes |
+|---|---|---|---|
+| D1 | ⏳ Pending | — | — |
+| D2 | ⏳ Pending | — | — |
+| D3 | ⏳ Pending | — | — |
+| D4 | ⏳ Pending | — | — |
+| D5 | ⏳ Pending | — | — |
+| D6 | ⏳ Pending | — | — |
+
+(This table gets updated as each decision lands.)
+
+## §3 Convergence + divergence — what each deliverable said
+
+### Ch 27 (architectural posture)
+
+| Deliverable | Verdict | Key contribution |
+|---|---|---|
+| [27a](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/) | Hybrid + Repository + `registerBasesView` | TaskNotes v4 precedent; Hexagonal/Ports-and-Adapters; identifies `registerBasesView` as the integration mechanism |
+| [27b](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-b-vault-as-database-stack/) | Four-layer schema/storage/query/views stack with CQRS | Long-horizon framing; portability dominates feature richness; vault federation as 100K-note ceiling answer |
+| [27c](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-c-materialization-and-codeblock/) | Pattern B+D — materialization + `crosswalker-query` codeblock | Most concrete Ch 27 deliverable; engages 7 brief investigation areas; SQLSeal as in-Obsidian precedent; recipe-emission YAML descriptor |
+
+**Ch 27 convergence**: hybrid Bases-as-default + escape hatch is the right answer. **Ch 27 divergence**: integration mechanism — A leans `registerBasesView`, C leans codeblock processor.
+
+### Ch 28 (lifecycle/UX/integration stress test)
+
+| Deliverable | Verdict | Key contribution |
+|---|---|---|
+| [28a](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/) | "Bases-first, codeblock-second, materialization-third" — all three in v0.1.6 | Most detailed; CQRS framing (query layer ≠ snapshot layer); deterministic Markdown writer spec; recipe lifecycle with `user_edited:true` + three-way merge |
+| [28b](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-b-stress-test-matrix/) | Misinterpreted brief as DB load testing | 6-axis stress matrix + synthetic-vault generator + benchmark harness — **future v0.2 perf-testing material**, not v0.1.6 architectural answer |
+| [28c](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/) | Narrow v0.1.6 hard; defer materialization entirely to v0.1.8 | Most conservative; `_crosswalker/` underscore folder; manifest-first OpenTimestamps; junctions=truth/matrices=caches |
+
+**Ch 28 convergence (a + c)**: `registerBasesView` + single coverage-matrix view + `_crosswalker/` namespace + manifest-first audit + mobile/Publish parity binding. **Ch 28 divergence**: D1 (materialization in v0.1.6 vs v0.1.8). All other Ch 28 questions answered convergently.
+
+## §4 What this synthesis WILL lock (once D1–D6 are decided)
+
+A finalized synthesis log will:
+
+| Aspect | Lock |
+|---|---|
+| Integration mechanism | Single `registerBasesView` (`crosswalkerCoverageMatrix`) for v0.1.6 |
+| Folder convention | `_crosswalker/views/` (plugin-emitted `.base` files) + `_crosswalker/audit/` (materialized snapshots, v0.1.8+) |
+| Edge resolution | `metadataCache.resolvedLinks` snapshotted into closure cache; refreshed on `changed`/`resolved` events |
+| Junction-note schema | 13 fields with denormalized `control_id` + `framework` strings (for Bases filtering); wikilinks for navigation |
+| Recipe lifecycle | YAML in `_crosswalker/recipes/`; `id`/`version`/`schema_version` keyed; sources = system/user/community; `user_edited:true` flag; three-way merge for conflicts; JSON Schema validation on save (warn) + on materialize (block) |
+| Audit-trail integration | Manifest-first OpenTimestamps; one `.ots` per snapshot manifest; deterministic recipe execution required for OTS to be meaningful |
+| Mobile/Publish parity | Bases-only path is the only mechanism that crosses desktop + mobile + (future) Publish; codeblock = desktop+mobile; sqlite-wasm = desktop with in-memory fallback on mobile |
+| Architectural framing | CQRS-explicit: query layer ≠ snapshot layer (pending D4 confirmation) |
+
+The deferral table (also pending finalization):
+
+| Phase | What lands |
+|---|---|
+| **v0.1.6** | Single `registerBasesView` + reference `.base` file on first run + recipe loader + `_crosswalker/` namespace + Bases-disabled fallback |
+| **v0.1.7** | `crosswalker-query` codeblock processor + `sqlite-wasm` user-facing surface + recipe wizard UI |
+| **v0.1.8** | Materialization (`Reports/_generated/` or `_crosswalker/audit/`) + OpenTimestamps + manifest-first audit + deterministic-output guarantees |
+| **v0.2+** | Background/scheduled materialization, three-way merge UI, multi-view custom Bases types, community recipe registry, Bases-on-Publish-specific rendering, mobile sqlite-wasm persistence |
+
+## §5 Cascade tasks — what landing the synthesis triggers
+
+Once D1–D6 are decided, this synthesis log gets finalized AND triggers updates to:
+
+1. **Archive Ch 27 + Ch 28 briefs** → `zz-challenges/archive/` with `:::tip[Resolved YYYY-MM-DD]` callouts pointing to this synthesis
+2. **`zz-challenges/index.mdx`** — move both from "Active" to "Archived (resolved)"
+3. **`zz-research/index.md`** — fill the "Decision log it fed" column for all 6 deliverables (link to this page)
+4. **v0.1.6 milestone** — flip both pre-requisites to ✅; refine in/out scope per the synthesis verdict
+5. **v0.1.7 milestone** — pull in codeblock processor + sqlite-wasm user-facing surface
+6. **v0.1.8 milestone** — pull in materialization + OpenTimestamps + manifest-first audit
+7. **Memory file** `project_query_layer_bases_not_dataview.md` — expand with the new commitments (registerBasesView, `_crosswalker/` namespace, CQRS framing, materialization-deferral)
+8. **`.claude/CLAUDE.md`** v0.1 architectural commitments table — add #7 (CQRS query-layer ≠ snapshot-layer), pending D4
+9. **`CHANGELOG.md`** `[Unreleased]` — synthesis decision entry
+10. **Verification** — `cd docs && bun run build`; pre-commit-reviewer agent audit; personal-data sweep
+
+## §6 Open implementation questions for v0.1.6 (after synthesis lands)
+
+These are not blocked by D1–D6 but should be tracked:
+
+- **TaskNotes v4 source code** is the reference for `BasesView` subclass — read carefully before writing `CoverageMatrixView`
+- **`recipe.schema.json` design** — neither Ch 27 nor Ch 28 specifies fields concretely; needs a design pass
+- **Bases-disabled fallback Notice** — Obsidian doesn't expose programmatic "enable core plugin"; verify what's actually possible
+- **First-run `_crosswalker/views/` + Excluded Files prompt** UX details
+- **Bases API churn budget** — at least one breaking change already shipped (`BaseOption#shouldHide`); plan for 1–2 churns/year
+
+## §7 Reconciliation with prior decisions
+
+| Prior commitment | Reconciliation |
+|---|---|
+| [Ch 23 — TS in-plugin engine](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) | Consistent. registerBasesView + recipe loader are pure TS; no Python; no external runtime |
+| [Ch 24 — sqlite-wasm + sqlite-vec](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) | Consistent. v0.1.6 keeps sqlite-wasm internal-only; v0.1.7 surfaces it via codeblock processor; sqlite-vec deferred per [WASM-A pivot](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) |
+| [Ch 22 — 5-mechanism recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) | Consistent. Recipe lifecycle in this synthesis governs v0.1.6 recipe loader; emission still produces folder/file/heading mechanisms (tag/wikilink layout-levels deferred to v0.2) |
+| [Ch 07 — junction-note edge model](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) | Consistent. Junction notes are the source of truth that Bases filters; this synthesis denormalizes specific fields for filter performance but doesn't change the 13-field schema |
+| [v0.1.5 — Tier 2 sidecar](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) | Consistent. Plugin handles (`queryConcepts`/`queryCrosswalk`/`queryClosure`) become the BasesView's internal-only enrichment path in v0.1.6 |
+| Project memory `project_query_layer_bases_not_dataview.md` | Will be expanded post-synthesis with: registerBasesView decision, `_crosswalker/` namespace, materialization-deferral, CQRS framing |
+
+## §8 What this does NOT do
+
+- **Does not foreclose codeblock processor** — deferred to v0.1.7, not rejected
+- **Does not foreclose materialization** — deferred to v0.1.8, not rejected; Ch 28a's spec is preserved as the v0.1.8 design baseline
+- **Does not commit to a recipe marketplace** — community-recipe lifecycle is a v0.3+ question; v0.1.6 supports community sharing only via plain-YAML gist exchange
+- **Does not change Bases as the v0.1 query layer commitment** — that's [project memory](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#operational-rules-load-bearing-for-agents) from 2026-05-04 and remains unchanged
+- **Does not address cross-vault federation** — explicitly out of scope per Ch 27 brief §7 and Ch 28 anti-patterns
+
+## §9 Related
+
+**Research deliverables** (preserved verbatim):
+- [Ch 27a — Crosswalker-specific framing](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/)
+- [Ch 27b — Vault-as-database stack](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-b-vault-as-database-stack/)
+- [Ch 27c — Materialization + codeblock](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-c-materialization-and-codeblock/)
+- [Ch 28a — Bases-first hybrid](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/)
+- [Ch 28b — Stress-test matrix (brief misinterpretation)](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-b-stress-test-matrix/)
+- [Ch 28c — Narrow and defer](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/)
+
+**Briefs (will be archived once synthesis lands)**:
+- [Ch 27 — Bases query layer architecture](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/)
+- [Ch 28 — Bases query layer follow-on stress test](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/)
+
+**Roadmap**:
+- [v0.1.6 — Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) (this synthesis refines its scope)
+- [v0.1.7 — Exporters milestone](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) (codeblock processor + sqlite-wasm user-facing land here, pending D2)
+- [v0.1.8 — Audit-trail milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) (materialization + OpenTimestamps land here, pending D1)
+
+**Concept pillars**:
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases capabilities + limits
+- [System architecture Layer 4 (Query)](/crosswalker/concepts/system-architecture/#layer-4--query-t1--t2--user)
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/)
+
+**Prior synthesis logs**:
+- [Ch 23 bundle engine language synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/)
+- [Ch 24 Tier 2 substrate synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)
+- [Ch 22 target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)
+- [v0.1.5 Tier 2 sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/)
+- [WASM-A pivot synthesis](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/)
