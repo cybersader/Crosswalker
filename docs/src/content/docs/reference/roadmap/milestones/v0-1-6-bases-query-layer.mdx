@@ -17,7 +17,12 @@ Move the v0.1 output query layer from Dataview to [Bases](/crosswalker/concepts/
 
 ## Dependencies
 
-- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (transitive queries route through the sidecar; simple frontmatter queries route through Bases natively)
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (transitive queries route through the sidecar; simple frontmatter queries route through Bases natively) ✅
+- **[Ch 27 research challenge — Bases query layer architecture](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/)** — **PRE-REQUISITE.** Architectural questions (where complex query logic lives; how Bases + Tier 2 SQL compose at user-surface level; junction-note query patterns; recipe-driven query emission) must be resolved BEFORE implementation begins. Filed 2026-05-07.
+
+<Aside type="caution">
+This milestone's scope (translate Dataview-shaped templates → Bases-shaped) understates the architectural design work. Bases CAN'T do joins, recursion, anti-joins, or multi-file aggregation — exactly the queries users want for compliance/crosswalk views. **Resolve [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/) first**; that synthesis log will refine v0.1.6 scope before code starts.
+</Aside>
 
 **Blocks**: v0.1.7 (some exporters reuse the same query layer)
 

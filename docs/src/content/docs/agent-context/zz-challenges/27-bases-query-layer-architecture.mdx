@@ -1,0 +1,201 @@
+---
+title: "Challenge 27: Bases query layer architecture (where complex query logic lives)"
+description: "Bases is committed as the v0.1 query layer (Ch 23 + project memory) but Bases CANNOT do joins, recursion, or aggregation across linked notes — and that's precisely what compliance/crosswalk queries need. Junction notes (Ch 07) reify edges as files which Bases CAN query, but cross-junction-note aggregation (controls × evidence × frameworks) still hits Bases' flat-YAML wall. Design the architecture: what queries route to Bases (Tier 1 frontmatter); what route to the Tier 2 SQL helpers (just shipped in v0.1.5 Phase 3); how user surfaces present each; how junction-note query patterns specifically work."
+tags: [research, query-layer, bases, junction-notes, tier-2, sql-wasm, hybrid-architecture, foundation]
+date: 2026-05-07
+sidebar:
+  label: "27 · Bases query layer"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pre-requisite for v0.1.6 implementation]
+The [v0.1.6 Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) currently describes the *outcome* (Bases-shaped queries replacing Dataview) but not the *architecture* (where each query type lives, how junction-note queries work in practice, how Bases + Tier 2 SQL compose at user-surface level). This challenge resolves that gap **before code is written**.
+:::
+
+## Why this exists
+
+Bases is locked as the v0.1 query layer (per the [Ch 23 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) + the [project memory commitment](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#operational-rules-load-bearing-for-agents) — Dataview removed). And per [Ch 07 (evidence-link edge model)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/), junction notes (edge-as-note reification) are the only architecture compatible with Bases' flat-YAML constraint.
+
+**But these two commitments leave a real architectural gap unaddressed:**
+
+> Bases is **tabular only**. It does NOT support: joins across files, recursive graph traversal, aggregation across linked notes, edge-metadata-on-links, inline field queries.
+> *— [`metadata-ecosystem` concept page](/crosswalker/concepts/metadata-ecosystem/)*
+
+The user-facing queries Crosswalker exists to enable include exactly the things Bases can't do natively:
+
+| User question | Bases-doable? | Notes |
+|---|---|---|
+| "Show all NIST AC controls" | ✅ Yes | Flat filter on `file.inFolder()` or `framework` frontmatter |
+| "Show all junction notes" | ✅ Yes | Flat filter on `kind == 'junction-note'` |
+| "Show junction notes where coverage = 'partial'" | ✅ Yes | Flat filter on frontmatter |
+| "Show junction notes for AC-2" | ✅ Yes | Flat filter on `subject` field (wikilink-target string match) |
+| **"Show controls WITHOUT any junction note"** | ❌ No | Anti-join across files; Bases has no left-anti-join semantics |
+| **"Coverage matrix: each control × evidence count × framework"** | ❌ No | Multi-table aggregate join |
+| **"All controls reachable from NIST CSF Identify via any chain of crosswalks"** | ❌ No | Recursive graph traversal |
+| **"Crosswalk between two ontologies, filtered by STRM predicate"** | ❌ No | Joining mappings + concepts tables |
+| **"Show evidence freshness per control with computed staleness"** | ⚠ Partial | Bases formulas can compute per-row; can't aggregate per-control across multiple junctions |
+
+**The first 4 (Bases-doable) are flat queries over Tier 1 frontmatter.**
+**The last 5 (Bases-impossible) require either Tier 2 SQL or DataviewJS.** We've removed Dataview. We've shipped Tier 2 SQL helpers ([v0.1.5 Phase 3](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/)) that handle exactly these cases. The architectural question is: **how do these two surfaces compose at user-experience level?**
+
+This challenge designs that architecture.
+
+## What we already have (the unchosen-but-built parts)
+
+| Asset | What it gives us |
+|---|---|
+| **Tier 1 canonical Markdown vault** ([system architecture Layer 2](/crosswalker/concepts/system-architecture/#layer-2--storage-tier-1--canonical)) | Everything Bases queries against. Concepts, junction notes, crosswalk-edge notes — all flat-YAML files conforming to `spec/tier1.schema.json` |
+| **Tier 2 sqlite-wasm sidecar** ([v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/)) | SQLite database derived from Tier 1; deletable; recoverable. Tables: `concepts`, `mappings`, `junction_notes`, `closure_cache`, `ontologies`. Already populated by the projector |
+| **Tier 2 query API** ([v0.1.5 Phase 3](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/)) | 3 typed helpers: `getConceptsByOntology`, `crosswalkBetween(subj, obj, predicate?)`, `closureFromConcept(start, predicate?, maxDepth?)`. Plus closure cache lazy materialization via recursive CTE |
+| **`junction_notes_with_freshness` view** | Already built in Tier 2 schema; computes `expired` / `stale` / `fresh` / `not-set` per junction at query time |
+| **Junction note 13-field schema** ([Ch 07 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)) | `subject` + `predicate` + `object` + `coverage` + `confidence` + `status` + `reviewer` + `review_date` + 5 more fields, all flat YAML |
+| **Bases skill** ([`obsidian-bases`](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/obsidian-bases)) | Authoring patterns for `.base` files (filters, formulas, summaries, view types) |
+| **Plugin instance handles** for SQL helpers (`plugin.queryConcepts`, `queryCrosswalk`, `queryClosure`) | Programmatic access to Tier 2 from any Crosswalker code path |
+
+What we **don't** have:
+- A user-facing surface for the SQL queries (currently only callable via `executeObsidian` in tests)
+- A decision on how Bases views and SQL queries compose in the UX
+- A pattern for emitting useful queries into concept-note bodies on import
+- A pattern for "complex query result → Bases-renderable view"
+- Junction-note coverage queries that span concept × junction × evidence (currently neither Bases nor our SQL helpers handle this cleanly)
+
+## What to investigate
+
+Each section below is a **focused question** the deliverable must answer concretely with worked examples.
+
+### 1. Query-routing matrix
+
+For every common compliance/crosswalk query a Crosswalker user would ask, determine where it routes:
+
+- **Tier 1 / Bases native** (flat YAML; `.base` file; no plugin code needed)
+- **Tier 2 / SQL helper** (calling `plugin.queryConcepts/Crosswalk/Closure` or new helpers)
+- **Hybrid** (SQL helper produces a result; Bases renders it via some bridge)
+- **Out of scope for v0.1.6** (deferred / DataviewJS-style in a future milestone / out-of-product)
+
+Produce a table: ~20 user questions × routing decision × rationale.
+
+### 2. Junction-note query patterns specifically
+
+Junction notes are the most architecturally novel piece (Ch 07). Six query patterns matter for compliance:
+
+a. **"All evidence for control X"** — junction notes where subject points at X
+b. **"All controls covered by evidence Y"** — junction notes where object points at Y
+c. **"Coverage gaps"** — controls with no junction note pointing at them (left-anti-join)
+d. **"Stale evidence"** — junctions with `freshness == 'stale'` or `expired`
+e. **"Coverage matrix"** — table of (control, count of junctions, latest review_date, set of frameworks crosswalked)
+f. **"Multi-control evidence"** — junction notes where the same evidence covers multiple controls
+
+For each: which tier handles it, how the query is expressed, what the user sees.
+
+The hard ones are (c) and (e). Bases CAN'T do anti-joins. SQL helpers CAN do (c) easily but the result needs to surface in the user's vault — how?
+
+### 3. Cross-tier composition patterns
+
+Three plausible patterns for how Bases + Tier 2 SQL compose at user-surface level:
+
+| Pattern | What it looks like | Tradeoffs |
+|---|---|---|
+| **A: Bases-only (sacrifice complex queries)** | Concept-note bodies emit pure Bases queries; complex queries are out-of-scope for v0.1.6; user runs SQL queries via palette commands that show modal results | Simple; but incomplete — coverage gaps, closure queries unavailable in note views |
+| **B: SQL → Materialized Tier 1 file → Bases renders it** | Crosswalker periodically (or on-demand) runs Tier 2 SQL queries; result rows written to a generated Markdown file with frontmatter; Bases queries that file natively | Bases UX preserved; result file needs lifecycle (regenerate? when?); freshness becomes complicated |
+| **C: Custom Crosswalker views (not Bases-native)** | Plugin emits its own query views that render SQL results in custom panes; bypasses Bases for complex queries | Most flexible; least Obsidian-native UX; "Bases query layer" commitment becomes "Bases for simple, custom for complex" |
+| **D: Dual surface** | Recipe emits Bases for simple queries inline; recipe also emits a "[Run complex query]" link that opens a modal calling Tier 2 SQL | Two surfaces user has to know; honest about the constraint |
+
+Which is the right v0.1.6 architecture? What's the minimum viable user experience?
+
+### 4. Recipe-driven query emission
+
+When a recipe imports a framework, what queries should the bundled engine emit into note bodies automatically?
+
+For a concept note (e.g., AC-2):
+- "Evidence covering this control" — Bases query? SQL bridge? Both?
+- "Controls in this family" — Bases (flat tag/frontmatter filter)
+- "Crosswalks from this control" — Bases (junction notes filter on subject)
+- "Crosswalks to this control" — Bases (junction notes filter on object)
+- "Transitive reach via crosswalks" — SQL only
+
+For a junction note:
+- "All other junctions for this control" — Bases (subject filter)
+- "All other junctions for this evidence" — Bases (object filter)
+- "Freshness status" — Bases formula
+
+For a crosswalk-edge note:
+- "Other edges with same subject" — Bases
+- "Other edges with same predicate" — Bases
+- "Transitive closure from this edge" — SQL only
+
+What's the recipe API for declaring "emit this query into the note body"? Is it a recipe field (e.g., `also_emit.body.queries`) or a per-kind default in the recipe schema?
+
+### 5. Performance and freshness
+
+- Tier 2 closure cache invalidates on any mappings change. What about Bases queries — do they auto-update? (Yes, Bases re-runs on file change.)
+- If we use Pattern B (materialize SQL → Tier 1 file → Bases renders), what's the materialization cadence? On vault load? On-demand? On Tier 1 change?
+- For multi-thousand-edge OLIR crosswalks, what's the wall-clock cost of common queries?
+
+### 6. The junction-note-subject-string problem
+
+`junction_notes.subject` is a wikilink-target string (e.g., `[[Frameworks/NIST 800-53 r5/AC/AC-2]]`). To answer "evidence for control X" we need to match this string against the concept's vault path or curie. Three approaches:
+
+- **String LIKE**: `WHERE junction_notes.subject LIKE '%' || concepts.curie || '%'` — brittle (false positives if curie is a substring of another)
+- **Resolve via Obsidian's metadataCache**: `app.metadataCache.resolveLink()` returns the target file; lookup that file's CURIE; match — accurate but requires plugin code, not pure SQL
+- **Projector pre-resolution**: at projection time, resolve subject wikilink to a concept curie + store in a new column — cleanest if the resolved-curie is stable
+
+Which approach? What's the schema impact? Does it need a v0.1.5 schema bump (tier2-sqlite-v2)?
+
+### 7. Stretch goal: cross-vault query
+
+A user with multiple vaults (corporate vs personal; NIST vault vs ISO vault) might want queries that span them. Out of scope for v0.1.6, but: does the design preclude it later? Or does the architecture leave the door open?
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **Reintroducing Dataview** — the project memory commits to Bases-only as the v0.1 query layer; reversing that is a synthesis-log-level decision, not a query-architecture choice
+2. **Embedding raw SQL in concept-note bodies** — SQL is not portable; Bases queries are because they're upstream Obsidian
+3. **Custom plugin-only query language** — would compete with both Bases and SQL; adds maintenance debt; isn't Obsidian-native
+4. **Closure-on-every-query** — closure cache exists for a reason; the architecture must use it
+5. **DataviewJS as a fallback** — same project memory; Dataview removed
+6. **A separate "Crosswalker query language"** — JSONata is already the in-recipe expression sub-language ([transform-engine-depth log](/crosswalker/agent-context/zz-log/2026-05-05-transform-engine-depth-and-input-formats/)); not adding a third language
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Query-routing decision matrix** — ~20 user questions × tier × rationale
+2. **Junction-note query pattern catalog** — 6 patterns × concrete `.base` file or SQL helper call × user-surface rendering
+3. **Cross-tier composition recommendation** — which of patterns A/B/C/D wins, with explicit tradeoffs vs the alternatives
+4. **Recipe-emission API proposal** — what fields recipe authors use to declare body queries; how the engine emits them
+5. **Junction-note-subject-string resolution decision** — string LIKE vs metadataCache vs projector pre-resolution; schema implications
+6. **Performance worked examples** — wall-clock estimates for the 3-5 hardest query types at OLIR-scale (~1000 mappings, ~1000 junctions, ~10K concepts)
+7. **v0.1.6 milestone scope refinement** — what's in / out / deferred to v0.2 with that recommendation in hand
+8. **Open questions for v0.2+** — concrete deferral list (e.g., "cross-vault queries deferred per §7"; "DataviewJS migration when Datacore stabilizes")
+
+## Anchored references
+
+- [v0.1.6 Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — what this challenge resolves
+- [Ch 07 — Evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction-note 13-field schema (the 5th architecture)
+- [v0.1.5 — Tier 2 sqlite-wasm sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) — SQL helpers + closure cache available; query API in `src/tier2/queries.ts`
+- [`metadata-ecosystem` concept page](/crosswalker/concepts/metadata-ecosystem/) — Bases capabilities + limitations + comparison with Dataview/Datacore
+- [System architecture Layer 4 (Query)](/crosswalker/concepts/system-architecture/#layer-4--query-t1--t2--user) — current routing decision sketch
+- [Ch 18 — Tier 2-Lite scale model](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) — engineering scale model; closure cache cost; query budget
+- [`obsidian-bases` skill](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/obsidian-bases) — Bases file format reference
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — Tier 1 frontmatter shape
+- [v0.1 schema spec §7](/crosswalker/agent-context/v0-1-schema-spec/#7-tier-2-sidecar-sql-schema-sqlite-wasm-projection) — Tier 2 SQL DDL
+- [Two-mode architecture decision](/crosswalker/agent-context/zz-log/2026-05-05-two-mode-architecture/) — predecessor architectural commitment
+- [Transform-engine depth + input formats](/crosswalker/agent-context/zz-log/2026-05-05-transform-engine-depth-and-input-formats/) — JSONata reserved as the inline expression language; NOT for query layer
+
+## Why this needs to be a research challenge (not just a planning session)
+
+Three reasons:
+
+1. **The decision is genuinely architecturally consequential** — gets v0.1.6 + v0.1.7 + future query work right or wrong for years
+2. **It synthesizes 5+ prior decisions** — Ch 07 (junction notes); Ch 23 (Bases not Dataview); Ch 18 (closure cache); v0.1.5 Phase 3 (SQL helpers); junction note schema
+3. **The right answer is non-obvious** — Patterns A/B/C/D have real tradeoffs; "obvious" choices (e.g., "just use Bases everywhere") fail at the first complex query
+
+The deliverable should be **adversarial** — argue against each chosen approach before recommending it. Test each pattern against a hostile real-world query: 5000 controls × 8 frameworks × 30K junction notes; user wants "stale-evidence coverage matrix grouped by framework, sorted by oldest review_date." Which pattern actually serves them?
+
+## Hand-off
+
+Write the deliverable to `docs/src/content/docs/agent-context/zz-research/YYYY-MM-DD-challenge-27-bases-query-layer-architecture.md` (plain `.md`, frontmatter only for sidebar — per the `synthesis-log` skill convention).
+
+After deliverable lands: write a synthesis log resolving the verdicts adopted/rejected and update the v0.1.6 milestone page scope. Use the `synthesis-log` skill.
