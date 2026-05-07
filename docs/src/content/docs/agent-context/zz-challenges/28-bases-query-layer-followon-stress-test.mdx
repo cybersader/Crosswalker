@@ -13,6 +13,16 @@ import { Aside } from '@astrojs/starlight/components';
 Filed as a follow-on to [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/) after three parallel deliverables converged on hybrid architecture but left specific lifecycle/UX questions open. The v0.1.6 implementation should NOT begin until either (a) Ch 28 deliverable lands and a synthesis log resolves both Ch 27 + Ch 28 verdicts, or (b) the user explicitly defers Ch 28 to surface during implementation.
 :::
 
+:::tip[Resolution in progress — three deliverables landed 2026-05-07]
+Three parallel fresh-agent deliverables responded to this brief on 2026-05-07. All three preserved verbatim in `zz-research/`:
+
+- [Deliverable A — Bases-first hybrid with opt-in materialization](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/) — engages all 7 brief investigation areas; CQRS framing separates query layer from snapshot layer; opt-in command-only materialization at `Reports/_generated/`
+- [Deliverable B — Stress-test matrix](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-b-stress-test-matrix/) — interpreted "stress test" as DB load/perf testing rather than architectural stress test; produced synthetic-vault generator + benchmark harness + 6-axis SLO matrix; useful for future v0.2+ perf work but doesn't directly answer Ch 28's architectural questions
+- [Deliverable C — Narrow v0.1.6; defer materialization to v0.1.8](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/) — most conservative; recommends single `registerBasesView` (`crosswalkerCoverageMatrix`) as v0.1.6's only default surface, deferring materialization entirely to v0.1.8 audit-trail milestone
+
+Deliverables A and C agree on: registerBasesView as primary mechanism, single coverage-matrix view, `_crosswalker/` underscore folder convention, manifest-first OpenTimestamps audit model, junctions-as-audit-truth/matrices-as-caches framing, mobile/Publish parity as binding constraint. They DIVERGE on whether materialization belongs in v0.1.6 (A: opt-in materialize command in v0.1.6; C: defer entirely to v0.1.8). Synthesis log will resolve.
+:::
+
 ## Why this exists
 
 [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/) produced three parallel fresh-agent deliverables ([A](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/), [B](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-b-vault-as-database-stack/), [C](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-c-materialization-and-codeblock/)). All three converge on the *architectural posture*:
