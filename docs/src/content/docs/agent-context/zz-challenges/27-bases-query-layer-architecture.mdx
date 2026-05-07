@@ -13,6 +13,16 @@ import { Aside } from '@astrojs/starlight/components';
 The [v0.1.6 Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) currently describes the *outcome* (Bases-shaped queries replacing Dataview) but not the *architecture* (where each query type lives, how junction-note queries work in practice, how Bases + Tier 2 SQL compose at user-surface level). This challenge resolves that gap **before code is written**.
 :::
 
+:::tip[Resolution in progress — three deliverables landed 2026-05-07]
+Three parallel fresh-agent deliverables responded to this brief on 2026-05-07. All three are preserved verbatim in `zz-research/`:
+
+- [Deliverable A — Crosswalker-specific framing](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/) — recommends Hybrid + Repository + `registerBasesView` (TaskNotes v4 precedent)
+- [Deliverable B — Vault-as-database stack](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-b-vault-as-database-stack/) — four-layer schema/storage/query/views model with CQRS
+- [Deliverable C — Materialization + codeblock (Pattern B+D)](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-c-materialization-and-codeblock/) — recommends materialized SQL→Bases + `crosswalker-query` codeblock; closes most of the brief's 7 investigation areas concretely
+
+All three converge on the *architectural posture* (hybrid Bases-as-default + escape hatch for what Bases can't express). They diverge on the *integration mechanism* (A: `registerBasesView` custom view types; C: codeblock processor). [Ch 28](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/) was filed as a follow-on to stress-test the materialization lifecycle, the registerBasesView-vs-codeblock decision, and the audit-trail implications before the synthesis log lands.
+:::
+
 ## Why this exists
 
 Bases is locked as the v0.1 query layer (per the [Ch 23 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) + the [project memory commitment](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#operational-rules-load-bearing-for-agents) — Dataview removed). And per [Ch 07 (evidence-link edge model)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/), junction notes (edge-as-note reification) are the only architecture compatible with Bases' flat-YAML constraint.

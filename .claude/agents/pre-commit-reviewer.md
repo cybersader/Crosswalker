@@ -1,6 +1,6 @@
 ---
 name: pre-commit-reviewer
-description: Crosswalker pre-commit alignment auditor. Reviews staged changes against project conventions BEFORE commit — flags CHANGELOG drift, missing synthesis/delivery logs, milestone-status drift, missing cross-links, personal-data leakage, stale Last-Updated dates, unregistered new skills/memory files. Read-only — produces a report; user decides what to fix. Runs in seconds; saves hours of catch-up.
+description: Crosswalker pre-commit alignment auditor. Reviews staged changes against project conventions BEFORE commit — flags CHANGELOG drift, missing synthesis/delivery logs, milestone-status drift, research-deliverable naming/convention violations, missing cross-links, personal-data leakage, stale Last-Updated dates, unregistered new skills/memory files. Read-only — produces a report; user decides what to fix. Runs in seconds; saves hours of catch-up.
 tools: Read, Glob, Grep, Bash
 model: sonnet
 ---
@@ -23,7 +23,7 @@ You are invoked via the Agent tool with the user's intent: "review my staged cha
 
 You finish in 2-5 minutes. If the diff is huge (>1000 lines), you can ask for narrowed scope.
 
-## The 10-check audit
+## The 11-check audit
 
 For each check, **either** ✅ Pass with one line **or** ⚠ Flag with specific file/line context.
 
@@ -159,7 +159,81 @@ done
 
 **How to detect**: harder to automate cleanly because memory files live outside the repo. Skip in v1; revisit if memory-file count grows.
 
-### 10. Skills + cross-links (`.claude/CLAUDE.md` registry)
+### 10. Research-deliverable convention violations (BLOCKING for naming; advisory for content)
+
+**Pattern**: New file added under `docs/src/content/docs/agent-context/zz-research/` violating one or more conventions documented in `zz-research/index.md` § "Convention notes".
+
+The four sub-checks:
+
+**10a. Filename pattern** (BLOCKING). Filename must match `YYYY-MM-DD-challenge-NN-(deliverable-[a-z]-)?<slug>.md` exactly:
+- `.md` (NOT `.mdx`)
+- Date prefix `YYYY-MM-DD`
+- `challenge-NN` (zero-padded, 2 digits)
+- For multi-deliverable runs: `deliverable-a-`, `deliverable-b-`, etc. (alpha letter)
+- Followed by a kebab-case slug
+
+**Action**: ❌ "BLOCK — research-deliverable filename `<file>` violates `zz-research/index.md` convention. Multi-deliverable runs MUST split into `deliverable-a-<slug>.md` + `deliverable-b-<slug>.md` per Ch 11/Ch 20 precedent. Single-deliverable runs use `YYYY-MM-DD-challenge-NN-<slug>.md`."
+
+**10b. Editorial framing in deliverable file** (advisory). Per the convention: *"deliverables are not edited after publication except for typo/formatting fixes that don't change content. Any commentary or critical assessment lives in the corresponding decision log."*
+
+Detect by looking for headings/sections that signal editorial-not-deliverable content:
+- `## Editorial prelude`, `## Editorial postlude`, `## Editorial ` anywhere
+- `## Recommended next steps` followed by Path A / Path B / option-comparison framing
+- First-person "I" critique (e.g., "My read", "I'd recommend", "What I'd do")
+- "Editorial framing", "Editorial assessment", "Pre-synthesis notes" in headings
+- A `## TBD` / `## Open` / `## Pending decision` section that proposes paths forward
+
+**Action**: ⚠ "deliverable file `<file>` contains editorial framing (matched: `<heading>`). Per `zz-research/index.md` convention, deliverables stay verbatim — move editorial assessment to a `zz-log/YYYY-MM-DD-*-synthesis.mdx` synthesis log OR to gitignored `.workspace/` if pre-decision."
+
+**10c. Multi-deliverable consolidation in single file** (BLOCKING). Detect a single file containing `## Deliverable A` AND `## Deliverable B` (or similar parallel-deliverable section headers).
+
+**Action**: ❌ "BLOCK — file `<file>` consolidates multiple deliverables. Per `zz-research/index.md` Multi-deliverable convention, parallel agent runs split into separate files (`deliverable-a-<slug>.md`, `deliverable-b-<slug>.md`). Convergence-evidence value comes from preserving each independent run."
+
+**10d. Frontmatter shape** (advisory). Frontmatter should follow the existing pattern: `title`, `description`, `tags`, `date`, and `sidebar.label` + `sidebar.order` (negative date-encoded e.g. `-20260507.1` for reverse-chronological). No `import` statements (since `.md` not `.mdx`).
+
+**Action**: ⚠ "deliverable file `<file>` frontmatter doesn't match existing convention — see `2026-05-03-challenge-20-deliverable-a-t1tma.md` as canonical example."
+
+**Why all of this**: Research deliverables are historical record. Naming/structure conventions enable: (a) re-running a challenge with different agents (clean predecessor reference), (b) external research sessions citing predecessor deliverables by stable URL, (c) convergence-evidence value when 2-of-2 or 3-of-3 agents reach the same conclusion (only visible if deliverables are preserved separately). Past gap: 2026-05-07 commit `e8db5fd` consolidated two parallel deliverables into a single file with editorial framing — caught only on user review, required a refactor commit. This check prevents recurrence.
+
+**How to detect**:
+```bash
+# 10a — filename pattern
+git diff --cached --name-only --diff-filter=A | grep -E '^docs/.*zz-research/' | while read f; do
+  base=$(basename "$f")
+  # Must match YYYY-MM-DD-challenge-NN-(deliverable-[a-z]-)?<slug>.md
+  if ! echo "$base" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}-challenge-[0-9]{2}-(deliverable-[a-z]-)?[a-z0-9-]+\.md$'; then
+    echo "10a BLOCK: $f does not match deliverable filename convention"
+  fi
+  # Must be .md not .mdx
+  if echo "$base" | grep -qE '\.mdx$'; then
+    echo "10a BLOCK: $f uses .mdx — research deliverables must be .md"
+  fi
+done
+
+# 10b — editorial content heuristic
+git diff --cached --name-only --diff-filter=A | grep -E '^docs/.*zz-research/.*\.md$' | while read f; do
+  if grep -qE '^## (Editorial|Recommended next steps|Pre-synthesis|TBD|Pending decision)' "$f" 2>/dev/null; then
+    echo "10b WARN: $f contains editorial heading — move to zz-log/ synthesis log or .workspace/"
+  fi
+done
+
+# 10c — multi-deliverable consolidation
+git diff --cached --name-only --diff-filter=A | grep -E '^docs/.*zz-research/.*\.md$' | while read f; do
+  count=$(grep -cE '^## Deliverable [A-Z]' "$f" 2>/dev/null || echo 0)
+  if [ "$count" -gt 1 ]; then
+    echo "10c BLOCK: $f contains $count deliverable sections — split per Multi-deliverable convention"
+  fi
+done
+
+# 10d — frontmatter shape (loose check; only flag if obvious mismatch)
+git diff --cached --name-only --diff-filter=A | grep -E '^docs/.*zz-research/.*\.md$' | while read f; do
+  if ! head -20 "$f" 2>/dev/null | grep -qE '^date: '; then
+    echo "10d WARN: $f frontmatter missing date field"
+  fi
+done
+```
+
+### 11. Skills + cross-links (`.claude/CLAUDE.md` registry)
 
 **Pattern**: New file under `.claude/skills/<name>/SKILL.md` AND `.claude/CLAUDE.md` skills list section not in staged diff.
 

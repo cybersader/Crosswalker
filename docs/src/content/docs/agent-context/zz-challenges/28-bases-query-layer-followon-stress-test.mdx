@@ -1,0 +1,215 @@
+---
+title: "Challenge 28: Bases query layer follow-on stress test (materialization lifecycle, integration mechanism, audit trail)"
+description: "Adversarial follow-on to Ch 27. Three parallel Ch 27 deliverables converged on Hybrid (Bases as default + SQL escape hatch) but left specific lifecycle/UX, integration-mechanism, and audit-trail questions open. This challenge stress-tests the remaining gaps before the v0.1.6 synthesis log locks the architecture in. Specifically: where do generated materialization files live; registerBasesView vs codeblock processor; mobile/Publish parity; recipe lifecycle; audit-trail implications of materialized fact tables; and the contrarian no-materialization third path."
+tags: [research, query-layer, bases, materialization, registerbasesview, audit-trail, mobile, publish, ch-28, follow-on]
+date: 2026-05-07
+sidebar:
+  label: "28 · Bases query layer follow-on"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pre-requisite for v0.1.6 synthesis log]
+Filed as a follow-on to [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/) after three parallel deliverables converged on hybrid architecture but left specific lifecycle/UX questions open. The v0.1.6 implementation should NOT begin until either (a) Ch 28 deliverable lands and a synthesis log resolves both Ch 27 + Ch 28 verdicts, or (b) the user explicitly defers Ch 28 to surface during implementation.
+:::
+
+## Why this exists
+
+[Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/) produced three parallel fresh-agent deliverables ([A](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/), [B](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-b-vault-as-database-stack/), [C](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-c-materialization-and-codeblock/)). All three converge on the *architectural posture*:
+
+- Hybrid: Bases as default + SQL/Repository as escape hatch
+- Schema contract > engine choice
+- Edge-as-note (junction notes) for typed relations
+- CQRS for vaults (writes through typed modals; reads through Bases or SQL)
+
+But they leave specific implementation-affecting questions unresolved or in disagreement:
+
+| Open question | Why it matters |
+|---|---|
+| Where do generated materialization files (e.g. `Reports/coverage-gap-NIST-800-53.md`) actually live? | Vault pollution, graph-view noise, search hits, sync churn, git-history bloat |
+| `registerBasesView` (Deliverable A) vs `crosswalker-query` codeblock processor (Deliverable C) — pick one or both? | Different integration mechanisms with different UX, mobile-parity, and Publish-parity stories |
+| Should we materialize at all? Is there a contrarian "in-memory render only, no Tier 1 file output" path? | Materialization has real costs (vault pollution, freshness UX, sync size, audit-trail implications) |
+| Mobile / Obsidian Publish parity for `crosswalker-query` codeblocks + sqlite-wasm | Bases works on mobile and (planned) in Publish; codeblock processor + sqlite-wasm don't necessarily |
+| Recipe lifecycle: emit-from-import-wizard vs hand-author vs share/marketplace; versioning; conflicts with user edits | Determines how recipes evolve over a vault's lifetime |
+| Audit-trail implications of materialized fact tables | v0.1.8 audit-trail story needs alignment — git, OpenTimestamps, hash chains, snapshotting strategy |
+| The "Pattern C done right" question — one carefully-scoped `registerBasesView` for the ONE query that demands it (coverage matrix), nothing else? | A's framing might be better than C's framing for specific queries |
+
+This challenge stress-tests these questions adversarially — the deliverable should argue against the convergent Ch 27 recommendation before validating it.
+
+## What's already settled (do NOT re-litigate)
+
+These come out of Ch 27 with three-way convergence and SHOULD NOT be re-debated:
+
+| Settled | Source |
+|---|---|
+| Hybrid architecture (Bases default + escape hatch) | All three Ch 27 deliverables |
+| Bases NOT Dataview/Datacore as v0.1 query layer | Project memory `project_query_layer_bases_not_dataview.md` |
+| Edge-as-note (junction notes) as typed-relation pattern | Already shipped v0.1.4; Ch 07 13-field schema |
+| Schema contract > engine choice | All three Ch 27 deliverables |
+| `metadataCache.resolvedLinks` for edge resolution (not string LIKE; not custom projector) | Ch 27 deliverable C §6 |
+| Recipe-emission API uses YAML descriptor (id/tier/inputs/output.kind/sql), not raw SQL in concept-note bodies | Ch 27 deliverable C §8; meets brief's "no raw SQL in note bodies" anti-pattern |
+| Junction-note schema denormalizes `control_id` and `framework` strings for Bases filtering | Ch 27 deliverable C §3 |
+| TaskNotes v4 is the canonical Obsidian-plugin precedent for "delete bespoke filter UI; let Bases own it" | Ch 27 deliverable A §3 |
+| 5-mechanism recipe grammar (folder \| file \| heading \| tag \| wikilink) | Ch 22 synthesis |
+
+If the deliverable disagrees with any of these, document it as a *contrarian-stress-test note* — not a recommendation.
+
+## What to investigate
+
+Each section is a focused question the deliverable must answer concretely.
+
+### 1. Materialized-file lifecycle and vault pollution
+
+If we adopt Pattern B+D (Ch 27 deliverable C verdict), Crosswalker generates Markdown files like `Reports/coverage-gap-NIST-800-53.md` containing materialized SQL-query results as YAML frontmatter rows. **What's the lifecycle?**
+
+- **Where do they live?** `Reports/`? `_crosswalker/views/`? Hidden folder (dot-prefix)? Vault-root?
+- **Graph-view pollution**: 5,000 controls × 8 frameworks = thousands of derived nodes appearing in graph view alongside canonical concepts. Does that ruin the graph?
+- **Search noise**: auditor searches "AC-2" → gets hits in canonical concept note + 50 hits across materializations. Helpful? Harmful?
+- **Sync size**: materialized fact tables can triple disk size of the vault. iCloud / Obsidian Sync / Git all care.
+- **Git-history bloat**: every "Materialize" command commits ~5K rows of frontmatter. Solo user with daily refreshes → vault history dominated by materialization noise.
+- **Refresh trigger**: manual command? On vault change? On schedule? Background worker?
+- **Freshness UX**: how does an auditor know a materialized file is stale? "STALE — re-run" banner + paired `.base` formula? Modal warning? Color-coded?
+- **Hand-edit prevention**: machine-generated frontmatter says `crosswalker.materialized: true` — but Obsidian editor doesn't prevent edits. What happens if user edits → next regen?
+
+Produce concrete UX recommendations + a Materialize-command spec.
+
+### 2. registerBasesView vs codeblock processor — the integration-mechanism decision
+
+**Ch 27 deliverable A** recommends `registerBasesView` (custom Bases view types like `crosswalkerCoverageMatrix`) as the primary integration mechanism. Plugin-rendered, but stays *Bases-native* — user right-clicks a `.base` file and switches view types.
+
+**Ch 27 deliverable C** recommends `crosswalker-query` codeblock processor (parameterized recipe lookups; SQL run via sqlite-wasm; results rendered as table). Not Bases-native — separate render path.
+
+These are **different architectural bets**. Both could co-exist but the project has limited surface area.
+
+- **registerBasesView pros**: Bases-native UX; user can switch views; works with `.base` file conventions; runs inside the QueryController data flow
+- **registerBasesView cons**: requires implementing as a Bases view subclass; `.base` files only; can't run from concept-note body inline
+- **Codeblock pros**: works inline anywhere a markdown body is rendered; recipe-by-name parameter binding; separate from Bases concerns
+- **Codeblock cons**: separate render path (not Bases-native); doesn't survive plugin uninstall; mobile/Publish unclear
+
+**Decision needed**: which queries get `registerBasesView`? Which get codeblock? Both? Specific query types per mechanism?
+
+Produce a decision matrix + worked example for "coverage matrix" specifically (the highest-stakes query): which mechanism, why, what does the user actually see?
+
+### 3. The contrarian "no materialization" third path
+
+**Argument for materialization**: SQL output written as Tier 1 frontmatter → Bases renders natively → consistent UX, mobile/Publish parity, single rendering pipeline.
+
+**Argument against materialization**: vault pollution; sync churn; freshness UX confusion; audit-trail bloat; commits dominated by regen noise.
+
+**Stress test**: is there a third path?
+
+- **In-memory only**: SQL queries run on demand into a `BasesView` subclass that calls `plugin.queryClosure()` etc. and renders results via Bases' rendering primitives. No Tier 1 output. Lives only in the BasesView.
+  - Pro: zero vault pollution, no sync churn, no audit-trail bloat
+  - Con: not portable across plugin uninstall; not visible to Obsidian Publish; not editable; not version-controlled
+
+- **Sidecar database only (no Markdown materialization)**: SQL results stay in sqlite-wasm; codeblock processor renders into the page. No `.md` artifacts.
+  - Pro: same as in-memory; results re-runnable
+  - Con: query results not survivable across plugin reinstall (cache rebuilds); no permanent record
+
+- **Hybrid (deliverable C verdict)**: materialize the persistent reports (coverage matrix); use codeblock for ad-hoc.
+  - Pro: best of both
+  - Con: two mental models
+
+What's the ACTUAL right answer if we honestly engage with vault-pollution costs?
+
+### 4. Mobile / Obsidian Publish parity
+
+- **Bases**: works on mobile (Obsidian 1.10+); planned for Publish per Obsidian roadmap
+- **Custom Bases views (`registerBasesView`)**: works on mobile if BasesView subclass doesn't depend on desktop-only APIs; Publish status unclear (custom view types likely don't render in Publish today)
+- **Codeblock processors**: work on mobile (Obsidian renders codeblocks identically); Publish does NOT execute codeblock processors (text-only rendering)
+- **sqlite-wasm**: bundle size cost (~700KB compressed); works on mobile but adds RAM pressure; Publish irrelevant (no plugin execution)
+
+**Question**: what's the mobile + Publish degradation story? Specifically:
+- Mobile-only audit reviewer reads materialized `Reports/coverage-gap-*.md` — works (Markdown rendering)
+- Mobile-only audit reviewer encounters a `crosswalker-query` codeblock — works (sqlite-wasm runs on mobile)
+- Public Obsidian Publish viewer encounters same codeblock — fails (no plugin execution)
+- Public Obsidian Publish viewer encounters materialized Markdown — works (canonical Markdown)
+
+**Is materialization the only path that survives Publish?** If so, that's a strong argument for Pattern B even with the lifecycle costs.
+
+### 5. Recipe lifecycle and ownership
+
+Recipes (e.g., `coverage-gap-by-framework.yaml`) live in `.crosswalker/recipes/`. Where do they come from? How do they evolve?
+
+- **Emit from import wizard**: when a recipe imports NIST 800-53, the wizard auto-emits 5-10 starter recipes. User customizes.
+- **Hand-author**: user writes a recipe from scratch.
+- **Share/marketplace**: user grabs a community recipe. Versioning across recipe schema evolution? Conflicts with user customizations?
+- **Versioning**: recipes have `id` + version (`v1`, `v2`)? How do downstream queries reference?
+- **Validation**: does the recipe schema validate against `recipe.schema.json` (Ch 23 commitment)? Where does that validation run?
+- **User edits to emitted recipes**: regen overwrites? Frontmatter `crosswalker.user_edited: true` flag? Three-way merge?
+
+Produce a recipe-lifecycle spec + ownership matrix (system-emitted vs user-authored vs community-shared) + version-conflict-resolution rules.
+
+### 6. Audit-trail implications of materialized fact tables
+
+Materialized files are **point-in-time snapshots**. For GRC audit:
+
+- Do we commit `Reports/coverage-gap-*.md` snapshots to git? If yes: massive history bloat. If no: audit reproducibility questionable (auditor asks "show me the coverage-gap report from 2026-03-15" — no record).
+- Does each materialization step emit an OpenTimestamps `.ots` proof? (Per [Ch 15 audit-trail synthesis](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/), OpenTimestamps is the v0.1.8 default.)
+- Does the materialization frontmatter include `_crosswalker.materialized_at` + `_crosswalker.input_version_hash` so a regen can be verified to produce the same output?
+- Does materialization need to be deterministic — i.e., same input → same byte-identical output — for audit?
+
+How does this all integrate with the [v0.1.8 audit-trail milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/)?
+
+### 7. registerBasesView "done right" for ONE query
+
+Stress-test deliverable A's `registerBasesView` framing: instead of using it broadly, what if Crosswalker uses it for exactly ONE query — the coverage matrix?
+
+- `crosswalkerCoverageMatrix` view subclass takes a `.base` file with filter `note.type == "control"`
+- Internally calls `plugin.queryCrosswalk()` and `plugin.queryClosure()` to enrich each row
+- Renders a custom table with framework × control × evidence-count
+- All other queries stay in Bases default views or codeblock processor
+
+Is this a better v0.1.6 architecture than "implement codeblock processor for all complex queries"? What's the maintenance cost? What does the `.base` file look like? What does the user do?
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **Reintroducing Dataview** — settled (Ch 23 + project memory)
+2. **Custom plugin-only query language** — settled (anti-pattern in Ch 27 brief)
+3. **Embedding raw SQL in concept-note bodies** — settled (anti-pattern in Ch 27 brief)
+4. **Replacing Bases with Datacore** — settled
+5. **Re-debating the hybrid verdict** — Ch 27 closed it
+6. **Architectural overhauls beyond v0.1** — keep recommendations within v0.1.6 implementation scope; long-horizon items go to v0.2+ deferral list
+7. **Solving multi-vault federation** — out of scope per Ch 27 brief §7
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Materialization lifecycle spec** — folder convention, refresh trigger, freshness UX, hand-edit prevention, sync/git implications
+2. **Integration-mechanism decision matrix** — which queries get `registerBasesView`, which get codeblock processor, justified per query
+3. **Contrarian "no materialization" analysis** — does an in-memory-only or sidecar-only path actually work? What does it cost?
+4. **Mobile + Publish parity table** — for each query type × each integration mechanism, what works where
+5. **Recipe lifecycle spec** — ownership matrix; versioning; conflict resolution; validation
+6. **Audit-trail integration recommendation** — how materialized files relate to v0.1.8 audit story; OpenTimestamps integration; deterministic output guarantees
+7. **"`registerBasesView` for ONE query" worked example** — concrete code/UX/maintenance tradeoff for coverage-matrix specifically
+8. **Updated v0.1.6 milestone scope** — what's in/out/deferred GIVEN these decisions, refining Ch 27 deliverable C §9
+9. **Open questions for v0.2+** — concrete deferral list with re-evaluation triggers
+
+## Anchored references
+
+- [Ch 27 brief](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/)
+- [Ch 27 deliverable A — Crosswalker-specific framing](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/)
+- [Ch 27 deliverable B — Vault-as-database stack](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-b-vault-as-database-stack/)
+- [Ch 27 deliverable C — Materialization + codeblock](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-c-materialization-and-codeblock/)
+- [v0.1.5 Tier 2 sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) — Tier 2 SQL helpers + closure cache available
+- [v0.1.6 Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)
+- [v0.1.8 Audit trail milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/)
+- [Ch 15 audit-trail synthesis](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/) — OpenTimestamps T2 default
+- [Ch 07 evidence-link edge model](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction-note 13-field schema
+- [`metadata-ecosystem` concept page](/crosswalker/concepts/metadata-ecosystem/)
+- [`obsidian-bases` skill](https://github.com/cybersader/crosswalker/tree/main/.claude/skills/obsidian-bases)
+
+## Why this needs another challenge (not just an implementation start)
+
+The remaining gaps cluster into three tightly-coupled architectural questions: (a) does materialization work given vault pollution? (b) which integration mechanism wins where? (c) how does it all fit with the audit-trail story? An adversarial fresh-agent run forces a deliverable that engages with all three concretely, rather than letting them surface during implementation where each surprise blocks v0.1.6 progress.
+
+The user's signal was direct: "I really just want to make sure we're bringing all the ideas, the pros, and the cons to the table so that we can finally make a decision on the architecture that is best to go forward with."
+
+## Hand-off
+
+Write the deliverable to `docs/src/content/docs/agent-context/zz-research/YYYY-MM-DD-challenge-28-deliverable-a-bases-followon.md` (plain `.md`, frontmatter only for sidebar; verbatim preservation; **no editorial framing** in the deliverable file — assessment goes in the synthesis log).
+
+After deliverable lands: write a single synthesis log resolving Ch 27 + Ch 28 verdicts together; refine v0.1.6 milestone scope; archive both Ch 27 and Ch 28 briefs to `zz-challenges/archive/`; update `zz-research/index.md`. Use the `synthesis-log` skill.
