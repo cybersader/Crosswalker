@@ -51,6 +51,20 @@ These are durable across all three plausible architectural framings. **They go i
 
 Each decision below is self-contained — read the option summaries inline; the **Source** links go to verbatim deliverables for deeper context. Decisions with the same options re-use shared vocabulary so you don't have to scroll back.
 
+### 🗺️ Where these decisions sit in the Crosswalker project flow
+
+```
+📥 INPUT          🗂️ STORAGE              ⚙️ PROJECTION         🔍 QUERY LAYER       📤 OUTPUT
+(CSV/XLSX/JSON   (Tier 1: Markdown    (Tier 2: sqlite-wasm  (Bases views,        (Exports +
+ frameworks +     vault — concepts,    sidecar — derived     custom Bases views,  materialized
+ mappings)        junction notes,      cache, rebuildable)   codeblock)           snapshots)
+                  crosswalk edges)
+   IMPORT WIZARD     —↑ already shipped (v0.1.1–v0.1.5) ↑—   THIS MILESTONE       v0.1.8 lands
+   recipe-driven                                              IS ABOUT THIS        materialization
+```
+
+Each decision below tags `📍 Stage` so you know where it sits in this flow. Most v0.1.6 decisions shape the query layer; D1 + D3 also shape the output side.
+
 ### Vocabulary cheat-sheet (referenced repeatedly below)
 
 | Term | Plain-language meaning |
@@ -65,7 +79,11 @@ Each decision below is self-contained — read the option summaries inline; the 
 
 ### D1: Materialization timing — v0.1.6 or v0.1.8?
 
-**The question**: Should Crosswalker generate static `.md` snapshot files in the v0.1.6 milestone, or defer that capability to v0.1.8 (the audit-trail milestone)?
+**📍 Stage**: 📤 OUTPUT side. Materialization sits *after* the query layer — it freezes a live query's result into a static `.md` file so it can be shared with auditors / regulators / Obsidian Publish viewers / your future self (post-plugin-uninstall). Sister to the live query layer, not part of it (per [D4 CQRS framing](#d4-adopt-cqrs-framing-as-a-load-bearing-architectural-commitment)).
+
+**Plain meaning**: "Materialization" = generating a static Markdown file containing pre-rendered query results, like printing a live view to a frozen `.md` document. The file lives in the user's vault (e.g. `_crosswalker/audit/<date>/coverage-matrix.md`) with frontmatter marking it machine-generated. Same conceptual pattern as a SQL **materialized view** — a query that's been computed once and stored, vs a live view recomputed on every read.
+
+**The question**: Should Crosswalker generate these static `.md` snapshot files in the v0.1.6 milestone, or defer that capability to v0.1.8 (the audit-trail milestone)?
 
 **Option A — Ship in v0.1.6 as opt-in command-only** ([source: Ch 28a § Materialization Lifecycle](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#1-materialized-file-lifecycle-and-vault-pollution--spec))
 - Where files land: `Reports/_generated/<recipe>/<view>/<timestamp>.md`
@@ -84,6 +102,8 @@ Each decision below is self-contained — read the option summaries inline; the 
 
 ### D2: Codeblock processor timing — v0.1.6 or v0.1.7?
 
+**📍 Stage**: 🔍 QUERY LAYER (live read surface). Adds a *second* user-facing entry point to live queries — alongside Bases custom views (D7) — for ad-hoc parameterized queries written inline in any note body.
+
 **The question**: Should the `crosswalker-query` codeblock (lets users write inline SQL-recipe lookups in any note body) ship in v0.1.6 or defer to v0.1.7?
 
 **Option A — Ship in v0.1.6** ([source: Ch 28a § registerBasesView vs Codeblock](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#2-registerbasesview-vs-codeblock-processor--decision-matrix))
@@ -100,6 +120,8 @@ Each decision below is self-contained — read the option summaries inline; the 
 ---
 
 ### D3: Folder convention for plugin-emitted files
+
+**📍 Stage**: 🗂️ STORAGE organization (Tier 1). Specifically the *plugin-emitted* subset of the vault — `.base` files Crosswalker writes, recipes Crosswalker bundles, materialized snapshots (when v0.1.8 lands). User-authored content (notes, evidence) is unaffected.
 
 **The question**: Where do plugin-emitted `.base` files and (eventually) materialized snapshots live in the user's vault?
 
@@ -119,6 +141,8 @@ Each decision below is self-contained — read the option summaries inline; the 
 
 ### D4: Adopt CQRS framing as a load-bearing architectural commitment?
 
+**📍 Stage**: 🔍 QUERY LAYER ↔ 📤 OUTPUT (the boundary between them). This decision draws the line: live reads (query layer) and frozen snapshots (output layer) are different things with different purposes, lifecycles, and audit semantics. Affects every other decision because it tells you which side a feature belongs to.
+
 **The question**: Should "query layer ≠ snapshot layer" join the [6 settled architectural commitments](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) as #7?
 
 CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query layer (Bases views + codeblock + sqlite-wasm sidecar — live reads; no new files) is architecturally separate from the snapshot layer (materialization + OpenTimestamps + git — point-in-time evidence; static files). Conflating them is a category error.
@@ -136,6 +160,8 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 ---
 
 ### D5: `sqlite-wasm` in v0.1.6 — hidden helper or user-facing surface?
+
+**📍 Stage**: ⚙️ PROJECTION (Tier 2 sidecar) ↔ 🔍 QUERY LAYER. The Tier 2 sqlite-wasm sidecar already exists (v0.1.5 P3 shipped). This decision is about *who can call into it*: only Crosswalker's own internal code (the custom Bases view's render logic), or can users write SQL directly?
 
 **The question**: Should v0.1.6 expose any user-facing SQL surface, or keep `sqlite-wasm` strictly internal?
 
@@ -155,6 +181,8 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 
 ### D6: Memory file — expand existing or create new?
 
+**📍 Stage**: 🧠 META — agent-context bookkeeping, not part of the user-facing flow. Memory files are persistent notes Claude Code carries across sessions; they tell future agents "this is settled, don't re-litigate." Doesn't affect what the plugin does; affects how durably the decision sticks across contributors / sessions / agents.
+
 **The question**: Do the new architectural commitments (CQRS framing, three-layer architecture, 7-primitive vocabulary, `crosswalkerPivot` naming) go into the existing `project_query_layer_bases_not_dataview.md` memory or a new memory file?
 
 **Option Expand existing** (memory file at `~/.claude/projects/.../memory/project_query_layer_bases_not_dataview.md`)
@@ -170,6 +198,8 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 ---
 
 ### D7: Custom view name — `crosswalkerPivot`, `crosswalkerCoverageMatrix`, `crosswalkerCrosswalk`, or `crosswalkerOntologyView`?
+
+**📍 Stage**: 🔍 QUERY LAYER (the *primary* live read surface). Specifically the name of the *one* custom Bases view-type Crosswalker registers in v0.1.6. Future siblings (`crosswalkerGraph`, `crosswalkerHierarchy`, `crosswalkerTimeline` in v0.2+) inherit the naming convention from this choice.
 
 **The question**: What name does the v0.1.6 custom Bases view get registered as via `registerBasesView`?
 
@@ -198,6 +228,8 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 
 ### D8: Recipe schema `query:` block — additive bump in v0.1.6 or defer?
 
+**📍 Stage**: 📥 INPUT (recipe grammar) ↔ 🔍 QUERY LAYER. Recipes are the YAML files that drive imports (today, the EMISSION grammar — folder/file/heading/tag/wikilink). This decision adds a parallel `query:` section to recipes so the same recipe that imports a framework can also declare WHICH queries Crosswalker should generate `.base` files for. Bridges import → query.
+
 **The question**: When does `recipe.schema.json` gain a `query:` block (lets recipes declare what to query + which view shape to render)?
 
 **Option v0.1.6 additive bump** (recommended — pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) for concrete schema design)
@@ -215,6 +247,8 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 ---
 
 ### D9: Concept-page strategy — three new pages or merge into existing?
+
+**📍 Stage**: 📚 META — documentation organization, not part of the user-facing plugin flow. Where the three-layer query engine vocabulary gets documented for human + agent readers (now and in future research challenges).
 
 **The question**: Where does the three-layer architecture vocabulary (query primitives, view shapes, ontology-web positioning) get documented?
 
