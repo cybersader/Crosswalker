@@ -49,17 +49,188 @@ These are durable across all three plausible architectural framings. **They go i
 
 ## §2 Decisions to make (D1–D9)
 
-| ID | Decision | Current lean | Tradeoff |
-|---|---|---|---|
-| **D1** | **Materialization in v0.1.6** (per Ch 28a) **vs defer to v0.1.8** (per Ch 28c)? | Defer to v0.1.8 | A is more pragmatic for Publish-portal use cases now; C is cleaner architecturally and cuts v0.1.6 scope significantly. Crosswalker doesn't yet have a "publish to auditor portal" workflow that demands materialization. |
-| **D2** | **Codeblock processor in v0.1.6** (per Ch 28a) **vs v0.1.7** (per Ch 28c)? | v0.1.7 | Keeps v0.1.6 minimal. `registerBasesView` covers the launch-market pivot recipe; codeblock is for ad-hoc closure queries, which are deferrable. |
-| **D3** | **Folder convention** — `Reports/_generated/` (28a) **vs** `_crosswalker/views/` + `_crosswalker/audit/` (28c)? | Split by purpose | `_crosswalker/views/` for plugin-emitted `.base` files (per 28c). `_crosswalker/audit/` for materialized audit snapshots when v0.1.8 lands. |
-| **D4** | **Adopt CQRS framing as a load-bearing architectural commitment** ("query layer ≠ snapshot layer")? | Yes | Should join the [6 v0.1 architectural commitments](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) as #7. The deepest insight from Ch 28a; reframes Ch 27's "hybrid" verdict as a clean read/write split. |
-| **D5** | **`sqlite-wasm` in v0.1.6**: hidden internal helper (BasesView calls `plugin.queryClosure`) **vs** user-facing surface? | Internal only | Already shipped in [v0.1.5 P3](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/). v0.1.6 BasesView uses it under the hood; no new user-facing SQL surface until v0.1.7. |
-| **D6** | **Memory file update** — expand `project_query_layer_bases_not_dataview.md` **vs** create new memory for CQRS framing? | Expand existing | Single file is the canonical query-layer commitment record. |
-| **D7** | **Custom view name**: `crosswalkerPivot` (the operation; recommended) vs `crosswalkerCoverageMatrix` (compliance-coded; current code) vs `crosswalkerCrosswalk` vs `crosswalkerOntologyView`? | `crosswalkerPivot` | Pivot is the *operation* (graph→tabular projection); matrix is one *output rendering*. Naming after the operation lets v0.2+ siblings be `crosswalkerGraph`, `crosswalkerHierarchy`, etc. Future-proof. Coverage Matrix becomes the launch-market *recipe* instance. |
-| **D8** | **Recipe schema `query:` block additive bump in v0.1.6** (lets recipes declare what to query + render shape; recommended) **vs defer** to v0.1.7 with codeblock processor? | v0.1.6 additive | The custom view needs *something* to parameterize on; doing ad-hoc options in v0.1.6 then breaking-changing in v0.1.7 hurts early users. Schema design pending **Ch 31** (recipe `query:` block schema). |
-| **D9** | **Concept-page strategy**: three new pages (`query-primitives` + `view-shapes` + `ontology-web-querying`; recommended) **vs** merge into existing `metadata-ecosystem` + `system-architecture`? | Three new pages | Durable orthogonal vocabularies; each findable by URL; cross-linked from existing pages. Merging buries the abstraction. |
+Each decision below is self-contained — read the option summaries inline; the **Source** links go to verbatim deliverables for deeper context. Decisions with the same options re-use shared vocabulary so you don't have to scroll back.
+
+### Vocabulary cheat-sheet (referenced repeatedly below)
+
+| Term | Plain-language meaning |
+|---|---|
+| **Materialization / "snapshot"** | Generate static `.md` files containing pre-rendered query results. Plugin runs the query, writes results to disk as Markdown. Survives plugin uninstall AND Obsidian Publish (since static Markdown is all Publish renders). |
+| **Codeblock processor / `crosswalker-query`** | Lets users write inline ` ```crosswalker-query ``` ` blocks anywhere in note bodies. Plugin intercepts the block, runs the query, replaces it with rendered output. Plugin-runtime only — does NOT survive plugin uninstall or Publish. |
+| **`registerBasesView` / "custom Bases view"** | Plugin registers a new view-type (e.g. `crosswalkerPivot`) that appears alongside Bases' built-in Table/Cards/Calendar in the view-picker dropdown. User selects from a `.base` file. Plugin-runtime only. |
+| **Tier 2 SQL helpers** | Already shipped in [v0.1.5 P3](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/): `plugin.queryConcepts`, `plugin.queryCrosswalk`, `plugin.queryClosure`. Run SQL against the sqlite-wasm sidecar. Currently internal-only (no user-facing SQL surface). |
+| **Recipe `query:` block** | A new YAML section in `recipe.schema.json` letting recipe authors declare what to query (axes, edges, aggregation) without writing SQL. Sketch: `query: { shape: pivot, rows: ..., cols: ..., cell: ... }`. Pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) for concrete schema. |
+
+---
+
+### D1: Materialization timing — v0.1.6 or v0.1.8?
+
+**The question**: Should Crosswalker generate static `.md` snapshot files in the v0.1.6 milestone, or defer that capability to v0.1.8 (the audit-trail milestone)?
+
+**Option A — Ship in v0.1.6 as opt-in command-only** ([source: Ch 28a § Materialization Lifecycle](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#1-materialized-file-lifecycle-and-vault-pollution--spec))
+- Where files land: `Reports/_generated/<recipe>/<view>/<timestamp>.md`
+- When generated: only on user command (`Crosswalker: Materialize view…`); no auto-refresh
+- Why now: Obsidian Publish renders only static HTML — plugin code doesn't run there. Materialization is the only path that survives a "share with external auditor" workflow today
+- Why opt-in: avoids vault pollution, sync churn, git-history bloat unless user explicitly asks
+
+**Option C — Defer entirely to v0.1.8 (audit-trail milestone)** ([source: Ch 28c § Materialization spec](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/#materialization-lifecycle-spec-v018-design-drafted-now))
+- Why later: materialization is a snapshot/audit concern, not a query-layer concern. Conflating them in v0.1.6 bloats scope. The audit-trail milestone is the right home for lifecycle + reproducibility + OpenTimestamps integration
+- Why this is safe: Crosswalker doesn't yet have a published-portal user demand pressing on v0.1.6
+- Junction notes are already audit truth (committed, diffable in git); matrices are caches/projections — treating a cache as audit evidence is a category error
+
+**Current lean**: Option C — defer to v0.1.8. Cleaner architecture; faster to ship v0.1.6; can be added later when a concrete Publish use case forces it.
+
+---
+
+### D2: Codeblock processor timing — v0.1.6 or v0.1.7?
+
+**The question**: Should the `crosswalker-query` codeblock (lets users write inline SQL-recipe lookups in any note body) ship in v0.1.6 or defer to v0.1.7?
+
+**Option A — Ship in v0.1.6** ([source: Ch 28a § registerBasesView vs Codeblock](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#2-registerbasesview-vs-codeblock-processor--decision-matrix))
+- Why now: parameterized ad-hoc queries (e.g. "show me evidence for AC-2 across all frameworks") are useful immediately; users will want them
+- Mirrors SQLSeal's working pattern (a community SQL-codeblock plugin)
+- Both `registerBasesView` (custom view) AND codeblock processor in v0.1.6
+
+**Option C — Defer to v0.1.7** ([source: Ch 28c § Updated v0.1.6 milestone scope](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/#updated-v016-milestone-scope))
+- Why later: v0.1.6 is already at risk of scope blowout; ship ONE custom view (`crosswalkerPivot`) that covers 80% of compliance use cases; defer the other surface
+- Closure queries (the main motivation for codeblock processor) can live in v0.1.7 alongside the user-facing SQL surface
+
+**Current lean**: Option C — v0.1.7. Keeps v0.1.6 focused; `registerBasesView` covers the launch-market Coverage Matrix use case; codeblock comes when ad-hoc closure queries become urgent.
+
+---
+
+### D3: Folder convention for plugin-emitted files
+
+**The question**: Where do plugin-emitted `.base` files and (eventually) materialized snapshots live in the user's vault?
+
+**Option A — `Reports/_generated/<recipe>/<view>/<timestamp>.md`** ([source: Ch 28a § Folder location](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#1-materialized-file-lifecycle-and-vault-pollution--spec))
+- Auditor-discoverable name (`Reports/` is human-meaningful)
+- `_generated` prefix marks machine-owned; gitignored by default
+- Per-recipe + per-view subfolders allow granular `.gitignore` exclusion
+
+**Option C — `_crosswalker/views/` for `.base` files + `_crosswalker/audit/` for snapshots** ([source: Ch 28c § Updated v0.1.6 milestone scope](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/#updated-v016-milestone-scope))
+- Single namespace for all Crosswalker plugin-emitted files
+- Underscore prefix (NOT dot) so Bases can still index the files (Obsidian doesn't index dot-folders)
+- First-run prompt asks user to add `_crosswalker/views/` to Excluded Files in Settings
+
+**Current lean**: Split by purpose — adopt C's `_crosswalker/views/` for plugin-emitted `.base` files (v0.1.6); add `_crosswalker/audit/` for materialized snapshots when v0.1.8 lands (replacing A's `Reports/_generated/`). One canonical namespace; clear purpose-folders inside.
+
+---
+
+### D4: Adopt CQRS framing as a load-bearing architectural commitment?
+
+**The question**: Should "query layer ≠ snapshot layer" join the [6 settled architectural commitments](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) as #7?
+
+CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query layer (Bases views + codeblock + sqlite-wasm sidecar — live reads; no new files) is architecturally separate from the snapshot layer (materialization + OpenTimestamps + git — point-in-time evidence; static files). Conflating them is a category error.
+
+**Option Yes — adopt as commitment #7** ([source: Ch 28a § Contrarian "No Materialization" Analysis](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#3-contrarian-no-materialization-analysis))
+- The deepest insight from Ch 28a; reframes Ch 27's "hybrid" verdict as a clean read/write split
+- Pays off across v0.1.6 / v0.1.7 / v0.1.8 — every architectural decision benefits from the framing being explicit
+
+**Option No — leave implicit**
+- One fewer commitment to maintain
+- Risk: agents drift back into conflating live queries with audit snapshots
+
+**Current lean**: Yes. Add as #7. Update `.claude/CLAUDE.md` v0.1 architectural commitments table.
+
+---
+
+### D5: `sqlite-wasm` in v0.1.6 — hidden helper or user-facing surface?
+
+**The question**: Should v0.1.6 expose any user-facing SQL surface, or keep `sqlite-wasm` strictly internal?
+
+**Option Internal-only** ([source: Ch 28c § Updated v0.1.6 milestone scope](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/#updated-v016-milestone-scope))
+- v0.1.5 P3 already shipped Tier 2 SQL helpers (`plugin.queryConcepts/Crosswalk/Closure`). They're plugin-internal
+- v0.1.6 `crosswalkerPivot` view calls them under the hood for closure/anti-join enrichment
+- Users never write SQL; they just see a working pivot view
+- v0.1.7 surfaces SQL via codeblock processor (per D2)
+
+**Option User-facing surface in v0.1.6** ([source: Ch 28a § sqlite-wasm feasibility](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#3-sqlite-wasm-is-feasible-on-obsidian-desktop))
+- Earlier user-facing power; SQL-savvy users can write recipes against the SQL layer immediately
+- Couples codeblock processor (D2) to v0.1.6 — same scope-bloat concern
+
+**Current lean**: Internal-only. Already shipped helpers stay invisible until D2 / v0.1.7 surfaces them.
+
+---
+
+### D6: Memory file — expand existing or create new?
+
+**The question**: Do the new architectural commitments (CQRS framing, three-layer architecture, 7-primitive vocabulary, `crosswalkerPivot` naming) go into the existing `project_query_layer_bases_not_dataview.md` memory or a new memory file?
+
+**Option Expand existing** (memory file at `~/.claude/projects/.../memory/project_query_layer_bases_not_dataview.md`)
+- Already the canonical query-layer commitment record
+- One file = one source of truth; agents looking up "what's the query-layer story" find it all in one place
+
+**Option Create new** (e.g., `project_ontology_web_query_engine.md`)
+- More specific scope; finer-grained discoverability
+- More memory files to maintain in MEMORY.md index
+
+**Current lean**: Expand existing. Already done as part of this commit — see [updated memory file](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md). Single canonical record.
+
+---
+
+### D7: Custom view name — `crosswalkerPivot`, `crosswalkerCoverageMatrix`, `crosswalkerCrosswalk`, or `crosswalkerOntologyView`?
+
+**The question**: What name does the v0.1.6 custom Bases view get registered as via `registerBasesView`?
+
+**Option `crosswalkerPivot`** (recommended — operation-named)
+- Names the *operation* (pivot = group-by-two-axes, aggregate cell value)
+- Matrix is one output *rendering* of pivot, not a separate concept
+- Future siblings: `crosswalkerGraph`, `crosswalkerHierarchy`, `crosswalkerTimeline` — consistent family
+- Coverage Matrix becomes a *recipe* (compliance-flavored launch instance) on top of the pivot view
+
+**Option `crosswalkerCoverageMatrix`** (current code; what Ch 28 deliverables proposed)
+- Domain-direct: GRC users see "Coverage Matrix" and immediately understand
+- Compliance-coded: doesn't translate cleanly to non-GRC ontology webs (MITRE, OBO Foundry, SKOS, library science)
+- Locks the view to one rendering shape (matrix); future shapes need new view names that don't form a clean family
+
+**Option `crosswalkerCrosswalk`** (project-name-aligned)
+- "Crosswalk" is general-domain ontology-mapping vocabulary
+- Slightly redundant ("crosswalker-crosswalk-...")
+
+**Option `crosswalkerOntologyView`** (data-context-aligned)
+- Emphasizes ontology-web framing
+- Risks: sounds polymorphic (does it render pivot OR graph OR hierarchy?); harder to ship in v0.1.6
+
+**Current lean**: `crosswalkerPivot`. Operation-named; future-proof; works across all ontology domains; Coverage Matrix becomes a recipe instance.
+
+---
+
+### D8: Recipe schema `query:` block — additive bump in v0.1.6 or defer?
+
+**The question**: When does `recipe.schema.json` gain a `query:` block (lets recipes declare what to query + which view shape to render)?
+
+**Option v0.1.6 additive bump** (recommended — pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) for concrete schema design)
+- The custom `crosswalkerPivot` view needs SOMETHING to parameterize on (which axes? which edge? which aggregation?)
+- Ad-hoc `.base` options in v0.1.6 → schema bump in v0.1.7 = breaking change for early users
+- Additive bump means recipes without `query:` continue to work; recipes with `query:` get the new capability
+- Backed by Ch 31's research (compares to dbt models, LookML, Cube.dev, GraphQL, SPARQL CONSTRUCT)
+
+**Option Defer to v0.1.7** (lighter v0.1.6 scope)
+- Less to design + validate in v0.1.6
+- Risk: ad-hoc options in v0.1.6 lock conventions that don't survive v0.1.7's redesign
+
+**Current lean**: v0.1.6 additive. Recipes need a parameter surface; better to design it once via Ch 31 and ship additive.
+
+---
+
+### D9: Concept-page strategy — three new pages or merge into existing?
+
+**The question**: Where does the three-layer architecture vocabulary (query primitives, view shapes, ontology-web positioning) get documented?
+
+**Option Three new concept pages** (recommended — already created as part of this work)
+- [`concepts/query-primitives.mdx`](/crosswalker/concepts/query-primitives/) — Layer A (filter / project / traversal / closure / anti-join / pivot / aggregate)
+- [`concepts/view-shapes.mdx`](/crosswalker/concepts/view-shapes/) — Layer B (table / list / pivot / graph / hierarchy / timeline)
+- [`concepts/ontology-web-querying.mdx`](/crosswalker/concepts/ontology-web-querying/) — positioning page (general engine + GRC launch market)
+- Each is a durable orthogonal vocabulary; each findable by URL; cross-linked from existing pages
+
+**Option Merge into existing** (`metadata-ecosystem.mdx` + `system-architecture.mdx`)
+- Fewer pages to maintain
+- Risk: the abstraction gets buried inside other pages and becomes invisible
+
+**Current lean**: Three new pages. Already created and pushed as part of the 2026-05-08 alignment commit.
+
+---
 
 **Status (per decision):**
 
