@@ -10,8 +10,10 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-:::caution[Pre-decision draft — living document]
-This log is a **working synthesis** capturing the state of decisions for the Crosswalker query engine. Six fresh-agent research deliverables have landed (3 for [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/), 3 for [Ch 28](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/)). Nine NEW research challenges have been filed (Ch 29–37 — see §9) to validate prior commitments under the ontology-web framing before this synthesis finalizes. The `:::caution` banner gets removed and the title's "(in progress)" suffix gets dropped only when D1–D9 are decided AND Ch 29–37 deliverables have landed.
+:::tip[Decisions D1–D9 locked 2026-05-08; finalization pending Ch 29–37 deliverables]
+**All 9 architectural decisions decided** as of 2026-05-08 — see §2 for full reasoning per decision. Six fresh-agent research deliverables landed (3 for [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/), 3 for [Ch 28](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/)). Nine NEW research challenges filed (Ch 29–37 — see §9) to validate prior commitments under the ontology-web framing before this log fully finalizes.
+
+**v0.1.6 implementation can proceed now** on Settled #1–11 + decided D1–D9. **Only [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) is a hard v0.1.6 blocker** (recipe `query:` block schema design — needed before D8 implementation can ship). Other Ch 29-37 deliverables inform v0.1.7+ work and refine v0.1.6 details. The "(in progress)" title suffix gets dropped when Ch 29–37 deliverables land and a final update absorbs revisions.
 :::
 
 :::note[Why this title]
@@ -96,7 +98,20 @@ Each decision below tags `📍 Stage` so you know where it sits in this flow. Mo
 - Why this is safe: Crosswalker doesn't yet have a published-portal user demand pressing on v0.1.6
 - Junction notes are already audit truth (committed, diffable in git); matrices are caches/projections — treating a cache as audit evidence is a category error
 
-**Current lean**: Option C — defer to v0.1.8. Cleaner architecture; faster to ship v0.1.6; can be added later when a concrete Publish use case forces it.
+**Current lean (decided 2026-05-08, REVERSES prior lean)**: **Option A — ship in v0.1.6, opt-in manual-command-only**. Reverses the earlier "defer to v0.1.8" lean per user direction.
+
+Why ship now:
+- [Obsidian Publish](https://obsidian.md/publish) parity is a real near-term Crosswalker user need (sharing compliance reports with external auditors who don't have the plugin)
+- Plugin-uninstall durability matters even at v0.1 — GRC engagements outlive any one tool
+- Diff-able evidence (git diff between two snapshots) is genuinely useful for quarterly audit reviews
+
+Constraints (per [Ch 28a § Materialization Lifecycle](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#1-materialized-file-lifecycle-and-vault-pollution--spec) — all carried into v0.1.6):
+- **Manual command only** (`Crosswalker: Materialize view…`); no auto-refresh / scheduled regeneration in v0.1.6
+- Files clearly marked machine-generated (frontmatter `crosswalker.materialized: true` + `do_not_edit: true` flags)
+- Default `.gitignore` template excluding materialized files (user opts in to commit)
+- Hand-edit prevention via timestamped new files + `.latest.md` alias pointer (regenerate writes a new file; never overwrites)
+
+**Open UX concern (flagged for [Ch 32 — Intuitive query UX](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/) investigation)**: When materialized files coexist in the vault alongside canonical user files (concepts, junction notes, evidence), what happens when a user clicks on them? Does the read-experience feel coherent with Bases conventions? Does it confuse first-time users used to "all files in my vault are canonical"? The frontmatter contract addresses *prevention* (don't edit), but not *click-time UX* (open in preview vs edit; what does the user see first?). Ch 32 brief is being updated to absorb this investigation as part of the materialization-UX scope.
 
 ---
 
@@ -115,7 +130,14 @@ Each decision below tags `📍 Stage` so you know where it sits in this flow. Mo
 - Why later: v0.1.6 is already at risk of scope blowout; ship ONE custom view (`crosswalkerPivot`) that covers 80% of compliance use cases; defer the other surface
 - Closure queries (the main motivation for codeblock processor) can live in v0.1.7 alongside the user-facing SQL surface
 
-**Current lean**: Option C — v0.1.7. Keeps v0.1.6 focused; `registerBasesView` covers the launch-market Coverage Matrix use case; codeblock comes when ad-hoc closure queries become urgent.
+**Current lean (decided 2026-05-08)**: **Option C — defer (likely indefinitely; not just v0.1.7)**. Per user direction:
+
+Why defer (and possibly never ship):
+- **Steps on the toes of other plugins** — SQLSeal, Datacore, and the Datalog/SPARQL community already build inline-codeblock query surfaces. Crosswalker shouldn't compete with them at the codeblock layer.
+- **Bases is the focal-point integration** — the Obsidian ecosystem's gravity is moving toward Bases as the central query mechanism. Other tools (SQLSeal, Datacore) will likely become Bases-compatible over time. Crosswalker should integrate *deeper* with Bases (via [`registerBasesView`](/crosswalker/concepts/view-shapes/) per [D7](#d7-custom-view-name--crosswalkerpivot-crosswalkercoveragematrix-crosswalkercrosswalk-or-crosswalkerontologyview)) rather than build a sibling codeblock surface.
+- v0.1.6 ships ONE custom Bases view (`crosswalkerPivot`); ad-hoc closure queries can be added to that view's options surface (e.g. "show closure depth 1/2/3" toggle inside the pivot view) without needing a separate codeblock processor.
+
+**What this means for Ch 36 (query language rerun)**: this challenge's urgency drops significantly under the locked D2. The broader query-language question (SPARQL / Datalog / Cypher / GraphQL) becomes a v0.2+ landscape concern rather than a v0.1.6 implementation prerequisite. Ch 36 is downgraded to "background research" rather than v0.1.6 / v0.1.7 blocker.
 
 ---
 
@@ -135,7 +157,14 @@ Each decision below tags `📍 Stage` so you know where it sits in this flow. Mo
 - Underscore prefix (NOT dot) so Bases can still index the files (Obsidian doesn't index dot-folders)
 - First-run prompt asks user to add `_crosswalker/views/` to Excluded Files in Settings
 
-**Current lean**: Split by purpose — adopt C's `_crosswalker/views/` for plugin-emitted `.base` files (v0.1.6); add `_crosswalker/audit/` for materialized snapshots when v0.1.8 lands (replacing A's `Reports/_generated/`). One canonical namespace; clear purpose-folders inside.
+**Current lean (decided 2026-05-08)**: **Adopt the split-by-purpose namespace as default; expose the alternate convention as an experimental setting**. Concretely:
+- **Default (v0.1.6)**: `_crosswalker/views/` for plugin-emitted `.base` files; `_crosswalker/audit/` for materialized snapshots when materialization runs (per [D1](#d1-materialization-timing--v016-or-v018))
+- **Advanced setting (v0.1.6 or later)**: optional toggle to use `Reports/_generated/<recipe>/<view>/<timestamp>.md` instead — for users who want auditor-discoverable folder names
+- One canonical default; one experimental opt-out; the convention used per-vault is recorded in plugin settings
+
+**Deeper open question flagged (the user's contrarian critique)**: do we even need to emit files in the first place? Obsidian's value with Bases is that you attach metadata to *existing* files — you don't duplicate files just to store derived metadata. Junction notes are a legitimate exception (they ARE first-class typed-edge entities). But pivot tables, coverage matrices, and other query *projections* arguably shouldn't be vault files at all. Two-hop scenarios compound this: an evidence note → junction note → control. If you want to pivot ON junction notes, do you generate yet ANOTHER note that combines them? That's a lot of file-emission hops.
+
+This is essentially the [Ch 28c "no materialization" contrarian position](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/#3-the-contrarian-no-materialization-path-is-the-safest-v016-default) revived as a deeper architectural critique. Reconciliation with [D1](#d1-materialization-timing--v016-or-v018): D1's "opt-in manual-command-only" default means file emission ONLY happens when the user explicitly asks (e.g. "generate this audit snapshot for Q1 review"). The plugin doesn't auto-generate files. The default Crosswalker experience is metadata-only (Bases reads frontmatter on existing files); materialization is the explicit escape hatch for the audit/Publish use case. Ch 32 brief should also engage the broader "should derived projections ever be files?" question.
 
 ---
 
@@ -155,7 +184,14 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 - One fewer commitment to maintain
 - Risk: agents drift back into conflating live queries with audit snapshots
 
-**Current lean**: Yes. Add as #7. Update `.claude/CLAUDE.md` v0.1 architectural commitments table.
+**Current lean (decided 2026-05-08)**: **Yes — adopt as commitment #7**. Per user direction: *"I care about resiliency long term of how something scales up at the technical level. So if making this an architectural commitment helps with that, then let's do it."*
+
+Why adopt:
+- Long-term resiliency: agents (and humans) will drift back into conflating live queries with audit snapshots without an explicit framing. Architectural commitments are the durable mechanism to prevent that drift.
+- Cascading clarity: every other v0.1.x decision (D1 materialization placement, D3 folder split, D5 sqlite-wasm role) gets *clearer* with CQRS as the framing — you know which side a feature belongs to.
+- Free precedent: this is just naming an architectural pattern that already exists in the codebase (v0.1.5 P3 shipped Tier 2 SQL helpers as live-read; v0.1.8 will ship materialization as snapshot-write). Naming the boundary doesn't add work.
+
+**Action when locked**: update [`.claude/CLAUDE.md` v0.1 architectural commitments table](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) to add #7 (CQRS query layer ≠ snapshot layer); expand [`project_query_layer_bases_not_dataview` memory](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md) accordingly (already done in 2026-05-08 commit).
 
 ---
 
@@ -175,7 +211,18 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 - Earlier user-facing power; SQL-savvy users can write recipes against the SQL layer immediately
 - Couples codeblock processor (D2) to v0.1.6 — same scope-bloat concern
 
-**Current lean**: Internal-only. Already shipped helpers stay invisible until D2 / v0.1.7 surfaces them.
+**Current lean (decided 2026-05-08)**: **Internal-only**. Per user direction: *"I'd like to keep it simpler by doing internal only and my only worry is if we do want to develop something like that in the future, just making sure our system is designed in a way that we could later down the line."*
+
+What this means concretely:
+- v0.1.6 plugin handles (`plugin.queryConcepts`, `plugin.queryCrosswalk`, `plugin.queryClosure` — already shipped) stay accessible only to internal Crosswalker code (the `crosswalkerPivot` view's render function, future internal commands)
+- No user-facing SQL surface in v0.1.6; users don't write SQL anywhere
+- Per [D2](#d2-codeblock-processor-timing--v016-or-v017) the codeblock processor is also deferred (likely indefinitely)
+
+**Architectural design constraint** (locked alongside this decision):
+- The Tier 2 helper API stays **substrate-neutral and surface-agnostic** — calls like `plugin.queryClosure(start, predicate, depth)` should not leak SQL semantics or sqlite-wasm-specific behavior. If we later want to expose them user-facing (codeblock, command palette, REST API) the existing function signatures should compose without redesign.
+- Add to backlog / v0.2+ research: "Should there be a user-facing query API in v0.2+? What surface? CLI command? plugin REST API? Bases formula extension if Obsidian ships plugin-functions API?"
+
+**Re-evaluate triggers**: revisit if (a) Obsidian ships a plugin-extensible Bases formula API (forum #109612) — would let us expose helpers as Bases formulas without separate codeblock; or (b) explicit user demand for direct SQL access from third-party plugins or scripts.
 
 ---
 
@@ -193,7 +240,7 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 - More specific scope; finer-grained discoverability
 - More memory files to maintain in MEMORY.md index
 
-**Current lean**: Expand existing. Already done as part of this commit — see [updated memory file](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md). Single canonical record.
+**Current lean (decided 2026-05-08, default lean accepted)**: **Expand existing**. Already done as part of the 2026-05-08 alignment commit — see [updated memory file in CLAUDE.md](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md). Single canonical record. User didn't comment on this decision; default lean accepted.
 
 ---
 
@@ -222,7 +269,15 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 - Emphasizes ontology-web framing
 - Risks: sounds polymorphic (does it render pivot OR graph OR hierarchy?); harder to ship in v0.1.6
 
-**Current lean**: `crosswalkerPivot`. Operation-named; future-proof; works across all ontology domains; Coverage Matrix becomes a recipe instance.
+**Current lean (decided 2026-05-08)**: **`crosswalkerPivot`** — locked. Per user direction: *"I think `crosswalkerPivot` is a good term for this because we're going by the shape primitives here as we've discussed."*
+
+**Why this name fits the architecture** (cross-linked):
+- "Pivot" is one of seven [Layer A query primitives](/crosswalker/concepts/query-primitives/) — the *operation* of projecting graph data into a 2D crosstab. Naming the view after the operation puts it on the same vocabulary axis as future siblings (`crosswalkerGraph`, `crosswalkerHierarchy`, etc.).
+- "Pivot" is one of six [Layer B view shapes](/crosswalker/concepts/view-shapes/) — the *visual presentation* of the pivot operation's output.
+- "Coverage Matrix" sits at Layer C (recipes) — the marketplace instance composing pivot + compliance-flavored axes (control × framework × evidence-count). User-facing surfaces still say "Coverage Matrix"; internal vocabulary stays general per [`feedback_general_ontology_positioning.md` memory](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md).
+- See [`concepts/ontology-web-querying`](/crosswalker/concepts/ontology-web-querying/) for the broader positioning rationale.
+
+**Action**: rename in `src/main.ts` `registerBasesView` call from `crosswalkerCoverageMatrix` → `crosswalker-pivot` (kebab-case for the registered ID). Update [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — already done in 2026-05-08 commit.
 
 ---
 
@@ -242,7 +297,21 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 - Less to design + validate in v0.1.6
 - Risk: ad-hoc options in v0.1.6 lock conventions that don't survive v0.1.7's redesign
 
-**Current lean**: v0.1.6 additive. Recipes need a parameter surface; better to design it once via Ch 31 and ship additive.
+**Current lean (decided 2026-05-08)**: **v0.1.6 additive bump — locked, with explicit guardrails**. Per user direction: *"As long as we've taken a primitives approach here with the certain systems that are already at play, then good and fine and dandy. Not over-engineered... If you're saying this is a way to make it possible to have marketplaces for various reports and views out of various ontologies, then I think this is a good idea as long as we're testing it properly, and if the testing doesn't work, and we can backtrack and go a different route as long as we've designed it in that way, then I'm good with it."*
+
+**Locked design constraints** (carried into Ch 31 brief and v0.1.6 implementation):
+
+1. **Primitives-composition approach** — the `query:` block declares a composition of existing [Layer A query primitives](/crosswalker/concepts/query-primitives/) (filter / project / traversal / closure / anti-join / pivot / aggregate). Recipes do NOT introduce a new query language or invent primitives. They wire up existing verbs.
+2. **Don't over-engineer** — the schema must be small, declarative, and authorable by humans. Rough shape: `query: { shape, primitives, output }`. No DSL inside YAML; no expression-evaluator; no embedded SQL. If a query needs SQL, it lives in a recipe-internal file referenced by `id` — not inline in the recipe.
+3. **Marketplace-ready** — recipes (with `query:` blocks) are the artifact users share via gist / community registry. The schema must be portable: a recipe authored against one Crosswalker version should validate against compatible later versions. SemVer the schema (`schema_version: 1.0.0`); plugin refuses recipes with major-version mismatches.
+4. **Testability + backtrackability** — Ch 31 must produce reference recipes that exercise the schema. `bun run fixtures` should generate vault state from a reference recipe and validate the round-trip. If testing reveals a fundamental design flaw, the schema must be backtrackable: additive bumps only in v0.1; reserve breaking changes for v0.2+ schema major bump (`recipe.schema.json $id` URL bumps to v2).
+
+**What this aligns with**:
+- The [Ch 22 5-mechanism EMISSION grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — adds parallel `query:` block alongside emission grammar; same primitives-composition philosophy.
+- [Ch 23 commitment to JSON Schema + AJV + JSONata](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — `query:` block uses same validation pipeline.
+- [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/) — Layer A vocabulary the schema composes from.
+
+**Action when [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) lands**: implement the schema design as additive bump to `spec/recipe.schema.json`; ship reference recipes; add fixtures-drift CI gate validating round-trip.
 
 ---
 
@@ -262,23 +331,23 @@ CQRS = Command Query Responsibility Segregation. In Crosswalker terms: the query
 - Fewer pages to maintain
 - Risk: the abstraction gets buried inside other pages and becomes invisible
 
-**Current lean**: Three new pages. Already created and pushed as part of the 2026-05-08 alignment commit.
+**Current lean (decided 2026-05-08)**: **Three new pages — locked**. Per user: *"Three new concept pages is definitely better. It's more searchable."* Already created and pushed in the 2026-05-08 alignment commit. Each page has its own URL, its own `## Related` section, and is cross-linked from existing pages (`metadata-ecosystem`, `system-architecture`, `what-makes-crosswalker-unique`, `terminology`).
 
 ---
 
 **Status (per decision):**
 
-| ID | Status | Decided by | Notes |
+| ID | Status | Decided 2026-05-08 | Notes |
 |---|---|---|---|
-| D1 | ⏳ Pending | — | — |
-| D2 | ⏳ Pending | — | — |
-| D3 | ⏳ Pending | — | — |
-| D4 | ⏳ Pending | — | — |
-| D5 | ⏳ Pending | — | — |
-| D6 | ⏳ Pending | — | — |
-| D7 | 🟡 Lean confirmed (2026-05-08 alignment) | — | Awaits final synthesis lock |
-| D8 | 🟡 Lean confirmed; schema design pending Ch 31 | — | Awaits final synthesis lock + Ch 31 deliverable |
-| D9 | 🟡 Lean confirmed (2026-05-08 alignment) | — | Awaits final synthesis lock |
+| **D1** | ✅ Decided | Ship in v0.1.6, opt-in manual-command-only | REVERSES prior lean. UX concern flagged for [Ch 32](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/) materialization-UX investigation |
+| **D2** | ✅ Decided | Defer codeblock processor (likely indefinitely; not just v0.1.7) | Steps on plugin-ecosystem toes; integrate deeper with Bases instead. Downgrades [Ch 36](/crosswalker/agent-context/zz-challenges/36-query-language-rerun/) urgency |
+| **D3** | ✅ Decided | Default `_crosswalker/views/` + `_crosswalker/audit/`; advanced toggle for `Reports/_generated/` | Deeper "should we emit files at all?" critique flagged; reconciles with D1's opt-in default (file emission only on user command) |
+| **D4** | ✅ Decided | Yes — adopt CQRS as commitment #7 | For long-term resiliency; cascading clarity across other v0.1.x decisions |
+| **D5** | ✅ Decided | Internal-only | API stays substrate-neutral + surface-agnostic so v0.2+ user-facing surface is non-breaking. Backlog item recorded |
+| **D6** | ✅ Decided | Expand existing memory file | Default lean accepted; already done in 2026-05-08 commit |
+| **D7** | ✅ Decided | `crosswalkerPivot` | Operation-named (not output-shape-named); future-proof; matches three-layer architecture |
+| **D8** | ✅ Decided | v0.1.6 additive bump (with locked design constraints) | Primitives-composition approach; not-over-engineered; marketplace-ready; testable + backtrackable; depends on [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) for concrete schema |
+| **D9** | ✅ Decided | Three new concept pages | Already created + pushed in 2026-05-08 commit |
 
 (This table gets updated as each decision lands.)
 

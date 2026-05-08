@@ -13,6 +13,12 @@ import { Aside } from '@astrojs/starlight/components';
 This is a **fresh rerun** of [Ch 12 — Datalog vs SQL for SSSOM chain-rule derivation](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/), not an edit of the original. The original brief stays archived as historical record.
 :::
 
+:::note[Priority downgraded 2026-05-08 per D2 lock]
+[Synthesis log D2](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#d2-codeblock-processor-timing--v016-or-v017) was decided 2026-05-08: **defer the `crosswalker-query` codeblock processor (likely indefinitely)**. User direction was to integrate deeper with Bases as the focal-point ecosystem mechanism rather than competing at the codeblock layer with SQLSeal / Datacore / Datalog plugins.
+
+This makes Ch 36 **less urgent**. The broader query-language question (Bases DSL / SQL / SPARQL / Datalog / Cypher / GraphQL) becomes a v0.2+ landscape concern rather than a v0.1.6 / v0.1.7 implementation prerequisite. Ch 36 is downgraded to "background research / long-horizon" rather than a synthesis-log finalization blocker. Run when bandwidth permits; deliverable informs v0.2 substrate / language decisions but doesn't block v0.1.x implementation.
+:::
+
 ## Predecessor + what's different now
 
 **Original Ch 12** (resolved 2026-05-02 via 2 convergent deliverables):

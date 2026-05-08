@@ -9,8 +9,13 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-:::note[Lower urgency than Ch 29-31, 33-37]
-This challenge is UX-flavored and less directly load-bearing for v0.1.6 architectural commitments. It's filed now while the context is fresh, but its findings primarily affect v0.2+ UX work. v0.1.6 ships a single canonical `crosswalkerPivot` view + a hand-authored recipe pattern; broader UX surfaces (wizard / picker / inline editor) come later.
+:::note[Mixed-priority — partially v0.1.6, mostly v0.2+]
+This challenge has TWO scopes:
+
+1. **Materialization UX (added 2026-05-08 per [D1 lock](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#d1-materialization-timing--v016-or-v018))** — click-time UX, vault coexistence, Bases-convention coherence, staleness signaling, the contrarian "no files" critique. This part **is somewhat load-bearing for v0.1.6** because v0.1.6 ships materialization (opt-in manual command); the UX shipped should be coherent with these findings. **Run before v0.1.6 GA** (not before v0.1.6 implementation begins, but before users see the feature).
+2. **Broader query UX (wizard / recipe-picker / inline editor)** — original Ch 32 scope. This is v0.2+ UX work; not load-bearing for v0.1.6. Can be deferred.
+
+If running this brief in two parts (one for materialization UX, one for broader query UX) makes sense, split it. Otherwise prioritize §7 (Materialization UX) at v0.1.6 GA timing; rest at v0.2+ planning.
 :::
 
 ## Why this exists
@@ -131,7 +136,18 @@ Specific scenarios:
 - `.base` file is malformed
 - Custom view fails to register (Bases plugin disabled)
 
-### 7. AI-agent assistance
+### 7. Materialization UX (added 2026-05-08 per D1 lock)
+
+[Synthesis log D1](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#d1-materialization-timing--v016-or-v018) locked materialization for v0.1.6 (opt-in, manual-command-only). The [Ch 28a § Materialization Lifecycle spec](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/#1-materialized-file-lifecycle-and-vault-pollution--spec) covers prevention (frontmatter contract; hand-edit prevention; conflict policy) but the **click-time / read-time UX** is not yet fully designed. Investigation areas:
+
+- **Click behavior**: when a user clicks a materialized file (e.g. `_crosswalker/audit/2026-Q1/coverage-matrix.md`), what should they see first? Live preview vs source view? Does the frontmatter banner actually surface to the reader visibly?
+- **Coexistence with canonical files**: Obsidian's vault convention is "every file is canonical user content." Materialized files break that assumption. How do users distinguish them at a glance? File-icon coloring? Folder visual treatment? CSS class injection (e.g. `cssclasses: [crosswalker-generated]` actually styled)?
+- **Bases convention coherence**: the user's first-impression concern — *"clicking on them and operating in obsidian is gonna be a little bit confusing for people who are used to certain conventions with obsidian bases"*. What's the expected mental model? Is it "this folder is generated; treat as read-only"? Or "these are normal files but you shouldn't edit them"? Document the convention precisely.
+- **Discovery**: how do users find the materialized files? Folder browse? Bases view that lists `crosswalker.materialized: true` files? Command-palette index?
+- **Staleness signaling**: when the underlying junctions have changed since materialization, the file is stale. How does the reader see that? `[!warning] Stale` callout at top of body? Frontmatter `stale_since:` field that triggers a Bases formula highlight?
+- **The deeper question (per [D3](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#d3-folder-convention-for-plugin-emitted-files))**: should derived projections (pivot tables, coverage matrices) ever be vault files at all? Junction notes are first-class evidence-link entities (an architectural commitment). But pivots are *projections* of those junctions. The user's contrarian critique: "I question the premise of letting this plugin emit files in the first place... the benefits of having Obsidian is that with Obsidian Bases you're attaching metadata to files and you don't have to duplicate other files just to store metadata about those files." Investigate whether opt-in materialization is the right minimum-viable surface, or whether there are alternative patterns (hover-preview, command-palette modal, side-panel view) that satisfy the "share with auditor" / "Publish parity" need without emitting files.
+
+### 8. AI-agent assistance
 
 A meta-question: should Crosswalker explicitly support LLM agents authoring queries? Examples:
 
@@ -163,8 +179,9 @@ The deliverable must produce:
 4. **Recipe discoverability proposal** — concrete v0.1 minimum + v0.2+ roadmap
 5. **Learning-curve scaffolding plan** — docs / cookbook / template gallery / LLM-assist
 6. **Error-handling design** — feedback loops for the 4+ scenarios listed
-7. **AI-agent surface decision** — what's in v0.1.6, what's deferred
-8. **Recommended changes to v0.1.6 milestone scope** (or explicit "no changes; this is v0.2+ work")
+7. **Materialization UX design** — click behavior, vault-coexistence pattern, Bases-convention coherence, staleness signaling, discovery path; argue for or against the contrarian "no materialization" path given the click-time UX cost (per [D1 + D3 cross-references](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/))
+8. **AI-agent surface decision** — what's in v0.1.6, what's deferred
+9. **Recommended changes to v0.1.6 milestone scope** (or explicit "no changes; this is v0.2+ work")
 
 ## Anchored references
 
