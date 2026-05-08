@@ -18,6 +18,18 @@ This challenge has TWO scopes:
 If running this brief in two parts (one for materialization UX, one for broader query UX) makes sense, split it. Otherwise prioritize §7 (Materialization UX) at v0.1.6 GA timing; rest at v0.2+ planning.
 :::
 
+:::tip[Deliverables landed 2026-05-08]
+Two parallel fresh-agent deliverables landed:
+- [Ch 32 deliverable A — hybrid Pattern D + materialization-folder spec](/crosswalker/agent-context/zz-research/2026-05-08-challenge-32-deliverable-a-hybrid-pattern-d-with-mat-spec/)
+- [Ch 32 deliverable B — embedded `base` blocks no-materialization-default](/crosswalker/agent-context/zz-research/2026-05-08-challenge-32-deliverable-b-embedded-blocks-no-mat-default/)
+
+Both converge strongly: **hybrid Pattern D** (recipe-picker + wizard-for-novel + raw YAML escape); **ship picker + inline in v0.1.6, defer wizard to v0.2+**; **adopt no-materialization-by-default** for browsing — embedded ` ```base ` code blocks in canonical query notes are the default surface; materialization is reserved for explicit audit/share via `Crosswalker: Materialize this recipe` command; **ship `crosswalker-bases` SKILL.md** modeled on `kepano/obsidian-skills/obsidian-bases` (3 days of work; unlocks LLM-assisted authoring without in-plugin LLM features).
+
+**Refines D1**: ship materialization in v0.1.6 (per locked verdict) AS the audit/share opt-in; default browse experience is embedded `\`\`\`base` block in user-owned query notes — collapses 70% of the click-confusion / vault-pollution problems.
+
+Both deliverables explicitly recommend **tightening** v0.1.6 scope (drop full wizard / marketplace / recommendation engine / staleness watcher) rather than expanding it; the SKILL.md path is what makes the schema "intuitive" to LLM-assisted authors without bloating the plugin UI.
+:::
+
 ## Why this exists
 
 The user's repeated framing was: "the query engine should be **intuitive**." That word carries weight. v0.1.6's commitment is hand-authored YAML recipes + one custom Bases view — it's not intuitive, it's expert-friendly. Ch 32 asks: how do we make this intuitive for non-technical users (compliance auditors, GRC analysts, ontology-mapping researchers, library-science taxonomy editors)?

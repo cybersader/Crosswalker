@@ -13,6 +13,16 @@ import { Aside } from '@astrojs/starlight/components';
 [Synthesis log D8](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) (recipe schema additive bump in v0.1.6) leans Yes but the **schema design** itself is pending this challenge. The custom `crosswalkerPivot` view ([D7](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)) needs SOMETHING to parameterize on; without Ch 31 we'd hand-design ad-hoc and break early users when v0.1.7 codeblock processor lands.
 :::
 
+:::tip[Deliverables landed 2026-05-08]
+Two parallel fresh-agent deliverables landed:
+- [Ch 31 deliverable A — shape-dispatched data-only schema](/crosswalker/agent-context/zz-research/2026-05-08-challenge-31-deliverable-a-shape-dispatched-data-only/) (uses `oneOf`+`const` discriminator)
+- [Ch 31 deliverable B — JSONata typed tree](/crosswalker/agent-context/zz-research/2026-05-08-challenge-31-deliverable-b-jsonata-typed-tree/) (uses `if`/`then`/`else` discriminator; explicit JSONata-only commitment)
+
+Both converge strongly on architecture: **data-only schema (no inline SQL/SPARQL/Bases-DSL); shape-discriminated `oneOf` or `if`/`then`/`else` over 6 view shapes (table/list/pivot/graph/hierarchy/timeline); JSON Schema 2020-12 + AJV; SchemaVer-style versioning; lifecycle integration with Ch 28 three-way merge as single typed sub-tree; 5 reference recipes (Coverage Matrix, Crosswalk Density, Freshness Heatmap, Ontology Overlap, SKOS Subject Density).** Both reject Datasette's code-with-fences pattern; both adopt MetricFlow/LookML/Cube as the precedent. Differ on discriminator style and aggregation enum sizing.
+
+**Strongly confirms D8 with locked design constraints**: primitives-composition approach, not over-engineered, marketplace-ready, testable + backtrackable. Implementation can pick from either deliverable's specific JSON Schema variant; they are equivalent in semantics.
+:::
+
 ## Why this exists
 
 Crosswalker's recipe schema today (`spec/recipe.schema.json`) describes **emission** — what to import and how to write to disk (folder / file / heading / tag / wikilink mechanisms; the [5-mechanism Ch 22 grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)). It does NOT describe **queries**.
