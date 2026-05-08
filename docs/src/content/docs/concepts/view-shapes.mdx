@@ -1,0 +1,132 @@
+---
+title: "View shapes"
+description: "Layer B of the Crosswalker query engine: mechanism-neutral visual presentations that consume primitive query outputs. Table, list, pivot, graph, hierarchy, timeline. Each maps onto an Obsidian rendering mechanism (Bases-native, registerBasesView custom view, codeblock processor, materialized Markdown). Pending Ch 30 taxonomy validation."
+tags: [concept, query-engine, view-shapes, bases, registerbasesview, pivot, graph, hierarchy, timeline]
+sidebar:
+  label: "View shapes"
+  order: 6
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pending Ch 30 validation]
+The view-shape catalog below is the **candidate** taxonomy for v0.1, surfaced by the 2026-05-08 alignment review. It is pending [Ch 30 — View shape taxonomy](/crosswalker/agent-context/zz-challenges/30-view-shape-taxonomy/), which catalogs view shapes from BioPortal, Protégé, WebVOWL, OntoBrowser, NIST OLIR portal, OxO2, and other ontology-aware UIs. The list may grow or be re-categorized when Ch 30 lands.
+:::
+
+## What this page is
+
+Crosswalker's query engine separates concerns into [three layers](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/):
+
+| Layer | What it is | Where vocabulary lives |
+|---|---|---|
+| **A — Query primitives** | Mechanism-neutral irreducible operations | [query-primitives](/crosswalker/concepts/query-primitives/) |
+| **B — View shapes** (this page) | Mechanism-neutral visual presentations | Here |
+| **C — Recipes** | Marketplace instances composing primitives + view shape | Recipe registry; user-facing surfaces |
+
+A view shape is a **contract**: "I take rows of shape X, render them as Y." It is independent of *which mechanism* renders them. The same pivot shape can appear in: a custom Bases view (`registerBasesView`), a codeblock processor render, or a materialized Markdown snapshot. Each mechanism has different mobile / Publish / portability tradeoffs.
+
+## The candidate view shapes
+
+| Shape | What it is | Source data assumption | Bases-native? | Crosswalker custom view needed? |
+|---|---|---|---|---|
+| **table** | Flat 2D grid; rows = records, columns = attributes; headers + cells. The default for "list of concepts." | Tabular result of filter + project | ✅ Yes — Bases' built-in Table view | No |
+| **list** (cards) | Vertical stack of card-like items, often with a primary heading + secondary attributes | Tabular result of filter + project; one row per card | ✅ Yes — Bases' built-in Cards/List views | No |
+| **pivot** | 2D crosstab: rows = one dimension, columns = another, cells = aggregate over a third. Produces a *matrix* output. The shape that makes "framework × control × evidence-count" expressible. | Pivot operation output (group-by-two-axes; aggregate cell value) | ❌ No — Bases summaries are 1-D; can't pivot | **Yes — `crosswalkerPivot`** (registered via `registerBasesView` in v0.1.6) |
+| **graph** | Node-link diagram preserving topology. Nodes = concepts, edges = predicates. Intentionally NOT projected to tabular. | Closure or traversal result preserving edges | ❌ No | Deferred to v0.2+ (`crosswalkerGraph` candidate) |
+| **hierarchy** | Tree or DAG; expresses parent-child or `broader`/`narrower` relationships. Renders as collapsible outline / sunburst / treemap. | Closure result over a hierarchical predicate (SKOS `broader`, OWL `subClassOf`) | ❌ No | Deferred to v0.2+ (`crosswalkerHierarchy` candidate) |
+| **timeline** | Temporal projection: events on a time axis. Renders as horizontal timeline / calendar heatmap. | Filter + project where one dimension is temporal (`last_reviewed`, `created_at`, `version_at`) | Partial — Bases has date filters but no built-in timeline render | Deferred to v0.2+ (`crosswalkerTimeline` candidate) |
+
+## Mechanism axis
+
+For each view shape, there are up to four execution mechanisms. They differ in mobile / Publish / portability:
+
+| Mechanism | What it is | Desktop | Obsidian Mobile | Obsidian Publish | Plugin uninstalled |
+|---|---|---|---|---|---|
+| **Bases-native column rendering** | Bases' built-in views (Table, Cards, List, Map, Calendar). Configured via `.base` file YAML. | ✅ | ✅ (1.10+) | 🟡 Roadmapped | ✅ (`.base` file falls back to YAML) |
+| **`registerBasesView` custom view** | Plugin registers a custom view type via Obsidian API; appears in Bases' view-picker dropdown. Configured via `.base` file with `type: <custom-id>`. | ✅ | ✅ (if no desktop-only API) | ❌ Plugin code doesn't run on Publish | ❌ View disappears; falls back to default Table |
+| **Codeblock processor** | Plugin registers `markdownCodeBlockProcessor`; recipe author writes ` ```crosswalker-query name: <recipe-id> ``` ` in any note body. | ✅ | ✅ | ❌ Plugin doesn't execute on Publish | ❌ Block becomes raw text |
+| **Materialized snapshot** | Plugin writes a Markdown file with frontmatter + body containing pre-rendered query result. Indexed by Bases like any other note. | ✅ | ✅ | ✅ (only path that survives Publish today) | ✅ (file persists) |
+
+**Operational implication**: Bases-native is the only mechanism that crosses desktop + mobile + (future) Publish AND survives plugin uninstall — *if* the shape can be expressed in Bases' native view types. For shapes Bases can't express (pivot, graph, hierarchy, timeline), `registerBasesView` is the next-best option but does NOT execute on Publish. For Publish-portal use cases, the only reliable path is materialized snapshot.
+
+## Shape × mechanism matrix
+
+| Shape | Bases-native | `registerBasesView` | Codeblock | Materialized |
+|---|---|---|---|---|
+| table | ✅ default | possible but unnecessary | possible (less rich UX) | ✅ Markdown table |
+| list (cards) | ✅ default | possible | possible | ✅ Markdown bullet list |
+| pivot | ❌ | ✅ **`crosswalkerPivot`** (v0.1.6) | possible | ✅ Markdown table (frozen pivot) |
+| graph | ❌ | ⏳ deferred (`crosswalkerGraph` candidate v0.2+) | possible | ⚠️ partial — static graph image |
+| hierarchy | ❌ | ⏳ deferred (`crosswalkerHierarchy` v0.2+) | possible | ✅ Markdown nested list |
+| timeline | partial | ⏳ deferred (`crosswalkerTimeline` v0.2+) | possible | ⚠️ partial — static time-axis image |
+
+## How recipes select shape
+
+A recipe (Layer C) declares its desired shape. The pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) deliverable will design the YAML grammar, but the rough shape is:
+
+```yaml
+# Sketch — Ch 31 will lock the schema
+query:
+  shape: pivot                # one of: table | list | pivot | graph | hierarchy | timeline
+  primitives:
+    rows: { source: ontology, id: nist-csf }
+    cols: { source: ontology, id: nist-800-53 }
+    cell: { op: count, edge: equivalent_to }
+```
+
+The engine then:
+1. Picks a *mechanism* for the shape (per the matrix above)
+2. Generates the appropriate `.base` file (for Bases-native or `registerBasesView`) or codeblock invocation or materialized output
+3. Renders
+
+User-facing surfaces use domain-specific names for recipes (e.g., "Coverage Matrix" — a pivot recipe with compliance-coded axes). The view shape itself stays neutral (`pivot`); the recipe layer carries domain meaning.
+
+## Why "matrix" is NOT a view shape (and why this matters)
+
+A naive reader might expect a `matrix` view shape. There isn't one — and the omission is deliberate.
+
+**Matrix is the *output* of a pivot operation**, not a separate shape. A 2D grid (the "matrix" rendering) is one way to display pivot output; heatmap, treemap, sankey, sunburst are alternative renderings of the same pivot data. Naming the view shape "matrix" would lock it to one rendering and make sibling shapes inconsistent (`crosswalkerHeatmap`? `crosswalkerSankey`? — these are all renderings of the same pivot output).
+
+By naming the *operation* (pivot) and treating the rendering as internal config, v0.2+ can add `heatmap: true` / `treemap: true` / `sankey: true` options to `crosswalkerPivot` without registering new view types.
+
+## Why "graph" view is deferred
+
+Graph rendering preserves topology — nodes + edges as a node-link diagram. It is fundamentally different from pivot, which projects graph data into a 2D tabular shape. Examples of graph views in adjacent tools: WebVOWL (OWL ontology graph), Protégé (OntoGraf), Obsidian's built-in Graph View.
+
+Deferred to v0.2+ for three reasons:
+
+1. **Implementation complexity**: a `BasesView` subclass that renders a graph layout is ~1500–2000 LoC (force-directed layout, zoom/pan, edge styling); v0.1.6's pivot view is bounded at ~300–500 LoC.
+2. **UX research needed**: graph views are notoriously hard to make useful at >100 nodes. [Ch 32 — Intuitive query UX](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/) will inform whether graph view is worth the cost.
+3. **Bases roadmap signal**: Obsidian's own roadmap may surface a graph rendering for `.base` files; better to wait and integrate than build from scratch.
+
+## Open questions (Ch 30 pending)
+
+The 6-shape catalog above is provisional. Open questions Ch 30 will address:
+
+- Are there shapes missing? Sankey, treemap, sunburst, heatmap (often treated as separate shapes vs pivot renderings)
+- How does **search** as a view shape fit? (A search-result list is a list view, but with relevance ranking — is rank a primitive or a view config?)
+- How do **dashboard** views fit? (composition of multiple shape instances on one canvas)
+- What about **comparison** views? (side-by-side ontology versions)
+- Should **map** (geographic) be a Crosswalker shape? (Obsidian has Bases Map view; some ontologies have geo coordinates)
+- How do **stream / change-feed** views fit? (temporal but live-updating, not a snapshot timeline)
+- Where's the boundary between view shape (Layer B) and recipe-specific styling (Layer C)? E.g., is "compliance heatmap with red/yellow/green coding" a shape variant or a recipe variant?
+
+See [Ch 30 brief](/crosswalker/agent-context/zz-challenges/30-view-shape-taxonomy/) for the full investigation scope.
+
+## Related
+
+**Concept pillars**:
+- [Query primitives](/crosswalker/concepts/query-primitives/) — Layer A (mechanism-neutral operations)
+- [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/) — positioning page
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases capabilities + limits
+- [System architecture](/crosswalker/concepts/system-architecture/) — Layer 4 (Query)
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
+
+**Decision logs**:
+- [Synthesis log (in progress)](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) — D7 (custom view name); D9 (concept pages strategy)
+- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — ships `crosswalkerPivot` view in v0.1.6
+
+**Research challenges**:
+- [Ch 30 — View shape taxonomy](/crosswalker/agent-context/zz-challenges/30-view-shape-taxonomy/) — adversarial validation of this catalog
+- [Ch 31 — Recipe `query:` block schema](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) — how recipes declare shape
+- [Ch 32 — Intuitive query UX](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/) — UX patterns for shape selection

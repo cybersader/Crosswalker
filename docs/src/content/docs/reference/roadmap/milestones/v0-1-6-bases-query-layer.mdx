@@ -29,24 +29,66 @@ This milestone's scope (translate Dataview-shaped templates → Bases-shaped) un
 
 ## Scope
 
+This milestone is the **v0.1.6 instance of Crosswalker's general [ontology-web query engine](/crosswalker/concepts/ontology-web-querying/)**. Per the [synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/), the engine separates concerns into three layers: [query primitives](/crosswalker/concepts/query-primitives/), [view shapes](/crosswalker/concepts/view-shapes/), and recipes. v0.1.6 ships the Bases mechanism + the pivot view shape + the launch-market Coverage Matrix recipe. v0.1.7 adds codeblock processor; v0.1.8 adds materialized snapshot output.
+
 **In:**
 - Bases-shaped query templates the plugin emits in concept-note bodies (e.g., "Controls in this family", "Evidence covering this control")
+- **Single custom Bases view: `crosswalkerPivot`** registered via `registerBasesView` — pivot shape parameterized by recipe; "Coverage Matrix" is the launch-market recipe instance (renamed from `crosswalkerCoverageMatrix` for ontology-web alignment)
+- **Reference `.base` file** shipped to `_crosswalker/views/coverage-matrix.base` on first plugin run (idempotent; never overwrites user edits)
+- **Recipe loader** with JSON Schema validation (`.crosswalker/recipes/*.yaml`); recipes drive `.base` emission
+- **Recipe schema additive bump** — add `query:` block to `recipe.schema.json` so recipes can declare query shape + primitive composition (concrete schema design pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/))
+- **`_crosswalker/` folder convention** with first-run prompt: "Add `_crosswalker/views/` to Excluded Files? [Yes/No]"
+- **Bases-disabled fallback Notice** — detect `registerBasesView` returning `false` and show a Notice with one-click enable for the core Bases plugin
 - Updated docs / starter recipes referencing Bases (not Dataview)
 - Compatibility check: Tier 1 frontmatter shapes (concept_note, junction_note, crosswalk_edge) are queryable in Bases without restructure
 
-**Out:**
+**Out (deferred to v0.1.7):**
+- `crosswalker-query` codeblock processor (ad-hoc closure queries)
+- `sqlite-wasm` user-facing surface (kept internal in v0.1.6 — `crosswalkerPivot` calls `plugin.queryClosure` etc. under the hood; no user-facing SQL)
+- Recipe wizard UI (recipes hand-authored YAML in v0.1.6)
+- Second/third custom Bases view (e.g. `crosswalkerGraph`, `crosswalkerHierarchy`)
+
+**Out (deferred to v0.1.8 — audit-trail milestone):**
+- Materialization (`Reports/_generated/` or `_crosswalker/audit/`)
+- OpenTimestamps integration
+- Audit-snapshot manifests
+- Deterministic Markdown writer + golden-file tests
+
+**Out (out of scope, may never ship):**
 - Building a Bases plugin / extension — Bases is upstream Obsidian; we just emit queries that Bases can run
-- Custom Bases views beyond what Obsidian ships
-- Datacore as backup option (defer; may revisit if Bases proves limited)
+- Datacore as backup option
+- Cross-vault federation (anti-pattern per Ch 27/28)
+- Reintroducing Dataview
 
 ## Concrete tasks
 
+**Bases query templates:**
 - [ ] Audit existing query templates in `src/generation/` and `recipes/starter/` for Dataview-style notation; list every occurrence
 - [ ] Translate each query template to Bases-shape (covered in `.claude/skills/obsidian-bases/`)
 - [ ] Verify Tier 1 frontmatter keys (`tags.contains()`, `file.hasTag()`) work as expected with Bases — note Obsidian's Bases querying nested-tag-prefix via `file.hasTag()` per Ch 22 §1.3
 - [ ] Update generation-engine templates that get inserted into concept-note bodies on import
-- [ ] Update KB pages — `concepts/metadata-ecosystem`, `getting-started/grc-teams`, `features/import-wizard` — to show Bases examples
+
+**Custom Bases view (`crosswalkerPivot`):**
+- [ ] Implement `CoverageMatrixView extends BasesView` (subclass of Obsidian's `BasesView` from the 1.10+ API). Read TaskNotes v4 source code as reference before implementing.
+- [ ] Register via `plugin.registerBasesView('crosswalker-pivot', { name, icon, factory, options })` in `onload()`
+- [ ] View renders pivot shape (rows × cols × cells); reads `controller.entries` (filtered `BasesEntry[]`) + calls `plugin.queryCrosswalk()` / `plugin.queryClosure()` internally for enrichment
+- [ ] View options panel: `pivot_axis`, `cell` (op + edge), `heatmap` toggle, `target_recipe`
+- [ ] Ship reference `.base` file to `_crosswalker/views/coverage-matrix.base` on first plugin run (idempotent; user-edit-safe)
+- [ ] Bases-disabled fallback: detect `registerBasesView` returning `false`; show Notice with one-click enable
+
+**Recipe loader + schema bump:**
+- [ ] Design `query:` block in `spec/recipe.schema.json` (additive; pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) deliverable)
+- [ ] Implement recipe loader in `src/import/recipe-loader.ts` with AJV validation
+- [ ] Recipe → `.base` emission pipeline (recipes drive `.base` file generation)
+
+**`_crosswalker/` folder convention:**
+- [ ] First-run flow: prompt "Add `_crosswalker/views/` to Excluded Files? [Yes/No]"
+- [ ] Document the namespace convention in user-facing docs
+
+**Documentation updates:**
+- [ ] Update KB pages — [`concepts/metadata-ecosystem`](/crosswalker/concepts/metadata-ecosystem/), [`getting-started/grc-teams`](/crosswalker/getting-started/grc-teams/), [`features/import-wizard`](/crosswalker/features/import-wizard/) — to show Bases examples + reference new concept pages
 - [ ] Add a "Querying your imported framework" page under `features/` showing common Bases queries against Tier 1 output
+- [ ] Reference [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/), [`concepts/view-shapes`](/crosswalker/concepts/view-shapes/), [`concepts/ontology-web-querying`](/crosswalker/concepts/ontology-web-querying/) from import wizard + recipe docs
 
 ## Success criteria
 
@@ -72,8 +114,11 @@ This milestone's scope (translate Dataview-shaped templates → Bases-shaped) un
 ## Related
 
 **Concept pages:**
-- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases as the v0.1 query layer
-- [Terminology](/crosswalker/concepts/terminology/) — Bases, query layer, frontmatter projection
+- [Query primitives](/crosswalker/concepts/query-primitives/) — Layer A vocabulary (filter / project / traversal / closure / anti-join / pivot / aggregate)
+- [View shapes](/crosswalker/concepts/view-shapes/) — Layer B forms; this milestone ships the **pivot** shape
+- [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/) — positioning page; general engine + GRC launch market
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases as the v0.1 query layer mechanism
+- [Terminology](/crosswalker/concepts/terminology/) — Bases, query layer, frontmatter projection, three-layer architecture vocabulary
 - [File-based graph database](/crosswalker/concepts/file-based-graph-database/) — Tier 1 frontmatter as the queryable graph
 - [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — `file.hasTag()` nested-tag-prefix semantics ([Ch 22 §1.3](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/))
 - [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — query layer is upstream Obsidian, not a custom plugin

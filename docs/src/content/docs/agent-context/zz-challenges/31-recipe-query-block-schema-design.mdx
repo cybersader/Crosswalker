@@ -1,0 +1,170 @@
+---
+title: "Challenge 31: Recipe `query:` block schema design — how recipes declare what to query in YAML"
+description: "Design the JSON Schema for an additive `query:` block in `recipe.schema.json`. Compares to SPARQL CONSTRUCT clauses, GraphQL query schemas, dbt model YAML, Looker LookML, Cube.dev semantic layer. Deliverable: working JSON Schema + 3-5 reference recipes (Coverage Matrix, Crosswalk Density, Ontology Overlap, Freshness Heatmap, SKOS Density). Direct input to D8 in synthesis log."
+tags: [research, recipe-schema, query-block, json-schema, sparql, graphql, dbt, looker, cube-dev, ch-31]
+date: 2026-05-08
+sidebar:
+  label: "31 · Recipe query: block schema"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pre-requisite for D8 lock]
+[Synthesis log D8](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) (recipe schema additive bump in v0.1.6) leans Yes but the **schema design** itself is pending this challenge. The custom `crosswalkerPivot` view ([D7](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)) needs SOMETHING to parameterize on; without Ch 31 we'd hand-design ad-hoc and break early users when v0.1.7 codeblock processor lands.
+:::
+
+## Why this exists
+
+Crosswalker's recipe schema today (`spec/recipe.schema.json`) describes **emission** — what to import and how to write to disk (folder / file / heading / tag / wikilink mechanisms; the [5-mechanism Ch 22 grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)). It does NOT describe **queries**.
+
+For v0.1.6 we ship a custom Bases view (`crosswalkerPivot`) parameterized by recipe. That parameterization needs a YAML structure: which axes to pivot, which edge predicate to count, what cell aggregation to use. Without a schema, recipe authors invent ad-hoc options that break later.
+
+What recipe authors might write (sketch — Ch 31 will lock the actual structure):
+
+```yaml
+query:
+  shape: pivot                        # one of: table / list / pivot / graph / hierarchy / timeline
+  primitives:
+    rows: { source: ontology, id: nist-csf }
+    cols: { source: ontology, id: nist-800-53 }
+    cell:
+      op: count
+      edge: equivalent_to
+  empty_cell: gap                     # vs blank
+  output:
+    base_view: crosswalkerPivot
+    target_path: "_crosswalker/views/coverage-matrix.base"
+```
+
+Ch 31 designs the JSON Schema that validates this YAML and produces 3-5 reference recipes that exercise it.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| `spec/recipe.schema.json` | Existing emission grammar; the `query:` block is additive — must not break existing recipes |
+| [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/) | Layer A vocabulary that recipes compose from |
+| [`concepts/view-shapes`](/crosswalker/concepts/view-shapes/) | Layer B vocabulary that recipes select |
+| Tier 2 query helpers (`src/tier2/queries.ts`) | `crosswalkBetween`, `closureFromConcept`, `getConceptsByOntology` — the executable surface recipes invoke |
+| Synthesis log D8 | "v0.1.6 additive bump" lean confirmed pending this design |
+
+## What to investigate
+
+### 1. Cross-reference declarative-query schemas in adjacent ecosystems
+
+For each, document: how does the system let users declare a query in YAML/config? What fields? What primitives? What boundary between query + presentation?
+
+- **SPARQL CONSTRUCT clause** — how does SPARQL let you declare "what to fetch + what to return"?
+- **GraphQL query schemas** — typed selection sets with field-level args
+- **dbt model YAML** (https://docs.getdbt.com/docs/build/models) — `models/*.sql` + `*.yml` schema; how do dbt models describe queries declaratively?
+- **Looker LookML** (https://cloud.google.com/looker/docs/lookml-quick-reference) — semantic layer with `view`/`explore`/`measure`/`dimension`
+- **Cube.dev semantic layer** (https://cube.dev/docs/) — JS/YAML semantic layer with measures/dimensions
+- **MetricFlow** (dbt's semantic layer) — semantic models with measures + dimensions
+- **Datasette metadata.yaml** — declarative views + canned queries
+- **ROBOT YAML configs** (OBO Foundry tooling) — how do biomedical-ontology pipelines declare queries
+
+### 2. Design the JSON Schema for `query:` block
+
+Concrete design pass. Specify:
+
+- **Top-level structure**: `shape` (enum) + `primitives` (object, structure depends on shape) + `output` (where does result land)
+- **`primitives` per shape**: pivot has rows/cols/cell; graph has nodes/edges/start; hierarchy has root/predicate/depth; timeline has axis/event-source
+- **Type system**: what can a value reference? `ontology` ID? `concept` CURIE? Field selector? Edge predicate?
+- **Aggregation operators**: count, sum, avg, min, max, count_distinct — extensible? plugin-registered?
+- **Empty-cell semantics**: gap vs blank vs zero — first-class field
+- **Validation rules**: which combinations of shape + primitives are valid?
+
+Output: a complete JSON Schema (draft 2020-12) for the additive `query:` block.
+
+### 3. Versioning and forward-compatibility
+
+The `query:` block additively bumps the recipe schema. Specify:
+
+- What's the schema version field? (`schema_version: 1.0.0` SemVer)
+- What's the migration path when v0.1.7 codeblock processor adds new fields?
+- Can a recipe specify both `query:` block AND `body:` template (where the body has codeblock invocations)? Or are they exclusive?
+- How does the loader handle unknown fields (forward-compat)?
+
+### 4. Reference recipes (3-5 worked examples)
+
+Write actual `.yaml` recipes that exercise the schema:
+
+1. **Coverage Matrix** (compliance launch recipe) — NIST 800-53 × NIST CSF, cells = count of equivalent_to edges
+2. **Crosswalk Density** (cross-domain) — any 2 ontologies; cells = density of mappings (covered count / cross-product)
+3. **Freshness Heatmap** (compliance) — controls × time-buckets; cells = count of evidence reviewed in bucket
+4. **Ontology Overlap** (cross-domain) — concepts in ontology A ∩ ontology B (via equivalent_to closure)
+5. **SKOS Subject Density** (taxonomy) — broader-narrower hierarchy with leaf counts
+
+Each recipe should validate against the JSON Schema + produce a working `.base` file when run through the recipe loader.
+
+### 5. Boundary: recipe as data vs recipe as code
+
+A core question: does `query:` declare data (axes, edges, cell ops) that the engine interprets, OR does it declare a snippet of code (SQL fragment, Datalog rule)? The two approaches:
+
+- **Data-only**: recipe lists primitives + their parameters; engine compiles to SQL/SPARQL. Closest to dbt/LookML.
+- **Code-with-fences**: recipe has a `query.sql` file or inline string. Closest to dbt models with `.sql` content.
+
+Argue. The data-only path keeps recipes portable across mechanism (Bases vs SQL vs codeblock); the code-with-fences path is more flexible but locks recipes to one mechanism.
+
+### 6. Compatibility with Ch 28 settled items
+
+The synthesis log Settled-item #10 commits to "schema validation + provenance + `user_edited:true` flag + three-way merge" for recipe lifecycle. The `query:` block must compose with this lifecycle:
+
+- Does `query:` get the same `user_edited:true` flag treatment?
+- How does three-way merge work on a `query:` block (rather than mapping rows)?
+- What's a `provenance.source = system | user | community` mean for a query?
+
+### 7. Validate against the 7 candidate primitives (pending Ch 29)
+
+Currently 7 primitives. The `query:` block must express compositions of all 7. Walk through each shape × required primitives mapping; show the YAML for each.
+
+If Ch 29 revises the primitive set, Ch 31's schema must absorb the revision before locking.
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **Embedding raw SQL in the recipe** — violates the "no raw SQL in concept-note bodies" anti-pattern (Ch 27). Recipes declare *what*; the engine compiles to *how*.
+2. **A custom Crosswalker query language** — Ch 27 anti-pattern. JSONata + SQL + Bases-DSL are the existing layers; don't invent a fourth.
+3. **Schema that only works for the pivot shape** — must support all 6 candidate shapes (table / list / pivot / graph / hierarchy / timeline) even if v0.1.6 only ships pivot.
+4. **Tightly coupling `query:` to sqlite-wasm** — the schema must be substrate-neutral; the engine compiles per-mechanism.
+5. **Reinventing dbt/LookML/Cube.dev** — borrow patterns, don't fork.
+6. **Breaking changes to existing emission grammar** — `query:` is additive; recipes without `query:` continue to work.
+7. **A schema so rich that recipe authors can't author by hand** — explicit non-goal; recipes are YAML by humans.
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Cross-reference matrix** — 6+ adjacent declarative-query systems (dbt, LookML, Cube, GraphQL, SPARQL CONSTRUCT, Datasette) × design dimensions (declares shape? primitives? aggregation? versioning?)
+2. **Working JSON Schema** for the `query:` block (draft 2020-12, validates with AJV)
+3. **3-5 reference recipes** (`.yaml` files) that validate against the schema and exercise all candidate shapes
+4. **Versioning + forward-compat plan** — schema_version handling, additive-bump path to v0.1.7
+5. **Boundary verdict** — data-only vs code-with-fences argued; final choice
+6. **Lifecycle integration** — `user_edited:true`, three-way merge, provenance fields applied to `query:` block
+7. **Recommended changes** — exact YAML fragments to add to `spec/recipe.schema.json`
+
+## Anchored references
+
+**Project context:**
+- `spec/recipe.schema.json` — current emission grammar
+- [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/) — Layer A vocabulary recipes compose
+- [`concepts/view-shapes`](/crosswalker/concepts/view-shapes/) — Layer B shapes recipes select
+- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — recipe-schema additive bump task
+
+**Standards:**
+- [JSON Schema 2020-12](https://json-schema.org/draft/2020-12/json-schema-core)
+- [SPARQL CONSTRUCT](https://www.w3.org/TR/sparql11-query/#construct)
+- [GraphQL spec](https://spec.graphql.org/)
+
+**Adjacent declarative-query systems:**
+- [dbt models YAML](https://docs.getdbt.com/docs/build/models)
+- [Looker LookML](https://cloud.google.com/looker/docs/lookml-quick-reference)
+- [Cube.dev](https://cube.dev/docs/)
+- [Datasette metadata.yaml](https://docs.datasette.io/en/stable/metadata.html)
+- [MetricFlow semantic models](https://docs.getdbt.com/docs/build/about-metricflow)
+- [ROBOT (OBO Foundry tooling)](http://robot.obolibrary.org/)
+
+## Hand-off
+
+Write the deliverable to `docs/.../zz-research/YYYY-MM-DD-challenge-31-deliverable-a-<slug>.md`. Include the full JSON Schema as a fenced code block + the 3-5 reference recipes inline. After deliverable lands: integrate into `spec/recipe.schema.json` (additive bump); update [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) tasks; flip [synthesis log §9 status](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) Ch 31 row from ⏳ to ✅; archive this brief.

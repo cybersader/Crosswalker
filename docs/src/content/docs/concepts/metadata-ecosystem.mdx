@@ -144,6 +144,17 @@ Community successor to Dataview with a focus on performance and a modern API.
 | **Active development** | Yes | No | Yes | Yes |
 | **Plugin required** | No | Yes | No | Yes |
 
+## How queries run over this ecosystem
+
+Bases is one **mechanism** for executing queries against frontmatter. The full Crosswalker query engine has four mechanisms (Bases-native, Tier 2 SQL helpers, codeblock processor, materialized snapshot) and a three-layer architecture that abstracts mechanism choice from query semantics.
+
+For the architectural model:
+- [Query primitives](/crosswalker/concepts/query-primitives/) — Layer A vocabulary (filter / project / traversal / closure / anti-join / pivot / aggregate)
+- [View shapes](/crosswalker/concepts/view-shapes/) — Layer B forms (table / list / pivot / graph / hierarchy / timeline)
+- [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/) — positioning page
+
+Bases handles ~5 of 7 primitives natively for Layer B's table + list shapes. For pivot, graph, hierarchy, and timeline shapes (and for closure / anti-join primitives Bases can't express), Crosswalker provides an escape hatch via Tier 2 SQL helpers (already shipped v0.1.5 P3) and the upcoming `crosswalkerPivot` custom Bases view (v0.1.6).
+
 ## Impact on Crosswalker
 
 ### Frontmatter-first is the right default

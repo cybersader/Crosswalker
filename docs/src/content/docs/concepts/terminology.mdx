@@ -293,7 +293,30 @@ From the [schema matching](/crosswalker/concepts/schema-matching/) page.
 | **OAEI** | Ontology Alignment Evaluation Initiative — annual competition benchmarking alignment algorithms. Recent LLM-based systems achieve 0.83-0.95 F1 scores. [More](/crosswalker/concepts/schema-matching/) |
 | **Formal Concept Analysis** | Lattice theory approach to finding structural correspondences between concept hierarchies without relying on string similarity. Candidate mechanism for [spine distillation](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/). [More](/crosswalker/concepts/schema-matching/#formal-concept-analysis-fca) |
 
-## Query language & engine terms
+## Query engine — three layers
+
+The Crosswalker query engine separates concerns into three orthogonal layers (settled 2026-05-08; see [synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)):
+
+| Layer | What it is | Concept page |
+|---|---|---|
+| **A — Query primitives** | Mechanism-neutral irreducible operations (filter / project / traversal / closure / anti-join / pivot / aggregate) | [Query primitives](/crosswalker/concepts/query-primitives/) |
+| **B — View shapes** | Mechanism-neutral visual presentations (table / list / pivot / graph / hierarchy / timeline) | [View shapes](/crosswalker/concepts/view-shapes/) |
+| **C — Recipes / reports** | Marketplace instances composing primitives + view shape (e.g. "Coverage Matrix" = filter + traversal + anti-join + pivot) | Recipe registry |
+
+| Term | Definition |
+|---|---|
+| **Filter** (Layer A primitive) | Restrict a collection by a predicate over its attributes. SQL `WHERE`, SPARQL `FILTER`, Bases filter. |
+| **Project** (Layer A) | Choose attributes to surface from a row. SQL projection, SPARQL `SELECT`, Bases columns. |
+| **Traversal** (Layer A) | Hop along a typed edge in a single step. SPARQL property path single step, SKOS broader/narrower, Cypher pattern. |
+| **Closure** (Layer A) | Transitive reachability over a predicate. SPARQL `:p+`/`:p*`, Datalog recursion, OWL transitive properties. Crosswalker: `plugin.queryClosure()`. |
+| **Anti-join** (Layer A) | "X without Y" — entities without matching records. SPARQL `MINUS` / `FILTER NOT EXISTS`, SQL `EXCEPT`. The load-bearing operation for "missing/gap" reports. |
+| **Pivot** (Layer A) | Group-by-two-axes; aggregate cell value. Projects graph data into 2D crosstab. OLAP cube, pandas `pivot_table`. Crosswalker: `crosswalkerPivot` custom Bases view. |
+| **Aggregate** (Layer A) | Count / density / sum / max / min over a set. SQL aggregate functions, Bases summaries (1-D), SSSOM mapping density. |
+| **`registerBasesView`** | Obsidian 1.10+ API for plugins to register custom Bases view types. Crosswalker uses this for `crosswalkerPivot` (the v0.1.6 custom view). [obsidian.d.ts reference](https://docs.obsidian.md/Reference/TypeScript+API/Plugin/registerBasesView) |
+| **`crosswalkerPivot`** | The single custom Bases view shipped in v0.1.6. Renders pivot shape; parameterized by recipe. "Coverage Matrix" is the launch recipe. Renamed from `crosswalkerCoverageMatrix` for ontology-web alignment. |
+| **CQRS framing** | Command Query Responsibility Segregation. In Crosswalker: query layer (Bases + codeblock + sqlite-wasm sidecar) ≠ snapshot layer (materialization + OpenTimestamps + git). Don't conflate live read with point-in-time evidence. |
+
+## Query language & engine terms (engine internals)
 
 Surfaced repeatedly in the [Tier 2/Tier 3 engine research wave](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/). Quick reference; see [Datalog glossary entry](/crosswalker/concepts/zz-glossary/datalog/) for the verbose version.
 

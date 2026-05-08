@@ -346,9 +346,33 @@ If `.crosswalker.sqlite` is missing, corrupted, or stale, the projector reprojec
 
 The choice is the recipe author's (or query author's). Tier 1 is the default for simple queries because it survives Tier 2 corruption. Tier 2 is for when SQL's expressivity is needed.
 
+### Three-layer query engine architecture
+
+The query layer separates concerns across three orthogonal layers (settled 2026-05-08; see [synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)):
+
+| Layer | Vocabulary | Concept page |
+|---|---|---|
+| **A — Query primitives** | filter / project / traversal / closure / anti-join / pivot / aggregate | [query-primitives](/crosswalker/concepts/query-primitives/) |
+| **B — View shapes** | table / list / pivot / graph / hierarchy / timeline | [view-shapes](/crosswalker/concepts/view-shapes/) |
+| **C — Recipes / reports** | "Coverage Matrix", "Crosswalk Density", "Ontology Overlap", etc. | recipe registry |
+
+### 7 primitives × 4 mechanisms
+
+| Primitive | Bases-native | Tier 2 SQL helpers | Codeblock processor (v0.1.7) | Materialized snapshot (v0.1.8) |
+|---|---|---|---|---|
+| **filter** | ✅ default | ✅ `WHERE` | ✅ | ✅ pre-resolved |
+| **project** | ✅ default | ✅ projection | ✅ | ✅ |
+| **traversal** | partial (single-hop via `file.hasLink`) | ✅ via `mappings` table + `crosswalkBetween` | ✅ | ✅ |
+| **closure** | ❌ no recursion | ✅ recursive CTE via `closureFromConcept` (already shipped v0.1.5 P3) | ✅ | ✅ |
+| **anti-join** | ❌ | ✅ via `EXCEPT` / `LEFT JOIN ... NULL` | ✅ | ✅ |
+| **pivot** | ❌ summaries are 1-D | composes filter + traversal + aggregate | ✅ | ✅ pre-rendered |
+| **aggregate** | ✅ summaries (1-D) | ✅ multi-D aggregates | ✅ | ✅ |
+
+Crosswalker recipes (Layer C) name a primitive composition + a view shape. The engine picks the right mechanism for each primitive based on what's expressible at that layer. v0.1.6 ships the `crosswalkerPivot` custom Bases view (`registerBasesView`) for the pivot shape; v0.1.7 ships the `crosswalker-query` codeblock processor; v0.1.8 ships materialized snapshot output.
+
 ### Milestones that ship this layer
 
-[v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) (Bases templates + query API).
+[v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) (Bases templates + `crosswalkerPivot` custom view + recipe loader); [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) (codeblock processor); [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) (materialized snapshot output).
 
 ## Layer 5 — Export (T1 → external; or T2 → external)
 

@@ -1,0 +1,176 @@
+---
+title: "Challenge 33: Multi-modal query engine landscape audit + revisit of prior commitments"
+description: "Survey multi-modal databases (DuckDB+DuckPGQ, Polars, Cozo, Oxigraph-WASM, Stardog, RDF4j, Materialize, Datomic, ClickHouse, LanceDB) and re-audit Crosswalker's prior engine commitments (Ch 10/11/12/14/16/18/24) under the ontology-web framing. Confirm or revise sqlite-wasm + recursive CTE substrate at ontology-web scale (BioPortal/UMLS/OBO scale). Update migration triggers. Direct input to v0.1.7+ substrate decisions."
+tags: [research, query-engine, landscape-audit, duckdb, polars, cozo, oxigraph, materialize, datomic, scale, ch-33]
+date: 2026-05-08
+sidebar:
+  label: "33 · Multi-modal landscape audit"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pre-requisite for synthesis-log finalization + v0.1.7+ commitments]
+Prior engine commitments (Ch 10/11/12/14/16/18/24) were made under a GRC framing where vault sizes are bounded (~5K controls × 8 frameworks = ~50K junctions). Under [the ontology-web framing](/crosswalker/concepts/ontology-web-querying/), BioPortal hosts 700+ ontologies; UMLS has 3.5M concepts; OBO Foundry has hundreds × thousands. Sqlite-wasm with recursive CTE may not survive that scale. This challenge re-audits prior commitments and surveys multi-modal DBs to validate the path.
+:::
+
+## Why this exists
+
+Crosswalker's v0.1 engine substrate is `@sqlite.org/sqlite-wasm` + (deferred) `sqlite-vec` per [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/). Tier 3 server-side path is Apache Jena Fuseki + oxigraph-server per [Ch 16 synthesis](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/). These choices were made:
+
+- Under a GRC framing (small-to-medium vaults; bounded scale)
+- Without surveying multi-modal DBs (DuckDB, Polars, Cozo, ClickHouse, Materialize, etc.)
+- Before the ontology-web positioning was made explicit
+
+The 2026-05-08 alignment review surfaced that v0.1.7+ commitments rest on assumptions that haven't been adversarially tested under the ontology-web framing. Ch 33 does the test.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [Ch 11 synthesis](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) | Picked layered Tier 2 stack (DuckDB-WASM + Oxigraph + Nemo) — but later pivoted to sqlite-wasm-only |
+| [Ch 14 synthesis](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) | Added Tier 2-Lite (sqlite-wasm + sqlite-vec + recursive CTE) for Obsidian Mobile / low-end |
+| [Ch 16 synthesis](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) | Demoted Apache AGE; promoted Fuseki/oxigraph-server as Tier 3 default |
+| [Ch 18 synthesis](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) | ~100K mapping ceiling for sqlite-wasm + recursive CTE |
+| [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) | Rejected libSQL/Turso/Limbo; confirmed sqlite-wasm + sqlite-vec; 5 explicit migration triggers locked |
+| [Ch 25 / WASM-A pivot](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) | Pivoted to plain sqlite-wasm; sqlite-vec deferred; 2026-11-06 revisit anchored |
+| [v0.1.5 Tier 2 sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) | Working sqlite-wasm sidecar with closure cache (recursive CTE) |
+| Plugin handles | `plugin.queryConcepts/Crosswalk/Closure` already shipped against sqlite-wasm |
+
+## What to investigate
+
+### 1. Survey multi-modal databases — substrate alternatives at ontology-web scale
+
+For each of the following, document:
+
+- **Scale ceilings**: at what vault size does the engine break? Latency profile vs concept count?
+- **Query model**: SQL, Datalog, SPARQL, Cypher, native API, GraphQL?
+- **Multi-paradigm support**: relational + graph + KV + time-series + vector? Which combinations?
+- **Embedded vs server**: WASM-able? Browser-runnable? Memory-bound?
+- **Streaming / chunked execution**: out-of-core? Spill-to-disk? Incremental view maintenance?
+- **License + governance**: OSS license? Vendor concentration? Long-term sustainability?
+
+Engines to survey:
+
+| Engine | Notes |
+|---|---|
+| **DuckDB + DuckPGQ** (https://duckdb.org/docs/extensions/duckpgq) | Columnar OLAP + property graph extension; out-of-core; WASM build |
+| **Polars** (https://pola.rs/) | Columnar / Arrow-native; lazy + streaming engine; Python + Rust + JS |
+| **Cozo** (https://www.cozodb.org/) | Datalog + relational + graph; Rust; WASM build |
+| **Oxigraph-WASM** (https://github.com/oxigraph/oxigraph) | SPARQL in Rust/WASM; embedded |
+| **Stardog** (https://www.stardog.com/) | Knowledge graph + reasoning; commercial |
+| **RDF4j** (https://rdf4j.org/) | Java RDF stack; SPARQL; commercial-friendly OSS |
+| **Apache Jena + Fuseki** | Java RDF stack; current Crosswalker Tier 3 default |
+| **Materialize** (https://materialize.com/) | Streaming SQL; incremental view maintenance |
+| **Datomic** (https://www.datomic.com/) | Immutable indexes; Datalog query; commercial |
+| **ClickHouse** (https://clickhouse.com/) | Columnar OLAP; massive scale; SQL |
+| **LanceDB** (https://lancedb.com/) | Vector + relational; embedded; Rust |
+| **TerminusDB** (https://terminusdb.com/) | Document + graph; Rust core; vault-mirror potential |
+| **Neo4j** (https://neo4j.com/) | Native graph; Cypher; commercial-OSS |
+| **GraphDB** (https://graphdb.ontotext.com/) | RDF; SHACL; commercial-OSS |
+| **HelixDB** (https://github.com/HelixDB/helix-db) | Graph-DB; pre-1.0 |
+| **SurrealDB** (https://surrealdb.com/) | Multi-model; BSL-licensed; flagged in Ch 14 as REJECT |
+
+For each: what would Crosswalker GAIN by adopting? What would it LOSE? What's the migration cost from sqlite-wasm?
+
+### 2. Re-audit prior Crosswalker commitments under ontology-web framing
+
+For each of [Ch 10](/crosswalker/agent-context/zz-challenges/archive/10-graph-to-tabular-bridging-engine/), [Ch 11](/crosswalker/agent-context/zz-challenges/archive/11-tier-2-3-engine-deep-survey/), [Ch 12](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/), [Ch 14](/crosswalker/agent-context/zz-challenges/archive/14-missed-engines-evaluation/), [Ch 16](/crosswalker/agent-context/zz-challenges/archive/16-tier-3-stack-reconsideration/), [Ch 18](/crosswalker/agent-context/zz-challenges/archive/18-tier-2-lite-sssom-rule-subset/), [Ch 24](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/):
+
+- Does the verdict still hold under ontology-web framing?
+- Were assumptions GRC-specific that don't generalize?
+- Are migration triggers still right? Earlier? Later?
+- Should the verdict be REVISED, REAFFIRMED, or DEFERRED to a follow-on rerun (Ch 35/36/37)?
+
+### 3. Scale models
+
+For each substrate alternative + Crosswalker's current sqlite-wasm:
+
+- **Small-vault scale** (~10K concepts, ~5K mappings; current GRC bound): performance? acceptable?
+- **Medium-vault scale** (~100K concepts, ~50K mappings): performance? memory? closure-query cost?
+- **Large-vault scale** (~1M concepts, ~500K mappings; OLIR-scale): performance? feasibility?
+- **Ontology-web scale** (~10M concepts; UMLS/MeSH/OBO Foundry-scale): feasibility? required architecture?
+
+Output: scale × engine matrix showing where each substrate breaks and what alternatives unlock the next tier.
+
+### 4. Vector layer + multi-modal composition
+
+The current Tier 2 stack decouples vector (`sqlite-vec`) from substrate (sqlite-wasm). Under ontology-web framing, vector queries become more important (semantic similarity across ontologies). Survey:
+
+- LanceDB (native vector + relational)
+- DuckDB + vector extensions
+- ClickHouse + vector
+- Embedded vector stores (Chroma, Qdrant, Faiss-WASM)
+
+Does decoupling still make sense? Or does an integrated multi-modal substrate (LanceDB?) win on cross-modal queries?
+
+### 5. Migration trigger updates
+
+[Ch 24's 5 migration triggers](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) might shift earlier under ontology-web framing. Re-audit each:
+
+1. Vector extension packaging — does ontology-web framing change urgency?
+2. WASM bundle size — does the larger primitive set (Ch 29) blow the budget?
+3. Closure query latency — at ontology-web scale, what's the real ceiling?
+4. Mobile / low-end performance — does the larger query surface make mobile harder?
+5. Federation requirement — does ontology-web cross-ontology query make federation more pressing?
+
+Output: revised trigger list + new triggers if needed.
+
+### 6. Substrate-neutral architecture verification
+
+[Ch 24 Settled #4](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) committed to "vector layer is decoupled from substrate" as a load-bearing modularity commitment. Verify this still holds:
+
+- Are the [3 query primitives shipped (`getConceptsByOntology` / `crosswalkBetween` / `closureFromConcept`)](https://github.com/cybersader/crosswalker/blob/main/src/tier2/queries.ts) substrate-specific or substrate-neutral?
+- Could they be reimplemented over Cozo / DuckDB / Polars / Oxigraph without breaking the recipe schema?
+- What's the real abstraction line — is `plugin.queryClosure()` engine-neutral, or does it leak SQL semantics?
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **Migrating off sqlite-wasm without a strong concrete trigger** — Ch 24 confirmed sqlite-wasm; reversal requires hard evidence
+2. **Adopting an engine that violates Mobile / Capacitor constraints** — Crosswalker must run on Obsidian Mobile (no SharedArrayBuffer / OPFS limitations)
+3. **Reintroducing libSQL / Turso / Limbo** — Ch 24 rejected explicitly
+4. **Adopting commercial-OSS engines with vendor concentration** — Datomic, Stardog, GraphDB are flagged; community substrates preferred
+5. **Forking the engine internals** — Crosswalker is a plugin, not a database product
+6. **Multi-engine deployments in v0.1** — at most one Tier 2 substrate; one Tier 3 substrate
+7. **Speculative migration without a working prototype** — recommendations to migrate must include a feasible POC path
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Engine survey matrix** — 15+ engines × 8 dimensions (scale / query model / multi-paradigm / embed / streaming / license / vendor concentration / Mobile feasibility)
+2. **Re-audit verdicts** — for each of Ch 10/11/12/14/16/18/24: REAFFIRMED / REVISED / DEFERRED-TO-RERUN
+3. **Scale × engine matrix** — performance estimates at small / medium / large / ontology-web scale
+4. **Vector-layer decoupling verification** — does the architecture still support substrate swap?
+5. **Migration trigger updates** — revised list of falsifiable conditions to migrate off sqlite-wasm
+6. **Recommended v0.1.7+ commitments** — substrate, vector, query language, scale path
+7. **Concrete next-action items** — what should v0.1.7 milestone scope include based on findings
+
+## Anchored references
+
+**Project context:**
+- [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — sqlite-wasm + 5 migration triggers
+- [Ch 11 / 14 / 16 / 18 syntheses + archived briefs](/crosswalker/agent-context/zz-challenges/) — prior engine work
+- [WASM-A pivot synthesis](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) — current substrate state
+- [v0.1.5 Tier 2 sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) — what's actually running today
+
+**Engines (priority survey targets):**
+- [DuckDB](https://duckdb.org/) + [DuckPGQ](https://duckdb.org/docs/extensions/duckpgq)
+- [Polars](https://pola.rs/)
+- [Cozo](https://www.cozodb.org/)
+- [Oxigraph](https://github.com/oxigraph/oxigraph)
+- [LanceDB](https://lancedb.com/)
+- [Materialize](https://materialize.com/)
+- [Datomic](https://www.datomic.com/)
+- [ClickHouse](https://clickhouse.com/)
+
+**Adjacent Crosswalker challenges:**
+- [Ch 35 — Graph→tabular bridging rerun](/crosswalker/agent-context/zz-challenges/35-graph-to-tabular-bridging-rerun/)
+- [Ch 36 — Query language rerun](/crosswalker/agent-context/zz-challenges/36-query-language-rerun/)
+- [Ch 37 — Tier 2-Lite scale rerun](/crosswalker/agent-context/zz-challenges/37-tier-2-scale-model-rerun/)
+- [Ch 34 — Streaming / chunked execution](/crosswalker/agent-context/zz-challenges/34-streaming-chunked-query-execution/) (sister challenge)
+
+## Hand-off
+
+Write the deliverable to `docs/.../zz-research/YYYY-MM-DD-challenge-33-deliverable-a-<slug>.md`. After deliverable lands: update [synthesis log §9 status](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) Ch 33 row from ⏳ to ✅; update [Ch 24 migration triggers](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) per findings; flip prior-challenge verdicts as needed (REAFFIRMED / REVISED); update v0.1.7 milestone scope; archive this brief.

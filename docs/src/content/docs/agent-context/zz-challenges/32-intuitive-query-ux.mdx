@@ -1,0 +1,190 @@
+---
+title: "Challenge 32: Intuitive query UX — how does a user go from intent to a working .base file?"
+description: "UX patterns for going from user intent ('show me NIST × ISO coverage') to a working .base file or codeblock. Wizard vs recipe-picker vs inline-editor analysis. Cross-reference Looker Explore, Tableau Pivot, dbt Cloud Insights, BioPortal Mappings UI, NIST OLIR portal. Discoverability of recipes; learning curve; mobile vs desktop. Less load-bearing for v0.1.6 architecture; flagged for v0.2+ but worth filing now while context is fresh."
+tags: [research, ux, query-ux, wizard, recipe-picker, looker, tableau, ch-32]
+date: 2026-05-08
+sidebar:
+  label: "32 · Intuitive query UX"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::note[Lower urgency than Ch 29-31, 33-37]
+This challenge is UX-flavored and less directly load-bearing for v0.1.6 architectural commitments. It's filed now while the context is fresh, but its findings primarily affect v0.2+ UX work. v0.1.6 ships a single canonical `crosswalkerPivot` view + a hand-authored recipe pattern; broader UX surfaces (wizard / picker / inline editor) come later.
+:::
+
+## Why this exists
+
+The user's repeated framing was: "the query engine should be **intuitive**." That word carries weight. v0.1.6's commitment is hand-authored YAML recipes + one custom Bases view — it's not intuitive, it's expert-friendly. Ch 32 asks: how do we make this intuitive for non-technical users (compliance auditors, GRC analysts, ontology-mapping researchers, library-science taxonomy editors)?
+
+User journey to investigate:
+
+1. User has intent: "show me coverage of NIST × ISO"
+2. User picks (or composes) a recipe
+3. User authors (or selects) a `.base` file
+4. User sees the result
+
+Today, steps 2-3 require knowing the recipe schema and the `.base` file format. That's a steep learning curve. Ch 32 designs UX patterns to lower it.
+
+## What we already have
+
+| Asset | Today's UX |
+|---|---|
+| Import wizard | Multi-step modal for IMPORT (covered by [`features/import-wizard.mdx`](/crosswalker/features/import-wizard/)). Doesn't handle queries. |
+| Recipe loader (v0.1.6 pending) | YAML files in `_crosswalker/recipes/`; user finds them by file browse |
+| `crosswalkerPivot` view (v0.1.6 pending) | Selected from Bases view-picker dropdown |
+| Concept docs | Documents the schema; not interactive |
+| Marketplace | Out of scope until v0.3+ |
+
+The gap: nothing scaffolds the user from intent to working query.
+
+## What to investigate
+
+### 1. Cross-reference declarative-query UX in adjacent products
+
+For each tool, document: how does a non-technical user go from intent to query? What pattern? What works? What doesn't?
+
+- **Looker Explore** — point-and-click query builder; measures + dimensions; saved views
+- **Tableau** — visual drag-and-drop pivot/chart designer
+- **Power BI** — measure + visualization picker
+- **dbt Cloud Insights** — query authoring inside the dbt UI
+- **Metabase** — question builder (point-click) vs SQL editor toggle
+- **Notion databases** — "create a view" dialog with type picker (table/board/timeline/calendar/gallery)
+- **Airtable views** — similar to Notion; view types selected from a menu
+- **BioPortal Mappings UI** — how does a researcher find mappings between two ontologies?
+- **NIST OLIR portal** — how does a user search the OLIR catalog of crosswalks?
+- **OxO2 (EBI) UI** — how does a user query for cross-ontology mappings?
+- **Obsidian Bases UI itself** — how does Obsidian present `.base` file authoring?
+
+### 2. Three UX patterns for Crosswalker
+
+Argue between three plausible UX patterns:
+
+#### Pattern A: Wizard (multi-step modal)
+
+Like the import wizard. User clicks "New Query Recipe" → wizard asks: what shape? what ontologies? what edge predicate? what cell op? Wizard generates a `.base` file.
+
+Pros: structured; works for novices; reuses existing wizard infrastructure
+Cons: rigid; doesn't surface the recipe library (user must know what they want)
+
+#### Pattern B: Recipe picker (browse-and-customize)
+
+Marketplace-style picker. User browses canonical recipes ("Coverage Matrix", "Crosswalk Density", "Freshness Heatmap"), picks one, customizes parameters. Generates a `.base` file from the recipe.
+
+Pros: discoverability of canonical patterns; one-click for common cases
+Cons: requires marketplace; users with novel queries can't easily start from scratch
+
+#### Pattern C: Inline editor (live `.base` file with autocomplete)
+
+User opens a `.base` file directly; gets autocomplete on `query:` block fields (shape values, primitive options); validation errors inline.
+
+Pros: power-user friendly; no UI to maintain beyond schema-driven hints
+Cons: requires schema knowledge; not novice-friendly
+
+#### Pattern D: Hybrid (recipe-picker for common; wizard for novel; inline for power users)
+
+Combine all three. Recipe picker as primary entry point; "Build from scratch" → wizard; "Edit YAML" link → inline editor.
+
+Argue which pattern (or hybrid) best fits Crosswalker's user base across compliance auditors, GRC analysts, ontology researchers, library-science taxonomy editors.
+
+### 3. Mobile vs desktop UX
+
+Bases works on mobile (Obsidian 1.10+). What does query-building look like on mobile?
+
+- Wizard modal: adapts well
+- Recipe picker: fine on mobile
+- Inline YAML editor: poor on mobile (small screens; no autocomplete)
+
+Argue which patterns degrade gracefully and which require desktop-only.
+
+### 4. Recipe discoverability
+
+How does a user find the right recipe for their intent?
+
+- File-system browse (boring)
+- Categorized recipe registry ("Compliance" / "Threat intelligence" / "Biomedical" / "Library")
+- Search-by-keyword ("show me recipes about evidence freshness")
+- Recommendation engine ("users who ran X also ran Y")
+
+What's the v0.1.6-feasible bar? What's v0.2+?
+
+### 5. Learning curve to authoring novel recipes
+
+For a user who needs a query NOT covered by any canonical recipe — what's the path?
+
+- Read the recipe schema
+- Copy a similar recipe and modify
+- Use a wizard
+- Ask an LLM to generate
+- Hire a Crosswalker consultant (joke, mostly)
+
+What scaffolding (concept-docs / cookbook / tutorial / template gallery / LLM-assisted author / guided wizard) gets a non-technical user to a novel-but-correct recipe in under an hour?
+
+### 6. Error handling and feedback loops
+
+When a recipe doesn't validate, when a `.base` file produces empty results, when a `crosswalkerPivot` view fails to render — what does the user see? How do they recover?
+
+Specific scenarios:
+
+- Recipe references an ontology ID that doesn't exist in vault
+- Recipe specifies a primitive composition that has no result
+- `.base` file is malformed
+- Custom view fails to register (Bases plugin disabled)
+
+### 7. AI-agent assistance
+
+A meta-question: should Crosswalker explicitly support LLM agents authoring queries? Examples:
+
+- Agent inspects vault → writes a custom recipe for the user's data
+- Agent translates natural-language intent ("show me NIST gaps") → working `.base` file
+- Agent debugs why a recipe returned empty
+
+This is increasingly the way Obsidian integrates with AI (per `kepano/obsidian-skills`). What's the v0.1 minimum viable surface for agent-friendly query authoring?
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **Building a custom drag-and-drop query builder** — out of scope for v0.1; UI complexity unbounded
+2. **Replacing Bases' built-in view picker** — Bases' UI handles view selection; we just register custom view types
+3. **Forking Looker / Tableau / Power BI UX** — those are enterprise products; Crosswalker is a plugin
+4. **Pre-generating thousands of canonical recipes** — recipe marketplace is a v0.3+ concern
+5. **Forcing all users through a wizard** — power users should have a path to inline `.base` authoring
+6. **A web-based query builder outside Obsidian** — out of scope; everything stays in-vault
+7. **An obsidian-native modal that fights Bases UI** — Bases' UX is the convention; align with it
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Cross-reference matrix** — 8+ adjacent products × UX dimensions (entry point / authoring path / discoverability / mobile / errors / agent-friendliness)
+2. **Pattern verdict** — wizard vs recipe-picker vs inline vs hybrid; argued recommendation
+3. **Mobile vs desktop UX matrix** — what works where
+4. **Recipe discoverability proposal** — concrete v0.1 minimum + v0.2+ roadmap
+5. **Learning-curve scaffolding plan** — docs / cookbook / template gallery / LLM-assist
+6. **Error-handling design** — feedback loops for the 4+ scenarios listed
+7. **AI-agent surface decision** — what's in v0.1.6, what's deferred
+8. **Recommended changes to v0.1.6 milestone scope** (or explicit "no changes; this is v0.2+ work")
+
+## Anchored references
+
+**Project context:**
+- [`features/import-wizard`](/crosswalker/features/import-wizard/) — existing wizard infrastructure
+- [`concepts/view-shapes`](/crosswalker/concepts/view-shapes/) — what shapes the UX needs to support
+- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)
+
+**Adjacent UX references:**
+- [Looker Explore](https://cloud.google.com/looker/docs/exploring-data)
+- [Tableau Pivot](https://help.tableau.com/current/pro/desktop/en-us/pivot.htm)
+- [Metabase Question Builder](https://www.metabase.com/docs/latest/questions/query-builder/introduction)
+- [Notion database views](https://www.notion.so/help/views-filters-and-sorts)
+- [BioPortal Mappings](https://bioportal.bioontology.org/mappings)
+- [NIST OLIR](https://csrc.nist.gov/Projects/olir)
+- [OxO2 UI](https://www.ebi.ac.uk/spot/oxo/)
+
+**AI-agent integration:**
+- [`kepano/obsidian-skills`](https://github.com/kepano/obsidian-skills) — Steph Ango's Agent Skills package teaching LLMs Markdown + Bases + JSON Canvas
+
+## Hand-off
+
+Write the deliverable to `docs/.../zz-research/YYYY-MM-DD-challenge-32-deliverable-a-<slug>.md`. After deliverable lands: capture findings into a new `concepts/query-ux.mdx` page (or expand existing `features/import-wizard.mdx`) — TBD by deliverable; flip [synthesis log §9 status](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) Ch 32 row from ⏳ to ✅; archive this brief.

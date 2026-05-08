@@ -1,17 +1,21 @@
 ---
-title: "Bases query layer architecture — synthesis (in progress)"
-description: "Living decision document consolidating Ch 27 + Ch 28 (six fresh-agent research deliverables). Lists what's settled by three-way convergence, what divergent decisions remain (D1–D6), and what cascade work the final synthesis triggers. Updated in place as verdicts land — currently pre-decision draft."
-tags: [foundation, design, query-layer, bases, registerbasesview, materialization, ch-27-resolution, ch-28-resolution, cqrs, draft, in-progress]
+title: "Ontology-web query engine — synthesis (in progress)"
+description: "Living decision document for the v0.1.6+ query engine. Crosswalker is a general ontology-web query engine; compliance is the launch market. The Bases query layer is the v0.1.6 instance. Consolidates Ch 27 + Ch 28 verdicts; lists D1–D9 open decisions; tracks Ch 29–37 pending research challenges as finalization blockers. Updated in place as verdicts land."
+tags: [foundation, design, query-layer, ontology-web, bases, registerbasesview, materialization, three-layer-architecture, query-primitives, cqrs, ch-27-resolution, ch-28-resolution, draft, in-progress]
 date: 2026-05-07
 sidebar:
-  label: "05-07 · Bases query layer (draft)"
+  label: "05-07 · Ontology-web query engine (draft)"
   order: -20260507
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 :::caution[Pre-decision draft — living document]
-This log is a **working synthesis** capturing the state of decisions across Ch 27 + Ch 28 deliverables. Six fresh-agent research deliverables have landed (3 for [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/), 3 for [Ch 28](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/)). This page lists what's converged, what's still open (D1–D6), and what cascade work follows. It will be **updated in place** as verdicts lock in. The `:::caution` banner gets removed and the title's "(in progress)" suffix gets dropped once all six decisions are settled.
+This log is a **working synthesis** capturing the state of decisions for the Crosswalker query engine. Six fresh-agent research deliverables have landed (3 for [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/), 3 for [Ch 28](/crosswalker/agent-context/zz-challenges/28-bases-query-layer-followon-stress-test/)). Nine NEW research challenges have been filed (Ch 29–37 — see §9) to validate prior commitments under the ontology-web framing before this synthesis finalizes. The `:::caution` banner gets removed and the title's "(in progress)" suffix gets dropped only when D1–D9 are decided AND Ch 29–37 deliverables have landed.
+:::
+
+:::note[Why this title]
+Earlier framing of this log as "Bases query layer architecture" inherited a GRC-coded drift from the Ch 27 + Ch 28 deliverables (whose fresh-agent runs couldn't fetch the docs site and so reasoned from compliance-leaning README context). **Crosswalker has been general-ontology-first all along** per the [`feedback_general_ontology_positioning.md` memory](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md), the [`what-makes-crosswalker-unique`](/crosswalker/concepts/what-makes-crosswalker-unique/) page, the [5-mechanism domain-neutral recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/), and the SSSOM/SKOS/STRM cross-domain vocabulary in `spec/recipe.schema.json`. This log title aligns with that first-principles position: **Crosswalker is a general ontology-web query engine; compliance is the launch market**. Bases is the v0.1.6 *instance* of the engine; v0.1.7+ adds codeblock and materialized snapshot surfaces.
 :::
 
 ## Why this exists
@@ -27,29 +31,35 @@ This page consolidates the verdicts and tracks the open decisions before [v0.1.6
 | # | Settled commitment | Source convergence |
 |---|---|---|
 | 1 | **Hybrid architecture**: Bases as default + SQL/sidecar as escape hatch | Ch 27 a/b/c + Ch 28 a/c |
-| 2 | **Single `registerBasesView` for v0.1.6** — `crosswalkerCoverageMatrix` (one custom view, not three) | Ch 27a + Ch 28 a/c |
+| 2 | **Single `registerBasesView` for v0.1.6** — `crosswalkerPivot` (one custom view, parameterized by recipe; "Coverage Matrix" is the launch-market recipe instance, not the view name) | Ch 27a + Ch 28 a/c (renamed from `crosswalkerCoverageMatrix` to align with general-ontology framing — pivot is the operation, matrix is one rendering) |
 | 3 | **`_crosswalker/` underscore folder convention** (Obsidian doesn't index dot-folders) | Ch 28 a/c |
 | 4 | **Mobile/Publish parity is the binding constraint** (`sqlite-wasm` + OPFS unavailable on Obsidian Mobile via Capacitor; codeblock processors never execute on Publish) | Ch 28 a/c |
 | 5 | **`metadataCache.resolvedLinks` for edge resolution** — not string LIKE; not custom projector | Ch 27c + Ch 28 a/c |
-| 6 | **Junction-note schema denormalizes `control_id` + `framework` strings** for Bases filtering | Ch 27c + Ch 28 a/c |
+| 6 | **Junction-note schema denormalizes subject/object ontology-id strings** for Bases filtering. Launch market populates these as `control_id` + `framework`; the schema generalizes to any ontology pair (NIST↔ISO, MITRE-ATT&CK↔CIS, SKOS taxonomy↔OLIR data web, etc.) | Ch 27c + Ch 28 a/c |
 | 7 | **Manifest-first [OpenTimestamps](https://opentimestamps.org/) audit model** — one `.ots` per snapshot manifest, not per row | Ch 28 a/c |
 | 8 | **Determinism is non-negotiable** for OTS to be meaningful (stable row/key ordering; byte-identical regen) | Ch 28 a/c |
 | 9 | **Junctions = audit truth; matrices = caches/projections** — never conflate | Ch 28c explicit + Ch 28a CQRS framing |
 | 10 | **Recipe lifecycle**: schema validation + provenance + `user_edited:true` flag + three-way merge | Ch 28 a/c |
 | 11 | **TaskNotes v4** is the canonical Obsidian-plugin precedent for "delete bespoke filter UI; let Bases own it" | Ch 27a + Ch 28 a/c |
+| 12 | **Three-layer query engine architecture** — Layer A: query primitives (mechanism-neutral; filter / project / traversal / closure / anti-join / pivot / aggregate); Layer B: view shapes (Bases-renderable; table / list / pivot / graph / hierarchy / timeline); Layer C: recipes (marketplace instances composing primitives + shape, e.g. "Coverage Matrix"). See [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/) + [`concepts/view-shapes`](/crosswalker/concepts/view-shapes/) | Alignment with first-principles project framing; surfaced by the 2026-05-08 alignment review |
+| 13 | **Crosswalker is a general ontology-web query engine; compliance (GRC) is the launch market** — internal vocabulary stays general (ontology / concept / subject / object); user-facing surfaces stay GRC-first (control / framework / evidence / coverage). The recipe layer carries domain naming; the query/view layers stay neutral. See [`concepts/ontology-web-querying`](/crosswalker/concepts/ontology-web-querying/) | [`feedback_general_ontology_positioning.md` memory](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md); 2026-05-08 alignment |
+| 14 | **The 7-primitive vocabulary** (filter / project / traversal / closure / anti-join / pivot / aggregate) is the **candidate** complete query verb set for v0.1. **Pending Ch 29 adversarial validation** — list may be revised based on cross-reference to SPARQL property paths, Datalog rules, OLAP cube operators, SKOS, OWL transitive properties, SSSOM, NIST OLIR, OxO2 prior art | Candidate set surfaced by alignment review; **NOT FINAL** until Ch 29 lands |
 
-These are durable across all three plausible architectural framings. **They go into the synthesis verdict regardless of how D1–D6 resolve.**
+These are durable across all three plausible architectural framings. **They go into the synthesis verdict regardless of how D1–D9 resolve** — except #14, which is provisional pending Ch 29.
 
-## §2 Decisions to make (D1–D6)
+## §2 Decisions to make (D1–D9)
 
 | ID | Decision | Current lean | Tradeoff |
 |---|---|---|---|
 | **D1** | **Materialization in v0.1.6** (per Ch 28a) **vs defer to v0.1.8** (per Ch 28c)? | Defer to v0.1.8 | A is more pragmatic for Publish-portal use cases now; C is cleaner architecturally and cuts v0.1.6 scope significantly. Crosswalker doesn't yet have a "publish to auditor portal" workflow that demands materialization. |
-| **D2** | **Codeblock processor in v0.1.6** (per Ch 28a) **vs v0.1.7** (per Ch 28c)? | v0.1.7 | Keeps v0.1.6 minimal. `registerBasesView` covers coverage-matrix; codeblock is for ad-hoc closure queries, which are deferrable. |
+| **D2** | **Codeblock processor in v0.1.6** (per Ch 28a) **vs v0.1.7** (per Ch 28c)? | v0.1.7 | Keeps v0.1.6 minimal. `registerBasesView` covers the launch-market pivot recipe; codeblock is for ad-hoc closure queries, which are deferrable. |
 | **D3** | **Folder convention** — `Reports/_generated/` (28a) **vs** `_crosswalker/views/` + `_crosswalker/audit/` (28c)? | Split by purpose | `_crosswalker/views/` for plugin-emitted `.base` files (per 28c). `_crosswalker/audit/` for materialized audit snapshots when v0.1.8 lands. |
 | **D4** | **Adopt CQRS framing as a load-bearing architectural commitment** ("query layer ≠ snapshot layer")? | Yes | Should join the [6 v0.1 architectural commitments](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) as #7. The deepest insight from Ch 28a; reframes Ch 27's "hybrid" verdict as a clean read/write split. |
 | **D5** | **`sqlite-wasm` in v0.1.6**: hidden internal helper (BasesView calls `plugin.queryClosure`) **vs** user-facing surface? | Internal only | Already shipped in [v0.1.5 P3](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/). v0.1.6 BasesView uses it under the hood; no new user-facing SQL surface until v0.1.7. |
 | **D6** | **Memory file update** — expand `project_query_layer_bases_not_dataview.md` **vs** create new memory for CQRS framing? | Expand existing | Single file is the canonical query-layer commitment record. |
+| **D7** | **Custom view name**: `crosswalkerPivot` (the operation; recommended) vs `crosswalkerCoverageMatrix` (compliance-coded; current code) vs `crosswalkerCrosswalk` vs `crosswalkerOntologyView`? | `crosswalkerPivot` | Pivot is the *operation* (graph→tabular projection); matrix is one *output rendering*. Naming after the operation lets v0.2+ siblings be `crosswalkerGraph`, `crosswalkerHierarchy`, etc. Future-proof. Coverage Matrix becomes the launch-market *recipe* instance. |
+| **D8** | **Recipe schema `query:` block additive bump in v0.1.6** (lets recipes declare what to query + render shape; recommended) **vs defer** to v0.1.7 with codeblock processor? | v0.1.6 additive | The custom view needs *something* to parameterize on; doing ad-hoc options in v0.1.6 then breaking-changing in v0.1.7 hurts early users. Schema design pending **Ch 31** (recipe `query:` block schema). |
+| **D9** | **Concept-page strategy**: three new pages (`query-primitives` + `view-shapes` + `ontology-web-querying`; recommended) **vs** merge into existing `metadata-ecosystem` + `system-architecture`? | Three new pages | Durable orthogonal vocabularies; each findable by URL; cross-linked from existing pages. Merging buries the abstraction. |
 
 **Status (per decision):**
 
@@ -61,6 +71,9 @@ These are durable across all three plausible architectural framings. **They go i
 | D4 | ⏳ Pending | — | — |
 | D5 | ⏳ Pending | — | — |
 | D6 | ⏳ Pending | — | — |
+| D7 | 🟡 Lean confirmed (2026-05-08 alignment) | — | Awaits final synthesis lock |
+| D8 | 🟡 Lean confirmed; schema design pending Ch 31 | — | Awaits final synthesis lock + Ch 31 deliverable |
+| D9 | 🟡 Lean confirmed (2026-05-08 alignment) | — | Awaits final synthesis lock |
 
 (This table gets updated as each decision lands.)
 
@@ -92,7 +105,10 @@ A finalized synthesis log will:
 
 | Aspect | Lock |
 |---|---|
-| Integration mechanism | Single `registerBasesView` (`crosswalkerCoverageMatrix`) for v0.1.6 |
+| Integration mechanism | Single `registerBasesView` (`crosswalkerPivot`) for v0.1.6, parameterized by recipe; "Coverage Matrix" is the launch-market recipe instance |
+| Three-layer architecture | Layer A (query primitives) ≠ Layer B (view shapes) ≠ Layer C (recipes/marketplace instances). [Concept docs](/crosswalker/concepts/query-primitives/) explain. |
+| Project positioning | General ontology-web query engine; compliance is the launch market. Internal vocab stays general; user-facing surfaces stay GRC-first. |
+| Query verb vocabulary | 7 candidate primitives (filter / project / traversal / closure / anti-join / pivot / aggregate); pending Ch 29 adversarial validation |
 | Folder convention | `_crosswalker/views/` (plugin-emitted `.base` files) + `_crosswalker/audit/` (materialized snapshots, v0.1.8+) |
 | Edge resolution | `metadataCache.resolvedLinks` snapshotted into closure cache; refreshed on `changed`/`resolved` events |
 | Junction-note schema | 13 fields with denormalized `control_id` + `framework` strings (for Bases filtering); wikilinks for navigation |
@@ -144,7 +160,8 @@ These are not blocked by D1–D6 but should be tracked:
 | [Ch 22 — 5-mechanism recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) | Consistent. Recipe lifecycle in this synthesis governs v0.1.6 recipe loader; emission still produces folder/file/heading mechanisms (tag/wikilink layout-levels deferred to v0.2) |
 | [Ch 07 — junction-note edge model](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) | Consistent. Junction notes are the source of truth that Bases filters; this synthesis denormalizes specific fields for filter performance but doesn't change the 13-field schema |
 | [v0.1.5 — Tier 2 sidecar](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) | Consistent. Plugin handles (`queryConcepts`/`queryCrosswalk`/`queryClosure`) become the BasesView's internal-only enrichment path in v0.1.6 |
-| Project memory `project_query_layer_bases_not_dataview.md` | Will be expanded post-synthesis with: registerBasesView decision, `_crosswalker/` namespace, materialization-deferral, CQRS framing |
+| Project memory `project_query_layer_bases_not_dataview.md` | Will be expanded post-synthesis with: registerBasesView decision, `_crosswalker/` namespace, materialization-deferral, CQRS framing, three-layer architecture, 7-primitive vocabulary |
+| Project memory `feedback_general_ontology_positioning.md` | Consistent. This synthesis brings the title + Settled #2/#6/#13 + concept pages back into agreement with that memory; the prior "Bases query layer" framing had drifted GRC-coded |
 
 ## §8 What this does NOT do
 
@@ -154,7 +171,48 @@ These are not blocked by D1–D6 but should be tracked:
 - **Does not change Bases as the v0.1 query layer commitment** — that's [project memory](https://github.com/cybersader/crosswalker/blob/main/.claude/CLAUDE.md#operational-rules-load-bearing-for-agents) from 2026-05-04 and remains unchanged
 - **Does not address cross-vault federation** — explicitly out of scope per Ch 27 brief §7 and Ch 28 anti-patterns
 
-## §9 Related
+## §9 Pending research challenges (finalization blockers)
+
+The 2026-05-08 alignment review surfaced that several v0.1.7+ commitments — substrate scaling, query language, streaming execution — were locked under a GRC framing that may not survive the broader ontology-web framing. Nine new research challenges have been filed to validate prior work and fill genuine gaps. **Briefs are filed; fresh-agent runs are deferred to user's schedule. This synthesis log does NOT finalize until the deliverables land and a follow-up update absorbs their findings.**
+
+### NEW challenges (questions never asked before)
+
+| Ch | Title | Plain-language framing | Blocks |
+|---|---|---|---|
+| **[Ch 29](/crosswalker/agent-context/zz-challenges/29-ontology-web-query-verbs-validation/)** | Ontology-web query verbs — adversarial validation | "Are these the right LEGO bricks for asking questions about ontology webs?" | Settled #14 (7-primitive set); `query-primitives.mdx` lock |
+| **[Ch 30](/crosswalker/agent-context/zz-challenges/30-view-shape-taxonomy/)** | View shape taxonomy | "Beyond pivot — what shapes does the engine need? (graph, hierarchy, timeline, sankey, treemap...)" | `view-shapes.mdx` lock; v0.2+ roadmap |
+| **[Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/)** | Recipe `query:` block schema design | "How does a recipe declare its query in YAML?" | D8 (recipe-schema additive bump) |
+| **[Ch 32](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/)** | Intuitive query UX | "How does a user go from intent to a working `.base` file?" | v0.2+ UX work; deferrable |
+| **[Ch 33](/crosswalker/agent-context/zz-challenges/33-multi-modal-query-engine-landscape-audit/)** | Multi-modal query engine landscape audit | "How do other multi-modal databases query like this? Are sqlite-wasm + recursive CTE still the right substrate at ontology-web scale?" | v0.1.7+ substrate decisions; updates Ch 24 migration triggers |
+| **[Ch 34](/crosswalker/agent-context/zz-challenges/34-streaming-chunked-query-execution/)** | Streaming / chunked query execution at ontology-web scale | "How does merging scale chunk-by-chunk to not blow memory?" | v0.1.7+ scale path; genuine gap in prior challenges |
+
+### RERUN challenges (revisit prior commitments under ontology-web framing)
+
+Convention: original briefs (Ch 10, Ch 12, Ch 18) stay archived as historical record. Each rerun is a NEW brief with a fresh Ch number that explicitly anchors to the original as predecessor and frames "what's different now." Original deliverables preserved verbatim; reruns produce NEW deliverables that may revise prior verdicts.
+
+| Ch | Reruns | New framing | Why now |
+|---|---|---|---|
+| **[Ch 35](/crosswalker/agent-context/zz-challenges/35-graph-to-tabular-bridging-rerun/)** | Rerun of [Ch 10](/crosswalker/agent-context/zz-challenges/archive/10-graph-to-tabular-bridging-engine/) — Graph→tabular bridging | Original asked for SSSOM/GRC mapping; rerun asks for arbitrary ontology webs (BioPortal, OBO Foundry, OLS, UMLS scale). The user's intuition "we're pulling tabular views from graph/web-connected networks" was the central question; original only nipped at it | Graph→tabular projection IS the query engine's load-bearing operation |
+| **[Ch 36](/crosswalker/agent-context/zz-challenges/36-query-language-rerun/)** | Rerun of [Ch 12](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/) — Query language under ontology-web framing | Original asked Datalog vs SQL narrowly for SSSOM chain-rule derivation; rerun asks the broader question — what query language does the recipe author / user actually write? Bases DSL / SQL / SPARQL / Datalog / Cypher / GraphQL / unified DSL | Query language was assumed-answered (Bases simple + SQL complex via codeblock) but never adversarially examined |
+| **[Ch 37](/crosswalker/agent-context/zz-challenges/37-tier-2-scale-model-rerun/)** | Rerun of [Ch 18](/crosswalker/agent-context/zz-challenges/archive/18-tier-2-lite-sssom-rule-subset/) — Tier 2-Lite scale under ontology-web framing | Original ceiling was ~100K mappings sized for GRC vault (~5K controls × 8 frameworks). Rerun asks the same scale question for ontology-web vaults (BioPortal: 700+ ontologies; UMLS: 3.5M concepts; OBO Foundry: hundreds × thousands) | Scale ceiling shifts dramatically under ontology-web framing; substrate may not survive |
+
+### Status (per challenge)
+
+| Ch | Status | Brief filed | Deliverable landed | Blocks |
+|---|---|---|---|---|
+| Ch 29 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | Settled #14, query-primitives concept page |
+| Ch 30 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | view-shapes concept page, v0.2+ |
+| Ch 31 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | D8, recipe schema design |
+| Ch 32 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | v0.2+ UX work |
+| Ch 33 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | v0.1.7+ substrate, Ch 24 trigger updates |
+| Ch 34 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | v0.1.7+ scale path |
+| Ch 35 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | revises Ch 10 verdict if landscape changed |
+| Ch 36 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | revises Ch 12 verdict |
+| Ch 37 | 📋 Brief filed | ✅ 2026-05-08 | ⏳ | revises Ch 18 scale ceiling |
+
+**Pacing implication**: v0.1.6 implementation can proceed in parallel on Settled #1–11 (small-vault GRC use cases comfortably fit current substrate). v0.1.7+ commitments wait for landscape audit findings (Ch 33/34/37). The synthesis log finalizes (banner + "in progress" suffix removed) only when ALL Ch 29–37 deliverables have landed AND a final synthesis-log update locks in revisions.
+
+## §10 Related
 
 **Research deliverables** (preserved verbatim):
 - [Ch 27a — Crosswalker-specific framing](/crosswalker/agent-context/zz-research/2026-05-07-challenge-27-deliverable-a-crosswalker-specific/)
@@ -174,9 +232,25 @@ These are not blocked by D1–D6 but should be tracked:
 - [v0.1.8 — Audit-trail milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) (materialization + OpenTimestamps land here, pending D1)
 
 **Concept pillars**:
+- [Query primitives](/crosswalker/concepts/query-primitives/) — Layer A vocabulary (filter / project / traversal / closure / anti-join / pivot / aggregate)
+- [View shapes](/crosswalker/concepts/view-shapes/) — Layer B forms (table / list / pivot / graph / hierarchy / timeline)
+- [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/) — positioning page; Crosswalker as general engine, GRC as launch market
 - [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases capabilities + limits
 - [System architecture Layer 4 (Query)](/crosswalker/concepts/system-architecture/#layer-4--query-t1--t2--user)
 - [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/)
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
+- [Terminology](/crosswalker/concepts/terminology/)
+
+**Pending research challenges (filed but not yet run)**:
+- [Ch 29 — Ontology-web query verbs validation](/crosswalker/agent-context/zz-challenges/29-ontology-web-query-verbs-validation/)
+- [Ch 30 — View shape taxonomy](/crosswalker/agent-context/zz-challenges/30-view-shape-taxonomy/)
+- [Ch 31 — Recipe `query:` block schema design](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/)
+- [Ch 32 — Intuitive query UX](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/)
+- [Ch 33 — Multi-modal query engine landscape audit](/crosswalker/agent-context/zz-challenges/33-multi-modal-query-engine-landscape-audit/)
+- [Ch 34 — Streaming / chunked query execution](/crosswalker/agent-context/zz-challenges/34-streaming-chunked-query-execution/)
+- [Ch 35 — Graph→tabular bridging (rerun of Ch 10)](/crosswalker/agent-context/zz-challenges/35-graph-to-tabular-bridging-rerun/)
+- [Ch 36 — Query language (rerun of Ch 12)](/crosswalker/agent-context/zz-challenges/36-query-language-rerun/)
+- [Ch 37 — Tier 2 scale model (rerun of Ch 18)](/crosswalker/agent-context/zz-challenges/37-tier-2-scale-model-rerun/)
 
 **Prior synthesis logs**:
 - [Ch 23 bundle engine language synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/)

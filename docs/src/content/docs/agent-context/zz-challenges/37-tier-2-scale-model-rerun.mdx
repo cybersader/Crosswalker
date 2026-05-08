@@ -1,0 +1,176 @@
+---
+title: "Challenge 37: Tier 2 scale model under ontology-web framing (RERUN of Ch 18)"
+description: "Rerun of Ch 18 — original ceiling was ~100K mappings for sqlite-wasm + recursive CTE, sized for GRC vault (~5K controls × 8 frameworks). Rerun asks the same scale question for ontology-web vaults: BioPortal (700+ ontologies), UMLS (3.5M concepts), OBO Foundry (hundreds × thousands of terms each). Substrate may not survive at that scale; this rerun finds the new ceiling and confirms or revises migration triggers."
+tags: [research, rerun, scale, sqlite-wasm, recursive-cte, bioportal, umls, obo-foundry, ch-37, rerun-of-ch-18]
+date: 2026-05-08
+sidebar:
+  label: "37 · Tier 2 scale (rerun Ch 18)"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Rerun of an archived challenge]
+This is a **fresh rerun** of [Ch 18 — Tier 2-Lite SSSOM rule subset and scale ceiling](/crosswalker/agent-context/zz-challenges/archive/18-tier-2-lite-sssom-rule-subset/), not an edit of the original. The original brief stays archived as historical record.
+:::
+
+## Predecessor + what's different now
+
+**Original Ch 18** (resolved 2026-05-02):
+
+- Asked: scale ceiling for sqlite-wasm + sqlite-vec + simple-graph + recursive-CTE; rule expressivity matrix for SSSOM subset
+- Verdict: ~100K mappings comfortably viable; rule expressivity matrix (4 ✅ / 4 ⚠️ / 1 ❌); migration trigger spec
+- Outcome: Tier 2-Lite promoted to default-bundled v0.1 sidecar
+
+**What's different now (2026-05-08 rerun)**:
+
+1. **Scale assumption** — original sized for GRC vault (~5K controls × 8 frameworks ≈ 40K junctions, well under 100K ceiling); rerun asks for ontology-web vaults
+2. **Reference scales** — BioPortal hosts 700+ ontologies; UMLS has 3.5M concepts; OBO Foundry has hundreds × thousands of terms each; NIST OLIR has thousands of crosswalks across many frameworks
+3. **Substrate shifted** — sqlite-vec deferred per [WASM-A pivot](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/); no vector layer in v0.1
+4. **Framing shifted** — original was SSSOM-rule-focused; rerun is general ontology-web query engine
+5. **Sister challenges** — Ch 33 (engine landscape) + Ch 34 (streaming) bracket this with broader context
+
+## Why this exists (under the new framing)
+
+Crosswalker's [Tier 2 sidecar (v0.1.5 shipped)](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) runs sqlite-wasm with recursive CTE for closure queries. At GRC scale, this comfortably fits in browser memory and renders within ms-to-s. Ontology-web scale is fundamentally different:
+
+| Scale tier | Concepts | Mappings | sqlite-wasm feasible? |
+|---|---|---|---|
+| GRC small | ~1K | ~5K | ✅ trivially |
+| GRC medium | ~10K | ~50K | ✅ comfortable |
+| GRC large (Ch 18 ceiling) | ~50K | ~100K | ✅ near ceiling |
+| OLIR scale | ~10K | ~10K (across 100+ frameworks) | ✅ probably |
+| OBO Foundry single ontology | ~100K | ~500K (with hierarchy) | ⚠️ needs validation |
+| BioPortal (700 ontologies) | ~1M (ontology metadata) + ~100M (concepts across all) | ❌ infeasible in-browser |
+| UMLS (3.5M concepts + cross-ontology mappings) | ~3.5M | ~50M+ | ❌ infeasible in-browser |
+
+Most users won't load the entire BioPortal or UMLS into Obsidian. But the architecture must handle SOME ontology-web scale — at least medium (OBO Foundry single-ontology or OLIR-scale).
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [Ch 18 archived brief + deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) | Original ~100K ceiling; rule expressivity matrix; engineering scale model |
+| [v0.1.5 Tier 2 sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) | Working sqlite-wasm sidecar; closure cache; lazy materialization |
+| [WASM-A pivot synthesis](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/) | sqlite-vec deferred; plain sqlite-wasm; 2026-11-06 revisit anchored |
+| [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) | sqlite-wasm + 5 migration triggers |
+
+## What to investigate
+
+### 1. Re-run the scale model under ontology-web framing
+
+Original Ch 18 scale model was sized for SSSOM mappings (rule-expressed graph). The rerun applies the same model to:
+
+- **OBO Foundry single ontology** (gene-ontology = ~50K terms, ~250K relations). Does sqlite-wasm + recursive CTE handle closure queries within acceptable latency?
+- **OBO Foundry multi-ontology** (5-10 ontologies federated) — 500K-1M concepts, 5M-10M relations
+- **NIST OLIR scale** (1000s of crosswalks across 50+ frameworks) — what's the realistic concept × mapping count?
+- **BioPortal subset** (10-50 ontologies a user might import — not the full 700)
+- **UMLS subset** (UMLS has Metathesaurus tables; user might import a subset for their domain)
+
+For each: latency profile, memory profile, what queries break first.
+
+### 2. Identify scale-breaking query patterns
+
+At what scale do specific query primitives break?
+
+- **filter** — fast at any scale (indexed)
+- **project** — fast at any scale
+- **traversal (1-hop)** — fast at any scale (indexed by predicate)
+- **closure (recursive CTE)** — depth-bounded breaks at large depths; what's the practical depth ceiling at OBO scale?
+- **anti-join** — works against indexes; at what scale does it spill?
+- **pivot** — full cross-product is N² in axis size; what's feasible?
+- **aggregate** — count/sum/avg are linear; usually fine
+
+For each primitive: scale ceiling × failure mode.
+
+### 3. Reconcile with shipped v0.1.5 closure cache behavior
+
+The closure cache materializes results lazily on first query. At ontology-web scale:
+
+- How big does the cache get? Does it fit in browser memory?
+- How long does first-query take? (Cold cache materialization)
+- Does invalidation (any mappings change → full recompute) make the cache useless at scale?
+- Should the cache be partial (per-start-concept rather than full closure)?
+
+### 4. Map / partition strategies
+
+Beyond just "scale to N concepts," explore strategies that bound the working set:
+
+- **Per-ontology partitioning** — query within one ontology at a time; cross-ontology federation only when necessary
+- **Per-recipe scope** — recipes declare their concept-id-set; engine works only within scope
+- **On-demand subgraph extraction** — query specifies a starting concept + depth; engine extracts subgraph; queries operate on subgraph
+- **Top-N pruning** — for closure, keep only top-N most-relevant paths (relevance = confidence × inverse-depth)
+- **Lazy materialization with eviction** — cache closures with LRU eviction at memory threshold
+
+For each strategy: what's the user UX impact? When does it pay off?
+
+### 5. Cross-tier offload: when to move to Tier 3
+
+[Ch 16 / Ch 24](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) keep Apache Jena Fuseki + oxigraph-server as Tier 3 server-side path. At ontology-web scale, Tier 3 may be the *only* viable path:
+
+- At what scale does Tier 2 (in-browser sqlite-wasm) become infeasible?
+- What's the user experience of "this query is too big; offload to Tier 3"?
+- Is the v0.1.6 architecture compatible with future Tier 3 offload, or does it need to be redesigned?
+
+### 6. Migration triggers (the load-bearing output)
+
+[Ch 24's 5 migration triggers](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) need updating per ontology-web framing:
+
+1. Vector extension packaging — does scale change urgency?
+2. WASM bundle size — n/a for this challenge
+3. Closure query latency — what's the ontology-web ceiling?
+4. Mobile / low-end performance — does scale make mobile harder?
+5. Federation requirement — does scale force federation?
+
+Add new triggers if needed. Output: revised trigger list ready for Ch 24 update.
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **Migrating off sqlite-wasm pre-emptively** — Ch 24 and v0.1.5 P3 confirmed; reversal needs hard evidence
+2. **Loading BioPortal / UMLS in full into Obsidian** — out of scope; user imports a domain subset
+3. **Cross-vault federation** — explicitly out of scope per Ch 27/28
+4. **Speculative architecture overhauls** — keep recommendations within v0.1.7+ scope
+5. **Drop in-browser query and require server** — Crosswalker's value is vault-native; server is escape hatch
+6. **Reintroducing libSQL / Turso / Limbo** — Ch 24 rejected
+7. **Ignoring Mobile** — solutions must degrade gracefully on Obsidian Mobile
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Re-run scale model** — OBO Foundry, OLIR, BioPortal-subset, UMLS-subset; latency/memory/feasibility per primitive
+2. **Scale-breaking query catalog** — which primitive at which scale, failure mode, mitigation
+3. **Closure cache analysis** — at scale, does the cache work? if not, alternative
+4. **Map/partition strategy survey** — 4+ strategies × tradeoffs
+5. **Tier 3 offload threshold** — when does Tier 3 become required (not just optional)?
+6. **Updated migration triggers** — revisions to [Ch 24's 5 triggers](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)
+7. **Recommended v0.1.7+ scope additions** — what scale-handling work belongs in next milestones
+8. **Verdict on original Ch 18 ceiling** — REAFFIRMED / REVISED / DEFERRED-TO-LATER
+
+## Anchored references
+
+**Predecessor:**
+- [Ch 18 archived brief](/crosswalker/agent-context/zz-challenges/archive/18-tier-2-lite-sssom-rule-subset/)
+- [Ch 18 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/)
+
+**Project context:**
+- [v0.1.5 Tier 2 sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) — what's running today
+- [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — substrate + migration triggers
+- [WASM-A pivot synthesis](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/)
+- [`concepts/embedded-vs-server-substrates`](/crosswalker/concepts/embedded-vs-server-substrates/)
+
+**Reference scales:**
+- [BioPortal](https://bioportal.bioontology.org/) — 700+ ontologies hosted
+- [OBO Foundry](http://www.obofoundry.org/) — biomedical ontology library
+- [UMLS Metathesaurus](https://www.nlm.nih.gov/research/umls/index.html) — 3.5M concepts
+- [NIST OLIR](https://csrc.nist.gov/Projects/olir) — crosswalk catalog
+
+**Sister challenges:**
+- [Ch 33 — Multi-modal landscape audit](/crosswalker/agent-context/zz-challenges/33-multi-modal-query-engine-landscape-audit/) — substrate alternatives at scale
+- [Ch 34 — Streaming / chunked execution](/crosswalker/agent-context/zz-challenges/34-streaming-chunked-query-execution/) — chunked execution for queries that exceed RAM
+- [Ch 35 — Graph→tabular bridging rerun](/crosswalker/agent-context/zz-challenges/35-graph-to-tabular-bridging-rerun/) — pivot at scale
+
+## Hand-off
+
+Write the deliverable to `docs/.../zz-research/YYYY-MM-DD-challenge-37-deliverable-a-<slug>.md`. After deliverable lands: flip [synthesis log §9 status](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) Ch 37 row from ⏳ to ✅; update Ch 18 archived brief with `:::note` callout pointing to this rerun; update [Ch 24 migration triggers](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) per findings; if verdict revises original Ch 18 ceiling, document explicitly in synthesis log; archive this brief.

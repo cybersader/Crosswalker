@@ -1,0 +1,178 @@
+---
+title: "Challenge 36: Query language under ontology-web framing (RERUN of Ch 12)"
+description: "Rerun of Ch 12 — original asked Datalog vs SQL narrowly for SSSOM chain-rule derivation. Rerun asks the broader question: what query language does the recipe author / user actually write? Bases DSL / SQL / SPARQL / Datalog / Cypher / GraphQL / unified DSL. Original verdict (Datalog DSL compiled to SQL recursive CTEs) may or may not survive the broader framing."
+tags: [research, rerun, query-language, datalog, sql, sparql, cypher, graphql, ch-36, rerun-of-ch-12]
+date: 2026-05-08
+sidebar:
+  label: "36 · Query language (rerun Ch 12)"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Rerun of an archived challenge]
+This is a **fresh rerun** of [Ch 12 — Datalog vs SQL for SSSOM chain-rule derivation](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/), not an edit of the original. The original brief stays archived as historical record.
+:::
+
+## Predecessor + what's different now
+
+**Original Ch 12** (resolved 2026-05-02 via 2 convergent deliverables):
+
+- Asked: Datalog vs SQL for SSSOM chain-rule derivation
+- Verdict: Hybrid — rules expressed as Datalog DSL, executable via either Datalog engine (Nemo) OR compiled to SQL recursive CTEs (DuckDB-WASM). Validated against OxO2 architecture
+- Scope: SSSOM chain-rules only (e.g., "if A maps to B with confidence X and B maps to C with confidence Y, derive A maps to C with confidence min(X,Y)")
+
+**What's different now (2026-05-08 rerun)**:
+
+1. **Broader framing** — original was SSSOM-specific; rerun asks the general question: what language do recipe authors / users write?
+2. **More candidates** — rerun considers Bases DSL, SPARQL property paths, Cypher, GraphQL, unified Crosswalker DSL — none compared in original
+3. **3-layer architecture** — rerun has [Layer A primitives](/crosswalker/concepts/query-primitives/) + [Layer B view shapes](/crosswalker/concepts/view-shapes/) + Layer C recipes; query language fits across this taxonomy
+4. **Substrate shifted** — Crosswalker is on plain sqlite-wasm now (per [WASM-A pivot](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/)); the Datalog/Nemo path was paired with DuckDB-WASM in original
+5. **User questions** — "Are we limited to SQL type queries with crazy merging?" is a direct user concern that original Ch 12 didn't engage
+
+## Why this exists (under the new framing)
+
+A query engine has multiple language surfaces:
+
+- **What the user types** in a `.base` file or codeblock (Bases DSL, SQL, SPARQL, Datalog, custom?)
+- **What the recipe author writes** in YAML (`query:` block — pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/))
+- **What the engine compiles to** internally (SQL recursive CTE, Datalog rule, Cypher pattern, native API call)
+- **What inter-tier protocols use** (Arrow Flight? GraphQL? custom?)
+
+Each surface has different ergonomics, expressivity, and substrate compatibility. Original Ch 12 answered for ONE surface (the rule definition language for SSSOM chains) and ONE substrate (DuckDB-WASM). The rerun asks for ALL surfaces under the current architecture.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [Ch 12 archived brief + 2 deliverables](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/) | Original verdict for SSSOM chain-rules |
+| [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/) | 7 candidate primitives + cross-domain precedents |
+| Tier 2 query helpers (`src/tier2/queries.ts`) | 3 typed helpers; substrate-bound to sqlite-wasm + recursive CTE |
+| Bases DSL | The `.base` file YAML grammar — already a query language, not chosen but inherited |
+| `kepano/obsidian-skills` | Steph Ango's Agent Skills pattern; LLM-friendly Bases authoring |
+
+## What to investigate
+
+### 1. Survey query languages for ontology webs
+
+For each, document: what's it good at? what's it weak at? what's the substrate-bind?
+
+| Language | Standard? | Strengths | Weaknesses |
+|---|---|---|---|
+| **SQL** (recursive CTE) | ANSI/ISO | Universal; relational; `WITH RECURSIVE` for closure | Not graph-native; pivots awkward; no built-in path syntax |
+| **SPARQL** | W3C | Native triple-store query; property paths; built for RDF | Requires triple store; not natural for tabular pivot |
+| **Datalog** | (multiple dialects) | Recursion natural; aggregation in rules; logic-programming clarity | Multiple dialects (Cozo, Nemo, Datomic, Soufflé); no single standard |
+| **Cypher / openCypher / GQL** | Cypher: Neo4j; openCypher: community; GQL: ISO/IEC 39075 (2024) | Native graph traversal; readable | Substrate-bound (Neo4j primary; GQL emerging) |
+| **GraphQL** | Spec | Typed selection sets; field-level args | Doesn't express closure / anti-join / aggregation natively |
+| **Bases DSL** (Obsidian) | Vendor-specific | Native to Crosswalker's primary mechanism | Limited primitives (no joins, no recursion, no anti-join) |
+| **Custom Crosswalker DSL** | ❌ | Tailored to ontology-web semantics | Anti-pattern per [Ch 27](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/); rejected as "fourth language" |
+
+### 2. Surface × language matrix
+
+For each query language, what surfaces is it appropriate for in Crosswalker?
+
+| Surface | Bases DSL | SQL | SPARQL | Datalog | Cypher | GraphQL | YAML (recipe `query:` block) |
+|---|---|---|---|---|---|---|---|
+| User types in `.base` file | ✅ native | ❌ | ❌ | ❌ | ❌ | ❌ | partial (recipe references) |
+| User writes in codeblock body | ⚠️ Bases doesn't support inline | ✅ via `crosswalker-query` (v0.1.7) | ❌ | ❌ | ❌ | ❌ | partial |
+| Recipe author writes in YAML | ❌ | embedded? | embedded? | embedded? | ❌ | ❌ | ✅ native |
+| Engine compiles to internally | ✅ | ✅ | possible if Tier 3 | possible if Tier 3 | unlikely | unlikely | n/a |
+| Inter-tier protocol | n/a | partial | possible | n/a | n/a | possible | n/a |
+
+Argue the optimal surface×language pairing.
+
+### 3. The "unified Crosswalker DSL" question
+
+Original Ch 12 verdict was "Datalog DSL compiled to SQL CTEs." Was this DSL ever defined? Is it still the right approach? Three positions:
+
+- **Yes, define a Crosswalker DSL** — domain-specific; users write declarative rules; compiles to mechanism
+- **No, use existing standards** — pick ONE language (SQL? SPARQL? Datalog?) and stick with it
+- **Compositional** — different surfaces use different languages; recipe-layer YAML hides the underlying language choice
+
+Argue. The "anti-pattern: don't invent a fourth language" from Ch 27/28 is a strong argument for option 2 or 3.
+
+### 4. Mobile / WASM language constraints
+
+Each language has substrate constraints:
+
+- **SQL** (sqlite-wasm) — works everywhere; recursive CTE works
+- **SPARQL** (Oxigraph-WASM) — possible; ~3MB WASM bundle
+- **Datalog** (Nemo-WASM) — possible; but Nemo is research-grade
+- **Cypher** — no good WASM implementation
+- **GraphQL** — pure spec; works anywhere
+
+Mobile / Publish parity (per [Ch 28](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/)): SQLSpec via sqlite-wasm is the safe path. SPARQL via Oxigraph adds bundle weight. Argue the v0.1.6/v0.1.7/v0.1.8 sequencing.
+
+### 5. LLM-friendliness
+
+Increasingly, queries will be authored by AI agents:
+
+- **SQL** — well-known to all LLMs
+- **SPARQL** — known to LLMs but less common
+- **Datalog** — uncommon to LLMs; requires careful prompting
+- **Cypher** — known to LLMs (Neo4j popular)
+- **Bases DSL** — newer; depends on training cutoff
+- **YAML recipes** — highly LLM-friendly (declarative; structured)
+
+Which language(s) does an LLM agent most reliably author? What's the failure mode of each?
+
+### 6. Reconcile with Ch 12 original verdict
+
+The original Datalog-DSL-compiled-to-SQL pattern (for SSSOM chain rules) is genuinely useful — but is it the right pattern for the BROADER set of ontology-web queries (closure / anti-join / pivot / cross-ontology join)?
+
+- Affirm: Datalog is the right choice for rule-based derivations (SSSOM)
+- Revise: Datalog's complexity overhead doesn't pay off outside SSSOM rules; SQL+CTEs handle most cases
+- Defer: pick a primary path; accept SSSOM is a special case that may use Datalog DSL internally
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **A new custom Crosswalker query language** — explicit anti-pattern per Ch 27/28
+2. **Reintroducing Dataview / DataviewJS** — explicit project memory commitment to Bases-only
+3. **Locking the engine to one substrate** — Ch 24 settled-item-#5 commits to "vector layer decoupled from substrate"
+4. **Forking SPARQL or Cypher implementations** — out of scope
+5. **Speculative LLM-only authoring** — query languages must work for human authors first
+6. **Dropping SQL** — too foundational; sqlite-wasm is the v0.1 substrate
+7. **Replacing recipe YAML with code-fences** — violates "recipes declare data, not code"
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Language survey** — 7+ languages × strengths/weaknesses/substrate-bind
+2. **Surface × language matrix** — which language for which surface
+3. **Unified-DSL verdict** — argued YES/NO with rationale
+4. **Mobile/WASM/Publish constraint analysis** — what works where
+5. **LLM-friendliness ranking** — which languages agents author most reliably
+6. **Original Ch 12 reconciliation** — REAFFIRM / REVISE / DEFER for the Datalog-DSL→SQL CTE pattern
+7. **Recommended layering** — Layer A primitive vocabulary + Layer B shape declarations + Layer C recipe-query-block + execution language; language choices for each
+8. **Concrete v0.1.6/v0.1.7/v0.1.8 implementation guidance**
+
+## Anchored references
+
+**Predecessor:**
+- [Ch 12 archived brief](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/)
+- [Ch 12 deliverable A (Datalog vs SQL)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/)
+- [Ch 12 deliverable B (beyond engine landscape)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/)
+
+**Project context:**
+- [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/)
+- [`concepts/ontology-web-querying`](/crosswalker/concepts/ontology-web-querying/)
+- [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/)
+- [In-progress synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)
+
+**Standards:**
+- [SQL recursive CTE (PostgreSQL docs)](https://www.postgresql.org/docs/current/queries-with.html)
+- [SPARQL 1.1](https://www.w3.org/TR/sparql11-query/)
+- [Datalog (Wikipedia)](https://en.wikipedia.org/wiki/Datalog)
+- [openCypher](https://opencypher.org/)
+- [GQL (ISO/IEC 39075)](https://www.iso.org/standard/76120.html)
+
+**Sister challenges:**
+- [Ch 29 — Query verbs validation](/crosswalker/agent-context/zz-challenges/29-ontology-web-query-verbs-validation/) — primitive vocabulary
+- [Ch 31 — Recipe `query:` block schema](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) — YAML surface
+- [Ch 33 — Multi-modal landscape](/crosswalker/agent-context/zz-challenges/33-multi-modal-query-engine-landscape-audit/) — substrate alternatives
+
+## Hand-off
+
+Write the deliverable to `docs/.../zz-research/YYYY-MM-DD-challenge-36-deliverable-a-<slug>.md`. After deliverable lands: flip [synthesis log §9 status](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) Ch 36 row from ⏳ to ✅; update Ch 12 archived brief with `:::note` callout pointing to this rerun; if verdict revises original Ch 12 verdict, document explicitly in synthesis log; archive this brief.

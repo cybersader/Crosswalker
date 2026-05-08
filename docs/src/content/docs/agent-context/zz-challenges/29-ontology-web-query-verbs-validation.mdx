@@ -1,0 +1,179 @@
+---
+title: "Challenge 29: Ontology-web query verbs — adversarial validation"
+description: "Stress-test the candidate 7-primitive query verb set (filter / project / traversal / closure / anti-join / pivot / aggregate) against SPARQL property paths, Datalog rules, OLAP cube operators, SKOS, OWL transitive properties, SSSOM, NIST OLIR, OxO2 prior art. Find missing/redundant/wrong-abstraction. Direct input to settled-item #14 in the synthesis log + the query-primitives concept page lock."
+tags: [research, query-primitives, ontology-web, sparql, datalog, olap, skos, sssom, validation, ch-29]
+date: 2026-05-08
+sidebar:
+  label: "29 · Query verbs validation"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pre-requisite for synthesis-log finalization]
+The [in-progress synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) lists 7 candidate query primitives as Settled-item #14, but flagged the set as **provisional pending this challenge**. Adversarial validation here either confirms the set or surfaces a revised list that the synthesis log absorbs.
+:::
+
+## Why this exists
+
+Crosswalker's query engine has a [three-layer architecture](/crosswalker/concepts/query-primitives/): primitives (Layer A), view shapes (Layer B), recipes (Layer C). Layer A's vocabulary is load-bearing — every recipe in the marketplace, every codeblock query users write, every internal SQL helper composes from it. If we lock the wrong primitive set, every downstream artifact is built on a shaky vocabulary.
+
+The proposed set (the candidate "LEGO bricks for asking questions about ontology webs"):
+
+| # | Primitive | Plain language | Cross-domain precedent |
+|---|---|---|---|
+| 1 | **filter** | Restrict by predicate | SPARQL `FILTER`, SQL `WHERE`, Datalog body |
+| 2 | **project** | Choose attributes | SPARQL `SELECT`, SQL projection |
+| 3 | **traversal** | Hop along an edge (1 step) | SPARQL property path single step, SKOS broader/narrower |
+| 4 | **closure** | Transitive reachability | SPARQL `:p+`/`:p*`, Datalog recursion, OWL transitive |
+| 5 | **anti-join** | "X without Y" | SPARQL `MINUS`, SQL `EXCEPT` |
+| 6 | **pivot** | 2D crosstab | OLAP cube, pandas `pivot_table` |
+| 7 | **aggregate** | Count / sum / max / min | SPARQL `COUNT`, SQL aggregates |
+
+This set was surfaced by the 2026-05-08 alignment review, not by deep adversarial cross-reference. Ch 29 does the cross-reference.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [`concepts/query-primitives.mdx`](/crosswalker/concepts/query-primitives/) | The candidate 7-primitive page; cross-domain precedent table; primitive × mechanism matrix |
+| Tier 2 query helpers ([`src/tier2/queries.ts`](https://github.com/cybersader/crosswalker/blob/main/src/tier2/queries.ts)) | `getConceptsByOntology`, `crosswalkBetween`, `closureFromConcept` — 3 of 7 primitives have shipped executable surfaces |
+| Synthesis log Settled #14 | Marks the candidate set as *pending this challenge* |
+| Recipe schema EMISSION primitives ([Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/)) | Domain-neutral 5-mechanism set (folder/file/heading/tag/wikilink); precedent for closed primitive grammar |
+
+## What to investigate
+
+Each section below is a focused question the deliverable must answer concretely.
+
+### 1. Cross-reference the 7 primitives against established standards
+
+Build a primitive × standard matrix. For each of the 7, document:
+
+- **SPARQL** (W3C standard for RDF query): which SPARQL constructs map onto each primitive? Are there SPARQL constructs we're missing?
+- **Datalog** (logic-programming paradigm; Cozo, Nemo, Datomic): how does the primitive express in rule-body form? Stratified negation, recursion, aggregation as rule heads.
+- **OLAP cube operators** (slice, dice, drill-down, roll-up, pivot): which are subsumed by our primitives, which are missing?
+- **SKOS** (W3C, taxonomy): broader/narrower/related/exactMatch — are these traversal, closure, or something else?
+- **OWL transitive properties + reasoning**: what gets us beyond traversal/closure into actual reasoning, and is reasoning in scope?
+- **SSSOM mapping vocabulary**: does its predicate set imply any primitives we're missing (`narrower_match` aggregation, justification-weighted matches)?
+- **Cypher / Gremlin / GQL**: graph-database query languages; what primitives are central there?
+- **GraphQL schemas**: how does GraphQL's "select fields, follow connections" map?
+
+Output: a table where each row is a primitive and each column is a standard. Mark "covered", "approximate", "missing entirely". Find the gaps.
+
+### 2. Find missing primitives
+
+Specific candidate primitives to evaluate:
+
+- **diff** — "what changed between v1 and v2 of this ontology?" (relevant for ontology evolution; Ch 03 territory)
+- **rank** — relevance scoring, weighted similarity (relevant for embedding-based queries; sqlite-vec territory)
+- **constraint-satisfy** — OWL DL reasoning; "what concepts satisfy this class definition?" (probably out of scope, but argue)
+- **temporal primitives** — snapshot, change-feed, point-in-time (relevant for v0.1.8 audit trail)
+- **set operations** — union, intersection, symmetric difference (compositional or primitive?)
+- **projection-with-rename** — does naming aliases at projection time deserve to be a separate primitive?
+- **window functions** — running totals, partition aggregates (SQL `OVER`, OLAP roll-up)
+- **constraint propagation** — given partial information about a concept, what's derivable?
+
+For each: argue YES or NO with a concrete decision rule. If YES, reframe as #8/#9/#10. If NO, document the rejection so future agents don't re-litigate.
+
+### 3. Find redundant or wrong-abstraction primitives in the candidate set
+
+Specific challenges to the candidate 7:
+
+- **project**: is project really a primitive, or is it a Layer B concern (view shape config)?
+- **aggregate**: similar question — are aggregates Layer A operations, or Layer B view-config?
+- **traversal vs closure**: should they be one parameterized primitive (`traverse(predicate, depth=1|*)`)?
+- **pivot**: is pivot really an operation, or a *composition* of (group-by + group-by + aggregate)? If compositional, does it belong as a Layer A primitive?
+- **anti-join**: is anti-join a primitive or a compositional pattern?
+
+Output: an argued list of which primitives stay (or get merged/split), with rationale. The goal is the **smallest complete set**, not the largest possible set.
+
+### 4. Boundary check: Layer A (primitives) vs Layer B (view shapes)
+
+The synthesis distinguishes Layer A (mechanism-neutral query operations) from Layer B (mechanism-neutral visual presentations). Is the boundary right?
+
+- Is **pivot** Layer A (a query operation that produces 2D-shaped result) or Layer B (a visual presentation of any tabular result)?
+- Is **sort** Layer A or Layer B? (Both arguably; depends on whether sort affects semantics or just display)
+- Is **limit / pagination** Layer A or Layer B?
+- Where does **search relevance ranking** belong?
+
+Argue the boundary. Provide examples where a wrongly-placed primitive at the wrong layer makes the architecture awkward.
+
+### 5. Re-audit the candidate primitives against actual Crosswalker queries
+
+Take the 20-question query-routing matrix from [Ch 28a §4](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-a-bases-first-hybrid/) and decompose each query into Layer A primitives. Find:
+
+- Queries that need primitives the candidate set lacks
+- Queries that decompose into combinations not naturally expressible
+- Primitives that are NEVER used in any of the 20 queries (vestigial?)
+
+### 6. Worked composition examples
+
+Demonstrate that the primitive set is actually compositional. For each of these representative ontology-web queries, write the explicit primitive composition:
+
+- "Coverage gaps: NIST 800-53 controls without evidence" (compliance, GRC)
+- "Crosswalk chain: NIST CSF → 800-53 → ISO 27001 (transitive)" (compliance, GRC)
+- "MITRE ATT&CK techniques mitigated by NIST AC-family controls" (cross-framework)
+- "SKOS broader/narrower closure from a top-level subject heading" (taxonomy)
+- "OBO Foundry: gene-ontology terms with no MONDO disease mapping" (biomedical)
+- "OLIR: which submitted crosswalks have inconsistent confidence values?" (quality assurance)
+- "Ontology version diff: terms removed between OBO 2024-Q1 and 2024-Q2" (ontology evolution; needs `diff` primitive?)
+
+Output: each query as a primitive composition. Where a composition is awkward, that's evidence for an additional primitive.
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **A "minimum complete set" that's actually incomplete** — if the cross-reference shows we're missing a primitive that 80% of users will need, add it
+2. **Adding primitives speculatively** — every addition must be justified by a real query that can't compose otherwise
+3. **Implementing the full SPARQL feature set** — Crosswalker is a Markdown-vault tool, not a triple store. Borrow semantics; don't reimplement reasoning
+4. **OWL DL reasoning** — explicitly out of scope
+5. **Reinventing existing standards** — if SSSOM/SKOS/STRM already say it, point at them; don't invent parallel vocabulary
+6. **Folding Layer A primitives into Layer B view shapes** to "simplify" — that's how query languages become unmaintainable
+7. **Making the primitive set engine-specific** — primitives must be mechanism-neutral; if a "primitive" only works in SQL, it's not a primitive
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Primitive × standard matrix** — 7 candidate primitives × 7+ standards (SPARQL/Datalog/OLAP/SKOS/OWL/SSSOM/Cypher/GraphQL); each cell marked covered/approximate/missing
+2. **Missing-primitive evaluation** — each of (diff, rank, constraint-satisfy, temporal, set ops, project-with-rename, window, constraint-propagation) argued YES/NO with rationale
+3. **Redundant-primitive evaluation** — argued challenge to project/aggregate/pivot/anti-join as Layer A primitives; final verdict on whether they stay
+4. **Final primitive set** — confirmed list (could be 5, 7, 9, or other number); each item with its plain-language framing + cross-domain anchor
+5. **Layer A/B boundary** — argued ruling on pivot/sort/limit/rank placement
+6. **Composition examples** — 7+ representative ontology-web queries decomposed into primitive compositions
+7. **Recommended changes to synthesis log** — exact wording for Settled-item #14 + any changes to query-primitives concept page
+
+## Anchored references
+
+**Project context:**
+- [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/) — candidate set + cross-domain precedent table
+- [`concepts/view-shapes`](/crosswalker/concepts/view-shapes/) — Layer B, for boundary check
+- [`concepts/ontology-web-querying`](/crosswalker/concepts/ontology-web-querying/) — positioning
+- [In-progress synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) — Settled #14 references this challenge
+
+**Standards:**
+- [SPARQL 1.1 spec](https://www.w3.org/TR/sparql11-query/) — property paths, MINUS, FILTER NOT EXISTS, aggregates
+- [SKOS reference](https://www.w3.org/2004/02/skos/intro)
+- [SSSOM specification](https://mapping-commons.github.io/sssom/)
+- [OWL 2 transitive properties](https://www.w3.org/TR/owl2-syntax/#Transitive_Object_Properties)
+- [Datalog (Wikipedia)](https://en.wikipedia.org/wiki/Datalog)
+- [OLAP cube operators](https://en.wikipedia.org/wiki/OLAP_cube#Operations) — slice / dice / drill / roll-up / pivot
+
+**Engines (for primitive-vocabulary comparison):**
+- [Cozo](https://www.cozodb.org/) — Datalog + relational
+- [Nemo](https://github.com/knowsys/nemo) — Datalog WASM (Crosswalker reference)
+- [Oxigraph](https://github.com/oxigraph/oxigraph) — SPARQL in Rust/WASM
+- [Stardog](https://www.stardog.com/) — Knowledge graph + reasoning
+- [DuckDB DuckPGQ](https://duckdb.org/docs/extensions/duckpgq) — graph extension
+- [Apache DataFusion](https://datafusion.apache.org/) — query engine
+
+**Adjacent Crosswalker challenges:**
+- [Ch 12 archived (Datalog vs SQL — narrow scope)](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/)
+- [Ch 36 — Query language rerun](/crosswalker/agent-context/zz-challenges/36-query-language-rerun/) (sister challenge; broader query-language question)
+- [Ch 33 — Multi-modal landscape audit](/crosswalker/agent-context/zz-challenges/33-multi-modal-query-engine-landscape-audit/) (sister; how engines expose primitives)
+
+## Hand-off
+
+Write the deliverable to `docs/src/content/docs/agent-context/zz-research/YYYY-MM-DD-challenge-29-deliverable-a-<slug>.md` (plain `.md`, frontmatter only for sidebar). Convention per [`zz-research/index.md`](/crosswalker/agent-context/zz-research/) — verbatim preservation; multi-deliverable runs split per agent.
+
+After deliverable lands: update [`concepts/query-primitives.mdx`](/crosswalker/concepts/query-primitives/) with confirmed/revised set; update [synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) Settled-item #14; flip §9 status table from ⏳ to ✅; archive this brief.

@@ -1,0 +1,164 @@
+---
+title: "Challenge 30: View shape taxonomy — what shapes does an ontology-web query engine need?"
+description: "Catalog view shapes beyond pivot — graph topology, hierarchy/tree, timeline, sankey, treemap, sunburst, cloud, search. Which are first-class for v0.1, which are deferred to v0.2+? Map each shape to mechanism (Bases-native / registerBasesView / codeblock / materialized) and to its primitive composition. Cross-reference BioPortal, Protégé, WebVOWL, OntoBrowser, NIST OLIR portal, OxO2, OBO Foundry tooling. Direct input to view-shapes concept page lock + v0.2+ roadmap."
+tags: [research, view-shapes, ontology-ui, pivot, graph, hierarchy, timeline, bioportal, protege, ch-30]
+date: 2026-05-08
+sidebar:
+  label: "30 · View shape taxonomy"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pre-requisite for view-shapes concept page lock]
+[`concepts/view-shapes.mdx`](/crosswalker/concepts/view-shapes/) currently lists 6 candidate shapes (table / list / pivot / graph / hierarchy / timeline) as **provisional pending this challenge**. Adversarial cataloging here either confirms the set or surfaces additions that the concept page absorbs.
+:::
+
+## Why this exists
+
+[Layer B of the Crosswalker query engine](/crosswalker/concepts/view-shapes/) is "view shapes" — mechanism-neutral visual presentations that consume primitive query outputs. The candidate catalog from the 2026-05-08 alignment review:
+
+| Shape | What it is | Bases-native? |
+|---|---|---|
+| table | flat 2D grid | ✅ |
+| list | cards / vertical stack | ✅ |
+| pivot | 2D crosstab | ❌ (custom view in v0.1.6) |
+| graph | node-link topology | ❌ (deferred v0.2+) |
+| hierarchy | tree / DAG | ❌ (deferred v0.2+) |
+| timeline | temporal projection | partial |
+
+This catalog is incomplete. A serious ontology-web query engine probably needs more: heatmap, sankey, treemap, sunburst, search-results, dashboard composition, comparison views. Ch 30 catalogs the full landscape, decides which are v0.1, which are v0.2+, and which are out of scope.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [`concepts/view-shapes.mdx`](/crosswalker/concepts/view-shapes/) | Candidate catalog + mechanism axis (Bases-native / registerBasesView / codeblock / materialized) |
+| [`crosswalkerPivot` v0.1.6 commitment](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) | One custom Bases view shipping for the pivot shape |
+| Obsidian Bases built-in views | Table, Cards, List, Map, Calendar, Kanban (1.10+) |
+| `registerBasesView` API (Obsidian 1.10+) | Mechanism for adding custom view types to Bases |
+
+## What to investigate
+
+### 1. Catalog the full landscape of view shapes
+
+Survey the following ontology-aware UIs and tools. For each, list every distinct view shape they expose:
+
+- **BioPortal** (https://bioportal.bioontology.org/) — biomedical ontology browser; ~700 ontologies hosted
+- **OLS** (Ontology Lookup Service, EBI) — similar to BioPortal, EBI-hosted
+- **Protégé / WebProtégé** — desktop + web ontology editor; the standard tool in OWL-land
+- **WebVOWL** (http://www.visualdataweb.org/webvowl.php) — OWL ontology visualization
+- **OntoBrowser** — clinical-trials ontology browser
+- **NIST OLIR portal** (https://csrc.nist.gov/Projects/olir) — crosswalk catalog browser
+- **OxO2** (https://www.ebi.ac.uk/spot/oxo/) — cross-ontology mapping tool
+- **TopBraid Composer** — RDF/SHACL editor
+- **Stardog Studio** — knowledge graph workbench
+- **GraphDB Workbench** — RDF-store UI
+- **Cytoscape / Cytoscape.js** — biological network visualization
+- **Apache Jena Fuseki UI**
+- **Anthology / Annif** — subject-classification UIs
+
+For each tool, document: what shapes it exposes (table / graph / tree / etc.), how it uses them (browse / search / compare / explore), what primitive compositions back them.
+
+### 2. Decide first-class v0.1 vs deferred v0.2+
+
+For each shape in the resulting catalog, decide:
+
+- **First-class v0.1** — ships now (custom Bases view OR Bases-native rendering)
+- **Deferred v0.2+** — out of scope until Bases Roadmap or user demand changes the calculus
+- **Out of scope (probably never)** — explicit rejection with rationale
+
+Decision criteria:
+- Does the shape solve a user need that NOTHING else in Crosswalker addresses?
+- Is the implementation cost bounded (≤500 LoC for the BasesView subclass)?
+- Does the shape have a precedent in 2+ adjacent ontology UIs?
+- Does the shape compose from existing Layer A primitives?
+
+### 3. Mechanism mapping per shape
+
+For each shape (v0.1 or v0.2+), specify the recommended mechanism:
+
+- **Bases-native** (built-in view type)
+- **`registerBasesView`** custom view (mobile-friendly; doesn't render on Publish)
+- **Codeblock processor** (mobile-friendly; doesn't render on Publish)
+- **Materialized snapshot** (works everywhere, including Publish)
+
+Output a 2D matrix: shape × mechanism × platform (`desktop` / `mobile` / `Publish` / `plugin-uninstalled`).
+
+### 4. The pivot-vs-rendering question
+
+The v0.1.6 candidate `crosswalkerPivot` view ships ONE rendering of pivot output (a 2D matrix grid). But pivot output can render multiple ways:
+
+- **Matrix grid** (current default)
+- **Heatmap** (color cells by value)
+- **Sunburst** (radial pivot)
+- **Treemap** (size-coded rectangles)
+- **Sankey** (flow diagram for transitions)
+
+Are these separate shapes (each gets its own view registration) or **renderings of pivot output** (one view, multiple internal render modes)? Argue.
+
+### 5. Search and comparison as shapes
+
+Two shape candidates that don't fit cleanly:
+
+- **Search** — search-results page with relevance ranking. Is this a shape? Or is it a Layer A primitive (`rank` from Ch 29)?
+- **Comparison** — side-by-side ontology versions, with diff highlighting. Is this a shape? Or a composition of two table views?
+
+Argue the boundary.
+
+### 6. Dashboard composition
+
+Should "dashboard" (multiple shape instances on one canvas) be a shape? Or is it a recipe-layer concern (compose recipes spatially)?
+
+### 7. Cross-reference with hierarchy-primitives
+
+Crosswalker already has [`hierarchy-primitives.mdx`](/crosswalker/concepts/hierarchy-primitives/) for emission-side primitives (folder/file/heading/tag/wikilink). Are there parallels with view-shape primitives? Does rendering a hierarchy use the SAME notion of "broader/narrower" that emission uses?
+
+## Anti-patterns to reject upfront
+
+The deliverable must NOT recommend:
+
+1. **Adding view shapes speculatively** — every shape must have a use case in 2+ adjacent ontology UIs OR be a top-3 user request
+2. **Implementing all shapes in v0.1.6** — explicitly defer most; v0.1.6 ships ONE custom view (the pivot)
+3. **Reimplementing shapes Bases already has** — table, cards, calendar, kanban, map are Bases-native; don't fork them
+4. **Treating "rendering options" as separate shapes** — heatmap-style rendering of pivot output is a render option, not a shape
+5. **Forking Cytoscape / D3.js for v0.1.6 graph rendering** — too large an undertaking; defer graph view
+6. **Inventing UX patterns instead of borrowing from BioPortal/Protégé/etc.** — these tools have spent decades on UX; learn from them
+7. **A single "polymorphic view" that does everything** — explicitly rejected per [Ch 28 deliverable analysis](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/); each shape is its own registered view
+
+## Success criteria for the deliverable
+
+The deliverable must produce:
+
+1. **Full landscape catalog** — survey of 10+ ontology-aware UIs; deduplicated list of all shape variants observed
+2. **First-class vs deferred decision** — argued per shape with criteria applied; explicit rejection list for shapes out of scope
+3. **Shape × mechanism × platform matrix** — what works where (desktop/mobile/Publish/plugin-uninstalled)
+4. **Pivot rendering decision** — matrix vs heatmap vs sunburst vs treemap vs sankey: shapes or render options?
+5. **Search / comparison / dashboard** — argued placement (shape vs primitive vs recipe-layer)
+6. **Confirmed v0.1 view-shape catalog** — with each shape's primitive composition + mechanism + reference UIs
+7. **v0.2+ shape roadmap** — what gets added when, with triggers
+8. **Recommended changes to view-shapes concept page** — exact wording
+
+## Anchored references
+
+**Project context:**
+- [`concepts/view-shapes`](/crosswalker/concepts/view-shapes/) — candidate catalog
+- [`concepts/query-primitives`](/crosswalker/concepts/query-primitives/) — Layer A; for boundary check
+- [`concepts/hierarchy-primitives`](/crosswalker/concepts/hierarchy-primitives/) — emission-side parallel
+- [In-progress synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)
+
+**Adjacent ontology UIs:**
+- [BioPortal](https://bioportal.bioontology.org/)
+- [OLS (EBI)](https://www.ebi.ac.uk/ols4/)
+- [Protégé](https://protege.stanford.edu/)
+- [WebVOWL](http://www.visualdataweb.org/webvowl.php)
+- [OxO2 (EBI)](https://www.ebi.ac.uk/spot/oxo/)
+- [NIST OLIR](https://csrc.nist.gov/Projects/olir)
+
+**Obsidian context:**
+- [Obsidian Bases roadmap](https://obsidian.md/roadmap/) — what views Bases adds natively over time
+- [`registerBasesView` API](https://docs.obsidian.md/Reference/TypeScript+API/Plugin/registerBasesView)
+- [TaskNotes v4](https://github.com/callumalpass/tasknotes) — Tasknotes registers 4 custom Bases view types; reference implementation
+
+## Hand-off
+
+Write the deliverable to `docs/.../zz-research/YYYY-MM-DD-challenge-30-deliverable-a-<slug>.md`. After deliverable lands: update [`concepts/view-shapes.mdx`](/crosswalker/concepts/view-shapes/); flip [synthesis log §9 status](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) Ch 30 row from ⏳ to ✅; archive this brief.

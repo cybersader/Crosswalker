@@ -1,0 +1,124 @@
+---
+title: "Query primitives"
+description: "Layer A of the Crosswalker query engine: the irreducible mechanism-neutral operations on an ontology web. Filter, project, traversal, closure, anti-join, pivot, aggregate. Each maps onto a specific execution mechanism (Bases-native, Tier 2 SQL helper, codeblock processor, materialized snapshot). Pending Ch 29 adversarial validation."
+tags: [concept, query-engine, query-primitives, ontology-web, bases, sql, sparql, datalog, olap]
+sidebar:
+  label: "Query primitives"
+  order: 5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Pending Ch 29 validation]
+The 7-primitive set documented here is the **candidate** vocabulary for v0.1, surfaced by the 2026-05-08 alignment review. It is pending [Ch 29 — Ontology-web query verbs adversarial validation](/crosswalker/agent-context/zz-challenges/29-ontology-web-query-verbs-validation/), which cross-references SPARQL property paths, Datalog rules, OLAP cube operators, SKOS, OWL, SSSOM, NIST OLIR, OxO2 prior art. The list may be revised when Ch 29 lands.
+:::
+
+## What this page is
+
+Crosswalker's query engine separates concerns into [three layers](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#§1-settled-no-further-debate--convergent-across-deliverables):
+
+| Layer | What it is | Where vocabulary lives |
+|---|---|---|
+| **A — Query primitives** (this page) | Mechanism-neutral irreducible operations | Here |
+| **B — View shapes** | Mechanism-neutral visual presentations | [view-shapes](/crosswalker/concepts/view-shapes/) |
+| **C — Recipes** | Marketplace instances composing primitives + view shape | Recipe registry; user-facing surfaces |
+
+This page documents Layer A. The 7 primitives below are the **complete** verb set you can compose into any query against the [ontology web](/crosswalker/concepts/ontology-web-querying/). Recipes (Layer C) name domain-specific compositions like "Coverage Matrix" (filter NIST controls + traverse `maps-to` edge to ISO + anti-join evidence + pivot on framework) — but every recipe decomposes into the same 7 primitives.
+
+## The 7 primitives
+
+| # | Primitive | What it does | Cross-domain precedent | Crosswalker mechanism |
+|---|---|---|---|---|
+| 1 | **filter** | Restrict a collection by a predicate over its attributes. "Concepts where `framework == NIST`." | SPARQL `FILTER`, SQL `WHERE`, Datalog body literals, Bases filter, MongoDB query | **Bases-native** (frontmatter filter); Tier 2 SQL `WHERE` |
+| 2 | **project** | Choose which attributes to surface from a row. "Show only `control_id`, `title`, `status`." | SPARQL `SELECT`, SQL projection, Bases columns | **Bases-native** (column set); Tier 2 SQL projection |
+| 3 | **traversal** | Hop along a typed edge in a single step. "Follow the `maps-to` edge from this concept." | SPARQL property path single step `:p`, SKOS `broader`/`narrower`, Datalog rule body, Cypher pattern | **Tier 2 SQL** via `mappings` table; Obsidian `metadataCache.resolvedLinks` |
+| 4 | **closure** | Transitive reachability over a predicate. "Every concept reachable from this one via repeated `equivalent_to` edges." | SPARQL property path `:p+` / `:p*`, Datalog recursion, OWL transitive properties | **Tier 2 SQL** recursive CTE via `closureFromConcept` (already shipped v0.1.5 P3) |
+| 5 | **anti-join** | "X without Y." Concepts in collection A that have NO matching record in collection B. "Controls without evidence." | SPARQL `MINUS` / `FILTER NOT EXISTS`, SQL `LEFT JOIN ... NULL` / `EXCEPT`, OLAP "gaps" report | **Tier 2 SQL** (Bases can't express); the load-bearing operation for "missing" cells in coverage matrices |
+| 6 | **pivot** | Group rows by two dimensions and aggregate a third value into cells — projects a graph subset into a 2D crosstab. "Frameworks × controls × evidence-count." | OLAP cube, pandas `pivot_table`, SQL `GROUP BY ROLLUP`, SPARQL group-concat patterns | **Tier 2 SQL** + custom Bases view (`crosswalkerPivot` registered via `registerBasesView` — see [view-shapes](/crosswalker/concepts/view-shapes/)) |
+| 7 | **aggregate** | Count / density / freshness / sum / max / min over a set. "Average mappings per control." | SPARQL `COUNT`/`AVG`/`MIN`/`MAX`, SQL aggregate functions, Bases `summaries` (1-D only), SSSOM mapping density metrics | **Bases summaries** (1-D); Tier 2 SQL aggregates (multi-D); view-internal computation |
+
+## How primitives map to mechanism
+
+Crosswalker has [four execution mechanisms](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) where these primitives can run:
+
+| Mechanism | Primitives that run here | When |
+|---|---|---|
+| **Bases-native** (filter expressions, formulas, summaries) | filter, project, aggregate (1-D) | Default for simple queries; works on desktop + mobile + (future) Publish |
+| **Tier 2 SQL helpers** (`plugin.queryConcepts/Crosswalk/Closure`) | filter, project, traversal, closure, anti-join, aggregate | When Bases can't express the operation. Internal helpers in v0.1.6; user-facing codeblock surface in v0.1.7 (pending [D2](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)) |
+| **Custom Bases view** (`crosswalkerPivot` via `registerBasesView`) | pivot (with internal calls into Tier 2 SQL helpers for traversal + anti-join + closure enrichment) | When a 2D crosstab is the right rendering and Bases' built-in views can't express it |
+| **Materialized snapshot** (Markdown export) | All primitives — output is fully resolved before write | When the query result must survive plugin uninstall, render in Obsidian Publish, or anchor an audit-trail attestation. Deferred to v0.1.8 per [D1](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) |
+
+Recipes (Layer C) name a primitive composition + a view shape; the engine picks the right mechanism for each primitive based on what's expressible at that layer.
+
+## Worked example: "Coverage gaps for NIST 800-53"
+
+User question: "Which NIST 800-53 controls have NO evidence covering them?"
+
+Decomposition into primitives:
+
+1. **filter** — `concepts WHERE ontology_id == "nist-800-53"` → produces a flat collection of all NIST controls
+2. **anti-join** — that collection MINUS `concepts WHERE EXISTS junction WHERE junction.subject == concept.curie AND junction.object.kind == "evidence"` → produces controls without evidence
+
+Mechanism: anti-join is not Bases-native, so this query runs through Tier 2 SQL. Result is rendered either:
+- In a Bases-native table view (Bases reads the SQL result)
+- Inside the `crosswalkerPivot` view as a "gaps" filter
+- Materialized to `_crosswalker/audit/.../nist-coverage-gaps.md` for v0.1.8 audit deliverable
+
+Recipe (Layer C) wraps this as a named query: `id: nist-800-53-coverage-gaps`. Recipe authors don't write SQL — they declare primitives + shape in YAML (see [recipe `query:` block design](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) — pending Ch 31).
+
+## Worked example: "Crosswalk chain — NIST CSF → NIST 800-53 → ISO 27001"
+
+User question: "What ISO 27001 controls are reachable from NIST CSF Identify via crosswalks?"
+
+Decomposition:
+
+1. **filter** — `concepts WHERE ontology_id == "nist-csf" AND function == "identify"`
+2. **closure** — over the `equivalent_to` predicate, recursive (depth-bounded), starting from each concept above
+
+Mechanism: closure is not Bases-native (no recursion in formulas). Runs through `plugin.queryClosure()` (Tier 2 SQL recursive CTE; already shipped v0.1.5 P3 with lazy cache).
+
+## What's NOT a primitive (and why)
+
+These look tempting but aren't part of the irreducible set:
+
+| Looks like a primitive but isn't | Why not | What it actually is |
+|---|---|---|
+| **Sort / order by** | Sort is a *display* concern (Layer B view shape config), not a *query* concern | Belongs in Layer B view configuration |
+| **Limit / pagination** | Same — display concern | Belongs in Layer B |
+| **Join** (SQL-style) | Decomposes into traversal (1-hop join via predicate) + filter (where-clause) | Compositional, not irreducible |
+| **Union / intersection** (set ops) | Compositional with filter and anti-join | If we need them as named primitives, they'd be Ch 29 additions |
+| **Equivalence / reasoning** (OWL `sameAs`, `equivalentClass`) | Domain-specific to OWL; Crosswalker treats `equivalent_to` as one specific predicate available to closure | Domain-specific edge type; not an engine primitive |
+
+## Open questions (Ch 29 pending)
+
+The 7-primitive set above is provisional. Open questions Ch 29 will address:
+
+- Should **traversal** split into single-hop vs k-hop (parameterized depth)?
+- Should **diff** be added (for ontology versioning queries — "what changed from v1 to v2 of this ontology")?
+- Should **rank** be added (for relevance / weighted-score queries)?
+- Should **constraint-satisfy** be added (for OWL-style reasoning queries)?
+- Are **project** and **aggregate** truly primitive, or are they conveniences that compose from filter + map?
+- How do **temporal primitives** (snapshot, change feed, point-in-time) fit?
+- Is the boundary between Layer A (query primitives) and Layer B (view shapes) drawn correctly?
+
+See [Ch 29 brief](/crosswalker/agent-context/zz-challenges/29-ontology-web-query-verbs-validation/) for the full investigation scope.
+
+## Related
+
+**Concept pillars**:
+- [View shapes](/crosswalker/concepts/view-shapes/) — Layer B (visual presentations)
+- [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/) — positioning page
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases capabilities + limits
+- [System architecture](/crosswalker/concepts/system-architecture/) — Layer 4 (Query)
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — emission-side primitives (Crosswalker's render() function)
+- [Terminology](/crosswalker/concepts/terminology/)
+
+**Decision logs**:
+- [Synthesis log (in progress)](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) — settled item #14 references this primitive set
+- [v0.1.5 Tier 2 sidecar shipped](/crosswalker/agent-context/zz-log/2026-05-06-v0-1-5-tier-2-sidecar-shipped/) — `closureFromConcept` recursive CTE implementation
+
+**Research challenges**:
+- [Ch 29 — Query verbs validation](/crosswalker/agent-context/zz-challenges/29-ontology-web-query-verbs-validation/) — adversarial cross-reference to SPARQL/Datalog/OLAP/SKOS prior art
+- [Ch 31 — Recipe `query:` block schema](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) — how recipes declare primitive compositions in YAML
+- [Ch 33 — Multi-modal landscape audit](/crosswalker/agent-context/zz-challenges/33-multi-modal-query-engine-landscape-audit/) — how other engines (DuckDB+DuckPGQ, Cozo, Oxigraph, Stardog) expose primitive sets
+- [Ch 36 — Query language rerun](/crosswalker/agent-context/zz-challenges/36-query-language-rerun/) — what language do recipe authors / users write?
