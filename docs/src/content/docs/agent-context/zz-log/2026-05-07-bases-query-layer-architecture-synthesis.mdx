@@ -481,13 +481,27 @@ These are the deliverables that landed AFTER the initial Ch 27 + Ch 28 synthesis
 
 **TL;DR**: REVISE the candidate 7-primitive set. Final Layer A vocabulary = **8 primitives**: `filter, traverse, bind, project, aggregate, anti-join, set-op, diff`.
 
-**Key revisions**:
-1. **Drop standalone `closure`** — fold into `traverse(predicate, depth=k|*)` as a parameterization. SPARQL property paths (`r*`, `r+`, `r?`), Cypher variable-length `[*1..n]`, GQL `MATCH … REPEAT`, and Datalog recursion all confirm the unification. Two primitives where one suffices is the Layer-A bloat the brief warned against.
-2. **Demote `pivot` to Layer B** — pivot decomposes into `aggregate(group=row_dim, group=col_dim, fn=agg) → reshape rows-to-columns`. The reshape step is purely display. Cypher / Gremlin / GQL / SPARQL / SSSOM all lack pivot; only OLAP and SQL extensions have it, and both treat it as report-shaping.
-3. **Add `bind`** (computed columns / rename) — required for evidence-freshness ("controls with evidence > 1 year old"), confidence-disagreement ("crosswalks with inconsistent confidence values"), and depth-annotation queries (`depth_from_root = path_length`). SPARQL elevates BIND to a primitive (`Extend` in the algebra); Datalog gets it via head-expressions; SQL has computed columns and AS.
-4. **Add `set-op` (∪, ∩, ⊖)** — required for framework-overlap queries ("controls in both NIST and CIS"). Cannot be derived from anti-join alone (anti-join is one-sided). Combine all three set ops into one parameterized primitive.
-5. **Add `diff`** (versioned ontology delta) — uniquely Crosswalker-essential; cannot be expressed as `set-op(traverse(v1) ⊖ traverse(v2))` because (a) snapshot semantics are novel, (b) cannot distinguish removed/renamed/merged, (c) audit-trail consumers need typed change records. Anchored to OWL ecco, CODEX, DynDiffOnto, `git diff`. Parameterized by `(v1, v2, kind ∈ {added, removed, strengthened, weakened, renamed})`.
-6. **Reject `rank, window, OPTIONAL, subquery, federation, constraint-satisfy, temporal-snapshot` as separate primitives** — compositional (rank = bind + sort/limit), out-of-scope (federation, OWL-DL), or properties of the algebra rather than operators (subquery / closure-under-composition).
+**The 8 verbs in plain language + concrete examples**:
+
+| Verb | Plain meaning | Compiles to (SQL example) | Example Crosswalker query it enables |
+|---|---|---|---|
+| `filter` | Keep rows matching a condition | `WHERE framework='NIST'` | "Show only NIST controls" |
+| `traverse` | Walk edges, optionally transitively | `WITH RECURSIVE closure AS (…)` | "Follow `:mapsTo` from CSF → 800-53 → ISO 27001" |
+| `bind` | Add a computed column | `SELECT *, (date('now') - evidence_date) AS age` | "Compute evidence age" |
+| `project` | Drop columns | `SELECT id, name FROM …` | "Just show me id and name" |
+| `aggregate` | Group + count/sum/avg | `GROUP BY framework HAVING COUNT(*) > 5` | "Mappings per framework" |
+| `anti-join` | Rows in A not in B | `WHERE NOT EXISTS (…)` | "Controls without evidence" |
+| `set-op` | ∪ / ∩ / ⊖ | `INTERSECT` / `UNION` / `EXCEPT` | "Controls in BOTH NIST and CIS" |
+| `diff` | v1 vs v2 ontology delta | (custom — version-aware) | "What changed between OBO 2024-Q1 and 2024-Q2?" |
+
+**Why these 8, not 7 or 9** (the revisions vs the prior candidate set):
+
+1. **Dropped standalone `closure`** — folded into `traverse(predicate, depth=k|*)` as a parameter. Same shape as SPARQL property paths (`r*`, `r+`, `r?`), Cypher variable-length `[*1..n]`, GQL `MATCH … REPEAT`, Datalog recursion. Two primitives where one suffices is the Layer-A bloat the brief warned against.
+2. **Demoted `pivot` to Layer B** — pivot decomposes into `aggregate(group=row_dim, group=col_dim, fn=agg) → reshape rows-to-columns`. The reshape step is purely display. Cypher / Gremlin / GQL / SPARQL / SSSOM all lack pivot.
+3. **Added `bind`** — required for queries the prior set couldn't express (evidence-freshness, confidence-disagreement, depth-annotation). SPARQL elevates BIND to a primitive (`Extend` in the algebra); SQL has computed columns and `AS`.
+4. **Added `set-op`** — required for framework-overlap queries. Can't be derived from anti-join alone (anti-join is one-sided).
+5. **Added `diff`** — uniquely Crosswalker-essential for v0.1.8 audit-trail. Can't be expressed as `set-op(traverse(v1) ⊖ traverse(v2))` because audit consumers need typed change records (added/removed/strengthened/weakened/renamed), not raw set differences. Anchored to OWL ecco, CODEX, DynDiffOnto, `git diff`.
+6. **Rejected `rank, window, OPTIONAL, subquery, federation, constraint-satisfy, temporal-snapshot` as separate primitives** — compositional (rank = bind + sort/limit), out-of-scope (federation, OWL-DL), or properties of the algebra rather than operators.
 
 **Impact on this log**:
 - Settled #14 → REVISED (7-candidate → 8-locked)
@@ -510,6 +524,129 @@ These are the deliverables that landed AFTER the initial Ch 27 + Ch 28 synthesis
 - Settled #2 → refined (Cards added; v0.1 catalog = 5 shapes)
 - Settled #15 (Layer A/B boundary) reinforced
 - v0.2 roadmap: Graph (Cytoscape.js); v0.2+: Timeline (defer to Bases roadmap or community plugin); v0.2: pivot render options (heatmap/treemap/sunburst/sankey)
+
+### Ch 31 — Recipe `query:` block schema design (2026-05-08)
+
+**TL;DR**: Both delivered schemas (A: `oneOf`+`const` discriminator; B: `if`/`then`/`else` discriminator) are semantically equivalent. **Verdict (updated 2026-05-09): ship BOTH behind a dev/advanced setting** so users can A/B-test which feels better to author. Default = A (more common JSON Schema idiom); advanced setting flips to B.
+
+**What a recipe `query:` block actually looks like** — the same query expressed in both schema styles:
+
+**Style A** (`oneOf`+`const` — default):
+```yaml
+# _crosswalker/recipes/nist-csf-coverage-matrix.yaml
+id: nist-csf-coverage-matrix
+version: 1.0.0
+schema_version: 1.0.0
+sources:
+  - type: sssom-tsv
+    path: _crosswalker/imports/nist-iso-mappings.sssom.tsv
+
+query:
+  oneOf:
+    - shape:
+        const: pivot
+      rows:
+        column: subject_id
+        prefix_filter: NIST:CSF
+      cols:
+        column: object_id
+        prefix_filter: ISO27001
+      cell:
+        agg: count
+        having: { confidence: { ">": 0.7 } }
+```
+
+**Style B** (`if`/`then`/`else` — advanced setting):
+```yaml
+# Same query, different discriminator style
+id: nist-csf-coverage-matrix
+version: 1.0.0
+schema_version: 1.0.0
+sources:
+  - type: sssom-tsv
+    path: _crosswalker/imports/nist-iso-mappings.sssom.tsv
+
+query:
+  shape: pivot                    # ← discriminator key at top level
+  if:
+    properties:
+      shape: { const: pivot }
+  then:
+    required: [rows, cols, cell]
+    properties:
+      rows: { column: subject_id, prefix_filter: NIST:CSF }
+      cols: { column: object_id, prefix_filter: ISO27001 }
+      cell: { agg: count, having: { confidence: { ">": 0.7 } } }
+```
+
+Both produce identical SQL output and the same view-spec; the only difference is how validation errors phrase themselves and how IDE autocomplete behaves. **Both ship in v0.1.6**; advanced setting in plugin settings flips the active validator.
+
+**Locked design constraints** (from Ch 31 + reinforced by Ch 36):
+- Data-only schema (no inline SQL/DSL inside YAML — the YAML stays declarative)
+- Shape-discriminated (each view shape — pivot/hierarchy/table/list/cards — has its own required fields)
+- JSON Schema 2020-12 + AJV validator
+- SchemaVer versioning (`MODEL.REVISION.ADDITION` — major bump = breaking change)
+- JSONata as the only allowed string-expression slot (for filters/computed values; bounded grammar)
+- Primitives-composition (recipe wires up Layer A verbs; doesn't invent new operations)
+
+**Impact on this log**:
+- D8 confirmed; ship both A + B styles behind dev setting (per user 2026-05-09)
+- v0.1.6 milestone scope adds: validator implementation for both styles + dev setting toggle
+- 5 reference recipes ship with v0.1.6 (one per shape)
+
+### Ch 32 — Intuitive query UX (2026-05-08)
+
+**TL;DR**: Hybrid Pattern D = **Recipe-picker + inline editor + raw YAML escape**. Ship picker + inline editor in v0.1.6; defer the full wizard. Default browse experience uses **embedded `\`\`\`base` blocks in canonical query notes** (no separate materialized files); materialization is the explicit opt-in for audit/share.
+
+**What the user actually does (UX flow)**:
+
+```
+  ┌────────────────────────────────────────────────────────────────┐
+  │  USER OPENS COMMAND PALETTE                                     │
+  │  > Crosswalker: Insert query into note                          │
+  └─────────────────────────┬──────────────────────────────────────┘
+                            ↓
+  ┌────────────────────────────────────────────────────────────────┐
+  │  STEP 1 — RECIPE PICKER (modal)                                 │
+  │  ┌────────────────────────────────────────────────────────┐    │
+  │  │ Choose a query template:                                │    │
+  │  │  ◉  Coverage Matrix (NIST → ISO 27001)                 │    │
+  │  │  ○  Crosswalk Density (per framework)                  │    │
+  │  │  ○  Orphan Controls (no mapping)                       │    │
+  │  │  ○  [Raw YAML escape — write your own]                  │    │
+  │  └────────────────────────────────────────────────────────┘    │
+  └─────────────────────────┬──────────────────────────────────────┘
+                            ↓
+  ┌────────────────────────────────────────────────────────────────┐
+  │  STEP 2 — INLINE PARAMETER EDITOR                               │
+  │  Source ontology pair:  [NIST CSF]  ↔  [ISO 27001]             │
+  │  Confidence threshold:  [0.7  ▾]                                │
+  │  Cell aggregation:       [count  ▾]                             │
+  │                                                                  │
+  │  [Insert query] [Cancel]                                        │
+  └─────────────────────────┬──────────────────────────────────────┘
+                            ↓
+  ┌────────────────────────────────────────────────────────────────┐
+  │  RESULT — embedded `base` block in your note                    │
+  │  ```base                                                         │
+  │  filters:                                                        │
+  │    crosswalker.recipe: "nist-csf-coverage-matrix"               │
+  │  views:                                                          │
+  │    - type: crosswalker-pivot                                    │
+  │      params: { confidence_threshold: 0.7 }                      │
+  │  ```                                                             │
+  └────────────────────────────────────────────────────────────────┘
+```
+
+The query lives **inside your note** as an embedded `base` block — no extra file generated. To freeze it as a static snapshot for audit/Publish, run `Crosswalker: Materialize this recipe` (the explicit opt-in).
+
+**Why this UX**: it borrows the pattern from kepano's Obsidian Skills and from Notion's `/database` slash command — start with a template, fill in a few parameters, get a working query inline. Power users can drop into raw YAML via the escape option.
+
+**Impact on this log**:
+- D1 refined: query-result materialization stays opt-in; embedded `base` blocks are the default browse experience
+- v0.1.6 ships: command palette → recipe picker → inline editor → embedded block insertion
+- Wizard (multi-step form for complex parameter sets) deferred to v0.1.7+
+- `crosswalker-bases` SKILL.md (per [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills)) ships in v0.1.6 for LLM-assisted recipe authoring
 
 ### Ch 33 — Multi-modal substrate audit (2026-05-09)
 
@@ -534,13 +671,103 @@ These are the deliverables that landed AFTER the initial Ch 27 + Ch 28 synthesis
 
 **TL;DR**: REAFFIRM Tier 1 + Tier 2; REVISE Tier 3 (Apache AGE → Oxigraph + Fuseki). **Move materialization v0.1.8 → v0.1.6** (PROPOSED scope expansion — see D1 Ch 35 nuance callout).
 
-**Key findings**:
-- BioPortal 2025: 1,549 ontologies (1,182 public), 15.3M terms, 100M+ mappings. UMLS 2025AB: 3.49M concepts, 17.4M atoms.
-- **Every production ontology-web system materializes precomputed pairwise crosswalks** — UMLS RRF subsets, BioPortal's 100M-mapping table, OxO/OxO2 SSSOM crosswalks, NIST OLIR DRM. None compute N×N at query time. Crosswalker should not either.
-- **The ontology web subset that fits in a vault** is what users import (≤1M concepts, ≤500K mappings). At that scale, sqlite-wasm + closure-table schema (NOT naive recursive CTE) is competitive.
-- **Pivot scale ceiling**: full ontology-web N×N is 10¹² cells with `<0.001%` density — infeasible. UI rule: **force pair-selection (or triple-selection) before pivot**; sparse-pivot guard at >100K cells.
-- **Five non-GRC ontology-web archetypes all reduce to existing helpers** (`crosswalkBetween` ×2 for chain joins; `closureFromConcept` for transitive walks). No new primitive needed for ontology-web framing — only new data sources.
-- **Substrate-neutrality audit checklist** (apply to v0.1.5 codebase): SSSOM-shaped row I/O; predicate-URI-parameterized closure; recursive CTE hidden behind helper; no SQLite-specific types in public signatures.
+**What "SSSOM TSV import + materialized closure-table" actually means** — a worked example:
+
+**SSSOM = Simple Standard for Sharing Ontological Mappings.** It's an open-standard TSV format used across BioPortal, OxO/OxO2, OBO Foundry, Biomappings, and (post-this-decision) NIST OLIR. The file is just a tab-separated table of "concept A relates to concept B with predicate P at confidence C":
+
+```tsv
+# nist-iso-mappings.sssom.tsv (what a user would download or generate)
+subject_id           subject_label                predicate_id      object_id            object_label            mapping_justification              confidence
+NIST:CSF.PR.AC-1     Identity Management          skos:closeMatch   ISO27001:A.5.16      Identity Management     semapv:ManualMappingCuration       0.85
+NIST:CSF.PR.AC-2     Account Management           skos:exactMatch   ISO27001:A.5.18      Access Rights           semapv:ManualMappingCuration       0.90
+NIST:CSF.PR.AC-3     Remote Access                skos:relatedMatch ISO27001:A.5.18      Access Rights           semapv:LexicalMatching             0.62
+NIST:CSF.PR.AC-4     Access Permissions           skos:exactMatch   ISO27001:A.5.15      Access Control          semapv:ManualMappingCuration       0.95
+```
+
+**What Crosswalker does on import** (all of this happens in v0.1.6 if D1 PROPOSED scope is approved):
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 1 — User runs `Crosswalker: Import SSSOM TSV` and picks file   │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 2 — Crosswalker writes ONE junction note per TSV row            │
+│         to `_crosswalker/mappings/NIST-to-ISO27001/`                 │
+│                                                                       │
+│  Each junction note is a Markdown file with frontmatter:             │
+│    ---                                                                │
+│    subject_id: NIST:CSF.PR.AC-1                                      │
+│    subject_label: Identity Management                                │
+│    predicate_id: skos:closeMatch                                     │
+│    object_id: ISO27001:A.5.16                                        │
+│    object_label: Identity Management                                 │
+│    confidence: 0.85                                                   │
+│    mapping_justification: semapv:ManualMappingCuration               │
+│    crosswalker.materialized: true                                    │
+│    crosswalker.source: nist-iso-mappings.sssom.tsv                   │
+│    ---                                                                │
+│    # NIST CSF PR.AC-1 ↔ ISO 27001 A.5.16                             │
+│    [[NIST CSF PR.AC-1]] is closely matched to [[ISO 27001 A.5.16]]   │
+│                                                                       │
+│  → These junction notes are TIER 1 TRUTH — committed to git,         │
+│    queryable via Bases natively, durable across plugin uninstall     │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 3 — Crosswalker builds a `mappings` table in the sqlite cache  │
+│                                                                       │
+│   CREATE TABLE mappings (                                            │
+│     subject_id TEXT,                                                 │
+│     predicate_id TEXT,                                               │
+│     object_id TEXT,                                                  │
+│     confidence REAL,                                                 │
+│     mapping_justification TEXT,                                      │
+│     PRIMARY KEY (subject_id, predicate_id, object_id)                │
+│   );                                                                  │
+│   CREATE INDEX idx_mappings_subject ON mappings(subject_id);          │
+│   CREATE INDEX idx_mappings_object ON mappings(object_id);            │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 4 — Crosswalker materializes a closure table (if user opts in) │
+│         for fast transitive walks                                    │
+│                                                                       │
+│   CREATE TABLE concept_closure (                                     │
+│     ancestor TEXT,                                                   │
+│     descendant TEXT,                                                 │
+│     depth INT,                                                        │
+│     PRIMARY KEY (ancestor, descendant)                               │
+│   );                                                                  │
+│                                                                       │
+│   -- Pre-computed at import: every (concept, all reachable           │
+│   -- descendants via skos:broader/narrower or :hasParent edges)      │
+│   --                                                                  │
+│   -- Closure table is REBUILDABLE FROM TIER 1 — never the truth      │
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 5 — Now this query runs in milliseconds instead of seconds      │
+│                                                                       │
+│   -- "What NIST CSF controls have ANY mapping to ISO 27001?"         │
+│   SELECT subject_id, subject_label                                   │
+│   FROM mappings                                                       │
+│   WHERE object_id LIKE 'ISO27001:%'                                  │
+│     AND confidence >= 0.7;                                           │
+│                                                                       │
+│   -- "Show all mappings transitively from CSF.PR (Protect)"          │
+│   SELECT m.* FROM mappings m                                         │
+│   JOIN concept_closure c ON c.descendant = m.subject_id              │
+│   WHERE c.ancestor = 'NIST:CSF.PR';                                  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Why this matters**: every production ontology-web system in the wild does exactly this — UMLS RRF subsets, BioPortal's 100M-mapping table, OxO/OxO2 SSSOM crosswalks, NIST OLIR's Derived Relationship Mapping all materialize precomputed pairwise tables. Nobody computes N×N at query time. The numbers say why: BioPortal 2025 = 1,549 ontologies / 15.3M terms / 100M+ mappings; UMLS 2025AB = 3.49M concepts. Computing closure on the fly at that scale is impossible. **Pre-materializing makes sqlite-wasm fast at exactly the workload it's good at: indexed lookup over precomputed joins.**
+
+**Other key findings**:
+- Pivot scale ceiling: full ontology-web N×N is 10¹² cells with `<0.001%` density — infeasible. UI rule: **force pair-selection (or triple-selection) before pivot**; sparse-pivot guard at >100K cells warns the user.
+- Five non-GRC ontology-web archetypes all reduce to existing helpers (`crosswalkBetween` ×2 for chain joins; `closureFromConcept` for transitive walks). No new primitive needed for ontology-web framing — only new data sources (SSSOM TSV being the most important).
+- Substrate-neutrality audit checklist (apply to v0.1.5 codebase): SSSOM-shaped row I/O; predicate-URI-parameterized closure; recursive CTE hidden behind helper; no SQLite-specific types in public signatures.
 
 **Impact on this log**:
 - Settled #16 (Tier 3 reframe) reinforced
@@ -550,6 +777,70 @@ These are the deliverables that landed AFTER the initial Ch 27 + Ch 28 synthesis
 ### Ch 36 — Query language rerun (Ch 12) (2026-05-09)
 
 **TL;DR**: REVISE Ch 12 narrowly. **Adopt compositional language stack — no new Crosswalker DSL**. YAML recipes (Layer C) → SQL recursive CTE (Layer A, sqlite-wasm) → JSON view-specs (Layer B) → Bases YAML for vault-scoped views. Datalog stays internal-only.
+
+**The compositional pipeline — one query traced end-to-end**:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  YOU WRITE (Layer C — recipe YAML)                                    │
+│  ─────────────────────────────────                                    │
+│  query:                                                               │
+│    shape: pivot                                                       │
+│    rows:                                                              │
+│      column: subject_id                                               │
+│      prefix_filter: NIST:CSF                                          │
+│    cols:                                                              │
+│      column: object_id                                                │
+│      prefix_filter: ISO27001                                          │
+│    cell:                                                              │
+│      agg: count                                                       │
+│      having: { confidence: { ">": 0.7 } }                             │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               ↓ engine compiles
+┌──────────────────────────────────────────────────────────────────────┐
+│  ENGINE EXECUTES (Layer A — SQL recursive CTE on sqlite-wasm)         │
+│  ─────────────────────────────────────────────────────────            │
+│  WITH filtered AS (                                                   │
+│    SELECT subject_id, object_id                                       │
+│    FROM mappings                                                      │
+│    WHERE subject_id LIKE 'NIST:CSF%'                                  │
+│      AND object_id LIKE 'ISO27001:%'                                  │
+│      AND confidence > 0.7                                             │
+│  )                                                                    │
+│  SELECT subject_id, object_id, COUNT(*) AS n                          │
+│  FROM filtered                                                        │
+│  GROUP BY subject_id, object_id;                                      │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               ↓ produces
+┌──────────────────────────────────────────────────────────────────────┐
+│  PROTOCOL TO RENDERER (Layer B — JSON view-spec)                      │
+│  ────────────────────────────────────────                             │
+│  {                                                                    │
+│    "shape": "pivot",                                                  │
+│    "rows": ["NIST:CSF.PR.AC-1", "NIST:CSF.PR.AC-2", "..."],          │
+│    "cols": ["ISO27001:A.5.16", "ISO27001:A.5.18", "..."],            │
+│    "cells": [                                                         │
+│      [1, 0, 1, 0],                                                    │
+│      [0, 1, 0, 1],                                                    │
+│      ...                                                              │
+│    ]                                                                  │
+│  }                                                                    │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               ↓ rendered through
+┌──────────────────────────────────────────────────────────────────────┐
+│  USER SEES (registered Bases view `crosswalkerPivot`)                 │
+│  ─────────────────────────────────────────                            │
+│  ┌────────────────┬──────────┬──────────┬──────────┐                 │
+│  │                │ A.5.16   │ A.5.18   │ A.5.15   │                 │
+│  ├────────────────┼──────────┼──────────┼──────────┤                 │
+│  │ PR.AC-1        │    1     │    0     │    1     │                 │
+│  │ PR.AC-2        │    0     │    1     │    0     │                 │
+│  │ PR.AC-3        │    1     │    0     │    1     │                 │
+│  └────────────────┴──────────┴──────────┴──────────┘                 │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Why this layering matters**: each layer is a separate concern. Recipe authors (Layer C) think in YAML — they don't know SQL. The engine (Layer A) is the SQL — recipe authors never see it. The renderer (Layer B) is "given a pivot of cells, draw a grid" — it doesn't care where the data came from. This is the **dbt / OpenRewrite / Argo Workflows / Kubernetes pattern** (YAML on top of an established mature engine, not a custom DSL).
 
 **Key findings**:
 - **Bases is not a general query language** — it's a vault-scoped expression DSL with no fix-point recursion, transitive closure, anti-join across arbitrary predicates, or pivot/crosstab. Right surface for vault filtering and presentation, not for ontology-web reasoning.
