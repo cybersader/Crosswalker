@@ -28,7 +28,19 @@ interface Args {
 	target: string;
 	ontology: string;
 	clean: boolean;
+	deterministic: boolean;
 }
+
+/**
+ * Stable timestamp for deterministic fixture generation. Used when the
+ * CROSSWALKER_FIXTURES_DETERMINISTIC env flag is set OR --deterministic
+ * is passed. Lets `bun run check:fixtures-drift` compare git-clean state.
+ *
+ * Anchored to the v0.1 design-phase conclusion (2026-05-04) — arbitrary
+ * but stable. Real provenance still embeds source_hash from CSV bytes,
+ * which IS dynamic + meaningful.
+ */
+const DETERMINISTIC_TIMESTAMP = '2026-05-04T00:00:00.000Z';
 
 interface CsvRow {
 	id: string;
@@ -50,13 +62,15 @@ const PRODUCER = {
 };
 
 function parseArgs(argv: string[]): Args {
-	const args: Partial<Args> = { clean: false };
+	const envDeterministic = process.env.CROSSWALKER_FIXTURES_DETERMINISTIC === '1';
+	const args: Partial<Args> = { clean: false, deterministic: envDeterministic };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === '--source') args.source = argv[++i];
 		else if (a === '--target') args.target = argv[++i];
 		else if (a === '--ontology') args.ontology = argv[++i];
 		else if (a === '--clean') args.clean = true;
+		else if (a === '--deterministic') args.deterministic = true;
 		else if (a === '--help' || a === '-h') {
 			printHelp();
 			process.exit(0);
@@ -85,6 +99,9 @@ Args:
   --ontology <slug>   Ontology identifier; becomes the CURIE prefix and
                       _crosswalker.source_ref.curie.
   --clean             Empty the target directory before generating.
+  --deterministic     Stable produced_at timestamp (2026-05-04T00:00:00.000Z)
+                      instead of Date.now(). Required for fixture-drift CI gates.
+                      Equivalent to env CROSSWALKER_FIXTURES_DETERMINISTIC=1.
   -h, --help          Print this and exit.
 
 Output:
@@ -124,6 +141,7 @@ function buildFrontmatter(
 	row: CsvRow,
 	ontology: string,
 	sourceRef: { file: string; sourceHash: string },
+	deterministic: boolean,
 ): Record<string, unknown> {
 	const id = row.id?.trim();
 	if (!id) {
@@ -164,7 +182,7 @@ function buildFrontmatter(
 			curie: `${ontology}:_`,
 			source_hash: sourceRef.sourceHash,
 		},
-		produced_at: new Date().toISOString(),
+		produced_at: deterministic ? DETERMINISTIC_TIMESTAMP : new Date().toISOString(),
 		producer: PRODUCER,
 		recipe: {
 			id: `${ontology}-fixture-flat`,
@@ -267,7 +285,7 @@ function main(): void {
 			console.warn(`  skipped row with empty id: ${JSON.stringify(row)}`);
 			continue;
 		}
-		const fm = buildFrontmatter(row, args.ontology, sourceRef);
+		const fm = buildFrontmatter(row, args.ontology, sourceRef, args.deterministic);
 		const body = buildBody(row, fm);
 		const filename = `${slugifyForFilesystem(id)}.md`;
 		const outPath = join(targetAbs, filename);
