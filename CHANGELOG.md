@@ -6,7 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-06, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 are ✅ shipped; v0.1.5 (Tier 2 sidecar) is mid-milestone (Phase 1+2 done, Phase 3 next).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-09, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phase 1 done; Phases 2-5 pending).
+
+### v0.1.6 Phase 1 — recipe `query:` block schema (2026-05-09, ✅ Done)
+
+Foundation phase of the v0.1.6 milestone: adds an optional `query:` block to `spec/recipe.schema.json` so recipes can declare what to query (axes, edges, aggregation) using the 8-verb Layer A vocabulary. Per [Ch 29 (8-primitive validation)](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-09-challenge-29-ontology-web-query-verbs-validation/) + [Ch 30 (5 v0.1 view shapes)](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-09-challenge-30-view-shape-taxonomy/) + [Ch 31 (schema design)](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-08-challenge-31-deliverable-a-shape-dispatched-data-only/) + [Ch 36 (compositional language stack)](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-09-challenge-36-query-language-rerun/).
+
+**Schema bump (additive; SchemaVer 1.1.0)** — `spec/recipe.schema.json`:
+- New top-level `query:` property; optional. Recipes WITHOUT `query:` continue to validate (additive, backward-compatible).
+- 31 new `$defs`: `query_block`, `ShapeDispatchA`, `ShapeDispatchB`, six `*Primitives` (Table/List/Pivot/Graph/Hierarchy/Timeline), helper types (OntologyRef, ConceptRef, EdgePredicate, FieldSelector, AggregationOp, QueryFilter, QuerySort, Projection, Traversal, Aggregate, Join, GroupBy, QueryParam, QueryProvenance, QueryOutput, QueryViewOptions).
+- `$schema` and `$comment` allowed at recipe top-level (editor autocomplete hint + free-text comment).
+- 8 query verbs locked per Ch 29: `filter / traverse / bind / project / aggregate / anti-join / set-op / diff`. Closure folded into parameterized `traverse(depth=*, transitive=true)`; pivot demoted from Layer A to Layer B (presentation, not value-producing).
+
+**Both schema discriminator styles ship** (per Ch 31a + Ch 31b). Settings `recipeSchemaStyle: 'A' | 'B'` selects which:
+- Style A (default): `oneOf`+`const` discriminator. "Must match exactly one schema" errors.
+- Style B (advanced): `if`/`then`/`else` cascading. Focused per-shape errors. Better IDE autocomplete.
+- Both produce identical validity verdicts; differ in error-message UX. Settings toggle under "Recipe schema" section.
+
+**Validator changes** (`src/validation/validator.ts`):
+- New `RecipeSchemaStyle = 'A' | 'B'` type export.
+- `validateRecipe(recipe, style?)` accepts optional style param; default `'A'`.
+- Both validators compiled at init via `buildStyleBSchema()` which deep-clones the schema and patches `query_block.allOf[0]` to reference `ShapeDispatchB` (strips `$id` so AJV compiles as anonymous variant).
+- `main.ts` wraps `validateRecipe` to inject the active style from settings — callers stay style-agnostic.
+
+**5 reference recipes shipped** to `recipes/v0-1/`:
+- `coverage-matrix.json` (pivot shape — launch-market Coverage Matrix; NIST CSF × ISO 27001)
+- `crosswalk-density.json` (table shape — aggregates per framework pair)
+- `orphan-controls.json` (list shape — demonstrates anti-join verb; controls without evidence)
+- `hierarchy-view.json` (hierarchy shape — schema-declared; `crosswalkerHierarchy` renderer ships v0.1.7-v0.1.8 per Ch 30)
+- `list-view.json` (list shape — minimal; Bases-native rendering)
+
+**Test coverage**: 23 new unit tests in `tests/recipe-query-block.test.ts` cover backward-compat, all 5 reference recipes in both styles, schema enforcement (missing required fields, unknown shapes, additionalProperties:false, aggregate op validation), and A/B verdict equivalence. **139/139 tests pass.**
+
+**Phase 1 deferrals** (Phases 2-5 of v0.1.6 — pending):
+- Phase 1.5: deterministic fixtures + fixture-drift CI gate + property-based schema tests + E2E env diagnosis + Phase 2-5 test scaffolds (test infrastructure pass before Phase 2)
+- Phase 2: SSSOM TSV import + materialized closure-table + sparse-pivot guard (per Ch 35)
+- Phase 3: `crosswalkerPivot` registered Bases view (per Settled #2 + Ch 30)
+- Phase 4: Recipe-picker UX + embedded `\`\`\`base` block insertion + `crosswalker-bases` SKILL.md (per Ch 32)
+- Phase 5: Opt-in materialization command + `_crosswalker/` folder convention finalization
+
+See `TEST_PHASE1_QUERY_SCHEMA.md` for manual test scenarios. See [v0.1.6 milestone](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) for the full milestone scope and Phases 2-5 plan.
+
 
 ### v0.1.5 — Tier 2 sqlite-wasm sidecar projector (2026-05-06, ✅ Done — all 6 phases)
 

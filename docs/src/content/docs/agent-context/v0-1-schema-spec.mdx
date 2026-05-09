@@ -400,6 +400,76 @@ Migration script:
 4. Empty `crosswalks: []` and `source_file_patterns: []` for now (user fills in)
 5. Write back
 
+### §4.5 Recipe `query:` block (added v0.1.6 — SchemaVer 1.1.0; additive)
+
+Per [Ch 31 schema design](/crosswalker/agent-context/zz-research/2026-05-08-challenge-31-deliverable-a-shape-dispatched-data-only/) + [Ch 36 compositional language stack](/crosswalker/agent-context/zz-research/2026-05-09-challenge-36-query-language-rerun/), v0.1.6 added an optional `query:` block to the recipe schema. Recipes can now declare WHAT to query (axes, edges, aggregation) without writing SQL — the engine compiles the declared block to SQL recursive CTEs against the Tier 2 sqlite-wasm cache.
+
+**Backward compatibility**: existing recipes WITHOUT `query:` continue to validate. The bump is purely additive (SchemaVer ADDITION); SchemaVer URI did NOT bump (`https://crosswalker.dev/spec/recipe.schema.json` stays).
+
+**Eight Layer A query verbs** (per [Ch 29 adversarial validation](/crosswalker/agent-context/zz-research/2026-05-09-challenge-29-ontology-web-query-verbs-validation/)): `filter / traverse / bind / project / aggregate / anti-join / set-op / diff`. Closure folded into parameterized `traverse(depth=*, transitive=true)`. Pivot demoted to Layer B (presentation, not value-producing).
+
+**Six view shapes** (per [Ch 30 view shape taxonomy](/crosswalker/agent-context/zz-research/2026-05-09-challenge-30-view-shape-taxonomy/)): `table / list / pivot / graph / hierarchy / timeline`. v0.1 first-class catalog: Pivot (custom Bases view `crosswalkerPivot`) + Table/List/Cards (Bases-native consumed) + Hierarchy (graduates v0.1.7-v0.1.8). Graph + Timeline schema-declared; renderers ship v0.2+.
+
+**Top-level query block shape:**
+
+```typescript
+interface QueryBlock {
+  version?: string;                 // SchemaVer (default '1.0.0')
+  id?: string;                      // stable ID; e.g. 'nist-csf-coverage-matrix'
+  title?: string;
+  description?: string;
+  shape: 'table' | 'list' | 'pivot' | 'graph' | 'hierarchy' | 'timeline';
+  primitives: TablePrimitives | ListPrimitives | PivotPrimitives
+            | GraphPrimitives | HierarchyPrimitives | TimelinePrimitives;
+  output?: { target: 'bases' | 'codeblock' | 'note' | 'inline'; ... };
+  view?: { limit?: number; sort?: Sort[]; groupBy?: GroupBy; ... };
+  params?: Record<string, QueryParam>;   // Datasette-style :name params
+  provenance?: { source: 'system' | 'user' | 'community'; ... };
+  user_edited?: boolean;
+}
+```
+
+**Pivot primitives example** (the v0.1.6 launch-market Coverage Matrix shape):
+
+```yaml
+query:
+  shape: pivot
+  primitives:
+    rows:
+      of: nist-csf
+      by: subject_id
+    cols:
+      of: nist-800-53
+      by: object_id
+    cell:
+      op: count
+      as: mapping_count
+      empty: gap
+```
+
+**Two discriminator styles ship** (per Ch 31a + Ch 31b):
+
+| Style | Discriminator | Default? | Trade-off |
+|---|---|---|---|
+| **A** | `oneOf` + `const` | ✅ default | "Must match exactly one schema" errors |
+| **B** | `if`/`then`/`else` | advanced | Focused per-shape errors; better IDE autocomplete |
+
+Settings → "Recipe schema → Recipe query block schema style" picks the active validator. Both styles produce identical validity verdicts; differ in error-message UX. Implementation detail: validator compiles both styles at init; `buildStyleBSchema()` deep-clones the schema and patches `query_block.allOf[0]` to reference `ShapeDispatchB` (strips `$id` so AJV compiles as anonymous variant).
+
+**Allowed string-expression language**: JSONata only (per Ch 36 compositional language stack). No inline SQL, SPARQL, or Crosswalker-invented DSL inside the `query:` block.
+
+**Reference recipes shipped to `recipes/v0-1/`**:
+
+| File | Shape | Notes |
+|---|---|---|
+| `coverage-matrix.json` | pivot | Launch-market NIST CSF × ISO 27001 |
+| `crosswalk-density.json` | table | Aggregates per framework pair |
+| `orphan-controls.json` | list | Demonstrates anti-join verb |
+| `hierarchy-view.json` | hierarchy | Renderer ships v0.1.7-v0.1.8 |
+| `list-view.json` | list | Minimal Bases-native list |
+
+**Implementing milestone**: [v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) ships the schema (Phase 1 ✅) + the `crosswalkerPivot` view that consumes pivot-shaped queries (Phase 3) + recipe-picker UX that emits embedded `\`\`\`base` blocks (Phase 4) + opt-in materialization (Phase 5).
+
 ## §5 Junction note 13-field schema (per evidence-link edge)
 
 Per [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/): evidence links are **edge-as-note reified** — one markdown file per evidence→control relationship.
