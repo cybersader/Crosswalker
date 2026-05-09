@@ -276,6 +276,24 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		// Recipe schema (v0.1.6 — per Ch 31)
+		new Setting(containerEl).setName('Recipe schema').setHeading();
+
+		new Setting(containerEl)
+			.setName('Recipe query block schema style')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- contains JSON Schema technical terms (oneOf, const, if/then/else) that must keep their canonical casing
+			.setDesc('Both styles validate identically; differ only in error messages and IDE autocomplete behavior. Style A (default) uses oneOf+const discriminator. Style B uses if/then/else discriminator. Per Ch 31.')
+			.addDropdown(dropdown => dropdown
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
+				.addOption('A', 'Style A (default)')
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
+				.addOption('B', 'Style B (advanced)')
+				.setValue(this.plugin.settings.recipeSchemaStyle)
+				.onChange(async (value) => {
+					this.plugin.settings.recipeSchemaStyle = value as 'A' | 'B';
+					await this.plugin.saveSettings();
+				}));
+
 		// Debug Section
 		new Setting(containerEl).setName('Debug').setHeading();
 

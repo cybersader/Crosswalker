@@ -20,7 +20,7 @@
  */
 
 import Ajv2020 from 'ajv/dist/2020';
-import type { ErrorObject, ValidateFunction } from 'ajv';
+import type { AnySchema, ErrorObject, ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
 
 import tier1Schema from '../../spec/tier1.schema.json';
@@ -35,13 +35,44 @@ export interface ValidationResult {
 	rawErrors?: ErrorObject[];
 }
 
+/** Recipe schema discriminator style (per Ch 31 + v0.1.6 settings.recipeSchemaStyle). */
+export type RecipeSchemaStyle = 'A' | 'B';
+
 let ajv: Ajv2020 | null = null;
 let validateTier1Inner: ValidateFunction | null = null;
-let validateRecipeInner: ValidateFunction | null = null;
+let validateRecipeStyleA: ValidateFunction | null = null;
+let validateRecipeStyleB: ValidateFunction | null = null;
 
 /**
- * Initialize AJV + compile the two spec schemas. Throws if a spec file is
+ * Build a style-B variant of the recipe schema by patching the in-memory
+ * schema object before AJV compilation. Style B uses if/then/else dispatch
+ * (ShapeDispatchB) instead of style A's oneOf+const (ShapeDispatchA). Both
+ * are defined in spec/recipe.schema.json `$defs`; this swaps which one
+ * `query_block.allOf[0]` references. Per Ch 31 deliverables A + B —
+ * semantically equivalent; differ in error-message focus + IDE autocomplete.
+ *
+ * Strips the `$id` from the cloned schema so AJV treats it as anonymous
+ * (otherwise both compiles would conflict on the same canonical URI).
+ * Internal `#/$defs/...` $refs resolve correctly without `$id`.
+ */
+function buildStyleBSchema(base: unknown): AnySchema {
+	// Deep clone so we don't mutate the imported JSON.
+	const cloned = JSON.parse(JSON.stringify(base));
+	if (cloned?.$defs?.query_block?.allOf?.[0]) {
+		cloned.$defs.query_block.allOf[0] = { $ref: '#/$defs/ShapeDispatchB' };
+	}
+	// Strip $id so AJV can compile this as an anonymous variant.
+	delete cloned.$id;
+	return cloned as AnySchema;
+}
+
+/**
+ * Initialize AJV + compile the spec schemas. Throws if a spec file is
  * malformed (which means the project itself is broken — fail-fast at startup).
+ *
+ * Recipe schema compiled in BOTH style A (oneOf+const, default) and style B
+ * (if/then/else, advanced) per Ch 31 v0.1.6 commitment. Settings select which
+ * validator to use at call time via `validateRecipe(recipe, style)`.
  *
  * Idempotent: safe to call multiple times.
  */
@@ -66,10 +97,18 @@ export function initValidator(): void {
 		throw new Error(`spec/tier1.schema.json is malformed: ${(err as Error).message}`);
 	}
 
+	// Compile style A: schema as-shipped (default discriminator).
 	try {
-		validateRecipeInner = ajv.compile(recipeSchema);
+		validateRecipeStyleA = ajv.compile(recipeSchema);
 	} catch (err) {
-		throw new Error(`spec/recipe.schema.json is malformed: ${(err as Error).message}`);
+		throw new Error(`spec/recipe.schema.json (style A) is malformed: ${(err as Error).message}`);
+	}
+
+	// Compile style B: same schema, ShapeDispatchA → ShapeDispatchB swap.
+	try {
+		validateRecipeStyleB = ajv.compile(buildStyleBSchema(recipeSchema));
+	} catch (err) {
+		throw new Error(`spec/recipe.schema.json (style B variant) is malformed: ${(err as Error).message}`);
 	}
 }
 
@@ -92,11 +131,18 @@ export function validateTier1Frontmatter(fm: unknown): ValidationResult {
  * Used at recipe-load time (import wizard save, recipe browser open) to
  * reject malformed recipes early with line/column-level errors users can
  * act on.
+ *
+ * @param recipe - The recipe object to validate.
+ * @param style  - Discriminator style for the optional `query:` block (per Ch 31).
+ *                 'A' (default; oneOf+const) or 'B' (if/then/else). Both styles
+ *                 produce identical validity verdicts; differ in error-message
+ *                 focus + IDE autocomplete behavior. Pass `settings.recipeSchemaStyle`.
  */
-export function validateRecipe(recipe: unknown): ValidationResult {
-	if (!validateRecipeInner) initValidator();
-	const valid = !!validateRecipeInner!(recipe);
-	return formatResult(valid, validateRecipeInner!.errors);
+export function validateRecipe(recipe: unknown, style: RecipeSchemaStyle = 'A'): ValidationResult {
+	if (!validateRecipeStyleA || !validateRecipeStyleB) initValidator();
+	const validator = style === 'B' ? validateRecipeStyleB! : validateRecipeStyleA!;
+	const valid = !!validator(recipe);
+	return formatResult(valid, validator.errors);
 }
 
 function formatResult(valid: boolean, rawErrors: ErrorObject[] | null | undefined): ValidationResult {

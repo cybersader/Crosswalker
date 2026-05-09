@@ -1,0 +1,66 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "orphan-controls-no-evidence",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "$comment": "v0.1.6 reference recipe demonstrating the LIST view shape (per Ch 30) + the anti-join verb (per Ch 29 Settled #14). Lists 800-53 controls that have NO evidence junction notes attached — the canonical 'compliance gap' query. The anti-join is expressed via the where filter referencing absence of an :hasEvidence edge.",
+
+  "source": {
+    "ontology": "nist-800-53",
+    "levels": ["catalog", "family", "control"]
+  },
+
+  "target": {
+    "layout": [
+      { "level": "catalog", "mechanism": "folder", "template": "Frameworks/{catalog.name}" },
+      { "level": "family",  "mechanism": "folder", "template": "{family.id}" },
+      { "level": "control", "mechanism": "file",   "template": "{control.id}.md" }
+    ],
+    "also_emit": {
+      "tags": ["framework/nist-800-53/{family.id|lower}"],
+      "frontmatter": {
+        "managed": {
+          "control_id": "{control.id}",
+          "family":     "{family.id}",
+          "framework":  "nist-800-53"
+        },
+        "user_preserve": ["evidence_links", "review_status", "*notes*"]
+      }
+    }
+  },
+
+  "query": {
+    "version": "1.0.0",
+    "id": "orphan-controls-no-evidence",
+    "title": "Orphan controls (no evidence linked)",
+    "description": "List of 800-53 controls that have NO :hasEvidence junction notes. Anti-join semantics: KEEP control IF NOT EXISTS evidence-junction.",
+    "shape": "list",
+    "primitives": {
+      "from": "nist-800-53",
+      "where": {
+        "not": [
+          "$exists($filter($$.junction_notes, function($j) { $j.subject_id = $$.control_id and $j.predicate_id = ':hasEvidence' }))"
+        ]
+      },
+      "item": {
+        "field": "control_id",
+        "format": "{control_id} ({family})"
+      },
+      "sort": [
+        { "by": "family",     "direction": "asc" },
+        { "by": "control_id", "direction": "asc" }
+      ]
+    },
+    "view": {
+      "limit": 1000,
+      "empty_label": "(All controls have evidence — no orphans)"
+    },
+    "output": {
+      "target": "bases"
+    },
+    "provenance": {
+      "source": "system",
+      "recipe_id": "orphan-controls-no-evidence"
+    }
+  }
+}

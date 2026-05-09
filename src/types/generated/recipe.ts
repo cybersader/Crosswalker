@@ -5,7 +5,7 @@
  */
 
 /**
- * One entry of the recipe.target.layout array. Specifies how a single source level lands in the target vault. The layout array is ordered: outer source levels appear first, leaf-bearing entry appears last (typically mechanism: 'file' or 'heading' for the leaf-as-document case).
+ * One entry of the recipe.target.layout array. Specifies how a single source level lands in the target vault. The layout array is ordered: outer source levels appear first, leaf-bearing entry appears last (typically mechanism: 'file' or 'heading' for the leaf-as-document case). Per Ch 22, the leaf entry MAY declare a `kind` to produce non-concept Tier 1 shapes (junction notes for evidence links, crosswalk edges for ontology mappings); intermediate entries treat `kind` as ignored. Default `kind` is 'concept'.
  */
 export type LayoutEntry = {
 	[k: string]: unknown;
@@ -14,11 +14,122 @@ export type LayoutEntry = {
  * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.
  */
 export type Template = string;
+/**
+ * Optional declarative query block (additive in SchemaVer 1.1.0; per Ch 31 + Ch 36). Recipes WITHOUT `query:` continue to validate; recipes WITH `query:` declare what to query (axes, edges, aggregation) using the 8-verb Layer A primitive vocabulary (per Ch 29). The engine compiles the query+primitives to SQL recursive CTEs against the Tier 2 sqlite-wasm cache. Engine-neutral schema; runtime-portable to Cozo/Oxigraph/etc. JSONata is the only allowed string-expression language inside this block. See `$defs.query_block` for the full schema.
+ */
+export type QueryBlock = ShapeDispatchA & {
+	/**
+	 * SchemaVer of the query block: MODEL.REVISION.ADDITION (Snowplow style). Increment ADDITION for new optional fields; REVISION for backward-compat semantic refinements; MODEL for breaking changes.
+	 */
+	version?: string;
+	/**
+	 * Stable identifier used by the Bases view, codeblock processor, and merge engine.
+	 */
+	id?: string;
+	title?: string;
+	description?: string;
+	/**
+	 * View shape per Ch 30 v0.1 catalog. v0.1.6 ships pivot custom view + table/list (Bases-native). hierarchy graduates to custom view in v0.1.7-v0.1.8. graph + timeline are schema-declared but renderer ships v0.2+.
+	 */
+	shape: 'table' | 'list' | 'pivot' | 'graph' | 'hierarchy' | 'timeline';
+	/**
+	 * Shape-discriminated primitives sub-block. The `shape` field selects which primitives schema applies (see ShapeDispatchA / ShapeDispatchB).
+	 */
+	primitives: {
+		[k: string]: unknown;
+	};
+	output?: QueryOutput;
+	view?: QueryViewOptions;
+	/**
+	 * Named parameters injectable at render time. Mirrors Datasette canned-query :name params.
+	 */
+	params?: {
+		[k: string]: QueryParam;
+	};
+	provenance?: QueryProvenance;
+	user_edited?: boolean;
+	[k: string]: unknown;
+};
+/**
+ * Shape discriminator (style A): oneOf+const dispatch per Ch 31a. Each branch matches one shape and references its primitives sub-schema. Settings.recipeSchemaStyle='A' (default). Validation errors say 'must match exactly one schema' when shape doesn't match any branch.
+ */
+export type ShapeDispatchA =
+	| {
+			shape?: 'table';
+			primitives?: TablePrimitives;
+			[k: string]: unknown;
+	  }
+	| {
+			shape?: 'list';
+			primitives?: ListPrimitives;
+			[k: string]: unknown;
+	  }
+	| {
+			shape?: 'pivot';
+			primitives?: PivotPrimitives;
+			[k: string]: unknown;
+	  }
+	| {
+			shape?: 'graph';
+			primitives?: GraphPrimitives;
+			[k: string]: unknown;
+	  }
+	| {
+			shape?: 'hierarchy';
+			primitives?: HierarchyPrimitives;
+			[k: string]: unknown;
+	  }
+	| {
+			shape?: 'timeline';
+			primitives?: TimelinePrimitives;
+			[k: string]: unknown;
+	  };
+/**
+ * Either an ontology id (e.g. 'nist_csf_2_0') or a CURIE prefix (e.g. 'csf:'). Per Ch 31a query-block schema.
+ */
+export type OntologyRef = string;
+/**
+ * A filter predicate — JSONata expression string OR a structured AND/OR/NOT tree. Per Ch 31a + Ch 36: JSONata is the only allowed string-expression slot in the schema.
+ */
+export type QueryFilter =
+	| string
+	| {
+			and?: QueryFilter[];
+			or?: QueryFilter[];
+			not?: QueryFilter[];
+	  };
+/**
+ * Dotted property path against the in-memory model (e.g. 'concept.label', 'edge.weight', 'note.frontmatter.status').
+ */
+export type FieldSelector = string;
+export type GroupBy = FieldSelector | [FieldSelector, ...FieldSelector[]];
+/**
+ * Built-in aggregation operators. Custom ops registered by Tier 2 helpers MUST start with 'x_'.
+ */
+export type AggregationOp =
+	| ('count' | 'count_distinct' | 'sum' | 'avg' | 'min' | 'max' | 'density' | 'first' | 'last')
+	| string;
+/**
+ * A CURIE for a concept node (e.g. 'csf:GV.OC-01') OR a wildcard '*'.
+ */
+export type ConceptRef = string;
+/**
+ * Edge type from the Crosswalker ontology: equivalent_to, broader_than, narrower_than, related_to, supports, etc. Extensible via plugins.
+ */
+export type EdgePredicate = string;
 
 /**
  * The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.
  */
 export interface CrosswalkerImportRecipe {
+	/**
+	 * Optional JSON Schema URI hint for editor autocomplete. Recipes typically set this to 'https://crosswalker.dev/spec/recipe.schema.json' so VS Code / IntelliJ resolve the schema for validation + autocomplete. Not load-bearing for plugin runtime — Crosswalker validates against the bundled schema regardless of what value is here.
+	 */
+	$schema?: string;
+	/**
+	 * Optional free-text comment for recipe authors. Ignored by the validator and runtime. Useful for explaining why a recipe was authored, what it depends on, what it's for.
+	 */
+	$comment?: string;
 	/**
 	 * Recipe identifier. Stable across re-runs. Used in _crosswalker.recipe.id provenance. Examples: 'nist-80053r5-allfolders', 'iso27001-mostly-headings', 'mitre-attack-tag-driven'.
 	 */
@@ -29,6 +140,7 @@ export interface CrosswalkerImportRecipe {
 	spec_version?: 'https://crosswalker.dev/spec/recipe.schema.json';
 	source: SourceDeclaration;
 	target: TargetStructure;
+	query?: QueryBlock;
 }
 /**
  * What ontology this recipe imports. Out-of-scope: where the source bytes come from (file path, URL) — that's the producer's input, not the recipe's concern.
@@ -110,4 +222,164 @@ export interface GraphEdge {
 	 * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.
 	 */
 	to: string;
+}
+export interface TablePrimitives {
+	from: OntologyRef;
+	where?: QueryFilter;
+	join?: Join[];
+	/**
+	 * @minItems 1
+	 */
+	select: [Projection, ...Projection[]];
+	groupBy?: GroupBy;
+	agg?: Aggregate[];
+	sort?: QuerySort[];
+}
+export interface Join {
+	with: OntologyRef;
+	/**
+	 * Join predicate, typically an edge type or shared field.
+	 */
+	on: string;
+	kind?: 'inner' | 'left' | 'right' | 'outer';
+}
+export interface Projection {
+	field: FieldSelector;
+	as?: string;
+	format?: string;
+}
+export interface Aggregate {
+	op: AggregationOp;
+	of?: FieldSelector;
+	as?: string;
+	where?: QueryFilter;
+	/**
+	 * Empty-cell semantics: 'gap' (renders as void/—), 'blank' (empty string), 'zero' (numeric 0).
+	 */
+	empty?: 'gap' | 'blank' | 'zero';
+}
+export interface QuerySort {
+	by: FieldSelector;
+	direction?: 'asc' | 'desc';
+}
+export interface ListPrimitives {
+	from: OntologyRef;
+	where?: QueryFilter;
+	item: Projection;
+	sort?: QuerySort[];
+}
+/**
+ * Pivot shape: rows × cols × cell. The launch-market 'Coverage Matrix' recipe instance composes filter+traverse+anti-join+pivot.
+ */
+export interface PivotPrimitives {
+	from?: OntologyRef;
+	where?: QueryFilter;
+	join?: Join[];
+	rows: {
+		of: OntologyRef;
+		by: FieldSelector;
+		where?: QueryFilter;
+	};
+	cols: {
+		of: OntologyRef;
+		by: FieldSelector;
+		where?: QueryFilter;
+	};
+	cell: Aggregate;
+	sort?: QuerySort[];
+}
+/**
+ * Graph shape. Schema declared in v0.1.6; renderer (crosswalkerGraph custom view) ships v0.2 per Ch 30.
+ */
+export interface GraphPrimitives {
+	start?: ConceptRef;
+	nodes: {
+		from: OntologyRef;
+		where?: QueryFilter;
+		label?: FieldSelector;
+	};
+	edges: {
+		via: EdgePredicate | EdgePredicate[];
+		where?: QueryFilter;
+		depth?: number;
+		transitive?: boolean;
+		direction?: 'out' | 'in' | 'both';
+	};
+	traverse?: Traversal[];
+}
+/**
+ * A graph traversal step. Subsumes single-hop and transitive walks via depth + transitive params (per Ch 29: closure folded into traverse).
+ */
+export interface Traversal {
+	from: ConceptRef;
+	via?: EdgePredicate | EdgePredicate[];
+	depth?: number;
+	transitive?: boolean;
+	direction?: 'out' | 'in' | 'both';
+}
+/**
+ * Hierarchy shape. Schema declared in v0.1.6; renderer (crosswalkerHierarchy custom view) graduates v0.1.7-v0.1.8 per Ch 30.
+ */
+export interface HierarchyPrimitives {
+	from?: OntologyRef;
+	root: ConceptRef;
+	predicate: EdgePredicate;
+	depth?: number;
+	leafAgg?: Aggregate;
+	where?: QueryFilter;
+}
+/**
+ * Timeline shape. Schema declared in v0.1.6; renderer deferred to v0.2+ per Ch 30 (let Bases ship native timeline first).
+ */
+export interface TimelinePrimitives {
+	axis: {
+		field: FieldSelector;
+		granularity?: 'day' | 'week' | 'month' | 'quarter' | 'year';
+		from?: string;
+		to?: string;
+	};
+	events: {
+		from: OntologyRef;
+		where?: QueryFilter;
+		label?: FieldSelector;
+		agg?: Aggregate;
+	};
+	groupBy?: GroupBy;
+}
+/**
+ * Where the query result lands. 'bases' compiles to a Bases view; 'codeblock' renders via crosswalker-pivot processor (deferred per D2); 'note' writes a generated note; 'inline' embeds in a host note as a ````base` block.
+ */
+export interface QueryOutput {
+	target: 'bases' | 'codeblock' | 'note' | 'inline';
+	path?: string;
+	view_id?: string;
+	/**
+	 * If target=codeblock or inline, the host note path.
+	 */
+	embed_in?: string;
+}
+/**
+ * Presentation hints. Kept narrow on purpose — query block does NOT specify column widths, colors, etc. (those belong in the .base file's view declaration).
+ */
+export interface QueryViewOptions {
+	limit?: number;
+	sort?: QuerySort[];
+	groupBy?: GroupBy;
+	labels?: {
+		[k: string]: string;
+	};
+	empty_label?: string;
+	[k: string]: unknown;
+}
+export interface QueryParam {
+	type: 'string' | 'number' | 'boolean' | 'date' | 'concept' | 'ontology';
+	default?: unknown;
+	required?: boolean;
+	description?: string;
+}
+export interface QueryProvenance {
+	source: 'system' | 'user' | 'community';
+	author?: string;
+	recipe_id?: string;
+	modified?: string;
 }

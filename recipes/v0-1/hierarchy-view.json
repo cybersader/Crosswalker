@@ -1,0 +1,54 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "skos-hierarchy-narrower",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "$comment": "v0.1.6 reference recipe for the HIERARCHY view shape (per Ch 30). Schema-declared in v0.1.6; renderer (crosswalkerHierarchy custom view) graduates v0.1.7-v0.1.8. Until then, this recipe is schema-valid + can be authored, but the embedded base block won't render — the hierarchy view shape is reserved. Demonstrates SKOS narrowerTransitive walk from a top concept (per Ch 29 Settled #14: closure folded into traverse with depth=*).",
+
+  "source": {
+    "ontology": "skos-taxonomy",
+    "levels": ["scheme", "concept"]
+  },
+
+  "target": {
+    "layout": [
+      { "level": "scheme",  "mechanism": "folder", "template": "Taxonomies/{scheme.name}" },
+      { "level": "concept", "mechanism": "file",   "template": "{concept.prefLabel|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "concept_id": "{concept.id}",
+          "prefLabel":  "{concept.prefLabel}",
+          "broader":    "{concept.broader}",
+          "scheme":     "{scheme.id}"
+        },
+        "user_preserve": ["*notes*"]
+      }
+    }
+  },
+
+  "query": {
+    "version": "1.0.0",
+    "id": "skos-hierarchy-narrower",
+    "title": "SKOS narrower hierarchy",
+    "description": "Walk skos:narrowerTransitive from a top-level concept down to leaves. Renders as collapsible indented tree (graduates to crosswalkerHierarchy custom view in v0.1.7-v0.1.8).",
+    "shape": "hierarchy",
+    "primitives": {
+      "from": "skos-taxonomy",
+      "root": "skos:TopConcept",
+      "predicate": "skos:narrower",
+      "depth": 32
+    },
+    "view": {
+      "limit": 5000
+    },
+    "output": {
+      "target": "bases"
+    },
+    "provenance": {
+      "source": "system",
+      "recipe_id": "skos-hierarchy-narrower"
+    }
+  }
+}

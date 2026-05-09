@@ -4,7 +4,7 @@ import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
 import { ConfigBrowserModal } from './config/config-browser-modal';
 import { DebugLog } from './utils/debug';
-import { initValidator, validateRecipe, validateTier1Frontmatter } from './validation/validator';
+import { initValidator, validateRecipe as validateRecipeFn, validateTier1Frontmatter } from './validation/validator';
 import { render } from './render';
 import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './generation/frontmatter-merge';
@@ -39,7 +39,11 @@ export default class CrosswalkerPlugin extends Plugin {
 	// instance so E2E tests + future command implementations can call them
 	// via the plugin reference. Underlying implementations are pure module
 	// exports.
-	validateRecipe = validateRecipe;
+	//
+	// validateRecipe wraps the module export with the active recipeSchemaStyle
+	// from settings (per Ch 31 v0.1.6) — callers don't need to know which
+	// discriminator style is active.
+	validateRecipe = (recipe: unknown) => validateRecipeFn(recipe, this.settings.recipeSchemaStyle);
 	validateTier1Frontmatter = validateTier1Frontmatter;
 	render = render;
 	legacyConfigToRecipe = legacyConfigToRecipe;

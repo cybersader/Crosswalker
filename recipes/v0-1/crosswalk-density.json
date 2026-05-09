@@ -1,0 +1,68 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "crosswalk-density-by-framework",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "$comment": "v0.1.6 reference recipe for the TABLE view shape (per Ch 30) — Bases-native; renders via the standard Bases Table view. Aggregates crosswalk-edge counts per (source_framework, target_framework) pair. Demonstrates aggregate primitive + table shape.",
+
+  "source": {
+    "ontology": "nist-olir",
+    "levels": ["mapping"]
+  },
+
+  "target": {
+    "layout": [
+      {
+        "level": "mapping",
+        "mechanism": "file",
+        "template": "Crosswalks/{source_framework}-to-{target_framework}/cw-{subject_id|slug}-{object_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "subject_id": "{subject_id}",
+          "predicate_id": "{predicate_id}",
+          "object_id": "{object_id}",
+          "source_framework": "{source_framework}",
+          "target_framework": "{target_framework}"
+        },
+        "user_preserve": ["*notes*"]
+      }
+    }
+  },
+
+  "query": {
+    "version": "1.0.0",
+    "id": "crosswalk-density-by-framework",
+    "title": "Crosswalk density by framework pair",
+    "description": "Table of (source_framework, target_framework, mapping_count). Shows where the crosswalk corpus is dense vs sparse.",
+    "shape": "table",
+    "primitives": {
+      "from": "nist-olir",
+      "select": [
+        { "field": "source_framework", "as": "source" },
+        { "field": "target_framework", "as": "target" },
+        { "field": "mapping_count",    "as": "count" }
+      ],
+      "groupBy": ["source_framework", "target_framework"],
+      "agg": [
+        { "op": "count", "as": "mapping_count" }
+      ],
+      "sort": [
+        { "by": "mapping_count", "direction": "desc" }
+      ]
+    },
+    "view": {
+      "limit": 100
+    },
+    "output": {
+      "target": "bases"
+    },
+    "provenance": {
+      "source": "system",
+      "recipe_id": "crosswalk-density-by-framework"
+    }
+  }
+}

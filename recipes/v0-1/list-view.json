@@ -1,0 +1,69 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "controls-by-family-list",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "$comment": "v0.1.6 reference recipe for the LIST view shape (per Ch 30) — Bases-native; renders via the standard Bases List view. Simple list of 800-53 controls labeled '<id> — <title>'. Demonstrates filter + project + sort over a single ontology with NO crosswalk join.",
+
+  "source": {
+    "ontology": "nist-800-53",
+    "levels": ["catalog", "family", "control"]
+  },
+
+  "target": {
+    "layout": [
+      { "level": "catalog", "mechanism": "folder", "template": "Frameworks/{catalog.name}" },
+      { "level": "family",  "mechanism": "folder", "template": "{family.id}" },
+      { "level": "control", "mechanism": "file",   "template": "{control.id}.md" }
+    ],
+    "also_emit": {
+      "tags": ["framework/nist-800-53/{family.id|lower}"],
+      "frontmatter": {
+        "managed": {
+          "control_id": "{control.id}",
+          "control_title": "{control.title}",
+          "family":        "{family.id}",
+          "framework":     "nist-800-53"
+        },
+        "user_preserve": ["*notes*"]
+      }
+    }
+  },
+
+  "query": {
+    "version": "1.0.0",
+    "id": "controls-by-family-list",
+    "title": "800-53 controls by family",
+    "description": "Flat list of 800-53 controls. Sortable by family + control id. Default Bases-native rendering as a List view.",
+    "shape": "list",
+    "primitives": {
+      "from": "nist-800-53",
+      "where": "$$.framework = 'nist-800-53'",
+      "item": {
+        "field": "control_id",
+        "format": "{control_id} — {control_title}"
+      },
+      "sort": [
+        { "by": "family",     "direction": "asc" },
+        { "by": "control_id", "direction": "asc" }
+      ]
+    },
+    "params": {
+      "family_filter": {
+        "type": "string",
+        "default": "",
+        "description": "Optional family ID prefix to narrow the list (e.g. 'AC', 'AU')."
+      }
+    },
+    "view": {
+      "limit": 2000
+    },
+    "output": {
+      "target": "bases"
+    },
+    "provenance": {
+      "source": "system",
+      "recipe_id": "controls-by-family-list"
+    }
+  }
+}

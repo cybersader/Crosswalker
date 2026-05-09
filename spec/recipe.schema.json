@@ -4,7 +4,7 @@
   "title": "Crosswalker Import Recipe",
   "description": "The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.1.0 (additive bump 2026-05-09 per v0.1.6: optional `query:` block added per Ch 31; all existing recipes without `query:` continue to validate).",
 
   "$defs": {
     "mechanism": {
@@ -103,6 +103,392 @@
           "examples": [["reviewer", "status", "evidence_links"], ["*notes*"], ["*"]]
         }
       }
+    },
+
+    "OntologyRef": {
+      "description": "Either an ontology id (e.g. 'nist_csf_2_0') or a CURIE prefix (e.g. 'csf:'). Per Ch 31a query-block schema.",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]*$"
+    },
+
+    "ConceptRef": {
+      "description": "A CURIE for a concept node (e.g. 'csf:GV.OC-01') OR a wildcard '*'.",
+      "type": "string",
+      "pattern": "^(\\*|[A-Za-z][A-Za-z0-9_.-]*:[A-Za-z0-9_./-]+)$"
+    },
+
+    "EdgePredicate": {
+      "description": "Edge type from the Crosswalker ontology: equivalent_to, broader_than, narrower_than, related_to, supports, etc. Extensible via plugins.",
+      "type": "string",
+      "minLength": 1
+    },
+
+    "FieldSelector": {
+      "description": "Dotted property path against the in-memory model (e.g. 'concept.label', 'edge.weight', 'note.frontmatter.status').",
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_.]*$"
+    },
+
+    "AggregationOp": {
+      "description": "Built-in aggregation operators. Custom ops registered by Tier 2 helpers MUST start with 'x_'.",
+      "oneOf": [
+        { "enum": ["count", "count_distinct", "sum", "avg", "min", "max", "density", "first", "last"] },
+        { "type": "string", "pattern": "^x_[a-z][a-z0-9_]*$" }
+      ]
+    },
+
+    "QueryFilter": {
+      "description": "A filter predicate — JSONata expression string OR a structured AND/OR/NOT tree. Per Ch 31a + Ch 36: JSONata is the only allowed string-expression slot in the schema.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "properties": {
+            "and": { "type": "array", "items": { "$ref": "#/$defs/QueryFilter" } },
+            "or":  { "type": "array", "items": { "$ref": "#/$defs/QueryFilter" } },
+            "not": { "type": "array", "items": { "$ref": "#/$defs/QueryFilter" } }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "QuerySort": {
+      "type": "object",
+      "required": ["by"],
+      "properties": {
+        "by": { "$ref": "#/$defs/FieldSelector" },
+        "direction": { "enum": ["asc", "desc"], "default": "asc" }
+      },
+      "additionalProperties": false
+    },
+
+    "Projection": {
+      "type": "object",
+      "required": ["field"],
+      "properties": {
+        "field":  { "$ref": "#/$defs/FieldSelector" },
+        "as":     { "type": "string" },
+        "format": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "Traversal": {
+      "description": "A graph traversal step. Subsumes single-hop and transitive walks via depth + transitive params (per Ch 29: closure folded into traverse).",
+      "type": "object",
+      "required": ["from"],
+      "properties": {
+        "from": { "$ref": "#/$defs/ConceptRef" },
+        "via": {
+          "oneOf": [
+            { "$ref": "#/$defs/EdgePredicate" },
+            { "type": "array", "items": { "$ref": "#/$defs/EdgePredicate" } }
+          ]
+        },
+        "depth":      { "type": "integer", "minimum": 1, "default": 1 },
+        "transitive": { "type": "boolean", "default": false },
+        "direction":  { "enum": ["out", "in", "both"], "default": "out" }
+      },
+      "additionalProperties": false
+    },
+
+    "Aggregate": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op":    { "$ref": "#/$defs/AggregationOp" },
+        "of":    { "$ref": "#/$defs/FieldSelector" },
+        "as":    { "type": "string" },
+        "where": { "$ref": "#/$defs/QueryFilter" },
+        "empty": {
+          "description": "Empty-cell semantics: 'gap' (renders as void/—), 'blank' (empty string), 'zero' (numeric 0).",
+          "enum": ["gap", "blank", "zero"],
+          "default": "gap"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "Join": {
+      "type": "object",
+      "required": ["with", "on"],
+      "properties": {
+        "with":  { "$ref": "#/$defs/OntologyRef" },
+        "on":    { "type": "string", "description": "Join predicate, typically an edge type or shared field." },
+        "kind":  { "enum": ["inner", "left", "right", "outer"], "default": "inner" }
+      },
+      "additionalProperties": false
+    },
+
+    "GroupBy": {
+      "oneOf": [
+        { "$ref": "#/$defs/FieldSelector" },
+        { "type": "array", "items": { "$ref": "#/$defs/FieldSelector" }, "minItems": 1 }
+      ]
+    },
+
+    "QueryParam": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type":        { "enum": ["string", "number", "boolean", "date", "concept", "ontology"] },
+        "default":     {},
+        "required":    { "type": "boolean", "default": false },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "QueryProvenance": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source":    { "enum": ["system", "user", "community"] },
+        "author":    { "type": "string" },
+        "recipe_id": { "type": "string" },
+        "modified":  { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+
+    "QueryOutput": {
+      "description": "Where the query result lands. 'bases' compiles to a Bases view; 'codeblock' renders via crosswalker-pivot processor (deferred per D2); 'note' writes a generated note; 'inline' embeds in a host note as a ````base` block.",
+      "type": "object",
+      "required": ["target"],
+      "properties": {
+        "target":   { "enum": ["bases", "codeblock", "note", "inline"] },
+        "path":     { "type": "string" },
+        "view_id":  { "type": "string" },
+        "embed_in": { "type": "string", "description": "If target=codeblock or inline, the host note path." }
+      },
+      "additionalProperties": false
+    },
+
+    "QueryViewOptions": {
+      "description": "Presentation hints. Kept narrow on purpose — query block does NOT specify column widths, colors, etc. (those belong in the .base file's view declaration).",
+      "type": "object",
+      "properties": {
+        "limit":       { "type": "integer", "minimum": 1 },
+        "sort":        { "type": "array", "items": { "$ref": "#/$defs/QuerySort" } },
+        "groupBy":     { "$ref": "#/$defs/GroupBy" },
+        "labels":      { "type": "object", "additionalProperties": { "type": "string" } },
+        "empty_label": { "type": "string", "default": "—" }
+      },
+      "additionalProperties": true
+    },
+
+    "TablePrimitives": {
+      "type": "object",
+      "required": ["from", "select"],
+      "properties": {
+        "from":    { "$ref": "#/$defs/OntologyRef" },
+        "where":   { "$ref": "#/$defs/QueryFilter" },
+        "join":    { "type": "array", "items": { "$ref": "#/$defs/Join" } },
+        "select":  { "type": "array", "items": { "$ref": "#/$defs/Projection" }, "minItems": 1 },
+        "groupBy": { "$ref": "#/$defs/GroupBy" },
+        "agg":     { "type": "array", "items": { "$ref": "#/$defs/Aggregate" } },
+        "sort":    { "type": "array", "items": { "$ref": "#/$defs/QuerySort" } }
+      },
+      "additionalProperties": false
+    },
+
+    "ListPrimitives": {
+      "type": "object",
+      "required": ["from", "item"],
+      "properties": {
+        "from":  { "$ref": "#/$defs/OntologyRef" },
+        "where": { "$ref": "#/$defs/QueryFilter" },
+        "item":  { "$ref": "#/$defs/Projection" },
+        "sort":  { "type": "array", "items": { "$ref": "#/$defs/QuerySort" } }
+      },
+      "additionalProperties": false
+    },
+
+    "PivotPrimitives": {
+      "description": "Pivot shape: rows × cols × cell. The launch-market 'Coverage Matrix' recipe instance composes filter+traverse+anti-join+pivot.",
+      "type": "object",
+      "required": ["rows", "cols", "cell"],
+      "properties": {
+        "from":  { "$ref": "#/$defs/OntologyRef" },
+        "where": { "$ref": "#/$defs/QueryFilter" },
+        "join":  { "type": "array", "items": { "$ref": "#/$defs/Join" } },
+        "rows":  {
+          "type": "object",
+          "required": ["of", "by"],
+          "properties": {
+            "of":    { "$ref": "#/$defs/OntologyRef" },
+            "by":    { "$ref": "#/$defs/FieldSelector" },
+            "where": { "$ref": "#/$defs/QueryFilter" }
+          },
+          "additionalProperties": false
+        },
+        "cols": {
+          "type": "object",
+          "required": ["of", "by"],
+          "properties": {
+            "of":    { "$ref": "#/$defs/OntologyRef" },
+            "by":    { "$ref": "#/$defs/FieldSelector" },
+            "where": { "$ref": "#/$defs/QueryFilter" }
+          },
+          "additionalProperties": false
+        },
+        "cell": { "$ref": "#/$defs/Aggregate" },
+        "sort": { "type": "array", "items": { "$ref": "#/$defs/QuerySort" } }
+      },
+      "additionalProperties": false
+    },
+
+    "GraphPrimitives": {
+      "description": "Graph shape. Schema declared in v0.1.6; renderer (crosswalkerGraph custom view) ships v0.2 per Ch 30.",
+      "type": "object",
+      "required": ["nodes", "edges"],
+      "properties": {
+        "start": { "$ref": "#/$defs/ConceptRef" },
+        "nodes": {
+          "type": "object",
+          "required": ["from"],
+          "properties": {
+            "from":  { "$ref": "#/$defs/OntologyRef" },
+            "where": { "$ref": "#/$defs/QueryFilter" },
+            "label": { "$ref": "#/$defs/FieldSelector" }
+          },
+          "additionalProperties": false
+        },
+        "edges": {
+          "type": "object",
+          "required": ["via"],
+          "properties": {
+            "via": {
+              "oneOf": [
+                { "$ref": "#/$defs/EdgePredicate" },
+                { "type": "array", "items": { "$ref": "#/$defs/EdgePredicate" } }
+              ]
+            },
+            "where":      { "$ref": "#/$defs/QueryFilter" },
+            "depth":      { "type": "integer", "minimum": 1, "default": 1 },
+            "transitive": { "type": "boolean", "default": false },
+            "direction":  { "enum": ["out", "in", "both"], "default": "both" }
+          },
+          "additionalProperties": false
+        },
+        "traverse": { "type": "array", "items": { "$ref": "#/$defs/Traversal" } }
+      },
+      "additionalProperties": false
+    },
+
+    "HierarchyPrimitives": {
+      "description": "Hierarchy shape. Schema declared in v0.1.6; renderer (crosswalkerHierarchy custom view) graduates v0.1.7-v0.1.8 per Ch 30.",
+      "type": "object",
+      "required": ["root", "predicate"],
+      "properties": {
+        "from":      { "$ref": "#/$defs/OntologyRef" },
+        "root":      { "$ref": "#/$defs/ConceptRef" },
+        "predicate": { "$ref": "#/$defs/EdgePredicate" },
+        "depth":     { "type": "integer", "minimum": 1, "default": 32 },
+        "leafAgg":   { "$ref": "#/$defs/Aggregate" },
+        "where":     { "$ref": "#/$defs/QueryFilter" }
+      },
+      "additionalProperties": false
+    },
+
+    "TimelinePrimitives": {
+      "description": "Timeline shape. Schema declared in v0.1.6; renderer deferred to v0.2+ per Ch 30 (let Bases ship native timeline first).",
+      "type": "object",
+      "required": ["axis", "events"],
+      "properties": {
+        "axis": {
+          "type": "object",
+          "required": ["field"],
+          "properties": {
+            "field":       { "$ref": "#/$defs/FieldSelector" },
+            "granularity": { "enum": ["day", "week", "month", "quarter", "year"], "default": "month" },
+            "from":        { "type": "string" },
+            "to":          { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "events": {
+          "type": "object",
+          "required": ["from"],
+          "properties": {
+            "from":  { "$ref": "#/$defs/OntologyRef" },
+            "where": { "$ref": "#/$defs/QueryFilter" },
+            "label": { "$ref": "#/$defs/FieldSelector" },
+            "agg":   { "$ref": "#/$defs/Aggregate" }
+          },
+          "additionalProperties": false
+        },
+        "groupBy": { "$ref": "#/$defs/GroupBy" }
+      },
+      "additionalProperties": false
+    },
+
+    "ShapeDispatchA": {
+      "description": "Shape discriminator (style A): oneOf+const dispatch per Ch 31a. Each branch matches one shape and references its primitives sub-schema. Settings.recipeSchemaStyle='A' (default). Validation errors say 'must match exactly one schema' when shape doesn't match any branch.",
+      "oneOf": [
+        { "properties": { "shape": { "const": "table" },     "primitives": { "$ref": "#/$defs/TablePrimitives" } } },
+        { "properties": { "shape": { "const": "list" },      "primitives": { "$ref": "#/$defs/ListPrimitives" } } },
+        { "properties": { "shape": { "const": "pivot" },     "primitives": { "$ref": "#/$defs/PivotPrimitives" } } },
+        { "properties": { "shape": { "const": "graph" },     "primitives": { "$ref": "#/$defs/GraphPrimitives" } } },
+        { "properties": { "shape": { "const": "hierarchy" }, "primitives": { "$ref": "#/$defs/HierarchyPrimitives" } } },
+        { "properties": { "shape": { "const": "timeline" },  "primitives": { "$ref": "#/$defs/TimelinePrimitives" } } }
+      ]
+    },
+
+    "ShapeDispatchB": {
+      "description": "Shape discriminator (style B): if/then/else dispatch per Ch 31b. Cascading conditional schemas; one allOf entry per shape. Settings.recipeSchemaStyle='B' (advanced). Validation errors are more focused on the specific failing shape branch instead of 'must match exactly one' (style A's failure mode). Semantically equivalent to style A; differs only in error messages and IDE autocomplete behavior.",
+      "allOf": [
+        { "if": { "properties": { "shape": { "const": "table" } },     "required": ["shape"] }, "then": { "properties": { "primitives": { "$ref": "#/$defs/TablePrimitives" } } } },
+        { "if": { "properties": { "shape": { "const": "list" } },      "required": ["shape"] }, "then": { "properties": { "primitives": { "$ref": "#/$defs/ListPrimitives" } } } },
+        { "if": { "properties": { "shape": { "const": "pivot" } },     "required": ["shape"] }, "then": { "properties": { "primitives": { "$ref": "#/$defs/PivotPrimitives" } } } },
+        { "if": { "properties": { "shape": { "const": "graph" } },     "required": ["shape"] }, "then": { "properties": { "primitives": { "$ref": "#/$defs/GraphPrimitives" } } } },
+        { "if": { "properties": { "shape": { "const": "hierarchy" } }, "required": ["shape"] }, "then": { "properties": { "primitives": { "$ref": "#/$defs/HierarchyPrimitives" } } } },
+        { "if": { "properties": { "shape": { "const": "timeline" } },  "required": ["shape"] }, "then": { "properties": { "primitives": { "$ref": "#/$defs/TimelinePrimitives" } } } }
+      ]
+    },
+
+    "query_block": {
+      "description": "Optional declarative query block (additive in SchemaVer 1.1.0; per Ch 31 + Ch 36). Recipes WITH `query:` declare what to query (axes, edges, aggregation) without writing SQL. Recipes WITHOUT `query:` continue to validate (additive). Engine compiles query + primitives to SQL recursive CTEs against the Tier 2 sqlite-wasm cache (per Ch 36 compositional language stack). The runtime is engine-neutral: a future Cozo/Oxigraph implementation could satisfy the same contract. JSONata is the only allowed string-expression language inside this block.",
+      "type": "object",
+      "required": ["shape", "primitives"],
+      "properties": {
+        "version": {
+          "description": "SchemaVer of the query block: MODEL.REVISION.ADDITION (Snowplow style). Increment ADDITION for new optional fields; REVISION for backward-compat semantic refinements; MODEL for breaking changes.",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+          "default": "1.0.0"
+        },
+        "id": {
+          "type": "string",
+          "description": "Stable identifier used by the Bases view, codeblock processor, and merge engine.",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "title":       { "type": "string" },
+        "description": { "type": "string" },
+        "shape": {
+          "description": "View shape per Ch 30 v0.1 catalog. v0.1.6 ships pivot custom view + table/list (Bases-native). hierarchy graduates to custom view in v0.1.7-v0.1.8. graph + timeline are schema-declared but renderer ships v0.2+.",
+          "type": "string",
+          "enum": ["table", "list", "pivot", "graph", "hierarchy", "timeline"]
+        },
+        "primitives": {
+          "description": "Shape-discriminated primitives sub-block. The `shape` field selects which primitives schema applies (see ShapeDispatchA / ShapeDispatchB).",
+          "type": "object"
+        },
+        "output":   { "$ref": "#/$defs/QueryOutput" },
+        "view":     { "$ref": "#/$defs/QueryViewOptions" },
+        "params": {
+          "type": "object",
+          "description": "Named parameters injectable at render time. Mirrors Datasette canned-query :name params.",
+          "additionalProperties": { "$ref": "#/$defs/QueryParam" }
+        },
+        "provenance":  { "$ref": "#/$defs/QueryProvenance" },
+        "user_edited": { "type": "boolean", "default": false }
+      },
+      "unevaluatedProperties": true,
+      "allOf": [
+        { "$ref": "#/$defs/ShapeDispatchA" }
+      ]
     }
   },
 
@@ -110,6 +496,14 @@
   "additionalProperties": false,
 
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema URI hint for editor autocomplete. Recipes typically set this to 'https://crosswalker.dev/spec/recipe.schema.json' so VS Code / IntelliJ resolve the schema for validation + autocomplete. Not load-bearing for plugin runtime — Crosswalker validates against the bundled schema regardless of what value is here."
+    },
+    "$comment": {
+      "type": "string",
+      "description": "Optional free-text comment for recipe authors. Ignored by the validator and runtime. Useful for explaining why a recipe was authored, what it depends on, what it's for."
+    },
     "recipe": {
       "type": "string",
       "minLength": 1,
@@ -187,6 +581,11 @@
           "description": "Wikilink rendering style. 'absolute': always emit full-path form 'Folder/Sub/AC-2'; deterministic; hashable; what the canonical-state hash is computed against. 'shortest': downgrade to bare basename when unambiguous in the target vault; requires Pass 2 of render() with a VaultIndex; non-deterministic across users; deferred to v0.3."
         }
       }
+    },
+
+    "query": {
+      "$ref": "#/$defs/query_block",
+      "description": "Optional declarative query block (additive in SchemaVer 1.1.0; per Ch 31 + Ch 36). Recipes WITHOUT `query:` continue to validate; recipes WITH `query:` declare what to query (axes, edges, aggregation) using the 8-verb Layer A primitive vocabulary (per Ch 29). The engine compiles the query+primitives to SQL recursive CTEs against the Tier 2 sqlite-wasm cache. Engine-neutral schema; runtime-portable to Cozo/Oxigraph/etc. JSONata is the only allowed string-expression language inside this block. See `$defs.query_block` for the full schema."
     }
   },
 

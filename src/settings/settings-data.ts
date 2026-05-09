@@ -59,6 +59,11 @@ export interface CrosswalkerSettings {
 	tier2SidecarPath: string;                   // Vault-relative path; default '.crosswalker.sqlite'
 
 	// ==========================================================================
+	// Recipe schema (v0.1.6 — per Ch 31)
+	// ==========================================================================
+	recipeSchemaStyle: RecipeSchemaStyle;       // 'A' (oneOf+const, default) or 'B' (if/then/else); semantically equivalent
+
+	// ==========================================================================
 	// Debug
 	// ==========================================================================
 	enableDebugLog: boolean;
@@ -75,6 +80,7 @@ export type ArrayHandling = 'as_array' | 'stringify' | 'first' | 'last' | 'join'
 export type EmptyHandling = 'omit' | 'empty_string' | 'null' | 'default';
 export type FrontmatterStyle = 'flat' | 'dot_to_nest' | 'group_by_prefix';
 export type LinkSyntaxPreset = 'simple' | 'standard' | 'full' | 'custom';
+export type RecipeSchemaStyle = 'A' | 'B';
 
 export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	// General / Output
@@ -113,6 +119,9 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	// Tier 2 sidecar (v0.1.5)
 	enableTier2Projection: true,
 	tier2SidecarPath: '.crosswalker.sqlite',
+
+	// Recipe schema (v0.1.6)
+	recipeSchemaStyle: 'A',
 
 	// Debug
 	enableDebugLog: false,

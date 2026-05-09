@@ -1,0 +1,86 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "nist-csf-coverage-matrix",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "$comment": "v0.1.6 reference recipe for the PIVOT view shape (per Ch 30) — the launch-market 'Coverage Matrix' instance (per Ch 22 + synthesis Settled #2). Imports NIST CSF -> 800-53 mappings as crosswalk-edge notes, then declares a pivot query that the crosswalkerPivot custom Bases view renders as a 2D matrix (CSF subcategories on rows, 800-53 controls on cols, mapping count in cells).",
+
+  "source": {
+    "ontology": "nist-olir",
+    "levels": ["mapping"]
+  },
+
+  "target": {
+    "layout": [
+      {
+        "level": "mapping",
+        "mechanism": "file",
+        "template": "Crosswalks/CSF-to-800-53/cw-{subject_id|slug}-{object_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "tags": ["crosswalk/csf-to-800-53"],
+      "frontmatter": {
+        "managed": {
+          "title": "{subject_id} -> {object_id}",
+          "subject_id": "{subject_id}",
+          "predicate_id": "{predicate_id}",
+          "object_id": "{object_id}",
+          "match_type": "{match_type}",
+          "mapping_justification": "{mapping_justification}",
+          "confidence": "{confidence}"
+        },
+        "user_preserve": ["review_status", "*notes*"]
+      }
+    }
+  },
+
+  "query": {
+    "version": "1.0.0",
+    "id": "nist-csf-coverage-matrix",
+    "title": "NIST CSF -> 800-53 coverage matrix",
+    "description": "Pivot view: CSF subcategories on rows, 800-53 controls on cols, count of mappings in cells. The launch-market Coverage Matrix recipe per Settled #2.",
+    "shape": "pivot",
+    "primitives": {
+      "from": "nist-olir",
+      "where": {
+        "and": [
+          { "and": [{ "and": [] }] }
+        ]
+      },
+      "rows": {
+        "of": "nist-csf",
+        "by": "subject_id"
+      },
+      "cols": {
+        "of": "nist-800-53",
+        "by": "object_id"
+      },
+      "cell": {
+        "op": "count",
+        "as": "mapping_count",
+        "empty": "gap"
+      }
+    },
+    "params": {
+      "confidence_threshold": {
+        "type": "number",
+        "default": 0.7,
+        "description": "Minimum mapping confidence to include in the pivot."
+      }
+    },
+    "view": {
+      "limit": 10000,
+      "empty_label": "—"
+    },
+    "output": {
+      "target": "bases",
+      "view_id": "crosswalker-pivot"
+    },
+    "provenance": {
+      "source": "system",
+      "recipe_id": "nist-csf-coverage-matrix"
+    }
+  }
+}
