@@ -36,23 +36,35 @@ This milestone is the **v0.1.6 instance of Crosswalker's general [ontology-web q
 - **Single custom Bases view: `crosswalkerPivot`** registered via `registerBasesView` — pivot shape parameterized by recipe; "Coverage Matrix" is the launch-market recipe instance (renamed from `crosswalkerCoverageMatrix` for ontology-web alignment)
 - **Reference `.base` file** shipped to `_crosswalker/views/coverage-matrix.base` on first plugin run (idempotent; never overwrites user edits)
 - **Recipe loader** with JSON Schema validation (`.crosswalker/recipes/*.yaml`); recipes drive `.base` emission
-- **Recipe schema additive bump** — add `query:` block to `recipe.schema.json` so recipes can declare query shape + primitive composition (concrete schema design pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/))
+- **Recipe schema `query:` block** — additive bump to `recipe.schema.json` per [Ch 31](/crosswalker/agent-context/zz-research/2026-05-08-challenge-31-deliverable-a-shape-dispatched-data-only/) deliverables. **Ship BOTH schema styles** behind a dev/advanced setting (locked 2026-05-09): default = A (`oneOf`+`const` discriminator); advanced setting flips to B (`if`/`then`/`else`). Both are semantically equivalent; users can A/B-test.
+- **5 reference recipes** (one per v0.1 view shape) ship with the plugin — coverage matrix, crosswalk density, orphan controls, hierarchy view, list view
+- **`crosswalker-bases` SKILL.md** (per [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills)) — LLM-assisted recipe authoring guidance shipped in plugin
+- **Recipe-picker UX** (per [Ch 32](/crosswalker/agent-context/zz-research/2026-05-08-challenge-32-deliverable-b-embedded-blocks-no-mat-default/)): command palette → modal recipe picker → inline parameter editor → embedded `\`\`\`base` block in note
+- **Embedded `base` block default** — query results render via embedded `base` blocks in canonical query notes; NO separate file emission for browse experience (per [Ch 32](/crosswalker/agent-context/zz-research/2026-05-08-challenge-32-deliverable-b-embedded-blocks-no-mat-default/))
+- **Opt-in materialization command** — `Crosswalker: Materialize this recipe` (manual, not auto-refresh) for audit/share/Publish use case (per [D1 lock](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#d1-materialization-timing--v016-or-v018))
+- **SSSOM TSV import** — read `.sssom.tsv` files (open-standard mapping format used across BioPortal/OxO/OBO Foundry/Biomappings); generate one junction note per row in `_crosswalker/mappings/<source>-to-<target>/`. **Locked 2026-05-09 (per Ch 35 + user direction "might as well do it earlier")**
+- **Materialized `crosswalk_index` table** in sqlite cache — pre-computed `(subject_id, object_id, predicate_id, confidence)` joined table per ontology pair, with `(subject_id, object_id)` index. Built on import; refreshed incrementally on SSSOM file change. **Locked 2026-05-09 (per Ch 35)**
+- **Materialized `concept_closure` table** — pre-computed `(ancestor, descendant, depth)` per concept scheme the user opts in. The standard closure-table pattern; far faster than repeated recursive CTE at query time. **Locked 2026-05-09 (per Ch 35)**
+- **Sparse-pivot rendering helper** — suppresses empty rows/columns; warns the user at >100K cells (forces pair-selection / triple-selection upfront per BioPortal/OxO/OLIR UI precedent). **Locked 2026-05-09 (per Ch 35)**
 - **`_crosswalker/` folder convention** with first-run prompt: "Add `_crosswalker/views/` to Excluded Files? [Yes/No]"
 - **Bases-disabled fallback Notice** — detect `registerBasesView` returning `false` and show a Notice with one-click enable for the core Bases plugin
 - Updated docs / starter recipes referencing Bases (not Dataview)
 - Compatibility check: Tier 1 frontmatter shapes (concept_note, junction_note, crosswalk_edge) are queryable in Bases without restructure
 
 **Out (deferred to v0.1.7):**
-- `crosswalker-query` codeblock processor (ad-hoc closure queries)
-- `sqlite-wasm` user-facing surface (kept internal in v0.1.6 — `crosswalkerPivot` calls `plugin.queryClosure` etc. under the hood; no user-facing SQL)
-- Recipe wizard UI (recipes hand-authored YAML in v0.1.6)
-- Second/third custom Bases view (e.g. `crosswalkerGraph`, `crosswalkerHierarchy`)
+- `crosswalker-query` codeblock processor (deferred indefinitely per D2 — steps on plugin-ecosystem toes)
+- `sqlite-wasm` user-facing surface (kept internal in v0.1.6 — `crosswalkerPivot` calls `plugin.queryClosure` etc. under the hood; no user-facing SQL per D5)
+- Full recipe wizard UI (multi-step form for complex parameter sets — recipes hand-authored YAML or via picker in v0.1.6)
+- Second custom Bases view: `crosswalkerHierarchy` (per [Ch 30](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#ch-30--view-shape-taxonomy-2026-05-09))
+- Per-ontology partitioning + tripwire estimation + bounded LRU closure cache + mobile-mode constraints (per [Ch 37](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#ch-37--tier-2-scale-rerun-ch-18-2026-05-09))
 
 **Out (deferred to v0.1.8 — audit-trail milestone):**
-- Materialization (`Reports/_generated/` or `_crosswalker/audit/`)
-- OpenTimestamps integration
+- ~~Materialization (`Reports/_generated/` or `_crosswalker/audit/`)~~ — **MOVED INTO v0.1.6** (opt-in command + ontology-data materialization both ship in v0.1.6 per D1 lock)
+- OpenTimestamps integration (cryptographic timestamping of audit snapshots)
 - Audit-snapshot manifests
 - Deterministic Markdown writer + golden-file tests
+- Datalog-shaped `derivations:` sub-DSL inside recipe YAML (for SSSOM provenance, per [Ch 36](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#ch-36--query-language-rerun-ch-12-2026-05-09))
+- Tier 3 SPARQL referral mechanism (Oxigraph + Fuseki; per [Settled #16](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#1-settled--locked-architectural-commitments))
 
 **Out (out of scope, may never ship):**
 - Building a Bases plugin / extension — Bases is upstream Obsidian; we just emit queries that Bases can run
@@ -77,9 +89,34 @@ This milestone is the **v0.1.6 instance of Crosswalker's general [ontology-web q
 - [ ] Bases-disabled fallback: detect `registerBasesView` returning `false`; show Notice with one-click enable
 
 **Recipe loader + schema bump:**
-- [ ] Design `query:` block in `spec/recipe.schema.json` (additive; pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) deliverable)
-- [ ] Implement recipe loader in `src/import/recipe-loader.ts` with AJV validation
+- [ ] Implement BOTH schema styles in `spec/recipe.schema.json` (per Ch 31): style A (`oneOf`+`const` discriminator — default) + style B (`if`/`then`/`else` discriminator — advanced setting)
+- [ ] Add plugin setting "Recipe schema style" with `A` (default) / `B` (advanced) toggle; both validators ship; users A/B test which feels better
+- [ ] Implement recipe loader in `src/import/recipe-loader.ts` with AJV validation against the active style
 - [ ] Recipe → `.base` emission pipeline (recipes drive `.base` file generation)
+- [ ] Ship 5 reference recipes (one per v0.1 view shape: pivot/table/list/cards/hierarchy)
+- [ ] Ship `crosswalker-bases` SKILL.md per kepano/obsidian-skills (LLM-authoring guide)
+
+**Recipe-picker UX (per Ch 32):**
+- [ ] Command palette: `Crosswalker: Insert query into note`
+- [ ] Modal recipe-picker (lists shipped + user recipes; "Raw YAML escape" option for power users)
+- [ ] Inline parameter editor (only the recipe's exposed parameters; not full schema editing)
+- [ ] On confirm: insert embedded `\`\`\`base` block at cursor position in note
+
+**SSSOM TSV import + materialization (locked 2026-05-09 per Ch 35):**
+- [ ] Implement `.sssom.tsv` parser per [SSSOM 0.15+ spec](https://w3id.org/sssom/) (subject_id, predicate_id, object_id, mapping_justification, confidence, mapping_set_id, etc.)
+- [ ] Generate one junction note per TSV row in `_crosswalker/mappings/<source>-to-<target>/` with frontmatter mirroring SSSOM columns
+- [ ] Build `mappings` table in sqlite cache: `(subject_id, predicate_id, object_id, confidence, mapping_justification)` with indexes on subject + object
+- [ ] Build `concept_closure` materialized table per opt-in concept scheme: `(ancestor, descendant, depth)` precomputed via recursive CTE on import
+- [ ] Incremental refresh: on SSSOM file change, rebuild only the affected ontology pair
+- [ ] Sparse-pivot rendering helper: suppress empty rows/columns; warn user at >100K cells; force pair-selection (or triple-selection) upfront
+- [ ] User-facing import UX: file picker → SSSOM validation → preview row count + ontology pair detected → confirm
+
+**Materialization command (per D1 lock):**
+- [ ] Command palette: `Crosswalker: Materialize this recipe` (manual; no auto-refresh)
+- [ ] Output to `_crosswalker/audit/<recipe-id>/<timestamp>.md`
+- [ ] Frontmatter flags: `crosswalker.materialized: true`, `do_not_edit: true`
+- [ ] Default `.gitignore` entry for `_crosswalker/audit/` (user opts in to commit)
+- [ ] Timestamped new files; never overwrite (`.latest.md` symlink-style alias pointer)
 
 **`_crosswalker/` folder convention:**
 - [ ] First-run flow: prompt "Add `_crosswalker/views/` to Excluded Files? [Yes/No]"
