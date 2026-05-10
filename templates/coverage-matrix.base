@@ -1,0 +1,76 @@
+# Crosswalker Coverage Matrix — reference .base file (v0.1.6 Phase 3)
+#
+# This is the launch-market recipe instance per Settled #2: the
+# crosswalkerPivot custom Bases view rendered as a NIST CSF × ISO 27001
+# coverage matrix.
+#
+# Crosswalker ships this on first plugin run to:
+#     _crosswalker/views/coverage-matrix.base
+# Idempotent: never overwrites your edits. To regenerate the default,
+# delete this file and reload the plugin.
+#
+# How it works:
+# 1. `filters` selects the SSSOM crosswalk-edge junction notes Crosswalker
+#    imported from your .sssom.tsv file (these live in
+#    `_crosswalker/mappings/<source>-to-<target>/`).
+# 2. The `crosswalker-pivot` view (registered by the Crosswalker plugin)
+#    consumes those filtered entries and renders a pivot grid.
+# 3. Edit `views[0].config.rowsBy` / `colsBy` to change the axes; edit
+#    `cellOp` to change the aggregation; toggle `heatmap` for color shading.
+#
+# Reference: SSSOM spec at https://w3id.org/sssom/
+
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings")
+    - 'file.ext == "md"'
+
+formulas:
+  pair: 'source_framework + " → " + target_framework'
+
+properties:
+  subject_id:
+    displayName: "Subject"
+  object_id:
+    displayName: "Object"
+  predicate_id:
+    displayName: "STRM predicate"
+  sssom_predicate:
+    displayName: "SSSOM predicate"
+  source_framework:
+    displayName: "Source"
+  target_framework:
+    displayName: "Target"
+  formula.pair:
+    displayName: "Pair"
+
+views:
+  # The custom Crosswalker pivot view — registered by the plugin via
+  # plugin.registerBasesView("crosswalker-pivot", ...). View options below
+  # are read by the view at render time.
+  - type: crosswalker-pivot
+    name: "Coverage matrix"
+    config:
+      rowsBy: "subject_id"
+      colsBy: "object_id"
+      cellOp: "count"
+      empty: "gap"
+      heatmap: false
+      rowSort: "asc"
+      colSort: "asc"
+
+  # Bases-native fallback Table view — works even when the crosswalker-pivot
+  # custom view is unavailable (Bases disabled, plugin uninstalled, etc.).
+  # Tier 1 truth: junction notes are always visible as plain Markdown.
+  - type: table
+    name: "Mappings table"
+    order:
+      - file.name
+      - subject_id
+      - predicate_id
+      - object_id
+      - sssom_predicate
+      - mapping_justification
+      - confidence
+    summaries:
+      file.name: Filled

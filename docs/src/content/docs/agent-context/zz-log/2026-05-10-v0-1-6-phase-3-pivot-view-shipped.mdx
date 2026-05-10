@@ -1,0 +1,185 @@
+---
+title: "v0.1.6 Phase 3 shipped — crosswalkerPivot registered Bases view"
+description: "Phase 3 of v0.1.6 delivered 2026-05-10. The single registerBasesView registration v0.1.6 ships per Settled #2 + Ch 30. Custom Bases view that renders pivot grids (rows × cols × cells) from Bases-filtered entries. Pure data-shaping helper + Component-subclass renderer + Bases API wrapper + idempotent first-run reference .base file write. 37 new tests (201/201 pass). Per Ch 29 8-verb vocabulary, pivot is Layer B (presentation, not value-producing); the data shaping happens via aggregate primitive in pivot-grid.ts; this phase is the renderer. Implementation reuses TaskNotes v4 pattern — Component-extends-BasesView with onDataUpdated lifecycle, factory closure for plugin handle access, structured RegistrationResult for Bases-disabled fallback semantics."
+tags: [phase-shipped, v0-1-6, phase-3, bases-view, register-bases-view, pivot, ch-30, settled-2]
+date: 2026-05-10
+sidebar:
+  label: "05-10 · v0.1.6 Phase 3 shipped"
+  order: -20260510.5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What shipped
+
+[v0.1.6 Phase 3](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — `crosswalkerPivot` registered Bases view. The single `registerBasesView` registration v0.1.6 ships, per Settled #2 + Ch 30. Custom view that renders pivot grids (rows × cols × cells) from Bases-filtered entries; pairs with the launch-market Coverage Matrix recipe.
+
+| Surface | Delivered |
+|---|---|
+| `src/views/bases-api.ts` | `registerCrosswalkerBasesView(plugin, viewId, registration)` wrapper. Gates on `requireApiVersion('1.10.0')`. Handles "already exists" errors as success (idempotent re-register). Returns structured `RegistrationResult` with `reason: 'no-public-api' \| 'bases-disabled' \| 'already-registered' \| 'error'`. Adapted from TaskNotes v4 pattern (Settled #11 precedent). |
+| `src/views/pivot-grid.ts` | Pure data-shaping helper. `computePivotGrid(entries, config)` consumes flat entries + axes/op/empty config; produces `\{ rowKeys, colKeys, cells, totalEntries, sparsePivotWarning, range \}`. All 8 v0.1 aggregation ops (Ch 29 vocabulary), 3 empty-cell modes, sort directions, sparse-pivot threshold detection. Heatmap intensity helper. **31 unit tests.** |
+| `src/views/crosswalker-pivot-view.ts` | `Component` subclass with `onDataUpdated` lifecycle (100ms debounce). Reads `controller.entries`, calls `computePivotGrid`, renders DOM table. Empty-state + error-state + sparse-warning rendering. `buildCrosswalkerPivotViewFactory(plugin)` closure captures the plugin handle for Tier 2 access. |
+| `src/views/reference-base-files.ts` | `writeReferenceBaseFiles(app, debug)` idempotent first-run writer. Skips files that already exist (preserves user edits per Settled #3). Reference content inlined as TS string. **6 unit tests.** |
+| `templates/coverage-matrix.base` | Source-of-truth reference template. Filters by `_crosswalker/mappings/`; declares 2 views (`crosswalker-pivot` custom + Bases-native `table` fallback for when Bases is disabled / plugin is uninstalled). |
+| `src/main.ts` | New `registerCrosswalkerPivotView()` private method called in `onload()`. View options panel (8 controls). Bases-disabled fallback Notice with helpful Settings → Core plugins → Bases hint. `onLayoutReady` triggers idempotent first-run `writeReferenceBaseFiles` call. |
+| `styles.css` | `.crosswalker-pivot-grid` + `-table` + `-cell` + `-empty` + `-error` + `-warning` + `-footer` classes. Heatmap variant uses `--crosswalker-pivot-cell-intensity` CSS custom property (0.0 → 1.0). Theme-aware via Obsidian CSS variables. |
+| `tests/pivot-grid.test.ts` | 31 unit tests covering data-shaping correctness across all aggregation ops + empty modes + sort + sparse-pivot threshold + edge cases. |
+| `tests/reference-base-files.test.ts` | 6 unit tests for idempotent first-run write + reference-content shape. |
+| `TEST_PHASE3_PIVOT_VIEW.md` | 7 manual test scenarios (first-run write, pivot rendering, view options, idempotency, Bases-disabled fallback, sparse warning, deterministic reload). |
+
+**Test coverage**: 37 new tests; **201/201 pass.** Build clean.
+
+## System-design integration
+
+Phase 3 plugs into the canonical Crosswalker pipeline at the **query layer**, consuming Phase 2's SSSOM-imported junction notes via Bases filters and rendering them into pivot tables that the user sees:
+
+```
+       INPUT                STORAGE                 PROJECTION              QUERY                OUTPUT
+   ┌─────────────┐    ┌────────────────────┐    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+   │ .sssom.tsv  │ →  │ Tier 1: junction-  │ →  │ Tier 2 sqlite    │ →  │ Bases reads      │ →  │ User sees        │
+   │ (Phase 2)   │    │ edge .md per row   │    │ (Phase 2)        │    │ frontmatter →    │    │ rendered pivot   │
+   │             │    │ (Phase 2)          │    │                  │    │ filters →        │    │ in their note    │
+   │             │    │                    │    │                  │    │ controller.      │    │                  │
+   │             │    │                    │    │                  │    │ entries          │    │                  │
+   │             │    │                    │    │                  │    │ ↓                │    │                  │
+   │             │    │                    │    │                  │    │ THIS PHASE       │    │                  │
+   │             │    │                    │    │                  │    │ (crosswalker-    │    │                  │
+   │             │    │                    │    │                  │    │  pivot view)     │    │                  │
+   │             │    │                    │    │                  │    │ reads entries,   │    │                  │
+   │             │    │                    │    │                  │    │ shapes them via  │    │                  │
+   │             │    │                    │    │                  │    │ pivot-grid.ts,   │    │                  │
+   │             │    │                    │    │                  │    │ renders DOM      │    │                  │
+   └─────────────┘    └────────────────────┘    └──────────────────┘    └──────────────────┘    └──────────────────┘
+```
+
+**Reuse**: Phase 3 composes existing infrastructure rather than introducing new substrate or new schema:
+
+- Bases is the runtime; we just teach it new tricks via a custom view-type
+- Bases handles all filtering (global + view-level); our view receives the already-filtered set as `controller.entries`
+- The pivot-grid helper is pure-fn — no Obsidian deps; testable in isolation
+- The view's plugin handle (closure-captured by the factory) gives access to Phase 2's `queryCrosswalk` / `queryClosure` for Tier 2 enrichment when the view needs to walk transitive closures or join across ontologies (deferred until a real recipe needs it; v0.1.6 Coverage Matrix doesn't)
+- The reference `.base` file's Bases-native `table` fallback view ensures the data is always visible even if Bases is disabled or Crosswalker is uninstalled (per Settled #4 mobile/Publish parity + Settled #18 mobile binding)
+
+## Implementation decisions made during Phase 3
+
+These weren't pre-locked in the synthesis log; they emerged at coding time. Documented here so future agents understand why the code looks the way it does.
+
+### Decision 1 — Pure data-shaping helper separated from DOM renderer
+
+**Context**: Phase 3 needs both correctness (data shaping; what cells contain) AND presentation (how cells render). These are different concerns at different testability layers.
+
+**Decision**: split into `pivot-grid.ts` (pure function, no Obsidian deps; 31 unit tests pass in jest) + `crosswalker-pivot-view.ts` (Component subclass; DOM rendering; manual-test only). The view delegates to the helper for `computePivotGrid(entries, config)` → `PivotGridResult`, then walks the result and emits HTML.
+
+**Why this matters**: ~80% of Phase 3 logic lives in the unit-testable helper. The view is mostly DOM-glue + lifecycle hooks. Lets us catch correctness bugs (aggregation ops, empty semantics, sort order, range computation, sparse-pivot detection) without needing the full Obsidian harness.
+
+**Trade-off**: two files instead of one. Worth it; the boundary is clean (function in / data out).
+
+### Decision 2 — Factory closure for plugin handle access
+
+**Context**: Bases instantiates views via a `factory(controller, containerEl)` callback. Bases doesn't pass the plugin handle to the factory — but the view needs access to `plugin.queryCrosswalk` / `plugin.queryClosure` for Tier 2 enrichment.
+
+**Decision**: `buildCrosswalkerPivotViewFactory(plugin)` returns the factory closure with `plugin` captured. The factory itself is `(controller, containerEl) => new CrosswalkerPivotView(controller, containerEl, plugin)`. The view stores `plugin` as a private field and calls `plugin.queryCrosswalk(...)` when needed.
+
+**Why this matters**: same pattern TaskNotes v4 uses (Settled #11 precedent). Avoids putting the plugin reference into module-level globals (cleaner test isolation). Let the View class be a normal class — no plugin-aware singletons.
+
+### Decision 3 — Structured `RegistrationResult` discriminant for Bases-disabled fallback
+
+**Context**: `plugin.registerBasesView(...)` returns `boolean` per the Obsidian 1.10.0+ public API — but a `false` result can mean different things: Obsidian < 1.10 (no API), Bases plugin disabled, or registration error. Each case wants a different user-facing Notice.
+
+**Decision**: wrap the API call in `registerCrosswalkerBasesView` that returns `RegistrationResult = \{ success: boolean; reason?: 'no-public-api' \| 'bases-disabled' \| 'already-registered' \| 'error'; error?: Error \}`. Caller (in main.ts `registerCrosswalkerPivotView`) inspects `reason` and surfaces the appropriate Notice.
+
+**Why this matters**: meaningful UX for the three failure modes. "Update Obsidian" vs "Enable Bases plugin" vs "report a bug" are very different actions; the user shouldn't have to figure out which one applies.
+
+**Trade-off**: more code for the wrapper than just calling the API directly. Worth it; without it, every caller would need to repeat the discriminant logic.
+
+### Decision 4 — Reference `.base` content inlined as TS string (vs file-import)
+
+**Context**: Phase 3 ships a default `.base` file users get on first plugin run. esbuild bundles `main.js` as a single file. Two ways to ship the template content:
+
+- **A.** Read `templates/coverage-matrix.base` at runtime via `app.vault.adapter.read('plugins/crosswalker/templates/coverage-matrix.base')` — works but requires the file to be deployed alongside `main.js` (Obsidian's plugin distribution doesn't include arbitrary files by default)
+- **B.** Inline the content as a TypeScript string constant; esbuild bundles it into `main.js`
+
+**Decision**: option B. The source-of-truth `.base` file lives at `templates/coverage-matrix.base` for editor syntax highlighting + manual review (and as documentation). The `REFERENCE_COVERAGE_MATRIX_BASE` constant in `src/views/reference-base-files.ts` mirrors the content.
+
+**Trade-off**: two copies (one in `templates/`, one in `.ts`). Drift risk — if someone edits the `.base` file but not the `.ts` constant, the shipped reference is wrong. Mitigation: a future codegen could automate the sync (templates/* → reference-base-files.ts string constants); v0.1.6 keeps it simple. Manual sync for now; document the convention in the file's header comment.
+
+### Decision 5 — Idempotent first-run write semantics
+
+**Context**: Per Settled #3 ("preserves user edits"), the first-run reference `.base` write must NEVER overwrite an existing file. Two approaches:
+
+- **A.** Check file existence before writing; skip if present
+- **B.** Use `processFrontMatter` or a frontmatter-merge pattern to merge in the reference and preserve user fields
+
+**Decision**: option A (simpler). The `writeReferenceBaseFiles` writer:
+1. For each reference file, check `app.vault.getAbstractFileByPath(path) instanceof TFile` — if true, skip
+2. Otherwise, ensure parent folder exists + create the file
+
+**Why this matters**: keeps the user-edit-safety property simple. If a user wants to regenerate the reference, they delete the file and reload the plugin. Documented in the file's header comment.
+
+**Trade-off**: option B would let us merge schema upgrades into existing user-edited `.base` files. But (a) that's a hard semantic (which fields are "managed" vs "user-edited"?), and (b) the recipe schema's user_preserve pattern would need extension to .base files, which isn't in v0.1.6 scope. Defer to v0.2+ if a real user request emerges.
+
+### Decision 6 — Sparse-pivot SOFT warning vs HARD guard
+
+**Context**: Per Ch 35 + Ch 37, ontology-web-scale pivots can produce 10⁹+ cells; the user should be warned before rendering an unusable grid.
+
+**Decision**: Phase 3 ships a SOFT warning (computed AFTER `computePivotGrid` runs) — the helper returns `sparsePivotWarning: boolean` based on `rowKeys.length * colKeys.length > 100_000`. The view renders a banner above the grid noting the cell count.
+
+**Why SOFT**: a HARD guard (pre-execution `COUNT(*)` estimate that aborts before rendering) is Phase 5 work — it requires plumbing the row-count estimate through the view options + integrating with the Tier 2 `mappings` table query before Bases hands us entries. That's a different layer than where Phase 3 operates (Bases already filtered + handed us entries).
+
+**Trade-off**: the SOFT warning happens AFTER the user has already paid the rendering cost for a giant pivot. Acceptable for v0.1.6 GRC-scale; Phase 5 will add the HARD guard for ontology-web-scale per Ch 37 §"Tier 3 offload UX".
+
+## What Phase 3 unblocks
+
+| Cascade | What |
+|---|---|
+| **Phase 4** (recipe-picker UX) | Recipe-picker modal will reference the `crosswalker-pivot` view-type when inserting embedded `\`\`\`base` blocks. The view exists; the picker just generates `.base` content that targets it. |
+| **Phase 5** (materialization command) | `Crosswalker: Materialize this recipe` command runs the recipe → render to Markdown table from the `.base` query result. The Bases-native `table` fallback view in `coverage-matrix.base` is the prototype for what materialization emits. |
+| **v0.1.7** (`crosswalkerHierarchy` second view) | The `bases-api.ts` wrapper + factory pattern + Component-subclass-with-onDataUpdated lifecycle is the precedent. Adding `crosswalkerHierarchy` is mostly: copy `crosswalker-pivot-view.ts` → adapt the data-shaping (tree instead of pivot) + adapt the renderer (indented list instead of grid). |
+| **v0.2** (`crosswalkerGraph` Cytoscape integration) | Same factory pattern; add Cytoscape.js as an npm dep + wrap the Cytoscape instance in a Component subclass. |
+| **Pivot render-options (heatmap/treemap/sunburst/sankey, v0.2)** | The pure-fn helper (`pivot-grid.ts`) already produces the matrix; v0.2 adds D3 micro-imports for alternate renderings — the data layer doesn't change. |
+
+## Open follow-ups (tracked, not blocking)
+
+- **HARD sparse-pivot guard** with pre-execution `COUNT(*)` estimate (Phase 5 work per Ch 37 §"Tier 3 offload UX"). Phase 3 has SOFT warning only.
+- **Numeric template coercion** (carryover from Phase 2 follow-ups). Not Phase 3-specific.
+- **`templates/*.base` ↔ `reference-base-files.ts` constant sync** — currently manual; codegen could automate.
+- **Plugin handle Tier 2 enrichment** — the factory closure captures `plugin.queryCrosswalk` / `queryClosure` but no v0.1.6 Coverage Matrix recipe actually calls them yet. Real test of the integration comes when Phase 4's recipe-picker emits a recipe that needs transitive closure. Stub remains in place.
+- **E2E suite for the view DOM rendering** — pending until WebdriverIO env is reliably available. Manual test guide (`TEST_PHASE3_PIVOT_VIEW.md`) covers 7 scenarios end-to-end in the meantime.
+- **Mobile rendering** — pivot tables on phones overflow horizontally. CSS uses `overflow-x: auto` + sticky row/col headers, which works but isn't optimized. v0.2+ work if real users report friction.
+
+## Related
+
+**Decision logs that drove Phase 3:**
+- [Synthesis log Settled #2](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#1-settled--locked-architectural-commitments) — single `registerBasesView` for v0.1.6 (`crosswalkerPivot`); pivot is the operation; "Coverage Matrix" is the launch-market recipe instance
+- [Synthesis log Settled #11](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#1-settled--locked-architectural-commitments) — TaskNotes v4 is the canonical Obsidian-plugin precedent for `registerBasesView`
+- [Synthesis log Settled #15](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/#1-settled--locked-architectural-commitments) — Layer A/B boundary (pivot is Layer B; data shaping in `pivot-grid.ts` uses Layer A primitives)
+
+**Research deliverable:**
+- [Ch 30 — View shape taxonomy](/crosswalker/agent-context/zz-research/2026-05-09-challenge-30-view-shape-taxonomy/) — pivot is one of 5 v0.1 first-class shapes; render options (heatmap/treemap/sunburst/sankey) are deferred to v0.2 per §5; one custom view per shape registration
+
+**Concept pages referenced in code:**
+- [System architecture Layer 4 (Query)](/crosswalker/concepts/system-architecture/) — where Phase 3 sits in the pipeline
+- [View shapes](/crosswalker/concepts/view-shapes/) — pivot is the v0.1.6 first-class custom view
+- [Query primitives](/crosswalker/concepts/query-primitives/) — aggregation primitive (the 8-verb vocabulary) is what `pivot-grid.ts` implements at the data-shaping layer
+
+**Prior phases:**
+- [v0.1.6 Phase 1 (recipe `query:` block schema)](https://github.com/cybersader/crosswalker/commit/f0b1c94) — schema declares the pivot shape
+- [v0.1.6 Phase 1.5 (test infrastructure)](https://github.com/cybersader/crosswalker/commit/832f6a0) — deterministic test-vault fixtures
+- [v0.1.6 Phase 2 (SSSOM TSV import)](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-2-sssom-import-shipped/) — populates the data Phase 3 renders
+
+**Adjacent milestones:**
+- [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — `plugin.queryCrosswalk` / `queryClosure` available to the view via factory closure
+- [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Phase 4 next
+- [v0.1.7 (`crosswalkerHierarchy` second view)](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — uses the Phase 3 factory + Component pattern as precedent
+
+**Spec files:**
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — `query.shape: pivot` + `PivotPrimitives` $def declares the shape Phase 3 renders
+- [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — junction-edge frontmatter that Phase 3 reads via Bases
+
+**External references:**
+- [Obsidian 1.10.0 release notes](https://obsidian.md/changelog/) — public `registerBasesView` API
+- [TaskNotes v4 source](https://github.com/callumalpass/tasknotes) — the canonical Obsidian-plugin precedent (`src/bases/`)
+- [SSSOM 0.15+ spec](https://w3id.org/sssom/) — the data format Phase 2 imports + Phase 3 renders against
+
+**Manual test guide:**
+- [`TEST_PHASE3_PIVOT_VIEW.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_PHASE3_PIVOT_VIEW.md) — 7 scenarios for end-user verification

@@ -689,3 +689,109 @@
 	opacity: 0.7;
 	cursor: help;
 }
+
+/* ============================================================================
+ * v0.1.6 Phase 3 — crosswalkerPivot custom Bases view
+ * ============================================================================
+ * The pivot grid + its empty/error states + footer + heatmap variant.
+ * Uses Obsidian theme variables so light/dark/community-theme all work.
+ */
+
+.crosswalker-pivot-grid {
+	padding: 8px 12px;
+	overflow-x: auto;
+	font-size: var(--font-ui-small);
+}
+
+.crosswalker-pivot-table {
+	border-collapse: collapse;
+	min-width: 100%;
+	background: var(--background-primary);
+}
+
+.crosswalker-pivot-table th,
+.crosswalker-pivot-table td {
+	border: 1px solid var(--background-modifier-border);
+	padding: 4px 8px;
+	text-align: center;
+	white-space: nowrap;
+}
+
+.crosswalker-pivot-corner {
+	background: var(--background-secondary);
+}
+
+.crosswalker-pivot-col-header {
+	background: var(--background-secondary);
+	font-weight: 600;
+	color: var(--text-normal);
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}
+
+.crosswalker-pivot-row-header {
+	background: var(--background-secondary);
+	font-weight: 600;
+	color: var(--text-normal);
+	text-align: left;
+	position: sticky;
+	left: 0;
+	z-index: 1;
+}
+
+.crosswalker-pivot-cell {
+	color: var(--text-normal);
+}
+
+.crosswalker-pivot-cell-empty {
+	color: var(--text-faint);
+	font-style: italic;
+}
+
+/* Heatmap variant: --crosswalker-pivot-cell-intensity is set per-cell
+ * (0.0 → 1.0). Background fades from transparent → accent color.
+ * Uses the Obsidian accent color so it adapts to the user's theme. */
+.crosswalker-pivot-cell-heatmap {
+	background: rgba(var(--interactive-accent-rgb, 100, 100, 200), calc(var(--crosswalker-pivot-cell-intensity, 0) * 0.4));
+}
+
+.crosswalker-pivot-empty,
+.crosswalker-pivot-error,
+.crosswalker-pivot-warning {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 12px;
+	margin-bottom: 8px;
+	border-radius: 4px;
+	font-size: var(--font-ui-small);
+}
+
+.crosswalker-pivot-empty {
+	background: var(--background-secondary);
+	color: var(--text-muted);
+}
+
+.crosswalker-pivot-error {
+	background: var(--background-modifier-error);
+	color: var(--text-error);
+}
+
+.crosswalker-pivot-warning {
+	background: var(--background-modifier-warning, rgba(255, 200, 0, 0.1));
+	color: var(--text-warning, var(--text-normal));
+	border-left: 3px solid var(--text-warning, var(--color-orange));
+}
+
+.crosswalker-pivot-empty-icon,
+.crosswalker-pivot-error-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.crosswalker-pivot-footer {
+	padding: 6px 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}

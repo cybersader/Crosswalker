@@ -4,6 +4,13 @@ import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
 import { SssomImportModal } from './import/sssom-import-modal';
 import { ConfigBrowserModal } from './config/config-browser-modal';
+import { buildCrosswalkerPivotViewFactory } from './views/crosswalker-pivot-view';
+import {
+	registerCrosswalkerBasesView,
+	isBasesPluginAvailable,
+	type CrosswalkerBasesViewOption,
+} from './views/bases-api';
+import { writeReferenceBaseFiles } from './views/reference-base-files';
 import { DebugLog } from './utils/debug';
 import { initValidator, validateRecipe as validateRecipeFn, validateTier1Frontmatter } from './validation/validator';
 import { render } from './render';
@@ -206,6 +213,12 @@ export default class CrosswalkerPlugin extends Plugin {
 		// Register settings tab
 		this.addSettingTab(new CrosswalkerSettingTab(this.app, this));
 
+		// v0.1.6 Phase 3: register the crosswalkerPivot custom Bases view
+		// (per Settled #2 + Ch 30). Public API path; Obsidian 1.10.0+ required.
+		// Bases-disabled fallback Notice surfaces if the user has the Bases
+		// internal plugin disabled.
+		this.registerCrosswalkerPivotView();
+
 		// v0.1.5 Phase 4: auto-trigger Tier 2 projection on vault load.
 		// `onLayoutReady` fires once when the Obsidian workspace is fully
 		// initialized; safer than running on plugin onload (which may run
@@ -214,6 +227,9 @@ export default class CrosswalkerPlugin extends Plugin {
 		// log without surfacing a Notice unless something genuinely fails.
 		this.app.workspace.onLayoutReady(() => {
 			void this.autoProjectOnLayoutReady();
+			// v0.1.6 Phase 3: ship reference .base files on first run
+			// (idempotent — never overwrites user edits).
+			void writeReferenceBaseFiles(this.app, this.debug);
 		});
 
 		await this.debug.log('Crosswalker plugin loaded');
@@ -264,6 +280,108 @@ export default class CrosswalkerPlugin extends Plugin {
 	onunload() {
 		this.tier2Handle?.close();
 		this.debug?.log('Crosswalker plugin unloaded');
+	}
+
+	/**
+	 * v0.1.6 Phase 3: register the crosswalkerPivot custom Bases view per
+	 * Settled #2 + Ch 30. Uses the Obsidian 1.10.0+ public registerBasesView
+	 * API. If Bases is disabled or the API is unavailable, surfaces a Notice
+	 * with a hint to enable Bases in Settings → Core plugins.
+	 *
+	 * Idempotent: re-registering the same viewId is treated as success by
+	 * the api wrapper (per the TaskNotes-precedent error-handling pattern).
+	 */
+	private registerCrosswalkerPivotView(): void {
+		const factory = buildCrosswalkerPivotViewFactory(this);
+		const options: () => CrosswalkerBasesViewOption[] = () => [
+			{
+				type: 'property',
+				key: 'rowsBy',
+				displayName: 'Rows by',
+				placeholder: 'e.g. subject_id, control_id, framework',
+				filter: (prop) => prop.startsWith('note.') || !prop.includes('.'),
+			},
+			{
+				type: 'property',
+				key: 'colsBy',
+				displayName: 'Cols by',
+				placeholder: 'e.g. object_id, target_framework',
+				filter: (prop) => prop.startsWith('note.') || !prop.includes('.'),
+			},
+			{
+				type: 'dropdown',
+				key: 'cellOp',
+				displayName: 'Cell aggregation',
+				options: ['count', 'count_distinct', 'sum', 'avg', 'min', 'max', 'first', 'last'],
+				default: 'count',
+			},
+			{
+				type: 'property',
+				key: 'cellOf',
+				displayName: 'Cell value (for non-count ops)',
+				placeholder: 'e.g. confidence, sssom_confidence',
+				filter: (prop) => prop.startsWith('note.') || !prop.includes('.'),
+			},
+			{
+				type: 'dropdown',
+				key: 'empty',
+				displayName: 'Empty cells',
+				options: ['gap', 'blank', 'zero'],
+				default: 'gap',
+			},
+			{
+				type: 'toggle',
+				key: 'heatmap',
+				displayName: 'Heatmap shading',
+				default: false,
+			},
+			{
+				type: 'dropdown',
+				key: 'rowSort',
+				displayName: 'Row sort',
+				options: ['asc', 'desc', 'none'],
+				default: 'asc',
+			},
+			{
+				type: 'dropdown',
+				key: 'colSort',
+				displayName: 'Col sort',
+				options: ['asc', 'desc', 'none'],
+				default: 'asc',
+			},
+		];
+
+		const result = registerCrosswalkerBasesView(this, 'crosswalker-pivot', {
+			name: 'Crosswalker pivot',
+			icon: 'table',
+			factory,
+			options,
+		});
+
+		if (!result.success) {
+			void this.debug?.log('crosswalkerPivot Bases view registration failed', { reason: result.reason });
+			if (result.reason === 'no-public-api') {
+				new Notice(
+					'Crosswalker: pivot view requires Obsidian 1.10.0 or later. Update Obsidian to use the pivot view; other features still work.',
+					12000,
+				);
+			} else if (result.reason === 'bases-disabled') {
+				const enabled = isBasesPluginAvailable(this.app);
+				new Notice(
+					enabled
+						? 'Crosswalker: Bases view registration returned false. Try restarting Obsidian. The plugin still works without it.'
+						: 'Crosswalker: enable the Bases core plugin (Settings → Core plugins → Bases) to use the pivot view. Other features still work.',
+					12000,
+				);
+			} else if (result.reason === 'error') {
+				new Notice(`Crosswalker: pivot view registration error: ${result.error?.message ?? 'unknown'}`);
+			}
+		}
+		// Bind the factory to the Component lifecycle so onunload cleans it up
+		// (the factory itself just constructs Component instances; Bases owns
+		// their lifecycle. Crosswalker's onunload doesn't need to unregister
+		// the view — Obsidian unloads the plugin and tears down everything.)
+		void factory;
 	}
 
 	async loadSettings() {

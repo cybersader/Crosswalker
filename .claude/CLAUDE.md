@@ -85,7 +85,7 @@ The canonical project KB is the docs site. For an agent new to the project:
 | [v0.1.4](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — Junction notes + crosswalk edges | ✅ Done (2026-05-05) |
 | [v0.1.4.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — Streaming refactor | ✅ Done (2026-05-05) |
 | [v0.1.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — Tier 2 sqlite-wasm sidecar | ✅ Done (2026-05-06) |
-| **[v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer + SSSOM + recipe UX** | 🚧 Phases 1 + 1.5 + 2 done; Phase 3 (`crosswalkerPivot` view) next |
+| **[v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer + SSSOM + recipe UX** | 🚧 Phases 1 + 1.5 + 2 + 3 done; Phase 4 (recipe-picker UX) next |
 | [v0.1.7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — Exporters (STRM/OSCAL/SSSOM) | 📋 Planning |
 | [v0.1.8](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — Audit trail T1 default | 📋 Planning |
 | [v0.1-RC](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — Ship | 📋 Planning |
@@ -171,6 +171,6 @@ See `docs/src/content/docs/development/setup.mdx` for the full `bun run` referen
 
 ---
 
-**Last Updated**: 2026-05-10 (v0.1.6 mid-milestone — Phases 1 + 1.5 + 2 ✅ shipped: recipe `query:` block schema, deterministic-fixtures + drift CI gate, SSSOM TSV import + materialized closure precompute. Phase 3 [`crosswalkerPivot` Bases view] next.)
+**Last Updated**: 2026-05-10 (v0.1.6 mid-milestone — Phases 1 + 1.5 + 2 + 3 ✅ shipped: recipe `query:` block schema, deterministic-fixtures + drift CI gate, SSSOM TSV import + materialized closure precompute, `crosswalkerPivot` registered Bases view. Phase 4 [recipe-picker UX] next.)
 **For**: Crosswalker Obsidian Plugin Development (v0.1 implementation phase)
 **Agent Role**: Implementation & Documentation Assistant

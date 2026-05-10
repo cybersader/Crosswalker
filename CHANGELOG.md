@@ -6,7 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-10, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 done; Phases 3-5 pending).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-10, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 done; Phases 4-5 pending).
+
+### v0.1.6 Phase 3 — `crosswalkerPivot` registered Bases view (2026-05-10, ✅ Done)
+
+Per Settled #2 + Ch 30. The single `registerBasesView` registration v0.1.6 ships. Custom Bases view that renders pivot grids (rows × cols × cells) from Bases-filtered entries; pairs with the launch-market Coverage Matrix recipe. Reads filtered `controller.entries` directly; calls Phase 2's plugin handles for Tier 2 enrichment when needed.
+
+**New surfaces:**
+- Custom Bases view: `crosswalker-pivot` (registered via Obsidian 1.10.0+ public `registerBasesView` API)
+- Reference `.base` file: `_crosswalker/views/coverage-matrix.base` (shipped on first plugin run; idempotent — never overwrites user edits per Settled #3)
+- Bases-disabled fallback Notice with helpful text
+
+**New code:**
+- `src/views/bases-api.ts` — `registerCrosswalkerBasesView(plugin, viewId, registration)` wrapper. Gates on `requireApiVersion('1.10.0')`. Handles "already exists" errors as success (idempotent re-register). Returns structured `RegistrationResult` with `reason: 'no-public-api' | 'bases-disabled' | 'already-registered' | 'error'` so call sites can surface meaningful Notices. Adapted from the [TaskNotes v4 Bases pattern](https://github.com/callumalpass/tasknotes/tree/main/src/bases) (Settled #11 precedent).
+- `src/views/pivot-grid.ts` — pure data-shaping helper. `computePivotGrid(entries, config)` consumes flat `PivotEntry[]` + axes/op/empty config; produces `{ rowKeys, colKeys, cells, totalEntries, sparsePivotWarning, range }`. Supports all 8 v0.1 aggregation ops (per Ch 29 vocabulary), 3 empty-cell modes (`gap`/`blank`/`zero`), sort directions, sparse-pivot threshold detection. Heatmap intensity normalization helper. **31 unit tests.**
+- `src/views/crosswalker-pivot-view.ts` — `Component` subclass with `onDataUpdated` lifecycle. Reads `controller.entries`, calls `computePivotGrid`, renders DOM table. 100ms debounce on Bases data updates. Empty-state + error-state + sparse-warning rendering. `buildCrosswalkerPivotViewFactory` closure captures plugin handle for Tier 2 access.
+- `src/views/reference-base-files.ts` — `writeReferenceBaseFiles(app, debug)` idempotent first-run writer. Skips files that already exist (preserves user edits per Settled #3). Reference content inlined as TS string (esbuild bundles cleanly). **6 unit tests.**
+- `templates/coverage-matrix.base` — source-of-truth reference template (mirrored in `REFERENCE_COVERAGE_MATRIX_BASE` constant). Filters by `_crosswalker/mappings/`; declares 2 views (`crosswalker-pivot` custom + Bases-native `table` fallback).
+
+**View options panel** (8 controls, per `CrosswalkerBasesViewOption[]`):
+
+| Key | Type | Purpose |
+|---|---|---|
+| `rowsBy` | property | Row-axis property name |
+| `colsBy` | property | Col-axis property name |
+| `cellOp` | dropdown | Aggregation op (count/count_distinct/sum/avg/min/max/first/last) |
+| `cellOf` | property | Cell-value source for non-count ops |
+| `empty` | dropdown | Empty-cell mode (gap/blank/zero) |
+| `heatmap` | toggle | Color shading proportional to value |
+| `rowSort` | dropdown | asc/desc/none |
+| `colSort` | dropdown | asc/desc/none |
+
+**CSS** (`styles.css`): `.crosswalker-pivot-grid` + `-table` + `-cell` + `-empty` + `-error` + `-warning` + `-footer` classes. Heatmap variant uses `--crosswalker-pivot-cell-intensity` CSS custom property (0.0 → 1.0). Theme-aware via Obsidian CSS variables.
+
+**Test coverage**: 37 new tests (31 pivot-grid + 6 reference-base-files). **201/201 tests pass.** Build clean. E2E suite at `tests/e2e/crosswalker-pivot-view.spec.ts` is a documentation scaffold — view DOM rendering covered manually via `TEST_PHASE3_PIVOT_VIEW.md` 7 scenarios.
+
+**Phase 3 deferrals** (Phases 4-5 of v0.1.6 — pending):
+- Phase 4: recipe-picker UX + embedded `\`\`\`base` block insertion + `crosswalker-bases` SKILL.md (per Ch 32)
+- Phase 5: opt-in materialization command + sparse-pivot HARD guard with `COUNT(*)` pre-estimate + first-run `_crosswalker/views/` Excluded Files prompt
+
+See `TEST_PHASE3_PIVOT_VIEW.md` for manual test scenarios.
+
 
 ### v0.1.6 Phase 2 — SSSOM TSV import + materialized closure (2026-05-10, ✅ Done)
 
