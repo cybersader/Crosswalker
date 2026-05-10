@@ -6,7 +6,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-09, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phase 1 done; Phases 2-5 pending).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-10, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 done; Phases 3-5 pending).
+
+### v0.1.6 Phase 2 — SSSOM TSV import + materialized closure (2026-05-10, ✅ Done)
+
+Per [Ch 35 (graph→tabular bridging)](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-09-challenge-35-graph-to-tabular-bridging-rerun/) + the locked D1 "Ch 35 nuance" scope expansion. SSSOM (Simple Standard for Sharing Ontological Mappings) is the canonical TSV interchange format used by BioPortal, OxO, OBO Foundry, and Biomappings. Phase 2 gives Crosswalker first-class on-ramp to that ecosystem.
+
+**New surfaces:**
+- Command: `Crosswalker: Import SSSOM mapping file`
+- Modal flow: file picker (vault `.tsv` / `.sssom.tsv` files OR paste TSV content) → parse + preview (row count, detected ontology pair, warnings) → confirm → execute
+- Output folder convention: `_crosswalker/mappings/<source>-to-<target>/` (one junction-edge `.md` per mapping)
+
+**New code:**
+- `src/import/sssom-parser.ts` — TSV parser per SSSOM 0.15+ spec. Handles `# `-prefixed YAML-shaped headers (curie_map, mapping_set_id, license, etc.), required columns (subject_id, predicate_id, object_id), optional columns (subject_label, object_label, mapping_justification, confidence, mapping_provider, mapping_set_id), CURIE-prefix-based ontology-pair detection.
+- `src/import/sssom-importer.ts` — orchestrator: parse → SKOS→STRM predicate normalization → synthetic crosswalk-edge recipe → `generateFromRecipe` → Tier 2 projection → eager closure precompute. Idempotent re-imports.
+- `src/import/sssom-import-modal.ts` — modal UX (file picker, paste editor, preview, progress notice).
+- `src/tier2/queries.ts`: new `precomputeClosureForOntologyPair(db, source, target, predicate?)` — eagerly populates `closure_cache` for the imported pair (per Ch 35: "every production ontology-web system materializes precomputed pairwise crosswalks").
+- `plugin.precomputeClosure(source, target, predicate?)` — exposed plugin handle for the eager precompute.
+
+**SKOS → STRM predicate normalization** (preserves SSSOM original as `sssom_predicate` frontmatter):
+| SSSOM/SKOS predicate | STRM `predicate_id` |
+|---|---|
+| `skos:exactMatch` | `is_equivalent_to` |
+| `skos:closeMatch` | `is_approximate_to` |
+| `skos:broadMatch` | `is_broader_than` |
+| `skos:narrowMatch` | `is_narrower_than` |
+| `skos:relatedMatch` | `intersects_with` |
+| (unknown) | `intersects_with` (with warning) |
+
+**Test fixture**: `tools/fixtures/synthetic/nist-csf-to-iso27001.sssom.tsv` (11 mappings; covers all 5 SKOS predicates + curie_map header + mapping_set_id).
+
+**Test coverage**: 25 new tests (19 parser unit + 6 importer integration). **164/164 tests pass.**
+
+**Phase 2 deferrals** (Phases 3-5 of v0.1.6 — pending):
+- Phase 3: `crosswalkerPivot` registered Bases view (per Settled #2 + Ch 30)
+- Phase 4: Recipe-picker UX + embedded `\`\`\`base` block insertion + `crosswalker-bases` SKILL.md (per Ch 32)
+- Phase 5: Opt-in materialization command + `_crosswalker/` folder convention finalization
+
+**Phase 2 known limitations** (tracked for follow-up):
+- `match_confidence` (numeric per Tier 1 schema) is preserved as the SSSOM `sssom_confidence` frontmatter field (string) instead of `match_confidence` (number). Cause: render() template engine emits all values as strings; numeric coercion in templates is a v0.1.7+ concern.
+- E2E suite for SSSOM import is scaffolded (`tests/e2e/sssom-import.spec.ts`) but pending — WebdriverIO env unavailable in current dev env.
+
+See `TEST_PHASE2_SSSOM_IMPORT.md` for manual test scenarios.
+
+### v0.1.6 Phase 1.5 — Test infrastructure (2026-05-09, ✅ Done)
+
+Foundation pass before Phase 2. Three changes:
+- **Deterministic fixtures**: `tools/generate-fixtures.ts` gains `--deterministic` flag (also `CROSSWALKER_FIXTURES_DETERMINISTIC=1` env var). When set, `produced_at` uses the stable `2026-05-04T00:00:00.000Z` timestamp instead of `Date.now()`. `bun run fixtures` now passes `--deterministic` so committed fixtures are byte-identical across regenerations.
+- **Fixture-drift CI gate**: new `bun run check:fixtures-drift` script. Stashes existing fixtures, regenerates from canonical source, diffs against committed HEAD, fails if drift detected. Catches schema/recipe/source-CSV changes that silently invalidate test data.
+- **Phase 2-5 E2E test scaffolds**: `tests/e2e/{sssom-import,crosswalker-pivot-view,recipe-picker-flow,materialize-command}.spec.ts` with Mocha pending-test patterns. Makes test-infra expectations visible to the implementation phases.
+
+
 
 ### v0.1.6 Phase 1 — recipe `query:` block schema (2026-05-09, ✅ Done)
 

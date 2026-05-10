@@ -2,6 +2,7 @@ import { Plugin, Notice } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
 import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
+import { SssomImportModal } from './import/sssom-import-modal';
 import { ConfigBrowserModal } from './config/config-browser-modal';
 import { DebugLog } from './utils/debug';
 import { initValidator, validateRecipe as validateRecipeFn, validateTier1Frontmatter } from './validation/validator';
@@ -16,6 +17,7 @@ import {
 	getConceptsByOntology,
 	crosswalkBetween,
 	closureFromConcept,
+	precomputeClosureForOntologyPair,
 	type ConceptRow,
 	type MappingRow,
 	type ClosureEntry,
@@ -129,6 +131,20 @@ export default class CrosswalkerPlugin extends Plugin {
 		return closureFromConcept(handle.db, startCurie, predicateId, maxDepth);
 	};
 
+	/**
+	 * v0.1.6 Phase 2 (per Ch 35): eagerly precompute closure for an
+	 * imported ontology pair after SSSOM import. Idempotent. Returns the
+	 * count of cached (subject, target) pairs after precompute.
+	 */
+	precomputeClosure = async (
+		sourceOntology: string,
+		targetOntology: string,
+		predicateId?: string,
+	): Promise<number> => {
+		const handle = await this.openTier2();
+		return precomputeClosureForOntologyPair(handle.db, sourceOntology, targetOntology, predicateId);
+	};
+
 	async onload() {
 		await this.loadSettings();
 
@@ -146,6 +162,16 @@ export default class CrosswalkerPlugin extends Plugin {
 			callback: () => {
 				new ImportWizardModal(this.app, this).open();
 			}
+		});
+
+		// v0.1.6 Phase 2: SSSOM TSV import (per Ch 35)
+		this.addCommand({
+			id: 'import-sssom',
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- SSSOM is a proper-noun acronym (Simple Standard for Sharing Ontological Mappings); canonical casing required
+			name: 'Import SSSOM mapping file',
+			callback: () => {
+				new SssomImportModal(this.app, this).open();
+			},
 		});
 
 		// Register config browser command

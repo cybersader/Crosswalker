@@ -1,0 +1,24 @@
+# curie_map:
+#   csf: "https://csrc.nist.gov/projects/cybersecurity-framework/csf/"
+#   iso27001: "https://www.iso.org/standard/27001/"
+#   skos: "http://www.w3.org/2004/02/skos/core#"
+#   semapv: "https://w3id.org/semapv/vocab/"
+# license: "https://creativecommons.org/publicdomain/zero/1.0/"
+# mapping_set_id: "https://crosswalker.dev/fixtures/nist-csf-to-iso27001"
+# mapping_set_description: "Synthetic mappings between NIST CSF 2.0 and ISO 27001:2022 for Crosswalker test fixtures"
+# subject_source: "csf"
+# object_source: "iso27001"
+# mapping_provider: "Crosswalker test fixture"
+# mapping_date: "2026-05-04"
+subject_id	subject_label	predicate_id	object_id	object_label	mapping_justification	confidence	mapping_provider
+csf:GV.OC-01	Organizational Context — strategy and mission	skos:closeMatch	iso27001:A.5.1	Information security policies	semapv:ManualMappingCuration	0.85	Crosswalker test fixture
+csf:GV.OC-02	Organizational Context — internal/external stakeholders	skos:closeMatch	iso27001:A.5.4	Management responsibilities	semapv:ManualMappingCuration	0.75	Crosswalker test fixture
+csf:GV.RM-01	Risk Management Strategy	skos:exactMatch	iso27001:A.5.5	Contact with authorities	semapv:LexicalMatching	0.62	Crosswalker test fixture
+csf:ID.AM-01	Asset Management — hardware inventoried	skos:exactMatch	iso27001:A.5.9	Inventory of information and other associated assets	semapv:ManualMappingCuration	0.95	Crosswalker test fixture
+csf:ID.AM-02	Asset Management — software inventoried	skos:exactMatch	iso27001:A.5.9	Inventory of information and other associated assets	semapv:ManualMappingCuration	0.95	Crosswalker test fixture
+csf:PR.AC-01	Identity Management — identities issued	skos:exactMatch	iso27001:A.5.16	Identity management	semapv:ManualMappingCuration	0.95	Crosswalker test fixture
+csf:PR.AC-03	Remote Access Management	skos:relatedMatch	iso27001:A.5.18	Access rights	semapv:LexicalMatching	0.72	Crosswalker test fixture
+csf:PR.AC-04	Access Permissions least-privilege	skos:closeMatch	iso27001:A.5.15	Access control	semapv:ManualMappingCuration	0.88	Crosswalker test fixture
+csf:DE.CM-01	Network monitoring	skos:closeMatch	iso27001:A.5.7	Threat intelligence	semapv:ManualMappingCuration	0.78	Crosswalker test fixture
+csf:RS.CO-01	Incident Response — coordinate with internal	skos:closeMatch	iso27001:A.5.24	Information security incident management planning	semapv:ManualMappingCuration	0.82	Crosswalker test fixture
+csf:RC.RP-01	Recovery Plan executed	skos:closeMatch	iso27001:A.5.30	ICT readiness for business continuity	semapv:ManualMappingCuration	0.85	Crosswalker test fixture

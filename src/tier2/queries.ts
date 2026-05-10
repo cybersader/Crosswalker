@@ -354,3 +354,63 @@ function readCache(db: any, startCurie: string, predicateFilter: string): Closur
 		shortest_depth: Number(r[3]),
 	}));
 }
+
+/**
+ * Eagerly precompute closure for every subject in a (sourceOntology, targetOntology)
+ * pair (per Ch 35 — "every production ontology-web system materializes precomputed
+ * pairwise crosswalks"). Called by the SSSOM importer after junction-edge files land
+ * + projection runs.
+ *
+ * Strategy:
+ *   1. Find all distinct subject_ids in `mappings` whose subject CURIE prefix matches
+ *      sourceOntology.
+ *   2. For each subject, call closureFromConcept (which lazy-builds + caches) so
+ *      future queries hit the cache without re-running the recursive CTE.
+ *   3. Return the count of (subject_id, target_id) cache rows now populated.
+ *
+ * Idempotent: re-running on already-cached subjects is cheap (closureFromConcept
+ * checks cache before recomputing).
+ *
+ * @returns Total cached (subject, target) pairs after the precompute.
+ */
+export function precomputeClosureForOntologyPair(
+	db: any,
+	sourceOntology: string,
+	targetOntology: string,
+	predicateId?: string,
+	maxDepth = 10,
+): number {
+	const sourcePrefix = `${sourceOntology}:`;
+	const subjects = db.exec({
+		sql: `
+			SELECT DISTINCT subject_id FROM mappings
+			WHERE subject_id LIKE $prefix || '%'
+			${predicateId ? 'AND predicate_id = $pred' : ''}
+		`,
+		bind: predicateId
+			? { $prefix: sourcePrefix, $pred: predicateId }
+			: { $prefix: sourcePrefix },
+		rowMode: 'array',
+		returnValue: 'resultRows',
+	}) as unknown[][];
+
+	for (const row of subjects) {
+		const subjectId = String(row[0]);
+		// closureFromConcept lazy-builds + caches; discard the rows, we want the
+		// side-effect of populating closure_cache.
+		closureFromConcept(db, subjectId, predicateId, maxDepth);
+	}
+
+	const count = db.exec({
+		sql: `
+			SELECT COUNT(*) FROM closure_cache cc
+			WHERE cc.subject_id LIKE $sourcePrefix || '%'
+			  AND cc.object_id LIKE $targetPrefix || '%'
+		`,
+		bind: { $sourcePrefix: sourcePrefix, $targetPrefix: `${targetOntology}:` },
+		rowMode: 'array',
+		returnValue: 'resultRows',
+	}) as unknown[][];
+
+	return Number(count[0]?.[0] ?? 0);
+}

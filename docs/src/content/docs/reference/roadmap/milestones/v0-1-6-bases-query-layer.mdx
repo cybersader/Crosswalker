@@ -13,7 +13,16 @@ Move the v0.1 output query layer from Dataview to [Bases](/crosswalker/concepts/
 
 ## Status
 
-📋 Planning
+🚧 In progress — Phases 1 + 1.5 + 2 ✅ done; Phases 3–5 pending
+
+| Phase | What ships | Status |
+|---|---|---|
+| **Phase 1** — Recipe `query:` block schema | Both A/B discriminator styles + 5 reference recipes + 23 unit tests | ✅ Done 2026-05-09 |
+| **Phase 1.5** — Test infrastructure | Deterministic fixtures + drift CI gate + Phase 2-5 test scaffolds | ✅ Done 2026-05-09 |
+| **Phase 2** — SSSOM TSV import + materialized closure | Parser + importer + modal UX + eager closure precompute + 25 new tests | ✅ Done 2026-05-10 |
+| **Phase 3** — `crosswalkerPivot` registered Bases view | One custom view + reference `.base` file + Bases-disabled fallback | 📋 Planning |
+| **Phase 4** — Recipe-picker UX | Command palette → modal → inline editor → embedded `\`\`\`base` block | 📋 Planning |
+| **Phase 5** — Materialization command + folder convention | Opt-in command + sparse-pivot guard + first-run prompts | 📋 Planning |
 
 ## Dependencies
 
@@ -102,14 +111,14 @@ This milestone is the **v0.1.6 instance of Crosswalker's general [ontology-web q
 - [ ] Inline parameter editor (only the recipe's exposed parameters; not full schema editing)
 - [ ] On confirm: insert embedded `\`\`\`base` block at cursor position in note
 
-**SSSOM TSV import + materialization (locked 2026-05-09 per Ch 35):**
-- [ ] Implement `.sssom.tsv` parser per [SSSOM 0.15+ spec](https://w3id.org/sssom/) (subject_id, predicate_id, object_id, mapping_justification, confidence, mapping_set_id, etc.)
-- [ ] Generate one junction note per TSV row in `_crosswalker/mappings/<source>-to-<target>/` with frontmatter mirroring SSSOM columns
-- [ ] Build `mappings` table in sqlite cache: `(subject_id, predicate_id, object_id, confidence, mapping_justification)` with indexes on subject + object
-- [ ] Build `concept_closure` materialized table per opt-in concept scheme: `(ancestor, descendant, depth)` precomputed via recursive CTE on import
-- [ ] Incremental refresh: on SSSOM file change, rebuild only the affected ontology pair
-- [ ] Sparse-pivot rendering helper: suppress empty rows/columns; warn user at >100K cells; force pair-selection (or triple-selection) upfront
-- [ ] User-facing import UX: file picker → SSSOM validation → preview row count + ontology pair detected → confirm
+**SSSOM TSV import + materialization (locked 2026-05-09 per Ch 35) — Phase 2 ✅ Done 2026-05-10:**
+- [x] Implement `.sssom.tsv` parser per [SSSOM 0.15+ spec](https://w3id.org/sssom/) (subject_id, predicate_id, object_id, mapping_justification, confidence, mapping_set_id, etc.) — `src/import/sssom-parser.ts` + 19 unit tests
+- [x] Generate one junction note per TSV row in `_crosswalker/mappings/<source>-to-<target>/` with frontmatter mirroring SSSOM columns — `src/import/sssom-importer.ts` builds synthetic crosswalk-edge recipe + delegates to `generateFromRecipe`; SKOS→STRM predicate normalization preserves original SSSOM predicate as `sssom_predicate`
+- [x] `mappings` table populated via existing v0.1.5 P3 projector path (`mappings` table is already SSSOM-shaped from P3; importer triggers projection after junction notes land)
+- [x] Eager `concept_closure` materialization on import — `precomputeClosureForOntologyPair(db, source, target)` in `src/tier2/queries.ts`; exposed as `plugin.precomputeClosure`
+- [x] User-facing import UX: file picker → SSSOM validation → preview row count + ontology pair detected → confirm — `src/import/sssom-import-modal.ts` + `Crosswalker: Import SSSOM mapping file` command
+- [ ] Incremental refresh on SSSOM file change (rebuild only affected pair) — DEFERRED: idempotent re-imports work via `overwriteMode: 'replace'`; per-file watcher deferred to v0.1.7
+- [ ] Sparse-pivot rendering helper (warn at >100K cells; force pair-selection) — DEFERRED to Phase 5 (lives at the rendering layer)
 
 **Materialization command (per D1 lock):**
 - [ ] Command palette: `Crosswalker: Materialize this recipe` (manual; no auto-refresh)
