@@ -47,6 +47,16 @@ Per Settled #2 + Ch 30. The single `registerBasesView` registration v0.1.6 ships
 
 See `TEST_PHASE3_PIVOT_VIEW.md` for manual test scenarios.
 
+### Phase 2 + 3 E2E backfill (2026-05-10, post-Phase 3, ✅ Done)
+
+After shipping Phases 2 + 3, backfilled real WebdriverIO + wdio-obsidian-service E2E coverage that exercises the full path through the plugin runtime (not just unit-test mock-vault round-trips). Closes the "E2E pending — env-fragile" caveat from both phase logs:
+
+- `tests/e2e/sssom-import.spec.ts` — 7 tests verifying SSSOM import end-to-end against real Obsidian + real SQLite + real metadataCache (command registration, plugin.precomputeClosure handle, TSV → 5 junction notes round-trip, STRM normalization in frontmatter, Tier 2 mappings table population, closure_cache eager-precompute).
+- `tests/e2e/crosswalker-pivot-view.spec.ts` — 6 tests verifying `plugin.registerBasesView` API exposure, `crosswalker-pivot` view-type registration in Bases registrations map, reference `.base` file auto-creation on first run, content shape, and **idempotent first-run write preserves user edits across plugin disable/re-enable cycle** (the test that actually exercises Settled #3's user-edit-safety property).
+
+`bun run e2e` confirms **17/17 spec files pass** in 18:04 (full sequential run; `maxInstances: 1`).
+
+
 
 ### v0.1.6 Phase 2 — SSSOM TSV import + materialized closure (2026-05-10, ✅ Done)
 

@@ -122,7 +122,7 @@ These weren't pre-locked in the synthesis log; they emerged at coding time. Docu
 ## Open follow-ups (tracked, not blocking)
 
 - **Numeric template coercion**: render template engine should emit numbers when source value is numeric. Then flip `sssom_confidence` (string) → `match_confidence` (number, Tier 1-validated). v0.1.7+ work.
-- **E2E env diagnosis**: WebdriverIO E2E suite scaffold exists at `tests/e2e/sssom-import.spec.ts` but pending — environment-fragile. Phase 3 (Bases view) likely needs E2E so will surface env config requirements then.
+- ~~**E2E env diagnosis**~~ — RESOLVED. Backfilled 2026-05-10: WebdriverIO + wdio-obsidian-service runs against real Obsidian 1.12.7. `tests/e2e/sssom-import.spec.ts` ships **7 real E2E tests** verifying command registration, `plugin.precomputeClosure` handle, TSV → 5 junction notes round-trip, STRM normalization in frontmatter, Tier 2 mappings table population, closure_cache eager-precompute. `bun run e2e` confirms **17/17 spec files pass** (full suite, ~18 min sequential run).
 - **Incremental refresh on SSSOM file change**: Phase 2 idempotent re-import handles this manually (user re-runs import); a file watcher that auto-detects `.sssom.tsv` changes is v0.1.7 work per the milestone page deferral.
 - **`match_confidence` numeric**: see follow-up #1.
 - **CURIE-prefix-vs-header source/target precedence**: importer uses header `subject_source`/`object_source` first, falls back to first-row CURIE prefix. Documented in `src/import/sssom-parser.ts` `detectOntologyPair`. Edge case: if the two disagree, header wins. Not exercised by current tests; add fixture in v0.1.7 if any user reports an ambiguous case.
