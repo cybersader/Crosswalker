@@ -1,0 +1,228 @@
+---
+title: "v0.1.6 mid-milestone — Phase 3 manual-test fixes + Phase 3.5 observability initiative"
+description: "Mid-milestone session 2026-05-11. Three minor UX fixes shipped during Phase 3 manual validation (tsconfig deprecation, config browser modal layout, import wizard layout + column-stats redesign). One major postmortem: the wizard's filename-template fallback was emitting `{{row}}` (stale Mustache syntax with a non-existent variable), breaking every row of every import where the user didn't pick a 'Note title' column — manifested as '0 pages generated' with 'Template variable row resolved to undefined/null' on every row. Root cause traced via the existing debug.log; the bug, the fix, and the regression-test design are captured below. Per-row template errors going unseen until the user happened to enable verbose logging exposed the bigger observability gap: Crosswalker's current logger is plain timestamped JSON dumps with no trace correlation, no severity levels, no rotation, and no read/clear UX. Phase 3.5 observability work item kicked off — wide structured events (loggingsucks.com / Charity Majors style), trace_id correlation per import, span timing, rotation, in-Obsidian log viewer. Slots in before Phase 4 (recipe-picker UX) so Phase 4 ships against a debuggable substrate."
+tags: [mid-milestone, v0-1-6, bugfix-postmortem, observability, phase-3-5, wizard, debug-log]
+date: 2026-05-11
+sidebar:
+  label: "05-11 · v0.1.6 mid-milestone bugfixes + observability initiative"
+  order: -20260511
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## What happened today
+
+Phase 3 of v0.1.6 shipped 2026-05-10 (the `crosswalkerPivot` Bases view). 2026-05-11 was the first manual-validation pass against the test-vault. The user attempted `bun run build`, found it failed, fixed it. Opened the test-vault in Obsidian; found the config browser modal was too narrow with horizontal overflow on action buttons. Fixed it. Opened the import wizard; same modal-width problem plus an ugly "Column statistics" section that read like a flat code block. Fixed both. Then ran the wizard end-to-end with a NIST 800-53 CSV, typed `nist-test` as the framework identifier, clicked through — **and got zero generated notes**.
+
+The debug log told us exactly why. The fix was small. The lesson was big: the current logger barely surfaced this. The user invoked the "loggingsucks.com" framing — wide structured events, trace correlation, observable systems — and asked for a focused observability work item before Phase 4 starts. **That's Phase 3.5.**
+
+This log captures all of it. Minor items concise; the wizard postmortem and observability initiative get full treatment.
+
+## Minor improvements (concise)
+
+| # | Issue | Fix | Commit |
+|---|---|---|---|
+| 1 | `bun run build` failed with TS5101 + TS5107 — `baseUrl` and `moduleResolution: "node"` are deprecation-as-error under TypeScript 6+ | Removed `baseUrl` + `paths` (unused — no `@/*` aliases imported anywhere in `src/`); changed `moduleResolution` to `"bundler"` (semantically correct for esbuild) | [`5d458d7`](https://github.com/cybersader/Crosswalker/commit/5d458d7) |
+| 2 | Config browser modal stayed at Obsidian's default narrow width; Export/Duplicate/Delete buttons overflowed horizontally; vertical space was capped at a hard 400px | Applied width class to `modalEl` (not `contentEl` — the source of the bug); `flex-wrap: wrap` on toolbar + card-actions + footer; flex-column layout in `modal-content` so the list area grows. Visual test added at `tests/e2e/visual-config-browser.spec.ts` (WebDriver screenshots on demand, not in routine CI) | [`383d94f`](https://github.com/cybersader/Crosswalker/commit/383d94f) |
+| 3 | Import wizard modal had the same `contentEl`-vs-`modalEl` width bug. The "Column statistics" section rendered as a single grey box of paragraphs ("Column A: 100 unique values, Column B: ..."), unclear and ugly | Modal sized to `min(92vw, 1100px)` × `min(92vh, 900px)`. Column statistics rewritten as a responsive auto-fill grid of stat cards (label + numeric value + '% of rows' meta + 'has blanks' warning). Hint sentence added explaining how to read cardinality (low → hierarchy candidate; high → frontmatter/skip) | [`7dda997`](https://github.com/cybersader/Crosswalker/commit/7dda997) |
+
+**Common thread across #2 and #3**: same root-cause pattern. Obsidian's `Modal` has two distinct DOM elements — `modalEl` (outer wrapper, controls dimensions) and `contentEl` (inner padded content). Width/height rules only take effect when applied to `modalEl`. Both modals were applying width to `contentEl`, which has no effect on outer dimensions. **Lesson**: every custom modal class in `src/` should apply its dimension class to `this.modalEl`, not `this.contentEl`. Worth a sweep before Phase 4 ships any new modals (recipe picker is one).
+
+## Major: the wizard "0 pages generated" bug
+
+### What the user saw
+
+> "When I did just click through everything and try to get it to go in, I typed `nist-test` for the identifier and it generated zero pages."
+
+### How we found it
+
+The existing `crosswalker-debug.log` (path: `test-vault/crosswalker-debug.log`) had 12 entries like this, one per row:
+
+```text
+[2026-05-11T13:56:52.095Z] Row processing error
+{
+  "row": 8,
+  "error": "render() failed for row 8: Template variable \"row\" resolved to undefined/null in template \"{{row}}.md\"."
+}
+```
+
+Followed by:
+
+```text
+[2026-05-11T13:56:52.138Z] Generation complete
+{
+  "success": true,
+  "created": 0,
+  "skipped": 0,
+  "errors": 12,
+  "duration": 117
+}
+```
+
+**Two diagnostic signals immediately**: (1) "Template variable `row` resolved to undefined/null"; (2) `created: 0, errors: 12`. From those, a 5-minute trace through `src/render/template.ts` → `src/generation/legacy-recipe-shim.ts` → `src/generation/generation-engine.ts` (`buildConfigFromWizardState`) located the bug.
+
+### Root cause
+
+In `buildConfigFromWizardState` (the wizard's row state → `ImportRecipe` converter), the filename-template fallback used a stale Mustache-syntax leftover:
+
+```ts
+// BEFORE (broken)
+filename: filenameTemplate ? {
+  template: filenameTemplate,
+  sanitize: true
+} : {
+  template: '{{row}}',  // ← stale Mustache; `row` isn't a template variable
+  sanitize: true
+}
+```
+
+Two layered problems:
+
+1. The template engine uses **single-brace** `{var}` syntax (`renderTemplate` in `src/render/template.ts`), not Mustache double-brace `{{var}}`. The double-brace string `{{row}}` still parsed — the regex `\{([^{}]+)\}` matched the inner `{row}` — but resolved to a variable that doesn't exist.
+2. Even with corrected `{row}` syntax, there's no `row` field on the template scope. The scope IS the row object itself; columns are the variables (`{Control ID}`, `{Description}`, etc.). There was never any synthetic `row` variable — the Mustache-era fallback was hallucinated by an earlier refactor.
+
+### Why the wizard's own check didn't catch it
+
+`deriveFilenameStem` in `generation-engine.ts:411` has a fallback chain — render the template, catch errors, fall back to first frontmatter column, then to `row-N`. But that's `deriveFilenameStem`, which is only used to build the **CURIE** for the row. The actual filename for the output file goes through `render()` → `renderTemplate()` at `generation-engine.ts:360`, which **throws** on missing variables. So the fallback chain was bypassed for the actual file write.
+
+### The fix
+
+`buildConfigFromWizardState` now **omits** `mapping.filename` when no title column is picked. The `legacy-recipe-shim`'s `resolveFilenameTemplate` already has a proper fallback chain (`explicit template → first frontmatter column → '{id}.md'`), so the shim handles the no-title case correctly — we just needed to stop overriding it with a broken value.
+
+When a title column **is** picked, the wizard now emits `{<title-column>}` (correct single-brace syntax — was wrongly `{{<title-column>}}` before too).
+
+```ts
+// AFTER (fixed)
+const titleCol = parsedColumns.find(col => columnConfigs.get(col)?.useAs === 'title');
+
+return {
+  mapping: {
+    hierarchy,
+    frontmatter,
+    links,
+    body,
+    ...(titleCol && {
+      filename: {
+        template: `{${titleCol}}`,
+        sanitize: true
+      }
+    })
+  }
+};
+```
+
+Also: `MappingConfig.filename` was required in the type definition but every consumer already used `mapping.filename?.template` (optional chain). Type made optional to match actual contract.
+
+### Regression tests
+
+3 new tests in `tests/generation-modules.test.ts` covering:
+
+1. `buildConfigFromWizardState` emits `filename: undefined` when no column is marked as title
+2. `buildConfigFromWizardState` emits correct single-brace template `{<column>}` when a title column IS picked
+3. End-to-end: wizard output → `legacyConfigToRecipe` → file mechanism resolves to `{<first-frontmatter-column>}.md` (the shim's fallback path)
+
+**204/204 tests pass.** Commit: [`ceffb6a`](https://github.com/cybersader/Crosswalker/commit/ceffb6a).
+
+### What this surfaced
+
+The bug existed since the wizard was first wired to the new `render()` engine in v0.1.3 (junction-and-crosswalks shipped 2026-05-05). It would have shipped silently — every user who didn't pick a title column would have hit it. The reason it didn't get caught in E2E:
+
+- `tests/e2e/import-flow.spec.ts` and `tests/e2e/full-import-flow.spec.ts` both pick a title column in their wizard state setup. The no-title path was never exercised.
+- The wizard's "review preview" step DID render the path correctly via the `deriveFilenameStem` fallback chain. The user saw a preview with sensible filenames. Then generation ran, which goes through a different code path (`render()` directly), which threw. The preview vs generation divergence was the structural smell.
+
+**Action items from this postmortem** (filed mentally; not blocking Phase 4):
+
+- Add E2E test for no-title-column wizard path (Phase 3.5 work, slots in with observability)
+- Audit `deriveFilenameStem` vs `render()` divergence — should they share the fallback logic? (Phase 4+ refactor candidate)
+- The `{{var}}` Mustache syntax is dead — grep ` src/` for any remaining `{{` occurrences and remove them (Phase 3.5 sweep)
+
+## Major: Phase 3.5 observability initiative
+
+### Why now
+
+The 0-pages bug postmortem above took maybe 5 minutes once we had the debug log. **Without the debug log**, it would have taken 30+ minutes of code reading. **With a better debug log** — wide structured events with severity levels, trace correlation, in-Obsidian filtering — it would have surfaced as a visible warning to the user in real time, not buried in a flat text file they had to discover.
+
+The user's framing:
+
+> "I don't know if you have debug logging or something, but that might be a useful thing to do. My TaskNotes project might have a few different ways in it of doing debug logging or pulling out logs and quickly refreshing or deleting logs after they're read... if you look up the loggingsucks.com blog or whatever — we really want wide traceable observable logging approach so that might be something to develop in the near term."
+
+The "loggingsucks.com" reference is Charity Majors / Honeycomb-style **observability** (not traditional logging): wide structured events with rich context, single-line-per-event so grep/filter works, trace IDs tying events together, no premature aggregation. The opposite of "INFO: started X" / "INFO: finished X" log spam.
+
+This isn't speculative work. The 0-pages bug demonstrated that **users hit silent generation failures** and the only way they currently find out is reading the debug log themselves. We need to fix that before Phase 4 (recipe-picker UX), which will introduce more user-facing surface area (modal flow, parameter editor, recipe insertion) that will inevitably have its own bugs.
+
+### Scope
+
+Phase 3.5 is its own focused work item. **Slots in before Phase 4**, after this 2026-05-11 session's bug fixes are locked in. Single commit sequence; single milestone-style entry in CHANGELOG `[Unreleased]`.
+
+**Capabilities targeted** (each independently shippable; not all required for Phase 3.5 to be considered done — to be locked in the plan):
+
+| Capability | What it adds | Rough effort |
+|---|---|---|
+| Wide structured events | One JSON line per event with full context (`op`, `row`, `recipe_id`, attempted template, scope keys available, duration, etc.) — replaces flat timestamped text | ~half day |
+| Trace correlation | Each import gets a `trace_id` UUID; every event in that import shares it. "Show me everything from import X" = one grep | ~1 hour |
+| Span timing | `debug.span(name, fn)` brackets auto-emit start + end events with duration; performance regressions become visible | ~half day |
+| Severity levels | `debug.error/warn/info/trace` with a settings toggle for verbosity filter | ~30 min |
+| Log rotation | Auto-truncate at N MB, keep last K rotations — currently the log just grows forever | ~30 min |
+| Read/clear/export commands | `Crosswalker: Export debug log to clipboard` (gzip + base64 for sharing), `Crosswalker: Clear debug log` | ~15 min |
+| In-Obsidian log viewer | Custom Bases view (or modal) that renders the structured events as filterable rows with severity coloring | ~1 day |
+
+**Prerequisite research** ([Task #142](#) — TaskNotes logging-patterns deep-read, running in background as this log is being written): the user mentioned TaskNotes has "a few different ways" of doing this; reading their approach first before designing avoids reinventing.
+
+### Sequencing
+
+1. **TaskNotes research** lands → informs design decisions
+2. **Plan mode** for Phase 3.5 — locks the capability scope, the event schema, the storage format, the migration path from the current flat-text `crosswalker-debug.log`
+3. **Execute Phase 3.5** as own commit sequence
+4. **Manual validation** in test-vault (re-run the wizard, deliberately trigger the no-title path, watch the new logger surface it)
+5. **Then start Phase 4** (recipe-picker UX) with the better substrate in place
+
+The user reaffirmed phase-by-phase pacing with manual review between phases. Phase 3.5 follows that.
+
+### Why this isn't "scope creep"
+
+Phase 3.5 isn't adding new product features. It's hardening the **operational substrate** that v0.1.6 already depends on — the wizard, the SSSOM importer (Phase 2), the pivot view (Phase 3), and the recipe-picker UX (Phase 4) all emit debug events. The current logger is so weak it nearly cost us the 0-pages bug. Phase 4 will be 2× the surface area; without observability, debugging it will be 2× harder.
+
+This is in scope per the v0.1.6 [milestone](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) under the implicit "ship a usable thing" success criterion. We'll surface it explicitly in the milestone page when planning lands.
+
+## Cumulative state after today
+
+| Surface | State |
+|---|---|
+| v0.1.6 Phase 1 + 1.5 + 2 + 3 | ✅ Shipped (2026-05-09 through 2026-05-10) |
+| v0.1.6 Phase 3 manual validation | 🚧 In progress 2026-05-11 (user is running through `TEST_PHASE3_PIVOT_VIEW.md` in test-vault) |
+| Bug fixes today | ✅ 4 commits, 204/204 tests pass, no regression risk |
+| Phase 3.5 observability | 🚧 Planning kicked off — TaskNotes research in flight; plan mode next |
+| Phase 4 (recipe-picker UX) | ⏸ Blocked on Phase 3.5 |
+| Phase 5 (materialization + sparse-pivot HARD guard) | ⏸ Blocked on Phase 4 |
+
+## Files changed today
+
+| File | Change |
+|---|---|
+| `tsconfig.json` | Remove `baseUrl` + `paths` (unused); `moduleResolution` → `bundler` |
+| `src/config/config-browser-modal.ts` | Apply width class to `modalEl` |
+| `src/import/import-wizard.ts` | Apply width class to `modalEl`; rewrite column-statistics section as stat-card grid |
+| `src/generation/generation-engine.ts` | Fix `buildConfigFromWizardState` filename fallback bug |
+| `src/types/config.ts` | `MappingConfig.filename` made optional (matches actual contract) |
+| `styles.css` | Config browser + wizard modal sizing; stat-card grid; flex-wrap on button groups |
+| `tests/generation-modules.test.ts` | 3 regression tests for wizard filename fallback |
+| `tests/e2e/visual-config-browser.spec.ts` | New on-demand visual verification (not in routine CI) |
+| `.gitignore` | Add `test-vault/_crosswalker/`, `test-vault/_test-guides/`, `test-screenshots/` |
+
+Commits today (no AI co-author per [`CLAUDE.md`](https://github.com/cybersader/Crosswalker/blob/main/CLAUDE.md) commit rules):
+
+1. [`5d458d7`](https://github.com/cybersader/Crosswalker/commit/5d458d7) — build: tsconfig TS 6+ deprecation fix
+2. [`383d94f`](https://github.com/cybersader/Crosswalker/commit/383d94f) — fix(ui): config browser modal width and vertical space
+3. [`7dda997`](https://github.com/cybersader/Crosswalker/commit/7dda997) — fix(ui): wider import wizard modal + stat-card column statistics grid
+4. [`ceffb6a`](https://github.com/cybersader/Crosswalker/commit/ceffb6a) — fix(generation): wizard fallback no longer breaks every row with `{{row}}` template
+
+All commits local. Not pushed yet.
+
+## Related
+
+- [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)
+- [v0.1.6 Phase 2 shipped 2026-05-10](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-2-sssom-import-shipped/) — SSSOM import + materialized closure
+- [v0.1.6 Phase 3 shipped 2026-05-10](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-3-pivot-view-shipped/) — `crosswalkerPivot` Bases view
+- [Bases query layer architecture synthesis 2026-05-07](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) — the architectural framing this milestone implements
+- [Roadmap](/crosswalker/reference/roadmap/) — Phase 3.5 will land here when planning closes
+- The "loggingsucks.com" framing — Charity Majors-style observability discipline (wide structured events, trace correlation, single-line-per-event). External, not yet linked in KB; informs Phase 3.5 design
