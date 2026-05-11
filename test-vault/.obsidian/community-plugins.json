@@ -1,4 +1,5 @@
 [
   "vconsole",
-  "crosswalker"
+  "crosswalker",
+  "hot-reload"
 ]

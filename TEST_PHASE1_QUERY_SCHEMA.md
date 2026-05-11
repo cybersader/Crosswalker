@@ -6,6 +6,19 @@
 
 ---
 
+## Pre-flight — reload after every rebuild
+
+The test-vault ships with the [Hot Reload](https://github.com/pjeby/hot-reload) community plugin installed and Crosswalker registered for auto-reload (`.hotreload` marker file in the plugin directory). When the dev workflow rebuilds `main.js`, Hot Reload will pick it up automatically — no manual reload needed.
+
+If Hot Reload isn't running (you disabled it, fresh vault, etc.), you MUST manually reload after every rebuild:
+
+- Settings → Community plugins → toggle Crosswalker **off**, then **on**, OR
+- Ctrl+R inside the dev console (Ctrl+Shift+I → Console → Ctrl+R)
+
+Without a reload, Obsidian keeps the OLD plugin code in memory regardless of what's on disk. Bugs that have been fixed will still appear to be present.
+
+---
+
 ## Pre-flight checks (automated)
 
 These should all be green before manual testing:
@@ -28,10 +41,23 @@ The whole point of "additive bump" is that recipes WITHOUT `query:` continue to 
 1. Open Obsidian with the test vault loaded
 2. Settings → Community plugins → Crosswalker → make sure the plugin is loaded (no errors in dev console)
 3. Run command `Crosswalker: Import structured data` (existing v0.1.5 command; no changes in Phase 1)
-4. Pick a starter recipe from the wizard (e.g., `nist-csf-to-800-53-crosswalk`)
-5. Verify wizard advances normally; no validation errors
+4. Step 1 of the wizard: pick a sample CSV (`Crosswalker Test Data/nist-800-53-sample.csv` or similar)
+5. The wizard auto-detects the column shape and may auto-apply a matching **saved config** ("NIST 800-53 Sample Format" or similar). This is the [smart config matching](https://github.com/cybersader/Crosswalker) feature; expected behavior, not a bug. The wizard shows which config was applied at the top of Step 2.
+6. (Optional) override column roles in Step 2 if you want to manually validate the wizard form
+7. Click through Steps 3 (preview) and 4 (generate)
+8. Verify wizard advances normally; no validation errors
 
-**Expected**: import flow works exactly as before. The `query:` block change is invisible to existing recipes.
+**Expected:**
+- Notice at the end says `✅ Created N notes` where N matches the CSV row count
+- Notes appear in your test-vault under `Frameworks/NIST-800-53/` (or wherever the saved config's output path points)
+- No "row processing error" entries in `crosswalker-debug.log`
+
+**If you see "0 notes generated":**
+1. Confirm you reloaded the plugin after the most recent build (Hot Reload should auto-do this; if you suspect it didn't, toggle the plugin off + on)
+2. Open `crosswalker-debug.log` at vault root and grep for `level":"error"` (now NDJSON per Phase 3.5a): `cat crosswalker-debug.log | jq 'select(.level=="error")'` from a shell, or just search for the word `error` in Obsidian if you don't have jq
+3. The most common error is a filename template referencing a missing column. If you see `"resolved to undefined/null in template"`, file a bug — the wizard should never emit a template that can't resolve
+
+The `query:` block change is invisible to existing recipes — both old saved configs and the import flow should behave exactly as in v0.1.5.
 
 ### Scenario 2: Settings toggle for schema style
 

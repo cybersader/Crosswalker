@@ -11,6 +11,19 @@ You can verify Phase 2 by importing an SSSOM file and querying the resulting jun
 
 ---
 
+## Pre-flight — reload after every rebuild
+
+The test-vault ships with the [Hot Reload](https://github.com/pjeby/hot-reload) community plugin installed and Crosswalker registered for auto-reload (`.hotreload` marker file in the plugin directory). When the dev workflow rebuilds `main.js`, Hot Reload will pick it up automatically — no manual reload needed.
+
+If Hot Reload isn't running (you disabled it, fresh vault, etc.), you MUST manually reload after every rebuild:
+
+- Settings → Community plugins → toggle Crosswalker **off**, then **on**, OR
+- Ctrl+R inside the dev console (Ctrl+Shift+I → Console → Ctrl+R)
+
+Without a reload, Obsidian keeps the OLD plugin code in memory regardless of what's on disk. Bugs that have been fixed will still appear to be present.
+
+---
+
 ## Pre-flight checks (automated)
 
 - [x] `bun run test` → 164/164 pass (added 25 new for SSSOM)
