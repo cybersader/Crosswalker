@@ -4,6 +4,22 @@
    Wizard Modal
    ============================================================================ */
 
+/* Width + height on the modal wrapper (modalEl), not contentEl. Obsidian's
+   default modal is narrow; the wizard has a column-config table that needs
+   real horizontal room. */
+.crosswalker-wizard-modal {
+	width: min(92vw, 1100px);
+	height: min(92vh, 900px);
+}
+
+.crosswalker-wizard-modal .modal-content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	max-height: none;
+	overflow: hidden;
+}
+
 .crosswalker-wizard-header {
 	margin-bottom: 1.5em;
 	padding-bottom: 1em;
@@ -45,8 +61,11 @@
 }
 
 .crosswalker-wizard-content {
-	min-height: 300px;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
 	margin-bottom: 1.5em;
+	padding-right: 0.25em; /* small inset so scrollbar doesn't clip content */
 }
 
 .crosswalker-wizard-footer {
@@ -250,8 +269,8 @@
    ============================================================================ */
 
 .crosswalker-table-container {
-	max-height: 400px;
-	overflow-y: auto;
+	max-height: 50vh;
+	overflow: auto;
 	margin: 1em 0;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
@@ -259,14 +278,14 @@
 
 .crosswalker-col-name {
 	font-weight: 500;
-	max-width: 150px;
-	overflow: hidden;
-	text-overflow: ellipsis;
 	white-space: nowrap;
+	padding-right: 0.5em;
 }
 
 .crosswalker-samples {
-	max-width: 200px;
+	color: var(--text-muted);
+	font-size: 0.9em;
+	max-width: 320px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -282,10 +301,76 @@
 	font-size: 0.85em;
 }
 
+/* Legacy single-box stats — replaced by .crosswalker-stats-grid below */
 .crosswalker-stats {
 	padding: 0.5em;
 	background: var(--background-secondary);
 	border-radius: 8px;
+}
+
+.crosswalker-stats-heading {
+	margin: 1.5em 0 0.25em 0;
+}
+
+.crosswalker-stats-hint {
+	margin: 0 0 0.75em 0;
+}
+
+.crosswalker-stats-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+	gap: 0.5em;
+	margin-bottom: 1em;
+}
+
+.crosswalker-stat-card {
+	padding: 0.65em 0.75em;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 0.15em;
+}
+
+.crosswalker-stat-card:hover {
+	background: var(--background-secondary-alt);
+	border-color: var(--background-modifier-border-hover);
+}
+
+.crosswalker-stat-label {
+	font-size: 0.8em;
+	font-weight: 500;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.crosswalker-stat-value {
+	font-size: 1.5em;
+	font-weight: 600;
+	color: var(--text-normal);
+	font-variant-numeric: tabular-nums;
+	line-height: 1.1;
+}
+
+.crosswalker-stat-meta {
+	font-size: 0.78em;
+	color: var(--text-muted);
+}
+
+.crosswalker-stat-pct {
+	font-variant-numeric: tabular-nums;
+}
+
+.crosswalker-stat-warning {
+	margin-top: 0.25em;
+	font-size: 0.75em;
+	color: var(--text-warning, var(--color-orange, #d97706));
+	font-style: italic;
 }
 
 /* ============================================================================

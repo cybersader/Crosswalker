@@ -29,6 +29,9 @@ test-vault/.obsidian/plugins/*/data.json
 # Runtime state written by the plugin's first-run hook
 test-vault/_crosswalker/
 
+# In-vault copies of TEST_*.md guides (canonical lives at repo root)
+test-vault/_test-guides/
+
 # On-demand visual verification screenshots from wdio runs
 test-screenshots/
 

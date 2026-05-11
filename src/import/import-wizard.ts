@@ -63,6 +63,7 @@ export class ImportWizardModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass('crosswalker-wizard-modal');
 		this.renderStep();
 	}
 
@@ -543,21 +544,35 @@ export class ImportWizardModal extends Modal {
 			});
 		}
 
-		// Unique values summary
-		container.createEl('h4', { text: 'Column statistics' });
-		const statsContainer = container.createEl('div', { cls: 'crosswalker-stats' });
+		// Unique values summary — stat-card grid (one card per column)
+		const statsHeading = container.createEl('h4', { text: 'Column statistics' });
+		statsHeading.addClass('crosswalker-stats-heading');
+		container.createEl('p', {
+			text: 'Cardinality of each column. Low unique counts often work well as hierarchy levels; high counts are typically frontmatter or skipped.',
+			cls: 'setting-item-description crosswalker-stats-hint'
+		});
+		const statsGrid = container.createEl('div', { cls: 'crosswalker-stats-grid' });
 
-		for (const colInfo of this.columnInfos.slice(0, 5)) { // Show first 5
-			statsContainer.createEl('p', {
-				text: `${colInfo.name}: ${colInfo.uniqueCount.toLocaleString()} unique values`,
-				cls: 'setting-item-description'
+		const totalRows = this.parsedData?.rowCount ?? 0;
+		for (const colInfo of this.columnInfos) {
+			const card = statsGrid.createEl('div', { cls: 'crosswalker-stat-card' });
+			card.createEl('div', { text: colInfo.name, cls: 'crosswalker-stat-label' });
+			card.createEl('div', {
+				text: colInfo.uniqueCount.toLocaleString(),
+				cls: 'crosswalker-stat-value'
 			});
-		}
-		if (this.columnInfos.length > 5) {
-			statsContainer.createEl('p', {
-				text: `... and ${this.columnInfos.length - 5} more columns`,
-				cls: 'setting-item-description'
-			});
+			const meta = card.createEl('div', { cls: 'crosswalker-stat-meta' });
+			meta.createEl('span', { text: 'unique' });
+			if (totalRows > 0) {
+				const pct = Math.round((colInfo.uniqueCount / totalRows) * 100);
+				meta.createEl('span', {
+					text: ` · ${pct}% of rows`,
+					cls: 'crosswalker-stat-pct'
+				});
+			}
+			if (colInfo.hasEmptyValues) {
+				card.createEl('div', { text: 'has blanks', cls: 'crosswalker-stat-warning' });
+			}
 		}
 	}
 
