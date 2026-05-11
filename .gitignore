@@ -26,6 +26,12 @@ test-vault/.obsidian/plugins/crosswalker/sqlite3.mjs
 test-vault/.obsidian/cache/
 test-vault/.obsidian/plugins/*/data.json
 
+# Runtime state written by the plugin's first-run hook
+test-vault/_crosswalker/
+
+# On-demand visual verification screenshots from wdio runs
+test-screenshots/
+
 # IDE
 .vscode/
 .idea/

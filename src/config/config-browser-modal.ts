@@ -61,6 +61,7 @@ export class ConfigBrowserModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass('crosswalker-config-browser');
+		this.modalEl.addClass('crosswalker-config-browser-modal');
 
 		// Header
 		const header = contentEl.createEl('div', { cls: 'crosswalker-browser-header' });

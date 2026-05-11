@@ -309,15 +309,27 @@
    Config Browser Modal
    ============================================================================ */
 
-.crosswalker-config-browser {
-	width: 80vw;
-	max-width: 900px;
-	min-width: 400px;
+/* Modal container — width + height on the modal wrapper, not just the content. */
+.crosswalker-config-browser-modal {
+	width: min(90vw, 1000px);
+	height: min(90vh, 900px);
 }
 
-.crosswalker-config-browser .modal-content {
-	max-height: 80vh;
-	overflow-y: auto;
+.crosswalker-config-browser-modal .modal-content {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	max-height: none;
+	overflow: hidden;
+}
+
+.crosswalker-config-browser {
+	width: 100%;
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	box-sizing: border-box;
 }
 
 .crosswalker-browser-header {
@@ -330,7 +342,8 @@
 
 .crosswalker-browser-toolbar {
 	display: flex;
-	gap: 1em;
+	flex-wrap: wrap;
+	gap: 0.75em;
 	align-items: center;
 	margin-bottom: 1em;
 	padding-bottom: 1em;
@@ -338,7 +351,8 @@
 }
 
 .crosswalker-search-container {
-	flex: 1;
+	flex: 1 1 220px;
+	min-width: 0;
 }
 
 .crosswalker-search-input {
@@ -368,7 +382,8 @@
 }
 
 .crosswalker-config-list {
-	max-height: 400px;
+	flex: 1 1 auto;
+	min-height: 200px;
 	overflow-y: auto;
 	margin-bottom: 1em;
 }
@@ -571,6 +586,7 @@
 
 .crosswalker-card-actions {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 0.5em;
 	margin-top: 1em;
 	padding-top: 1em;
@@ -580,6 +596,7 @@
 /* Browser Footer */
 .crosswalker-browser-footer {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: 0.75em;
 	padding-top: 1em;
