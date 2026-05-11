@@ -64,10 +64,11 @@ export interface CrosswalkerSettings {
 	recipeSchemaStyle: RecipeSchemaStyle;       // 'A' (oneOf+const, default) or 'B' (if/then/else); semantically equivalent
 
 	// ==========================================================================
-	// Debug
+	// Debug (Phase 3.5 — wide-event NDJSON logger)
 	// ==========================================================================
-	enableDebugLog: boolean;
-	verboseLogging: boolean;                    // Extra detailed logs
+	enableDebugLog: boolean;                    // Master toggle; writes NDJSON events to crosswalker-debug.log
+	verboseLogging: boolean;                    // When true, trace-level events are emitted; otherwise only error/warn/info
+	debugLogCategoryFilters: Record<string, boolean>;  // Per-category opt-out. Key = category name (e.g. "generation", "wizard"); value=false suppresses. Default empty (all categories emit).
 
 	// ==========================================================================
 	// Saved Configurations
@@ -123,9 +124,10 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	// Recipe schema (v0.1.6)
 	recipeSchemaStyle: 'A',
 
-	// Debug
+	// Debug (Phase 3.5)
 	enableDebugLog: false,
 	verboseLogging: false,
+	debugLogCategoryFilters: {},
 
 	// Saved configs
 	savedConfigs: []

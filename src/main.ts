@@ -1,4 +1,4 @@
-import { Plugin, Notice } from 'obsidian';
+import { Plugin, Notice, TFile } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
 import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
@@ -155,8 +155,13 @@ export default class CrosswalkerPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Initialize debug logging
-		this.debug = new DebugLog(this.app, this.settings.enableDebugLog);
+		// Initialize debug logging (Phase 3.5 — wide-event NDJSON logger)
+		this.debug = new DebugLog(
+			this.app,
+			this.settings.enableDebugLog,
+			this.settings.verboseLogging,
+			this.settings.debugLogCategoryFilters,
+		);
 
 		// Compile spec schemas (spec/tier1.schema.json + spec/recipe.schema.json)
 		// at startup. Throws fast if schema files are malformed.
@@ -207,6 +212,49 @@ export default class CrosswalkerPlugin extends Plugin {
 					new Notice(`Failed to clear Tier 2 sidecar: ${msg}`);
 					await this.debug?.log('Tier 2 clear failed', { error: msg });
 				}
+			},
+		});
+
+		// v0.1.6 Phase 3.5: debug log commands — open / export / clear
+		this.addCommand({
+			id: 'open-debug-log',
+			name: 'Open debug log',
+			callback: async () => {
+				const path = this.debug.getLogPath();
+				const file = this.app.vault.getAbstractFileByPath(path);
+				if (file instanceof TFile) {
+					await this.app.workspace.getLeaf(true).openFile(file);
+				} else {
+					new Notice(`Debug log not found at vault root (${path}). Enable debug logging in settings and trigger any action to generate one.`);
+				}
+			},
+		});
+
+		this.addCommand({
+			id: 'export-debug-log',
+			name: 'Export debug log to clipboard (last 1 MB, secrets redacted)',
+			callback: async () => {
+				const content = await this.debug.readForExport();
+				if (!content) {
+					new Notice('Debug log is empty or unreadable.');
+					return;
+				}
+				try {
+					await navigator.clipboard.writeText(content);
+					new Notice(`Copied ${Math.round(content.length / 1024)} KB to clipboard (likely tokens redacted).`);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					new Notice(`Clipboard write failed: ${msg}`);
+				}
+			},
+		});
+
+		this.addCommand({
+			id: 'clear-debug-log',
+			name: 'Clear debug log',
+			callback: async () => {
+				await this.debug.clear();
+				new Notice('Debug log cleared.');
 			},
 		});
 

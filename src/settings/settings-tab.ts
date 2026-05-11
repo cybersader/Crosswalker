@@ -294,12 +294,12 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Debug Section
+		// Debug Section (Phase 3.5 — wide-event NDJSON logger)
 		new Setting(containerEl).setName('Debug').setHeading();
 
 		new Setting(containerEl)
 			.setName('Enable debug log')
-			.setDesc('Write debug logs to crosswalker-debug.log in vault root')
+			.setDesc('Write NDJSON events to crosswalker-debug.log in vault root. Each line is one structured event (timestamp, level, category, op, msg, trace_id, ...freeform context). Read via: cat crosswalker-debug.log | jq')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableDebugLog)
 				.onChange(async (value) => {
@@ -310,19 +310,68 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Verbose logging')
-			.setDesc('Include extra details in debug logs')
+			.setDesc('Emit trace-level events (in addition to error/warn/info). Adds significant volume; useful when diagnosing a specific issue, otherwise leave off.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.verboseLogging)
 				.onChange(async (value) => {
 					this.plugin.settings.verboseLogging = value;
+					this.plugin.debug.setVerbose(value);
 					await this.plugin.saveSettings();
 				}));
 
+		// Category filters — suppress events from specific subsystems
 		new Setting(containerEl)
-			.setName('Clear debug log')
-			.setDesc('Clear the contents of the debug log file')
+			.setName('Category filters')
+			.setDesc('Suppress debug events from specific subsystems. Default: all categories emit. Toggle off any category you want to silence.')
+			.setHeading();
+
+		const KNOWN_CATEGORIES: { name: string; desc: string }[] = [
+			{ name: 'wizard', desc: 'Import wizard state transitions' },
+			{ name: 'csv-parser', desc: 'CSV/TSV parsing + streaming' },
+			{ name: 'generation', desc: 'Note generation pipeline' },
+			{ name: 'sssom-import', desc: 'SSSOM TSV import' },
+			{ name: 'tier2', desc: 'Tier 2 sqlite sidecar lifecycle + queries' },
+			{ name: 'config', desc: 'Saved config save/load/match' },
+			{ name: 'view', desc: 'Bases view rendering' },
+			{ name: 'lifecycle', desc: 'Plugin load/unload' },
+			{ name: 'legacy', desc: 'Pre-3.5 call sites (will disappear after Phase 3.5c migration)' },
+		];
+
+		for (const cat of KNOWN_CATEGORIES) {
+			new Setting(containerEl)
+				.setName(`Category: ${cat.name}`)
+				.setDesc(cat.desc)
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.debugLogCategoryFilters[cat.name] !== false)
+					.onChange(async (value) => {
+						// We store opt-OUT (false = suppressed). Omit the key when re-enabled
+						// to keep settings sparse.
+						if (value) {
+							delete this.plugin.settings.debugLogCategoryFilters[cat.name];
+						} else {
+							this.plugin.settings.debugLogCategoryFilters[cat.name] = false;
+						}
+						this.plugin.debug.setCategoryFilters(this.plugin.settings.debugLogCategoryFilters);
+						await this.plugin.saveSettings();
+					}));
+		}
+
+		new Setting(containerEl)
+			.setName('Log file actions')
+			.setDesc('Open, export, or clear the debug log. These are also available as command-palette commands.')
+			.addButton(btn => btn
+				.setButtonText('Open')
+				.onClick(async () => {
+					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:open-debug-log');
+				}))
+			.addButton(btn => btn
+				.setButtonText('Export to clipboard')
+				.onClick(async () => {
+					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:export-debug-log');
+				}))
 			.addButton(btn => btn
 				.setButtonText('Clear')
+				.setWarning()
 				.onClick(async () => {
 					await this.plugin.debug.clear();
 				}));
