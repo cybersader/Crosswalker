@@ -101,7 +101,12 @@ export interface MappingConfig {
 	frontmatter: FrontmatterMapping[];
 	links: LinkMapping[];
 	body: BodyMapping[];
-	filename: FilenameConfig;
+	/**
+	 * Optional. When omitted, the legacy-recipe-shim falls back to the first
+	 * frontmatter column → `{<column>}.md`, then to `{id}.md` as last resort.
+	 * The wizard omits this when no column is marked as "Note title".
+	 */
+	filename?: FilenameConfig;
 }
 
 export interface HierarchyMapping {

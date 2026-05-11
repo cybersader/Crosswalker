@@ -957,9 +957,16 @@ export function buildConfigFromWizardState(
 		}
 	}
 
-	// Find title column for filename
+	// Find title column for filename. The template engine uses single-brace
+	// {column} syntax (renderTemplate) and the column scope is the row object,
+	// so the template is `{<title-column>}`.
+	//
+	// When no title column is picked, omit `filename` entirely. The
+	// legacy-recipe-shim fallback chain then resolves to the first frontmatter
+	// column → `{<column>}.md`, which always has a value (otherwise the row
+	// wouldn't have been imported). The previous fallback ('{{row}}') used a
+	// non-existent template variable and broke every row.
 	const titleCol = parsedColumns.find(col => columnConfigs.get(col)?.useAs === 'title');
-	const filenameTemplate = titleCol ? `{{${titleCol}}}` : undefined;
 
 	return {
 		mapping: {
@@ -967,13 +974,12 @@ export function buildConfigFromWizardState(
 			frontmatter,
 			links,
 			body,
-			filename: filenameTemplate ? {
-				template: filenameTemplate,
-				sanitize: true
-			} : {
-				template: '{{row}}',
-				sanitize: true
-			}
+			...(titleCol && {
+				filename: {
+					template: `{${titleCol}}`,
+					sanitize: true
+				}
+			})
 		}
 	};
 }

@@ -13,6 +13,7 @@
 import { legacyConfigToRecipe } from '../src/generation/legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from '../src/generation/frontmatter-merge';
 import { buildProvenance } from '../src/generation/provenance';
+import { buildConfigFromWizardState } from '../src/generation/generation-engine';
 import type { ImportRecipe as LegacyImportRecipe } from '../src/types/config';
 
 // ---------------------------------------------------------------------------
@@ -260,5 +261,55 @@ describe('buildProvenance', () => {
 		expect(ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
 		// Round-trip: parsing the ISO string yields a valid Date
 		expect(Number.isFinite(new Date(ts).getTime())).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildConfigFromWizardState — wizard → ImportRecipe partial
+// ---------------------------------------------------------------------------
+
+describe('buildConfigFromWizardState', () => {
+	it('emits no filename template when no column is marked as title', () => {
+		// Regression for the 2026-05-11 wizard "0 pages generated" bug:
+		// Previous fallback set template: "{{row}}" which was a stale Mustache
+		// syntax leftover. The template engine threw on every row because `row`
+		// isn't a column. Now: omit `filename` so the legacy-recipe-shim falls
+		// through to first-frontmatter-column.
+		const columnConfigs = new Map([
+			['Control ID', { useAs: 'frontmatter', outputKey: 'control_id' }],
+			['Control Family', { useAs: 'hierarchy', outputKey: 'control_family' }],
+		]);
+		const result = buildConfigFromWizardState(columnConfigs, ['Control Family', 'Control ID']);
+		expect(result.mapping?.filename).toBeUndefined();
+	});
+
+	it('uses the title column with single-brace syntax when one is picked', () => {
+		const columnConfigs = new Map([
+			['Control ID', { useAs: 'title', outputKey: 'control_id' }],
+			['Description', { useAs: 'body', outputKey: 'description' }],
+		]);
+		const result = buildConfigFromWizardState(columnConfigs, ['Control ID', 'Description']);
+		expect(result.mapping?.filename?.template).toBe('{Control ID}');
+		expect(result.mapping?.filename?.sanitize).toBe(true);
+	});
+
+	it('legacy-recipe-shim filename fallback chain resolves when no title column is picked', () => {
+		// End-to-end: wizard state with no title → shim resolves to first
+		// frontmatter column → render() will succeed for any row that has
+		// that column populated.
+		const columnConfigs = new Map([
+			['Control ID', { useAs: 'frontmatter', outputKey: 'control_id' }],
+		]);
+		const partial = buildConfigFromWizardState(columnConfigs, ['Control ID']);
+		const recipe = legacyConfigToRecipe({
+			name: 'test',
+			version: '1.0',
+			source: { type: 'csv', path: 'x.csv' },
+			...partial,
+		} as LegacyImportRecipe);
+		// The leaf file entry should have a non-empty template
+		const fileEntries = recipe.target.layout.filter((e) => e.mechanism === 'file');
+		expect(fileEntries.length).toBeGreaterThan(0);
+		expect(fileEntries[0].template).toBe('{Control ID}.md');
 	});
 });
