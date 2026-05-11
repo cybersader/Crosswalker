@@ -588,7 +588,16 @@ export class ImportWizardModal extends Modal {
 
 		const mapping = this.appliedConfig.config.mapping;
 
-		// Process hierarchy mappings
+		// Process role assignments in order of structural primacy. Each pass uses
+		// "first-write wins" via .has() check, so hierarchy (most structural) is
+		// preserved even if a column is ALSO listed as frontmatter in the saved
+		// config (which is common — Control Family is often both a folder AND
+		// emitted to frontmatter). The pre-3.5b version unconditionally .set()
+		// in every loop, causing the last-written role to win — which meant
+		// frontmatter mappings clobbered hierarchy and the import produced one
+		// note per Control Family instead of one per row.
+
+		// 1. Hierarchy mappings (most structural — folder paths)
 		if (mapping.hierarchy) {
 			for (const h of mapping.hierarchy) {
 				lookup.set(h.column.toLowerCase(), {
@@ -598,47 +607,60 @@ export class ImportWizardModal extends Modal {
 			}
 		}
 
-		// Process frontmatter mappings
-		if (mapping.frontmatter) {
-			for (const f of mapping.frontmatter) {
-				lookup.set(f.column.toLowerCase(), {
-					useAs: 'frontmatter',
-					outputKey: f.key
-				});
-			}
-		}
-
-		// Process link mappings
-		if (mapping.links) {
-			for (const l of mapping.links) {
-				lookup.set(l.column.toLowerCase(), {
-					useAs: 'link',
-					outputKey: l.frontmatterKey || l.column.toLowerCase().replace(/[^a-z0-9]+/g, '_')
-				});
-			}
-		}
-
-		// Process body mappings
-		if (mapping.body) {
-			for (const b of mapping.body) {
-				lookup.set(b.column.toLowerCase(), {
-					useAs: 'body',
-					outputKey: b.heading || b.column
-				});
-			}
-		}
-
-		// Process filename template to detect title column
+		// 2. Title detection from filename template — only set for columns not
+		//    already taken (hierarchy wins; a column can't be both folder and
+		//    title at the wizard level). Accepts both single-brace `{X}` and
+		//    legacy Mustache `{{X}}` syntax for backward compat with old saved
+		//    configs.
 		if (mapping.filename?.template) {
-			// Extract column names from template like "{{Control ID}}"
-			const matches = mapping.filename.template.matchAll(/\{\{([^}]+)\}\}/g);
+			const matches = mapping.filename.template.matchAll(/\{\{?([^{}]+)\}\}?/g);
 			for (const match of matches) {
-				const colName = match[1].toLowerCase();
-				// Only set as title if not already mapped to something else
+				const colName = match[1].trim().toLowerCase();
 				if (!lookup.has(colName)) {
 					lookup.set(colName, {
 						useAs: 'title',
 						outputKey: colName.replace(/[^a-z0-9]+/g, '_')
+					});
+				}
+			}
+		}
+
+		// 3. Link mappings — only if column not already assigned
+		if (mapping.links) {
+			for (const l of mapping.links) {
+				const key = l.column.toLowerCase();
+				if (!lookup.has(key)) {
+					lookup.set(key, {
+						useAs: 'link',
+						outputKey: l.frontmatterKey || key.replace(/[^a-z0-9]+/g, '_')
+					});
+				}
+			}
+		}
+
+		// 4. Body mappings — only if column not already assigned
+		if (mapping.body) {
+			for (const b of mapping.body) {
+				const key = b.column.toLowerCase();
+				if (!lookup.has(key)) {
+					lookup.set(key, {
+						useAs: 'body',
+						outputKey: b.heading || b.column
+					});
+				}
+			}
+		}
+
+		// 5. Frontmatter mappings last — least structural. Only fills in
+		//    columns NOT already assigned a more-structural role. This is the
+		//    key fix for the "3 notes generated" bug.
+		if (mapping.frontmatter) {
+			for (const f of mapping.frontmatter) {
+				const key = f.column.toLowerCase();
+				if (!lookup.has(key)) {
+					lookup.set(key, {
+						useAs: 'frontmatter',
+						outputKey: f.key
 					});
 				}
 			}
@@ -686,10 +708,15 @@ export class ImportWizardModal extends Modal {
 			return;
 		}
 
-		// Build config from current wizard state
+		// Build config from current wizard state. Pass the applied config's
+		// filename block so the saved config's filename template (often
+		// Mustache-style `{{X}}`) is preserved when no column is marked as
+		// 'title' in the wizard. Without this the legacy-shim would default
+		// to the first frontmatter column, which is often wrong.
 		const config = buildConfigFromWizardState(
 			this.columnConfigs,
-			this.parsedData.columns
+			this.parsedData.columns,
+			this.appliedConfig?.config?.mapping?.filename
 		);
 
 		// Estimate output
@@ -937,7 +964,11 @@ export class ImportWizardModal extends Modal {
 
 		// Summary with actual estimates
 		if (this.parsedData) {
-			const config = buildConfigFromWizardState(this.columnConfigs, this.parsedData.columns);
+			const config = buildConfigFromWizardState(
+				this.columnConfigs,
+				this.parsedData.columns,
+				this.appliedConfig?.config?.mapping?.filename
+			);
 			const estimate = estimateOutput(this.parsedData, config);
 
 			container.createEl('div', { cls: 'crosswalker-generate-summary' }, (div) => {
@@ -1105,10 +1136,12 @@ export class ImportWizardModal extends Modal {
 			return;
 		}
 
-		// Build config from wizard state
+		// Build config from wizard state (preserves applied saved-config filename
+		// template when no column is explicitly marked as 'title').
 		const config = buildConfigFromWizardState(
 			this.columnConfigs,
-			this.parsedData.columns
+			this.parsedData.columns,
+			this.appliedConfig?.config?.mapping?.filename
 		);
 
 		// Prepare generation options

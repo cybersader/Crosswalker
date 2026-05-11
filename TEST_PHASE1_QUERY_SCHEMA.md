@@ -71,23 +71,30 @@ The `query:` block change is invisible to existing recipes — both old saved co
 
 **Expected**: dropdown saves the active style; `data.json` should contain `"recipeSchemaStyle": "A"` or `"B"`.
 
-### Scenario 3: Reference recipes validate (both styles)
+### Scenario 3: Reference recipes validate (both styles) — covered by automated tests
 
-The 5 new reference recipes live in `recipes/v0-1/`. They're not yet wired into the import wizard (that's Phase 4 — recipe picker UX). For Phase 1, validate them via dev console.
+The 5 new reference recipes live in `recipes/v0-1/` **at the repo root** (not inside the vault — that's why `app.vault.adapter.read('recipes/v0-1/...')` errors with ENOENT; the vault's filesystem and the repo's filesystem are distinct).
 
-**Steps:**
-1. Open Obsidian dev console (Ctrl+Shift+I, or Cmd+Opt+I on Mac)
-2. Run:
-   ```js
-   const recipe = JSON.parse(await app.vault.adapter.read('recipes/v0-1/coverage-matrix.json'))
-   const result = await app.plugins.plugins.crosswalker.validateRecipe(recipe)
-   console.log(result)
-   ```
-3. Verify `result.valid === true` and `result.errors.length === 0`
-4. Repeat for all 5 reference recipes (`coverage-matrix.json`, `crosswalk-density.json`, `orphan-controls.json`, `hierarchy-view.json`, `list-view.json`)
-5. Toggle settings to Style B, repeat step 2-4, verify all 5 still validate
+**This scenario is now fully covered by `tests/recipe-query-block.test.ts`** — see the `'Recipe query: block — 5 reference recipes validate'` block. It iterates all 5 recipes × both schema styles = 10 validation passes. Run via:
 
-**Expected**: all 10 validations pass (5 recipes × 2 styles).
+```bash
+bun run test --testPathPattern=recipe-query-block
+```
+
+If you want to spot-check manually in dev console, paste the recipe inline instead of reading from vault path:
+
+```js
+const recipe = {
+  recipe: 'test',
+  source: { ontology: 'a', levels: ['c'] },
+  target: { layout: [{ level: 'c', mechanism: 'file', template: '{c.id}.md' }] }
+}
+const result = app.plugins.plugins.crosswalker.validateRecipe(recipe)
+console.log(result.valid, result.errors)
+// → true, []
+```
+
+**Expected**: automated tests pass; manual spot-checks via dev console show `valid: true` for well-formed recipes.
 
 ### Scenario 4: Schema rejects malformed `query:` blocks
 
@@ -121,26 +128,37 @@ console.log(r2.valid, r2.errors)
 
 **Expected**: both `r1` and `r2` are `valid: false` with descriptive error messages.
 
-### Scenario 5: `bun run codegen` regenerates types correctly
+### Scenario 5: `bun run codegen` regenerates types correctly — automated
 
-**Steps (terminal):**
+You don't need to run this manually. The agent runs `bun run codegen` after any spec change and verifies zero drift before pushing. The CI gate at `.github/workflows/lint-and-validate.yml` (Phase 1.5) re-runs codegen on every PR and fails if `src/types/generated/` drifts from the schema.
+
+**If you do want to verify locally:**
+
 ```bash
-cd /path/to/crosswalker-obsidian-plugin
 bun run codegen
-git diff src/types/generated/recipe.ts | head -30
+git diff --stat src/types/generated/
+# expect: empty diff
 ```
 
-**Expected**: clean regeneration (no diff if already up-to-date); generated types include `QueryBlock`, `ShapeDispatchA`, `PivotPrimitives`, `TablePrimitives`, etc.
+**Expected**: clean regeneration (no diff if already up-to-date).
 
 ---
 
-## Edge cases worth checking
+## Edge cases worth checking — covered by automated tests
 
-- [ ] Recipe with `query:` AND `target.layout` both present → both should validate independently (the recipe imports data + declares its canonical query)
-- [ ] Recipe with `$schema` and `$comment` at top level (these are now allowed) → validates
-- [ ] Recipe with random extra top-level key (e.g., `notes: "..."`) → fails (additionalProperties: false stays enforced for non-meta keys)
-- [ ] `recipe.query.params` with `confidence_threshold: { type: 'number', default: 0.7 }` → validates
-- [ ] `recipe.query.primitives.agg[].op: 'x_custom_op'` → validates (custom op extension via x_-prefix)
+All 5 edge cases below are now in `tests/recipe-query-block.test.ts` under the `'Recipe schema — Phase 1 edge cases'` block (added 2026-05-11). You don't need to test them manually.
+
+- [x] Recipe with `query:` AND `target.layout` both present → both validate independently (test: `'accepts a recipe with BOTH query AND target.layout populated'`)
+- [x] Recipe with `$schema` and `$comment` at top level → validates (test: `'accepts a recipe with $schema + $comment top-level meta-keys'`)
+- [x] Recipe with random extra top-level key (e.g., `notes: "..."`) → fails (test: `'rejects a recipe with a random unknown top-level key (additionalProperties: false)'`)
+- [x] `recipe.query.params` with `confidence_threshold: { type: 'number', default: 0.7 }` → validates (test: `'accepts recipe.query.params with a typed default (confidence_threshold)'`)
+- [x] Custom aggregate op with `x_` prefix → validates (test: `'accepts custom aggregate op with x_ prefix'`)
+
+Run them via:
+
+```bash
+bun run test --testPathPattern=recipe-query-block
+```
 
 ---
 

@@ -261,3 +261,88 @@ describe('Recipe query: block — style A and B produce identical verdicts', () 
 		});
 	}
 });
+
+// ---------------------------------------------------------------------------
+// Edge cases worth checking (per TEST_PHASE1_QUERY_SCHEMA.md)
+// ---------------------------------------------------------------------------
+
+describe('Recipe schema — Phase 1 edge cases', () => {
+	const baseValid = {
+		recipe: 'edge-case-test',
+		source: { ontology: 'a', levels: ['c'] },
+		target: { layout: [{ level: 'c', mechanism: 'file', template: '{c.id}.md' }] },
+	};
+
+	it('accepts a recipe with $schema + $comment top-level meta-keys', () => {
+		const recipe = {
+			$schema: 'https://crosswalker.dev/spec/recipe.schema.json',
+			$comment: 'A test recipe demonstrating meta-keys are allowed.',
+			...baseValid,
+		};
+		const a = validateRecipe(recipe, 'A');
+		const b = validateRecipe(recipe, 'B');
+		expect(a.valid).toBe(true);
+		expect(b.valid).toBe(true);
+	});
+
+	it('rejects a recipe with a random unknown top-level key (additionalProperties: false)', () => {
+		const recipe = {
+			...baseValid,
+			notes: 'free-form notes not in schema',
+		};
+		const a = validateRecipe(recipe, 'A');
+		const b = validateRecipe(recipe, 'B');
+		expect(a.valid).toBe(false);
+		expect(b.valid).toBe(false);
+		// Error mentions the unknown property
+		const aErr = JSON.stringify(a.errors);
+		expect(aErr).toMatch(/notes|additionalProperties|must NOT have additional/);
+	});
+
+	it('accepts recipe.query.params with a typed default (confidence_threshold)', () => {
+		const recipe = {
+			...baseValid,
+			query: {
+				shape: 'pivot',
+				primitives: {
+					from: 'a',
+					rows: { of: 'control', by: 'family' },
+					cols: { of: 'control', by: 'baseline' },
+					cell: { op: 'count', as: 'mapping_count', empty: 'gap' },
+				},
+				params: {
+					confidence_threshold: { type: 'number', default: 0.7 },
+				},
+			},
+		};
+		const a = validateRecipe(recipe, 'A');
+		const b = validateRecipe(recipe, 'B');
+		expect(a.valid).toBe(true);
+		expect(b.valid).toBe(true);
+	});
+
+	it('accepts a recipe with BOTH query AND target.layout populated', () => {
+		const recipe = {
+			...baseValid,
+			target: {
+				layout: [
+					{ level: 'family', mechanism: 'folder', template: '{Control Family}' },
+					{ level: 'leaf', mechanism: 'file', template: '{Control ID}.md' },
+				],
+			},
+			query: {
+				shape: 'pivot',
+				primitives: {
+					from: 'a',
+					rows: { of: 'control', by: 'family' },
+					cols: { of: 'control', by: 'baseline' },
+					cell: { op: 'count', as: 'mapping_count', empty: 'gap' },
+				},
+			},
+		};
+		const a = validateRecipe(recipe, 'A');
+		const b = validateRecipe(recipe, 'B');
+		expect(a.valid).toBe(true);
+		expect(b.valid).toBe(true);
+	});
+});

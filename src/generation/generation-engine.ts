@@ -898,11 +898,23 @@ function generateImportId(): string {
 // ============================================================================
 
 /**
- * Build a full config from wizard state for generation
+ * Build a full config from wizard state for generation.
+ *
+ * The optional `appliedConfigFilename` is the filename block from a saved
+ * config that was auto-applied via smart-match. When no column is marked as
+ * "Note title" in the wizard, this template is used as the leaf filename so
+ * the saved config's intent ("filename = Control ID") survives the wizard
+ * round-trip. Without this fallback, the legacy-shim would default to the
+ * first frontmatter column, which is often the wrong column.
+ *
+ * Legacy Mustache `{{X}}` syntax in `appliedConfigFilename.template` is
+ * tolerated — translated to single-brace `{X}` at use site. The render
+ * engine only understands single-brace.
  */
 export function buildConfigFromWizardState(
 	columnConfigs: Map<string, { useAs: string; outputKey: string }>,
-	parsedColumns: string[]
+	parsedColumns: string[],
+	appliedConfigFilename?: { template?: string; sanitize?: boolean; maxLength?: number }
 ): Partial<ImportRecipe> {
 	const hierarchy: HierarchyMapping[] = [];
 	const frontmatter: FrontmatterMapping[] = [];
@@ -957,16 +969,28 @@ export function buildConfigFromWizardState(
 		}
 	}
 
-	// Find title column for filename. The template engine uses single-brace
-	// {column} syntax (renderTemplate) and the column scope is the row object,
-	// so the template is `{<title-column>}`.
-	//
-	// When no title column is picked, omit `filename` entirely. The
-	// legacy-recipe-shim fallback chain then resolves to the first frontmatter
-	// column → `{<column>}.md`, which always has a value (otherwise the row
-	// wouldn't have been imported). The previous fallback ('{{row}}') used a
-	// non-existent template variable and broke every row.
+	// Filename template precedence (highest to lowest):
+	//   1. A column explicitly marked as 'title' in the wizard → `{<col>}`
+	//   2. An applied-saved-config filename template, translated from Mustache
+	//      `{{X}}` to single-brace `{X}` if needed
+	//   3. Omitted — the legacy-recipe-shim falls back to first frontmatter
+	//      column → `{<column>}.md`
 	const titleCol = parsedColumns.find(col => columnConfigs.get(col)?.useAs === 'title');
+
+	let resolvedFilename: { template: string; sanitize: boolean; maxLength?: number } | undefined;
+	if (titleCol) {
+		resolvedFilename = { template: `{${titleCol}}`, sanitize: true };
+	} else if (appliedConfigFilename?.template) {
+		// Translate Mustache `{{X}}` → single-brace `{X}` for the new render
+		// engine. Pre-existing single-brace templates pass through unchanged
+		// (the regex matches both forms).
+		const translated = appliedConfigFilename.template.replace(/\{\{([^{}]+)\}\}/g, '{$1}');
+		resolvedFilename = {
+			template: translated,
+			sanitize: appliedConfigFilename.sanitize ?? true,
+			...(appliedConfigFilename.maxLength !== undefined && { maxLength: appliedConfigFilename.maxLength }),
+		};
+	}
 
 	return {
 		mapping: {
@@ -974,12 +998,7 @@ export function buildConfigFromWizardState(
 			frontmatter,
 			links,
 			body,
-			...(titleCol && {
-				filename: {
-					template: `{${titleCol}}`,
-					sanitize: true
-				}
-			})
+			...(resolvedFilename && { filename: resolvedFilename })
 		}
 	};
 }
