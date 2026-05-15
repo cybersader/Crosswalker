@@ -13,16 +13,27 @@ Move the v0.1 output query layer from Dataview to [Bases](/crosswalker/concepts/
 
 ## Status
 
-🚧 In progress — Phases 1 + 1.5 + 2 + 3 ✅ done; Phases 4-5 pending
+🚧 In progress — Phases 1, 1.5, 2, 3, 3.5a, 3.5b, 3.6 ✅ done; Phase 3.5c + 4 + 5 pending
 
-| Phase | What ships | Status |
+| Phase | What ships | Build | Manual test |
+|---|---|---|---|
+| **Phase 1** — Recipe `query:` block schema | Both A/B discriminator styles + 5 reference recipes + 23 unit tests | ✅ 2026-05-09 | ✅ Signed off 2026-05-15 (scenarios 1-5 + edge cases) |
+| **Phase 1.5** — Test infrastructure | Deterministic fixtures + drift CI gate + Phase 2-5 test scaffolds | ✅ 2026-05-09 | ✅ Covered by CI |
+| **Phase 2** — SSSOM TSV import + materialized closure | Parser + importer + modal UX + eager closure precompute + 25 new tests | ✅ 2026-05-10 | ⏸ E2E only — manual scenarios in `TEST_PHASE2_SSSOM_IMPORT.md` not yet walked |
+| **Phase 3** — `crosswalkerPivot` registered Bases view | One custom view (Component subclass) + pure pivot-grid helper + reference `.base` file + 8 view options + heatmap mode + 37 new tests | ✅ 2026-05-10 | ⏸ E2E only — manual scenarios in `TEST_PHASE3_PIVOT_VIEW.md` not yet walked |
+| **Phase 3.5a** — Wide-event NDJSON logger | Severity methods + span helper + trace correlation + size rotation + 18 unit tests | ✅ 2026-05-11 | ⏸ Inferred working (other phases rely on it). New commands/settings unexercised. |
+| **Phase 3.5b** — Logger settings UI + commands | Category filters + verbose toggle + Open/Export/Clear commands | ✅ 2026-05-11 | ⏸ Commands not yet invoked from palette; category filters unexercised |
+| **Phase 3.5c** — Call-site sweep | Migrate 20 call sites from legacy shim to `info(category, op, msg)` + thread `trace_id` through wizard / SSSOM importer / Tier 2 projector entry points | ⏸ Not started | ⏸ Blocked on this build |
+| **Phase 3.6** — Wizard draft sessions | DraftStore module + auto-save on column-config changes + Step 1 always-visible drafts section + 3 commands + 3 settings + 17 unit tests | ✅ 2026-05-15 | ✅ Signed off 2026-05-15 (full end-to-end flow verified: save, abandon, resume, complete, auto-delete) |
+| **Phase 4** — Recipe-picker UX | Command palette → modal → inline editor → embedded `\`\`\`base` block + `_crosswalker/SKILL.md` LLM authoring guide | 📋 Planning |  |
+| **Phase 5** — Materialization command + sparse-pivot HARD guard + first-run prompts | Opt-in `Crosswalker: Materialize this recipe` command + `COUNT(*)` pre-execution estimate + `_crosswalker/views/` Excluded Files prompt | 📋 Planning |  |
+
+### Known issues captured but not yet fixed (filed in `.workspace/`)
+
+| Issue | Severity | Where surfaced |
 |---|---|---|
-| **Phase 1** — Recipe `query:` block schema | Both A/B discriminator styles + 5 reference recipes + 23 unit tests | ✅ Done 2026-05-09 |
-| **Phase 1.5** — Test infrastructure | Deterministic fixtures + drift CI gate + Phase 2-5 test scaffolds | ✅ Done 2026-05-09 |
-| **Phase 2** — SSSOM TSV import + materialized closure | Parser + importer + modal UX + eager closure precompute + 25 new tests | ✅ Done 2026-05-10 |
-| **Phase 3** — `crosswalkerPivot` registered Bases view | One custom view (Component subclass) + pure pivot-grid helper + reference `.base` file + idempotent first-run write + Bases-disabled fallback Notice + 8 view options + heatmap mode + 37 new tests | ✅ Done 2026-05-10 |
-| **Phase 4** — Recipe-picker UX | Command palette → modal → inline editor → embedded `\`\`\`base` block | 📋 Planning |
-| **Phase 5** — Materialization command + folder convention | Opt-in command + sparse-pivot HARD guard + first-run prompts | 📋 Planning |
+| `curie` resolves to `unknown:AC-1` instead of `<frameworkId>:AC-1` — `frameworkId` not threaded to CURIE builder | Low (queryable frontmatter still works) | Phase 1 manual test 2026-05-15 |
+| `related_controls` renders comma-separated string as ONE wikilink (`[[AC-2, AC-3, PM-9]]`) instead of N wikilinks | Medium (links don't resolve) | Phase 1 manual test 2026-05-15 |
 
 ## Dependencies
 

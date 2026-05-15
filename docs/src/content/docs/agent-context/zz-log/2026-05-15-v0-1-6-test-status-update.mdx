@@ -1,0 +1,141 @@
+---
+title: "v0.1.6 test-status update — Phase 3.6 signed off; Phase 2 / 3 / 3.5 untested manually"
+description: "Mid-milestone status snapshot 2026-05-15. Phase 3.6 (import wizard draft sessions) shipped in 4 commits and was manually verified end-to-end (save, abandon, resume, complete, auto-delete — all green). Phase 1 also signed off (12 notes generated correctly after the 2026-05-11 wizard fix). Phase 3.5a + 3.5b shipped earlier but their user-facing surface (debug-log commands, category-filter UI) is untested manually. Phase 2 + Phase 3 are E2E-covered but the manual UX scenarios in TEST_PHASE2_SSSOM_IMPORT.md and TEST_PHASE3_PIVOT_VIEW.md haven't been walked. Phase 3.5c (call-site sweep) is still unshipped. Two known minor bugs in the wizard output (CURIE prefix, link splitting) are captured in .workspace/ but not yet fixed. This log captures the test coverage gap so a future session can resume from clear ground."
+tags: [test-status, v0-1-6, phase-3-6, draft-sessions, untested-surface, mid-milestone]
+date: 2026-05-15
+sidebar:
+  label: "05-15 · v0.1.6 test status (Phase 3.6 signed off)"
+  order: -20260515
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Why this log exists
+
+Mid-milestone status accounting. Phases keep shipping; manual testing is necessarily lagging (one human, multiple parallel build streams). This log answers the question a fresh agent or a future session would ask: **what's verified, and what's still riding on assumptions?**
+
+The same v0.1.6 milestone page maintains a structured table of build + test status per phase. This log adds the context that doesn't fit a table — the *why* behind each gap, and the manual flows + known issues that warrant attention.
+
+## Manual-test sign-offs since the last status log (2026-05-11)
+
+### Phase 1 — Recipe `query:` block schema ✅ Signed off
+
+User walked Scenario 1 (existing recipes still work). The 2026-05-11 wizard "0 notes generated" bug fix held — 12 notes correctly generated at `Frameworks/<Family>/<ID>/<ID>.md` for the NIST 800-53 sample CSV. Scenarios 2 (settings toggle), 3 (reference recipes validate), 4 (schema rejects malformed), 5 (codegen regenerates) covered by the agent on the user's behalf via `tests/recipe-query-block.test.ts` (now 4 new edge-case tests added) + `bun run codegen` (zero drift confirmed).
+
+Test guide updated 2026-05-15: TEST_PHASE1_QUERY_SCHEMA.md now correctly attributes scenarios 3 + 5 + edge cases to the automated suite, fixes the `recipes/v0-1/...` path issue in Scenario 3, and adds a "reload after every rebuild" pre-flight section.
+
+### Phase 3.6 — Wizard draft sessions ✅ Signed off
+
+Verified end-to-end on 2026-05-15:
+
+1. Empty state — opens wizard, no drafts exist → Step 1 shows "Drafts from previous sessions" section with the "No drafts yet" message ✅
+2. Start saving — picks CSV, advances to Step 2, toggles a column role → draft auto-saves after 500ms debounce ✅
+3. Abandon — Escape / X out of modal → onClose flush save fires ✅
+4. Resume visibility — reopens wizard → drafts section now shows the saved draft card with name, source file, "Step 2/4", relative time, Resume + Delete actions ✅
+5. Resume — clicks Resume → wizard re-opens at Step 1 with a Notice "Source file needs to be re-selected" → user re-picks the same CSV → Step 2 shows the previously-toggled column role still applied ✅
+6. Complete — clicks through Step 3 → Step 4 → Generate → notes created → draft auto-deleted ✅
+7. Reopen — drafts section back to empty state ✅
+
+Visual verification via WebDriver screenshots (`tests/e2e/visual-wizard-step1-drafts.spec.ts`): both empty and populated states render correctly.
+
+**Real UX gap caught + fixed during this verification**: the original Phase 3.6c shipped drafts as a stacked modal that only appeared *when drafts existed* — first-time users had zero way to discover the feature. User feedback: *"there should be something that shows like live sessions or drafted sessions or something like that and I don't see that."* Commit `1cbc4f6` reworked the UX to put the drafts section directly in Step 1 with an always-visible empty state. This is now the shipped design.
+
+## Untested manual surface (the work that's riding on assumptions)
+
+The build pipeline is green across the board (`bun run test` → 243/243, `bun run build` clean, all phases load in test-vault). E2E tests pass. But the following user-facing surface hasn't been manually exercised yet:
+
+### Phase 2 — SSSOM TSV import (covered by E2E only)
+
+`TEST_PHASE2_SSSOM_IMPORT.md` has 7 scenarios that haven't been walked. The data side has been verified end-to-end via the WebdriverIO suite (the SSSOM import-then-query flow in `tests/e2e/sssom-import.spec.ts`), but the UX-level concerns are unproven:
+
+- File picker + paste-TSV alternation in the SSSOM import modal
+- Predicate normalization warnings (SKOS → STRM) — does the Notice phrasing make sense to a user?
+- Confidence threshold setting respected when filtering edges
+- Re-import idempotency on the same file (no duplicate junction notes)
+- Bases-side query: do the imported junction notes show up in the pivot view (Phase 3 + Phase 2 integration)?
+
+### Phase 3 — `crosswalkerPivot` Bases view (covered by E2E only)
+
+`TEST_PHASE3_PIVOT_VIEW.md` has 7 scenarios that haven't been walked. The Component-subclass rendering + view-options panel have been smoke-tested via E2E, but:
+
+- Does the pivot table actually render in a `.base` file the user creates? (Or is it only reachable via the reference template?)
+- Heatmap mode color coding — does it match the documented intensity scale?
+- 8 view options (rows axis, cols axis, cell op, empty mode, etc.) — does changing them in the UI panel actually re-render?
+- Bases-disabled fallback Notice — does it say something the user can act on?
+- Sparse-pivot soft warning at >100K cells — only triggerable with a large fixture
+
+### Phase 3.5a + 3.5b — Wide-event logger + settings + commands (unexercised end-to-end)
+
+Phase 3.5a's API has 18 unit tests; the file format is verified to be valid NDJSON. But:
+
+- Have any imports/operations been done since 3.5a shipped that actually produced category-tagged events? *Mostly no* — the call sites still emit via the backward-compat shim (`category: 'legacy'`). Phase 3.5c will fix this.
+- The 3 new commands (`Open debug log`, `Export debug log to clipboard`, `Clear debug log`) — never run from the command palette
+- The category-filter UI (9 toggles in Settings → Debug → Category filters) — never toggled
+- `verboseLogging` setting — never enabled; trace-level events never observed
+- Log rotation at 5 MB — never triggered (logs are small; no way to verify yet without writing tens of thousands of events)
+- `readForExport()` secret redaction — pattern-based; only unit-tested with synthetic tokens
+
+### Phase 3.5c — Call-site sweep (not shipped)
+
+Still pending. Once shipped, every existing `plugin.debug.log(...)` call gets migrated to `info('category', 'op', msg, data)`. `category: 'legacy'` events should disappear from the debug log entirely. Wizard, SSSOM importer, Tier 2 projector entry points each create a trace_id and thread it through their downstream events.
+
+This is the cleanest "manual test" surface to address next, because:
+- It surfaces a visible improvement in the debug log (categorized events instead of `legacy`)
+- It validates the Phase 3.5a span helper end-to-end via real workloads
+- It's pure refactor (no behavior change) so the risk is low
+
+### Bases-disabled scenarios (Phase 3 + 4 + 5 dependent)
+
+If a user has Obsidian's Bases core plugin disabled, the `registerCrosswalkerPivotView` call should noop gracefully and the plugin should surface a Notice with a "Settings → Core plugins → Bases" hint. **Has anyone actually run this with Bases disabled?** Not yet. It's a 5-minute manual test once the user has time.
+
+### Mobile parity
+
+v0.1.6 explicitly commits to Bases-on-mobile (the "binding constraint" per Ch 28). Nothing has been validated on iOS/Android Obsidian. Even just installing the plugin on mobile, opening a vault, and confirming nothing crashes would be valuable smoke coverage. Defer until v0.1.6 RC.
+
+## Known issues captured but not fixed
+
+Filed in `.workspace/2026-05-11-ux-feature-requests.md` (feature requests) and now this log (bugs). All low-to-medium severity; not blocking the rest of v0.1.6 work.
+
+| Issue | Severity | Notes |
+|---|---|---|
+| `curie: "unknown:AC-1"` instead of `<frameworkId>:AC-1` | Low | The user typed `nist-test` as Framework Identifier in the wizard. The output frontmatter `curie` field should use that as the ontology prefix. The `frameworkId` field isn't being threaded to the CURIE builder in `generation-engine.ts:renderNoteFromRecipe`. Fix: ~30 min — pass `options.frameworkId` into the CURIE construction. |
+| `related_controls: [[AC-2, AC-3, PM-9]]` renders as ONE wikilink with commas | Medium | The "Related Controls" column in the CSV contains comma-separated values like `"AC-2, AC-3, PM-9"`. The link mechanism treats the entire string as one wikilink target, producing a broken link in Obsidian (the link target literally contains commas + spaces). Fix: ~45 min — split on a configurable delimiter (default `,`) and emit N wikilinks. Settings already has `defaultArrayHandling` which is the right hook. |
+| Typed-links preview missing in settings (feature request) | Low (UX polish) | Settings → Link Syntax preset selector doesn't preview what each preset produces. Captured with ASCII mockup in `.workspace/2026-05-11-ux-feature-requests.md`. Probably ~half day. Phase 4 candidate. |
+
+## Recommended next actions
+
+In rough order of risk-adjusted value:
+
+1. **Ship Phase 3.5c** (call-site sweep) — pure refactor, ~half day. Surfaces real category-tagged events in the debug log, which makes diagnosing any *future* bug substantially easier. Low risk; high diagnostic payoff.
+2. **Fix the 2 minor wizard bugs** (CURIE + link splitting) — ~1.5 hours total. Cleans up the test-vault output so the rest of v0.1.6 validation isn't muddied by wrong-looking notes.
+3. **Phase 4 planning + ship** — recipe-picker UX. Will reuse the draft-state pattern from Phase 3.6 (the design that lets users abandon + resume a flow). Per the v0.1.6 milestone plan, ~2 days.
+4. **Phase 5** — opt-in materialization + sparse-pivot HARD guard. ~1.5 days.
+5. **Mobile smoke check** — defer to v0.1.6 RC; one focused 30-minute session.
+6. **Manual UX walks of TEST_PHASE2_SSSOM_IMPORT.md + TEST_PHASE3_PIVOT_VIEW.md** — defer until v0.1.6 RC; the E2E coverage holds for now.
+
+## Cumulative state after today
+
+| Surface | State |
+|---|---|
+| v0.1.6 Phase 1 | ✅ Shipped + signed off |
+| v0.1.6 Phase 1.5 | ✅ Shipped + CI-covered |
+| v0.1.6 Phase 2 | ✅ Shipped (E2E covered; manual UX walks pending) |
+| v0.1.6 Phase 3 | ✅ Shipped (E2E covered; manual UX walks pending) |
+| v0.1.6 Phase 3.5a (NDJSON logger) | ✅ Shipped (unit-tested; no real workload yet) |
+| v0.1.6 Phase 3.5b (logger UI + commands) | ✅ Shipped (commands unexercised) |
+| v0.1.6 Phase 3.5c (call-site sweep) | 🚧 Pending (next recommended) |
+| v0.1.6 Phase 3.6 (draft sessions) | ✅ Shipped + signed off (full flow verified 2026-05-15) |
+| v0.1.6 Phase 4 (recipe-picker UX) | 📋 Planned |
+| v0.1.6 Phase 5 (materialization + sparse guard) | 📋 Planned |
+| 2 minor wizard bugs (CURIE + link splitting) | ⏸ Captured, not fixed |
+| Mobile parity smoke check | ⏸ Defer to RC |
+
+`bun run test`: 243/243 pass. `bun run build`: clean. 8 commits shipped since 2026-05-11 across Phases 3.5a + 3.5b + 3.6a + 3.6b + 3.6c + the always-visible-drafts UX fix + minor polish.
+
+## Related
+
+- [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — updated 2026-05-15 with full build + manual-test split per phase
+- [2026-05-11 mid-milestone log](/crosswalker/agent-context/zz-log/2026-05-11-v0-1-6-mid-milestone-bugfixes-and-observability/) — previous status snapshot covering the 0-pages bug postmortem + Phase 3.5 observability initiative kickoff
+- [v0.1.6 Phase 2 shipped 2026-05-10](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-2-sssom-import-shipped/)
+- [v0.1.6 Phase 3 shipped 2026-05-10](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-3-pivot-view-shipped/)
+- `.workspace/2026-05-11-ux-feature-requests.md` (gitignored) — typed-links preview + wizard draft sessions feature designs. Draft sessions shipped Phase 3.6; typed-links preview remains pending.

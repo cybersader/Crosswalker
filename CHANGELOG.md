@@ -6,7 +6,95 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-10, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 done; Phases 4-5 pending).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.6 done; Phases 3.5c + 4 + 5 pending).
+
+### v0.1.6 Phase 3.6 — Import wizard draft sessions (2026-05-15, ✅ Done)
+
+User-feedback-driven addition: the import wizard now auto-saves in-progress state so users can close the modal mid-flow (to check another note, refer to another framework, get a phone call) and resume exactly where they left off. Originally captured in `.workspace/2026-05-11-ux-feature-requests.md` as a deferred feature request; the user reaffirmed it after a 5/11 manual test session ("If you're going through an import process and you're configuring a bunch of columns, there might be times where you have to X out and go look for something..."). Built in three sub-phases over 2026-05-15.
+
+**New surfaces:**
+- Wizard Step 1 always shows a "Drafts from previous sessions" section (revised UX after initial stacked-modal approach proved undiscoverable for first-time users — see commit `1cbc4f6`). Empty state explains the feature: *"No drafts yet. As you configure your import, the wizard will auto-save your progress — close the modal anytime and your work will appear here so you can resume."*
+- Per-draft card shows: name (auto-generated, e.g. "sample-nist-controls (Step 2)"), source file, step indicator (Step N/4), relative time ("just now" / "5 minutes ago" / "yesterday"), applied config name (looked up from settings)
+- Per-card actions: Resume (CTA) + Delete (warning style)
+- 3 new commands: `Crosswalker: Resume draft import`, `Crosswalker: Clear all import drafts`, `Crosswalker: Purge expired import drafts`
+- 3 new settings (Wizard Behavior section): Auto-save toggle, Draft expiry slider (0-90 days, default 30; 0 = never), Max drafts slider (0-50, default 20; 0 = no cap)
+
+**New code:**
+- `src/import/draft-store.ts` — DraftStore class + serializer helpers (~250 lines + 17 unit tests). API: `list()` / `load(id)` / `save(draft)` / `delete(id)` / `clearAll()` / `purgeExpired()`. Auto-creates `_crosswalker/drafts/` folder (already gitignored). Schema-versioned WizardDraft type with first-class Map ↔ Record conversion helpers (JSON.stringify silently drops Map entries — tested + asserted).
+- `src/import/import-wizard.ts` integration:
+  - `loadAvailableDrafts()` on onOpen() — single fetch per wizard session
+  - `renderDraftsSection(container)` + `renderDraftRow(list, draft)` — always-visible UI in Step 1
+  - `scheduleDraftSave()` (500ms debounce) + `saveDraftNow()` (immediate, used on step advance + onClose flush)
+  - `shouldPersistDraft()` gate — skip empty drafts (Step 1 with no file selected)
+  - `snapshotDraft()` — pure serializer producing a WizardDraft from current wizard state
+  - `hydrateFromDraft(draft)` — restores state on Resume; re-attaches applied config from settings; gracefully handles deleted applied config (Notice) + missing source file (forces Step 1 re-pick, preserves column configs)
+  - Auto-delete on successful generation (`skipDraftDeleteOnClose` flag avoids the onClose-saves-deleted-file race)
+- `styles.css` — `.crosswalker-drafts-section` + `-list` + `-row` + `-info` + `-name` + `-meta` + `-actions` classes. Theme-aware via Obsidian CSS variables. Responsive `flex-wrap: wrap` for narrow modals.
+
+**Auto-save triggers:**
+- 500ms debounce after column 'Use as' dropdown change in Step 2
+- 500ms debounce after output-key text input in Step 2
+- 500ms debounce after Output path / Framework ID / Overwrite mode edits in Step 4
+- Immediate save on Next button click (before re-render)
+- Final flush on modal onClose (X out, Escape key, click outside)
+- Skipped when isParsing or isGenerating is true (no mid-operation writes)
+- Skipped when feature disabled in settings
+
+**Observability**: all DraftStore mutations emit wide events via DebugLog (`drafts` category — already in the Phase 3.5b filterable list). Visible operations: `drafts/saved`, `drafts/deleted`, `drafts/cleared-all`, `drafts/purged-expired`, `drafts/cap-enforced`, `drafts/resumed`, `drafts/schema-version-mismatch`, `drafts/parse-failed`.
+
+**Test coverage**: 17 new unit tests in `tests/draft-store.test.ts` (round-trip, idempotent overwrite, sort order, expiry filter, purge count, max-drafts cap, schema version skip, corrupt JSON skip, Map↔Record helpers, ID format). 1 visual E2E test in `tests/e2e/visual-wizard-step1-drafts.spec.ts` (screenshots both empty + populated states). **243/243 unit tests pass.**
+
+**Manual verification 2026-05-15**: full end-to-end flow walked — save state in Step 2, X out, reopen wizard (drafts section shows the saved draft), Resume → wizard hydrates with column configs preserved → re-pick file → continue through Steps 3+4 → Generate → draft auto-deleted on success → reopen wizard shows empty state again.
+
+See `docs/.../zz-log/2026-05-15-v0-1-6-test-status-update.mdx` for the broader v0.1.6 test-status accounting.
+
+### v0.1.6 Phase 3.5b — Debug log settings UI + 3 commands (2026-05-11, ✅ Done)
+
+Wires the Phase 3.5a wide-event logger into the settings tab + command palette. Pure additions — no behavioral change to imports, generation, or query layer.
+
+**New surfaces:**
+- Settings → Debug → Category filters section with 9 known categories (wizard, csv-parser, generation, sssom-import, tier2, config, view, lifecycle, legacy). Each toggle opts that category OUT (default all on, sparse storage)
+- Settings → Debug → Log file actions row: Open / Export to clipboard / Clear (warning) buttons
+- 3 new commands: `Crosswalker: Open debug log` (opens in new pane), `Crosswalker: Export debug log to clipboard (last 1 MB, secrets redacted)`, `Crosswalker: Clear debug log`
+- `verboseLogging` toggle now actually does something (was previously orphaned — defined in settings, surfaced in UI, but never read by DebugLog)
+
+**New settings field**: `debugLogCategoryFilters: Record<string, boolean>` (default `{}`; sparse — only suppressed categories persist).
+
+### v0.1.6 Phase 3.5a — Wide-event NDJSON logger + trace correlation (2026-05-11, ✅ Done)
+
+User-feedback-driven observability upgrade. The 2026-05-11 wizard "0 pages generated" bug took 5 minutes to diagnose *because* there was a debug log; without it, ~30+ minutes of code reading. User invoked the loggingsucks.com framing (Charity Majors-style wide structured events with trace correlation) for the next-level upgrade. Slots in before Phase 4 so all subsequent UX phases ship against a debuggable substrate.
+
+**Design lock**: pure NDJSON storage (one event per line); primary consumer is **agents** (Claude Code sessions reading the log via `cat | jq` to diagnose user-reported bugs), not humans squinting at Obsidian text-mode files. No in-app log viewer — agents read structured JSON natively; humans use shell or any editor.
+
+**New API surface** (`src/utils/debug.ts` — 80% rewritten):
+- Severity methods: `info(category, op, msg, data?)` / `warn(...)` / `error(...)` / `trace(...)`
+- Span helper: `span(category, op, fn, data?)` auto-emits start + end events with `duration_ms`; nested spans propagate `parent_span_id`; thrown errors auto-recorded at error level
+- Trace context: `newTraceId()` + `withTrace(id, fn)` for explicit propagation through async chains (no AsyncLocalStorage magic — Crosswalker has no concurrent imports)
+- Category filters: per-subsystem opt-out via settings
+- Verbose gate: `trace()` events only written when `setVerbose(true)`
+- `readForExport(maxBytes)` — tail with secret redaction (regex sweep for `sk-` / `ghp_` / `AIza` / `AKIA` prefixes + long opaque tokens)
+- Backward-compat shim: existing `.log()` and `.error()` 2-arg calls keep working (emit with `category: 'legacy'`) until Phase 3.5c sweeps the call sites
+
+**Event schema** (every NDJSON line):
+```ts
+{ ts, level, category, op, msg, trace_id?, span_id?, parent_span_id?, duration_ms?, ...freeform context }
+```
+
+**Storage**: pure NDJSON at `crosswalker-debug.log` (vault root). Rotation at 5 MB cap with 3 keep-archives (`.1`, `.2`, `.3` = 20 MB max disk). Append via `vault.adapter.append()` for O(1) writes (previous read-modify pattern was O(n) per write — would have made the log unusable past ~100 KB).
+
+**Test coverage**: 18 new tests in `tests/debug-log.test.ts`. **243/243 total pass.**
+
+### v0.1.6 wizard fixes (2026-05-11, ✅ Done)
+
+Three wizard UX/correctness fixes shipped 2026-05-11 alongside Phase 3.5a/3.5b:
+
+- **`build: fix tsconfig.json TS 6+ deprecation errors`** (commit `5d458d7`) — removed unused `baseUrl` + `paths` (no `@/*` aliases imported anywhere); changed `moduleResolution: "node"` → `"bundler"` (semantically correct for esbuild). Unblocked `bun run build` under TypeScript 6+.
+- **`fix(ui): config browser modal width and vertical space`** (commit `383d94f`) — applied width class to `modalEl` (not `contentEl` — the source of the bug); flex-wrap on toolbar + card-actions + footer; flex-column layout in `modal-content` so the list area grows. Visual test added at `tests/e2e/visual-config-browser.spec.ts`.
+- **`fix(ui): wider import wizard modal + stat-card column statistics grid`** (commit `7dda997`) — same `modalEl` vs `contentEl` fix; column statistics rewritten as a responsive stat-card grid (label + numeric value + '% of rows' meta + 'has blanks' warning) instead of a flat grey paragraph box.
+- **`fix(generation): wizard fallback no longer breaks every row with '{{row}}' template`** (commit `ceffb6a`) — the "0 notes generated" bug. Stale Mustache-syntax fallback in `buildConfigFromWizardState` (`template: '{{row}}'`) referenced a non-existent template variable. Render engine threw on every row. Fix: omit `filename` when no title column is picked → legacy-shim falls back to first frontmatter column. Made `MappingConfig.filename` optional (matches actual contract — all existing callers used `mapping.filename?.template`). 3 regression tests added.
+- **`fix(wizard): 3-notes import bug + Phase 1 polish`** (commit `5dbdaf1`, 2026-05-11) — second-order wizard bug surfaced during Phase 1 manual testing. `buildColumnMappingLookup` unconditionally overrode hierarchy with frontmatter when a column appeared in both (common in seeded NIST 800-53 saved config). Fix: reordered loops by structural primacy (hierarchy first, then title-from-template, then links/body, then frontmatter LAST) with "first-write wins" `.has()` check. Plus: `buildConfigFromWizardState` now accepts the applied config's filename template + translates legacy Mustache `{{X}}` → single-brace `{X}` at the boundary. 4 new edge-case tests added. Settings copy de-jargoned (removed "per Ch 31"). TEST_PHASE1_QUERY_SCHEMA.md Scenario 3 corrected (recipes/v0-1/ is at REPO root, not vault root — ENOENT confusion explained).
+
+Also 2026-05-11: **`dev: install Hot Reload in test-vault`** (commit `3133060`) — installed pjeby/hot-reload v0.3.0 into test-vault so future `bun run build` rebuilds auto-reload Crosswalker in Obsidian without manual toggle-off/on. Added a `Pre-flight — reload after every rebuild` section to all 3 TEST_PHASE*.md guides. Re-synced guides to `test-vault/_test-guides/`.
 
 ### v0.1.6 Phase 3 — `crosswalkerPivot` registered Bases view (2026-05-10, ✅ Done)
 
