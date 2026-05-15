@@ -48,6 +48,112 @@ v0.1 release path:
 
 Each ✅ phase has a delivery log; click through from the [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) for the full inventory.
 
+## Where Phase 3.5c fits in the bigger picture
+
+The roadmap above is *temporal* — phases in shipping order. But the more useful question for resuming work is **spatial**: where does Phase 3.5c live in the *architecture*, and what other parts of the system does it touch?
+
+### The durable architecture (3 substrate tiers + 5-stage pipeline)
+
+Crosswalker is a [general ontology-web query engine](/crosswalker/concepts/ontology-web-querying/) built as an Obsidian plugin. The [system architecture](/crosswalker/concepts/system-architecture/) is **3 tiers** of substrate (where data lives) crossed by a **5-stage pipeline** (how data flows). All v0.1.6 work — including Phase 3.5c — lives somewhere in this map:
+
+```text
+                  ╔══════════════════════════════════════════════════════════════════════════╗
+                  ║                       CROSSWALKER 3-TIER SUBSTRATE                       ║
+                  ╠══════════════════════════════════════════════════════════════════════════╣
+                  ║                                                                          ║
+                  ║   Tier 1 — Markdown vault                  ← THE SOURCE OF TRUTH         ║
+                  ║   concept notes / junction notes / wikilinks (committed to git)          ║
+                  ║                                                                          ║
+                  ║   Tier 2 — sqlite-wasm sidecar             ← DERIVED CACHE               ║
+                  ║   denormalized mappings + closure tables (rebuildable from Tier 1)       ║
+                  ║                                                                          ║
+                  ║   Tier 3 — SPARQL servers (Oxigraph/Fuseki)  ← DEFERRED to v0.1.8+       ║
+                  ║   federated queries against BioPortal/UMLS-scale data                    ║
+                  ║                                                                          ║
+                  ╚══════════════════════════════════════════════════════════════════════════╝
+
+         INPUT              PROJECTION             STORAGE               QUERY               OUTPUT
+   ┌───────────────┐   ┌───────────────┐   ┌─────────────────────┐   ┌───────────────┐   ┌───────────────┐
+   │ CSV / XLSX /  │ → │  csv-parser   │ → │  Tier 1 .md files   │ → │ Bases native  │ → │ Live views    │
+   │ JSON / SSSOM  │   │  generation-  │   │  (concepts +        │   │ + crosswalker │   │ (re-rendered  │
+   │ TSV  + recipe │   │  engine +     │   │  junction notes)    │   │ Pivot custom  │   │ on demand)    │
+   │               │   │  legacy-shim  │   │     ↓               │   │ view          │   │     +         │
+   │ (the user's   │   │  + render()   │   │  Tier 2 sqlite      │   │     ↓         │   │ Materialized  │
+   │  data; the    │   │               │   │  projector populates│   │ Tier 2 SQL    │   │ snapshots     │
+   │  recipe says  │   │               │   │  closures + edges   │   │ helpers for   │   │ (v0.1.6       │
+   │  how to map   │   │               │   │                     │   │ transitive    │   │ Phase 5;      │
+   │  it)          │   │               │   │  ✅ shipped         │   │ queries       │   │ v0.1.8 audit) │
+   │               │   │               │   │  (v0.1.4 + v0.1.5)  │   │     ↑         │   │               │
+   │               │   │               │   │                     │   │ ✅ v0.1.6     │   │               │
+   │               │   │               │   │                     │   │ Phase 3       │   │               │
+   └───────────────┘   └───────────────┘   └─────────────────────┘   └───────────────┘   └───────────────┘
+   ↑ already in        ↑ this is where 20 of 20 "legacy"-category    ↑ Bases + Tier 2     ↑ Phase 5 +
+   place since v0.1.0  call sites live; Phase 3.5c sweeps them all   handles already      v0.1.8 still
+   (import wizard,                                                    emit categorized     to come
+   SSSOM importer)                                                    events
+```
+
+**Where Phase 3.5c specifically lives:** it touches the **PROJECTION** column. Every call site that runs during a CSV/SSSOM import, a generation pass, or a Tier 2 projection currently emits NDJSON events with `category: "legacy"`. After 3.5c, those same events become properly categorized (`generation/row-error`, `csv-parser/parsed`, `tier2/projection-complete`, etc.) and carry trace_ids that thread through the whole pipeline.
+
+### The 6th cross-cutting layer: observability
+
+The 3-tier diagram above is *spatial*. There's a 6th cross-cutting concern that doesn't fit any one tier — [the wide-event observability layer](/crosswalker/agent-context/zz-log/2026-05-11-v0-1-6-mid-milestone-bugfixes-and-observability/) — that **observes every operation across all 3 tiers**:
+
+```text
+                ┌──────────────────────────────────────────────────────────────┐
+                │              OBSERVABILITY (Phase 3.5 — NDJSON)              │
+                │   "What is the system actually doing right now?"             │
+                │                                                              │
+                │   crosswalker-debug.log = single NDJSON stream               │
+                │   one event per line; each event carries:                    │
+                │     • ts (ISO-8601)                                          │
+                │     • level (error/warn/info/trace)                          │
+                │     • category (the SUBSYSTEM emitting; what 3.5c fixes)    │
+                │     • op (the operation slug)                                │
+                │     • msg (human-readable)                                   │
+                │     • trace_id  (correlates events across the pipeline)     │
+                │     • span_id + parent_span_id (nesting)                     │
+                │     • duration_ms (on span-end)                              │
+                │     • ...freeform context                                    │
+                │                                                              │
+                │   Primary consumer: AGENTS (Claude Code via `cat \| jq`)      │
+                │   Not humans squinting at Obsidian text files.              │
+                └──────────────────────────────────────────────────────────────┘
+                              ↑     ↑     ↑     ↑     ↑     ↑
+                              │     │     │     │     │     │
+                              │     │     │     │     │     │
+                  ┌───────────┴┐ ┌──┴───┐ ┌─┴───┐ ┌┴────┐ ┌┴─────┐ ┌─┴─────────┐
+                  │  wizard    │ │ csv- │ │gener│ │tier2│ │ view │ │ lifecycle │
+                  │  generate()│ │parser│ │ation│ │ proj│ │ /    │ │ load/     │
+                  │            │ │      │ │engin│ │ector│ │bases │ │ unload    │
+                  └────────────┘ └──────┘ └─────┘ └─────┘ └──────┘ └───────────┘
+                       ↑              every box above emits events ↑
+                       └────────────────────────────────────────────┘
+                       trace_id flows through: one ID per import,
+                       shared by every event that import produces
+```
+
+**The trace_id is the load-bearing piece.** Before 3.5c, every operation emits events independently. Diagnosing "user reported 0 notes" means manually correlating timestamps across categories — error-prone. After 3.5c, a single `grep` filter pulls the entire causal chain of one operation: `cat crosswalker-debug.log | jq 'select(.trace_id == "abc12345")'` returns wizard start → CSV parse → row-by-row render → Tier 2 projection → completion notice, all in order.
+
+### How this connects to the [6 architectural commitments](/crosswalker/agent-context/zz-log/2026-05-11-v0-1-6-mid-milestone-bugfixes-and-observability/)
+
+| Commitment | How Phase 3.5c relates |
+|---|---|
+| **#3 TypeScript in-plugin engine** | Observability is TypeScript-only. No native dependencies. Preserves mobile-Obsidian portability (no SharedArrayBuffer / no native logging libs). |
+| **#5 Runtime-agnostic recipe schema** | NDJSON event schema is *also* runtime-agnostic. A future Python producer (Path C, v0.5+) could emit the same wire format with the same trace_id semantics; an external agent log analyzer would still work. |
+| **#6 Bases-not-Dataview** | The 3.5c sweep adds `tier2` + `view` categories — gives us first-class diagnostic visibility into the Bases query path the moment a user reports a "the pivot view looks wrong" bug. |
+
+### Why this matters for v0.1.6's remaining phases (4 + 5)
+
+The v0.1.6 milestone is the **scope peak** of the v0.1 release. Phase 4 (recipe-picker UX) and Phase 5 (materialization + sparse-pivot HARD guard) both introduce significant new user-facing surface area:
+
+- **Phase 4 surface area**: a new modal for browsing recipes, an inline parameter editor, an embedded `` ```base `` block insertion flow, a `_crosswalker/SKILL.md` authoring guide. Each of these can fail in ways unique to that user's vault.
+- **Phase 5 surface area**: a `Crosswalker: Materialize this recipe` command that walks Tier 2 + Tier 1 to produce snapshots, a sparse-pivot HARD guard that aborts before generating 100K+ empty cells, a first-run Excluded Files prompt for `_crosswalker/views/`.
+
+When (not if) bugs surface in those flows, the categorized event log from 3.5c is the difference between "agent diagnoses in 5 minutes" and "agent reads source code for an hour."
+
+That's why this is the recommended next commit, not Phase 4 directly.
+
 ## What Phase 3.5c is (since you asked)
 
 **What it is.** A pure-refactor sweep that migrates the 20 existing call sites in the codebase from the legacy `.log(msg, data)` shim to the proper categorized API: `debug.info('generation', 'starting', msg, data)`.
