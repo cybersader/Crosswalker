@@ -15,9 +15,9 @@ import {
 	columnConfigsToDict,
 	dictToColumnConfigs,
 	newDraftId,
+	relativeTime,
 	type WizardDraft,
 } from './draft-store';
-import { DraftPickerModal } from './draft-picker-modal';
 
 /**
  * Import Wizard Modal
@@ -69,6 +69,9 @@ export class ImportWizardModal extends Modal {
 	private draftId: string | null = null;
 	private draftSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	private skipDraftDeleteOnClose: boolean = false;
+	// Drafts visible in Step 1's "Drafts from previous sessions" section.
+	// Populated on wizard open; refreshed after delete actions.
+	private availableDrafts: WizardDraft[] = [];
 
 	constructor(app: App, plugin: CrosswalkerPlugin) {
 		super(app);
@@ -79,48 +82,25 @@ export class ImportWizardModal extends Modal {
 
 	onOpen() {
 		this.modalEl.addClass('crosswalker-wizard-modal');
-		// Phase 3.6c: if drafts exist + feature enabled, show the resume picker
-		// FIRST. The picker handles its own modal lifecycle; we open the wizard
-		// content only after the picker resolves.
-		if (this.plugin.settings.enableDraftSessions) {
-			void this.maybeShowDraftPicker();
-		} else {
-			this.renderStep();
-		}
+		// Phase 3.6c (revised 2026-05-15): load any existing drafts upfront so
+		// Step 1 can render them as an always-visible section. No stacked
+		// modal — drafts surface inline, with an empty state when none exist.
+		void this.loadAvailableDrafts().then(() => this.renderStep());
 	}
 
-	/**
-	 * Check for existing drafts; if any, present the resume picker. Resume
-	 * hydrates wizard state then continues; fresh / cancel-with-cleanup
-	 * proceeds to Step 1.
-	 */
-	private async maybeShowDraftPicker(): Promise<void> {
-		let drafts: WizardDraft[] = [];
+	private async loadAvailableDrafts(): Promise<void> {
+		if (!this.plugin.settings.enableDraftSessions) {
+			this.availableDrafts = [];
+			return;
+		}
 		try {
-			drafts = await this.plugin.draftStore.list();
+			this.availableDrafts = await this.plugin.draftStore.list();
 		} catch (err) {
+			this.availableDrafts = [];
 			this.plugin.debug.warn('drafts', 'list-failed', 'Could not list drafts at wizard open', {
 				error: err instanceof Error ? err.message : String(err),
 			});
 		}
-		if (drafts.length === 0) {
-			this.renderStep();
-			return;
-		}
-
-		// Picker manages its own modal; we wait for its callback then render
-		// either a hydrated state or a fresh wizard.
-		new DraftPickerModal(this.app, this.plugin, drafts, async (result) => {
-			if (result.action === 'resume' && result.draft) {
-				this.hydrateFromDraft(result.draft);
-				this.renderStep();
-			} else {
-				// fresh OR cancel — both proceed to a fresh Step 1. The wizard
-				// modal is already open behind the picker; the picker's close
-				// reveals it.
-				this.renderStep();
-			}
-		}).open();
 	}
 
 	/**
@@ -332,6 +312,83 @@ export class ImportWizardModal extends Modal {
 		if (this.parsedData && !this.isParsing) {
 			this.renderConfigSuggestions(container);
 		}
+
+		// Drafts section — always visible (with empty state) so the feature is
+		// discoverable on the first wizard open. Suppressed only when the
+		// user has disabled draft sessions in settings.
+		this.renderDraftsSection(container);
+	}
+
+	/**
+	 * Render the "Drafts from previous sessions" section in Step 1.
+	 * Always-visible empty state when no drafts; per-draft Resume + Delete
+	 * actions when drafts exist. The current draft (if user is resuming and
+	 * went back to Step 1) is filtered out so the user can't "resume" their
+	 * own in-progress state on top of itself.
+	 */
+	private renderDraftsSection(container: HTMLElement): void {
+		if (!this.plugin.settings.enableDraftSessions) return;
+
+		const section = container.createEl('div', { cls: 'crosswalker-drafts-section' });
+		section.createEl('h3', { text: 'Drafts from previous sessions' });
+
+		const visible = this.availableDrafts.filter(d => d.id !== this.draftId);
+
+		if (visible.length === 0) {
+			section.createEl('p', {
+				text: 'No drafts yet. As you configure your import, the wizard will auto-save your progress — close the modal anytime and your work will appear here so you can resume.',
+				cls: 'setting-item-description'
+			});
+			return;
+		}
+
+		const list = section.createEl('div', { cls: 'crosswalker-drafts-list' });
+		for (const draft of visible) {
+			this.renderDraftRow(list, draft);
+		}
+	}
+
+	private renderDraftRow(list: HTMLElement, draft: WizardDraft): void {
+		const row = list.createEl('div', { cls: 'crosswalker-draft-row' });
+
+		const info = row.createEl('div', { cls: 'crosswalker-draft-info' });
+		info.createEl('div', { text: draft.name, cls: 'crosswalker-draft-name' });
+
+		const meta = info.createEl('div', { cls: 'crosswalker-draft-meta' });
+		meta.createEl('span', { text: draft.sourceFile?.name ?? '(no source file)' });
+		meta.createEl('span', { text: ' · ' });
+		meta.createEl('span', { text: `Step ${draft.currentStep}/4` });
+		meta.createEl('span', { text: ' · ' });
+		meta.createEl('span', { text: relativeTime(draft.updatedAt) });
+		if (draft.appliedConfigId) {
+			const appliedName = this.plugin.settings.savedConfigs.find(c => c.id === draft.appliedConfigId)?.name;
+			if (appliedName) {
+				meta.createEl('span', { text: ' · ' });
+				meta.createEl('span', { text: `Config: ${appliedName}` });
+			}
+		}
+
+		const actions = row.createEl('div', { cls: 'crosswalker-draft-actions' });
+
+		const resumeBtn = actions.createEl('button', { text: 'Resume', cls: 'mod-cta' });
+		resumeBtn.addEventListener('click', () => {
+			this.hydrateFromDraft(draft);
+			this.renderStep();
+		});
+
+		const deleteBtn = actions.createEl('button', { text: 'Delete' });
+		deleteBtn.addClass('mod-warning');
+		deleteBtn.addEventListener('click', async () => {
+			try {
+				await this.plugin.draftStore.delete(draft.id);
+				this.availableDrafts = this.availableDrafts.filter(d => d.id !== draft.id);
+				new Notice(`Draft "${draft.name}" deleted.`);
+				this.renderStep();
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				new Notice(`Failed to delete draft: ${msg}`);
+			}
+		});
 	}
 
 	/**

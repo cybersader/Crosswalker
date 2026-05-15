@@ -113,6 +113,67 @@
 }
 
 /* ============================================================================
+   Step 1 — Drafts section (always-visible recovery affordance)
+   ============================================================================ */
+
+.crosswalker-drafts-section {
+	margin-top: 2em;
+	padding-top: 1.5em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-drafts-section h3 {
+	margin: 0 0 0.5em 0;
+}
+
+.crosswalker-drafts-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	margin-top: 0.75em;
+}
+
+.crosswalker-draft-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75em;
+	padding: 0.75em 1em;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.crosswalker-draft-row:hover {
+	background: var(--background-secondary-alt);
+	border-color: var(--background-modifier-border-hover);
+}
+
+.crosswalker-draft-info {
+	flex: 1 1 200px;
+	min-width: 0;
+}
+
+.crosswalker-draft-name {
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.crosswalker-draft-meta {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-top: 0.15em;
+}
+
+.crosswalker-draft-actions {
+	display: flex;
+	gap: 0.5em;
+	flex-shrink: 0;
+}
+
+/* ============================================================================
    Column Configuration Table
    ============================================================================ */
 

@@ -6,8 +6,8 @@
  * after N days and cap at M total to prevent unbounded growth.
  *
  * The store is intentionally minimal — file I/O + parse + filter. Wizard
- * integration lives in import-wizard.ts; the picker UI lives in
- * draft-picker-modal.ts.
+ * integration lives in import-wizard.ts (the wizard's Step 1 renders an
+ * always-visible "Drafts from previous sessions" section).
  *
  * Schema (WizardDraft): see TYPE below. `columnConfigs` is serialized as
  * `Record<string, ...>` because JSON.stringify silently drops Map. The
@@ -322,4 +322,25 @@ export function dictToColumnConfigs(
 		out.set(k, { useAs: v.useAs, outputKey: v.outputKey });
 	}
 	return out;
+}
+
+/**
+ * Format an ISO-8601 timestamp as a friendly relative-time string. Coarse-
+ * grained — good enough for "when did I last touch this draft" UX.
+ */
+export function relativeTime(iso: string): string {
+	const then = new Date(iso).getTime();
+	if (!Number.isFinite(then)) return 'unknown';
+	const deltaMs = Date.now() - then;
+	const deltaSec = Math.floor(deltaMs / 1000);
+	if (deltaSec < 60) return 'just now';
+	const deltaMin = Math.floor(deltaSec / 60);
+	if (deltaMin < 60) return `${deltaMin} minute${deltaMin === 1 ? '' : 's'} ago`;
+	const deltaHr = Math.floor(deltaMin / 60);
+	if (deltaHr < 24) return `${deltaHr} hour${deltaHr === 1 ? '' : 's'} ago`;
+	const deltaDay = Math.floor(deltaHr / 24);
+	if (deltaDay === 1) return 'yesterday';
+	if (deltaDay < 7) return `${deltaDay} days ago`;
+	if (deltaDay < 30) return `${Math.floor(deltaDay / 7)} week${Math.floor(deltaDay / 7) === 1 ? '' : 's'} ago`;
+	return `${Math.floor(deltaDay / 30)} month${Math.floor(deltaDay / 30) === 1 ? '' : 's'} ago`;
 }

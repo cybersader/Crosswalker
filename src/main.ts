@@ -268,14 +268,13 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
-		// v0.1.6 Phase 3.6: draft session commands
+		// v0.1.6 Phase 3.6: draft session commands. The wizard's Step 1 now
+		// always shows a 'Drafts from previous sessions' section, so this
+		// command just opens the wizard. The user picks Resume from Step 1.
 		this.addCommand({
 			id: 'resume-draft-import',
 			name: 'Resume draft import',
 			callback: () => {
-				// Just opens the wizard; its onOpen() handles draft listing
-				// + showing the picker if drafts exist. If none exist, falls
-				// through to a fresh import as today.
 				new ImportWizardModal(this.app, this).open();
 			},
 		});
