@@ -12,6 +12,7 @@ import {
 } from './views/bases-api';
 import { writeReferenceBaseFiles } from './views/reference-base-files';
 import { DebugLog } from './utils/debug';
+import { DraftStore } from './import/draft-store';
 import { initValidator, validateRecipe as validateRecipeFn, validateTier1Frontmatter } from './validation/validator';
 import { render } from './render';
 import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
@@ -43,6 +44,7 @@ import {
 export default class CrosswalkerPlugin extends Plugin {
 	settings: CrosswalkerSettings;
 	debug: DebugLog;
+	draftStore: DraftStore;
 
 	// Validator + render + generation-module handles attached to the plugin
 	// instance so E2E tests + future command implementations can call them
@@ -162,6 +164,14 @@ export default class CrosswalkerPlugin extends Plugin {
 			this.settings.verboseLogging,
 			this.settings.debugLogCategoryFilters,
 		);
+
+		// Initialize draft store (Phase 3.6 — wizard auto-save / resume).
+		// Constructed unconditionally so commands always have a handle; gated
+		// by enableDraftSessions at the wizard hook sites.
+		this.draftStore = new DraftStore(this.app, this.debug, {
+			draftExpiryDays: this.settings.draftExpiryDays,
+			maxDrafts: this.settings.maxDrafts,
+		});
 
 		// Compile spec schemas (spec/tier1.schema.json + spec/recipe.schema.json)
 		// at startup. Throws fast if schema files are malformed.

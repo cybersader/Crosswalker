@@ -10,6 +10,12 @@ import {
 	estimateOutput,
 	GenerationOptions
 } from '../generation/generation-engine';
+import {
+	autoDraftName,
+	columnConfigsToDict,
+	newDraftId,
+	type WizardDraft,
+} from './draft-store';
 
 /**
  * Import Wizard Modal
@@ -55,6 +61,13 @@ export class ImportWizardModal extends Modal {
 	appliedConfig: SavedConfig | null = null;
 	configWarnings: string[] = [];
 
+	// Draft session state (Phase 3.6). draftId is assigned at first auto-save
+	// (or at the start of a resumed session). Persists across re-renders so a
+	// single in-progress wizard maps to a single draft file.
+	private draftId: string | null = null;
+	private draftSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	private skipDraftDeleteOnClose: boolean = false;
+
 	constructor(app: App, plugin: CrosswalkerPlugin) {
 		super(app);
 		this.plugin = plugin;
@@ -68,6 +81,21 @@ export class ImportWizardModal extends Modal {
 	}
 
 	onClose() {
+		// Cancel any pending debounced save so we don't write after the modal
+		// is gone. Then flush one final synchronous-style save if there's any
+		// substantive state worth persisting (past Step 1 file selection).
+		if (this.draftSaveTimer) {
+			clearTimeout(this.draftSaveTimer);
+			this.draftSaveTimer = null;
+		}
+		if (
+			this.plugin.settings.enableDraftSessions
+			&& !this.skipDraftDeleteOnClose
+			&& this.shouldPersistDraft()
+		) {
+			void this.saveDraftNow();
+		}
+
 		const { contentEl } = this;
 		contentEl.empty();
 	}
@@ -525,6 +553,7 @@ export class ImportWizardModal extends Modal {
 			useAsSelect.addEventListener('change', () => {
 				currentConfig.useAs = useAsSelect.value;
 				this.columnConfigs.set(colInfo.name, currentConfig);
+				this.scheduleDraftSave();
 			});
 
 			// Output key (editable) - pre-fill from config or existing state
@@ -541,6 +570,7 @@ export class ImportWizardModal extends Modal {
 			keyInput.addEventListener('input', () => {
 				currentConfig.outputKey = keyInput.value;
 				this.columnConfigs.set(colInfo.name, currentConfig);
+				this.scheduleDraftSave();
 			});
 		}
 
@@ -689,6 +719,87 @@ export class ImportWizardModal extends Modal {
 			.toLowerCase()
 			.replace(/[^a-z0-9]+/g, '_')
 			.replace(/^_+|_+$/g, '');
+	}
+
+	// =========================================================================
+	// Draft sessions (Phase 3.6)
+	// =========================================================================
+
+	/**
+	 * Schedule a draft save 500ms after the last call. Cheap to call from
+	 * every keystroke / dropdown change. Drops the save silently if drafts
+	 * are disabled, mid-parse, or mid-generate.
+	 */
+	private scheduleDraftSave(): void {
+		if (!this.plugin.settings.enableDraftSessions) return;
+		if (this.isParsing || this.isGenerating) return;
+		if (this.draftSaveTimer) clearTimeout(this.draftSaveTimer);
+		this.draftSaveTimer = setTimeout(() => {
+			this.draftSaveTimer = null;
+			if (this.shouldPersistDraft()) {
+				void this.saveDraftNow();
+			}
+		}, 500);
+	}
+
+	/**
+	 * Save the draft right now. Used on step advance + onClose flush.
+	 */
+	private async saveDraftNow(): Promise<void> {
+		if (!this.plugin.settings.enableDraftSessions) return;
+		if (this.isParsing || this.isGenerating) return;
+		if (!this.shouldPersistDraft()) return;
+		try {
+			const draft = this.snapshotDraft();
+			this.draftId = draft.id;
+			await this.plugin.draftStore.save(draft);
+		} catch (err) {
+			this.plugin.debug.warn('drafts', 'save-failed', 'Wizard draft save failed', {
+				error: err instanceof Error ? err.message : String(err),
+			});
+		}
+	}
+
+	/**
+	 * Skip persistence when there's nothing meaningful to save (Step 1 with no
+	 * file selected yet, generation in flight, etc.). Saving on every wizard
+	 * open would create empty drafts immediately.
+	 */
+	private shouldPersistDraft(): boolean {
+		// Past Step 1 (user has at least picked a file) OR a config has been
+		// applied. Both indicate enough state worth persisting.
+		const pastStep1 = this.currentStep > 1;
+		const hasSource = !!this.sourceFile;
+		const hasColumnConfig = this.columnConfigs.size > 0;
+		return pastStep1 || (hasSource && hasColumnConfig);
+	}
+
+	/**
+	 * Serialize current wizard state into a WizardDraft. Pure function (no
+	 * side effects) — caller is responsible for writing to the store.
+	 */
+	private snapshotDraft(): WizardDraft {
+		const now = new Date().toISOString();
+		const id = this.draftId ?? newDraftId();
+		const sourceName = this.sourceFile?.name;
+		return {
+			schemaVersion: 1,
+			id,
+			name: autoDraftName(sourceName, this.currentStep),
+			createdAt: now,
+			updatedAt: now,
+			currentStep: this.currentStep,
+			sourceFile: this.sourceFile ? { name: this.sourceFile.name, vaultPath: null } : null,
+			sourceType: this.sourceType,
+			selectedSheet: this.selectedSheet,
+			columnInfos: this.columnInfos,
+			columnConfigsDict: columnConfigsToDict(this.columnConfigs),
+			config: this.config,
+			outputPath: this.outputPath,
+			overwriteMode: this.overwriteMode,
+			frameworkId: this.frameworkId,
+			appliedConfigId: this.appliedConfig?.id ?? null,
+		};
 	}
 
 	// =========================================================================
@@ -936,6 +1047,7 @@ export class ImportWizardModal extends Modal {
 				.setValue(this.outputPath)
 				.onChange(value => {
 					this.outputPath = value;
+					this.scheduleDraftSave();
 				}));
 
 		// Framework ID setting (for _crosswalker metadata)
@@ -948,6 +1060,7 @@ export class ImportWizardModal extends Modal {
 				.setValue(this.frameworkId)
 				.onChange(value => {
 					this.frameworkId = value;
+					this.scheduleDraftSave();
 				}));
 
 		// Overwrite behavior
@@ -960,6 +1073,7 @@ export class ImportWizardModal extends Modal {
 				.setValue(this.overwriteMode)
 				.onChange(value => {
 					this.overwriteMode = value as 'skip' | 'replace' | 'error';
+					this.scheduleDraftSave();
 				}));
 
 		// Summary with actual estimates
@@ -1010,6 +1124,7 @@ export class ImportWizardModal extends Modal {
 			nextBtn.addEventListener('click', async () => {
 				if (await this.validateCurrentStep()) {
 					this.currentStep++;
+					await this.saveDraftNow();
 					this.renderStep();
 				}
 			});
@@ -1204,6 +1319,22 @@ export class ImportWizardModal extends Modal {
 				if (this.plugin.settings.promptToSaveConfig && !this.appliedConfig) {
 					// Could prompt to save config here - for now just log
 					await this.plugin.debug.log('Consider saving config for future use');
+				}
+
+				// Delete the in-progress draft — generation succeeded, user is
+				// done with this wizard instance. Set the flag first so onClose
+				// doesn't re-save it after delete.
+				this.skipDraftDeleteOnClose = true;
+				if (this.draftId) {
+					try {
+						await this.plugin.draftStore.delete(this.draftId);
+					} catch (err) {
+						this.plugin.debug.warn('drafts', 'delete-after-success-failed', 'Could not delete draft after successful generation', {
+							draftId: this.draftId,
+							error: err instanceof Error ? err.message : String(err),
+						});
+					}
+					this.draftId = null;
 				}
 
 				// Close modal on success

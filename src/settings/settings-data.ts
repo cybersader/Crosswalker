@@ -71,6 +71,13 @@ export interface CrosswalkerSettings {
 	debugLogCategoryFilters: Record<string, boolean>;  // Per-category opt-out. Key = category name (e.g. "generation", "wizard"); value=false suppresses. Default empty (all categories emit).
 
 	// ==========================================================================
+	// Draft sessions (Phase 3.6 — wizard auto-save / resume)
+	// ==========================================================================
+	enableDraftSessions: boolean;               // Auto-save wizard state mid-flow; show resume picker on wizard open
+	draftExpiryDays: number;                    // Drafts older than this auto-purge. 0 = never expire.
+	maxDrafts: number;                          // Cap on total draft files. Oldest deleted when exceeded. 0 = no cap.
+
+	// ==========================================================================
 	// Saved Configurations
 	// ==========================================================================
 	savedConfigs: SavedConfig[];
@@ -128,6 +135,11 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	enableDebugLog: false,
 	verboseLogging: false,
 	debugLogCategoryFilters: {},
+
+	// Draft sessions (Phase 3.6)
+	enableDraftSessions: true,
+	draftExpiryDays: 30,
+	maxDrafts: 20,
 
 	// Saved configs
 	savedConfigs: []
