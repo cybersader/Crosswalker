@@ -13,7 +13,7 @@ Move the v0.1 output query layer from Dataview to [Bases](/crosswalker/concepts/
 
 ## Status
 
-🚧 In progress — Phases 1, 1.5, 2, 3, 3.5a, 3.5b, 3.5c, 3.6 ✅ done; Phase 4 + 5 pending
+🚧 In progress — Phases 1, 1.5, 2, 3, 3.5a, 3.5b, 3.5c, 3.6, 4 ✅ done; Phase 5 pending
 
 | Phase | What ships | Build | Manual test |
 |---|---|---|---|
@@ -25,7 +25,7 @@ Move the v0.1 output query layer from Dataview to [Bases](/crosswalker/concepts/
 | **Phase 3.5b** — Logger settings UI + commands | Category filters + verbose toggle + Open/Export/Clear commands | ✅ 2026-05-11 | ⏸ Commands not yet invoked from palette; category filters unexercised |
 | **Phase 3.5c** — Call-site sweep | Migrated 30+ call sites from legacy shim to `info/warn/error(category, op, msg)` + threaded `trace_id` through wizard / SSSOM importer / Tier 2 projector entry points; backward-compat shim removed | ✅ 2026-05-15 | ⏸ Inferred working via 241/241 unit tests; manual smoke pending |
 | **Phase 3.6** — Wizard draft sessions | DraftStore module + auto-save on column-config changes + Step 1 always-visible drafts section + 3 commands + 3 settings + 17 unit tests | ✅ 2026-05-15 | ✅ Signed off 2026-05-15 (full end-to-end flow verified: save, abandon, resume, complete, auto-delete) |
-| **Phase 4** — Recipe-picker UX | Command palette → modal → inline editor → embedded `\`\`\`base` block + `_crosswalker/SKILL.md` LLM authoring guide | 📋 Planning |  |
+| **Phase 4** — Recipe-picker UX | Command palette → modal → inline editor → embedded `\`\`\`base` block + `_crosswalker/SKILL.md` LLM authoring guide. 6 shipped recipes (incl. new MITRE cross-domain), recipe loader with AJV validation, recipe-templates module, parameter editor, picker modal, framework fixture expansion (CIS / SOC2 / 2 new SSSOM crosswalks), shared test infrastructure (mocked Editor, recipe fixtures helper, visual-spec runner) | ✅ 2026-05-15 | ⏸ Manual smoke test pending |
 | **Phase 5** — Materialization command + sparse-pivot HARD guard + first-run prompts | Opt-in `Crosswalker: Materialize this recipe` command + `COUNT(*)` pre-execution estimate + `_crosswalker/views/` Excluded Files prompt | 📋 Planning |  |
 
 ### Known issues captured but not yet fixed (filed in `.workspace/`)

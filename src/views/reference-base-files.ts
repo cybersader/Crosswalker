@@ -85,6 +85,159 @@ views:
 /** Default first-run write target. */
 export const COVERAGE_MATRIX_BASE_PATH = '_crosswalker/views/coverage-matrix.base';
 
+/** Phase 4c: LLM authoring guide path. */
+export const SKILL_MD_PATH = '_crosswalker/SKILL.md';
+
+/**
+ * LLM authoring guide for Crosswalker recipes — Phase 4c first-run write.
+ *
+ * Pattern modeled on Steph Ango's `kepano/obsidian-skills` repo: a single
+ * SKILL.md per skill teaches LLMs (and humans) the syntax + conventions of
+ * a specific Obsidian format. Crosswalker ships this so users can paste it
+ * into Claude/ChatGPT and get back working recipe + ```base block YAML.
+ *
+ * Idempotent: never overwrites user edits. To regenerate, delete + reload.
+ */
+export const REFERENCE_SKILL_MD = `---
+name: crosswalker-bases
+description: Author ` + '`' + `` + '`' + '`' + `base codeblocks for Crosswalker views. Use when working in Obsidian with the Crosswalker plugin and the Obsidian Bases plugin enabled, especially when inserting query views into notes for ontology / framework data (NIST, ISO, MITRE, CIS, SOC 2, etc.).
+---
+
+# Crosswalker — Bases authoring skill
+
+This skill teaches you to author ` + '`' + `` + '`' + '`' + `base codeblocks that the Crosswalker plugin renders inside Obsidian notes. The codeblocks combine Obsidian's [Bases plugin](https://help.obsidian.md/Plugins/Bases) (filters, formulas, properties, views) with Crosswalker's custom view types (\`crosswalker-pivot\`; \`crosswalker-hierarchy\` ships v0.1.7+).
+
+## The two things to know
+
+1. **A ` + '`' + `` + '`' + '`' + `base codeblock is YAML**, parsed by Obsidian's Bases plugin at render time. It declares \`filters\` (which files to query), optional \`formulas\` (computed columns), optional \`properties\` (display overrides), and \`views\` (how to render).
+2. **Crosswalker adds new view types** via \`registerBasesView\`. The most useful is \`crosswalker-pivot\` (rows × cols × cells matrix). Bases-native view types (\`table\`, \`list\`, \`cards\`, \`calendar\`) work as documented in the Bases plugin.
+
+## Minimal example — a pivot view of NIST CSF → 800-53 coverage
+
+\`\`\`base
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings/csf-to-800-53")
+    - 'confidence >= 0.7'
+views:
+  - type: crosswalker-pivot
+    name: "NIST CSF → 800-53 coverage matrix"
+    config:
+      rowsBy: "subject_id"
+      colsBy: "object_id"
+      cellOp: "count"
+      empty: "gap"
+      heatmap: true
+\`\`\`
+
+## Cross-domain example — NIST CSF (defensive) → MITRE ATT&CK (offensive)
+
+\`\`\`base
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings/csf-to-mitre")
+    - 'confidence >= 0.7'
+views:
+  - type: crosswalker-pivot
+    name: "NIST CSF → MITRE ATT&CK coverage"
+    config:
+      rowsBy: "subject_id"
+      colsBy: "object_id"
+      cellOp: "count"
+      empty: "gap"
+      heatmap: true
+\`\`\`
+
+## Bases-native table example — CIS Controls by family
+
+\`\`\`base
+filters:
+  and:
+    - file.inFolder("Frameworks/CIS-Controls-v8")
+views:
+  - type: table
+    name: "CIS Controls by family"
+    order:
+      - family
+      - id
+      - title
+\`\`\`
+
+## Crosswalker view types — \`crosswalker-pivot\`
+
+The \`crosswalker-pivot\` view renders a rows × cols × cells matrix from filtered Bases entries.
+
+\`config\` fields:
+
+| Field | Type | Purpose |
+|---|---|---|
+| \`rowsBy\` | property name | Frontmatter property used as the row axis |
+| \`colsBy\` | property name | Frontmatter property used as the col axis |
+| \`cellOp\` | string | Aggregation: \`count\` / \`count_distinct\` / \`sum\` / \`avg\` / \`min\` / \`max\` / \`first\` / \`last\` |
+| \`cellOf\` | property name | Source field for non-count ops (e.g. for \`sum\`, the field to sum) |
+| \`empty\` | string | Empty-cell mode: \`gap\` (blank) / \`blank\` (empty string) / \`zero\` |
+| \`heatmap\` | boolean | Whether to color-shade cells by value |
+| \`rowSort\` | string | \`asc\` / \`desc\` / \`none\` |
+| \`colSort\` | string | \`asc\` / \`desc\` / \`none\` |
+
+## Reserved view types (coming soon)
+
+| Type | Status | Workaround |
+|---|---|---|
+| \`crosswalker-hierarchy\` | Reserved (renderer ships v0.1.7-v0.1.8). | Use \`type: table\` with \`order: [parent, id, title]\` for now — Bases native fallback. |
+| \`crosswalker-graph\` | v0.2+ | Use Bases-native or \`type: cards\`. |
+| \`crosswalker-timeline\` | v0.2+ | Use Bases-native \`type: calendar\` or \`type: table\` with date \`order\`. |
+
+## Common gotchas
+
+1. **YAML quoting**: predicates like \`is_equivalent_to\` are bare strings and don't need quotes. But values with colons, hyphens at the start, or special chars DO need quotes (\`":0.7"\`, \`"AC-2(1)"\`).
+2. **Folder filters**: \`file.inFolder(...)\` accepts a vault-relative folder path. To filter by file path pattern instead, use \`file.path.startsWith(...)\`.
+3. **Anti-join "orphan" queries**: use \`length(<linked_property>) == 0\` to find notes with no incoming references in that property.
+4. **Custom view rendering when Crosswalker is disabled**: declare a fallback Bases-native view (e.g. \`type: table\`) AFTER the \`crosswalker-pivot\` view — Bases shows both in the view picker; users can switch.
+
+## Where Crosswalker writes its data in your vault
+
+| Path | What's there |
+|---|---|
+| \`Frameworks/NIST-800-53/\` (and similar) | Concept notes — one per control/technique/etc., imported from your CSV |
+| \`_crosswalker/mappings/<source>-to-<target>/\` | Junction notes — one per crosswalk relationship, imported from SSSOM TSV |
+| \`_crosswalker/views/\` | Plugin-emitted reference .base files (idempotent first-run) |
+| \`_crosswalker/recipes/\` | User-authored recipe JSONs (picker reads these) |
+| \`_crosswalker/SKILL.md\` | This file |
+| \`crosswalker-debug.log\` | Wide-event NDJSON debug stream (\`cat | jq\` to read) |
+
+## When to use Crosswalker views vs Bases-native
+
+| Use case | View type |
+|---|---|
+| Cross-framework coverage matrix | \`crosswalker-pivot\` (count/count_distinct/sum) |
+| Density heatmap | \`crosswalker-pivot\` with \`heatmap: true\` |
+| Flat list of controls by family | Bases \`type: list\` or \`type: table\` |
+| Per-control evidence cards | Bases \`type: cards\` |
+| Mapping detail browser | Bases \`type: table\` with \`order:\` cols |
+| Hierarchy navigation (renderer v0.1.7+) | Bases \`type: table\` ordered by \`parent, id\` for now |
+
+## Recipe schema (for plugin-authored recipes in \`_crosswalker/recipes/*.json\`)
+
+The Crosswalker plugin's recipe picker reads JSON recipes that include a \`query:\` block. The block declares the abstract view shape; the picker translates it to ` + '`' + `` + '`' + '`' + `base codeblock YAML. The schema lives at [\`spec/recipe.schema.json\`](https://github.com/cybersader/Crosswalker/blob/main/spec/recipe.schema.json).
+
+Key fields per the v0.1.6 schema:
+
+- \`recipe\` — stable ID
+- \`source.ontology\` — the data source (matches what the import wizard wrote)
+- \`target.layout\` — how generation lays out Tier 1 markdown (folder/file/heading/tag/wikilink mechanisms)
+- \`query.shape\` — \`pivot\` / \`table\` / \`list\` / \`hierarchy\` / \`cards\`
+- \`query.primitives\` — the abstract WHERE/ROW/COL/CELL — schema-only, not user-editable inline
+- \`query.params\` — user-editable parameters (these ARE what the picker exposes inline)
+
+## Reference
+
+- [Obsidian Bases plugin docs](https://help.obsidian.md/Plugins/Bases)
+- [Crosswalker repo](https://github.com/cybersader/Crosswalker)
+- [Crosswalker docs](https://cybersader.github.io/crosswalker/)
+- [SSSOM (Simple Standard for Sharing Ontological Mappings)](https://w3id.org/sssom/)
+`;
+
 /**
  * Write reference .base files to the vault on first plugin run. Idempotent —
  * skips files that already exist. Returns the list of paths actually created.
@@ -98,6 +251,8 @@ export async function writeReferenceBaseFiles(app: App, debug?: DebugLog): Promi
 	const created: string[] = [];
 	const writes: Array<{ path: string; content: string }> = [
 		{ path: COVERAGE_MATRIX_BASE_PATH, content: REFERENCE_COVERAGE_MATRIX_BASE },
+		// Phase 4c: LLM authoring guide — `_crosswalker/SKILL.md`
+		{ path: SKILL_MD_PATH, content: REFERENCE_SKILL_MD },
 	];
 
 	for (const { path, content } of writes) {

@@ -6,7 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 done; Phases 4 + 5 pending).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 done; Phase 5 pending).
+
+### v0.1.6 Phase 4 — Recipe-picker UX + SKILL.md + framework fixture expansion (2026-05-15, ✅ Done)
+
+User-facing query authoring surface. New command `Crosswalker: Insert query into note` opens a modal listing 6 shipped recipes + any user-authored recipes from `_crosswalker/recipes/`; user picks one, optionally edits exposed parameters inline, and a `` ```base `` codeblock lands at the editor cursor with cursor-position-aware insertion (after-frontmatter / after-code-block / after-line policies). Phase 3 first-run writer extended to also ship `_crosswalker/SKILL.md` — an LLM authoring guide modeled on Steph Ango's `kepano/obsidian-skills` pattern.
+
+Shipped in 3 sub-phases (4a foundation, 4b UI, 4c wire-up).
+
+**New code (Phase 4a):**
+- `src/views/recipe-loader.ts` — Static imports of 6 shipped recipes + runtime scan of `_crosswalker/recipes/` for user-authored. AJV validation on both. Dispatches on `query.shape` STRING value (architectural commitment #5 — runtime-agnostic recipe schema). New shapes (e.g. v0.2's `cards`) don't need loader code changes.
+- `src/views/insert-base-block.ts` — Cursor-aware codeblock insertion helper. Policy: cursor inside frontmatter → insert after closing `---`; cursor inside another code block → insert after closing ```; otherwise insert after current line. Pure (chooseInsertionPoint exported separately for direct testing).
+- `src/views/mobile-detection.ts` — Single source of truth for `Platform.isMobile` gate (commitment #3 mobile parity). Used by the picker to hide raw-YAML editor with "Edit on desktop" hint.
+
+**New code (Phase 4b):**
+- `src/views/recipe-picker-modal.ts` — Modal subclass. Reuses Phase 3 modal CSS for visual consistency. Card layout per recipe; "Configure" expands inline parameter editor; "Insert" CTA. `hierarchy` shape shows "renderer coming soon" badge; can still insert YAML (Bases falls back to native table view). Raw-YAML escape button at footer (desktop-only).
+- `src/views/recipe-parameter-editor.ts` — Pure helper. Type-dispatched widgets: string → text input, number → number input with step inferred from default's precision, boolean → toggle, unknown → string fallback. Returns a handle (getValues / hasAnyParams / reset) the picker uses at Insert time.
+- `src/views/recipe-templates.ts` — Inline `` ```base `` templates for the 6 shipped recipes. Each maps recipe ID to a Bases YAML template with Mustache-style placeholders + section conditionals (`{{#name}}...{{/name}}` drops when param is falsy).
+
+**New code (Phase 4c):**
+- `src/main.ts` — New command `crosswalker:insert-query-into-note` with `editorCallback` for cursor access. Creates a fresh `trace_id` per invocation; downstream picker-open / block-inserted / block-insert-failed events correlate via the Phase 3.5c logger.
+- `src/views/reference-base-files.ts` — Extended to also write `_crosswalker/SKILL.md` on first run (idempotent — never overwrites user edits). The SKILL.md content (LLM authoring guide for Crosswalker recipes + ```base codeblocks) is inlined as a TS constant; pattern modeled on Steph Ango's `kepano/obsidian-skills`.
+
+**Reference recipe additions (Phase 4a):**
+- `recipes/v0-1/mitre-coverage.json` — NEW 6th recipe. NIST CSF (defensive) → MITRE ATT&CK (offensive) pivot. The cross-domain showcase — Crosswalker's distinguishing capability beyond what compliance-only tools can do.
+
+**Framework fixture expansion (Phase 4a, tools/fixtures/realistic/):**
+- `cis-controls-v8-subset.csv` — ~12 rows, Basic safeguards, 2-level hierarchy
+- `soc2-trust-services-subset.csv` — ~10 rows, Common + Availability criteria
+- `nist-csf-to-mitre-attack.sssom.tsv` — ~12 mappings, cross-domain defensive→offensive
+- `iso27001-to-soc2.sssom.tsv` — ~10 mappings, mixed match types
+- `README.md` — Updated with lifecycle coverage matrix (which fixture exercises which pipeline stage)
+
+**Testing infrastructure (Phase 4a):**
+- `tests/__mocks__/editor.ts` — Reusable mocked Obsidian Editor with captured-call assertions. Outlasts Phase 4; Phase 5 + v0.1.7 will reuse.
+- `tests/__mocks__/obsidian.ts` — Extended with `Platform` (mobile gate) + `ButtonComponent`.
+- `tests/helpers/recipe-fixtures.ts` — Shared memoized loader for `recipes/v0-1/*.json`. Tests don't re-read disk.
+- `tests/helpers/visual-spec-runner.ts` — Boilerplate-elimination wrapper for the wdio screenshot pattern. Future visual specs become 5 lines instead of 40.
+
+**CSS additions to `styles.css`:**
+- `.crosswalker-recipe-picker-modal`, `.crosswalker-recipe-card`, `.crosswalker-recipe-description`, `.crosswalker-renderer-coming-soon` (orange/italic badge for reserved shapes), `.crosswalker-card-details`, `.crosswalker-param-editor`, `.crosswalker-insert-row`, `.crosswalker-recipe-load-errors`.
+
+**Tests:** 310/310 pass (was 241 before Phase 4; +69 new across 5 new test files):
+- `tests/recipe-loader.test.ts` — 19 tests (load+validate, buildLoadedRecipe, getRecipeParams)
+- `tests/insert-base-block.test.ts` — 18 tests (cursor policy + full integration)
+- `tests/recipe-templates.test.ts` — 14 tests (shipped catalog coverage + interpolation)
+- `tests/recipe-parameter-editor.test.ts` — 14 tests (handle contract + type widgets + defaults)
+- `tests/reference-base-files.test.ts` — extended with 4 new SKILL.md tests
+
+**New E2E:**
+- `tests/e2e/recipe-picker-flow.spec.ts` — verifies SKILL.md first-run write + command registration
+- `tests/e2e/visual-recipe-picker.spec.ts` — 3 screenshots (picker open / configuring / closed)
+
+Build clean. Tests clean. Manual smoke (`Crosswalker: Insert query into note` → picker → insert) is pending.
 
 ### v0.1.6 Phase 3.5c — Call-site sweep + trace correlation (2026-05-15, ✅ Done)
 

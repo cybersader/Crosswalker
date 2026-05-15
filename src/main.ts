@@ -13,6 +13,8 @@ import {
 import { writeReferenceBaseFiles } from './views/reference-base-files';
 import { DebugLog } from './utils/debug';
 import { DraftStore } from './import/draft-store';
+import { RecipePickerModal } from './views/recipe-picker-modal';
+import { insertBaseBlock } from './views/insert-base-block';
 import { initValidator, validateRecipe as validateRecipeFn, validateTier1Frontmatter } from './validation/validator';
 import { render } from './render';
 import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
@@ -193,6 +195,44 @@ export default class CrosswalkerPlugin extends Plugin {
 			name: 'Import SSSOM mapping file',
 			callback: () => {
 				new SssomImportModal(this.app, this).open();
+			},
+		});
+
+		// v0.1.6 Phase 4: recipe picker — insert query into the active note
+		// at cursor. Per Ch 32 deliverable B + 2026-05-09 design synthesis:
+		// modal lists shipped + user recipes, exposes only `query.params` for
+		// inline editing (primitives stay schema-only), inserts a ` ```base `
+		// codeblock at the editor cursor via the Phase 4a insert-base-block
+		// helper. Bases renders the result inline beneath the block.
+		this.addCommand({
+			id: 'insert-query-into-note',
+			name: 'Insert query into note',
+			editorCallback: (editor) => {
+				const traceId = this.debug.newTraceId();
+				void this.debug.withTrace(traceId, async () => {
+					this.debug.info('view', 'picker-open', 'Recipe picker opened from command palette');
+					new RecipePickerModal(this.app, this, (result) => {
+						if (result.action === 'cancel') {
+							this.debug.info('view', 'picker-cancelled', 'Recipe picker cancelled (no insertion)');
+							return;
+						}
+						const insertResult = insertBaseBlock(editor, result.baseBlock);
+						if (insertResult.ok) {
+							this.debug.info('view', 'block-inserted', `Base block inserted (${result.recipeId})`, {
+								recipeId: result.recipeId,
+								insertReason: insertResult.reason,
+								line: insertResult.insertedAt.line,
+							});
+							new Notice(`Inserted ${result.recipeId === '__raw__' ? 'blank' : result.recipeId} block.`, 4000);
+						} else {
+							this.debug.error('view', 'block-insert-failed', 'Base block insertion failed', {
+								reason: insertResult.reason,
+								error: insertResult.error,
+							});
+							new Notice(`Could not insert block: ${insertResult.reason}.`, 6000);
+						}
+					}).open();
+				});
 			},
 		});
 

@@ -108,3 +108,44 @@ describe('writeReferenceBaseFiles — idempotency', () => {
 		// idempotency end-to-end.
 	});
 });
+
+// ---------------------------------------------------------------------------
+// SKILL.md write — Phase 4c addition
+// ---------------------------------------------------------------------------
+
+describe('writeReferenceBaseFiles — SKILL.md (Phase 4c)', () => {
+	it('also writes _crosswalker/SKILL.md on first run', async () => {
+		const { app, written } = makeMockApp();
+		const created = await writeReferenceBaseFiles(app);
+		expect(created).toContain('_crosswalker/SKILL.md');
+		const content = written.get('_crosswalker/SKILL.md');
+		expect(content).toBeDefined();
+		expect(content).toContain('crosswalker-bases');
+		expect(content).toContain('crosswalker-pivot');
+	});
+
+	it('SKILL.md content includes the LLM-friendly frontmatter', async () => {
+		const { app, written } = makeMockApp();
+		await writeReferenceBaseFiles(app);
+		const content = written.get('_crosswalker/SKILL.md') ?? '';
+		// YAML frontmatter at top
+		expect(content.startsWith('---\n')).toBe(true);
+		expect(content).toContain('name: crosswalker-bases');
+		expect(content).toContain('description: ');
+	});
+
+	it('SKILL.md content documents the reserved/coming-soon shapes', async () => {
+		const { app, written } = makeMockApp();
+		await writeReferenceBaseFiles(app);
+		const content = written.get('_crosswalker/SKILL.md') ?? '';
+		expect(content).toContain('crosswalker-hierarchy');
+		expect(content).toContain('Reserved');
+	});
+
+	it('creates _crosswalker/ folder if missing for SKILL.md', async () => {
+		const { app, folders } = makeMockApp();
+		await writeReferenceBaseFiles(app);
+		// SKILL.md lives directly under _crosswalker/, so the folder should be created
+		expect(folders.has('_crosswalker')).toBe(true);
+	});
+});
