@@ -13,9 +13,11 @@ import {
 import {
 	autoDraftName,
 	columnConfigsToDict,
+	dictToColumnConfigs,
 	newDraftId,
 	type WizardDraft,
 } from './draft-store';
+import { DraftPickerModal } from './draft-picker-modal';
 
 /**
  * Import Wizard Modal
@@ -77,7 +79,99 @@ export class ImportWizardModal extends Modal {
 
 	onOpen() {
 		this.modalEl.addClass('crosswalker-wizard-modal');
-		this.renderStep();
+		// Phase 3.6c: if drafts exist + feature enabled, show the resume picker
+		// FIRST. The picker handles its own modal lifecycle; we open the wizard
+		// content only after the picker resolves.
+		if (this.plugin.settings.enableDraftSessions) {
+			void this.maybeShowDraftPicker();
+		} else {
+			this.renderStep();
+		}
+	}
+
+	/**
+	 * Check for existing drafts; if any, present the resume picker. Resume
+	 * hydrates wizard state then continues; fresh / cancel-with-cleanup
+	 * proceeds to Step 1.
+	 */
+	private async maybeShowDraftPicker(): Promise<void> {
+		let drafts: WizardDraft[] = [];
+		try {
+			drafts = await this.plugin.draftStore.list();
+		} catch (err) {
+			this.plugin.debug.warn('drafts', 'list-failed', 'Could not list drafts at wizard open', {
+				error: err instanceof Error ? err.message : String(err),
+			});
+		}
+		if (drafts.length === 0) {
+			this.renderStep();
+			return;
+		}
+
+		// Picker manages its own modal; we wait for its callback then render
+		// either a hydrated state or a fresh wizard.
+		new DraftPickerModal(this.app, this.plugin, drafts, async (result) => {
+			if (result.action === 'resume' && result.draft) {
+				this.hydrateFromDraft(result.draft);
+				this.renderStep();
+			} else {
+				// fresh OR cancel — both proceed to a fresh Step 1. The wizard
+				// modal is already open behind the picker; the picker's close
+				// reveals it.
+				this.renderStep();
+			}
+		}).open();
+	}
+
+	/**
+	 * Hydrate wizard state from a saved draft. Re-parses the source data is
+	 * deferred until the user navigates back into Step 2 or beyond (the
+	 * columnInfos in the draft are sufficient for Step 2 rendering; Step 3+
+	 * preview and Step 4 generate will re-parse if needed). Source file is
+	 * not re-attached automatically — if user goes to Step 1 it will show
+	 * the previously-selected filename but require re-pick to load actual
+	 * file content.
+	 */
+	private hydrateFromDraft(draft: WizardDraft): void {
+		this.draftId = draft.id;
+		this.currentStep = draft.currentStep;
+		// sourceFile (File object) can't be persisted; record the name so
+		// Step 1's hint shows what was picked, but the user must re-select
+		// to reload data. parsedData is intentionally null until re-parse.
+		this.sourceFile = null;
+		this.sourceType = draft.sourceType;
+		this.selectedSheet = draft.selectedSheet;
+		this.columnInfos = draft.columnInfos ?? [];
+		this.columnConfigs = dictToColumnConfigs(draft.columnConfigsDict ?? {});
+		this.config = draft.config ?? {};
+		this.outputPath = draft.outputPath ?? this.plugin.settings.defaultOutputPath;
+		this.overwriteMode = draft.overwriteMode ?? 'skip';
+		this.frameworkId = draft.frameworkId ?? '';
+
+		// Re-attach applied config from settings if still present.
+		if (draft.appliedConfigId) {
+			const found = this.plugin.settings.savedConfigs.find(c => c.id === draft.appliedConfigId);
+			if (found) {
+				this.appliedConfig = found;
+			} else {
+				new Notice(`The applied config from this draft was deleted. You can continue with manual settings or pick a new config.`, 8000);
+			}
+		}
+
+		// If source data isn't available yet, signal: bump to Step 1 so the
+		// user re-selects the file. We preserve the column config map and
+		// applied state; once a fresh file with matching columns is parsed,
+		// Step 2 reads from columnConfigs as usual.
+		if (!this.parsedData && this.currentStep > 1) {
+			new Notice('Source file needs to be re-selected to resume this draft. Your column configuration has been preserved.', 8000);
+			this.currentStep = 1;
+		}
+
+		this.plugin.debug.info('drafts', 'resumed', 'Draft hydrated into wizard', {
+			draftId: draft.id,
+			step: draft.currentStep,
+			columnConfigCount: this.columnConfigs.size,
+		});
 	}
 
 	onClose() {

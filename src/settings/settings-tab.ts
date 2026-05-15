@@ -174,6 +174,48 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Wizard behavior').setHeading();
 
 		new Setting(containerEl)
+			.setName('Auto-save import drafts')
+			.setDesc('Save wizard state every few seconds while you work, so you can close the modal and resume later. Drafts live in _crosswalker/drafts/ (gitignored).')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableDraftSessions)
+				.onChange(async (value) => {
+					this.plugin.settings.enableDraftSessions = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Draft expiry (days)')
+			.setDesc('Drafts older than this auto-purge on wizard open. Set to 0 to never expire.')
+			.addSlider(slider => slider
+				.setLimits(0, 90, 1)
+				.setValue(this.plugin.settings.draftExpiryDays)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.draftExpiryDays = value;
+					this.plugin.draftStore.setConfig({
+						draftExpiryDays: value,
+						maxDrafts: this.plugin.settings.maxDrafts,
+					});
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Max drafts')
+			.setDesc('Cap on saved drafts. When exceeded, oldest are deleted. Set to 0 to disable the cap.')
+			.addSlider(slider => slider
+				.setLimits(0, 50, 1)
+				.setValue(this.plugin.settings.maxDrafts)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.maxDrafts = value;
+					this.plugin.draftStore.setConfig({
+						draftExpiryDays: this.plugin.settings.draftExpiryDays,
+						maxDrafts: value,
+					});
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName('Show column statistics')
 			.setDesc('Display unique value counts and detected types')
 			.addToggle(toggle => toggle

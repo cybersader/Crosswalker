@@ -268,6 +268,36 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
+		// v0.1.6 Phase 3.6: draft session commands
+		this.addCommand({
+			id: 'resume-draft-import',
+			name: 'Resume draft import',
+			callback: () => {
+				// Just opens the wizard; its onOpen() handles draft listing
+				// + showing the picker if drafts exist. If none exist, falls
+				// through to a fresh import as today.
+				new ImportWizardModal(this.app, this).open();
+			},
+		});
+
+		this.addCommand({
+			id: 'clear-all-drafts',
+			name: 'Clear all import drafts',
+			callback: async () => {
+				const count = await this.draftStore.clearAll();
+				new Notice(`Cleared ${count} draft import${count === 1 ? '' : 's'}.`);
+			},
+		});
+
+		this.addCommand({
+			id: 'purge-expired-drafts',
+			name: 'Purge expired import drafts',
+			callback: async () => {
+				const count = await this.draftStore.purgeExpired();
+				new Notice(`Purged ${count} expired draft import${count === 1 ? '' : 's'}.`);
+			},
+		});
+
 		// Register settings tab
 		this.addSettingTab(new CrosswalkerSettingTab(this.app, this));
 
