@@ -516,7 +516,7 @@ export class ImportWizardModal extends Modal {
 		// Filter by threshold
 		this.configMatches = matches.filter(m => m.score >= threshold);
 
-		this.plugin.debug.log('Config matching results', {
+		this.plugin.debug.info('wizard', 'config-match-results', `${this.configMatches.length} matching configs (threshold ${threshold})`, {
 			totalConfigs: this.plugin.settings.savedConfigs.length,
 			threshold,
 			matchCount: this.configMatches.length,
@@ -561,7 +561,7 @@ export class ImportWizardModal extends Modal {
 		config.lastUsedAt = new Date().toISOString();
 		this.plugin.saveSettings();
 
-		this.plugin.debug.log('Applied config', {
+		this.plugin.debug.info('wizard', 'config-applied', `Applied saved config: ${config.name}`, {
 			configId: config.id,
 			configName: config.name,
 			warnings: this.configWarnings
@@ -1323,11 +1323,20 @@ export class ImportWizardModal extends Modal {
 	async parseSourceFile(): Promise<boolean> {
 		if (!this.sourceFile) return false;
 
+		// Phase 3.5c: thread a trace_id through the parse flow so CSV-parser
+		// events correlate with the wizard's parse-start/complete events.
+		const traceId = this.plugin.debug.newTraceId();
+		return this.plugin.debug.withTrace(traceId, () => this.doParseSourceFile());
+	}
+
+	private async doParseSourceFile(): Promise<boolean> {
+		if (!this.sourceFile) return false;
+
 		this.isParsing = true;
 		this.parseError = null;
 		this.renderStep(); // Show loading state
 
-		await this.plugin.debug.log('Starting file parse', {
+		this.plugin.debug.info('wizard', 'parse-start', `Starting file parse: ${this.sourceFile.name}`, {
 			fileName: this.sourceFile.name,
 			fileSize: this.sourceFile.size,
 			fileType: this.sourceType
@@ -1336,7 +1345,7 @@ export class ImportWizardModal extends Modal {
 		try {
 			if (this.sourceType === 'csv') {
 				const useStreaming = shouldUseStreaming(this.sourceFile);
-				await this.plugin.debug.log('CSV parsing config', { useStreaming });
+				this.plugin.debug.info('csv-parser', 'config', `CSV parser config (streaming=${useStreaming})`, { useStreaming });
 
 				if (useStreaming) {
 					new Notice(`Large file detected (${(this.sourceFile.size / 1024 / 1024).toFixed(1)}MB). Using streaming parser...`);
@@ -1356,7 +1365,7 @@ export class ImportWizardModal extends Modal {
 				// Analyze columns for type detection
 				this.columnInfos = analyzeColumns(this.parsedData);
 
-				await this.plugin.debug.log('CSV parsing complete', {
+				this.plugin.debug.info('csv-parser', 'parse-complete', `CSV parsed: ${this.parsedData.rowCount} rows × ${this.parsedData.columns.length} columns`, {
 					rowCount: this.parsedData.rowCount,
 					columnCount: this.parsedData.columns.length,
 					columns: this.parsedData.columns
@@ -1385,7 +1394,7 @@ export class ImportWizardModal extends Modal {
 			this.parseError = error instanceof Error ? error.message : String(error);
 			this.isParsing = false;
 
-			await this.plugin.debug.log('Parse error', {
+			this.plugin.debug.error('csv-parser', 'parse-error', 'Parse error', {
 				error: this.parseError,
 				stack: error instanceof Error ? error.stack : undefined
 			});
@@ -1401,6 +1410,17 @@ export class ImportWizardModal extends Modal {
 			new Notice('No data to generate. Please go back and select a file.');
 			return;
 		}
+
+		// Phase 3.5c: thread a fresh trace_id through the entire generation
+		// flow. Every wizard / generation / Tier 2 / view event that fires
+		// during this operation will carry the same trace_id, making the full
+		// causal chain correlatable via `jq 'select(.trace_id == "<id>")'`.
+		const traceId = this.plugin.debug.newTraceId();
+		await this.plugin.debug.withTrace(traceId, () => this.doGenerate());
+	}
+
+	private async doGenerate(): Promise<void> {
+		if (!this.parsedData) return;
 
 		// Build config from wizard state (preserves applied saved-config filename
 		// template when no column is explicitly marked as 'title').
@@ -1427,7 +1447,7 @@ export class ImportWizardModal extends Modal {
 			}
 		};
 
-		await this.plugin.debug.log('Starting generation', {
+		this.plugin.debug.info('wizard', 'generate-start', `Starting wizard generation (${this.parsedData.rowCount} rows)`, {
 			basePath: options.basePath,
 			overwriteMode: options.overwriteMode,
 			frameworkId: options.frameworkId,
@@ -1451,7 +1471,7 @@ export class ImportWizardModal extends Modal {
 
 			this.isGenerating = false;
 
-			await this.plugin.debug.log('Generation complete', {
+			this.plugin.debug.info('wizard', 'generate-complete', `Wizard generation complete (${result.created.length} created)`, {
 				success: result.success,
 				created: result.created.length,
 				skipped: result.skipped.length,
@@ -1468,8 +1488,7 @@ export class ImportWizardModal extends Modal {
 
 				// Ask to save config if enabled and not using existing config
 				if (this.plugin.settings.promptToSaveConfig && !this.appliedConfig) {
-					// Could prompt to save config here - for now just log
-					await this.plugin.debug.log('Consider saving config for future use');
+					this.plugin.debug.trace('wizard', 'config-save-prompt-deferred', 'Consider saving config for future use');
 				}
 
 				// Delete the in-progress draft — generation succeeded, user is
@@ -1505,7 +1524,7 @@ export class ImportWizardModal extends Modal {
 			this.isGenerating = false;
 			const errorMessage = error instanceof Error ? error.message : String(error);
 
-			await this.plugin.debug.log('Generation error', { error: errorMessage });
+			this.plugin.debug.error('wizard', 'generate-error', 'Wizard generation error', { error: errorMessage });
 			new Notice(`❌ Generation failed: ${errorMessage}`, 10000);
 
 			this.renderStep();

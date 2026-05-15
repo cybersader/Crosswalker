@@ -86,7 +86,7 @@ export async function projectFromTier1(
 		durationMs: 0,
 	};
 
-	await options.debug?.log('projectFromTier1: starting');
+	options.debug?.info('tier2', 'projection-start', 'projectFromTier1: starting');
 
 	// Pre-prepare statements (sqlite-wasm OO1 supports prepared statements
 	// via db.prepare; using db.exec with parameter binding is also fine).
@@ -140,7 +140,7 @@ export async function projectFromTier1(
 			const msg = err instanceof Error ? err.message : String(err);
 			result.errors.push({ vault_path: file.path, message: msg });
 			result.counts.errors += 1;
-			await options.debug?.log('projection row error', { path: file.path, error: msg });
+			options.debug?.warn('tier2', 'projection-row-error', `Projection row error at ${file.path}`, { path: file.path, error: msg });
 		}
 	}
 
@@ -150,7 +150,7 @@ export async function projectFromTier1(
 			db.exec('DELETE FROM closure_cache');
 		} catch (err) {
 			// Non-fatal — closure_cache may not exist if migrations haven't run
-			await options.debug?.log('closure_cache invalidate failed (non-fatal)', {
+			options.debug?.warn('tier2', 'closure-cache-invalidate-failed', 'closure_cache invalidate failed (non-fatal)', {
 				error: err instanceof Error ? err.message : String(err),
 			});
 		}
@@ -165,7 +165,7 @@ export async function projectFromTier1(
 
 	result.durationMs = Date.now() - startMs;
 
-	await options.debug?.log('projectFromTier1: complete', {
+	options.debug?.info('tier2', 'projection-complete', 'projectFromTier1: complete', {
 		success: result.success,
 		counts: result.counts,
 		duration_ms: result.durationMs,

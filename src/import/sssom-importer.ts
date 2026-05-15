@@ -82,6 +82,31 @@ export async function importSssom(
 	options: SssomImportOptions = {},
 	debug?: DebugLog,
 ): Promise<SssomImportResult> {
+	// Phase 3.5c: thread a trace_id through the SSSOM import flow so the whole
+	// pipeline (parse → ontology detection → synthetic recipe → generateFromRecipe
+	// → Tier 2 projection → closure precompute) is correlatable via one grep.
+	// If the caller already set a trace (e.g. via plugin.runImport), we reuse it.
+	const existingTrace = debug?.currentTraceId();
+	if (existingTrace) {
+		return runImportSssom(app, tsvContent, pluginRunProjection, pluginPrecomputeClosure, options, debug);
+	}
+	const traceId = debug?.newTraceId();
+	if (!debug || !traceId) {
+		return runImportSssom(app, tsvContent, pluginRunProjection, pluginPrecomputeClosure, options, debug);
+	}
+	return debug.withTrace(traceId, () =>
+		runImportSssom(app, tsvContent, pluginRunProjection, pluginPrecomputeClosure, options, debug),
+	);
+}
+
+async function runImportSssom(
+	app: App,
+	tsvContent: string,
+	pluginRunProjection: (() => Promise<unknown>) | null,
+	pluginPrecomputeClosure: ((sourceOnt: string, targetOnt: string) => Promise<number>) | null,
+	options: SssomImportOptions = {},
+	debug?: DebugLog,
+): Promise<SssomImportResult> {
 	const result: SssomImportResult = {
 		parse: { header: {}, rows: [], warnings: [], errors: [] },
 		generation: null,
@@ -95,12 +120,12 @@ export async function importSssom(
 	result.parse = parsed;
 	if (parsed.errors.length > 0) {
 		result.skipped = 'parse-error';
-		await debug?.log('SSSOM import aborted: parse errors', { errors: parsed.errors });
+		debug?.error('sssom-import', 'parse-aborted', 'SSSOM import aborted: parse errors', { errors: parsed.errors });
 		return result;
 	}
 	if (parsed.rows.length === 0) {
 		result.skipped = 'no-rows';
-		await debug?.log('SSSOM import aborted: no rows');
+		debug?.warn('sssom-import', 'no-rows', 'SSSOM import aborted: no rows');
 		return result;
 	}
 
@@ -121,7 +146,7 @@ export async function importSssom(
 	const folder = options.outputFolder ?? `_crosswalker/mappings/${source}-to-${target}`;
 	result.folder = folder;
 
-	await debug?.log('SSSOM import: detected pair', {
+	debug?.info('sssom-import', 'pair-detected', `SSSOM ontology pair: ${source} → ${target}`, {
 		source,
 		target,
 		folder,
@@ -183,7 +208,7 @@ export async function importSssom(
 	result.generation = gen;
 
 	if (!gen.success) {
-		await debug?.log('SSSOM import: generation failed', {
+		debug?.error('sssom-import', 'generation-failed', 'SSSOM import: generation failed', {
 			errors: gen.errors,
 		});
 		return result;
@@ -193,26 +218,26 @@ export async function importSssom(
 	// Re-projects newly-written junction-edge .md files into the `mappings` table.
 	// pluginRunProjection is the plugin.runProjection handle; null in tests.
 	if (options.runTier2Projection !== false && pluginRunProjection) {
-		await debug?.log('SSSOM import: running Tier 2 projection');
+		debug?.info('sssom-import', 'projection-start', 'SSSOM import: running Tier 2 projection');
 		try {
 			await pluginRunProjection();
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			gen.errors.push({ row: -1, message: `Tier 2 projection failed: ${msg}` });
-			await debug?.log('SSSOM import: projection failed', { error: msg });
+			debug?.warn('sssom-import', 'projection-failed', 'SSSOM import: projection failed', { error: msg });
 		}
 	}
 
 	// ----- Phase 5: Eager closure precomputation per Ch 35 -----
 	if (pluginPrecomputeClosure) {
-		await debug?.log('SSSOM import: precomputing closure', { source, target });
+		debug?.info('sssom-import', 'closure-precompute-start', 'SSSOM import: precomputing closure', { source, target });
 		try {
 			const cachedRows = await pluginPrecomputeClosure(source, target);
-			await debug?.log('SSSOM import: closure precomputed', { cachedRows });
+			debug?.info('sssom-import', 'closure-precomputed', `SSSOM import: closure precomputed (${cachedRows} rows)`, { cachedRows });
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			gen.errors.push({ row: -1, message: `Closure precompute failed: ${msg}` });
-			await debug?.log('SSSOM import: precompute failed', { error: msg });
+			debug?.warn('sssom-import', 'precompute-failed', 'SSSOM import: precompute failed', { error: msg });
 		}
 	}
 

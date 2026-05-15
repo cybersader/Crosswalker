@@ -2,7 +2,7 @@
  * debug-log.test.ts — Jest tests for the Phase 3.5 wide-event logger.
  *
  * Verifies the NDJSON event schema, severity routing, trace + span context,
- * the backward-compat shim, category filtering, and rotation triggering.
+ * category filtering, and rotation triggering.
  */
 
 import { DebugLog, type DebugEvent } from '../src/utils/debug';
@@ -256,39 +256,14 @@ describe('DebugLog — category filtering', () => {
 	});
 });
 
-describe('DebugLog — backward-compat shim', () => {
-	it('.log(msg, data) emits info-level events under category=legacy', async () => {
-		const state: MockVaultState = { lines: [], files: new Map() };
-		const d = new DebugLog(createMockApp(state), true);
-		d.log('Generation complete', { rows: 12 });
-		await flushQueue(d);
-		const ev = JSON.parse(state.lines[0]);
-		expect(ev.level).toBe('info');
-		expect(ev.category).toBe('legacy');
-		expect(ev.op).toBe('event');
-		expect(ev.msg).toBe('Generation complete');
-		expect(ev.rows).toBe(12);
-	});
-
-	it('.error(msg, errInstance) extracts error_class + error_message + stack', async () => {
-		const state: MockVaultState = { lines: [], files: new Map() };
-		const d = new DebugLog(createMockApp(state), true);
-		d.error('Boom', new TypeError('bad input'));
-		await flushQueue(d);
-		const ev = JSON.parse(state.lines[0]);
-		expect(ev.level).toBe('error');
-		expect(ev.category).toBe('legacy');
-		expect(ev.error_class).toBe('TypeError');
-		expect(ev.error_message).toBe('bad input');
-		expect(typeof ev.stack).toBe('string');
-	});
-
-	it('.error(category, op, msg) — new 4-arg form — emits properly categorized error', async () => {
+describe('DebugLog — error() severity', () => {
+	it('.error(category, op, msg, data) emits properly categorized error', async () => {
 		const state: MockVaultState = { lines: [], files: new Map() };
 		const d = new DebugLog(createMockApp(state), true);
 		d.error('generation', 'row-error', 'render failed', { row: 8 });
 		await flushQueue(d);
 		const ev = JSON.parse(state.lines[0]);
+		expect(ev.level).toBe('error');
 		expect(ev.category).toBe('generation');
 		expect(ev.op).toBe('row-error');
 		expect(ev.row).toBe(8);

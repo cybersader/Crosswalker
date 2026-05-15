@@ -116,10 +116,10 @@ export async function writeReferenceBaseFiles(app: App, debug?: DebugLog): Promi
 			}
 			await app.vault.create(normalized, content);
 			created.push(normalized);
-			await debug?.log(`Reference .base file written: ${normalized}`);
+			debug?.info('view', 'reference-base-written', `Reference .base file written: ${normalized}`, { path: normalized });
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			await debug?.log(`Failed to write reference .base file ${normalized}: ${msg}`);
+			debug?.warn('view', 'reference-base-write-failed', `Failed to write reference .base file ${normalized}: ${msg}`, { path: normalized, error: msg });
 			// Continue with the rest; one failure shouldn't block other writes.
 		}
 	}

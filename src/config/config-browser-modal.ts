@@ -444,7 +444,7 @@ export class ConfigBrowserModal extends Modal {
 			this.plugin.settings.savedConfigs.filter(c => c.id !== config.id);
 		await this.plugin.saveSettings();
 
-		await this.plugin.debug.log('Config deleted', { configId: config.id, configName: config.name });
+		this.plugin.debug.info('config', 'deleted', `Config ${config.name} deleted`, { configId: config.id, configName: config.name });
 		new Notice(`Deleted: ${config.name}`);
 		this.render();
 	}
@@ -462,7 +462,7 @@ export class ConfigBrowserModal extends Modal {
 		this.plugin.settings.savedConfigs.push(newConfig);
 		await this.plugin.saveSettings();
 
-		await this.plugin.debug.log('Config duplicated', { originalId: config.id, newId: newConfig.id });
+		this.plugin.debug.info('config', 'duplicated', `Config duplicated`, { originalId: config.id, newId: newConfig.id });
 		new Notice(`Duplicated: ${newConfig.name}`);
 		this.render();
 	}
@@ -479,7 +479,7 @@ export class ConfigBrowserModal extends Modal {
 
 		URL.revokeObjectURL(url);
 
-		this.plugin.debug.log('Config exported', { configId: config.id, configName: config.name });
+		this.plugin.debug.info('config', 'exported', `Config ${config.name} exported`, { configId: config.id, configName: config.name });
 		new Notice(`Exported: ${config.name}`);
 	}
 
@@ -501,7 +501,7 @@ export class ConfigBrowserModal extends Modal {
 					this.plugin.settings.savedConfigs.push(imported);
 					await this.plugin.saveSettings();
 
-					await this.plugin.debug.log('Config imported', {
+					this.plugin.debug.info('config', 'imported', `Config ${imported.name} imported from ${file.name}`, {
 						configId: imported.id,
 						configName: imported.name,
 						fileName: file.name
@@ -514,7 +514,10 @@ export class ConfigBrowserModal extends Modal {
 				}
 			} catch (err) {
 				new Notice('Failed to parse configuration file');
-				this.plugin.debug.error('Config import failed', err);
+				this.plugin.debug.error('config', 'import-failed', 'Config import failed', {
+					error: err instanceof Error ? err.message : String(err),
+					...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
+				});
 			}
 		};
 

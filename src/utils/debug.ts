@@ -262,41 +262,12 @@ export class DebugLog {
 		this.emit('warn', category, op, msg, data);
 	}
 
-	error(category: string, op: string, msg: string, data?: Record<string, unknown>): void;
-	// Backward-compat overload: error(msg, err) — emits as category='legacy'.
-	error(msg: string, errOrData?: Error | Record<string, unknown>): void;
-	error(
-		categoryOrMsg: string,
-		opOrErr?: string | Error | Record<string, unknown>,
-		msg?: string,
-		data?: Record<string, unknown>,
-	): void {
-		// Detect the legacy 2-arg shape: error(msg, errorOrData).
-		const isLegacy = typeof opOrErr !== 'string' && msg === undefined;
-		if (isLegacy) {
-			const errData = opOrErr instanceof Error
-				? { error_class: opOrErr.constructor.name, error_message: opOrErr.message, stack: opOrErr.stack }
-				: (opOrErr as Record<string, unknown> | undefined);
-			this.emit('error', 'legacy', 'event', categoryOrMsg, errData);
-		} else {
-			this.emit('error', categoryOrMsg, opOrErr as string, msg as string, data);
-		}
+	error(category: string, op: string, msg: string, data?: Record<string, unknown>): void {
+		this.emit('error', category, op, msg, data);
 	}
 
 	trace(category: string, op: string, msg: string, data?: Record<string, unknown>): void {
 		this.emit('trace', category, op, msg, data);
-	}
-
-	// -----------------------------------------------------------------------
-	// Backward-compat shim — Phase 3.5c will remove
-	// -----------------------------------------------------------------------
-
-	/**
-	 * @deprecated Use `info(category, op, msg, data)` instead. This shim emits
-	 * events with category='legacy' until Phase 3.5c sweeps all call sites.
-	 */
-	log(msg: string, data?: Record<string, unknown>): void {
-		this.emit('info', 'legacy', 'event', msg, data);
 	}
 
 	// -----------------------------------------------------------------------

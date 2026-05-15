@@ -375,8 +375,8 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 			{ name: 'tier2', desc: 'Tier 2 sqlite sidecar lifecycle + queries' },
 			{ name: 'config', desc: 'Saved config save/load/match' },
 			{ name: 'view', desc: 'Bases view rendering' },
+			{ name: 'drafts', desc: 'Wizard draft sessions (save/resume/expire)' },
 			{ name: 'lifecycle', desc: 'Plugin load/unload' },
-			{ name: 'legacy', desc: 'Pre-3.5 call sites (will disappear after Phase 3.5c migration)' },
 		];
 
 		for (const cat of KNOWN_CATEGORIES) {

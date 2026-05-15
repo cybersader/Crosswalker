@@ -6,7 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.6 done; Phases 3.5c + 4 + 5 pending).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 done; Phases 4 + 5 pending).
+
+### v0.1.6 Phase 3.5c — Call-site sweep + trace correlation (2026-05-15, ✅ Done)
+
+Pure-refactor completion of the Phase 3.5 observability layer. The Phase 3.5a backward-compat shim is removed; all 30+ remaining `.log(msg, data)` and `.error(msg, err)` call sites across the import / generation / SSSOM / Tier 2 / view subsystems migrated to the categorized severity API (`info / warn / error / trace` with `category + op` fields). Top-level entry points now create fresh `trace_id`s and wrap their work in `withTrace()` — so every downstream event for one operation carries the same trace_id, correlatable via a single `jq` filter.
+
+**API removal (breaking, internal-only)**:
+- `DebugLog.log(msg, data?)` — removed. All callers now use `debug.info('<category>', '<op>', msg, data?)`.
+- `DebugLog.error(msg, err)` (2-arg form) — removed. The canonical signature is now `debug.error('<category>', '<op>', msg, data?)`.
+
+**Trace correlation entry points** (the 4 places where a fresh trace_id is created):
+- `wizard.parseSourceFile()` — wraps the CSV parse flow
+- `wizard.generate()` — wraps the entire generation flow
+- `importSssom()` — wraps the SSSOM TSV → junction-note pipeline (re-uses an active caller trace if present)
+- `plugin.autoProjectOnLayoutReady()` — wraps the Tier 2 projection on vault load
+
+**Categories now used** (all 9, after `legacy` removal):
+- `wizard` — wizard state transitions, applied-config, generate-start/complete
+- `csv-parser` — file parse config / progress / complete / error
+- `generation` — per-row events (file-created / file-replaced / skipped / merge-failed / row-error), generation start/complete
+- `sssom-import` — parse-aborted / pair-detected / projection-start / closure-precomputed / etc.
+- `tier2` — projection-start / projection-row-error / projection-complete / closure-cache-invalidate-failed / clear-failed
+- `config` — saved-config deleted / duplicated / exported / imported / import-failed
+- `view` — Bases view register failures / reference .base file written
+- `drafts` — wizard draft sessions (Phase 3.6: saved / deleted / cleared-all / purged-expired / cap-enforced / resumed)
+- `lifecycle` — plugin loaded / unloaded
+
+**Diagnostic payoff** (the real reason for 3.5c):
+- Before: bug → read source → guess at code paths → grep log for fragments → reconstruct timeline → identify root cause (~20-30 min)
+- After: bug → identify operation → `cat crosswalker-debug.log | jq 'select(.trace_id == "<id>")'` → causal chain returned in order → root cause obvious (~3-8 min)
+
+**Files changed** (12 files, ~30+ call sites + shim removal + 3 shim tests removed + 1 new test):
+- `src/utils/debug.ts` — shim removed
+- `src/main.ts`, `src/import/import-wizard.ts`, `src/import/sssom-importer.ts`, `src/import/sssom-import-modal.ts`, `src/generation/generation-engine.ts`, `src/tier2/projector.ts`, `src/config/config-browser-modal.ts`, `src/views/reference-base-files.ts` — call sites migrated
+- `src/settings/settings-tab.ts` — `legacy` category dropped, `drafts` added
+- `tests/debug-log.test.ts` — 3 shim tests removed, 1 canonical `error()` signature test added
+
+**Test coverage**: 241/241 unit tests pass (was 243; net -2 after shim-test cleanup). Build clean.
+
+See `docs/.../zz-log/2026-05-15-v0-1-6-phase-3-5c-shipped.mdx` for the full delivery log with system-design integration diagrams.
 
 ### v0.1.6 Phase 3.6 — Import wizard draft sessions (2026-05-15, ✅ Done)
 

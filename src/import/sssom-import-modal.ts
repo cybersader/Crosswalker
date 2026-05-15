@@ -244,7 +244,7 @@ export class SssomImportModal extends Modal {
 			progressNotice.hide();
 			const msg = err instanceof Error ? err.message : String(err);
 			new Notice(`SSSOM import error: ${msg}`);
-			await this.plugin.debug?.log('SSSOM import: unhandled error', { error: msg });
+			this.plugin.debug?.error('sssom-import', 'unhandled-error', 'SSSOM import: unhandled error', { error: msg });
 		}
 	}
 }

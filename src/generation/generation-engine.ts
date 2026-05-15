@@ -131,7 +131,7 @@ export async function generateNotes(
 
 	const importId = generateImportId();
 
-	await debug?.log('Starting generation', {
+	debug?.info('generation', 'start', `Starting generation of ${parsedData.rowCount} rows`, {
 		rowCount: parsedData.rowCount,
 		basePath: options.basePath,
 		overwriteMode: options.overwriteMode,
@@ -212,7 +212,7 @@ export async function generateNotes(
 				if (existingFile instanceof TFile) {
 					if (options.overwriteMode === 'skip') {
 						result.skipped.push(fullPath);
-						await debug?.log('Skipped existing file', { path: fullPath });
+						debug?.info('generation', 'skipped-existing', `Skipped existing file ${fullPath}`, { path: fullPath });
 						continue;
 					} else if (options.overwriteMode === 'error') {
 						result.errors.push({
@@ -239,7 +239,7 @@ export async function generateNotes(
 						// Frontmatter parse/merge failure is non-fatal; fall
 						// back to writing the new frontmatter as-is. Log so
 						// the user can investigate if user-keys are lost.
-						await debug?.log('Frontmatter merge failed; using new frontmatter as-is', {
+						debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${fullPath}; using new frontmatter as-is`, {
 							path: fullPath,
 							error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
 						});
@@ -258,10 +258,10 @@ export async function generateNotes(
 				// Create or update file
 				if (existingFile instanceof TFile) {
 					await app.vault.modify(existingFile, content);
-					await debug?.log('Replaced existing file', { path: fullPath });
+					debug?.info('generation', 'file-replaced', `Replaced existing file ${fullPath}`, { path: fullPath });
 				} else {
 					await app.vault.create(fullPath, content);
-					await debug?.log('Created new file', { path: fullPath });
+					debug?.info('generation', 'file-created', `Created new file ${fullPath}`, { path: fullPath });
 				}
 
 				result.created.push(fullPath);
@@ -272,7 +272,7 @@ export async function generateNotes(
 					row: rowNum,
 					message: errorMessage
 				});
-				await debug?.log('Row processing error', { row: rowNum, error: errorMessage });
+				debug?.error('generation', 'row-error', `Row ${rowNum} failed`, { row: rowNum, error: errorMessage });
 			}
 
 			i += 1;
@@ -290,12 +290,12 @@ export async function generateNotes(
 			row: 0,
 			message: `Generation failed: ${errorMessage}`
 		});
-		await debug?.log('Generation failed', { error: errorMessage });
+		debug?.error('generation', 'failed', 'Generation failed', { error: errorMessage });
 	}
 
 	result.duration = Date.now() - startTime;
 
-	await debug?.log('Generation complete', {
+	debug?.info('generation', 'complete', `Generation complete: ${result.created.length} created, ${result.errors.length} errors`, {
 		success: result.success,
 		created: result.created.length,
 		skipped: result.skipped.length,
@@ -1132,7 +1132,7 @@ export async function generateFromRecipe(
 	const ontologyId = recipe.source?.ontology ?? recipe.recipe;
 	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
 
-	await debug?.log('generateFromRecipe: starting', {
+	debug?.info('generation', 'recipe-start', `generateFromRecipe: starting (${recipe.recipe})`, {
 		recipe: recipe.recipe,
 		rowCount: parsedData.rowCount,
 		strict,
@@ -1226,7 +1226,7 @@ export async function generateFromRecipe(
 					result.errors.push({ row: rowNum, message: errMsg });
 					continue;
 				} else {
-					await debug?.log('Validation warning (non-strict mode)', { path: fullPath, error: errMsg });
+					debug?.warn('generation', 'validation-warning', `Validation warning at ${fullPath} (non-strict mode)`, { path: fullPath, error: errMsg });
 				}
 			}
 
@@ -1252,7 +1252,7 @@ export async function generateFromRecipe(
 						Object.assign(frontmatter, merged);
 					}
 				} catch (mergeErr) {
-					await debug?.log('Frontmatter merge failed; using new frontmatter as-is', {
+					debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${fullPath}; using new frontmatter as-is`, {
 						path: fullPath,
 						error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
 					});
@@ -1280,7 +1280,7 @@ export async function generateFromRecipe(
 		} catch (rowError) {
 			const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
 			result.errors.push({ row: rowNum, message: errorMessage });
-			await debug?.log('Row processing error', { row: rowNum, error: errorMessage });
+			debug?.error('generation', 'row-error', `Row ${rowNum} failed`, { row: rowNum, error: errorMessage });
 		}
 
 		i += 1;
@@ -1290,7 +1290,7 @@ export async function generateFromRecipe(
 	if (result.errors.length > 0) result.success = false;
 	result.duration = Date.now() - startTime;
 
-	await debug?.log('generateFromRecipe: complete', {
+	debug?.info('generation', 'recipe-complete', `generateFromRecipe: complete (${result.created.length} created, ${result.errors.length} errors)`, {
 		success: result.success,
 		created: result.created.length,
 		skipped: result.skipped.length,

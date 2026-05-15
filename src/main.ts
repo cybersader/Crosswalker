@@ -220,7 +220,7 @@ export default class CrosswalkerPlugin extends Plugin {
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
 					new Notice(`Failed to clear Tier 2 sidecar: ${msg}`);
-					await this.debug?.log('Tier 2 clear failed', { error: msg });
+					this.debug?.error('tier2', 'clear-failed', 'Tier 2 sidecar clear failed', { error: msg });
 				}
 			},
 		});
@@ -319,7 +319,7 @@ export default class CrosswalkerPlugin extends Plugin {
 			void writeReferenceBaseFiles(this.app, this.debug);
 		});
 
-		await this.debug.log('Crosswalker plugin loaded');
+		this.debug.info('lifecycle', 'loaded', 'Crosswalker plugin loaded', { version: '0.1.6' });
 	}
 
 	/**
@@ -334,39 +334,44 @@ export default class CrosswalkerPlugin extends Plugin {
 	 */
 	private async autoProjectOnLayoutReady(): Promise<void> {
 		if (!this.settings.enableTier2Projection) {
-			await this.debug?.log('Tier 2 auto-projection disabled in settings');
+			this.debug?.info('tier2', 'auto-projection-disabled', 'Tier 2 auto-projection disabled in settings');
 			return;
 		}
-		try {
-			await this.debug?.log('Tier 2 auto-projection: starting');
-			const result = await this.runProjection();
-			await this.debug?.log('Tier 2 auto-projection: complete', {
-				success: result.success,
-				counts: result.counts,
-				durationMs: result.durationMs,
-			});
-			if (!result.success && result.errors.length > 0) {
+		// Phase 3.5c: thread a trace_id through the auto-projection flow so all
+		// downstream tier2 events correlate via `grep trace_id` in the log.
+		const traceId = this.debug.newTraceId();
+		await this.debug.withTrace(traceId, async () => {
+			try {
+				this.debug.info('tier2', 'auto-projection-start', 'Tier 2 auto-projection: starting');
+				const result = await this.runProjection();
+				this.debug.info('tier2', 'auto-projection-complete', 'Tier 2 auto-projection: complete', {
+					success: result.success,
+					counts: result.counts,
+					durationMs: result.durationMs,
+				});
+				if (!result.success && result.errors.length > 0) {
+					new Notice(
+						`Tier 2 projection finished with ${result.errors.length} errors. Check debug log.`,
+						6000,
+					);
+				}
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				this.debug.error('tier2', 'auto-projection-failed', 'Tier 2 auto-projection failed', { error: msg });
+				// Non-fatal — Tier 1 vault is still functional. Surface a notice
+				// so the user knows queries against Tier 2 may not return fresh
+				// results, but don't block the plugin lifecycle.
 				new Notice(
-					`Tier 2 projection finished with ${result.errors.length} errors. Check debug log.`,
+					`Tier 2 projection failed (Tier 1 vault is unaffected; queries may be stale). See debug log.`,
 					6000,
 				);
 			}
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			await this.debug?.log('Tier 2 auto-projection failed', { error: msg });
-			// Non-fatal — Tier 1 vault is still functional. Surface a notice
-			// so the user knows queries against Tier 2 may not return fresh
-			// results, but don't block the plugin lifecycle.
-			new Notice(
-				`Tier 2 projection failed (Tier 1 vault is unaffected; queries may be stale). See debug log.`,
-				6000,
-			);
-		}
+		});
 	}
 
 	onunload() {
 		this.tier2Handle?.close();
-		this.debug?.log('Crosswalker plugin unloaded');
+		this.debug?.info('lifecycle', 'unloaded', 'Crosswalker plugin unloaded');
 	}
 
 	/**
@@ -446,7 +451,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		});
 
 		if (!result.success) {
-			void this.debug?.log('crosswalkerPivot Bases view registration failed', { reason: result.reason });
+			this.debug?.warn('view', 'register-pivot-failed', 'crosswalkerPivot Bases view registration failed', { reason: result.reason });
 			if (result.reason === 'no-public-api') {
 				new Notice(
 					'Crosswalker: pivot view requires Obsidian 1.10.0 or later. Update Obsidian to use the pivot view; other features still work.',
