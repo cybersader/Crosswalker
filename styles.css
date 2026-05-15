@@ -958,3 +958,79 @@
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 }
+
+/* ============================================================================
+   Phase 4b — Recipe picker modal (uses Phase 3 .crosswalker-config-browser-modal
+   base + adds recipe-card specific styling)
+   ============================================================================ */
+
+.crosswalker-recipe-picker-modal {
+	/* width + height + flex layout inherited from .crosswalker-config-browser-modal */
+}
+
+.crosswalker-recipe-card {
+	cursor: default;
+}
+
+.crosswalker-recipe-card .crosswalker-card-header {
+	display: flex;
+	gap: 0.75em;
+	align-items: flex-start;
+	padding: 0.75em 1em;
+}
+
+.crosswalker-recipe-card .crosswalker-card-title-area {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.crosswalker-recipe-card .crosswalker-card-actions {
+	display: flex;
+	gap: 0.5em;
+	flex-shrink: 0;
+}
+
+.crosswalker-recipe-description {
+	margin: 0.4em 0 0 0;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+.crosswalker-renderer-coming-soon {
+	color: var(--text-warning, var(--color-orange, #d97706));
+	font-size: 0.85em;
+	font-style: italic;
+}
+
+.crosswalker-card-details {
+	padding: 0 1em 1em 1em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-param-editor {
+	margin-top: 1em;
+}
+
+.crosswalker-param-editor h4 {
+	margin: 0 0 0.5em 0;
+}
+
+.crosswalker-param-editor-empty {
+	margin: 1em 0;
+}
+
+.crosswalker-insert-row {
+	margin-top: 1em;
+	padding-top: 0.75em;
+	border-top: 1px solid var(--background-modifier-border);
+	display: flex;
+	justify-content: flex-end;
+}
+
+.crosswalker-recipe-load-errors {
+	margin: 0 0 1em 0;
+	padding: 0.75em 1em;
+	background: var(--background-modifier-error, rgba(255, 100, 100, 0.08));
+	border: 1px solid var(--text-warning, var(--color-orange, #d97706));
+	border-radius: 6px;
+}
