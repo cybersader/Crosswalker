@@ -100,16 +100,68 @@ export const SKILL_MD_PATH = '_crosswalker/SKILL.md';
  */
 export const REFERENCE_SKILL_MD = `---
 name: crosswalker-bases
-description: Author ` + '`' + `` + '`' + '`' + `base codeblocks for Crosswalker views. Use when working in Obsidian with the Crosswalker plugin and the Obsidian Bases plugin enabled, especially when inserting query views into notes for ontology / framework data (NIST, ISO, MITRE, CIS, SOC 2, etc.).
+description: Author Crosswalker queries via frontmatter-driven query notes. The plugin generates .base files and embeds them via Obsidian-native ![[file.base]] syntax. Use when working in Obsidian with the Crosswalker plugin and the Obsidian Bases plugin enabled, especially when inserting query views into notes for ontology / framework data (NIST, ISO, MITRE, CIS, SOC 2, etc.).
 ---
 
-# Crosswalker — Bases authoring skill
+# Crosswalker — query authoring skill (Phase 4.5)
 
-This skill teaches you to author ` + '`' + `` + '`' + '`' + `base codeblocks that the Crosswalker plugin renders inside Obsidian notes. The codeblocks combine Obsidian's [Bases plugin](https://help.obsidian.md/Plugins/Bases) (filters, formulas, properties, views) with Crosswalker's custom view types (\`crosswalker-pivot\`; \`crosswalker-hierarchy\` ships v0.1.7+).
+This skill teaches you how Crosswalker queries live in Obsidian. The query is **canonical frontmatter** on a user note; Crosswalker generates a \`.base\` file in \`_crosswalker/views/\`; the user note embeds the rendering via Obsidian-native \`![[<view_file>]]\` syntax (per [Obsidian Bases docs](https://help.obsidian.md/Plugins/Bases)).
 
-## The two things to know
+## The three artifacts that make up a Crosswalker query
 
-1. **A ` + '`' + `` + '`' + '`' + `base codeblock is YAML**, parsed by Obsidian's Bases plugin at render time. It declares \`filters\` (which files to query), optional \`formulas\` (computed columns), optional \`properties\` (display overrides), and \`views\` (how to render).
+\`\`\`markdown
+USER NOTE: My Coverage Analysis.md
+─────────────────────────────────
+---
+crosswalker:                                          ← canonical truth (frontmatter)
+  query_id: q-2026-05-15-a1b2c3d4
+  recipe: nist-csf-coverage-matrix
+  shape: pivot
+  params:
+    confidence_threshold: 0.7
+  view_file: "_crosswalker/views/q-2026-05-15-a1b2c3d4.base"
+  generated_at: 2026-05-15T20:55:00.000Z
+  schema_version: 1
+---
+
+# My coverage analysis
+
+Some prose...
+
+![[_crosswalker/views/q-2026-05-15-a1b2c3d4.base]]   ← Bases-native embed (renders inline)
+\`\`\`
+
+The \`.base\` file at \`_crosswalker/views/q-2026-05-15-a1b2c3d4.base\` is **plugin-generated**. Don't hand-edit it — your changes will be overwritten on the next \`Crosswalker: Refresh query views\` (or plugin reload). Edit the **frontmatter** instead; the plugin regenerates the \`.base\` file.
+
+## How to author a new query
+
+1. **Open a note** where you want the query rendered (any markdown note with no \`crosswalker:\` block yet).
+2. **Run \`Crosswalker: Insert query into note\`** from the command palette.
+3. **Pick a recipe** from the modal (e.g. NIST CSF → 800-53 coverage matrix). Adjust exposed parameters inline if you want.
+4. **Click Apply.** The picker writes the \`crosswalker:\` frontmatter, generates the \`.base\` file at \`_crosswalker/views/\`, and inserts the embed at your cursor. Done.
+
+## How to edit an existing query
+
+Two options:
+
+- **Re-run the picker** on a note that already has \`crosswalker:\` frontmatter → the picker opens in UPDATE mode with current values pre-filled.
+- **Hand-edit the \`crosswalker:\` frontmatter** directly. Run \`Crosswalker: Refresh query views\` to regenerate the \`.base\` file from the new params.
+
+The frontmatter is the source of truth. The \`.base\` file is generated.
+
+## Why this design
+
+| Property | Why it matters |
+|---|---|
+| Frontmatter is queryable by Bases itself | "Show me every query I've ever made" is one Bases query over \`crosswalker.shape == "pivot"\` |
+| Single source of truth | Edit frontmatter (or use the picker again); \`.base\` file regenerates. No drift. |
+| Reusable across notes | Multiple notes can embed the same \`.base\` file via \`![[...]]\` |
+| Survives plugin uninstall | Frontmatter + \`.base\` file are both plain text, readable without Crosswalker |
+| Bases-native | \`![[file.base]]\` is the canonical Obsidian Bases embed syntax (not inline codeblocks) |
+
+## Quick reference: the two things to know about the .base file syntax
+
+1. **A \`.base\` file is YAML** (or an inline ` + '`' + `` + '`' + '`' + `base codeblock for backward compat), parsed by Obsidian's Bases plugin at render time. It declares \`filters\` (which files to query), optional \`formulas\` (computed columns), optional \`properties\` (display overrides), and \`views\` (how to render).
 2. **Crosswalker adds new view types** via \`registerBasesView\`. The most useful is \`crosswalker-pivot\` (rows × cols × cells matrix). Bases-native view types (\`table\`, \`list\`, \`cards\`, \`calendar\`) work as documented in the Bases plugin.
 
 ## Minimal example — a pivot view of NIST CSF → 800-53 coverage

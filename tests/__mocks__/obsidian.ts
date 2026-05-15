@@ -94,6 +94,26 @@ export class Vault {
   };
 }
 
+// FileManager — Phase 4.5 needs processFrontMatter for the canonical safe
+// frontmatter edit API. The real Obsidian implementation reads the file,
+// parses YAML frontmatter, passes the parsed object to the callback for
+// mutation, serializes back, writes the file. Our mock takes a Map-backed
+// store keyed by file.path so tests can assert on resulting frontmatter
+// without parsing YAML.
+export class FileManager {
+  // Test-only escape hatch: in-memory frontmatter store keyed by path.
+  // Real Obsidian persists to the file; mock keeps it here so tests can
+  // inspect it via `fileManager.__frontmatter[path]`.
+  __frontmatter: Map<string, Record<string, unknown>> = new Map();
+
+  processFrontMatter = jest.fn(async (file: any, cb: (fm: Record<string, unknown>) => void) => {
+    const path = file?.path ?? 'unknown.md';
+    const existing = this.__frontmatter.get(path) ?? {};
+    cb(existing);
+    this.__frontmatter.set(path, existing);
+  });
+}
+
 export function normalizePath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+/g, '/');
 }

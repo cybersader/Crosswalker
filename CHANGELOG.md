@@ -6,7 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 done; Phase 5 pending).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 done; Phase 5 pending).
+
+### v0.1.6 Phase 4.5 — Frontmatter-driven query notes + `.base` file generation + `![[embed]]` (2026-05-15, ✅ Done)
+
+User architecture call surfaced that Phase 4's inline ` ```base ` codeblock flow used the wrong embed syntax — Obsidian Bases' canonical embed is `![[file.base]]` (per [Bases docs](https://help.obsidian.md/Plugins/Bases)), and the query itself should live in **note frontmatter** (canonical, queryable by Bases itself, regenerable, plugin-uninstall-safe) rather than in an opaque inline codeblock. Phase 4.5 ships the corrected architecture. Phase 4's codeblock-only flow stays in git history; codeblocks already in user vaults keep working (Bases supports both syntaxes — no migration command).
+
+**The corrected design** (3 artifacts make up a query):
+
+1. **`crosswalker:` frontmatter on the user's note** — canonical query definition (recipe ID + shape + user-edited params). AJV-validated. Indexable by Bases itself. Survives plugin uninstall.
+2. **`.base` file at `_crosswalker/views/q-<YYYY-MM-DD>-<8-hex>.base`** — plugin-generated rendering artifact. Regenerable from frontmatter. Stable filename keyed by `query_id`.
+3. **`![[<view_file>]]` embed in the user's note** — Obsidian-native Bases embed syntax. Renders inline when the note is viewed.
+
+**Flow** (single `Crosswalker: Insert query into note` command):
+- Picker opens. Auto-detects existing `crosswalker:` frontmatter → UPDATE mode (preserves `query_id` + `view_file`; updates params only) OR CREATE mode (fresh `query_id`).
+- On confirm: write `.base` file → write/update frontmatter via `app.fileManager.processFrontMatter()` → insert `![[<view_file>]]` at cursor (skipped if embed already present — idempotent).
+
+**New modules** (all under `src/views/`):
+- `query-frontmatter-schema.ts` — JSON Schema (draft 2020-12) + AJV validator + `newQueryId()` + `viewFileFor()`. Validates the `crosswalker:` block at every read + write boundary. Schema is forward-compat (`schema_version: 1`).
+- `query-frontmatter-io.ts` — `readQueryFrontmatter()` / `writeQueryFrontmatter()` / `hasQueryFrontmatter()` helpers + pure builders (`buildFrontmatter`, `updateFrontmatterParams`). Uses Obsidian's canonical `app.fileManager.processFrontMatter(file, cb)` API — safer than manual YAML manipulation.
+- `apply-query-to-note.ts` — single orchestrator: `applyQueryToNote({app, file, editor, recipeId, shape, params})`. Decides CREATE vs UPDATE; writes `.base` file (with comment header); writes/updates frontmatter; inserts embed at cursor; returns structured `ApplyResult` for caller.
+- `regenerate-query-views.ts` — vault scanner. `regenerateAll(app)` walks all markdown files; for each one with `crosswalker:` frontmatter, regenerates the `.base` file. Idempotent — skips when YAML body matches (compares stripped of header timestamp comments).
+
+**`insert-base-block.ts` extended**:
+- `buildBaseBlock()` deprecated (kept for backward compat with Phase 4 codeblocks)
+- New `buildEmbed(vaultPath)` builds canonical `![[path.base]]` syntax
+- New `insertEmbedAtCursor(editor, viewPath)` uses Phase 4 cursor-position policy (after-frontmatter / after-codeblock / after-line); idempotent — skips when embed already present (UPDATE flow safety)
+- New `noteContainsEmbed(content, vaultPath)` detection helper
+
+**Picker modal updated** (`recipe-picker-modal.ts`):
+- Resolves with `{recipeId, shape, params}` instead of pre-built block text (orchestrator handles writes)
+- Apply button (was "Insert") — semantically more accurate
+- Raw-YAML escape removed (users hand-edit the `.base` file at `_crosswalker/views/` directly OR write a JSON recipe — both documented in `SKILL.md`)
+- Picker UI surface unchanged; only the resolve contract changed
+
+**Commands**:
+- `Crosswalker: Insert query into note` — REPURPOSED to call `applyQueryToNote()` orchestrator (was: insert raw codeblock). Auto-detects UPDATE vs CREATE mode.
+- `Crosswalker: Refresh query views` — NEW. Scans all notes with `crosswalker:` frontmatter; regenerates their `.base` files. Idempotent. Surfaces a Notice with `N refreshed, M up-to-date, K errors`. Also runs on `onLayoutReady` for stale-state recovery (same pattern as Phase 3 reference file write + Phase 1.5 fixture drift check).
+
+**Obsidian mock extended** (`tests/__mocks__/obsidian.ts`):
+- `Platform` (mobile/desktop detection — already added in Phase 4a)
+- `ButtonComponent` (already added in Phase 4a)
+- `FileManager` class with `processFrontMatter` that captures writes to an in-memory store (`__frontmatter`) keyed by file path — tests can assert on resulting frontmatter without parsing YAML
+
+**SKILL.md rewritten**: now teaches the frontmatter + `.base` + embed pattern as the primary workflow. Explains the 3 artifacts, how to author / edit queries, why the design honors the v0.1 architectural commitments. Existing codeblock examples preserved as backward-compat reference for users still on Phase 4 syntax.
+
+**Tests**: 359/359 pass (was 310 before Phase 4.5; +49 new):
+- `tests/query-frontmatter-schema.test.ts` — 15 tests (validation accept/reject + ID generation + view file naming)
+- `tests/query-frontmatter-io.test.ts` — 13 tests (read/write + has/build/update; mocked `processFrontMatter`)
+- `tests/apply-query-to-note.test.ts` — 7 tests (CREATE + UPDATE flows + `buildBaseFileContent`)
+- `tests/regenerate-query-views.test.ts` — 14 tests (idempotency, scan-all aggregation, malformed handling, missing template, `yamlBodyMatches` purity)
+
+**Files changed**: ~15 new/modified (4 new modules + 4 new test files + updates to recipe-picker-modal / insert-base-block / main / reference-base-files / obsidian mock / briefing log / milestone hub / CHANGELOG).
+
+**Effort**: ~5h. Build clean. Manual smoke pending.
+
+See [briefing log Phase 4.5 section](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/#phase-45--frontmatter-driven-query-notes-the-architectural-pivot) for the architecture diagrams + decision-chain cross-links to the 2026-05-04 / 2026-05-07 / 2026-05-08 / 2026-05-11 prior synthesis logs.
 
 ### v0.1.6 Phase 4 — Recipe-picker UX + SKILL.md + framework fixture expansion (2026-05-15, ✅ Done)
 

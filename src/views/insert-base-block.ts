@@ -126,8 +126,88 @@ export function chooseInsertionPoint(lines: string[], cursorLine: number): Inser
  *
  * Exported separately so tests can verify the block format independently of
  * insertion.
+ *
+ * @deprecated Phase 4.5 — kept for backward compat with Phase 4 codeblocks
+ * already in users' vaults. New queries use `buildEmbed()` instead, which
+ * generates the canonical `![[file.base]]` embed syntax (per Obsidian Bases
+ * docs, lines 555-561 of `.claude/skills/obsidian-bases/SKILL.md`).
  */
 export function buildBaseBlock(yamlBody: string): string {
 	const trimmed = yamlBody.replace(/\n+$/, ''); // strip trailing newlines from body
 	return '```base\n' + trimmed + '\n```';
+}
+
+/**
+ * Build a canonical `![[file.base]]` embed for a vault-relative path to a
+ * `.base` file. Per Obsidian Bases docs — this is the Bases-native embed
+ * syntax. Renders inline when the note is viewed.
+ *
+ * Phase 4.5 uses this instead of `buildBaseBlock` for new queries.
+ */
+export function buildEmbed(vaultPath: string): string {
+	// Strip leading `./` if present; Obsidian wikilinks use vault-relative paths.
+	const normalized = vaultPath.replace(/^\.\//, '');
+	return `![[${normalized}]]`;
+}
+
+/**
+ * Check whether the given content already contains an embed for the given
+ * `.base` path. Used by the orchestrator to skip re-inserting the same
+ * embed on UPDATE flow (the embed string is already in the note).
+ *
+ * Matches both the exact path and the basename-only form (Obsidian
+ * resolves both); for our purposes the exact-path match is what we care
+ * about, but we tolerate either.
+ */
+export function noteContainsEmbed(noteContent: string, vaultPath: string): boolean {
+	const normalized = vaultPath.replace(/^\.\//, '');
+	if (noteContent.includes(`![[${normalized}]]`)) return true;
+	// Also tolerate the basename-only form (Obsidian resolves it via file index)
+	const basename = normalized.split('/').pop() ?? normalized;
+	const basenameNoExt = basename.replace(/\.base$/, '');
+	const basenameEmbedRe = new RegExp(`!\\[\\[${escapeRegex(basenameNoExt)}(\\.base)?(#[^\\]]+)?\\]\\]`);
+	return basenameEmbedRe.test(noteContent);
+}
+
+function escapeRegex(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Insert a `.base` file embed at the current cursor position, using the
+ * same cursor-position policy as `insertBaseBlock` (frontmatter-aware /
+ * code-block-aware / body). Returns structured result so callers can
+ * surface Notices without cursor-policy knowledge.
+ *
+ * Skips insertion if the note already contains an embed for the same
+ * `.base` path — idempotent on the UPDATE flow.
+ */
+export function insertEmbedAtCursor(
+	editor: Editor | null | undefined,
+	vaultPath: string,
+): InsertResult {
+	if (!editor) {
+		return { ok: false, reason: 'no-editor' };
+	}
+
+	try {
+		const content = editor.getValue();
+		const embed = buildEmbed(vaultPath);
+
+		// Idempotent check — don't add a second embed if one already exists
+		if (noteContainsEmbed(content, vaultPath)) {
+			const cursor = editor.getCursor();
+			return { ok: true, insertedAt: cursor, reason: 'after-line' };
+		}
+
+		// Same cursor-aware insertion policy as `insertBaseBlock` — frontmatter
+		// / code-block-aware / body — delegated to the shared helper.
+		return insertBaseBlock(editor, embed);
+	} catch (err) {
+		return {
+			ok: false,
+			reason: 'unknown-error',
+			error: err instanceof Error ? err.message : String(err),
+		};
+	}
 }

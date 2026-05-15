@@ -14,7 +14,8 @@ import { writeReferenceBaseFiles } from './views/reference-base-files';
 import { DebugLog } from './utils/debug';
 import { DraftStore } from './import/draft-store';
 import { RecipePickerModal } from './views/recipe-picker-modal';
-import { insertBaseBlock } from './views/insert-base-block';
+import { applyQueryToNote } from './views/apply-query-to-note';
+import { regenerateAll } from './views/regenerate-query-views';
 import { initValidator, validateRecipe as validateRecipeFn, validateTier1Frontmatter } from './validation/validator';
 import { render } from './render';
 import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
@@ -198,40 +199,66 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
-		// v0.1.6 Phase 4: recipe picker — insert query into the active note
-		// at cursor. Per Ch 32 deliverable B + 2026-05-09 design synthesis:
-		// modal lists shipped + user recipes, exposes only `query.params` for
-		// inline editing (primitives stay schema-only), inserts a ` ```base `
-		// codeblock at the editor cursor via the Phase 4a insert-base-block
-		// helper. Bases renders the result inline beneath the block.
+		// v0.1.6 Phase 4.5: recipe picker — apply a query to the active note.
+		// Per 2026-05-15 architecture call: the query lives in the note's
+		// `crosswalker:` frontmatter (canonical); the .base file at
+		// _crosswalker/views/<query_id>.base is a generated artifact; the
+		// note has a `![[...]]` embed that Bases renders inline. Picker
+		// auto-detects existing `crosswalker:` frontmatter → UPDATE mode.
 		this.addCommand({
 			id: 'insert-query-into-note',
 			name: 'Insert query into note',
-			editorCallback: (editor) => {
+			editorCallback: (editor, ctx) => {
+				const file = ctx.file;
+				if (!file) {
+					new Notice('Open a markdown note before running this command.', 5000);
+					return;
+				}
 				const traceId = this.debug.newTraceId();
 				void this.debug.withTrace(traceId, async () => {
 					this.debug.info('view', 'picker-open', 'Recipe picker opened from command palette');
-					new RecipePickerModal(this.app, this, (result) => {
+					new RecipePickerModal(this.app, this, async (result) => {
 						if (result.action === 'cancel') {
 							this.debug.info('view', 'picker-cancelled', 'Recipe picker cancelled (no insertion)');
 							return;
 						}
-						const insertResult = insertBaseBlock(editor, result.baseBlock);
-						if (insertResult.ok) {
-							this.debug.info('view', 'block-inserted', `Base block inserted (${result.recipeId})`, {
-								recipeId: result.recipeId,
-								insertReason: insertResult.reason,
-								line: insertResult.insertedAt.line,
-							});
-							new Notice(`Inserted ${result.recipeId === '__raw__' ? 'blank' : result.recipeId} block.`, 4000);
+						const applyResult = await applyQueryToNote({
+							app: this.app,
+							file,
+							editor,
+							recipeId: result.recipeId,
+							shape: result.shape,
+							params: result.params,
+							debug: this.debug,
+						});
+						if (applyResult.ok) {
+							const verb = applyResult.action === 'created' ? 'Created' : 'Updated';
+							new Notice(`${verb} query: ${result.recipeId}`, 4000);
 						} else {
-							this.debug.error('view', 'block-insert-failed', 'Base block insertion failed', {
-								reason: insertResult.reason,
-								error: insertResult.error,
-							});
-							new Notice(`Could not insert block: ${insertResult.reason}.`, 6000);
+							new Notice(`Could not apply query: ${applyResult.reason}.`, 6000);
 						}
 					}).open();
+				});
+			},
+		});
+
+		// v0.1.6 Phase 4.5: explicit refresh — re-scan all notes with
+		// `crosswalker:` frontmatter and regenerate their .base files from
+		// the (possibly hand-edited) frontmatter. Idempotent — skips notes
+		// whose .base content already matches.
+		this.addCommand({
+			id: 'refresh-query-views',
+			name: 'Refresh query views',
+			callback: async () => {
+				const traceId = this.debug.newTraceId();
+				await this.debug.withTrace(traceId, async () => {
+					const result = await regenerateAll(this.app, this.debug);
+					new Notice(
+						`Refreshed ${result.regenerated} view${result.regenerated === 1 ? '' : 's'}` +
+							(result.skipped > 0 ? `; ${result.skipped} up-to-date` : '') +
+							(result.errors.length > 0 ? `; ${result.errors.length} error${result.errors.length === 1 ? '' : 's'}` : ''),
+						5000,
+					);
 				});
 			},
 		});
@@ -357,6 +384,11 @@ export default class CrosswalkerPlugin extends Plugin {
 			// v0.1.6 Phase 3: ship reference .base files on first run
 			// (idempotent — never overwrites user edits).
 			void writeReferenceBaseFiles(this.app, this.debug);
+			// v0.1.6 Phase 4.5: regenerate any stale .base files from
+			// `crosswalker:` frontmatter (idempotent — skips notes whose
+			// content already matches). Catches stale state after the user
+			// hand-edits frontmatter or the recipe template changes.
+			void regenerateAll(this.app, this.debug);
 		});
 
 		this.debug.info('lifecycle', 'loaded', 'Crosswalker plugin loaded', { version: '0.1.6' });

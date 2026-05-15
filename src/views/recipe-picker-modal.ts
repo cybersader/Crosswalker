@@ -20,7 +20,7 @@
  * visual consistency with the saved-config browser + draft picker patterns.
  */
 
-import { App, Modal, ButtonComponent, Notice } from 'obsidian';
+import { App, Modal, ButtonComponent } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import {
 	loadAllRecipes,
@@ -31,12 +31,10 @@ import {
 	renderParameterEditor,
 	type ParameterEditorHandle,
 } from './recipe-parameter-editor';
-import { renderRecipeTemplate, getRecipeTemplate } from './recipe-templates';
-import { buildBaseBlock } from './insert-base-block';
 import { isMobile } from './mobile-detection';
 
 export type PickerAction =
-	| { action: 'insert'; recipeId: string; baseBlock: string }
+	| { action: 'insert'; recipeId: string; shape: string; params: Record<string, unknown> }
 	| { action: 'cancel' };
 
 const SHAPE_BADGES: Record<string, { label: string; cls?: string; reserved?: boolean }> = {
@@ -184,63 +182,40 @@ export class RecipePickerModal extends Modal {
 				this.render();
 			});
 
-		// Expanded view — parameter editor + Insert button
+		// Expanded view — parameter editor + Apply button (Phase 4.5: the
+		// picker resolves with { recipeId, shape, params }; the caller in
+		// main.ts orchestrates the frontmatter write + .base generation +
+		// embed insertion via applyQueryToNote).
 		if (expanded) {
 			const details = card.createEl('div', { cls: 'crosswalker-card-details' });
 			this.currentEditor = renderParameterEditor(details, recipe);
 
 			const insertRow = details.createEl('div', { cls: 'crosswalker-card-actions crosswalker-insert-row' });
 			new ButtonComponent(insertRow)
-				.setButtonText('Insert')
+				.setButtonText('Apply')
 				.setCta()
 				.onClick(() => {
 					const params = this.currentEditor?.getValues() ?? {};
-					const block = this.buildBlock(recipe, params);
-					if (block === null) {
-						new Notice(`No template registered for recipe ${recipe.id} — falling back to raw block.`, 5000);
-						this.resolve({ action: 'insert', recipeId: recipe.id, baseBlock: buildBaseBlock('# Recipe template missing for ' + recipe.id) });
-						return;
-					}
-					this.resolve({ action: 'insert', recipeId: recipe.id, baseBlock: block });
+					this.resolve({
+						action: 'insert',
+						recipeId: recipe.id,
+						shape: recipe.shape,
+						params,
+					});
 				});
 		}
 	}
 
-	private buildBlock(recipe: LoadedRecipe, params: Record<string, unknown>): string | null {
-		const body = renderRecipeTemplate(recipe.id, params);
-		if (body === null) {
-			// No template — for shipped recipes this is a bug; for user recipes
-			// this might be expected (they haven't supplied a template, just the
-			// JSON). Use a placeholder. Production picker for v0.2 may surface
-			// "raw" insertion for user recipes.
-			if (getRecipeTemplate(recipe.id) !== null) {
-				return null; // bug; surface via Notice
-			}
-			return buildBaseBlock(
-				`# User recipe ${recipe.id} has no template binding.\n# Edit this block to author your query manually.`,
-			);
-		}
-		return buildBaseBlock(body);
-	}
-
 	private renderFooter(container: HTMLElement): void {
 		const footer = container.createEl('div', { cls: 'crosswalker-browser-footer' });
-
-		if (!isMobile()) {
-			const rawBtn = footer.createEl('button', { text: 'Insert blank `base` block' });
-			rawBtn.addEventListener('click', () => {
-				const block = buildBaseBlock(
-					'# Write your own Bases filters + views here.\n# See _crosswalker/SKILL.md for the recipe schema.\nfilters:\n  and:\n    - true\nviews:\n  - type: table\n    name: "Untitled"',
-				);
-				this.resolve({ action: 'insert', recipeId: '__raw__', baseBlock: block });
-			});
-		} else {
-			footer.createEl('span', {
-				text: 'Raw YAML editing is desktop-only.',
-				cls: 'setting-item-description',
-			});
-		}
-
+		// Phase 4.5: no raw-YAML escape — power-users hand-edit the
+		// `.base` file at _crosswalker/views/ directly OR write a JSON
+		// recipe to _crosswalker/recipes/ and use the picker. Either path
+		// is documented in `_crosswalker/SKILL.md`.
+		footer.createEl('span', {
+			text: isMobile() ? '' : 'Tip: edit the .base file at _crosswalker/views/ directly for advanced changes.',
+			cls: 'setting-item-description',
+		});
 		const cancelBtn = footer.createEl('button', { text: 'Cancel' });
 		cancelBtn.addEventListener('click', () => {
 			this.resolve({ action: 'cancel' });
