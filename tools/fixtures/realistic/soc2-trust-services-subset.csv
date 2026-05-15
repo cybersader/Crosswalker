@@ -1,0 +1,11 @@
+id,title,category,parent,description
+CC1.0,Control Environment,Common Criteria,,The entity demonstrates a commitment to integrity and ethical values
+CC1.1,COSO Principle 1 — Integrity and Ethical Values,Common Criteria,CC1.0,The entity demonstrates a commitment to integrity and ethical values
+CC1.2,COSO Principle 2 — Board Oversight,Common Criteria,CC1.0,The board of directors demonstrates independence from management and exercises oversight of the development and performance of internal control
+CC6.0,Logical and Physical Access Controls,Common Criteria,,The entity implements logical and physical access security software; infrastructure; and architectures over protected information assets
+CC6.1,Logical Access Security Software,Common Criteria,CC6.0,The entity implements logical access security software; infrastructure; and architectures over protected information assets to protect them from security events
+CC6.2,New User Authorization,Common Criteria,CC6.0,Prior to issuing system credentials and granting system access; the entity registers and authorizes new internal and external users
+CC7.0,System Operations,Common Criteria,,The entity detects and responds to security events
+CC7.1,Detection and Monitoring of Security Events,Common Criteria,CC7.0,To meet its objectives; the entity uses detection and monitoring procedures to identify changes to configurations
+A1.1,Availability — Capacity Management,Availability,,The entity maintains; monitors; and evaluates current processing capacity and use of system components
+A1.2,Availability — Environmental Protections,Availability,,The entity authorizes; designs; develops or acquires; implements; operates; approves; maintains; and monitors environmental protections

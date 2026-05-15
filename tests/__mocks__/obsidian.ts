@@ -97,3 +97,30 @@ export class Vault {
 export function normalizePath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
+
+// Platform — Phase 4a Obsidian-mock addition. Tests can set
+// Platform.isMobile via `(Platform as any).isMobile = true` to exercise
+// mobile-gated code paths.
+export const Platform = {
+  isMobile: false,
+  isDesktop: true,
+  isMobileApp: false,
+  isDesktopApp: true,
+  isIosApp: false,
+  isAndroidApp: false,
+  isMacOS: false,
+  isWin: false,
+  isLinux: true,
+};
+
+export class ButtonComponent {
+  buttonEl: any = { addClass: jest.fn(), removeClass: jest.fn() };
+  constructor(_containerEl: HTMLElement) {}
+  setButtonText = jest.fn().mockReturnThis();
+  setCta = jest.fn().mockReturnThis();
+  setWarning = jest.fn().mockReturnThis();
+  onClick = jest.fn().mockReturnThis();
+  setIcon = jest.fn().mockReturnThis();
+  setTooltip = jest.fn().mockReturnThis();
+  setDisabled = jest.fn().mockReturnThis();
+}

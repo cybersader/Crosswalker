@@ -1,0 +1,91 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "nist-csf-to-mitre-coverage",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+
+  "$comment": "v0.1.6 Phase 4a addition (2026-05-15). Reference recipe demonstrating the cross-domain crosswalk capability — NIST CSF (defensive controls) -> MITRE ATT&CK (offensive techniques) coverage matrix. Showcases what Crosswalker can do that other compliance tools can't: bridging defensive + offensive ontology domains within one query. Structurally modeled after the MITRE Mappings Explorer project structure; uses the `nist-csf-to-mitre-attack.sssom.tsv` realistic fixture for test data.",
+
+  "source": {
+    "ontology": "csf-mitre-mapping",
+    "levels": ["mapping"]
+  },
+
+  "target": {
+    "layout": [
+      {
+        "level": "mapping",
+        "mechanism": "file",
+        "template": "Crosswalks/CSF-to-MITRE/cw-{subject_id|slug}-{object_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "tags": ["crosswalk/csf-to-mitre"],
+      "frontmatter": {
+        "managed": {
+          "title": "{subject_id} -> {object_id}",
+          "subject_id": "{subject_id}",
+          "predicate_id": "{predicate_id}",
+          "object_id": "{object_id}",
+          "match_type": "{match_type}",
+          "mapping_justification": "{mapping_justification}",
+          "confidence": "{confidence}"
+        },
+        "user_preserve": ["review_status", "*notes*"]
+      }
+    }
+  },
+
+  "query": {
+    "version": "1.0.0",
+    "id": "nist-csf-to-mitre-coverage",
+    "title": "NIST CSF -> MITRE ATT&CK coverage matrix",
+    "description": "Cross-domain pivot view: CSF subcategories (defensive) on rows, MITRE ATT&CK techniques (offensive) on cols, count of mappings in cells. Showcases bridging defensive + offensive ontology domains within one query — Crosswalker's distinguishing capability.",
+    "shape": "pivot",
+    "primitives": {
+      "from": "csf-mitre-mapping",
+      "where": {
+        "and": [
+          { "and": [{ "and": [] }] }
+        ]
+      },
+      "rows": {
+        "of": "nist-csf",
+        "by": "subject_id"
+      },
+      "cols": {
+        "of": "mitre-attack",
+        "by": "object_id"
+      },
+      "cell": {
+        "op": "count",
+        "as": "mapping_count",
+        "empty": "gap"
+      }
+    },
+    "params": {
+      "confidence_threshold": {
+        "type": "number",
+        "default": 0.7,
+        "description": "Minimum mapping confidence to include in the pivot."
+      },
+      "tactic_filter": {
+        "type": "string",
+        "default": "",
+        "description": "Optional MITRE tactic name to filter the cols (e.g. 'Persistence'). Empty string = all tactics."
+      }
+    },
+    "view": {
+      "limit": 10000,
+      "empty_label": "—"
+    },
+    "output": {
+      "target": "bases",
+      "view_id": "crosswalker-pivot"
+    },
+    "provenance": {
+      "source": "system",
+      "recipe_id": "nist-csf-to-mitre-coverage"
+    }
+  }
+}
