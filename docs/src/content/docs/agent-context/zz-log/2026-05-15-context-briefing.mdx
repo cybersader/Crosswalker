@@ -1,0 +1,156 @@
+---
+title: "Project state mini-map — where you are and what to decide next"
+description: "Heads-up display for resuming Crosswalker development after a pause. Crosswalker v0.1 is mid-implementation; v0.1.6 (Bases query layer + SSSOM + recipe UX) is the active milestone with 7 of 10 phases shipped. Phase 3.5c (a low-risk logger refactor that sweeps 20 call sites onto the new observability API) is the recommended next step before Phase 4 (recipe-picker UX) and Phase 5 (materialization + sparse-pivot guard). After v0.1.6 ships, two more milestones (v0.1.7 exporters, v0.1.8 audit trail) close out v0.1-RC. Two known minor wizard bugs are filed but unblocked; a typed-links preview feature request is captured for v0.1.7+. Six v0.1 architectural commitments anchor every decision. This log links every reference so the next session can navigate cold."
+tags: [context-briefing, mini-map, project-state, v0-1-6, where-we-are, decisions-needed]
+date: 2026-05-15
+sidebar:
+  label: "05-15 · Project state mini-map (where you are)"
+  order: -20260515.5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip">
+This log is the heads-up display for resuming work after a pause. Sister log: [2026-05-15 v0.1.6 test-status update](/crosswalker/agent-context/zz-log/2026-05-15-v0-1-6-test-status-update/) covers what's been *tested*; this one covers where you are, what's next, and the decisions to make.
+</Aside>
+
+## 30-second answer
+
+You are in the middle of **[v0.1.6 — Bases query layer + SSSOM import + recipe UX](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)** — the biggest milestone of the v0.1 release. **Seven of ten phases have shipped**; three remain.
+
+The next recommended commit is **Phase 3.5c** — a low-risk pure-refactor sweep that finishes wiring 20 legacy `debug.log()` call sites onto the new [Phase 3.5a observability logger](/crosswalker/agent-context/zz-log/2026-05-11-v0-1-6-mid-milestone-bugfixes-and-observability/). Roughly half a day. After that, **Phase 4** (recipe-picker UX) and **Phase 5** (materialization command + sparse-pivot guard) close out v0.1.6. Then two more milestones — [v0.1.7 exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) and [v0.1.8 audit trail](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — and the [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) bundle ships.
+
+## Visual phase map
+
+```text
+v0.1 release path:
+  ✅ v0.1.1 — Types + validation (foundation)
+  ✅ v0.1.2 — render() v1 (layout engine)
+  ✅ v0.1.3 — Generation engine integration
+  ✅ v0.1.4 — Junction notes + crosswalks
+  ✅ v0.1.4.5 — Streaming refactor
+  ✅ v0.1.5 — Tier 2 sqlite-wasm sidecar
+  🚧 v0.1.6 — Bases query layer + SSSOM + recipe UX  ← YOU ARE HERE
+       ✅ Phase 1   — Recipe query block schema
+       ✅ Phase 1.5 — Test infrastructure
+       ✅ Phase 2   — SSSOM TSV import + closure precompute
+       ✅ Phase 3   — crosswalkerPivot Bases view
+       ✅ Phase 3.5a — Wide-event NDJSON logger
+       ✅ Phase 3.5b — Logger settings UI + 3 new commands
+       ⏸ Phase 3.5c — Call-site sweep                  ← NEXT recommended
+       ✅ Phase 3.6  — Wizard draft sessions             (manually signed off 2026-05-15)
+       📋 Phase 4   — Recipe-picker UX
+       📋 Phase 5   — Materialization + sparse-pivot guard
+  📋 v0.1.7 — Exporters (STRM / OSCAL / SSSOM)
+  📋 v0.1.8 — Audit trail T1 default
+  📋 v0.1-RC — Bundle and ship
+```
+
+Each ✅ phase has a delivery log; click through from the [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) for the full inventory.
+
+## What Phase 3.5c is (since you asked)
+
+**What it is.** A pure-refactor sweep that migrates the 20 existing call sites in the codebase from the legacy `.log(msg, data)` shim to the proper categorized API: `debug.info('generation', 'starting', msg, data)`.
+
+**Why it exists.** The [Phase 3.5a logger](/crosswalker/agent-context/zz-log/2026-05-11-v0-1-6-mid-milestone-bugfixes-and-observability/) shipped with a deliberate **backward-compat shim** so we could land the new API without breaking anything. Existing `.log()` calls still work but emit events with `category: "legacy"` — useful, but a missed opportunity. The point of the new logger is structured categorized events; every "legacy" entry is unrealized value.
+
+**What 3.5c ships.** Three things:
+
+1. **Sweep call sites.** Every `plugin.debug.log(msg, data)` and `plugin.debug.error(msg, err)` becomes `debug.info('<category>', '<op>', msg, data)` / `debug.error('<category>', '<op>', msg, data)`. Categories grouped by subsystem: `generation` / `csv-parser` / `wizard` / `sssom-import` / `tier2` / `config` / `view` / `lifecycle`.
+2. **Thread trace IDs through top-level entry points.** Wizard `generate()` creates a fresh `trace_id`; every event downstream of that operation carries it. Same for SSSOM importer + Tier 2 projector. After 3.5c, `cat crosswalker-debug.log | jq 'select(.trace_id == "abc123")'` returns the full causal chain of one operation.
+3. **Remove the shim.** Once all 20 call sites are migrated, the backward-compat `.log()` and `.error()` overloads come out. Future agents who don't read this log will get a clear "use `info(category, op, msg)` instead" error from TypeScript.
+
+**Why it's safe.** Pure refactor. No behavior change. Each call site keeps its message string; only the categorization is new. 243 unit tests already pass; they'd catch regressions.
+
+**Why it's a good next step.** Cheap (~half day), low risk, and high downstream payoff — Phase 4 (recipe-picker UX) and Phase 5 (materialization + sparse-pivot guard) will inevitably surface bugs, and a categorized debug log makes those 2-5× faster to diagnose than the current half-categorized state. Per the [test-status update](/crosswalker/agent-context/zz-log/2026-05-15-v0-1-6-test-status-update/), this is recommendation #1.
+
+## Decisions to make
+
+| Decision | Options | Lean | Why |
+|---|---|---|---|
+| What ships next? | (a) Phase 3.5c sweep; (b) fix 2 minor wizard bugs; (c) start Phase 4 planning | **(a) Phase 3.5c** | Cheapest + cleanest path to "Phase 4 ships against a debuggable substrate." (b) and (c) work fine either way; doing (a) first compounds. |
+| Fix the 2 minor wizard bugs? | (a) Fold into Phase 3.5c commit; (b) own commit between 3.5c and Phase 4; (c) defer to RC | **(b) Own commit** | They're real correctness bugs (the CURIE has wrong prefix; comma-separated links don't resolve). Worth a focused commit so they get clear regression tests. ~1.5h total. |
+| Push commits to origin? | (a) Push now (11 commits ahead of main); (b) hold until v0.1.6 RC | **(a) Push now** | Local-only is a brittle backup strategy. Pushing also enables Hot Reload + draft-sessions to be tested by anyone who pulls. |
+| Test untested manual surface (Phase 2/3 UX scenarios)? | (a) Now; (b) defer to v0.1.6 RC | **(b) Defer** | E2E covers the data side; the manual UX walks are about pacing + cosmetics. Hold until the milestone is otherwise ready to ship. |
+| Address typed-links preview feature request? | (a) Phase 4; (b) v0.1.7 settings polish; (c) drop | **(b) v0.1.7** | Feature request is settings-UX polish ([captured here](/crosswalker/) — `.workspace/2026-05-11-ux-feature-requests.md`, gitignored). Genuinely useful but not blocking. |
+| Mobile parity smoke check? | (a) Now; (b) defer to RC | **(b) Defer** | One-time ~30min test once the rest is stable. No need to do it twice. |
+
+## v0.1 architectural commitments (the durable context)
+
+Settled 2026-05-04 after the five-challenge fresh-agent design phase (Ch 20–24). Every commit since then aligns to these; every future decision should too.
+
+| # | Commitment | Source |
+|---|---|---|
+| 1 | **Schema-as-primitive** — Tier 1 schema is the load-bearing contract. Anyone (plugin, external Python, agent, MCP server) emitting valid Tier 1 is a first-class producer. | [ETL pillar](/crosswalker/concepts/etl-and-import/) |
+| 2 | **Closed 5-mechanism recipe grammar** — `folder \| file \| heading \| tag \| wikilink` × ordered layout × also_emit × graph_edges. `render(Recipe, ConceptIdentity) → Address` as single coupling point. | [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) |
+| 3 | **TypeScript in-plugin engine for v0.1** — Path C (optional Python producer) reserved for v0.5+. Mobile-Obsidian portability + small-OSS contributor pool are the irreversible constraints. | [Ch 23 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) |
+| 4 | **Tier 2 substrate stays on `@sqlite.org/sqlite-wasm` + `sqlite-vec`** — libSQL / Turso / Limbo all rejected. Five explicit migration triggers locked. | [Ch 24 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) |
+| 5 | **Runtime-agnostic recipe schema** — JSON Schema + AJV + JSONata; engine implementation is swappable; vector layer decoupled from substrate. The single most important modularity commitment. | [Ch 23 synthesis §4](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#4-the-most-important-commitment-runtime-agnostic-recipe-schema) |
+| 6 | **Output query layer = [Obsidian Bases](https://help.obsidian.md/Plugins/Bases)** (Dataview removed) | [Ch 27/28 synthesis](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) |
+
+**Calendar-anchored revisit checkpoints** (worth knowing about so you don't forget to re-evaluate):
+
+- **2026-11-06** — `sqlite-vec` packaging revisit (per [WASM-A pivot synthesis 2026-05-06](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/)). Decision deferred sqlite-vec integration until the upstream emscripten chain stabilizes; check back in November.
+
+## Key recent decisions you might have forgotten
+
+These shaped current shape; worth remembering when planning Phase 4+.
+
+| Decision | When | What |
+|---|---|---|
+| Phase 3.6 draft sessions UX = always-visible in Step 1 | 2026-05-15 | Original design used a stacked picker modal; first-time users couldn't discover the feature. Reworked to embed drafts list inline in wizard Step 1 with an always-on empty state. Phase 4 recipe-picker should follow this pattern (no stacked modals). |
+| `MappingConfig.filename` made optional | 2026-05-11 | The wizard's filename fallback was `{{row}}` (broken). Removed it; legacy-shim handles fallback via first-frontmatter-column. Schema-level cleanup that future agents shouldn't undo. |
+| Buildable substrate is **Bases-not-Dataview** | 2026-05-09 | Don't reference Dataview in user-facing surfaces or new code. The user-facing query layer ships as Bases. |
+| Test-vault uses **Pattern A** structure (src/ + docs/ + spec/ + test-vault/ as siblings) | 2026-05-04 | Build outputs to `test-vault/.obsidian/plugins/crosswalker/`. Don't move it. |
+| Plugin release ships ONLY `main.js + manifest.json + styles.css` | 2026-05-04 | `tools/`, `spec/`, `docs/`, KB do NOT bloat releases. |
+| Per-row debug events use NDJSON wide-event schema | 2026-05-11 | Primary log consumer is **agents** (Claude Code sessions via `cat \| jq`), not humans. No in-app log viewer. Phase 3.5c finishes the migration. |
+| Hot Reload installed in test-vault | 2026-05-11 | `bun run dev` / `bun run build` rebuilds auto-reload Crosswalker in Obsidian. If you turned it off, future manual rebuilds need a plugin toggle-off/on cycle. |
+
+## Where to find things — the navigation map
+
+| Need to... | Look at |
+|---|---|
+| **Understand v0.1 architecture from scratch** | [`concepts/system-architecture`](/crosswalker/concepts/system-architecture/) (3 tiers, 6 layers, component-to-tier matrix) |
+| **Trace a design decision** | [`zz-log/`](/crosswalker/agent-context/zz-log/) (dated, reverse-chronological) — most architectural questions are answered here |
+| **See the canonical schema** | [`spec/tier1.schema.json`](https://github.com/cybersader/Crosswalker/blob/main/spec/tier1.schema.json) and [`v0-1-schema-spec`](/crosswalker/agent-context/v0-1-schema-spec/) doc page |
+| **Run a manual test** | `TEST_PHASE*.md` at repo root, or `test-vault/_test-guides/` in-Obsidian copies |
+| **Catch up on what was tested vs not** | [2026-05-15 v0.1.6 test-status update](/crosswalker/agent-context/zz-log/2026-05-15-v0-1-6-test-status-update/) |
+| **Catch up on shipped features (user-readable)** | [`CHANGELOG.md`](https://github.com/cybersader/Crosswalker/blob/main/CHANGELOG.md) `[Unreleased]` section |
+| **Plan the next milestone** | [`reference/roadmap/`](/crosswalker/reference/roadmap/) (mirrored at `ROADMAP.md` repo root) |
+| **See active milestone status** | [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — has separate Build / Manual test columns per phase |
+| **See research deliverables** | [`zz-research/`](/crosswalker/agent-context/zz-research/) — long-form fresh-agent investigations |
+| **See open research challenges** | [`zz-challenges/`](/crosswalker/agent-context/zz-challenges/) |
+| **Find a concept by name** | [`concepts/terminology`](/crosswalker/concepts/terminology/) |
+| **Understand a tradeoff** | [`agent-context/tradeoffs`](/crosswalker/agent-context/tradeoffs/) |
+| **See current/draft work-in-progress** | `.workspace/` at repo root (gitignored — local-only) |
+
+## Tooling state right now (last commit `9cfcf14`)
+
+- `bun run test` → **243/243 pass**
+- `bun run build` → clean
+- `cd docs && bun run build` → 256 pages, clean
+- Local commits ahead of `origin/main`: **11**
+- Working tree: clean (`.claude/scheduled_tasks.lock` ephemeral)
+- Hot Reload installed in test-vault but **disabled in `community-plugins.json`** (you turned it off; manually toggle Crosswalker for each rebuild until you re-enable Hot Reload)
+
+## Suggested order of operations from here
+
+1. **Read this log + the [test-status update](/crosswalker/agent-context/zz-log/2026-05-15-v0-1-6-test-status-update/)** (~5 min) — gives you full pre-pause state.
+2. **Push the 11 local commits to origin** (~1 min) — see Decisions table. Defaults to `git push`.
+3. **Ship Phase 3.5c** (~half day) — categorized debug log, payoff for everything after.
+4. **Fix 2 minor wizard bugs** (~1.5h) — CURIE prefix + comma-separated link splitting. Captured in [test-status update](/crosswalker/agent-context/zz-log/2026-05-15-v0-1-6-test-status-update/#known-issues-captured-but-not-fixed).
+5. **Phase 4 planning + ship** (~2 days) — recipe-picker UX. Reuses [Phase 3.6 draft-state pattern](/crosswalker/agent-context/zz-log/2026-05-15-v0-1-6-test-status-update/#phase-36--wizard-draft-sessions--signed-off).
+6. **Phase 5 planning + ship** (~1.5 days) — opt-in materialization command + sparse-pivot HARD guard + first-run prompts.
+7. **v0.1.6 RC** — manual UX walks of Phase 2 / Phase 3 / Phase 3.5 surfaces; mobile parity smoke check; delivery log; bump version; release.
+
+**Estimated time to v0.1.6 release**: ~4-5 working days, paced to your availability.
+
+## Related
+
+- [2026-05-15 v0.1.6 test-status update](/crosswalker/agent-context/zz-log/2026-05-15-v0-1-6-test-status-update/) — sister log; what's tested vs not
+- [2026-05-11 mid-milestone bugfixes + observability initiative](/crosswalker/agent-context/zz-log/2026-05-11-v0-1-6-mid-milestone-bugfixes-and-observability/) — the 0-pages bug postmortem + Phase 3.5 kickoff
+- [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — phase-by-phase status
+- [Roadmap index](/crosswalker/reference/roadmap/) — full v0.1 path
+- [v0.1 architectural commitments (memory file)](https://github.com/cybersader/Crosswalker/blob/main/.claude/CLAUDE.md#v01-architectural-commitments-settled-2026-05-04) — the six load-bearing decisions that constrain everything
+- [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/) — what Crosswalker is *for*; why the query layer matters
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — positioning vs other ontology tools
