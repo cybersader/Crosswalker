@@ -20,6 +20,198 @@ You are in the middle of **[v0.1.6 — Bases query layer + SSSOM import + recipe
 
 The next recommended commit is **Phase 3.5c** — a low-risk pure-refactor sweep that finishes wiring 20 legacy `debug.log()` call sites onto the new [Phase 3.5a observability logger](/crosswalker/agent-context/zz-log/2026-05-11-v0-1-6-mid-milestone-bugfixes-and-observability/). Roughly half a day. After that, **Phase 4** (recipe-picker UX) and **Phase 5** (materialization command + sparse-pivot guard) close out v0.1.6. Then two more milestones — [v0.1.7 exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) and [v0.1.8 audit trail](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — and the [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) bundle ships.
 
+## From input to output: a worked example (NIST CSF × NIST 800-53 coverage matrix)
+
+Phase 4.5 manual testing surfaced a fair question: *"I picked NIST in the picker and applied a query, but I'm not seeing left-join output. Where does the join actually happen?"*
+
+Short answer: **the "join" already happened at SSSOM import time**. Junction notes are pre-joined records. The Phase 3 pivot view does a `GROUP BY rowsBy, colsBy → COUNT(*)` over those notes — that's the matrix.
+
+Long answer — the full path from user CSV to rendered pivot:
+
+### Stage 1 — User imports source ontology data (Tier 1 markdown)
+
+User has two CSVs:
+
+```csv
+# nist-csf-2.0-govern-identify.csv (NIST CSF 2.0 subcategories)
+id,title,function,category
+GV.OC-01,Organizational Context — mission/objectives understood,GOVERN,Org Context
+GV.OC-02,Internal/external stakeholders understood,GOVERN,Org Context
+...
+
+# nist-800-53-ac-family.csv (NIST 800-53 controls)
+id,title,family
+AC-1,Policy and Procedures,Access Control
+AC-2,Account Management,Access Control
+...
+```
+
+User runs `Crosswalker: Import structured data` for each → wizard writes Tier 1 markdown notes:
+
+```text
+Frameworks/NIST-CSF-2.0/GOVERN/Org Context/GV.OC-01.md
+Frameworks/NIST-CSF-2.0/GOVERN/Org Context/GV.OC-02.md
+Frameworks/NIST-800-53/Access Control/AC-1.md
+Frameworks/NIST-800-53/Access Control/AC-2.md
+...
+```
+
+Each note has frontmatter (`control_id`, `family`, etc.) per the [generation engine](https://github.com/cybersader/Crosswalker/blob/main/src/generation/generation-engine.ts) + the `_crosswalker` provenance block per [Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/).
+
+**At this point**: source + target ontologies are in the vault as separate markdown files. **No joins yet.**
+
+### Stage 2 — User imports the crosswalk (SSSOM → junction notes — THE JOIN HAPPENS HERE)
+
+User has an SSSOM TSV file (e.g., `csf-to-800-53-crosswalk.csv` from NIST OLIR):
+
+```tsv
+subject_id  predicate_id  object_id  match_type  confidence
+csf:GV.OC-01  skos:exactMatch  nist:PM-1  exact  0.95
+csf:GV.OC-02  skos:closeMatch  nist:PM-9  close  0.85
+csf:PR.AA-01  skos:relatedMatch  nist:AC-2  broad  0.75
+...
+```
+
+User runs `Crosswalker: Import SSSOM mapping file` → SSSOM importer ([Phase 2 / Ch 35](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-2-sssom-import-shipped/)) writes **one junction note per mapping**:
+
+```yaml
+# _crosswalker/mappings/csf-to-800-53/cw-csf-gv-oc-01-nist-pm-1.md
+---
+kind: crosswalk-edge
+subject_id: "csf:GV.OC-01"
+predicate_id: "is_equivalent_to"   # ← normalized from skos:exactMatch
+object_id: "nist:PM-1"
+match_type: "exact"
+confidence: 0.95
+sssom_predicate: "skos:exactMatch"
+mapping_justification: "semapv:ManualMappingCuration"
+_crosswalker: {...}
+---
+```
+
+**This is where the join lives.** Each junction note carries BOTH endpoints (subject + object) inline. It's a denormalized, pre-joined record — one row per mapping, sitting on disk as a markdown file. The "left join" is materialized at SSSOM-import time, not query time.
+
+The Tier 2 sqlite-wasm projector ([Phase 1.4.5+](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/)) then projects these junction notes into a `mappings` table for fast lookups:
+
+```sql
+CREATE TABLE mappings (
+  subject_id TEXT,
+  predicate_id TEXT,
+  object_id TEXT,
+  confidence REAL,
+  vault_path TEXT
+);
+-- Each junction note → one row.
+-- The "join" was Phase 2; this is just an index.
+```
+
+### Stage 3 — User authors a query (Phase 4.5 picker)
+
+User opens any note, runs `Crosswalker: Insert query into note`, picks **"NIST CSF → 800-53 coverage matrix"**:
+
+The picker fires the [Phase 4.5 orchestrator](https://github.com/cybersader/Crosswalker/blob/main/src/views/apply-query-to-note.ts) `applyQueryToNote()`:
+
+1. Reads the recipe `recipes/v0-1/coverage-matrix.json` from the bundled catalog
+2. Renders the Bases YAML via the [recipe-templates module](https://github.com/cybersader/Crosswalker/blob/main/src/views/recipe-templates.ts) with user params (e.g. `confidence_threshold: 0.7`)
+3. Writes a generated `.base` file at `_crosswalker/views/q-2026-05-16-<8hex>.base`
+4. Writes the canonical `crosswalker:` frontmatter to the user's note via `app.fileManager.processFrontMatter()`
+5. Inserts `![[_crosswalker/views/q-2026-05-16-<8hex>.base]]` at cursor
+
+The generated `.base` file:
+
+```yaml
+# Auto-generated by Crosswalker on 2026-05-16...
+# Source note: My Coverage Analysis.md
+# Recipe: nist-csf-coverage-matrix
+# Query ID: q-2026-05-16-a1b2c3d4
+
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings/csf-to-800-53")
+    - 'confidence >= 0.7'
+views:
+  - type: crosswalker-pivot
+    name: "NIST CSF → 800-53 coverage matrix"
+    config:
+      rowsBy: "subject_id"
+      colsBy: "object_id"
+      cellOp: "count"
+      empty: "gap"
+      heatmap: true
+```
+
+**No `JOIN` keyword anywhere.** The `filters` clause selects the junction notes (which are already-joined records). The `views` clause says "group by `subject_id` on rows, `object_id` on cols, count cells."
+
+### Stage 4 — Bases reads the embed and the crosswalker-pivot view executes
+
+When the user opens the note, Obsidian Bases sees `![[q-2026-05-16-a1b2c3d4.base]]` and renders the file inline:
+
+1. **Filter**: Bases queries the vault for all markdown files matching `file.inFolder("_crosswalker/mappings/csf-to-800-53")` AND `confidence >= 0.7`. Returns the junction notes from Stage 2.
+2. **Custom view dispatch**: Bases sees `type: crosswalker-pivot` and hands the entries to our registered view ([Phase 3 / `crosswalkerPivot`](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-3-pivot-view-shipped/)).
+3. **Pivot rendering**: the view runs `computePivotGrid(entries, config)` from [`src/views/pivot-grid.ts`](https://github.com/cybersader/Crosswalker/blob/main/src/views/pivot-grid.ts) — the pure data-shaper.
+
+`computePivotGrid` is the operation you were looking for:
+
+```text
+For each junction note JN:
+  row_key = JN.frontmatter[config.rowsBy]   // "csf:GV.OC-01"
+  col_key = JN.frontmatter[config.colsBy]   // "nist:PM-1"
+  cell_value = aggregate(cellOp, all JN's mapping to this (row_key, col_key) pair)
+                                            // count=N for "count" op
+
+Result:
+  rows = sorted unique row_keys
+  cols = sorted unique col_keys
+  cells = { (row, col) → cell_value | matching pairs }
+  empty cells = gap / blank / zero per `empty` mode
+```
+
+That's a `GROUP BY rowsBy, colsBy → aggregate(cellOp)` — a pivot, not a join. **The join was already done in Stage 2.**
+
+### Stage 5 — User sees the rendered matrix
+
+```text
+                AC-1   AC-2   AC-3   PM-1   PM-9   PM-11  ...
+GV.OC-01         —      —      —     [1]    —      —
+GV.OC-02         —      —      —      —    [1]     —
+PR.AA-01        [1]    [1]     —      —     —      —
+PR.AA-02         —     [1]     —      —     —      —
+...
+```
+
+Cells show the count (or sum, avg, etc. depending on `cellOp`); empty cells render as `—` (or whatever `empty` mode says). `heatmap: true` color-shades cells by value.
+
+### Why you didn't see fruit when you tested Phase 4.5
+
+You picked `controls-by-family-list` (a CIS Controls flat-list view, not a join — just `filter → list`) and the underlying CIS Controls data wasn't imported yet. The `.base` file was generated correctly, but Bases had nothing to filter against.
+
+**To see the coverage matrix demo:**
+
+1. Run `Crosswalker: Import SSSOM mapping file` → pick `tools/fixtures/realistic/nist-csf-to-mitre-attack.sssom.tsv` (or the CSF→800-53 fixture). This writes junction notes to `_crosswalker/mappings/csf-to-mitre/` (or `csf-to-800-53/`).
+2. Open any note → `Crosswalker: Insert query into note` → pick **"NIST CSF → 800-53 coverage matrix"** (or the new **"NIST CSF → MITRE ATT&CK coverage"** which uses the mitre fixture).
+3. Bases now has junction notes to filter against. The pivot renders.
+
+### Where each architectural commitment shows up in this flow
+
+| Stage | Commitment that governs it |
+|---|---|
+| Stage 1 — CSV → Tier 1 markdown | [#1 Schema-as-primitive](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/): every Tier 1 note conforms to the JSON Schema; anyone can produce them, not just the import wizard |
+| Stage 1+2 — file/folder mechanism for note layout | [#2 Closed 5-mechanism recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/): `folder` + `file` + `also_emit.frontmatter.managed` |
+| Stage 2 — SSSOM denormalization (the "join") | Settled #6 from the [2026-05-07 Bases query layer synth](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/): "Junction-note schema denormalizes subject/object IDs for fast Bases filtering" |
+| Stage 2 — Tier 2 projection (sqlite-wasm `mappings` table) | [#4 sqlite-wasm Tier 2](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — the table is a cache; rebuildable from Tier 1 junction notes |
+| Stage 3 — recipe → `.base` file generation | [#5 Runtime-agnostic recipe schema](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/): JSON Schema + AJV-validated; recipe is a portable contract |
+| Stage 3 — frontmatter as canonical query source | Phase 4.5 user architecture call (this log, section above): "frontmatter is the best place for the query to live"; Bases-queryable + plugin-uninstall-safe |
+| Stage 4 — `![[file.base]]` embed | [#6 Bases-not-Dataview](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/): Obsidian-native embed syntax, no Dataview |
+| Stage 4 — custom view registration | Phase 3 — `registerBasesView('crosswalker-pivot', ...)` per [Settled #2 + Ch 30](/crosswalker/agent-context/zz-log/2026-05-10-v0-1-6-phase-3-pivot-view-shipped/) |
+| Stage 4 — pivot grid computation | Phase 3 — `computePivotGrid(entries, config)` pure data-shaper (mocked-testable; 31 unit tests) |
+| Stage 4 — mobile parity | [#3 TS in-plugin engine](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/): everything runs in Obsidian-Capacitor on mobile; streaming Tier 1 fallback when Tier 2 sqlite isn't available |
+
+### Mental-model summary
+
+> **Joins happen at import time (Stage 2).** Junction notes ARE pre-joined records on disk. The pivot view (Stage 4) is a `GROUP BY → aggregate` over those records — a presentation step, not a join step. The "left" / "right" / "outer" framing from SQL maps onto **how SSSOM's mapping semantics + the recipe's `empty: gap/blank/zero` mode together decide what's in the cells** (counts, sums, etc.) and how to render unfilled rows × cols pairs.
+
+This is the architectural payoff of [Crosswalker as a general ontology-web query engine](/crosswalker/concepts/ontology-web-querying/): the load-bearing data layout is the **junction-note pattern**, and once that's in the vault, every view shape (pivot / table / list / hierarchy) is just a different way to render the same pre-joined records.
+
 ## Visual phase map
 
 ```text
