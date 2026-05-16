@@ -16,6 +16,7 @@ import { DraftStore } from './import/draft-store';
 import { RecipePickerModal } from './views/recipe-picker-modal';
 import { applyQueryToNote } from './views/apply-query-to-note';
 import { regenerateAll } from './views/regenerate-query-views';
+import { readQueryFrontmatter } from './views/query-frontmatter-io';
 import { initValidator, validateRecipe as validateRecipeFn, validateTier1Frontmatter } from './validation/validator';
 import { render } from './render';
 import { legacyConfigToRecipe } from './generation/legacy-recipe-shim';
@@ -216,7 +217,17 @@ export default class CrosswalkerPlugin extends Plugin {
 				}
 				const traceId = this.debug.newTraceId();
 				void this.debug.withTrace(traceId, async () => {
-					this.debug.info('view', 'picker-open', 'Recipe picker opened from command palette');
+					// Phase 4.5 UPDATE-mode UX fix: read existing crosswalker:
+					// frontmatter BEFORE opening the picker so the modal can
+					// pre-fill params + show the "Updating" badge. The
+					// orchestrator (applyQueryToNote) ALSO checks this
+					// independently to preserve query_id + view_file — UI
+					// pre-fill is separate from backend identity preservation.
+					const existing = await readQueryFrontmatter(this.app, file);
+					this.debug.info('view', 'picker-open', 'Recipe picker opened from command palette', {
+						existingQueryId: existing.data?.query_id ?? null,
+						mode: existing.data ? 'update' : 'create',
+					});
 					new RecipePickerModal(this.app, this, async (result) => {
 						if (result.action === 'cancel') {
 							this.debug.info('view', 'picker-cancelled', 'Recipe picker cancelled (no insertion)');
@@ -237,7 +248,7 @@ export default class CrosswalkerPlugin extends Plugin {
 						} else {
 							new Notice(`Could not apply query: ${applyResult.reason}.`, 6000);
 						}
-					}).open();
+					}, existing.data).open();
 				});
 			},
 		});

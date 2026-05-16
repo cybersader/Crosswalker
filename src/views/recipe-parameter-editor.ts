@@ -30,17 +30,27 @@ export interface ParameterEditorHandle {
  * Render the parameter editor for a recipe into `container`. Returns a
  * handle the caller (the picker modal) can use to retrieve the current
  * values at insert time.
+ *
+ * `initialValues` (optional, Phase 4.5 UPDATE-mode addition): if provided,
+ * seeds each input with the existing user value instead of the recipe's
+ * default. Used by the picker when re-opening on a note with existing
+ * `crosswalker:` frontmatter.
  */
 export function renderParameterEditor(
 	container: HTMLElement,
 	recipe: LoadedRecipe,
+	initialValues?: Record<string, unknown>,
 ): ParameterEditorHandle {
 	const params = getRecipeParams(recipe);
 	const values: Record<string, unknown> = {};
 
-	// Seed defaults
+	// Seed: prefer initialValues (UPDATE flow), fall back to recipe defaults
 	for (const p of params) {
-		values[p.name] = p.defaultValue ?? defaultForType(p.type);
+		if (initialValues && p.name in initialValues) {
+			values[p.name] = initialValues[p.name];
+		} else {
+			values[p.name] = p.defaultValue ?? defaultForType(p.type);
+		}
 	}
 
 	if (params.length === 0) {

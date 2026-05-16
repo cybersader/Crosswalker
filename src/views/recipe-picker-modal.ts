@@ -32,6 +32,7 @@ import {
 	type ParameterEditorHandle,
 } from './recipe-parameter-editor';
 import { isMobile } from './mobile-detection';
+import type { CrosswalkerQueryFrontmatter } from './query-frontmatter-schema';
 
 export type PickerAction =
 	| { action: 'insert'; recipeId: string; shape: string; params: Record<string, unknown> }
@@ -55,15 +56,24 @@ export class RecipePickerModal extends Modal {
 	private errors: RecipeLoadError[] = [];
 	private expandedRecipeId: string | null = null;
 	private currentEditor: ParameterEditorHandle | null = null;
+	/** Phase 4.5 fix: prior query state for UPDATE-mode UI. When present,
+	 *  picker auto-expands the matching recipe + seeds the param editor with
+	 *  the user's existing params + shows an 'Updating' badge. */
+	private existing: CrosswalkerQueryFrontmatter | null = null;
 
 	constructor(
 		app: App,
 		plugin: CrosswalkerPlugin,
 		onResolve: (result: PickerAction) => void,
+		existing: CrosswalkerQueryFrontmatter | null = null,
 	) {
 		super(app);
 		this.plugin = plugin;
 		this.onResolve = onResolve;
+		this.existing = existing;
+		if (existing) {
+			this.expandedRecipeId = existing.recipe;
+		}
 	}
 
 	onOpen(): void {
@@ -109,13 +119,23 @@ export class RecipePickerModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('crosswalker-config-browser');
 
-		// Header
+		// Header — title + UPDATE-mode badge when there's an existing query
 		const header = contentEl.createEl('div', { cls: 'crosswalker-browser-header' });
-		header.createEl('h2', { text: 'Insert query into note' });
-		header.createEl('p', {
-			text: 'Pick a recipe to insert a `base` code block at your cursor. Bases renders the result inline.',
-			cls: 'setting-item-description',
-		});
+		const titleRow = header.createEl('div', { cls: 'crosswalker-picker-title-row' });
+		titleRow.createEl('h2', { text: this.existing ? 'Update query' : 'Insert query into note' });
+		if (this.existing) {
+			const badge = titleRow.createEl('span', { cls: 'crosswalker-update-badge' });
+			badge.createEl('span', { text: '✎ Updating existing query', cls: 'crosswalker-update-badge-label' });
+			header.createEl('p', {
+				text: `Current recipe: ${this.existing.recipe} · query_id: ${this.existing.query_id}. Adjust params below + click Apply — the same .base file regenerates.`,
+				cls: 'setting-item-description',
+			});
+		} else {
+			header.createEl('p', {
+				text: 'Pick a recipe; adjust params; click Apply. The plugin writes frontmatter + generates a .base file + inserts a ![[...]] embed at your cursor.',
+				cls: 'setting-item-description',
+			});
+		}
 
 		// Errors (if any recipes failed to load)
 		if (this.errors.length > 0) {
@@ -182,17 +202,20 @@ export class RecipePickerModal extends Modal {
 				this.render();
 			});
 
-		// Expanded view — parameter editor + Apply button (Phase 4.5: the
-		// picker resolves with { recipeId, shape, params }; the caller in
-		// main.ts orchestrates the frontmatter write + .base generation +
-		// embed insertion via applyQueryToNote).
+		// Expanded view — parameter editor + Apply button. Phase 4.5: when
+		// this card matches the existing `crosswalker:` frontmatter recipe,
+		// seed the parameter editor with the user's existing params (UPDATE
+		// mode); otherwise use recipe defaults (CREATE mode).
 		if (expanded) {
 			const details = card.createEl('div', { cls: 'crosswalker-card-details' });
-			this.currentEditor = renderParameterEditor(details, recipe);
+			const initialValues =
+				this.existing && this.existing.recipe === recipe.id ? this.existing.params : undefined;
+			this.currentEditor = renderParameterEditor(details, recipe, initialValues);
 
 			const insertRow = details.createEl('div', { cls: 'crosswalker-card-actions crosswalker-insert-row' });
+			const isUpdateForThisRecipe = this.existing && this.existing.recipe === recipe.id;
 			new ButtonComponent(insertRow)
-				.setButtonText('Apply')
+				.setButtonText(isUpdateForThisRecipe ? 'Update' : 'Apply')
 				.setCta()
 				.onClick(() => {
 					const params = this.currentEditor?.getValues() ?? {};

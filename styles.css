@@ -1034,3 +1034,30 @@
 	border: 1px solid var(--text-warning, var(--color-orange, #d97706));
 	border-radius: 6px;
 }
+
+/* Phase 4.5 UPDATE-mode badge */
+.crosswalker-picker-title-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+	flex-wrap: wrap;
+}
+
+.crosswalker-picker-title-row h2 {
+	margin: 0;
+}
+
+.crosswalker-update-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.2em 0.6em;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-radius: 999px;
+	font-size: 0.8em;
+	font-weight: 500;
+}
+
+.crosswalker-update-badge-label {
+	display: inline-block;
+}
