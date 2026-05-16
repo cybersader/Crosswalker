@@ -1,7 +1,7 @@
 /**
  * query-frontmatter-io.ts — Phase 4.5
  *
- * Read + write the `crosswalker:` frontmatter block on user notes. Uses
+ * Read + write the `crosswalker_query:` frontmatter block on user notes. Uses
  * Obsidian's `app.fileManager.processFrontMatter(file, cb)` — the canonical
  * safe API for frontmatter edits. processFrontMatter parses YAML, calls the
  * callback for mutation, then serializes back; safer than manual string
@@ -20,10 +20,17 @@ import {
 	type CrosswalkerQueryFrontmatter,
 } from './query-frontmatter-schema';
 
-const BLOCK_KEY = 'crosswalker';
+/**
+ * The frontmatter key the picker writes to. Renamed from 'crosswalker' →
+ * 'crosswalker_query' (2026-05-16) to distinguish from the existing
+ * `_crosswalker:` provenance block on imported concept/junction notes
+ * (Phase 3 / Tier 1 schema) and to make the block's purpose explicit
+ * (it's a QUERY definition, not generic plugin metadata).
+ */
+const BLOCK_KEY = 'crosswalker_query';
 
 export interface ReadResult {
-	/** True if the file has a `crosswalker:` block AT ALL (regardless of validity). */
+	/** True if the file has a `crosswalker_query:` block AT ALL (regardless of validity). */
 	present: boolean;
 	/** Validated block when present + valid. Otherwise null. */
 	data: CrosswalkerQueryFrontmatter | null;
@@ -32,7 +39,7 @@ export interface ReadResult {
 }
 
 /**
- * Read the `crosswalker:` frontmatter block from a file. Returns structured
+ * Read the `crosswalker_query:` frontmatter block from a file. Returns structured
  * result distinguishing "no block" / "block present but invalid" / "valid".
  */
 export async function readQueryFrontmatter(app: App, file: TFile): Promise<ReadResult> {
@@ -53,7 +60,7 @@ export async function readQueryFrontmatter(app: App, file: TFile): Promise<ReadR
 }
 
 /**
- * True if the file has any `crosswalker:` block (valid or not). Cheap
+ * True if the file has any `crosswalker_query:` block (valid or not). Cheap
  * detection used by the picker to decide CREATE vs UPDATE mode.
  */
 export async function hasQueryFrontmatter(app: App, file: TFile): Promise<boolean> {
@@ -62,7 +69,7 @@ export async function hasQueryFrontmatter(app: App, file: TFile): Promise<boolea
 }
 
 /**
- * Write (or update) the `crosswalker:` frontmatter block on a file.
+ * Write (or update) the `crosswalker_query:` frontmatter block on a file.
  *
  * The block is validated BEFORE writing — invalid data is rejected with
  * structured errors, never persisted. This protects users from

@@ -103,7 +103,7 @@ describe('regenerateOne', () => {
 
 	it('returns regenerated when .base file is missing', async () => {
 		const fm = validFm();
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker: fm } } });
+		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
 		const file = new TFile('q.md');
 		const r = await regenerateOne(app as never, file);
 		expect(r).toBe('regenerated');
@@ -112,7 +112,7 @@ describe('regenerateOne', () => {
 
 	it('returns skipped when .base content matches (idempotent)', async () => {
 		const fm = validFm();
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker: fm } } });
+		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
 		const file = new TFile('q.md');
 		// First call: regenerate
 		await regenerateOne(app as never, file);
@@ -125,13 +125,13 @@ describe('regenerateOne', () => {
 
 	it('returns regenerated when frontmatter params change between runs', async () => {
 		const fm = validFm();
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker: fm } } });
+		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
 		const file = new TFile('q.md');
 		await regenerateOne(app as never, file);
 
 		// Mutate frontmatter (simulates user hand-edit)
 		(app.metadataCache.getFileCache as jest.Mock).mockImplementation(() => ({
-			frontmatter: { crosswalker: { ...fm, params: { confidence_threshold: 0.9 } } },
+			frontmatter: { crosswalker_query: { ...fm, params: { confidence_threshold: 0.9 } } },
 		}));
 		const r = await regenerateOne(app as never, file);
 		expect(r).toBe('regenerated');
@@ -139,7 +139,7 @@ describe('regenerateOne', () => {
 
 	it('returns error string when frontmatter is malformed', async () => {
 		const app = makeApp({
-			frontmatter: { 'q.md': { crosswalker: { recipe: 'incomplete' } } },
+			frontmatter: { 'q.md': { crosswalker_query: { recipe: 'incomplete' } } },
 		});
 		const file = new TFile('q.md');
 		const r = await regenerateOne(app as never, file);
@@ -152,7 +152,7 @@ describe('regenerateOne', () => {
 			...validFm(),
 			recipe: 'recipe-with-no-template',
 		};
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker: fm } } });
+		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
 		const file = new TFile('q.md');
 		const r = await regenerateOne(app as never, file);
 		expect(typeof r).toBe('string');
@@ -171,8 +171,8 @@ describe('regenerateAll', () => {
 		const app = makeApp({
 			markdownFiles: [new TFile('a.md'), new TFile('b.md'), new TFile('c.md')],
 			frontmatter: {
-				'a.md': { crosswalker: fmA },
-				'b.md': { crosswalker: fmB },
+				'a.md': { crosswalker_query: fmA },
+				'b.md': { crosswalker_query: fmB },
 				// c.md: no crosswalker block → not-applicable
 			},
 		});
@@ -186,7 +186,7 @@ describe('regenerateAll', () => {
 	it('counts errors when frontmatter is malformed', async () => {
 		const app = makeApp({
 			markdownFiles: [new TFile('bad.md')],
-			frontmatter: { 'bad.md': { crosswalker: { recipe: 'incomplete' } } },
+			frontmatter: { 'bad.md': { crosswalker_query: { recipe: 'incomplete' } } },
 		});
 		const result = await regenerateAll(app as never);
 		expect(result.errors.length).toBe(1);

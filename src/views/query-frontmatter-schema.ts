@@ -1,7 +1,7 @@
 /**
  * query-frontmatter-schema.ts — Phase 4.5
  *
- * JSON Schema + TypeScript type for the `crosswalker:` frontmatter block
+ * JSON Schema + TypeScript type for the `crosswalker_query:` frontmatter block
  * that lives on user notes. This block is the **canonical source of truth**
  * for a query: the picker writes it, the regenerator reads it to rebuild
  * the `.base` file, and Bases itself can query it as Obsidian metadata.
@@ -22,7 +22,7 @@ import type { ValidateFunction } from 'ajv';
 export const QUERY_FRONTMATTER_SCHEMA_VERSION = 1 as const;
 
 /**
- * The TS interface for the `crosswalker:` frontmatter block on user notes.
+ * The TS interface for the `crosswalker_query:` frontmatter block on user notes.
  * Mirrors the JSON Schema below; the schema is the load-bearing contract.
  */
 export interface CrosswalkerQueryFrontmatter {
@@ -50,7 +50,7 @@ export const QUERY_FRONTMATTER_JSON_SCHEMA = {
 	$schema: 'https://json-schema.org/draft/2020-12/schema',
 	title: 'Crosswalker query frontmatter block',
 	description:
-		'The `crosswalker:` frontmatter block on a user note. Canonical source of truth for a query; the .base file at `view_file` is a generated artifact.',
+		'The `crosswalker_query:` frontmatter block on a user note. Canonical source of truth for a query; the .base file at `view_file` is a generated artifact.',
 	type: 'object',
 	additionalProperties: false,
 	required: ['query_id', 'recipe', 'shape', 'params', 'view_file', 'generated_at', 'schema_version'],

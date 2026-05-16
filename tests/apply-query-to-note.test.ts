@@ -93,7 +93,7 @@ describe('applyQueryToNote — CREATE flow', () => {
 		expect(result.viewFile).toBe(`_crosswalker/views/${result.queryId}.base`);
 
 		// Frontmatter written
-		const fm = app.fileManager.__frontmatter.get('test.md')?.crosswalker as CrosswalkerQueryFrontmatter;
+		const fm = app.fileManager.__frontmatter.get('test.md')?.crosswalker_query as CrosswalkerQueryFrontmatter;
 		expect(fm).toBeDefined();
 		expect(fm.recipe).toBe('nist-csf-coverage-matrix');
 		expect(fm.shape).toBe('pivot');
@@ -141,7 +141,7 @@ describe('applyQueryToNote — UPDATE flow', () => {
 			generated_at: '2026-05-15T10:00:00.000Z',
 			schema_version: 1,
 		};
-		const app = makeApp({ 'test.md': { crosswalker: existingFm } });
+		const app = makeApp({ 'test.md': { crosswalker_query: existingFm } });
 		const file = new TFile('test.md');
 		const result = await applyQueryToNote({
 			app: app as never,
@@ -159,7 +159,7 @@ describe('applyQueryToNote — UPDATE flow', () => {
 		expect(result.viewFile).toBe('_crosswalker/views/q-2026-05-15-aaaaaaaa.base'); // preserved
 
 		// Frontmatter params updated
-		const newFm = app.fileManager.__frontmatter.get('test.md')?.crosswalker as CrosswalkerQueryFrontmatter;
+		const newFm = app.fileManager.__frontmatter.get('test.md')?.crosswalker_query as CrosswalkerQueryFrontmatter;
 		expect(newFm.params).toEqual({ confidence_threshold: 0.9 });
 		expect(newFm.query_id).toBe('q-2026-05-15-aaaaaaaa');
 	});
@@ -174,7 +174,7 @@ describe('applyQueryToNote — UPDATE flow', () => {
 			generated_at: '2026-05-15T10:00:00.000Z',
 			schema_version: 1,
 		};
-		const app = makeApp({ 'test.md': { crosswalker: existingFm } });
+		const app = makeApp({ 'test.md': { crosswalker_query: existingFm } });
 		const file = new TFile('test.md');
 		const result = await applyQueryToNote({
 			app: app as never,
@@ -187,7 +187,7 @@ describe('applyQueryToNote — UPDATE flow', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		const newFm = app.fileManager.__frontmatter.get('test.md')?.crosswalker as CrosswalkerQueryFrontmatter;
+		const newFm = app.fileManager.__frontmatter.get('test.md')?.crosswalker_query as CrosswalkerQueryFrontmatter;
 		expect(newFm.recipe).toBe('crosswalk-density-by-framework');
 		expect(newFm.shape).toBe('table');
 	});

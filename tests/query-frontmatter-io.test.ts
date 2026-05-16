@@ -74,7 +74,7 @@ describe('readQueryFrontmatter', () => {
 
 	it('returns valid data when crosswalker block is well-formed', async () => {
 		const block = validBlock();
-		const app = makeApp({ 'test.md': { crosswalker: block } });
+		const app = makeApp({ 'test.md': { crosswalker_query: block } });
 		const r = await readQueryFrontmatter(app as never, file('test.md'));
 		expect(r.present).toBe(true);
 		expect(r.data).toEqual(block);
@@ -83,7 +83,7 @@ describe('readQueryFrontmatter', () => {
 
 	it('returns present=true + data=null + errors when crosswalker block is malformed', async () => {
 		const app = makeApp({
-			'test.md': { crosswalker: { recipe: 'oops' } },
+			'test.md': { crosswalker_query: { recipe: 'oops' } },
 		});
 		const r = await readQueryFrontmatter(app as never, file('test.md'));
 		expect(r.present).toBe(true);
@@ -98,7 +98,7 @@ describe('readQueryFrontmatter', () => {
 
 describe('hasQueryFrontmatter', () => {
 	it('returns true even for malformed blocks (presence test, not validity)', async () => {
-		const app = makeApp({ 'test.md': { crosswalker: { bad: 'shape' } } });
+		const app = makeApp({ 'test.md': { crosswalker_query: { bad: 'shape' } } });
 		expect(await hasQueryFrontmatter(app as never, file('test.md'))).toBe(true);
 	});
 
@@ -119,7 +119,7 @@ describe('writeQueryFrontmatter', () => {
 		const r = await writeQueryFrontmatter(app as never, file('test.md'), block);
 		expect(r.ok).toBe(true);
 		expect(app.fileManager.processFrontMatter).toHaveBeenCalledTimes(1);
-		expect(app.fileManager.__frontmatter.get('test.md')?.crosswalker).toEqual(block);
+		expect(app.fileManager.__frontmatter.get('test.md')?.crosswalker_query).toEqual(block);
 	});
 
 	it('rejects invalid blocks BEFORE writing (no I/O leak)', async () => {
@@ -135,7 +135,7 @@ describe('writeQueryFrontmatter', () => {
 	it('overwrites existing crosswalker block (UPDATE path)', async () => {
 		const oldBlock = validBlock();
 		const app = makeApp({});
-		app.fileManager.__frontmatter.set('test.md', { crosswalker: oldBlock });
+		app.fileManager.__frontmatter.set('test.md', { crosswalker_query: oldBlock });
 		const newBlock: CrosswalkerQueryFrontmatter = {
 			...oldBlock,
 			params: { confidence_threshold: 0.9 },
@@ -143,7 +143,7 @@ describe('writeQueryFrontmatter', () => {
 		};
 		const r = await writeQueryFrontmatter(app as never, file('test.md'), newBlock);
 		expect(r.ok).toBe(true);
-		const final = app.fileManager.__frontmatter.get('test.md')?.crosswalker as CrosswalkerQueryFrontmatter;
+		const final = app.fileManager.__frontmatter.get('test.md')?.crosswalker_query as CrosswalkerQueryFrontmatter;
 		expect(final.params).toEqual({ confidence_threshold: 0.9 });
 	});
 });

@@ -14,19 +14,19 @@ User architecture call surfaced that Phase 4's inline ` ```base ` codeblock flow
 
 **The corrected design** (3 artifacts make up a query):
 
-1. **`crosswalker:` frontmatter on the user's note** — canonical query definition (recipe ID + shape + user-edited params). AJV-validated. Indexable by Bases itself. Survives plugin uninstall.
+1. **`crosswalker_query:` frontmatter on the user's note** — canonical query definition (recipe ID + shape + user-edited params). AJV-validated. Indexable by Bases itself. Survives plugin uninstall. Renamed from `crosswalker:` → `crosswalker_query:` on 2026-05-16 to distinguish from the existing `_crosswalker:` provenance block on imported concept/junction notes and to make the block's purpose explicit (it's a QUERY definition, not generic plugin metadata).
 2. **`.base` file at `_crosswalker/views/q-<YYYY-MM-DD>-<8-hex>.base`** — plugin-generated rendering artifact. Regenerable from frontmatter. Stable filename keyed by `query_id`.
 3. **`![[<view_file>]]` embed in the user's note** — Obsidian-native Bases embed syntax. Renders inline when the note is viewed.
 
 **Flow** (single `Crosswalker: Insert query into note` command):
-- Picker opens. Auto-detects existing `crosswalker:` frontmatter → UPDATE mode (preserves `query_id` + `view_file`; updates params only) OR CREATE mode (fresh `query_id`).
+- Picker opens. Auto-detects existing `crosswalker_query:` frontmatter → UPDATE mode (preserves `query_id` + `view_file`; updates params only) OR CREATE mode (fresh `query_id`).
 - On confirm: write `.base` file → write/update frontmatter via `app.fileManager.processFrontMatter()` → insert `![[<view_file>]]` at cursor (skipped if embed already present — idempotent).
 
 **New modules** (all under `src/views/`):
 - `query-frontmatter-schema.ts` — JSON Schema (draft 2020-12) + AJV validator + `newQueryId()` + `viewFileFor()`. Validates the `crosswalker:` block at every read + write boundary. Schema is forward-compat (`schema_version: 1`).
 - `query-frontmatter-io.ts` — `readQueryFrontmatter()` / `writeQueryFrontmatter()` / `hasQueryFrontmatter()` helpers + pure builders (`buildFrontmatter`, `updateFrontmatterParams`). Uses Obsidian's canonical `app.fileManager.processFrontMatter(file, cb)` API — safer than manual YAML manipulation.
 - `apply-query-to-note.ts` — single orchestrator: `applyQueryToNote({app, file, editor, recipeId, shape, params})`. Decides CREATE vs UPDATE; writes `.base` file (with comment header); writes/updates frontmatter; inserts embed at cursor; returns structured `ApplyResult` for caller.
-- `regenerate-query-views.ts` — vault scanner. `regenerateAll(app)` walks all markdown files; for each one with `crosswalker:` frontmatter, regenerates the `.base` file. Idempotent — skips when YAML body matches (compares stripped of header timestamp comments).
+- `regenerate-query-views.ts` — vault scanner. `regenerateAll(app)` walks all markdown files; for each one with `crosswalker_query:` frontmatter, regenerates the `.base` file. Idempotent — skips when YAML body matches (compares stripped of header timestamp comments).
 
 **`insert-base-block.ts` extended**:
 - `buildBaseBlock()` deprecated (kept for backward compat with Phase 4 codeblocks)
@@ -42,7 +42,7 @@ User architecture call surfaced that Phase 4's inline ` ```base ` codeblock flow
 
 **Commands**:
 - `Crosswalker: Insert query into note` — REPURPOSED to call `applyQueryToNote()` orchestrator (was: insert raw codeblock). Auto-detects UPDATE vs CREATE mode.
-- `Crosswalker: Refresh query views` — NEW. Scans all notes with `crosswalker:` frontmatter; regenerates their `.base` files. Idempotent. Surfaces a Notice with `N refreshed, M up-to-date, K errors`. Also runs on `onLayoutReady` for stale-state recovery (same pattern as Phase 3 reference file write + Phase 1.5 fixture drift check).
+- `Crosswalker: Refresh query views` — NEW. Scans all notes with `crosswalker_query:` frontmatter; regenerates their `.base` files. Idempotent. Surfaces a Notice with `N refreshed, M up-to-date, K errors`. Also runs on `onLayoutReady` for stale-state recovery (same pattern as Phase 3 reference file write + Phase 1.5 fixture drift check).
 
 **Obsidian mock extended** (`tests/__mocks__/obsidian.ts`):
 - `Platform` (mobile/desktop detection — already added in Phase 4a)

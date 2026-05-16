@@ -1,6 +1,6 @@
 /**
  * query-frontmatter-schema.test.ts — Phase 4.5 unit tests for the
- * crosswalker: frontmatter schema + AJV validation + helpers.
+ * crosswalker_query: frontmatter schema + AJV validation + helpers.
  */
 
 import {

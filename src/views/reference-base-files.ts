@@ -113,7 +113,7 @@ This skill teaches you how Crosswalker queries live in Obsidian. The query is **
 USER NOTE: My Coverage Analysis.md
 ─────────────────────────────────
 ---
-crosswalker:                                          ← canonical truth (frontmatter)
+crosswalker_query:                                    ← canonical truth (frontmatter)
   query_id: q-2026-05-15-a1b2c3d4
   recipe: nist-csf-coverage-matrix
   shape: pivot
@@ -135,17 +135,17 @@ The \`.base\` file at \`_crosswalker/views/q-2026-05-15-a1b2c3d4.base\` is **plu
 
 ## How to author a new query
 
-1. **Open a note** where you want the query rendered (any markdown note with no \`crosswalker:\` block yet).
+1. **Open a note** where you want the query rendered (any markdown note with no \`crosswalker_query:\` block yet).
 2. **Run \`Crosswalker: Insert query into note\`** from the command palette.
 3. **Pick a recipe** from the modal (e.g. NIST CSF → 800-53 coverage matrix). Adjust exposed parameters inline if you want.
-4. **Click Apply.** The picker writes the \`crosswalker:\` frontmatter, generates the \`.base\` file at \`_crosswalker/views/\`, and inserts the embed at your cursor. Done.
+4. **Click Apply.** The picker writes the \`crosswalker_query:\` frontmatter, generates the \`.base\` file at \`_crosswalker/views/\`, and inserts the embed at your cursor. Done.
 
 ## How to edit an existing query
 
 Two options:
 
-- **Re-run the picker** on a note that already has \`crosswalker:\` frontmatter → the picker opens in UPDATE mode with current values pre-filled.
-- **Hand-edit the \`crosswalker:\` frontmatter** directly. Run \`Crosswalker: Refresh query views\` to regenerate the \`.base\` file from the new params.
+- **Re-run the picker** on a note that already has \`crosswalker_query:\` frontmatter → the picker opens in UPDATE mode with current values pre-filled.
+- **Hand-edit the \`crosswalker_query:\` frontmatter** directly. Run \`Crosswalker: Refresh query views\` to regenerate the \`.base\` file from the new params.
 
 The frontmatter is the source of truth. The \`.base\` file is generated.
 
@@ -153,7 +153,7 @@ The frontmatter is the source of truth. The \`.base\` file is generated.
 
 | Property | Why it matters |
 |---|---|
-| Frontmatter is queryable by Bases itself | "Show me every query I've ever made" is one Bases query over \`crosswalker.shape == "pivot"\` |
+| Frontmatter is queryable by Bases itself | "Show me every query I've ever made" is one Bases query over \`crosswalker_query.shape == "pivot"\` |
 | Single source of truth | Edit frontmatter (or use the picker again); \`.base\` file regenerates. No drift. |
 | Reusable across notes | Multiple notes can embed the same \`.base\` file via \`![[...]]\` |
 | Survives plugin uninstall | Frontmatter + \`.base\` file are both plain text, readable without Crosswalker |

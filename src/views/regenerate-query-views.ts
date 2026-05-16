@@ -1,7 +1,7 @@
 /**
  * regenerate-query-views.ts — Phase 4.5
  *
- * Scans the vault for notes with `crosswalker:` frontmatter; for each one
+ * Scans the vault for notes with `crosswalker_query:` frontmatter; for each one
  * regenerates its `.base` file at `view_file` from the frontmatter's
  * recipe + params. Idempotent — skips files whose generated content already
  * matches what would be written.
@@ -30,7 +30,7 @@ export interface RegenerateResult {
 }
 
 /**
- * Scan the vault for notes with `crosswalker:` frontmatter; regenerate each
+ * Scan the vault for notes with `crosswalker_query:` frontmatter; regenerate each
  * one's `.base` file. Returns aggregate counts + per-error details.
  */
 export async function regenerateAll(app: App, debug?: DebugLog): Promise<RegenerateResult> {
@@ -49,7 +49,7 @@ export async function regenerateAll(app: App, debug?: DebugLog): Promise<Regener
 			if (subResult === 'skipped') result.skipped += 1;
 			else if (subResult === 'regenerated') result.regenerated += 1;
 			else if (subResult === 'not-applicable') {
-				// File had no `crosswalker:` block — common; not counted
+				// File had no `crosswalker_query:` block — common; not counted
 			} else {
 				result.errors.push({ note: file.path, reason: subResult });
 			}
@@ -72,7 +72,7 @@ export async function regenerateAll(app: App, debug?: DebugLog): Promise<Regener
 type SingleResult = 'regenerated' | 'skipped' | 'not-applicable' | string;
 
 /**
- * Regenerate a single note's `.base` file if its `crosswalker:` frontmatter
+ * Regenerate a single note's `.base` file if its `crosswalker_query:` frontmatter
  * declares one. Returns:
  *   - 'regenerated' — content changed; .base file written
  *   - 'skipped' — content matches; no write needed (idempotent)

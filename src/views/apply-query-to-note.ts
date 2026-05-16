@@ -2,10 +2,10 @@
  * apply-query-to-note.ts — Phase 4.5 orchestrator.
  *
  * Single entry point for "apply this recipe + params to this note":
- *   1. Decide CREATE vs UPDATE based on existing `crosswalker:` frontmatter
+ *   1. Decide CREATE vs UPDATE based on existing `crosswalker_query:` frontmatter
  *   2. Generate / regenerate the `.base` file content via recipe-templates
  *   3. Write `.base` file at `_crosswalker/views/<query_id>.base`
- *   4. Write/update `crosswalker:` frontmatter on the user's note
+ *   4. Write/update `crosswalker_query:` frontmatter on the user's note
  *   5. Insert `![[<view_file>]]` embed at editor cursor (CREATE only;
  *      UPDATE flow skips because the embed is already present)
  *
@@ -59,7 +59,7 @@ export interface ApplyOptions {
 
 /**
  * Apply a recipe + params to a note. Handles both CREATE (note has no
- * `crosswalker:` block) and UPDATE (existing block — keep query_id and
+ * `crosswalker_query:` block) and UPDATE (existing block — keep query_id and
  * view_file stable; rewrite params + regenerate `.base` content).
  */
 export async function applyQueryToNote(options: ApplyOptions): Promise<ApplyResult> {
@@ -175,7 +175,7 @@ export function buildBaseFileContent(
 		`# Recipe: ${context.recipeId}`,
 		`# Query ID: ${context.queryId}`,
 		'#',
-		'# Edit the source note\'s `crosswalker:` frontmatter to change this query.',
+		'# Edit the source note\'s `crosswalker_query:` frontmatter to change this query.',
 		'# To regenerate: run "Crosswalker: Refresh query views".',
 		'# Manual edits to this file are overwritten on the next refresh.',
 		'',

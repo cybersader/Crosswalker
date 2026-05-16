@@ -34,7 +34,7 @@ export interface ParameterEditorHandle {
  * `initialValues` (optional, Phase 4.5 UPDATE-mode addition): if provided,
  * seeds each input with the existing user value instead of the recipe's
  * default. Used by the picker when re-opening on a note with existing
- * `crosswalker:` frontmatter.
+ * `crosswalker_query:` frontmatter.
  */
 export function renderParameterEditor(
 	container: HTMLElement,

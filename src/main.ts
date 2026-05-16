@@ -202,10 +202,10 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		// v0.1.6 Phase 4.5: recipe picker — apply a query to the active note.
 		// Per 2026-05-15 architecture call: the query lives in the note's
-		// `crosswalker:` frontmatter (canonical); the .base file at
+		// `crosswalker_query:` frontmatter (canonical); the .base file at
 		// _crosswalker/views/<query_id>.base is a generated artifact; the
 		// note has a `![[...]]` embed that Bases renders inline. Picker
-		// auto-detects existing `crosswalker:` frontmatter → UPDATE mode.
+		// auto-detects existing `crosswalker_query:` frontmatter → UPDATE mode.
 		this.addCommand({
 			id: 'insert-query-into-note',
 			name: 'Insert query into note',
@@ -217,7 +217,7 @@ export default class CrosswalkerPlugin extends Plugin {
 				}
 				const traceId = this.debug.newTraceId();
 				void this.debug.withTrace(traceId, async () => {
-					// Phase 4.5 UPDATE-mode UX fix: read existing crosswalker:
+					// Phase 4.5 UPDATE-mode UX fix: read existing crosswalker_query:
 					// frontmatter BEFORE opening the picker so the modal can
 					// pre-fill params + show the "Updating" badge. The
 					// orchestrator (applyQueryToNote) ALSO checks this
@@ -254,7 +254,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		});
 
 		// v0.1.6 Phase 4.5: explicit refresh — re-scan all notes with
-		// `crosswalker:` frontmatter and regenerate their .base files from
+		// `crosswalker_query:` frontmatter and regenerate their .base files from
 		// the (possibly hand-edited) frontmatter. Idempotent — skips notes
 		// whose .base content already matches.
 		this.addCommand({
@@ -396,7 +396,7 @@ export default class CrosswalkerPlugin extends Plugin {
 			// (idempotent — never overwrites user edits).
 			void writeReferenceBaseFiles(this.app, this.debug);
 			// v0.1.6 Phase 4.5: regenerate any stale .base files from
-			// `crosswalker:` frontmatter (idempotent — skips notes whose
+			// `crosswalker_query:` frontmatter (idempotent — skips notes whose
 			// content already matches). Catches stale state after the user
 			// hand-edits frontmatter or the recipe template changes.
 			void regenerateAll(this.app, this.debug);

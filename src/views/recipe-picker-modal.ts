@@ -203,7 +203,7 @@ export class RecipePickerModal extends Modal {
 			});
 
 		// Expanded view — parameter editor + Apply button. Phase 4.5: when
-		// this card matches the existing `crosswalker:` frontmatter recipe,
+		// this card matches the existing `crosswalker_query:` frontmatter recipe,
 		// seed the parameter editor with the user's existing params (UPDATE
 		// mode); otherwise use recipe defaults (CREATE mode).
 		if (expanded) {
