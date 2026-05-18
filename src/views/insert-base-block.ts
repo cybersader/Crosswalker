@@ -21,7 +21,6 @@ import type { Editor } from 'obsidian';
 
 export type InsertResult =
 	| { ok: true; insertedAt: { line: number; ch: number }; reason: 'after-line' | 'after-frontmatter' | 'after-code-block' }
-	| { ok: true; insertedAt: { line: number; ch: number }; reason: 'already-present' }
 	| { ok: false; reason: 'no-editor' | 'unknown-error'; error?: string };
 
 /**
@@ -204,17 +203,10 @@ export function insertEmbedAtCursor(
 	}
 
 	try {
-		const content = editor.getValue();
 		const embed = buildEmbed(vaultPath);
-
-		// Idempotent check — surface "already-present" so callers can give honest feedback
-		if (noteContainsEmbed(content, vaultPath)) {
-			const cursor = editor.getCursor();
-			return { ok: true, insertedAt: cursor, reason: 'already-present' };
-		}
-
-		// Same cursor-aware insertion policy as `insertBaseBlock` — frontmatter
-		// / code-block-aware / body — delegated to the shared helper.
+		// Embeds are just references — duplicating is fine and sometimes
+		// wanted (e.g. embed the same query at top + bottom of a long note).
+		// No idempotency check here; user explicitly asked to embed.
 		return insertBaseBlock(editor, embed);
 	} catch (err) {
 		return {
