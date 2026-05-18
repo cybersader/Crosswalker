@@ -141,9 +141,9 @@ class CrosswalkerPivotView extends Component {
 		const entries = this.collectEntries();
 		const config = this.collectConfig();
 
-		// Empty-state cases
+		// Empty-state cases — Phase 5: explicit diagnostic, not generic "No entries"
 		if (entries.length === 0) {
-			this.renderEmpty(config.emptyMessage ?? 'No entries match the Bases filter.');
+			this.renderDiagnosticEmpty(config);
 			return;
 		}
 
@@ -166,18 +166,55 @@ class CrosswalkerPivotView extends Component {
 			colSort: config.colSort,
 		});
 
-		// Sparse-pivot soft warning (per Ch 35 — full guard with row-count
-		// estimation lives in Phase 5; here we just label the warning).
+		// Phase 5 sparse-pivot HARD guard — block render when the result is
+		// degenerate (zero non-empty cells OR over the hard cell-count ceiling).
+		const cellCount = result.rowKeys.length * result.colKeys.length;
+		const HARD_CELL_CEILING = 250_000;
+		if (cellCount > HARD_CELL_CEILING) {
+			this.renderEmpty(
+				`Pivot is too large to render: ${result.rowKeys.length.toLocaleString()} rows × ` +
+				`${result.colKeys.length.toLocaleString()} cols = ${cellCount.toLocaleString()} cells ` +
+				`(ceiling: ${HARD_CELL_CEILING.toLocaleString()}). Narrow the Bases filter, use more ` +
+				`selective row/col axes, or pre-aggregate before pivoting.`,
+			);
+			return;
+		}
+		if (result.rowKeys.length === 0 || result.colKeys.length === 0) {
+			this.renderDiagnosticEmpty(config);
+			return;
+		}
+
+		// Sparse-pivot SOFT warning — show but render the table
 		if (result.sparsePivotWarning) {
 			this.rootEl.createDiv({
 				cls: 'crosswalker-pivot-warning',
-				text: `Sparse pivot: ${result.rowKeys.length}×${result.colKeys.length} = ${(
-					result.rowKeys.length * result.colKeys.length
-				).toLocaleString()} cells. Consider narrowing the Bases filter or using more selective row/col axes.`,
+				text: `Sparse pivot: ${result.rowKeys.length}×${result.colKeys.length} = ${cellCount.toLocaleString()} cells. Consider narrowing the Bases filter or using more selective row/col axes.`,
 			});
 		}
 
 		this.renderTable(result, config.heatmap === true);
+	}
+
+	/**
+	 * Phase 5: explicit empty-state diagnostic. Instead of generic "No entries match,"
+	 * tell the user the LIKELY cause: missing SSSOM-imported junction notes.
+	 */
+	private renderDiagnosticEmpty(config: { emptyMessage?: string }): void {
+		if (!this.rootEl) return;
+		this.rootEl.empty();
+		const wrap = this.rootEl.createDiv({ cls: 'crosswalker-pivot-empty crosswalker-pivot-empty-diagnostic' });
+		wrap.createEl('h4', { text: 'No data for this pivot' });
+		if (config.emptyMessage) {
+			wrap.createEl('p', { text: config.emptyMessage });
+		} else {
+			wrap.createEl('p', {
+				text: 'The Bases filter matched 0 junction notes. Likely causes:',
+			});
+			const list = wrap.createEl('ul');
+			list.createEl('li', { text: 'No SSSOM crosswalks have been imported yet for the ontologies in this filter. Run "Crosswalker: Import SSSOM crosswalk" to populate _crosswalker/mappings/.' });
+			list.createEl('li', { text: 'The recipe filter targets a folder that does not exist in this vault.' });
+			list.createEl('li', { text: 'A confidence threshold or filter clause is excluding every junction.' });
+		}
 	}
 
 	/** Render the pivot data as an HTML table. */

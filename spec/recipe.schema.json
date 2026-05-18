@@ -216,7 +216,11 @@
       "properties": {
         "with":  { "$ref": "#/$defs/OntologyRef" },
         "on":    { "type": "string", "description": "Join predicate, typically an edge type or shared field." },
-        "kind":  { "enum": ["inner", "left", "right", "outer"], "default": "inner" }
+        "kind":  {
+          "enum": ["inner", "left", "right", "outer", "anti"],
+          "default": "inner",
+          "description": "Join semantics. 'inner' (default): only rows where both sides match. 'left'/'right': preserve all rows from one side; null-pad the other on no match. 'outer': preserve all rows from both sides (full-outer). 'anti': Layer A primitive #5 — LEFT rows with NO match in 'with' ('X without Y' / gap analysis). See join-primitives.ts runtime."
+        }
       },
       "additionalProperties": false
     },

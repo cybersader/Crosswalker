@@ -352,6 +352,60 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
+		// v0.1.6 Phase 5: materialize the current query (write a snapshot
+		// JSON to <slug>/materialized/result.json). Opt-in, audit/share use
+		// case per Ch 32 deliverable B. Default browse stays live.
+		this.addCommand({
+			id: 'materialize-query',
+			name: 'Materialize this query (snapshot)',
+			editorCallback: async (_editor, ctx) => {
+				const file = ctx.file;
+				if (!file) {
+					new Notice('Open a markdown note (query index.md or host) before materializing.', 5000);
+					return;
+				}
+				const traceId = this.debug.newTraceId();
+				await this.debug.withTrace(traceId, async () => {
+					const { materializeQuery, lookupQuery } = await import('./views/materialize');
+					const { readQueryFrontmatter } = await import('./views/query-frontmatter-io');
+
+					// Resolve target slug: prefer canonical index.md (file is the query itself)
+					let slug: string | null = null;
+					if (file.path.startsWith('_crosswalker/queries/') && file.path.endsWith('/index.md')) {
+						const fm = await readQueryFrontmatter(this.app, file);
+						if (fm.present && fm.data) slug = fm.data.slug;
+					}
+					if (!slug) {
+						new Notice('Open a query\'s index.md (under _crosswalker/queries/) and re-run this command.', 6000);
+						return;
+					}
+					const q = await lookupQuery(this.app, slug);
+					if (!q) {
+						new Notice(`Could not look up query "${slug}".`, 5000);
+						return;
+					}
+
+					// Minimal Phase 5 snapshot: record the recipe+params + a timestamp.
+					// The view-shape-specific resolved data is written by view-side
+					// materialization helpers in v0.1.7+ (table/list/pivot/hierarchy
+					// each contribute their snapshot via materializeQuery as needed).
+					const r = await materializeQuery(this.app, {
+						slug,
+						queryId: q.queryId,
+						recipe: q.recipe,
+						shape: q.shape,
+						data: { note: 'Phase 5 baseline snapshot — view-shape-specific resolved data lands in v0.1.7+.', params: q.params },
+						metadata: { phase: '5-baseline' },
+					}, this.debug);
+					if (r.ok) {
+						new Notice(`Materialized "${slug}" → ${r.resultPath} (${r.bytesWritten} bytes)`, 5000);
+					} else {
+						new Notice(`Materialize failed: ${r.error}`, 6000);
+					}
+				});
+			},
+		});
+
 		// v0.1.6 Phase 4.5: explicit refresh — re-scan all notes with
 		// `crosswalker_query:` frontmatter and regenerate their .base files from
 		// the (possibly hand-edited) frontmatter. Idempotent — skips notes

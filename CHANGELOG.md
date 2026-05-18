@@ -6,7 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + **4.6** ✅ done; Phase 5 next, unblocked).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + **5** ✅ done; v0.1.7 next).
+
+### v0.1.6 Phase 5 — Join primitive substrate + materialization + sparse-pivot HARD guard (2026-05-18, ✅ Done)
+
+Reframed per [Phase 5 scope log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-18-phase-5-scope-join-primitive-substrate/) from "outer-join pivot retrofit" to "Layer A join primitive substrate that powers all view shapes." Pivot is one consumer; table / list / hierarchy / timeline shapes (v0.1.7+) compose against the same primitives.
+
+**New modules:**
+- `src/views/join-primitives.ts` — 5 pure-function Layer A primitives matching the [query-primitives concept](https://cybersader.github.io/crosswalker/concepts/query-primitives/):
+  - `innerJoin` — rows where both sides match (current default)
+  - `leftOuterJoin` — preserve all left rows; null-pad right ("controls without evidence" gap analysis)
+  - `rightOuterJoin` — mirror
+  - `fullOuterJoin` — preserve both sides
+  - `antiJoin` — Layer A primitive #5: LEFT rows with NO match in right ("X without Y")
+  - `executeJoin(left, right, {mode})` dispatcher
+- `src/views/materialize.ts` — shape-agnostic snapshot writer. Writes `<slug>/materialized/result.json` per Layout B+. Stable JSON key order (git-diff friendly). `lookupQuery(app, slug)` + `markStale(app, slug)` helpers. Reusable for v0.1.7 (table/list) + v0.1.8 (audit snapshots) without modification.
+
+**Schema:** `spec/recipe.schema.json` `Join.kind` enum extended `["inner", "left", "right", "outer", "anti"]` with description aligned to runtime semantics.
+
+**Pivot view updates** (`src/views/crosswalker-pivot-view.ts`):
+- HARD guard at 250K cells — blocks render with explicit message instead of locking the UI
+- Replaced silent empty grid with `renderDiagnosticEmpty()` — explains likely causes (missing SSSOM imports, filter scope, confidence threshold) and how to fix
+- Sparse-pivot SOFT warning preserved (renders the table with a banner above)
+
+**Commands added:**
+- `Crosswalker: Materialize this query (snapshot)` — opt-in; runs on the active query's `index.md`; writes the JSON snapshot at `<slug>/materialized/`. Default browse remains live.
+
+**Tests:** +28 net new (27 suites / 432 tests / all pass; 404 baseline). New files: `tests/join-primitives.test.ts` (20 tests covering all 5 modes + edge cases + dispatcher + function extractors), `tests/materialize.test.ts` (8 tests covering stable JSON serialization + idempotent overwrite + metadata + stale.flag + lookup).
+
+**What this unblocks:**
+- v0.1.7 table / list / hierarchy view shapes compose against the join primitives directly
+- v0.1.7 exporters (OSCAL / SSSOM / STRM) consume materialized result.json
+- v0.1.8 per-query audit snapshots use the same writer
+
+**Deferred to v0.1.7+** (out of Phase 5 scope by design):
+- Pivot view actually RENDERING outer-join axes from source ontology concepts (needs recipe-level `axis_sources` config — adds complexity to filter resolution; Phase 5.5 or v0.1.7)
+- `bind` / `set-op` / `diff` Layer A primitives from Ch 29 revision
+- Full SPARQL property-path traversal in Tier 2 sidecar
+
+
 
 ### v0.1.6 Phase 4.7 — 3-command UX split: Embed existing + Browse queries (2026-05-18, ✅ Done)
 
