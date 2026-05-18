@@ -1061,3 +1061,224 @@
 .crosswalker-update-badge-label {
 	display: inline-block;
 }
+
+/* ============================================================================
+   Phase 4.7 — Browse + Embed pickers (Obsidian-native list aesthetic)
+   ============================================================================ */
+
+.crosswalker-browse-modal,
+.crosswalker-embed-modal {
+	/* Slightly wider than default Obsidian modal */
+	--dialog-width: min(680px, 90vw);
+}
+
+.crosswalker-browse-modal .modal-content,
+.crosswalker-embed-modal .modal-content {
+	padding: 0;
+}
+
+/* Header */
+.crosswalker-browse-header {
+	padding: 1.25em 1.5em 0.75em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-browse-title {
+	margin: 0 0 0.25em;
+	font-size: 1.25em;
+	font-weight: 600;
+}
+
+.crosswalker-browse-count {
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+/* Empty state */
+.crosswalker-browse-empty {
+	padding: 2em 1.5em;
+	text-align: center;
+	color: var(--text-muted);
+}
+
+.crosswalker-browse-empty p {
+	margin: 0.25em 0;
+}
+
+.crosswalker-browse-hint {
+	font-size: 0.85em;
+	font-style: italic;
+}
+
+/* Filter input */
+.crosswalker-browse-filter {
+	padding: 0.75em 1.5em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.crosswalker-browse-filter-input {
+	width: 100%;
+	padding: 0.5em 0.75em;
+	font-size: 0.9em;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-normal);
+}
+
+.crosswalker-browse-filter-input:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+}
+
+/* List container — scrollable, capped height */
+.crosswalker-browse-list {
+	max-height: 50vh;
+	overflow-y: auto;
+	padding: 0.25em 0;
+}
+
+.crosswalker-browse-no-results {
+	padding: 1.5em;
+	text-align: center;
+	color: var(--text-muted);
+	font-size: 0.9em;
+	font-style: italic;
+}
+
+/* Individual row — clickable */
+.crosswalker-browse-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+	padding: 0.6em 1.5em;
+	cursor: pointer;
+	border-bottom: 1px solid var(--background-modifier-border-hover, transparent);
+	transition: background-color 80ms ease;
+	min-height: 3em;
+}
+
+.crosswalker-browse-row:last-child {
+	border-bottom: none;
+}
+
+.crosswalker-browse-row:hover,
+.crosswalker-browse-row:focus {
+	background: var(--background-modifier-hover);
+	outline: none;
+}
+
+.crosswalker-browse-row:focus {
+	box-shadow: inset 2px 0 0 var(--interactive-accent);
+}
+
+.crosswalker-browse-row-content {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.15em;
+}
+
+.crosswalker-browse-row-title {
+	font-weight: 500;
+	color: var(--text-normal);
+	font-size: 0.95em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.crosswalker-browse-row-meta {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.crosswalker-browse-meta-recipe {
+	color: var(--text-faint);
+}
+
+.crosswalker-browse-meta-shape {
+	padding: 0.05em 0.45em;
+	background: var(--background-modifier-hover);
+	border-radius: 999px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.crosswalker-browse-meta-sep {
+	opacity: 0.5;
+}
+
+.crosswalker-browse-meta-time {
+	color: var(--text-faint);
+}
+
+/* Hover-revealed action icons */
+.crosswalker-browse-row-actions {
+	display: flex;
+	gap: 0.2em;
+	opacity: 0;
+	transition: opacity 80ms ease;
+	flex-shrink: 0;
+}
+
+.crosswalker-browse-row:hover .crosswalker-browse-row-actions,
+.crosswalker-browse-row:focus .crosswalker-browse-row-actions,
+.crosswalker-browse-row:focus-within .crosswalker-browse-row-actions {
+	opacity: 1;
+}
+
+.crosswalker-browse-row-icon-btn {
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	padding: 0.35em;
+	border-radius: 4px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background-color 80ms ease, color 80ms ease;
+}
+
+.crosswalker-browse-row-icon-btn:hover {
+	background: var(--background-modifier-active-hover);
+	color: var(--text-normal);
+}
+
+.crosswalker-browse-row-icon-btn.is-disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+/* Footer */
+.crosswalker-browse-modal .crosswalker-modal-footer,
+.crosswalker-embed-modal .crosswalker-modal-footer {
+	padding: 0.75em 1.5em;
+	border-top: 1px solid var(--background-modifier-border);
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5em;
+}
+
+/* Confirm-delete modal */
+.crosswalker-confirm-modal .modal-content {
+	padding: 1.5em;
+}
+
+.crosswalker-confirm-modal h3 {
+	margin-top: 0;
+}
+
+.crosswalker-confirm-warning {
+	color: var(--text-warning, var(--color-orange, #d97706));
+	font-size: 0.9em;
+}

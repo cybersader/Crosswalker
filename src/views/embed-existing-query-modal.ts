@@ -1,14 +1,12 @@
 /**
- * embed-existing-query-modal.ts — Phase 4.7
+ * embed-existing-query-modal.ts — Phase 4.7 (redesigned)
  *
- * Lightweight modal: "Pick an existing query to embed at the cursor."
- * Lists all canonical queries from `_crosswalker/queries/<slug>/`. Selection
- * resolves the modal with the picked slug; the calling command inserts
- * `![[<slug>/view.base]]` at the editor cursor. No template rendering, no
- * vault scan beyond the cheap frontmatter read.
+ * Obsidian-native list aesthetic. Each query = a single clickable row; click
+ * or Enter embeds it at the cursor immediately. Search filter at top.
  *
- * Per the synthesis log §3-command split: "embed is just a reference; no
- * heavy work happens at embed time."
+ * Per the synthesis log §3-command split: embedding is just inserting a
+ * reference — no template rendering, no vault scan beyond the cheap
+ * frontmatter read.
  */
 
 import { App, Modal, ButtonComponent } from 'obsidian';
@@ -22,15 +20,15 @@ export type EmbedPickResult =
 export class EmbedExistingQueryModal extends Modal {
 	private resolved = false;
 	private entries: QueryEntry[] = [];
+	private filterValue = '';
+	private listContainer: HTMLElement | null = null;
 
-	constructor(
-		app: App,
-		private onResult: (result: EmbedPickResult) => void,
-	) {
+	constructor(app: App, private onResult: (result: EmbedPickResult) => void) {
 		super(app);
 	}
 
 	async onOpen(): Promise<void> {
+		this.modalEl.addClass('crosswalker-embed-modal');
 		this.entries = await scanQueries(this.app);
 		this.renderUI();
 	}
@@ -38,81 +36,109 @@ export class EmbedExistingQueryModal extends Modal {
 	private renderUI(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass('crosswalker-embed-picker-modal');
 
-		contentEl.createEl('h2', { text: 'Embed an existing query' });
-		contentEl.createEl('p', {
-			text: 'Pick a query to insert at your cursor. Embedding is just a reference — no scan happens here.',
-			cls: 'crosswalker-modal-subtitle',
+		const header = contentEl.createDiv({ cls: 'crosswalker-browse-header' });
+		header.createEl('h2', { text: 'Embed an existing query', cls: 'crosswalker-browse-title' });
+		header.createEl('div', {
+			text: 'Click a query to insert its embed at your cursor. No scan happens here — embedding is just a reference.',
+			cls: 'crosswalker-browse-count',
 		});
 
 		if (this.entries.length === 0) {
-			const empty = contentEl.createDiv({ cls: 'crosswalker-empty-state' });
-			empty.createEl('p', { text: 'No queries found in this vault.' });
+			const empty = contentEl.createDiv({ cls: 'crosswalker-browse-empty' });
+			empty.createEl('p', { text: 'No queries in this vault.' });
 			empty.createEl('p', {
 				text: 'Run "Crosswalker: Insert query into note" to create one.',
-				cls: 'crosswalker-modal-hint',
+				cls: 'crosswalker-browse-hint',
 			});
 			this.renderCancelOnly(contentEl);
 			return;
 		}
 
-		const list = contentEl.createDiv({ cls: 'crosswalker-query-list' });
-		for (const entry of this.entries) {
-			this.renderEntryCard(list, entry);
-		}
+		// Filter input
+		const filterRow = contentEl.createDiv({ cls: 'crosswalker-browse-filter' });
+		const filterInput = filterRow.createEl('input', {
+			type: 'text',
+			placeholder: 'Filter by name, recipe, or shape...',
+			cls: 'crosswalker-browse-filter-input',
+		});
+		filterInput.addEventListener('input', () => {
+			this.filterValue = filterInput.value.trim().toLowerCase();
+			this.renderList();
+		});
+
+		this.listContainer = contentEl.createDiv({ cls: 'crosswalker-browse-list' });
+		this.renderList();
 
 		this.renderCancelOnly(contentEl);
+
+		// Autofocus filter for fast keyboard nav
+		setTimeout(() => filterInput.focus(), 50);
 	}
 
-	private renderEntryCard(parent: HTMLElement, entry: QueryEntry): void {
-		const card = parent.createDiv({ cls: 'crosswalker-query-card' });
+	private renderList(): void {
+		if (!this.listContainer) return;
+		this.listContainer.empty();
 
-		const header = card.createDiv({ cls: 'crosswalker-query-card-header' });
-		const title = header.createEl('div', { cls: 'crosswalker-query-card-title' });
-		title.setText(entry.slug);
+		const filtered = this.filterValue
+			? this.entries.filter(
+					(e) =>
+						e.slug.toLowerCase().includes(this.filterValue) ||
+						e.recipe.toLowerCase().includes(this.filterValue) ||
+						e.shape.toLowerCase().includes(this.filterValue),
+			  )
+			: this.entries;
 
-		const meta = header.createEl('div', { cls: 'crosswalker-query-card-meta' });
-		meta.createEl('span', {
-			text: entry.recipe,
-			cls: 'crosswalker-query-recipe-badge',
-		});
-		meta.createEl('span', {
-			text: entry.shape,
-			cls: 'crosswalker-query-shape-badge',
-		});
-
-		const details = card.createDiv({ cls: 'crosswalker-query-card-details' });
-		details.createEl('div', {
-			text: formatParamsSummary(entry.params),
-			cls: 'crosswalker-query-params',
-		});
-		const ts = new Date(entry.generatedAt).toLocaleString();
-		details.createEl('div', {
-			text: `Last generated: ${ts}`,
-			cls: 'crosswalker-query-timestamp',
-		});
-
-		const actions = card.createDiv({ cls: 'crosswalker-query-card-actions' });
-		new ButtonComponent(actions)
-			.setButtonText('Embed at cursor')
-			.setCta()
-			.onClick(() => {
-				this.resolve({
-					action: 'embed',
-					slug: entry.slug,
-					viewFile: entry.viewFile,
-				});
+		if (filtered.length === 0) {
+			this.listContainer.createEl('div', {
+				text: `No queries match "${this.filterValue}".`,
+				cls: 'crosswalker-browse-no-results',
 			});
+			return;
+		}
+
+		for (const entry of filtered) {
+			this.renderRow(this.listContainer, entry);
+		}
+	}
+
+	private renderRow(parent: HTMLElement, entry: QueryEntry): void {
+		const row = parent.createDiv({ cls: 'crosswalker-browse-row' });
+		row.setAttr('tabindex', '0');
+		row.setAttr('role', 'button');
+		row.setAttr('aria-label', `Embed query: ${entry.slug}`);
+		row.setAttr('title', `Params: ${formatParamsSummary(entry.params)}`);
+
+		const embed = (): void => {
+			this.resolve({ action: 'embed', slug: entry.slug, viewFile: entry.viewFile });
+		};
+		row.addEventListener('click', embed);
+		row.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				embed();
+			}
+		});
+
+		const content = row.createDiv({ cls: 'crosswalker-browse-row-content' });
+		content.createDiv({ text: entry.slug, cls: 'crosswalker-browse-row-title' });
+
+		const metaLine = content.createDiv({ cls: 'crosswalker-browse-row-meta' });
+		metaLine.createSpan({ text: entry.recipe, cls: 'crosswalker-browse-meta-recipe' });
+		metaLine.createSpan({ text: '·', cls: 'crosswalker-browse-meta-sep' });
+		metaLine.createSpan({ text: entry.shape, cls: 'crosswalker-browse-meta-shape' });
+		metaLine.createSpan({ text: '·', cls: 'crosswalker-browse-meta-sep' });
+		metaLine.createSpan({
+			text: formatRelativeTime(entry.generatedAt),
+			cls: 'crosswalker-browse-meta-time',
+		});
 	}
 
 	private renderCancelOnly(parent: HTMLElement): void {
 		const footer = parent.createDiv({ cls: 'crosswalker-modal-footer' });
 		new ButtonComponent(footer)
 			.setButtonText('Cancel')
-			.onClick(() => {
-				this.resolve({ action: 'cancel' });
-			});
+			.onClick(() => this.resolve({ action: 'cancel' }));
 	}
 
 	private resolve(result: EmbedPickResult): void {
@@ -128,4 +154,22 @@ export class EmbedExistingQueryModal extends Modal {
 			this.onResult({ action: 'cancel' });
 		}
 	}
+}
+
+function formatRelativeTime(isoString: string): string {
+	const then = new Date(isoString).getTime();
+	if (Number.isNaN(then)) return '';
+	const now = Date.now();
+	const diff = now - then;
+	const sec = Math.floor(diff / 1000);
+	const min = Math.floor(sec / 60);
+	const hr = Math.floor(min / 60);
+	const day = Math.floor(hr / 24);
+	if (sec < 30) return 'just now';
+	if (min < 1) return `${sec}s ago`;
+	if (hr < 1) return `${min}m ago`;
+	if (day < 1) return `${hr}h ago`;
+	if (day < 7) return `${day}d ago`;
+	const d = new Date(isoString);
+	return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
