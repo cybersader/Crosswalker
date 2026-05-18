@@ -1,4 +1,4 @@
-import { Plugin, Notice, TFile } from 'obsidian';
+import { Plugin, Notice, TFile, MarkdownView } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
 import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
@@ -330,9 +330,7 @@ export default class CrosswalkerPlugin extends Plugin {
 				await this.debug.withTrace(traceId, async () => {
 					const { BrowseQueriesModal } = await import('./views/browse-queries-modal');
 					const { insertEmbedAtCursor } = await import('./views/insert-base-block');
-					const activeView = this.app.workspace.getActiveViewOfType(
-						(await import('obsidian')).MarkdownView,
-					);
+					const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 					const editor = activeView?.editor ?? null;
 					const activeFile = activeView?.file ?? null;
 					new BrowseQueriesModal(this.app, {
