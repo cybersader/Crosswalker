@@ -286,6 +286,72 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
+		// v0.1.6 Phase 4.7: Embed an existing query at the cursor — lightweight
+		// picker over `_crosswalker/queries/<slug>/`. Per the 3-command split,
+		// embedding is CHEAP (just inserts `![[<slug>/view.base]]`); no scan.
+		this.addCommand({
+			id: 'embed-existing-query',
+			name: 'Embed existing query into note',
+			editorCallback: async (editor, ctx) => {
+				const file = ctx.file;
+				if (!file) {
+					new Notice('Open a markdown note before running this command.', 5000);
+					return;
+				}
+				const traceId = this.debug.newTraceId();
+				await this.debug.withTrace(traceId, async () => {
+					const { EmbedExistingQueryModal } = await import('./views/embed-existing-query-modal');
+					const { insertEmbedAtCursor } = await import('./views/insert-base-block');
+					new EmbedExistingQueryModal(this.app, async (result) => {
+						if (result.action === 'cancel') {
+							this.debug.info('view', 'embed-picker-cancelled', 'Embed picker cancelled');
+							return;
+						}
+						const insertResult = insertEmbedAtCursor(editor, result.viewFile);
+						if (insertResult.ok) {
+							this.debug.info('view', 'embed-inserted', `Embed inserted at cursor`, { slug: result.slug, host: file.path });
+							new Notice(`Embedded query: ${result.slug}`, 4000);
+						} else {
+							this.debug.warn('view', 'embed-insert-failed', `Could not insert embed`, { reason: insertResult.reason });
+							new Notice(`Could not insert embed: ${insertResult.reason}`, 6000);
+						}
+					}).open();
+				});
+			},
+		});
+
+		// v0.1.6 Phase 4.7: Browse all queries — discovery surface with
+		// per-row actions (Open canonical / Embed here / Delete folder).
+		this.addCommand({
+			id: 'browse-queries',
+			name: 'Browse my queries',
+			callback: async () => {
+				const traceId = this.debug.newTraceId();
+				await this.debug.withTrace(traceId, async () => {
+					const { BrowseQueriesModal } = await import('./views/browse-queries-modal');
+					const { insertEmbedAtCursor } = await import('./views/insert-base-block');
+					const activeView = this.app.workspace.getActiveViewOfType(
+						(await import('obsidian')).MarkdownView,
+					);
+					const editor = activeView?.editor ?? null;
+					const activeFile = activeView?.file ?? null;
+					new BrowseQueriesModal(this.app, {
+						editor,
+						activeFile,
+						insertEmbed: async (slug, viewFile) => {
+							if (!editor) return;
+							const r = insertEmbedAtCursor(editor, viewFile);
+							if (r.ok) {
+								new Notice(`Embedded query: ${slug}`, 4000);
+							} else {
+								new Notice(`Could not embed: ${r.reason}`, 6000);
+							}
+						},
+					}).open();
+				});
+			},
+		});
+
 		// v0.1.6 Phase 4.5: explicit refresh — re-scan all notes with
 		// `crosswalker_query:` frontmatter and regenerate their .base files from
 		// the (possibly hand-edited) frontmatter. Idempotent — skips notes

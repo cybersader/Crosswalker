@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + **4.6** ✅ done; Phase 5 next, unblocked).
 
+### v0.1.6 Phase 4.7 — 3-command UX split: Embed existing + Browse queries (2026-05-18, ✅ Done)
+
+Completes the synthesis-log §3 "create / embed / browse" command split that Phase 4.6 deferred. Now the user has three distinct surfaces matching three distinct mental models:
+
+| Command | Cost | Mental model |
+|---|---|---|
+| `Insert query into note` (existing, Phase 4.6) | Heavy — modal + params + folder write | "Create a new analysis" |
+| **`Embed existing query into note`** (NEW) | Lightweight — pick from list, insert reference | "Show this query here" |
+| **`Browse my queries`** (NEW) | Discovery surface | "What queries exist in my vault?" |
+
+**New modules:**
+- `src/views/query-scanner.ts` — pure read function. `scanQueries(app)` walks `_crosswalker/queries/**/index.md`, returns validated entries sorted by `generatedAt` DESC. `formatParamsSummary()` for display. Used by both pickers.
+- `src/views/embed-existing-query-modal.ts` — minimal modal: cards listing each query with slug + recipe + shape badges + params summary + "Embed at cursor" button. Resolves with `{slug, viewFile}`.
+- `src/views/browse-queries-modal.ts` — full discovery surface. Per-row actions: **Open canonical** (opens `index.md`), **Embed in active note** (only enabled when an editor is active), **Delete** (with confirmation prompt covering "embeds will become broken links").
+
+**Tests:** +12 new (25 suites / 404 tests / all pass; 392 Phase 4.6 baseline). New file: `tests/query-scanner.test.ts`. Covers: empty vault, canonical-path filtering (ignores stray host-note frontmatter), sort order (DESC), malformed-frontmatter skip, full metadata roundtrip.
+
 ### v0.1.6 Phase 4.6 — Query-state-location refactor (Layout B+) (2026-05-18, ✅ Done)
 
 Implementation of the Ch 38 synthesis decision. Re-homes the Phase 4.5 architecture from "frontmatter on host note + flat `.base` in views/" to "per-query folder under `_crosswalker/queries/<slug>/` with `index.md` as canonical state + `view.base` as generated sibling + reserved derivative subfolders."
