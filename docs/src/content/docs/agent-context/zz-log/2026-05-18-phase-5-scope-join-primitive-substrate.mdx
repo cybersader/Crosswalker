@@ -1,0 +1,89 @@
+---
+title: "Phase 5 scope — join primitive substrate (not just outer-join pivot)"
+description: "User course-correction (2026-05-18): Phase 5 must establish the join primitive layer (inner / left-outer / right-outer / full-outer / anti-join) that powers ALL view shapes, not just retrofit outer-join semantics into the pivot. Pivot is one view-shape consumer (Layer B); the join primitives live at Layer A and feed table / list / pivot / hierarchy / timeline alike. Aligns Phase 5 implementation with the existing Ch 29 7-primitive set (Layer A) + Ch 30 view-shape taxonomy (Layer B)."
+sidebar:
+  order: -20260518.5
+  label: "Phase 5 scope · join substrate"
+tags: [log, scope, phase-5, query-primitives, joins, view-shapes, ontology-web, v0-1-6]
+date: 2026-05-18
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## TL;DR
+
+Phase 5 scope was too narrow ("materialization + sparse-pivot guard + outer-join pivot semantics"). User correction (2026-05-18, late session): the query system handles **many data shapes and join types** — left / right / full-outer / anti-join are siblings of inner-join; pivot is one of several view shapes (table / list / pivot / hierarchy / timeline) that all consume the same join + filter + aggregate primitives.
+
+Phase 5 must establish the **join primitive substrate at Layer A**, factored cleanly so:
+1. The pivot view consumes any join mode (not just inner)
+2. Other view shapes (Phase 6+, v0.1.7+) compose against the same primitives without re-implementing
+3. The recipe schema can declare `joinMode` per query — runtime-agnostic recipe schema (Commitment #5) means the join is data, not view-specific code
+
+This log captures the framing so Phase 5 implementation lands the right shape.
+
+## What was already locked vs what was implicit
+
+The architecture already had this layered correctly per [Ch 29 (Layer A primitives)](/crosswalker/concepts/query-primitives/) + [Ch 30 (Layer B view shapes)](/crosswalker/concepts/view-shapes/):
+
+| Layer | Vocab | Status pre-Phase-5 |
+|---|---|---|
+| **A — Query primitives** | filter / project / traversal / closure / **anti-join** / pivot / aggregate (the 7-primitive set; revised to 8 in Ch 29 with `bind` + `set-op` + `diff`) | Documented as concept; **not yet code-factored** |
+| **B — View shapes** | table / list / pivot / hierarchy / timeline | Pivot shipped (`crosswalkerPivot` Phase 3); table/list via Bases-native (no work); hierarchy v0.1.7; graph/timeline v0.2+ |
+| **C — Recipes** | Marketplace instances composing A+B | 6 recipes shipped Phase 1 |
+
+The gap Phase 5 surfaces: the **join primitive itself was implicit**. The current `pivot-grid.ts` derives row/col axes from the entries present (inner-join semantics, baked into Layer B). To get outer-join behavior the user explicitly asked for ("show me CSF controls that have no 800-53 mappings yet — gap analysis"), we need to:
+
+1. Factor `joinMode` out of the pivot view at Layer A
+2. Let recipes declare `joinMode: inner | left-outer | right-outer | full-outer | anti`
+3. Pivot view (and future table/list/hierarchy views) consume the joined result
+
+## Phase 5 implementation scope (now correct)
+
+| Item | Layer | What |
+|---|---|---|
+| Join primitives module | A | New `src/views/join-primitives.ts`. Pure functions: `innerJoin(left, right, on)`, `leftOuterJoin(...)`, `rightOuterJoin(...)`, `fullOuterJoin(...)`, `antiJoin(...)`. Operate on typed entry collections (concept rows + mapping rows). |
+| Recipe schema extension | C → A | Add `joinMode` to recipe `query:` block schema. Default `inner` (current behavior — no migration needed for shipped recipes). |
+| Pivot view consumes joinMode | B | `computePivotGrid` accepts joined entries; doesn't re-derive axes from entry presence when join mode = outer (uses full axis from the join's "preserved" side). |
+| Sparse-pivot HARD guard | B (UX) | Pre-execution cell-count estimate from the joined result; block with explicit Notice when sparse ("0 rows after join — did you import crosswalks?"). Pivot-specific safety. |
+| Materialization writer | Layer A → Tier 1 | New `src/views/materialize.ts`. Writes `<slug>/materialized/result.json` + `stale.flag`. Works for any view shape, not just pivot. Per Layout B+ folder structure. |
+| `Crosswalker: Materialize this query` command | UX | Opt-in command for explicit audit/share. Default browse remains live regeneration. |
+
+**Out of scope for Phase 5** (deferred):
+- Table / list view shapes — already work via Bases-native; no plugin code needed
+- Hierarchy view shape — v0.1.7+ (`crosswalkerHierarchy` custom view)
+- Graph / timeline shapes — v0.2+
+- `bind` / `set-op` / `diff` Layer A primitives from Ch 29 revision — v0.1.7+
+- Full SPARQL property-path traversal — Tier 2 sidecar feature; v0.1.7+
+- Inline `crosswalker-query` codeblock processor (D2 rejected per [Ch 27/28 synthesis](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/))
+
+## Why this framing matters
+
+| Without this framing | With this framing |
+|---|---|
+| Phase 5 retrofits "outer-join" as a pivot-specific config; future shapes (table-list, hierarchy) re-implement join semantics from scratch | One join primitives module; every view shape composes against it |
+| Recipe schema accumulates ad-hoc per-shape config | Recipe schema declares `joinMode` once at Layer A; view shapes inherit |
+| "Anti-join" stays a Tier 2 SQL helper (per current [query-primitives doc](/crosswalker/concepts/query-primitives/) mapping) | Anti-join surfaces at the recipe layer as `joinMode: anti` — consumable by any view shape |
+| Sparse-pivot guard is the only safety check | Once factored, similar guards (sparse-table, sparse-hierarchy) come for free |
+
+## High-level multi-shape roadmap (post-Phase-5)
+
+| Phase | Milestone | Adds |
+|---|---|---|
+| **Phase 5** (v0.1.6, next) | This work | Join primitive substrate + materialization + pivot sparse guard |
+| **v0.1.7 Phase 1** | Exporters | OSCAL / SSSOM / STRM exports per query — consume materialized JSON from Phase 5 |
+| **v0.1.7 Phase 2** | Hierarchy view | `crosswalkerHierarchy` custom Bases view (2nd registered view after pivot) — consumes join primitives from Phase 5 |
+| **v0.1.7 Phase 3** | Layer A extensions | `bind` / `set-op` / `diff` primitives (Ch 29 revision) |
+| **v0.1.8** | Audit trail | Per-query audit snapshots — consume materialized JSON from Phase 5 |
+| **v0.2+** | Graph + timeline shapes | `crosswalkerGraph` + `crosswalkerTimeline` custom views; SPARQL property-path traversal |
+
+Phase 5 is the architectural inflection — every milestone above depends on the join primitive substrate landing first.
+
+## Related
+
+- [Query primitives concept](/crosswalker/concepts/query-primitives/) — Layer A vocab (filter / project / traversal / closure / anti-join / pivot / aggregate)
+- [View shapes concept](/crosswalker/concepts/view-shapes/) — Layer B catalog (table / list / pivot / hierarchy / timeline)
+- [Bases query layer architecture synthesis](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) — locked Layer A/B/C separation
+- [Ch 29 — 8-primitive validation deliverable](/crosswalker/agent-context/zz-research/2026-05-09-challenge-29-ontology-web-query-verbs-validation/) — adversarial verification of the primitive set; revised to 8 primitives
+- [Ch 30 — View shape taxonomy deliverable](/crosswalker/agent-context/zz-research/2026-05-09-challenge-30-view-shape-taxonomy/) — 5 first-class shapes for v0.1
+- [v0.1.6 milestone hub](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Phase 5 row updated to reflect this scope
+- [Query state location synthesis (Layout B+)](/crosswalker/agent-context/zz-log/2026-05-18-query-state-location-synthesis/) — provides the per-query folder where materialized/ derivatives land
