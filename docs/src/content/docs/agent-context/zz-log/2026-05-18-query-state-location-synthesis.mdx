@@ -1,0 +1,253 @@
+---
+title: "Query state location synthesis — Layout B+ (query-pack folder) locked"
+description: "Synthesis of Ch 38 deliverables A + B. Both fresh-agent runs converged on folder-pack pattern; both rejected literal `index.md` magic-embed; both rejected hybrid C and the no-folder steelman. User decision (2026-05-18): adopt Layout B+ (deliverable B's clean filenames + explicit `![[<slug>/view.base]]` embed) over B′ (deliverable A's same-name `--<id8>` folder). Adds an edge-case policy table (~20 cases). Scopes Phase 4.6 migration sub-phase to ship before Phase 5 starts. Re-homes Phase 4.5 architecture — does not revert it."
+sidebar:
+  order: -20260518
+  label: "Query state → Layout B+"
+tags: [log, synthesis, ch-38, query-state-location, layout-b-plus, folder-pack, phase-4-6, v0-1-6, locked]
+date: 2026-05-18
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## TL;DR
+
+**Layout B+ locked** — every Crosswalker query is a per-query folder under `_crosswalker/queries/<slug>/` with `index.md` as canonical state and `view.base` as generated sibling. Embeds are always **explicit** path-qualified `![[<slug>/view.base]]`. The host note (the user-authored note that *displays* the query) gets no frontmatter from the plugin — just the embed. The folder is the durable envelope for Phase 5 materialization, v0.1.7 exports, and v0.1.8 audit snapshots.
+
+This **re-homes** the Phase 4.5 architecture (frontmatter-canonical, `recipe + params` is the durable contract — all preserved); it does not revert it. The frontmatter just lives on a query-owned `index.md`, not on a user-authored host note.
+
+**Phase 4.6 sub-phase** lands the migration before Phase 5 starts. Estimated effort: ½–1 day. Existing 359 Phase 4.5 tests guard the regenerator code path migration is built on; net ~+40 tests for slug derivation + collision + migration idempotency.
+
+## Decision chain
+
+| Date | Decision | Source |
+|---|---|---|
+| 2026-05-04 | Architectural commitments locked (5 + #6 Bases-not-Dataview) | [Foundation synthesis](/crosswalker/agent-context/zz-log/2026-05-04-foundation-completion-summary/) |
+| 2026-05-07 | Bases query layer architecture — Pattern B+D | [Synthesis](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) |
+| 2026-05-08 | Ch 32a+b — intuitive query UX | [Synthesis](/crosswalker/agent-context/zz-log/2026-05-08-ch-32-intuitive-query-ux-synthesis/) |
+| 2026-05-15 | Phase 4.5 — frontmatter + .base + embed (current state being stress-tested) | [Phase 4.5 briefing](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/) |
+| 2026-05-18 | Ch 38 filed — stress-test Phase 4.5 query state location | [Brief](/crosswalker/agent-context/zz-challenges/38-query-state-location-and-folder-note-pattern/) |
+| 2026-05-18 | Ch 38 deliverables A + B landed in parallel — convergent recommendation | [Ch 38a](/crosswalker/agent-context/zz-research/2026-05-18-challenge-38-deliverable-a-same-name-folder-note/) · [Ch 38b](/crosswalker/agent-context/zz-research/2026-05-18-challenge-38-deliverable-b-query-pack-folder/) |
+| **2026-05-18 (this log)** | **Layout B+ locked; Phase 4.6 sub-phase opened** | This log |
+
+## 1. What both deliverables agree on (locked)
+
+| # | Conclusion | Locked |
+|---|---|---|
+| 1.1 | **Folder-pack layout wins.** Phase 4.5's flat `_crosswalker/views/q-<id>.base` dump has no answer for "where does the snapshot/export/audit go?" Layout A doesn't scale to Phase 5+. | ✅ |
+| 1.2 | **Folder-note magic embeds are NOT vanilla Obsidian.** `![[csf-coverage]]` does not resolve to `csf-coverage/index.md` without the LostPaul Folder Notes community plugin. That violates Commitment #3 (mobile parity, no plugin dependencies). | ✅ |
+| 1.3 | **`recipe + params` regenerates load-bearing artifacts but 5+ adjacent artifacts are NOT regenerable.** Non-regenerable: (a) user annotations, (b) audit snapshots (v0.1.8), (c) Bases hand-edits, (d) exports (v0.1.7), (e) materialized results (Phase 5). All need per-query sibling slots. | ✅ |
+| 1.4 | **Slug is display; `query_id` (existing `q-YYYY-MM-DD-<8hex>`) is durable identity.** Rename-safe by keying scanner + writers on `query_id`, not folder path. | ✅ |
+| 1.5 | **Layout C (hybrid back-pointer) rejected.** Two-source drift cost; backlinks pane already gives "where embedded?" UX. | ✅ |
+| 1.6 | **"No folder" steelman rejected.** Loses Commitment #5 (runtime-agnostic recipe schema), Commitment #2's single coupling point, and has no per-query home for Phase 5+ derivatives. | ✅ |
+| 1.7 | **Migration before Phase 5.** Phase 4.5 state is fully regenerable from `crosswalker_query:` frontmatter; migration is mechanical + idempotent. New sub-phase: Phase 4.6. | ✅ |
+| 1.8 | **`.base` hand-edit preservation is intentionally NOT solved.** `Refresh query views` overwrites `view.base` — by design. Frontmatter on `index.md` is canonical. Users who want overrides get a `view.user.base` slot in v0.2+, not v0.1.6. | ✅ |
+| 1.9 | **Backward compat for one minor version.** Phase 4.5 host-note frontmatter is auto-migrated on next save; the picker checks new location first, falls back to old, migrates on touch. | ✅ |
+
+## 2. Where deliverables diverged → user decision
+
+| Aspect | A (B′ same-name `--<id8>`) | B (B+ `index.md` + explicit embed) | **Locked** |
+|---|---|---|---|
+| Folder name | `csf-coverage--a1b2c3d4/` | `csf-coverage/` | **B+ clean folder names** |
+| Canonical file | `csf-coverage--a1b2c3d4.md` (same-name) | `index.md` | **B+ `index.md`** |
+| Embed user types | `![[<slug>--<id8>]]` (resolves natively) | `![[<slug>/view.base]]` (explicit) | **B+ explicit embed** |
+| Collision policy | Always `--<id8>` suffix on folder | Refuse-and-prompt (picker) + `-<4hex>` (programmatic) | **B+ mixed policy** |
+| Filename aesthetic | Ugly — `--<id8>` always visible | Clean | **B+** |
+
+**Why B+ over B′**: matches the user's "embed is just `!` + wikilink, it shouldn't be checked" intuition more honestly. The explicit `![[<slug>/view.base]]` is literal about what's being embedded — there's no resolver hidden trick. `--<id8>` in A is a constant cosmetic tax users in the common case never hit. B+'s `query_id` lives in frontmatter (durable) without polluting filesystem names.
+
+## 3. The Layout B+ canonical structure
+
+```
+_crosswalker/queries/<slug>/                ← one folder per query
+├── index.md                                  ← CANONICAL: crosswalker_query: frontmatter
+│                                                 (query_id, recipe, shape, params, schema_version)
+│                                                 + optional user annotations in body
+├── view.base                                 ← generated; rewritten by Refresh
+├── README.md                                 ← optional, USER-AUTHORED prose (plugin never writes/reads)
+├── materialized/                             ← Phase 5: pivot result + staleness flag
+│   ├── result.json
+│   └── stale.flag                            ← presence = recompute needed
+├── exports/                                  ← v0.1.7: per-format exporter outputs
+│   ├── 2026-05-18.oscal.json
+│   ├── 2026-05-18.sssom.tsv
+│   └── 2026-05-18.strm.json
+└── snapshots/                                ← v0.1.8: timestamped audit copies
+    └── 2026-05-18T12-00-00Z/
+        ├── index.md                          ← frozen frontmatter
+        ├── view.base                         ← frozen view
+        └── run.json                          ← closure-cache hash, trace_id, OTS receipt
+```
+
+Host note (user-authored, anywhere in vault):
+```markdown
+# My coverage analysis
+
+Some prose...
+
+![[csf-coverage/view.base]]                  ← explicit Bases-native embed
+
+More prose...
+```
+
+The host note has **no `crosswalker_query:` frontmatter**. The plugin doesn't write to the host. Backlinks from `view.base` show every host that embeds it — Obsidian-native, no plugin code needed.
+
+## 4. Edge case policy table (~20 cases)
+
+The user's explicit ask: *"We need to account for the weird issues and edge cases."* This table is the contract for Phase 4.6 implementation.
+
+| # | Edge case | Policy | Why |
+|---|---|---|---|
+| **Slug derivation** | | | |
+| 1 | Slug derivation from recipe name | Kebab-case, ASCII only, lowercase, max 48 chars. From the `recipe.name` field, then strip non-`[a-z0-9-]`, collapse runs of `-`, trim leading/trailing `-`. | Filesystem-safe everywhere; mirrors existing `query_id` slug convention |
+| 2 | Slug derivation produces empty string | Fallback to `query-<id8>` | Avoid `.md` filenames that start with `--` |
+| 3 | Reserved Windows names (`con`, `aux`, `nul`, `prn`, `com1-9`, `lpt1-9`, `.`, `..`) | Append `-q` suffix on hit | Cross-platform safety |
+| 4 | Slug > 48 chars after derivation | Truncate at last `-` ≤ 48 chars; if no `-`, hard truncate at 48 | Keep file explorer readable; preserve word boundaries |
+| 5 | Slug with leading digits | Allow — Obsidian + filesystems tolerate `1-coverage/` | No special handling |
+| **Collisions** | | | |
+| 6 | Interactive picker — user creates same slug twice | Modal: 3 options: **Open existing** (default), **Pick new name** (text input), **Force suffix** (auto `<slug>-2`/`-3`/...). Default focus on Open existing. | The common case (90%) is "user forgot they made it already" — Open existing covers it. No silent rename. |
+| 7 | Programmatic create (agent / future MCP / wizard-draft) | Append `-<4hex>` random suffix. Never silently `-2`/`-3`. | Avoids the brief's flagged anti-pattern ("user can't find auto-renamed query"). Suffix is detectable. |
+| 8 | User pre-creates the folder/file at canonical path | Read existing `index.md`. If valid `crosswalker_query:` → treat as the existing query (UPDATE flow). If not → refuse with Notice: "A folder exists at `_crosswalker/queries/<slug>/` but is not a Crosswalker query. Rename it or pick a different slug." | Defensive; never overwrite user content |
+| 9 | Case-insensitivity (macOS HFS+ vs Linux ext4) | Slug is always lowercased before write. Collision check is case-insensitive. | Cross-platform identity-stability |
+| **Rename / move** | | | |
+| 10 | User renames folder in file explorer | `query_id` in frontmatter is unchanged; scanner picks up new path. Obsidian's "Automatically update internal links" (on by default) rewrites `![[<old>/view.base]]` → `![[<new>/view.base]]` everywhere. | Identity ≠ path; rename is free |
+| 11 | User moves folder OUT of `_crosswalker/queries/` | `regenerateAll()` walks all markdown files for `crosswalker_query:` frontmatter (not path-restricted). The query continues to work wherever it lives. Picker's "Browse" shows queries from default location PLUS any out-of-band locations. | Don't dictate vault organization beyond defaults |
+| 12 | Auto-update-links disabled in user settings | Document in SKILL.md as a known limitation: renames break embeds; user must run `Crosswalker: Refresh query views` to rebind. Optionally surface a warning Notice when picker detects this setting is off. | Honest about non-default Obsidian state |
+| **Embed behavior** | | | |
+| 13 | Host note moves to different folder | Embed is vault-relative (`![[<slug>/view.base]]`) — works wherever the host lives | Obsidian wikilink standard |
+| 14 | User adds aliases to `index.md` frontmatter | Plugin respects aliases. `![[<alias>]]` resolves to `index.md` → user can transclude `![[index.md/view.base]]` if they like? Wait — embeds target `.base` files explicitly. Aliases on `index.md` don't help; document in SKILL.md that the embed-syntax is always `![[<slug>/view.base]]`. | Don't fight Obsidian's resolver |
+| 15 | User wants to embed `[[<slug>]]` (link-not-embed) | Resolves to `index.md`. Shows the query's prose body. Fine — that's the canonical query page; users CAN link to it. | Native Obsidian; no plugin handling needed |
+| 16 | User wants to embed the FOLDER itself | Not a vanilla Obsidian feature. Document as out-of-scope. Use `![[<slug>/view.base]]` instead. | No plugin dependency |
+| **Phase 4.5 → 4.6 migration** | | | |
+| 17 | Migration runs but a host note has DELETED its embed | Plugin re-inserts at end of note (or skips with Notice "host note `<path>` lost its embed — re-run picker to re-embed"). User chooses. Don't silently re-insert into edited content. | Respect user edits |
+| 18 | Migration runs against vault with v0.1.6-RC-1 `crosswalker_query:` (schema_version 1) | Auto-migrate to schema_version 2 (canonical location moved). Old frontmatter on host stays as `crosswalker_query_legacy:` for one minor version then removed on next migration run. | Backward compat without indefinite cruft |
+| 19 | Migration partial failure (one query fails, others succeed) | Per-query atomic — successes commit; failures logged with trace_id; user can re-run migration and only failed entries re-attempt. Per Phase 3.5c observability. | Idempotent rerun |
+| **Misc** | | | |
+| 20 | User manually creates `view.md` inside `<slug>/` folder | Plugin leaves it alone. `view.md` and `view.base` are different files. User's prose stays. | Plugin owns only `index.md` + `view.base` + auto-managed subfolders |
+| 21 | User deletes `view.base` but keeps `index.md` | `regenerateAll()` recreates `view.base` from frontmatter | Idempotent recovery |
+| 22 | User deletes `index.md` but keeps `view.base` + folder | Plugin treats the folder as orphaned (no canonical source). Notice on next scan: "Folder `<slug>/` is missing index.md — query is orphaned. Delete folder or re-run picker." | Don't silently re-create state user explicitly removed |
+| 23 | Multiple shape renderings (pivot + list of same query) | v0.1.6 scope: one shape per query. v0.2+ adds `view-<shape>.base` siblings (`view-pivot.base`, `view-list.base`). Reserve the naming pattern now; don't implement. | YAGNI for v0.1 |
+| 24 | sync providers / OneDrive / iCloud / Obsidian Sync quirks with paths | Slugs are kebab-case ASCII only — survives every sync provider tested in Obsidian community use. Avoid `--` in folder names (B+'s clean filenames already do). | Choice of B+ over B′ avoids the `--` concern |
+
+## 5. Mapping to commitments
+
+| Commitment | How B+ respects it |
+|---|---|
+| #1 Schema-as-primitive | `crosswalker_query:` frontmatter is part of Tier 1 markdown. Anyone emitting valid Tier 1 + the frontmatter shape is a first-class producer. No change. |
+| #2 Closed 5-mechanism recipe grammar | `render(Recipe, ConceptIdentity) → Address` unchanged. `view.base` is the addressable artifact; canonical query is `index.md`. |
+| #3 TypeScript in-plugin engine, mobile parity | Explicit `![[<slug>/view.base]]` embed works in vanilla Obsidian Desktop + Mobile (Capacitor). Zero plugin dependencies. Bases on mobile confirmed working in 1.9.6+. |
+| #4 Tier 2 sqlite-wasm sidecar | Tier 2 sidecar location is unchanged — out-of-band from per-query folders. |
+| #5 Runtime-agnostic recipe schema | `recipe + params` in `index.md` frontmatter remains the portable contract. AJV-validated. Engine is swappable. |
+| #6 Bases-not-Dataview | Embed is Bases-native `![[<slug>/view.base]]`. No Dataview surfaces. |
+
+## 6. What this re-homes vs. what it preserves
+
+**Re-homed (changes path/location only)**:
+- Canonical query state: host note frontmatter → `_crosswalker/queries/<slug>/index.md` frontmatter
+- Generated `.base` file: `_crosswalker/views/q-<id>.base` → `_crosswalker/queries/<slug>/view.base`
+- Embed format: `![[_crosswalker/views/q-<id>.base]]` → `![[<slug>/view.base]]`
+
+**Preserved (no semantic change)**:
+- `crosswalker_query:` frontmatter shape (schema bumps 1 → 2 to record canonical-location change)
+- `query_id` format (`q-<YYYY-MM-DD>-<8hex>`)
+- AJV validation
+- Idempotent regeneration via `Refresh query views`
+- All Phase 3.5c observability events (category=`view`)
+- `app.fileManager.processFrontMatter()` as canonical safe-edit API
+- Plugin command surface (Insert query / Refresh query views) — same names, different write targets
+- Recipe schema + recipe loader + recipe-templates renderer
+
+## 7. Phase 4.6 — scope + acceptance criteria
+
+**Goal**: ship Layout B+ + a migration command before Phase 5 (Materialization + sparse-pivot HARD guard) starts. Single milestone, single commit.
+
+**Source files to change** (5 src + 1 new):
+
+| Action | Path | Change |
+|---|---|---|
+| EDIT | `src/views/query-frontmatter-schema.ts` | `schema_version: 1 → 2`; rename `view_file` field semantically (same key, different default value); add `slug` field; add slug-derivation helper; update `viewFileFor()` → `queryFolderFor()` |
+| EDIT | `src/views/apply-query-to-note.ts` | Write to `_crosswalker/queries/<slug>/{index.md,view.base}`; refuse-and-prompt collision modal; insert `![[<slug>/view.base]]` embed at cursor |
+| EDIT | `src/views/regenerate-query-views.ts` | Walk `_crosswalker/queries/**/index.md`; key on `query_id` not path; fall back to old host-note frontmatter for one minor version |
+| EDIT | `src/views/insert-base-block.ts` | `buildEmbed(viewPath)` emits `![[<slug>/view.base]]` |
+| EDIT | `src/views/reference-base-files.ts` | Rewrite SKILL.md content for the new layout pattern |
+| NEW | `src/views/migrate-query-layout.ts` | Implements `Crosswalker: Migrate queries to folder layout` command per migration plan |
+
+**Tests** (~+40 new, all 359 existing pass):
+
+| Surface | Tests |
+|---|---|
+| Slug derivation | Pure-function tests for cases 1-5 from §4 above (kebab-case, fallback, reserved names, truncation, leading digits) |
+| Collision policy | Picker modal tests for case 6 (3 options surface); programmatic tests for case 7 (`-<4hex>` suffix added) |
+| Folder layout writer | `apply-query-to-note.test.ts` extended for new write target |
+| Folder layout reader | `regenerate-query-views.test.ts` extended for `_crosswalker/queries/**/index.md` walk |
+| Migration idempotency | New `migrate-query-layout.test.ts` — mock vault with Phase 4.5 queries → migrate → assert new layout → migrate again → no-op |
+| Backward-compat read | Reader test confirms picker still finds Phase 4.5 host-note frontmatter for one minor version |
+| Defensive edge cases | Cases 8 (pre-existing folder), 17 (deleted embed), 22 (orphaned folder), 21 (deleted `view.base`) |
+
+**Acceptance criteria**:
+- [ ] All 359 existing tests pass + ~40 new tests pass
+- [ ] `Crosswalker: Refresh query views` is idempotent on second run (no writes when YAML body unchanged)
+- [ ] `![[<slug>/view.base]]` renders on Obsidian Desktop + Mobile (Capacitor) with no Folder Notes plugin
+- [ ] Slug collision via picker surfaces the 3-option modal (Open / Pick new / Force suffix); default focus on Open existing
+- [ ] Programmatic create produces `-<4hex>` suffix when slug collides
+- [ ] Migration command moves test-vault's 3 existing queries to new layout without breaking existing embeds
+- [ ] Phase 3.5c trace-IDs thread through migration command for diagnosis
+- [ ] `bun run lint` + `bun run build` clean
+- [ ] `cd docs && bun run build` clean (docs reflect new layout)
+
+**Estimated effort**: ½–1 day, single commit. Reuses Phase 4.5's idempotent-write infrastructure; the changes are mechanical path renames + one new command + one schema bump + slug derivation helpers.
+
+## 8. Phase 5+ state-growth → mapped to Layout B+
+
+| Phase | Derivative artifact | Location in B+ |
+|---|---|---|
+| 5 | Materialized pivot result | `<slug>/materialized/result.json` |
+| 5 | Sparse-pivot stale flag | `<slug>/materialized/stale.flag` |
+| v0.1.7 | OSCAL export | `<slug>/exports/<date>.oscal.json` |
+| v0.1.7 | SSSOM export | `<slug>/exports/<date>.sssom.tsv` |
+| v0.1.7 | STRM export | `<slug>/exports/<date>.strm.json` |
+| v0.1.8 | Audit snapshot (frozen `index.md` + `view.base` + run metadata + OTS receipt) | `<slug>/snapshots/<iso8601>/` |
+| v0.1.8 | Append-only per-query audit log | `<slug>/audit.ndjson` |
+| v0.2+ | Multi-shape `view-<shape>.base` siblings | `<slug>/view-pivot.base`, `<slug>/view-list.base`, ... |
+| v0.2+ | User overrides for hand-edited views | `<slug>/view.user.base` (never overwritten) |
+
+**Every future per-query state has a stable home before it ships.** That's the whole point of the layout change.
+
+## 9. Updates to design log § Still-open
+
+| Item | Status before | Status after |
+|---|---|---|
+| Query state canonical location | 🚧 Phase 4.5 = frontmatter on host note; flagged for Ch 38 stress-test | ✅ **Locked: Layout B+ `_crosswalker/queries/<slug>/index.md`** |
+| Per-query derivative home (Phase 5/v0.1.7/v0.1.8) | ❓ undefined | ✅ **Locked: sibling subfolders under `<slug>/`** |
+| Slug-collision policy | ❓ open | ✅ **Locked: refuse-and-prompt (picker) + `-<4hex>` (programmatic)** |
+| Embed format | ⚠️ Phase 4.5 uses opaque `q-<id>.base` paths | ✅ **Locked: `![[<slug>/view.base]]` explicit** |
+| Phase 5 gating | ❓ ready to start | 🚧 **Blocked by Phase 4.6 migration** |
+| Phase 4.5 status | ✅ Done 2026-05-15 | ⚠️ **Re-homed by Phase 4.6** (does not revert; canonical state moves) |
+
+## 10. What this does NOT decide
+
+Out of scope for this synthesis; tracked for later:
+
+- **`.base` hand-edit preservation** — Phase 4.5's overwrite-on-refresh is preserved. The `view.user.base` override slot is reserved naming but not implemented in v0.1.6.
+- **Per-query Bases view-time state** (column widths, sort) — Bases stores these in `.obsidian/workspace.json`, not in our files. Out of plugin scope.
+- **Multi-shape rendering of same query** — `view-<shape>.base` naming reserved; implementation deferred to v0.2+.
+- **Cross-vault federation / marketplace** — Layout B+ is friendly to this (one folder = one shareable query), but actual cross-vault import/export is v0.3+.
+- **The deeper "should plugins emit files at all?" critique** from Ch 32a — Crosswalker has committed to file-emission via Phase 4.5 + v0.1.8 audit trail; meta-question revisited at v0.3+ if relevant.
+
+## 11. Migration impact on current state
+
+**Test-vault has 3 queries** (per file inspection 2026-05-18): `q-2026-05-16-18d01bf9.base`, `q-2026-05-18-0baa0140.base`, `q-2026-05-18-9cc7e2d1.base` (the last regenerated multiple times during rename testing today). All have corresponding host notes with `crosswalker_query:` frontmatter. Migration is one command, ~1 second, idempotent. No user-facing scripts.
+
+**User vaults in the wild**: zero (v0.1.6 unreleased). No public migration concerns.
+
+## Related
+
+- **Ch 38 brief**: [Where does query state live? Stress-test the folder-note pattern.](/crosswalker/agent-context/zz-challenges/38-query-state-location-and-folder-note-pattern/) — archived after this log lands
+- **Ch 38 deliverables**: [Ch 38a (B′ same-name)](/crosswalker/agent-context/zz-research/2026-05-18-challenge-38-deliverable-a-same-name-folder-note/) · [Ch 38b (B+ query-pack)](/crosswalker/agent-context/zz-research/2026-05-18-challenge-38-deliverable-b-query-pack-folder/)
+- **Phase 4.5 briefing log** (the architecture being re-homed): [2026-05-15 context briefing](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/)
+- **Logging-infra slotting log** (adjacent decision): [2026-05-18 logging-infra → v0.1.8](/crosswalker/agent-context/zz-log/2026-05-18-logging-infra-slotted-into-v0-1-8/)
+- **Ch 32 deliverables** (intuitive query UX, upstream UX commitments): [32a hybrid Pattern D](/crosswalker/agent-context/zz-research/2026-05-08-challenge-32-deliverable-a-hybrid-pattern-d-with-mat-spec/) · [32b embedded-blocks](/crosswalker/agent-context/zz-research/2026-05-08-challenge-32-deliverable-b-embedded-blocks-no-mat-default/)
+- **Architectural commitments**: [Foundation completion summary](/crosswalker/agent-context/zz-log/2026-05-04-foundation-completion-summary/) — 5 + #6 Bases-not-Dataview
+- **v0.1.6 milestone hub**: [Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Phase 4.6 to be added; Phase 5 gated behind it
+- **Phase 5 milestone**: not yet open — gated by Phase 4.6 completion
+- **Terminology**: [`.base` file, embed, host note, junction note, query_id, recipe](/crosswalker/concepts/terminology/)

@@ -6,9 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-15, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 done; Phase 5 pending).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 done; **Phase 4.6 next gating Phase 5**).
 
-### v0.1.6 Phase 4.5 — Frontmatter-driven query notes + `.base` file generation + `![[embed]]` (2026-05-15, ✅ Done)
+### Ch 38 resolution + Phase 4.6 planning — Query state location synthesis (2026-05-18, 📋 Planning)
+
+Two convergent fresh-agent deliverables resolved [Challenge 38](https://cybersader.github.io/crosswalker/agent-context/zz-challenges/archive/38-query-state-location-and-folder-note-pattern/) (filed 2026-05-18, gating Phase 5). Both deliverables rejected the literal folder-note `index.md` magic-embed pattern (would require LostPaul Folder Notes community plugin, violating Commitment #3 mobile parity).
+
+**Locked: Layout B+** (per [synthesis log 2026-05-18](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-18-query-state-location-synthesis/)):
+- Per-query folders at `_crosswalker/queries/<slug>/` with `index.md` as canonical state + `view.base` as generated sibling
+- Reserved derivative subfolders: `materialized/` (Phase 5), `exports/` (v0.1.7), `snapshots/` (v0.1.8)
+- Embed format: explicit `![[<slug>/view.base]]` (no folder-note magic; vanilla Obsidian + Mobile)
+- Slug-collision: refuse-and-prompt (interactive picker) + `-<4hex>` (programmatic)
+- `query_id` is durable identity; slug is rename-safe (via Obsidian's auto-update-links)
+- Schema bump 1 → 2 records the canonical-location change
+- ~20-case edge-case policy table in synthesis log §4
+
+**Phase 4.6 (next sub-phase, ~½–1 day)** ships:
+- New `src/views/migrate-query-layout.ts` + `Crosswalker: Migrate queries to folder layout` command
+- Edits to 5 source files (frontmatter-schema, apply-query, regenerate, insert-embed, reference-base-files)
+- ~+40 new tests (slug derivation, collision policy, migration idempotency)
+- Re-homes Phase 4.5 architecture (canonical state moves; not reverted)
+
+This unblocks Phase 5 (materialization writes to `<slug>/materialized/`).
+
+### v0.1.6 Phase 4.5 — Frontmatter-driven query notes + `.base` file generation + `![[embed]]` (2026-05-15, ✅ Done; re-homed by Phase 4.6)
 
 User architecture call surfaced that Phase 4's inline ` ```base ` codeblock flow used the wrong embed syntax — Obsidian Bases' canonical embed is `![[file.base]]` (per [Bases docs](https://help.obsidian.md/Plugins/Bases)), and the query itself should live in **note frontmatter** (canonical, queryable by Bases itself, regenerable, plugin-uninstall-safe) rather than in an opaque inline codeblock. Phase 4.5 ships the corrected architecture. Phase 4's codeblock-only flow stays in git history; codeblocks already in user vaults keep working (Bases supports both syntaxes — no migration command).
 
