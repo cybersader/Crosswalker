@@ -21,6 +21,7 @@ import type { Editor } from 'obsidian';
 
 export type InsertResult =
 	| { ok: true; insertedAt: { line: number; ch: number }; reason: 'after-line' | 'after-frontmatter' | 'after-code-block' }
+	| { ok: true; insertedAt: { line: number; ch: number }; reason: 'already-present' }
 	| { ok: false; reason: 'no-editor' | 'unknown-error'; error?: string };
 
 /**
@@ -206,10 +207,10 @@ export function insertEmbedAtCursor(
 		const content = editor.getValue();
 		const embed = buildEmbed(vaultPath);
 
-		// Idempotent check — don't add a second embed if one already exists
+		// Idempotent check — surface "already-present" so callers can give honest feedback
 		if (noteContainsEmbed(content, vaultPath)) {
 			const cursor = editor.getCursor();
-			return { ok: true, insertedAt: cursor, reason: 'after-line' };
+			return { ok: true, insertedAt: cursor, reason: 'already-present' };
 		}
 
 		// Same cursor-aware insertion policy as `insertBaseBlock` — frontmatter

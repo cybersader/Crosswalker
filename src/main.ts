@@ -308,9 +308,12 @@ export default class CrosswalkerPlugin extends Plugin {
 							return;
 						}
 						const insertResult = insertEmbedAtCursor(editor, result.viewFile);
-						if (insertResult.ok) {
-							this.debug.info('view', 'embed-inserted', `Embed inserted at cursor`, { slug: result.slug, host: file.path });
-							new Notice(`Embedded query: ${result.slug}`, 4000);
+						if (insertResult.ok && insertResult.reason === 'already-present') {
+							this.debug.info('view', 'embed-already-present', `Query already embedded in note`, { slug: result.slug, host: file.path });
+							new Notice(`Query "${result.slug}" is already embedded in this note.`, 5000);
+						} else if (insertResult.ok) {
+							this.debug.info('view', 'embed-inserted', `Embed inserted at cursor`, { slug: result.slug, host: file.path, position: insertResult.reason });
+							new Notice(`Embedded "${result.slug}" at cursor.`, 4000);
 						} else {
 							this.debug.warn('view', 'embed-insert-failed', `Could not insert embed`, { reason: insertResult.reason });
 							new Notice(`Could not insert embed: ${insertResult.reason}`, 6000);
@@ -339,9 +342,14 @@ export default class CrosswalkerPlugin extends Plugin {
 						insertEmbed: async (slug, viewFile) => {
 							if (!editor) return;
 							const r = insertEmbedAtCursor(editor, viewFile);
-							if (r.ok) {
-								new Notice(`Embedded query: ${slug}`, 4000);
+							if (r.ok && r.reason === 'already-present') {
+								this.debug.info('view', 'embed-already-present', `Query already embedded in note (from Browse)`, { slug, host: activeFile?.path });
+								new Notice(`Query "${slug}" is already embedded in this note.`, 5000);
+							} else if (r.ok) {
+								this.debug.info('view', 'embed-inserted', `Embed inserted at cursor (from Browse)`, { slug, host: activeFile?.path, position: r.reason });
+								new Notice(`Embedded "${slug}" at cursor.`, 4000);
 							} else {
+								this.debug.warn('view', 'embed-insert-failed', `Could not embed from Browse`, { reason: r.reason });
 								new Notice(`Could not embed: ${r.reason}`, 6000);
 							}
 						},
