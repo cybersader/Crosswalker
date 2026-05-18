@@ -26,12 +26,15 @@ Implement the v0.1 [audit trail](/crosswalker/concepts/terminology/) floor — [
 - Ed25519 release-manifest signing — when a user publishes a Tier 1 bundle, optionally sign with their Ed25519 key; signature lives in `_crosswalker_manifest.json` at vault root
 - FRE 902(13) PDF certification — on-demand generation of a compliance-export certification template suitable for evidence submission in US litigation
 - Settings toggle — "Sign on commit" + key-management UX (point at git config or OS keychain; don't reinvent)
+- **Logging-infrastructure production-hardening sub-phase** — the wide-event NDJSON substrate from [Phase 3.5a/b/c](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/) is the same shape as the audit trail itself (`{ts, level, category, op, msg, trace_id, ...}`). Consolidate them into one substrate. See dedicated section below.
 
 **Out:**
 - T2 / T3 audit profiles (OpenTimestamps, RFC 3161, Sigstore Rekor v2 + in-toto, eIDAS QTSA + W3C VC) — opt-in compliance-export mode for v1.0+
 - PQC dual-sign migration — 2027+ work per [NIST IR 8547 timeline](/crosswalker/reference/roadmap/#performance--v10-companion-plugins)
 
 ## Concrete tasks
+
+### Audit trail (primary scope)
 
 - [ ] Git integration — `src/audit/git-commit.ts`; uses `simple-git` or shells out to system git; produces deterministic commit messages
 - [ ] Ed25519 sign helper — `src/audit/sign.ts`; `@noble/curves` or equivalent; uses key from settings (path-to-PEM or OS keychain reference)
@@ -40,6 +43,18 @@ Implement the v0.1 [audit trail](/crosswalker/concepts/terminology/) floor — [
 - [ ] Settings UI — toggle for "Sign on commit"; key-source selector (git config, file path, keychain)
 - [ ] Tests — sign + verify roundtrip; commit-on-write produces consistent message; FRE 902(13) renders without errors
 
+### Logging-infrastructure production-hardening sub-phase
+
+**Rationale**: the audit trail and the wide-event debug log are the same substrate. Phase 3.5a/b/c shipped a solid NDJSON wide-event logger (`src/utils/debug.ts`, 422 LOC, trace correlation via `withTrace`, categories, levels). For v0.1.8 we promote it from "debug-only" to "production-grade observability" by closing four gaps surfaced during Phase 4.5 testing (2026-05-18):
+
+- [ ] **Bundle stripping** — add esbuild `define` flag (`__DEBUG__`); wrap trace/info-level emit sites in `if (__DEBUG__)`; production build (`bun run build`) strips the verbose emit code, keeping only error/warn paths. Bundle audit before vs. after — current `main.js` is ~650KB; target 50KB+ reduction.
+- [ ] **Log rotation** — cap at `MAX_LOG_LINES` setting (default ~10k); when exceeded, archive oldest half to `crosswalker-debug.log.1` and truncate primary file. Prevents indefinite growth in long-lived vaults.
+- [ ] **Settings surface** — expose `logLevel: 'error' | 'warn' | 'info' | 'trace'` dropdown in settings tab; default `info`. Power users + bug reporters can crank to `trace`; everyone else gets quiet logs.
+- [ ] **"Copy redacted log slice for bug report" command** — palette command that grabs the last N events, scrubs absolute paths + usernames + email-shaped strings, and copies the JSON array to clipboard. Lowers OSS issue-triage friction.
+- [ ] **Audit-log promotion** — the audit-trail events from this milestone (`audit/commit-written`, `audit/signed`, `audit/manifest-published`) emit through the same `DebugLog` substrate but to a separate `crosswalker-audit.log` file (NDJSON, non-rotating, non-stripped). One logger, two output streams — same JSON shape both places.
+
+Total estimated effort: ~6 hours (separate commit from the audit-trail primary work).
+
 ## Success criteria
 
 - [ ] Every successful generation pass produces exactly one git commit with deterministic message
@@ -47,6 +62,7 @@ Implement the v0.1 [audit trail](/crosswalker/concepts/terminology/) floor — [
 - [ ] FRE 902(13) PDF includes all required fields per the FRE 902(13) statutory text
 - [ ] Settings toggle off → no signing (opt-in)
 - [ ] No Tier 2/Tier 3 audit dependencies in v0.1.8 — all that's deferred to opt-in compliance-export mode
+- [ ] **Logging sub-phase**: production `main.js` size drops measurably after `__DEBUG__` stripping; log rotation prevents `crosswalker-debug.log` from growing past `MAX_LOG_LINES`; `logLevel` setting works end-to-end; "Copy redacted log slice" command produces clipboard JSON with no absolute paths or usernames
 
 ## Files to touch
 

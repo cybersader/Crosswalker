@@ -1,0 +1,77 @@
+---
+title: "Logging-infra production-hardening slotted into v0.1.8"
+description: "Decision to fold logging-infrastructure production-hardening (bundle stripping, log rotation, settings surface, redacted-bug-report command) into v0.1.8 alongside the audit trail — same NDJSON wide-event substrate."
+sidebar:
+  order: -20260518
+  label: "Logging infra → v0.1.8"
+tags: [log, v0-1-8, logging, audit-trail, observability, roadmap]
+date: 2026-05-18
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## TL;DR
+
+The Phase 3.5a/b/c NDJSON wide-event logger ([`src/utils/debug.ts`](https://github.com/cybersader/Crosswalker/blob/main/src/utils/debug.ts), 422 LOC) is solid and load-bearing — Phase 4.5 testing on 2026-05-18 surfaced its full value when diagnosing the picker rename. Four gaps remain to make it **production-grade observability** rather than dev-only debugging. We slot the closure of those gaps into [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) because the audit trail is the same NDJSON wide-event substrate; one logger, two output streams.
+
+## Context (2026-05-18)
+
+During post-rename validation of the `crosswalker:` → `crosswalker_query:` frontmatter key (see [Phase 4.5 briefing log](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/)), user testing surfaced friction:
+
+1. **Plugin reload confusion** — `Ctrl+R` in dev console wasn't reloading the plugin reliably; only Settings → toggle off/on actually unloaded the JS module. The debug log made this diagnosable in ~30 seconds (the `view/query-applied` event showed old `crosswalker:` key still being written despite rebuild) but the user didn't know to check the log.
+2. **No production-mode stripping** — `bun run build` ships the full DebugLog runtime in user vaults. Bundle is ~650 KB; verbose-path code accounts for ~50 KB that 99% of users never need.
+3. **No log rotation** — the `crosswalker-debug.log` file in test-vault is at 1378 events after a few days of development; long-lived user vaults would grow indefinitely.
+4. **No "share my log" affordance** — when a user reports a bug on GitHub, there's no friction-free way to grab the relevant last-N events with absolute paths + usernames + email-shaped strings stripped.
+
+User direction: *"we should definitely form a durable practical, SCALABLE approach to logging if we haven't already... crucial to have awesome testing and traceable logging."*
+
+## What we have (Phase 3.5a/b/c shipped 2026-05-10)
+
+| Piece | Status |
+|---|---|
+| NDJSON wide-event schema: `{ts, level, category, op, msg, trace_id, span_id, parent_span_id, duration_ms, ...freeform}` | ✅ shipped |
+| Trace propagation via explicit `withTrace(id, fn)` + `span()` (no AsyncLocalStorage) | ✅ shipped |
+| Categories — `view`, `wizard`, `generation`, `tier2`, `sssom`, `recipe`, `legacy`, etc. | ✅ consistent across codebase |
+| Levels — `error / warn / info / trace` | ✅ shipped |
+| Output — `crosswalker-debug.log` at vault root | ✅ working |
+| Agent-readable — `cat crosswalker-debug.log \| jq 'select(.category=="view")'` | ✅ this is the design goal |
+| Backward-compat — old `.log()` + `.error()` keep working (Phase 3.5c sweep done 2026-05-11) | ✅ shipped |
+
+## What we need (v0.1.8 sub-phase)
+
+| Gap | Fix | Estimated effort |
+|---|---|---|
+| Bundle includes DebugLog runtime in production | esbuild `define: { __DEBUG__: !prod }`; wrap trace/info emit sites in `if (__DEBUG__)`; bundle audit | ~1.5 h |
+| Log grows indefinitely | `MAX_LOG_LINES` setting (default 10k); archive oldest half to `.1` rotation file when exceeded | ~1 h |
+| No verbosity control surfaced | `logLevel: 'error' \| 'warn' \| 'info' \| 'trace'` dropdown in settings tab; default `info` | ~30 min |
+| No "copy redacted last N for bug report" | Palette command; scrub absolute paths via `app.vault.adapter.basePath`, usernames via `os.userInfo()`, email-shaped strings via regex; copy JSON array to clipboard | ~2 h |
+| Audit-trail events should ride same substrate | `crosswalker-audit.log` as a second non-rotating, non-stripped output stream from same `DebugLog`; one logger, two destinations | ~1 h |
+
+Total ~6 hours, single sub-phase commit.
+
+## Why v0.1.8 and not earlier
+
+| Milestone | Fit | Reason |
+|---|---|---|
+| Phase 5 (Materialization + sparse-pivot guard) | ❌ | Off-topic — Phase 5 is about pivot semantics |
+| v0.1.7 (Exporters STRM/OSCAL/SSSOM) | ❌ | Different concern |
+| **v0.1.8 (Audit trail T1 default)** | ✅ | **Natural pairing — audit trail is the same NDJSON wide-event substrate; consolidate now or duplicate later** |
+| v0.1-RC (Bundle and ship) | ⚠️ | Bundle-strip belongs here per "production hardening" lens, but the rotation/settings/redact work has weight before then. Slotting in v0.1.8 lets RC focus on polish + ship checklist. |
+
+## What this respects / doesn't change
+
+- **Architectural commitment #1 (schema-as-primitive)** — the wide-event NDJSON schema is itself a Tier 1 schema-as-primitive moment; any external tool can emit valid events. v0.1.8 makes that more explicit.
+- **No new dependencies** — bundle stripping uses esbuild `define` (built-in); rotation is plain `vault.adapter.read/write`; clipboard is Obsidian's `navigator.clipboard.writeText`.
+- **Phase 4.5 substrate untouched** — `withTrace` + `span()` + categories all work as-is; this is additive.
+
+## Pacing note
+
+This work blocks behind v0.1.7 (Exporters) per existing roadmap. Don't pull it forward unless v0.1.7 slips significantly. The audit-trail-and-logging consolidation is the right pairing.
+
+## Related
+
+- [v0.1.8 — Audit trail T1 default](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — milestone page (updated with this sub-phase)
+- [Phase 4.5 briefing log](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/) — substrate the logger supported during this testing cycle
+- [Phase 3.5 milestone work](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — where DebugLog originated
+- [`src/utils/debug.ts`](https://github.com/cybersader/Crosswalker/blob/main/src/utils/debug.ts) — current logger
+- [Terminology — audit trail](/crosswalker/concepts/terminology/) — T1/T2/T3 audit profiles
