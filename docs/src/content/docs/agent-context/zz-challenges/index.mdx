@@ -58,6 +58,10 @@ The 2026-05-08 alignment review surfaced that the synthesis log had drifted GRC-
 
 **Rerun convention**: original briefs (Ch 10/12/18) stay archived as historical record. Each rerun is a NEW brief with a fresh Ch number that explicitly anchors to the original as predecessor and frames "what's different now". Original deliverables preserved verbatim; reruns produce NEW deliverables that may revise prior verdicts.
 
+### Filed 2026-05-18 — Phase 4.5 architecture stress-test (gates Phase 5)
+
+- [Challenge 38: Where does query state live? Stress-test the folder-note pattern.](/crosswalker/agent-context/zz-challenges/38-query-state-location-and-folder-note-pattern/) — **v0.1.6 inflection point.** Phase 4.5 just shipped a flat layout (frontmatter on host note + `.base` in `_crosswalker/views/`). User surfaced an alternative: per-query folder-note (`_crosswalker/queries/<slug>/index.md` + `view.base`). The choice affects Phase 5 (where do materialized derivatives live?), v0.1.7 (where do per-query exports live?), v0.1.8 (where does per-query audit trail live?). Stress-tests: regenerability of all per-query state from `recipe + params`; UX consequences of 3 layouts (flat / folder-note / hybrid); slug-collision policy; the "no separate folder" steelman; mobile + Publish parity. Gates Phase 5.
+
 ## Archived (resolved)
 
 Challenges that have been resolved by a research deliverable and a corresponding log entry. The brief itself is preserved (re-runnable) — see each archived file for the resolution callout pointing to the resolving log.

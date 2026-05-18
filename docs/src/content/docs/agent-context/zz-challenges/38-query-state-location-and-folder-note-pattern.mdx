@@ -1,0 +1,210 @@
+---
+title: "Challenge 38: Where does query state live? Stress-test the folder-note pattern."
+description: "Adversarial assessment of where the durable state of a Crosswalker query should live in the vault. Current model (flat frontmatter on host note + .base in views/) vs proposed folder-note pattern (one folder per query, index.md is the canonical state, .base sibling, room for snapshots/exports/materialized derivatives) vs hybrid. Inflection point for query UX and Phase 5+ state growth."
+tags: [research, ux, query-ux, folder-notes, query-state, ch-38, v0-1-6]
+date: 2026-05-18
+sidebar:
+  label: "38 · Query state location"
+  order: 38
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[v0.1.6 inflection point]
+This challenge affects the Phase 4.5 architecture **just shipped 2026-05-15** and the Phase 5 architecture **about to start**. Phase 5's materialization + sparse-pivot work needs to know where to put per-query derivative artifacts. A wrong commitment here costs rework across v0.1.6 → v0.1.8. Run **before Phase 5 starts**.
+:::
+
+## Why this exists
+
+During Phase 4.5 testing on 2026-05-18, the user surfaced two UX intuitions that pointed at a deeper architectural question:
+
+1. *"An embed is just `!` + wikilink. It shouldn't be something that gets checked — you're just referencing the .base. So it should be a lot easier to reference the base."*
+2. *"It could merely create a query note that stores everything (as a folder note btw). Is `recipe + params` enough to regenerate anything in any one of the backend tiers, or does some logic need to reside in other forms?"*
+
+These are the same question from two angles: **where does the durable state of a query live in the vault, and how does that location shape the UX of authoring + embedding + browsing queries?**
+
+The current model (shipped Phase 4.5):
+
+```
+Test Query 2.md (host note authored by user)
+  ↳ frontmatter: crosswalker_query: { query_id, recipe, params, view_file, ... }
+  ↳ body: ![[_crosswalker/views/q-2026-05-18-<id>.base]]
+
+_crosswalker/views/
+  ├── coverage-matrix.base       (Phase 3 reference example)
+  ├── q-2026-05-18-9cc7e2d1.base (generated from Test Query 2's frontmatter)
+  └── q-2026-05-18-<other>.base  (generated from another host note)
+```
+
+The user's proposed alternative:
+
+```
+_crosswalker/queries/csf-to-800-53-coverage/    (folder note)
+  ├── index.md                                   (crosswalker_query: frontmatter — canonical)
+  ├── view.base                                  (generated from index.md frontmatter)
+  └── (future siblings: snapshots/, materialized/, exports/, ...)
+```
+
+Embed from anywhere: `![[csf-to-800-53-coverage]]` (folder-note embed) or `![[csf-to-800-53-coverage/view.base]]` (direct .base embed).
+
+## The user's theoretical lean (as of 2026-05-18)
+
+Folder-note pattern B sounds right *theoretically* but explicitly wants this stress-tested before commitment. Concern: **collision-suffix handling needs to be accounted for**. The user did not lock in.
+
+## What to investigate
+
+### 1. Is `recipe + params` sufficient to regenerate everything durable about a query?
+
+The current internal analysis (Crosswalker dev session 2026-05-18) concluded yes:
+
+| Artifact | Regenerable from? |
+|---|---|
+| `.base` file YAML body | `recipe + params` via deterministic `renderRecipeTemplate()` |
+| Closure cache (which junctions reach which through which paths) | Tier 1 data, not query — lives in Tier 2 sidecar |
+| Materialized pivot result (Phase 5) | `recipe + params + data + closure` — derivative, regenerable |
+| Audit trail (when last run, against what snapshot) | Separate concern (v0.1.8) |
+| Bases-rendered cells the user sees | Computed at view time by Bases plugin |
+
+**Stress-test this conclusion.** Find cases where some derivative is NOT regenerable from `recipe + params`. Examples to investigate:
+
+- Custom Bases overrides the user makes to the `.base` file directly — if they hand-edit, where do those edits go and how do they survive `Refresh query views`?
+- Per-query view configuration (column widths, sort orders, filter overrides at view time) — does Bases store these in the `.base` file or in user vault `.obsidian/` state, and how does our regeneration handle that?
+- Multiple shapes of the same recipe + params (e.g. user wants to see the same coverage data as both a pivot AND a list — do they author two queries, or one with multiple views?)
+- Saved snapshots of a query result at a point in time (audit lineage — v0.1.8 territory but might shape the schema now)
+- Comments / annotations / TODOs the user attaches to a query — these are NOT regenerable
+- LLM-authored prose explanations of a query that the user wants to keep alongside
+
+For each case, decide: should it live in the query state? Or somewhere else? Or not at all (out of scope for v0.1)?
+
+### 2. Three alternative layouts — stress-test each
+
+**Layout A: Flat (current Phase 4.5 model)**
+```
+<host-note>.md  ← crosswalker_query: frontmatter is canonical
+_crosswalker/views/q-<id>.base  ← generated
+```
+- Where do snapshots/exports/annotations live? Currently: nowhere.
+- What happens when 5 different host notes all want to embed the same query? Currently: 5 separate frontmatter blocks + 5 separate `.base` files (all functionally identical) — vault pollution + drift risk.
+- What's the "browse all my queries" UX? Currently: scan vault for `crosswalker_query:` frontmatter (Bases query) — works but conflates host notes with query definitions.
+
+**Layout B: Folder-note (user's proposal)**
+```
+_crosswalker/queries/<slug>/
+  ├── index.md  ← crosswalker_query: frontmatter is canonical
+  └── view.base ← generated
+```
+- Slug collisions: user wants "Coverage Matrix" but slug already exists → suffix `-2`, `-3`, OR refuse to create OR prompt user for a new slug? What's the canonical resolution policy?
+- Folder-note semantics in Obsidian: how does `![[csf-to-800-53-coverage]]` (folder embed) compare to `![[csf-to-800-53-coverage/view.base]]` (.base embed) in practice? Does Bases render the folder-note embed correctly?
+- Mobile parity: does folder-note rendering work on Obsidian Mobile? (Commitment #3.)
+- Multi-vault sync (Obsidian Sync / git): does the folder structure survive sync without quirks?
+- Bulk operations: how does the user move/duplicate/delete a query? Folder operations are clean — but what's the picker UX for "rename this query"?
+- What happens when a user manually edits `view.base` instead of `index.md` frontmatter? Phase 4.5's regenerator overwrites manual edits — does that still feel right when the file is inside its query's own folder (vs. an opaque `views/` dump)?
+
+**Layout C: Hybrid (folder-note canonical + back-pointer frontmatter on host)**
+```
+_crosswalker/queries/<slug>/
+  └── index.md  ← canonical query state
+<host-note>.md
+  ├── crosswalker_query_refs: ["<slug>"]  ← back-pointer (NEW field, not crosswalker_query)
+  └── body: ![[<slug>]]
+```
+- Two-source drift risk: if the canonical state moves to the folder, the host-note back-pointer drifts the moment a query is moved/renamed.
+- What's the UX benefit of the back-pointer? "This note authored this query" — but is that valuable enough to justify the drift cost?
+- Refactor cost: every code path that reads frontmatter needs updating.
+
+### 3. UX consequences — what does each layout make easy or hard?
+
+For each layout, walk through these UX scenarios and grade them:
+
+| Scenario | A (Flat) | B (Folder-note) | C (Hybrid) |
+|---|---|---|---|
+| Create a new query | ? | ? | ? |
+| Embed an existing query in a new note | ? | ? | ? |
+| Browse all queries in the vault | ? | ? | ? |
+| Rename a query | ? | ? | ? |
+| Delete a query (and clean up dangling embeds) | ? | ? | ? |
+| Copy a query to another vault | ? | ? | ? |
+| Author per-query annotations / notes | ? | ? | ? |
+| Show "where is this query embedded?" backlinks | ? | ? | ? |
+| Re-run picker on a query (UPDATE flow) | ? | ? | ? |
+| Diff two queries (what changed in params over time) | ? | ? | ? |
+| Pin a query to a graph view | ? | ? | ? |
+
+Fill in each cell with a 1-line judgment + reasoning. The pattern with the most consistent ✅ across realistic v0.1 → v0.3 UX scenarios wins.
+
+### 4. Phase 5+ state growth — what derivative artifacts will Phase 5 / v0.1.7 / v0.1.8 generate per-query?
+
+- **Phase 5** (materialization + sparse-pivot guard): per-query materialized result JSON; rebuild-needed flag; staleness marker
+- **v0.1.7** (exporters): per-query OSCAL XML / SSSOM TSV / STRM JSON export artifacts
+- **v0.1.8** (audit trail): per-query audit log (when run, against what snapshot, with what closure cache state, signed)
+
+For each, ask: where does it live in each of the 3 layouts? Does the layout scale to v0.3 (multi-vault federation, marketplace) and v1.0 (companion plugins)? Note any layout that becomes hostile to a future state-growth need.
+
+### 5. Anti-patterns to surface
+
+- **"Smart" folder-note auto-creation when not asked** — surprising users with new folders
+- **Slug collisions that silently rename** — user creates "Coverage" twice, second one becomes "Coverage-2", user can't find it
+- **Folder embeds that don't render in mobile or Publish** — breaks commitment #3
+- **Renames that orphan embeds** — `![[old-slug]]` left dangling when slug renamed
+- **Drift between canonical state and back-pointer in hybrid layout C**
+- **Vault-pollution complaints**: how many files does the average user end up with after creating 10 queries across 3 frameworks? Each layout's footprint matters.
+
+### 6. The "no separate folder" critique (steelman the contrarian)
+
+Argue for a simpler model than all three:
+- The query is *just* a `.base` file at the user's chosen path. No frontmatter on host notes. No folder. No `_crosswalker/queries/` directory.
+- Picker writes a `.base` file wherever the user picks (default: same directory as host note, or `_crosswalker/queries/`).
+- Embed via `![[file.base]]` — done.
+- Recipe + params are NOT stored — recipe is implicit in the rendered `.base` content; params are baked into filters/views/formulas.
+- "Re-edit a query" = open the `.base` file, hand-edit, save.
+
+Why is this worse than all three layered models? Or — is it actually better, and we've been over-engineering? What does this lose us?
+
+### 7. Cross-references to existing decisions
+
+- [Ch 27 + 28 deliverables](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) — locked Pattern B+D (junction notes + recipe-driven emission)
+- [Ch 32 deliverables A+B](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/) — locked hybrid Pattern D (recipe picker + wizard for novel + raw YAML escape); shipped 2026-05-15 in Phase 4
+- [Phase 4.5 briefing log](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/) — locked frontmatter + `.base` + `![[embed]]` architecture; **this is the current state being stress-tested**
+- [Commitment #2 — closed 5-mechanism recipe grammar](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — `render(Recipe, ConceptIdentity) → Address` is the single coupling point. Any layout choice must preserve this.
+- [Commitment #5 — runtime-agnostic recipe schema](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#4-the-most-important-commitment-runtime-agnostic-recipe-schema) — any layout must preserve "anyone emitting valid Tier 1 + frontmatter is a first-class producer."
+- [Logging-infra slotting log](/crosswalker/agent-context/zz-log/2026-05-18-logging-infra-slotted-into-v0-1-8/) — adjacent decision; not in conflict.
+
+## Success criteria for the deliverable
+
+A successful deliverable will:
+
+1. **Resolve the regenerability question** — explicitly enumerate every state-shaped artifact in the query lifecycle (v0.1 → v0.3) and state for each: "regenerable from `recipe + params + data`?" yes/no, with reasoning.
+2. **Score the 3 layouts** — fill in the UX scenario table from §3 (or extend with additional scenarios surfaced during research).
+3. **Address all anti-patterns from §5** — for the recommended layout, state how it avoids each anti-pattern OR concede where it doesn't and why.
+4. **Stress-test the slug-collision policy specifically** — propose 2-3 alternative policies (auto-suffix / refuse-and-prompt / require-user-input upfront / use-opaque-IDs-not-slugs); recommend one with reasoning.
+5. **Address the "no separate folder" steelman from §6** — engage seriously; either adopt it, or articulate exactly what it loses.
+6. **Make a recommendation** — A vs B vs C vs the simpler steelman OR a fourth path not yet considered. Defend the recommendation against the strongest objection to it.
+7. **Map Phase 5 / v0.1.7 / v0.1.8 state growth onto the recommendation** — for each of the future per-query derivatives, state where it lives in the recommended layout.
+8. **Include a migration plan** — concrete steps to move from current Phase 4.5 state (flat layout) to recommended layout, with the impact on existing user vaults (test-vault has ~3 queries already; minor scale but the pattern matters).
+
+## Anti-patterns for the deliverable itself
+
+- **"Both have tradeoffs, depends on the team"** — refuse to recommend. Take a position.
+- **Recommend a layout without resolving slug collisions** — the user explicitly flagged this; non-negotiable.
+- **Ignore Phase 5+ state growth** — the whole reason this challenge exists is to commit to a shape that scales to future state.
+- **Conflate "where the state lives" with "what the UX commands look like"** — keep these separable concerns; this challenge is about state location, not modal design.
+- **Reference Phase 4.5 as locked-in** — Phase 4.5 is the *current* state being stress-tested. The deliverable may recommend changing it.
+
+## How to use the deliverable
+
+When the deliverable lands at `zz-research/YYYY-MM-DD-challenge-38-<slug>.md`:
+
+1. Read the recommendation
+2. Decide accept / reject / refine in conversation with user
+3. Write a synthesis log at `zz-log/YYYY-MM-DD-query-state-location-synthesis.mdx` capturing the locked decision
+4. If accepted: refactor Phase 4.5 to the new layout BEFORE Phase 5 starts (Phase 4.6 sub-phase)
+5. If rejected: document why in synthesis log and lock current Phase 4.5 model as the canonical
+
+## Related
+
+- [Phase 4.5 briefing log](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/) — current architecture being stress-tested
+- [Challenge 32 — Intuitive query UX](/crosswalker/agent-context/zz-challenges/32-intuitive-query-ux/) — adjacent UX decision space
+- [Challenges 27 + 28 — Bases query layer architecture](/crosswalker/agent-context/zz-challenges/27-bases-query-layer-architecture/) — upstream architectural lock
+- [v0.1.6 milestone — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Phase 5 about to start; this challenge gates that
+- [v0.1.8 — Audit trail](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — future per-query state needs to fit
+- [Terminology — `.base` file, embed, host note, junction note](/crosswalker/concepts/terminology/)
