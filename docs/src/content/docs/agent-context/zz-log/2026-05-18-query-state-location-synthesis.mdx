@@ -10,6 +10,15 @@ date: 2026-05-18
 
 import { Aside } from '@astrojs/starlight/components';
 
+## Where this log fits in the query-engine mental model
+
+- **Layer A — Query primitives** (the verbs; mechanism-neutral): `filter / project / traversal / closure / anti-join / pivot / aggregate` + joins (inner / left / right / full / anti)
+- **Layer B — View shapes** (the visuals; mechanism-neutral): `table / list / pivot / hierarchy / graph / timeline`
+- **Layer C — Recipes** (compositions; user-facing): primitives + shape + params (e.g. "Coverage Matrix" = filter + traverse + anti-join + pivot)
+- **Mechanism axis** (Obsidian rendering): Bases-native / registerBasesView custom view / codeblock processor / materialized snapshot
+
+**This log decides where query STATE lives** (the durable artifact backing Layer C recipes); see [Phase 5 scope log](/crosswalker/agent-context/zz-log/2026-05-18-phase-5-scope-join-primitive-substrate/) for where the Layer A primitive *implementations* live.
+
 ## TL;DR
 
 **Layout B+ locked** — every Crosswalker query is a per-query folder under `_crosswalker/queries/<slug>/` with `index.md` as canonical state and `view.base` as generated sibling. Embeds are always **explicit** path-qualified `![[<slug>/view.base]]`. The host note (the user-authored note that *displays* the query) gets no frontmatter from the plugin — just the embed. The folder is the durable envelope for Phase 5 materialization, v0.1.7 exports, and v0.1.8 audit snapshots.

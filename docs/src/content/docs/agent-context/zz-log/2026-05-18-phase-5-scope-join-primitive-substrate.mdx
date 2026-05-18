@@ -10,6 +10,18 @@ date: 2026-05-18
 
 import { Aside } from '@astrojs/starlight/components';
 
+## Mental model — 4 layers (memorize this)
+
+- **Layer A — Query primitives** (the verbs; mechanism-neutral)
+  - `filter / project / traversal / closure / anti-join / pivot / aggregate` produce row sets from the ontology web
+  - `joins` (inner / left / right / full / anti) combine two row sets — anti-join is also Layer A primitive #5
+- **Layer B — View shapes** (the visuals; mechanism-neutral)
+  - `table / list / pivot / hierarchy / graph / timeline` render a row set as a specific visual
+- **Layer C — Recipes** (compositions; user-facing)
+  - One recipe = picked primitives + picked shape + params (e.g. "Coverage Matrix" = filter + traverse + anti-join + pivot)
+- **Mechanism axis** (how the visual actually renders in Obsidian)
+  - `Bases-native / registerBasesView custom view / codeblock processor / materialized snapshot`
+
 ## TL;DR
 
 Phase 5 scope was too narrow ("materialization + sparse-pivot guard + outer-join pivot semantics"). User correction (2026-05-18, late session): the query system handles **many data shapes and join types** — left / right / full-outer / anti-join are siblings of inner-join; pivot is one of several view shapes (table / list / pivot / hierarchy / timeline) that all consume the same join + filter + aggregate primitives.
