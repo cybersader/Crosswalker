@@ -6,9 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 done; **Phase 4.6 next gating Phase 5**).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + **4.6** ✅ done; Phase 5 next, unblocked).
 
-### Ch 38 resolution + Phase 4.6 planning — Query state location synthesis (2026-05-18, 📋 Planning)
+### v0.1.6 Phase 4.6 — Query-state-location refactor (Layout B+) (2026-05-18, ✅ Done)
+
+Implementation of the Ch 38 synthesis decision. Re-homes the Phase 4.5 architecture from "frontmatter on host note + flat `.base` in views/" to "per-query folder under `_crosswalker/queries/<slug>/` with `index.md` as canonical state + `view.base` as generated sibling + reserved derivative subfolders."
+
+**Schema bump 1 → 2:**
+- New required `slug` field (kebab-case ASCII, max 48 chars)
+- New `view_file` path pattern: `_crosswalker/queries/<slug>/view.base` (replaces flat `_crosswalker/views/<query_id>.base`)
+- v1 backward-compat reader (`validateQueryFrontmatterV1`) preserved for one minor version; migration command converts on user trigger
+
+**New modules:**
+- `src/views/query-frontmatter-schema.ts` v2: + `slugify()` (kebab-case + reserved-names + max-length + fallback-to-`query-<id8>`); + `addCollisionSuffix()` (`-<4hex>` for programmatic); + `queryFolderFor()` / `indexFileFor()` / `viewFileFor()` / `legacyViewFileFor()` path helpers
+- `src/views/migrate-query-layout.ts` (NEW): one-shot idempotent migration. For each host note with v1 `crosswalker_query:` frontmatter, creates `_crosswalker/queries/<slug>/{index.md, view.base}`, rewrites embeds in the host, optionally renames host frontmatter to `crosswalker_query_legacy:` (default) or strips it
+- `src/views/apply-query-to-note.ts` rewritten: writes to canonical folder; supports `existingSlug` (UPDATE flow) + `collisionMode` (`refuse` / `auto-suffix` / `force-new`); host note gets only the embed at cursor — NO frontmatter
+
+**Updated modules:**
+- `src/views/regenerate-query-views.ts`: walks `_crosswalker/queries/**/index.md` only; counts legacy v1 host-note frontmatter for migration prompting via `legacyDetected`
+- `src/views/insert-base-block.ts`: `buildEmbed()` strips `_crosswalker/queries/` prefix → emits short `![[<slug>/view.base]]` form; `noteContainsEmbed()` recognizes both forms
+- `src/views/recipe-picker-modal.ts`: PickerAction includes `recipeName` (for slug derivation)
+- `src/views/reference-base-files.ts`: SKILL.md rewritten to teach Layout B+
+- `src/main.ts`: new `crosswalker:migrate-query-layout` command; `insert-query-into-note` checks for legacy v1 frontmatter on host and blocks with Notice "Migrate first"
+
+**Commands added/changed:**
+- NEW: `Crosswalker: Migrate queries to folder layout` — one-shot idempotent migration
+- CHANGED: `Crosswalker: Insert query into note` — Layout B+ CREATE flow with `auto-suffix` collision mode (default in picker)
+
+**Tests:** +33 net new (24 suites / 392 tests / all pass). New file: `tests/slug-derivation.test.ts` (21 tests). Updated: `tests/query-frontmatter-schema.test.ts`, `tests/query-frontmatter-io.test.ts`, `tests/apply-query-to-note.test.ts`, `tests/regenerate-query-views.test.ts`.
+
+**Edge cases handled** (per synthesis log §4): slug derivation (kebab-case, reserved names, length, fallback), CREATE collision (refuse/auto-suffix), UPDATE preserves `query_id` + `slug`, idempotent regenerator, legacy v1 detection, malformed frontmatter graceful error.
+
+### Ch 38 resolution + Phase 4.6 planning — Query state location synthesis (2026-05-18, ✅ Resolved)
 
 Two convergent fresh-agent deliverables resolved [Challenge 38](https://cybersader.github.io/crosswalker/agent-context/zz-challenges/archive/38-query-state-location-and-folder-note-pattern/) (filed 2026-05-18, gating Phase 5). Both deliverables rejected the literal folder-note `index.md` magic-embed pattern (would require LostPaul Folder Notes community plugin, violating Commitment #3 mobile parity).
 

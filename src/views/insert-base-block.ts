@@ -138,31 +138,43 @@ export function buildBaseBlock(yamlBody: string): string {
 }
 
 /**
- * Build a canonical `![[file.base]]` embed for a vault-relative path to a
- * `.base` file. Per Obsidian Bases docs — this is the Bases-native embed
- * syntax. Renders inline when the note is viewed.
+ * Build a canonical `![[<slug>/view.base]]` embed for a Layout B+ query path.
+ * If the path is `_crosswalker/queries/<slug>/view.base`, emit the short form
+ * `![[<slug>/view.base]]` (Obsidian resolves this via shortest-path-when-possible).
+ * Otherwise emit the path as-is.
  *
- * Phase 4.5 uses this instead of `buildBaseBlock` for new queries.
+ * Phase 4.6 (Layout B+) — uses short-form embeds; Phase 4.5 paths (legacy
+ * `_crosswalker/views/q-<id>.base`) fall through to as-is rendering for
+ * migration-period compatibility.
  */
 export function buildEmbed(vaultPath: string): string {
-	// Strip leading `./` if present; Obsidian wikilinks use vault-relative paths.
 	const normalized = vaultPath.replace(/^\.\//, '');
+	const queriesPrefix = '_crosswalker/queries/';
+	if (normalized.startsWith(queriesPrefix)) {
+		// Strip the canonical prefix → `<slug>/view.base`
+		const stripped = normalized.slice(queriesPrefix.length);
+		return `![[${stripped}]]`;
+	}
 	return `![[${normalized}]]`;
 }
 
 /**
  * Check whether the given content already contains an embed for the given
- * `.base` path. Used by the orchestrator to skip re-inserting the same
- * embed on UPDATE flow (the embed string is already in the note).
+ * `.base` path. Used by the orchestrator to skip re-inserting on UPDATE flow.
  *
- * Matches both the exact path and the basename-only form (Obsidian
- * resolves both); for our purposes the exact-path match is what we care
- * about, but we tolerate either.
+ * Recognizes (a) the exact path, (b) the short Layout B+ form `<slug>/view.base`,
+ * and (c) the basename-only form (Obsidian resolves these equivalent).
  */
 export function noteContainsEmbed(noteContent: string, vaultPath: string): boolean {
 	const normalized = vaultPath.replace(/^\.\//, '');
 	if (noteContent.includes(`![[${normalized}]]`)) return true;
-	// Also tolerate the basename-only form (Obsidian resolves it via file index)
+	// Short Layout B+ form: `<slug>/view.base`
+	const queriesPrefix = '_crosswalker/queries/';
+	if (normalized.startsWith(queriesPrefix)) {
+		const stripped = normalized.slice(queriesPrefix.length);
+		if (noteContent.includes(`![[${stripped}]]`)) return true;
+	}
+	// Basename-only form
 	const basename = normalized.split('/').pop() ?? normalized;
 	const basenameNoExt = basename.replace(/\.base$/, '');
 	const basenameEmbedRe = new RegExp(`!\\[\\[${escapeRegex(basenameNoExt)}(\\.base)?(#[^\\]]+)?\\]\\]`);

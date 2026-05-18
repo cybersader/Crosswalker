@@ -103,61 +103,66 @@ name: crosswalker-bases
 description: Author Crosswalker queries via frontmatter-driven query notes. The plugin generates .base files and embeds them via Obsidian-native ![[file.base]] syntax. Use when working in Obsidian with the Crosswalker plugin and the Obsidian Bases plugin enabled, especially when inserting query views into notes for ontology / framework data (NIST, ISO, MITRE, CIS, SOC 2, etc.).
 ---
 
-# Crosswalker — query authoring skill (Phase 4.5)
+# Crosswalker — query authoring skill (Phase 4.6 / Layout B+)
 
-This skill teaches you how Crosswalker queries live in Obsidian. The query is **canonical frontmatter** on a user note; Crosswalker generates a \`.base\` file in \`_crosswalker/views/\`; the user note embeds the rendering via Obsidian-native \`![[<view_file>]]\` syntax (per [Obsidian Bases docs](https://help.obsidian.md/Plugins/Bases)).
+This skill teaches the **Layout B+ query-pack folder pattern** Crosswalker uses for queries. Each query is its own folder under \`_crosswalker/queries/<slug>/\`, with \`index.md\` as the canonical state and \`view.base\` as the generated Bases view. Any note in your vault can embed the query via \`![[<slug>/view.base]]\` — the embed is a cheap reference; nothing is queried at insertion time.
 
-## The three artifacts that make up a Crosswalker query
+## The query-pack folder
 
-\`\`\`markdown
-USER NOTE: My Coverage Analysis.md
-─────────────────────────────────
----
-crosswalker_query:                                    ← canonical truth (frontmatter)
-  query_id: q-2026-05-15-a1b2c3d4
-  recipe: nist-csf-coverage-matrix
-  shape: pivot
-  params:
-    confidence_threshold: 0.7
-  view_file: "_crosswalker/views/q-2026-05-15-a1b2c3d4.base"
-  generated_at: 2026-05-15T20:55:00.000Z
-  schema_version: 1
----
-
-# My coverage analysis
-
-Some prose...
-
-![[_crosswalker/views/q-2026-05-15-a1b2c3d4.base]]   ← Bases-native embed (renders inline)
+\`\`\`text
+_crosswalker/queries/csf-to-800-53-coverage/    ← one folder per query
+├── index.md                                      ← CANONICAL state (crosswalker_query: frontmatter)
+├── view.base                                     ← generated Bases view (don't hand-edit)
+├── materialized/                                 ← Phase 5: per-query pivot results
+├── exports/                                      ← v0.1.7: per-query OSCAL/SSSOM/STRM exports
+└── snapshots/                                    ← v0.1.8: per-query audit snapshots
 \`\`\`
 
-The \`.base\` file at \`_crosswalker/views/q-2026-05-15-a1b2c3d4.base\` is **plugin-generated**. Don't hand-edit it — your changes will be overwritten on the next \`Crosswalker: Refresh query views\` (or plugin reload). Edit the **frontmatter** instead; the plugin regenerates the \`.base\` file.
+The host note (where you want the query *displayed*) just contains an embed:
+
+\`\`\`markdown
+# My coverage analysis
+
+Some prose about what I'm doing...
+
+![[csf-to-800-53-coverage/view.base]]            ← Obsidian-native embed (Bases renders inline)
+
+More prose...
+\`\`\`
+
+The host note has **no \`crosswalker_query:\` frontmatter** — embeds are pure references. Multiple host notes can embed the same query, and renaming the folder updates every embed via Obsidian's auto-update-links.
 
 ## How to author a new query
 
-1. **Open a note** where you want the query rendered (any markdown note with no \`crosswalker_query:\` block yet).
+1. **Open the note where you want the query displayed** (any markdown note, anywhere in your vault).
 2. **Run \`Crosswalker: Insert query into note\`** from the command palette.
-3. **Pick a recipe** from the modal (e.g. NIST CSF → 800-53 coverage matrix). Adjust exposed parameters inline if you want.
-4. **Click Apply.** The picker writes the \`crosswalker_query:\` frontmatter, generates the \`.base\` file at \`_crosswalker/views/\`, and inserts the embed at your cursor. Done.
+3. **Pick a recipe** (e.g. NIST CSF → 800-53 coverage matrix). Adjust exposed params inline.
+4. **Click Apply.** The plugin creates \`_crosswalker/queries/<slug>/\` with \`index.md\` + \`view.base\`, then inserts \`![[<slug>/view.base]]\` at your cursor. Done.
 
 ## How to edit an existing query
 
 Two options:
 
-- **Re-run the picker** on a note that already has \`crosswalker_query:\` frontmatter → the picker opens in UPDATE mode with current values pre-filled.
-- **Hand-edit the \`crosswalker_query:\` frontmatter** directly. Run \`Crosswalker: Refresh query views\` to regenerate the \`.base\` file from the new params.
+- **Hand-edit the canonical index.md.** Open \`_crosswalker/queries/<slug>/index.md\` directly; edit the \`crosswalker_query:\` frontmatter (params, recipe, shape, etc.); run \`Crosswalker: Refresh query views\` to regenerate \`view.base\`. The frontmatter is the source of truth.
+- **Delete the query folder and re-create from the picker.** For larger changes.
 
-The frontmatter is the source of truth. The \`.base\` file is generated.
+(Future: \`Crosswalker: Browse my queries\` modal for direct edit + UPDATE-mode picker — not yet shipped.)
+
+## Migrating from Phase 4.5
+
+If you have notes with legacy \`crosswalker_query:\` frontmatter from before Phase 4.6 (Layout B+), run \`Crosswalker: Migrate queries to folder layout\` once. It creates the per-query folders, rewrites embeds, and removes the legacy frontmatter from your host notes. Idempotent — safe to re-run.
 
 ## Why this design
 
 | Property | Why it matters |
 |---|---|
-| Frontmatter is queryable by Bases itself | "Show me every query I've ever made" is one Bases query over \`crosswalker_query.shape == "pivot"\` |
-| Single source of truth | Edit frontmatter (or use the picker again); \`.base\` file regenerates. No drift. |
-| Reusable across notes | Multiple notes can embed the same \`.base\` file via \`![[...]]\` |
-| Survives plugin uninstall | Frontmatter + \`.base\` file are both plain text, readable without Crosswalker |
+| Per-query folder | Snapshots, exports, materialized results all have a stable home; one folder = one query |
+| Frontmatter on index.md is canonical | "Show me every query I've ever made" = one Bases query over \`_crosswalker/queries/\` |
+| Single source of truth | Edit index.md frontmatter; \`view.base\` regenerates. No drift. |
+| Cheap reuse across notes | Multiple notes can embed the same query via \`![[<slug>/view.base]]\` |
+| Survives plugin uninstall | Frontmatter + \`view.base\` are both plain text, readable without Crosswalker |
 | Bases-native | \`![[file.base]]\` is the canonical Obsidian Bases embed syntax (not inline codeblocks) |
+| Rename-safe | Folder renames auto-update embeds; \`query_id\` in frontmatter is the durable identity |
 
 ## Quick reference: the two things to know about the .base file syntax
 

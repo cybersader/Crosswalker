@@ -1,19 +1,22 @@
 /**
- * regenerate-query-views.ts — Phase 4.5
+ * regenerate-query-views.ts — Phase 4.6 (Layout B+)
  *
- * Scans the vault for notes with `crosswalker_query:` frontmatter; for each one
- * regenerates its `.base` file at `view_file` from the frontmatter's
- * recipe + params. Idempotent — skips files whose generated content already
- * matches what would be written.
+ * Scans the vault for canonical query state at `_crosswalker/queries/**\/index.md`
+ * and regenerates each query's `view.base` from the frontmatter's recipe + params.
+ * Idempotent — skips files whose generated content already matches what would
+ * be written.
+ *
+ * Backward-compat detection: also flags legacy Phase 4.5 host-note frontmatter
+ * (`crosswalker_query:` with schema_version 1) — these are NOT regenerated in
+ * place; instead they're surfaced as `legacyDetected` count for the migration
+ * command to handle.
  *
  * Two entry points:
- *   - `regenerateAll(app, debug)` — scan + regenerate every note
- *   - `regenerateOne(app, file, debug)` — single note (used after a known
- *     frontmatter edit; e.g. could be wired to file-modify events later)
+ *   - `regenerateAll(app, debug)` — scan + regenerate every query
+ *   - `regenerateOne(app, file, debug)` — single index.md
  *
- * Runs on plugin load (onLayoutReady) as a stale-state recovery — same
- * pattern as Phase 3 reference file write + Phase 1.5 fixture drift check.
- * Also exposed as the explicit command `Crosswalker: Refresh query views`.
+ * Runs on plugin load (onLayoutReady) as stale-state recovery + as the
+ * explicit `Crosswalker: Refresh query views` command.
  */
 
 import type { App, TFile } from 'obsidian';
@@ -22,40 +25,55 @@ import { readQueryFrontmatter } from './query-frontmatter-io';
 import { renderRecipeTemplate } from './recipe-templates';
 import { buildBaseFileContent } from './apply-query-to-note';
 
+const QUERY_FOLDER_PREFIX = '_crosswalker/queries/';
+
 export interface RegenerateResult {
 	scanned: number;
 	regenerated: number;
 	skipped: number;
+	legacyDetected: number;
 	errors: Array<{ note: string; reason: string }>;
 }
 
 /**
- * Scan the vault for notes with `crosswalker_query:` frontmatter; regenerate each
- * one's `.base` file. Returns aggregate counts + per-error details.
+ * Scan the vault for canonical query state (`_crosswalker/queries/<slug>/index.md`)
+ * and regenerate each one's view.base. Also detects legacy Phase 4.5 host-note
+ * frontmatter for migration prompting.
  */
 export async function regenerateAll(app: App, debug?: DebugLog): Promise<RegenerateResult> {
 	const result: RegenerateResult = {
 		scanned: 0,
 		regenerated: 0,
 		skipped: 0,
+		legacyDetected: 0,
 		errors: [],
 	};
 
 	const allFiles = app.vault.getMarkdownFiles();
 	for (const file of allFiles) {
-		result.scanned += 1;
-		try {
-			const subResult = await regenerateOne(app, file, debug, { _shared: true });
-			if (subResult === 'skipped') result.skipped += 1;
-			else if (subResult === 'regenerated') result.regenerated += 1;
-			else if (subResult === 'not-applicable') {
-				// File had no `crosswalker_query:` block — common; not counted
-			} else {
-				result.errors.push({ note: file.path, reason: subResult });
+		const isCanonical = file.path.startsWith(QUERY_FOLDER_PREFIX) && file.path.endsWith('/index.md');
+
+		if (isCanonical) {
+			result.scanned += 1;
+			try {
+				const subResult = await regenerateOne(app, file, debug, { _shared: true });
+				if (subResult === 'skipped') result.skipped += 1;
+				else if (subResult === 'regenerated') result.regenerated += 1;
+				else if (subResult === 'not-applicable') {
+					// No crosswalker_query: block on a canonical index.md — odd, not an error
+				} else {
+					result.errors.push({ note: file.path, reason: subResult });
+				}
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				result.errors.push({ note: file.path, reason: msg });
 			}
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			result.errors.push({ note: file.path, reason: msg });
+		} else {
+			// Legacy detection — host note with v1 crosswalker_query: frontmatter
+			const fmResult = await readQueryFrontmatter(app, file);
+			if (fmResult.present) {
+				result.legacyDetected += 1;
+			}
 		}
 	}
 
@@ -63,6 +81,7 @@ export async function regenerateAll(app: App, debug?: DebugLog): Promise<Regener
 		scanned: result.scanned,
 		regenerated: result.regenerated,
 		skipped: result.skipped,
+		legacyDetected: result.legacyDetected,
 		errorCount: result.errors.length,
 	});
 
@@ -72,15 +91,7 @@ export async function regenerateAll(app: App, debug?: DebugLog): Promise<Regener
 type SingleResult = 'regenerated' | 'skipped' | 'not-applicable' | string;
 
 /**
- * Regenerate a single note's `.base` file if its `crosswalker_query:` frontmatter
- * declares one. Returns:
- *   - 'regenerated' — content changed; .base file written
- *   - 'skipped' — content matches; no write needed (idempotent)
- *   - 'not-applicable' — file has no crosswalker block
- *   - any other string — error message
- *
- * The `_shared` option suppresses individual-note debug events when called
- * from `regenerateAll` (which logs aggregate).
+ * Regenerate a single canonical index.md's view.base sibling.
  */
 export async function regenerateOne(
 	app: App,
@@ -94,9 +105,9 @@ export async function regenerateOne(
 		return 'not-applicable';
 	}
 	if (!fm.data) {
-		const err = `Malformed crosswalker block: ${fm.errors.join('; ')}`;
+		const err = `Malformed crosswalker_query block: ${fm.errors.join('; ')}`;
 		if (!opts._shared) {
-			debug?.warn('view', 'regenerate-malformed-frontmatter', `Skipping note with malformed crosswalker block`, {
+			debug?.warn('view', 'regenerate-malformed-frontmatter', `Skipping query with malformed frontmatter`, {
 				note: file.path,
 				errors: fm.errors,
 			});
@@ -104,7 +115,7 @@ export async function regenerateOne(
 		return err;
 	}
 
-	const { recipe, params, view_file: viewFile, query_id: queryId } = fm.data;
+	const { recipe, params, view_file: viewFile, query_id: queryId, slug } = fm.data;
 
 	// Re-render the template
 	const baseBody = renderRecipeTemplate(recipe, params);
@@ -122,19 +133,17 @@ export async function regenerateOne(
 	const newContent = buildBaseFileContent(baseBody, {
 		recipeId: recipe,
 		queryId,
+		slug,
 		sourceNotePath: file.path,
 	});
 
-	// Idempotent check — read existing .base file content + skip if identical
-	// EXCEPT for the timestamp comment (which always differs). We compare
-	// only the YAML body to determine if a write is needed.
+	// Idempotent check — compare semantic YAML body, skip if identical
 	const existing = app.vault.getAbstractFileByPath(viewFile);
 	if (existing && 'path' in existing && typeof (existing as { extension?: string }).extension === 'string') {
 		const existingFile = existing as TFile;
 		try {
 			const existingContent = await app.vault.read(existingFile);
 			if (yamlBodyMatches(existingContent, newContent)) {
-				// No semantic change — skip
 				return 'skipped';
 			}
 			await app.vault.modify(existingFile, newContent);
@@ -142,7 +151,7 @@ export async function regenerateOne(
 			return err instanceof Error ? err.message : String(err);
 		}
 	} else {
-		// .base file missing — create it (re-establishes the back-pointer)
+		// view.base missing — create it
 		const parentPath = viewFile.split('/').slice(0, -1).join('/');
 		if (parentPath && !app.vault.getAbstractFileByPath(parentPath)) {
 			try {
@@ -162,10 +171,11 @@ export async function regenerateOne(
 	}
 
 	if (!opts._shared) {
-		debug?.info('view', 'query-regenerated', `Regenerated .base file: ${viewFile}`, {
+		debug?.info('view', 'query-regenerated', `Regenerated view.base: ${viewFile}`, {
 			note: file.path,
 			viewFile,
 			queryId,
+			slug,
 			recipe,
 		});
 	}
@@ -175,10 +185,7 @@ export async function regenerateOne(
 
 /**
  * Compare two `.base` file contents by their YAML body (strips the header
- * comment block which always contains a timestamp). Returns true if the
- * actual queries match — a "no-op regeneration" signal.
- *
- * Exported for direct testing.
+ * comment block which always contains a timestamp). Exported for testing.
  */
 export function yamlBodyMatches(a: string, b: string): boolean {
 	return stripHeaderComments(a) === stripHeaderComments(b);

@@ -45,12 +45,13 @@ function file(path: string): TFile {
 function validBlock(): CrosswalkerQueryFrontmatter {
 	return {
 		query_id: 'q-2026-05-15-a1b2c3d4',
+		slug: 'nist-csf-coverage-matrix',
 		recipe: 'nist-csf-coverage-matrix',
 		shape: 'pivot',
 		params: { confidence_threshold: 0.7 },
-		view_file: '_crosswalker/views/q-2026-05-15-a1b2c3d4.base',
+		view_file: '_crosswalker/queries/nist-csf-coverage-matrix/view.base',
 		generated_at: '2026-05-15T20:55:00.000Z',
-		schema_version: 1,
+		schema_version: 2,
 	};
 }
 
@@ -156,18 +157,20 @@ describe('buildFrontmatter', () => {
 	it('assembles a full frontmatter object from args', () => {
 		const out = buildFrontmatter({
 			query_id: 'q-2026-05-15-deadbeef',
+			slug: 'r',
 			recipe: 'r',
 			shape: 'pivot',
 			params: { x: 1 },
-			view_file: '_crosswalker/views/q-2026-05-15-deadbeef.base',
+			view_file: '_crosswalker/queries/r/view.base',
 			now: new Date('2026-05-15T20:55:00Z'),
 		});
 		expect(out.query_id).toBe('q-2026-05-15-deadbeef');
+		expect(out.slug).toBe('r');
 		expect(out.recipe).toBe('r');
 		expect(out.shape).toBe('pivot');
 		expect(out.params).toEqual({ x: 1 });
 		expect(out.generated_at).toBe('2026-05-15T20:55:00.000Z');
-		expect(out.schema_version).toBe(1);
+		expect(out.schema_version).toBe(2);
 	});
 });
 

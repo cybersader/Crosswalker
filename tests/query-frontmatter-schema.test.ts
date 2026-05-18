@@ -1,16 +1,33 @@
 /**
- * query-frontmatter-schema.test.ts — Phase 4.5 unit tests for the
+ * query-frontmatter-schema.test.ts — Phase 4.6 unit tests (schema v2).
  * crosswalker_query: frontmatter schema + AJV validation + helpers.
  */
 
 import {
 	validateQueryFrontmatter,
+	validateQueryFrontmatterV1,
 	newQueryId,
 	viewFileFor,
+	indexFileFor,
+	queryFolderFor,
 	QUERY_FRONTMATTER_SCHEMA_VERSION,
+	QUERY_FRONTMATTER_SCHEMA_VERSION_V1,
 } from '../src/views/query-frontmatter-schema';
 
 function validBlock() {
+	return {
+		query_id: 'q-2026-05-15-a1b2c3d4',
+		slug: 'nist-csf-coverage-matrix',
+		recipe: 'nist-csf-coverage-matrix',
+		shape: 'pivot',
+		params: { confidence_threshold: 0.7 },
+		view_file: '_crosswalker/queries/nist-csf-coverage-matrix/view.base',
+		generated_at: '2026-05-15T20:55:00.000Z',
+		schema_version: 2 as const,
+	};
+}
+
+function validBlockV1() {
 	return {
 		query_id: 'q-2026-05-15-a1b2c3d4',
 		recipe: 'nist-csf-coverage-matrix',
@@ -22,8 +39,8 @@ function validBlock() {
 	};
 }
 
-describe('validateQueryFrontmatter — accepts valid blocks', () => {
-	it('accepts the canonical example', () => {
+describe('validateQueryFrontmatter (v2) — accepts valid blocks', () => {
+	it('accepts the canonical v2 example', () => {
 		const r = validateQueryFrontmatter(validBlock());
 		expect(r.valid).toBe(true);
 		expect(r.errors).toEqual([]);
@@ -53,12 +70,18 @@ describe('validateQueryFrontmatter — accepts valid blocks', () => {
 	});
 });
 
-describe('validateQueryFrontmatter — rejects malformed blocks', () => {
+describe('validateQueryFrontmatter (v2) — rejects malformed blocks', () => {
 	it('rejects missing required fields', () => {
 		const { recipe: _omit, ...rest } = validBlock();
 		const r = validateQueryFrontmatter(rest);
 		expect(r.valid).toBe(false);
 		expect(r.errors.join(' ')).toContain('recipe');
+	});
+
+	it('rejects missing slug field (v2 addition)', () => {
+		const { slug: _omit, ...rest } = validBlock();
+		const r = validateQueryFrontmatter(rest);
+		expect(r.valid).toBe(false);
 	});
 
 	it('rejects bad query_id format', () => {
@@ -67,16 +90,21 @@ describe('validateQueryFrontmatter — rejects malformed blocks', () => {
 		expect(r.errors.join(' ')).toMatch(/query_id/);
 	});
 
-	it('rejects bad view_file path (must be under _crosswalker/views/)', () => {
+	it('rejects bad slug format (must be kebab-case ASCII)', () => {
+		const r = validateQueryFrontmatter({ ...validBlock(), slug: 'Has Spaces' });
+		expect(r.valid).toBe(false);
+	});
+
+	it('rejects bad view_file path (must be under _crosswalker/queries/<slug>/view.base)', () => {
 		const r = validateQueryFrontmatter({ ...validBlock(), view_file: 'somewhere/else.base' });
 		expect(r.valid).toBe(false);
 		expect(r.errors.join(' ')).toMatch(/view_file/);
 	});
 
-	it('rejects view_file without .base extension', () => {
+	it('rejects legacy Phase 4.5 view_file path under v2 schema', () => {
 		const r = validateQueryFrontmatter({
 			...validBlock(),
-			view_file: '_crosswalker/views/q-2026-05-15-abc.txt',
+			view_file: '_crosswalker/views/q-2026-05-15-abc12345.base',
 		});
 		expect(r.valid).toBe(false);
 	});
@@ -88,6 +116,11 @@ describe('validateQueryFrontmatter — rejects malformed blocks', () => {
 
 	it('rejects unknown schema_version (forward-compat)', () => {
 		const r = validateQueryFrontmatter({ ...validBlock(), schema_version: 999 });
+		expect(r.valid).toBe(false);
+	});
+
+	it('rejects v1 schema_version under v2 validator', () => {
+		const r = validateQueryFrontmatter({ ...validBlock(), schema_version: 1 });
 		expect(r.valid).toBe(false);
 	});
 
@@ -103,6 +136,26 @@ describe('validateQueryFrontmatter — rejects malformed blocks', () => {
 	});
 });
 
+describe('validateQueryFrontmatterV1 — backward-compat for Phase 4.5 reads', () => {
+	it('accepts a valid v1 block', () => {
+		const r = validateQueryFrontmatterV1(validBlockV1());
+		expect(r.valid).toBe(true);
+	});
+
+	it('rejects v2 blocks (slug field is unknown to v1)', () => {
+		const r = validateQueryFrontmatterV1(validBlock());
+		expect(r.valid).toBe(false);
+	});
+
+	it('rejects v1 with v2 view_file path', () => {
+		const r = validateQueryFrontmatterV1({
+			...validBlockV1(),
+			view_file: '_crosswalker/queries/foo/view.base',
+		});
+		expect(r.valid).toBe(false);
+	});
+});
+
 describe('newQueryId', () => {
 	it('matches the q-YYYY-MM-DD-<8hex> format', () => {
 		const id = newQueryId(new Date('2026-05-15T12:34:56Z'));
@@ -114,34 +167,43 @@ describe('newQueryId', () => {
 		for (let i = 0; i < 10; i++) {
 			ids.add(newQueryId());
 		}
-		// Collision-unlikely with 8 hex chars (32 bits = ~4B values)
 		expect(ids.size).toBeGreaterThanOrEqual(9);
 	});
 
 	it('uses UTC for the date portion', () => {
-		// 2026-05-15T01:00:00 UTC → 2026-05-15 regardless of local TZ
 		const id = newQueryId(new Date('2026-05-15T01:00:00Z'));
 		expect(id.startsWith('q-2026-05-15-')).toBe(true);
 	});
 });
 
-describe('viewFileFor', () => {
-	it('builds the canonical _crosswalker/views/<id>.base path', () => {
-		expect(viewFileFor('q-2026-05-15-abc12345')).toBe(
-			'_crosswalker/views/q-2026-05-15-abc12345.base',
-		);
+describe('Path helpers — v2 Layout B+', () => {
+	it('viewFileFor builds <folder>/view.base from slug', () => {
+		expect(viewFileFor('csf-coverage')).toBe('_crosswalker/queries/csf-coverage/view.base');
 	});
 
-	it('result passes schema validation', () => {
+	it('indexFileFor builds <folder>/index.md from slug', () => {
+		expect(indexFileFor('csf-coverage')).toBe('_crosswalker/queries/csf-coverage/index.md');
+	});
+
+	it('queryFolderFor builds the canonical folder path', () => {
+		expect(queryFolderFor('csf-coverage')).toBe('_crosswalker/queries/csf-coverage');
+	});
+
+	it('viewFileFor output passes schema validation', () => {
 		const id = newQueryId();
-		const path = viewFileFor(id);
-		const block = { ...validBlock(), query_id: id, view_file: path };
+		const slug = 'csf-coverage';
+		const path = viewFileFor(slug);
+		const block = { ...validBlock(), query_id: id, slug, view_file: path };
 		expect(validateQueryFrontmatter(block).valid).toBe(true);
 	});
 });
 
-describe('QUERY_FRONTMATTER_SCHEMA_VERSION', () => {
-	it('is 1 for the v0.1.6 schema', () => {
-		expect(QUERY_FRONTMATTER_SCHEMA_VERSION).toBe(1);
+describe('Schema version constants', () => {
+	it('current version is 2 for Phase 4.6 (Layout B+)', () => {
+		expect(QUERY_FRONTMATTER_SCHEMA_VERSION).toBe(2);
+	});
+
+	it('v1 constant preserved for backward-compat reads', () => {
+		expect(QUERY_FRONTMATTER_SCHEMA_VERSION_V1).toBe(1);
 	});
 });

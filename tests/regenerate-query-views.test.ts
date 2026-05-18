@@ -1,8 +1,7 @@
 /**
- * regenerate-query-views.test.ts — Phase 4.5 unit tests for the
- * regenerator that scans the vault for notes with crosswalker frontmatter
- * and refreshes their .base files. Tests idempotency (skip when content
- * matches) + new-file creation + malformed-frontmatter handling.
+ * regenerate-query-views.test.ts — Phase 4.6 unit tests (Layout B+).
+ * Regenerator now scans `_crosswalker/queries/**\/index.md` and rebuilds
+ * the sibling `view.base` from the validated v2 frontmatter.
  */
 
 import { regenerateAll, regenerateOne, yamlBodyMatches } from '../src/views/regenerate-query-views';
@@ -54,15 +53,16 @@ function makeApp(opts: {
 	};
 }
 
-function validFm(queryId = 'q-2026-05-15-deadbeef'): CrosswalkerQueryFrontmatter {
+function validFm(slug = 'csf-coverage', queryId = 'q-2026-05-15-deadbeef'): CrosswalkerQueryFrontmatter {
 	return {
 		query_id: queryId,
+		slug,
 		recipe: 'nist-csf-coverage-matrix',
 		shape: 'pivot',
 		params: { confidence_threshold: 0.7 },
-		view_file: `_crosswalker/views/${queryId}.base`,
+		view_file: `_crosswalker/queries/${slug}/view.base`,
 		generated_at: '2026-05-15T20:55:00.000Z',
-		schema_version: 1,
+		schema_version: 2,
 	};
 }
 
@@ -90,46 +90,51 @@ describe('yamlBodyMatches', () => {
 });
 
 // ---------------------------------------------------------------------------
-// regenerateOne
+// regenerateOne — operates on canonical index.md
 // ---------------------------------------------------------------------------
 
 describe('regenerateOne', () => {
 	it('returns not-applicable when file has no crosswalker block', async () => {
-		const app = makeApp({ frontmatter: { 'plain.md': { title: 'no query here' } } });
-		const file = new TFile('plain.md');
+		const app = makeApp({
+			frontmatter: { '_crosswalker/queries/empty/index.md': { title: 'no query here' } },
+		});
+		const file = new TFile('_crosswalker/queries/empty/index.md');
 		const r = await regenerateOne(app as never, file);
 		expect(r).toBe('not-applicable');
 	});
 
-	it('returns regenerated when .base file is missing', async () => {
+	it('returns regenerated when view.base is missing', async () => {
 		const fm = validFm();
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
-		const file = new TFile('q.md');
+		const app = makeApp({
+			frontmatter: { '_crosswalker/queries/csf-coverage/index.md': { crosswalker_query: fm } },
+		});
+		const file = new TFile('_crosswalker/queries/csf-coverage/index.md');
 		const r = await regenerateOne(app as never, file);
 		expect(r).toBe('regenerated');
 		expect(app.vault.__written.has(fm.view_file)).toBe(true);
 	});
 
-	it('returns skipped when .base content matches (idempotent)', async () => {
+	it('returns skipped when view.base content matches (idempotent)', async () => {
 		const fm = validFm();
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
-		const file = new TFile('q.md');
-		// First call: regenerate
+		const app = makeApp({
+			frontmatter: { '_crosswalker/queries/csf-coverage/index.md': { crosswalker_query: fm } },
+		});
+		const file = new TFile('_crosswalker/queries/csf-coverage/index.md');
 		await regenerateOne(app as never, file);
 		expect(app.vault.__written.has(fm.view_file)).toBe(true);
 
-		// Second call: should skip (content unchanged)
 		const r2 = await regenerateOne(app as never, file);
 		expect(r2).toBe('skipped');
 	});
 
 	it('returns regenerated when frontmatter params change between runs', async () => {
 		const fm = validFm();
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
-		const file = new TFile('q.md');
+		const app = makeApp({
+			frontmatter: { '_crosswalker/queries/csf-coverage/index.md': { crosswalker_query: fm } },
+		});
+		const file = new TFile('_crosswalker/queries/csf-coverage/index.md');
 		await regenerateOne(app as never, file);
 
-		// Mutate frontmatter (simulates user hand-edit)
 		(app.metadataCache.getFileCache as jest.Mock).mockImplementation(() => ({
 			frontmatter: { crosswalker_query: { ...fm, params: { confidence_threshold: 0.9 } } },
 		}));
@@ -139,9 +144,11 @@ describe('regenerateOne', () => {
 
 	it('returns error string when frontmatter is malformed', async () => {
 		const app = makeApp({
-			frontmatter: { 'q.md': { crosswalker_query: { recipe: 'incomplete' } } },
+			frontmatter: {
+				'_crosswalker/queries/bad/index.md': { crosswalker_query: { recipe: 'incomplete' } },
+			},
 		});
-		const file = new TFile('q.md');
+		const file = new TFile('_crosswalker/queries/bad/index.md');
 		const r = await regenerateOne(app as never, file);
 		expect(typeof r).toBe('string');
 		expect(r).toMatch(/[Mm]alformed|invalid|required/);
@@ -152,8 +159,10 @@ describe('regenerateOne', () => {
 			...validFm(),
 			recipe: 'recipe-with-no-template',
 		};
-		const app = makeApp({ frontmatter: { 'q.md': { crosswalker_query: fm } } });
-		const file = new TFile('q.md');
+		const app = makeApp({
+			frontmatter: { '_crosswalker/queries/csf-coverage/index.md': { crosswalker_query: fm } },
+		});
+		const file = new TFile('_crosswalker/queries/csf-coverage/index.md');
 		const r = await regenerateOne(app as never, file);
 		expect(typeof r).toBe('string');
 		expect(r).toMatch(/[Nn]o template/);
@@ -161,46 +170,74 @@ describe('regenerateOne', () => {
 });
 
 // ---------------------------------------------------------------------------
-// regenerateAll
+// regenerateAll — scans canonical query folders + detects legacy
 // ---------------------------------------------------------------------------
 
 describe('regenerateAll', () => {
-	it('scans every markdown file + aggregates counts', async () => {
-		const fmA = validFm('q-2026-05-15-aaaaaaaa');
-		const fmB = validFm('q-2026-05-15-bbbbbbbb');
+	it('scans canonical query folders only; counts legacy separately', async () => {
+		const fmA = validFm('coverage-a', 'q-2026-05-15-aaaaaaaa');
+		const fmB = validFm('coverage-b', 'q-2026-05-15-bbbbbbbb');
 		const app = makeApp({
-			markdownFiles: [new TFile('a.md'), new TFile('b.md'), new TFile('c.md')],
+			markdownFiles: [
+				new TFile('_crosswalker/queries/coverage-a/index.md'),
+				new TFile('_crosswalker/queries/coverage-b/index.md'),
+				new TFile('My Host Note.md'), // user-authored note, not a canonical query
+			],
 			frontmatter: {
-				'a.md': { crosswalker_query: fmA },
-				'b.md': { crosswalker_query: fmB },
-				// c.md: no crosswalker block → not-applicable
+				'_crosswalker/queries/coverage-a/index.md': { crosswalker_query: fmA },
+				'_crosswalker/queries/coverage-b/index.md': { crosswalker_query: fmB },
 			},
 		});
 		const result = await regenerateAll(app as never);
-		expect(result.scanned).toBe(3);
+		expect(result.scanned).toBe(2); // only canonical index.mds
 		expect(result.regenerated).toBe(2);
 		expect(result.skipped).toBe(0);
+		expect(result.legacyDetected).toBe(0);
 		expect(result.errors).toEqual([]);
 	});
 
-	it('counts errors when frontmatter is malformed', async () => {
+	it('detects legacy Phase 4.5 host-note frontmatter', async () => {
+		const legacyFm = {
+			query_id: 'q-2026-05-15-aaaaaaaa',
+			recipe: 'nist-csf-coverage-matrix',
+			shape: 'pivot',
+			params: {},
+			view_file: '_crosswalker/views/q-2026-05-15-aaaaaaaa.base',
+			generated_at: '2026-05-15T20:55:00.000Z',
+			schema_version: 1, // v1!
+		};
 		const app = makeApp({
-			markdownFiles: [new TFile('bad.md')],
-			frontmatter: { 'bad.md': { crosswalker_query: { recipe: 'incomplete' } } },
+			markdownFiles: [new TFile('My Legacy Note.md')],
+			frontmatter: { 'My Legacy Note.md': { crosswalker_query: legacyFm } },
+		});
+		const result = await regenerateAll(app as never);
+		expect(result.scanned).toBe(0); // legacy doesn't count as canonical
+		// legacyDetected counts notes whose v1 frontmatter validates as v2 - actually
+		// our reader is using v2 schema, so v1 frontmatter will fail validation and
+		// counts as "present but malformed" — but readQueryFrontmatter.present is true.
+		expect(result.legacyDetected).toBe(1);
+	});
+
+	it('counts errors when frontmatter is malformed at canonical location', async () => {
+		const app = makeApp({
+			markdownFiles: [new TFile('_crosswalker/queries/bad/index.md')],
+			frontmatter: {
+				'_crosswalker/queries/bad/index.md': { crosswalker_query: { recipe: 'incomplete' } },
+			},
 		});
 		const result = await regenerateAll(app as never);
 		expect(result.errors.length).toBe(1);
-		expect(result.errors[0].note).toBe('bad.md');
+		expect(result.errors[0].note).toBe('_crosswalker/queries/bad/index.md');
 	});
 
-	it('returns zero counts when no notes have crosswalker frontmatter', async () => {
+	it('returns zero counts on a vault with no queries', async () => {
 		const app = makeApp({
 			markdownFiles: [new TFile('a.md'), new TFile('b.md')],
 			frontmatter: {},
 		});
 		const result = await regenerateAll(app as never);
-		expect(result.scanned).toBe(2);
-		expect(result.regenerated).toBe(0);
+		expect(result.scanned).toBe(0);
+		expect(result.legacyDetected).toBe(0);
 		expect(result.errors).toEqual([]);
 	});
 });

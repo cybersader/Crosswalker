@@ -35,7 +35,7 @@ import { isMobile } from './mobile-detection';
 import type { CrosswalkerQueryFrontmatter } from './query-frontmatter-schema';
 
 export type PickerAction =
-	| { action: 'insert'; recipeId: string; shape: string; params: Record<string, unknown> }
+	| { action: 'insert'; recipeId: string; recipeName: string; shape: string; params: Record<string, unknown> }
 	| { action: 'cancel' };
 
 const SHAPE_BADGES: Record<string, { label: string; cls?: string; reserved?: boolean }> = {
@@ -222,6 +222,7 @@ export class RecipePickerModal extends Modal {
 					this.resolve({
 						action: 'insert',
 						recipeId: recipe.id,
+						recipeName: recipe.title,
 						shape: recipe.shape,
 						params,
 					});

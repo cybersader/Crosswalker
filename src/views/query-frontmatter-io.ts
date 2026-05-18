@@ -111,12 +111,13 @@ export interface WriteResult {
 }
 
 /**
- * Build a fresh `CrosswalkerQueryFrontmatter` object for a NEW query.
- * Caller provides recipe / shape / params / view_file + a fresh query_id.
+ * Build a fresh `CrosswalkerQueryFrontmatter` object for a NEW query (Phase 4.6 v2).
+ * Caller provides slug + recipe + shape + params + view_file + a fresh query_id.
  * Convenience helper so the orchestrator doesn't have to assemble fields.
  */
 export function buildFrontmatter(args: {
 	query_id: string;
+	slug: string;
 	recipe: string;
 	shape: string;
 	params: Record<string, unknown>;
@@ -125,6 +126,7 @@ export function buildFrontmatter(args: {
 }): CrosswalkerQueryFrontmatter {
 	return {
 		query_id: args.query_id,
+		slug: args.slug,
 		recipe: args.recipe,
 		shape: args.shape,
 		params: args.params,

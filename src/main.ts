@@ -200,12 +200,12 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
-		// v0.1.6 Phase 4.5: recipe picker — apply a query to the active note.
-		// Per 2026-05-15 architecture call: the query lives in the note's
-		// `crosswalker_query:` frontmatter (canonical); the .base file at
-		// _crosswalker/views/<query_id>.base is a generated artifact; the
-		// note has a `![[...]]` embed that Bases renders inline. Picker
-		// auto-detects existing `crosswalker_query:` frontmatter → UPDATE mode.
+		// v0.1.6 Phase 4.6: recipe picker — create a new query (Layout B+).
+		// Canonical state lives at _crosswalker/queries/<slug>/{index.md,view.base};
+		// the host note (current editor) receives only an `![[<slug>/view.base]]`
+		// embed at cursor. To edit an existing query, open its index.md directly
+		// and re-run "Refresh query views" — or use "Migrate queries to folder
+		// layout" if you have legacy Phase 4.5 frontmatter on host notes.
 		this.addCommand({
 			id: 'insert-query-into-note',
 			name: 'Insert query into note',
@@ -217,20 +217,24 @@ export default class CrosswalkerPlugin extends Plugin {
 				}
 				const traceId = this.debug.newTraceId();
 				void this.debug.withTrace(traceId, async () => {
-					// Phase 4.5 UPDATE-mode UX fix: read existing crosswalker_query:
-					// frontmatter BEFORE opening the picker so the modal can
-					// pre-fill params + show the "Updating" badge. The
-					// orchestrator (applyQueryToNote) ALSO checks this
-					// independently to preserve query_id + view_file — UI
-					// pre-fill is separate from backend identity preservation.
-					const existing = await readQueryFrontmatter(this.app, file);
-					this.debug.info('view', 'picker-open', 'Recipe picker opened from command palette', {
-						existingQueryId: existing.data?.query_id ?? null,
-						mode: existing.data ? 'update' : 'create',
-					});
+					// Phase 4.6: check for legacy v1 host-note frontmatter — prompt migration first
+					const cache = this.app.metadataCache.getFileCache(file);
+					if (cache?.frontmatter?.crosswalker_query) {
+						const sv = (cache.frontmatter.crosswalker_query as { schema_version?: number }).schema_version;
+						if (sv === 1) {
+							new Notice(
+								'This note has legacy (Phase 4.5) Crosswalker frontmatter. ' +
+								'Run "Migrate queries to folder layout" first to move it into _crosswalker/queries/.',
+								8000,
+							);
+							this.debug.info('view', 'picker-blocked-on-legacy', 'Picker blocked — legacy v1 frontmatter on host note', { host: file.path });
+							return;
+						}
+					}
+					this.debug.info('view', 'picker-open', 'Recipe picker opened (Layout B+ CREATE flow)');
 					new RecipePickerModal(this.app, this, async (result) => {
 						if (result.action === 'cancel') {
-							this.debug.info('view', 'picker-cancelled', 'Recipe picker cancelled (no insertion)');
+							this.debug.info('view', 'picker-cancelled', 'Recipe picker cancelled');
 							return;
 						}
 						const applyResult = await applyQueryToNote({
@@ -238,17 +242,46 @@ export default class CrosswalkerPlugin extends Plugin {
 							file,
 							editor,
 							recipeId: result.recipeId,
+							recipeName: result.recipeName,
 							shape: result.shape,
 							params: result.params,
+							collisionMode: 'auto-suffix', // TODO Phase 4.7: refuse-and-prompt modal for picker entry point
 							debug: this.debug,
 						});
 						if (applyResult.ok) {
-							const verb = applyResult.action === 'created' ? 'Created' : 'Updated';
-							new Notice(`${verb} query: ${result.recipeId}`, 4000);
+							new Notice(`Created query: ${applyResult.slug}`, 4000);
+						} else if (applyResult.reason === 'slug-collision') {
+							new Notice(`Query name "${applyResult.existingSlug}" already exists. Pick a different name or use a different recipe.`, 8000);
 						} else {
 							new Notice(`Could not apply query: ${applyResult.reason}.`, 6000);
 						}
-					}, existing.data).open();
+					}, null).open();
+				});
+			},
+		});
+
+		// v0.1.6 Phase 4.6: one-shot migration of legacy Phase 4.5 host-note
+		// frontmatter to Layout B+ per-query folders. Idempotent.
+		this.addCommand({
+			id: 'migrate-query-layout',
+			name: 'Migrate queries to folder layout',
+			callback: async () => {
+				const traceId = this.debug.newTraceId();
+				await this.debug.withTrace(traceId, async () => {
+					const { migrateQueriesToFolderLayout } = await import('./views/migrate-query-layout');
+					const { loadAllRecipes } = await import('./views/recipe-loader');
+					const schemaStyle = (this.settings.recipeSchemaStyle ?? 'A') as 'A' | 'B';
+					const loadResult = await loadAllRecipes(this.app, schemaStyle, this.debug);
+					const result = await migrateQueriesToFolderLayout({
+						app: this.app,
+						debug: this.debug,
+						recipes: loadResult.recipes,
+					});
+					new Notice(
+						`Migration scan: scanned ${result.scanned}, migrated ${result.migrated}, skipped ${result.skipped}` +
+							(result.errors.length > 0 ? `, ${result.errors.length} error${result.errors.length === 1 ? '' : 's'}` : ''),
+						8000,
+					);
 				});
 			},
 		});
