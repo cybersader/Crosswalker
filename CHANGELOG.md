@@ -6,7 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased] — v0.1 implementation in progress (2026-05-04 → present)
 
-The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + **5** ✅ done; v0.1.7 next).
+The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
+
+### v0.1.6 Phase 6 — Layer A primitive expansion (bind / set-op / diff) (2026-05-18, ✅ Done)
+
+Closes the [Ch 29 8-primitive set](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-09-challenge-29-ontology-web-query-verbs-validation/). The locked Layer A vocabulary is now complete: `filter / traverse / bind / project / aggregate / anti-join / set-op / diff`. Ships the three additions from Ch 29's revision in pure-function form, engine-neutral, no Obsidian dependency.
+
+**Concept page brought in sync**: [`query-primitives.mdx`](https://cybersader.github.io/crosswalker/concepts/query-primitives/) was stale (still showed the old 7-primitive candidate set with a "pending Ch 29 validation" callout). Rewritten to lock the 8-primitive set with: (a) the "Locked — Ch 29 outcome" tip, (b) the 8-primitive table, (c) net-changes list (drop closure, demote pivot, add bind/set-op/diff), (d) worked examples for the three additions ("Concepts in both NIST CSF and CIS" → set-op; "What changed in CSF v1.1 → v2.0?" → diff; "Evidence older than 1 year" → bind), (e) "What's NOT a primitive" table expanded with Ch 29's explicit rejects (rank, window functions, constraint-satisfy, federation), (f) algebraic-closure section, (g) engine-neutrality cross-link to Commitment #5.
+
+**New modules** (pure-function Layer A primitives):
+- `src/views/bind-primitive.ts` — `bind(rows, name, fn)` adds a derived column from a formula. `bindMany(rows, [...bindings])` chains them. Same shape as SPARQL `BIND`, SQL `AS`, pandas `assign`.
+- `src/views/set-op-primitive.ts` — `setOp(left, right, {keyOf, mode, conflictStrategy?})` for union / intersection / difference. `conflictStrategy: 'left' | 'right' | 'merge'` controls field-merging on key collisions. Inexpressible without this primitive: "controls in BOTH NIST and CIS" (intersection) and any framework-overlap query.
+- `src/views/diff-primitive.ts` — `diff(before, after, {keyOf, equalsFn?, ignoreFields?})` returns `{added, removed, changed}`. Each `changed` record includes `before`, `after`, and a per-field `changedFields` list. `ignoreFields` for audit-noise (e.g. `last_reviewed`, `generated_at`). Custom `equalsFn` for fuzzy comparison. The primitive required for v0.1.8 audit-trail attestations.
+
+**Tests:** +47 net new (30 suites / 479 tests / all pass; 432 baseline).
+- `tests/bind-primitive.test.ts` (12 tests) — numeric/string/boolean derivations, no-mutation, name-collision overwrite, empty input, chained bindMany.
+- `tests/set-op-primitive.test.ts` (15 tests) — union/intersection/difference + 3 conflict strategies + function key extractors + empty inputs + dispatcher routing.
+- `tests/diff-primitive.test.ts` (20 tests) — added/removed/changed detection, unchanged-on-request, ignoreFields, custom equalsFn, nested object + array comparison, function keyOf, worked example ("CSF v1.1 → v2.0").
+
+**Algebraic shape (the 8 Layer A primitives — locked):**
+
+| # | Primitive | Status |
+|---|---|---|
+| 1 | filter | Bases-native (since v0.1.1) |
+| 2 | traverse (subsumes closure via depth=*) | Tier 2 SQL (v0.1.5) |
+| 3 | bind | **Pure function (Phase 6)** |
+| 4 | project | Bases-native (since v0.1.1) |
+| 5 | aggregate | Bases summaries + Tier 2 SQL (v0.1.5) |
+| 6 | anti-join | Pure function (Phase 5) + Tier 2 SQL |
+| 7 | set-op | **Pure function (Phase 6)** |
+| 8 | diff | **Pure function (Phase 6)** |
+
+**What this unblocks:**
+- v0.1.7 recipe schema can declare `bind` formulas + `set-op` mode + `diff` snapshot pairs at the recipe level
+- v0.1.7 exporters consume diff output (delta logs between vault snapshots)
+- v0.1.8 audit-trail uses `diff` as the load-bearing primitive for attesting "what changed since the last signed release"
+
+**Deferred** (out of Phase 6 scope by design):
+- Recipe-level YAML compilation of bind formulas (today the formula is a TS function; v0.1.7 adds string-formula → function compilation at recipe load time)
+- Wiring set-op and diff into the recipe runtime (Phase 5's join-primitives integrated into the pivot view; Phase 6's three primitives are available as the substrate but not yet referenced by any shipped recipe)
+- Tier 2 SQL implementations of set-op and diff (today they run in-memory over row-sets; for ontology-scale snapshots v0.1.7+ may move them to sidecar queries)
+
+
 
 ### v0.1.6 Phase 5 — Join primitive substrate + materialization + sparse-pivot HARD guard (2026-05-18, ✅ Done)
 
