@@ -8,6 +8,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### v0.1.6 Phase 6.3 — Benchmark + bundled-fixture import (testable surface) (2026-05-19, ✅ Done)
+
+User direction (2026-05-19): "keep moving forward to the point where I'll be able to start testing myself again. But also wire things into logging so we can test for speed, optimization, hardware usage." Two new commands give end-to-end visibility into the new primitive substrate without needing existing vault data.
+
+**New modules:**
+- `src/views/benchmark-primitives.ts` — synthesizes data at varying scales (default 100/1k/10k rows), times every primitive (array + streaming) with `performance.now()`, emits NDJSON `perf` events into the existing debug log. Functions: `runBenchmark(opts) → BenchmarkSummary`, `generateConcepts(n)`, `generateMappings(n, conceptCount)`, `formatBenchmarkSummary(summary)`. Deterministic synthetic data — reproducible numbers across runs.
+- `src/views/bundled-fixtures.ts` — 2 realistic SSSOM crosswalks (ISO 27001→SOC 2 with 10 mappings; NIST CSF→MITRE ATT&CK with 13 mappings) bundled inline as TSV strings (~6KB total). One-click import via the new command below — no manual file copying.
+
+**New commands:**
+- `Crosswalker: Run primitives benchmark (perf)` — calls `runBenchmark()`, logs ~26 per-primitive timing events (category=`perf`, op=`<primitive>-<mode>`), copies formatted summary to clipboard, surfaces a Notice with total duration + result count. Runs in ~1-2s on typical desktop hardware.
+- `Crosswalker: Import bundled test fixture (dev)` — modal lists the 2 bundled SSSOM crosswalks, user picks one, plugin runs `importSssom()` directly → junction notes land in `_crosswalker/mappings/<source>-to-<target>/`. Pivot views can now render with real data.
+
+**Tests:** 33 suites / 530 tests / all pass (+6 from 524 baseline).
+- `tests/benchmark-primitives.test.ts` (6 tests) — generator determinism, mapping coverage ~70%, benchmark produces results at every scale, array vs stream variants both run for streamable primitives, diff is array-only, formatBenchmarkSummary produces multi-line output.
+
+**What this unblocks for user testing:**
+- Run the benchmark → see speed numbers + per-primitive timings in `crosswalker-debug.log` (filter `category=='perf'`)
+- Import the bundled crosswalk → pivot view renders with real junction notes instead of the diagnostic empty state
+- Both commands work offline / without prior vault data → zero-config testing
+
+**Sample benchmark log shape** (NDJSON, one event per timing):
+```json
+{"ts":"2026-05-19T...","level":"info","category":"perf","op":"inner-join-stream","msg":"inner-join (stream) over 10000 rows","trace_id":"a1b2c3d4","primitive":"inner-join","mode":"stream","inputSize":10000,"outputSize":4200,"durationMs":12.4,"rowsPerSec":806451}
+```
+
 ### v0.1.6 Phase 6.2 — Streaming Layer A primitives (iterable-first) (2026-05-19, ✅ Done)
 
 User direction (2026-05-19): "make sure the join logic on the back end is all optimized from the beginning... streaming approach... certain operations aren't optimized yet across tooling." Phase 5+6 shipped Layer A primitives as `Array → Array`, which would have locked every recipe-runtime consumer to materialized intermediate results. Decision: refactor to **iterable-first** shape NOW, before wiring the recipe-runtime composer. See [Streaming primitive refactor log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-19-streaming-primitive-refactor/) for full reasoning + streamability matrix.

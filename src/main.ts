@@ -352,6 +352,113 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
+		// v0.1.6 Phase 6.3: import a bundled realistic crosswalk fixture.
+		// One-click way to populate the vault with junction notes so the pivot
+		// can render with real data. Dev convenience — bundles ~6KB of SSSOM
+		// TSV inside main.js to skip the manual file-copy step.
+		this.addCommand({
+			id: 'import-bundled-fixture',
+			name: 'Import bundled test fixture (dev)',
+			callback: async () => {
+				const traceId = this.debug.newTraceId();
+				await this.debug.withTrace(traceId, async () => {
+					const { BUNDLED_FIXTURES } = await import('./views/bundled-fixtures');
+					const { importSssom } = await import('./import/sssom-importer');
+
+					// Pick a fixture via a small AskUserQuestion-style modal
+					const { Modal, ButtonComponent } = await import('obsidian');
+					const picked = await new Promise<string | null>((resolve) => {
+						const modal = new Modal(this.app);
+						modal.contentEl.createEl('h2', { text: 'Import a bundled test fixture' });
+						modal.contentEl.createEl('p', {
+							text: 'Populates _crosswalker/mappings/ with junction notes from a realistic SSSOM crosswalk. Useful for end-to-end pivot testing.',
+							cls: 'crosswalker-modal-subtitle',
+						});
+						for (const fx of BUNDLED_FIXTURES) {
+							const row = modal.contentEl.createDiv({ cls: 'crosswalker-fixture-row' });
+							row.createEl('div', { text: fx.displayName, cls: 'crosswalker-fixture-title' });
+							row.createEl('div', {
+								text: `${fx.rowCount} mappings · ${fx.subjectOntology} → ${fx.objectOntology}`,
+								cls: 'crosswalker-fixture-meta',
+							});
+							new ButtonComponent(row).setButtonText('Import').setCta().onClick(() => {
+								modal.close();
+								resolve(fx.id);
+							});
+						}
+						const footer = modal.contentEl.createDiv({ cls: 'crosswalker-modal-footer' });
+						new ButtonComponent(footer).setButtonText('Cancel').onClick(() => {
+							modal.close();
+							resolve(null);
+						});
+						modal.open();
+					});
+
+					if (!picked) return;
+					const fx = BUNDLED_FIXTURES.find((f) => f.id === picked)!;
+					new Notice(`Importing ${fx.displayName}...`, 3000);
+
+					const result = await importSssom(
+						this.app,
+						fx.tsv,
+						null, // no projection callback
+						null, // no closure callback
+						{},
+						this.debug,
+					);
+					const created = result.generation?.created ?? 0;
+					const errors = result.generation?.errors?.length ?? 0;
+					const skipReason = result.skipped ? ` (skipped: ${result.skipped})` : '';
+					new Notice(
+						`Imported "${fx.displayName}": ${created} junction notes${errors > 0 ? `, ${errors} errors` : ''}${skipReason}.`,
+						6000,
+					);
+				});
+			},
+		});
+
+		// v0.1.6 Phase 6.3: run the Layer A primitive benchmark suite.
+		// No vault data needed — synthesizes data at varying scales (100/1k/10k
+		// rows), times each primitive (array + streaming variants), emits NDJSON
+		// `perf` events into the debug log. Useful for spotting regressions +
+		// understanding scale characteristics.
+		this.addCommand({
+			id: 'benchmark-primitives',
+			name: 'Run primitives benchmark (perf)',
+			callback: async () => {
+				const traceId = this.debug.newTraceId();
+				await this.debug.withTrace(traceId, async () => {
+					const { runBenchmark, formatBenchmarkSummary } = await import('./views/benchmark-primitives');
+					new Notice('Running primitives benchmark (this takes a few seconds)...', 3000);
+					// Yield once so the Notice renders before we block on CPU
+					await new Promise((r) => setTimeout(r, 50));
+					const summary = runBenchmark({ debug: this.debug });
+					const formatted = formatBenchmarkSummary(summary);
+					this.debug.info('perf', 'benchmark-summary', `Benchmark complete`, {
+						totalDurationMs: summary.totalDurationMs,
+						scales: summary.scales,
+						resultCount: summary.results.length,
+					});
+					try {
+						await navigator.clipboard.writeText(formatted);
+						new Notice(
+							`Benchmark complete in ${summary.totalDurationMs.toFixed(0)}ms. ` +
+							`${summary.results.length} timings logged to crosswalker-debug.log. ` +
+							`Summary copied to clipboard.`,
+							8000,
+						);
+					} catch {
+						new Notice(
+							`Benchmark complete in ${summary.totalDurationMs.toFixed(0)}ms. ` +
+							`${summary.results.length} timings logged to crosswalker-debug.log. ` +
+							`(Clipboard write failed; check debug log for full numbers.)`,
+							8000,
+						);
+					}
+				});
+			},
+		});
+
 		// v0.1.6 Phase 5: materialize the current query (write a snapshot
 		// JSON to <slug>/materialized/result.json). Opt-in, audit/share use
 		// case per Ch 32 deliverable B. Default browse stays live.
