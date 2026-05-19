@@ -6,6 +6,13 @@
  * the v0.1.8 audit-trail and any ontology-version delta query
  * ("what changed from NIST CSF v1.1 to v2.0?").
  *
+ * **Streaming note (Phase 6.2)**: diff is INHERENTLY array-based. Detecting
+ * `added` requires knowing the full BEFORE set (every AFTER row needs to be
+ * checked against it); detecting `removed` requires the full AFTER set.
+ * Both sides must be indexed before any output can be produced. There is
+ * no single-pass streaming implementation; spill-to-disk via Tier 2 SQLite
+ * is the path for above-budget snapshots (queued for Ch 34 deliverable).
+ *
  * Engine-neutral. No Obsidian dependency. Same shape as OWL-ecco,
  * CODEX, DynDiff, `git diff` (with structured field tracking),
  * Unix `diff` (with row-level granularity).

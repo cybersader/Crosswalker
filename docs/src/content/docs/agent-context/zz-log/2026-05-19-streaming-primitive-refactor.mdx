@@ -1,0 +1,99 @@
+---
+title: "Streaming primitive refactor — Layer A goes iterable-first"
+description: "User surfaced that the Phase 5+6 Layer A primitives are array-based — won't scale. Decision (2026-05-19): refactor every primitive to iterable-first shape BEFORE wiring into the recipe runtime, so the API is correct from the first call site. Filter/bind/project are pure generators (single-pass, constant memory); join/anti-join/set-op use hash-build on the smaller side + stream the larger (DuckDB / Polars pattern, memory bounded by smaller side). diff stays array-based (inherently set-comparison). Closure/recursive-traversal stays Tier 2 SQL. Ch 34 deliverable queued in parallel for the chunked-merge + spill-to-disk question."
+sidebar:
+  order: -20260519
+  label: "Streaming refactor · Layer A"
+tags: [log, phase-6-2, streaming, primitives, iterables, hash-join, chunky-csv, ch-34, v0-1-6]
+date: 2026-05-19
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Where this log fits
+
+| Layer | This refactor's effect |
+|---|---|
+| **A — Primitives** (filter / traverse / bind / project / aggregate / anti-join / set-op / diff) | API shape changes from `Array → Array` to `Iterable → Iterable` for the streamable subset |
+| **B — View shapes** | Consumers of primitive output (pivot, future table/list/hierarchy) materialize when they need a final shape; can short-circuit on cell-count guard before materializing |
+| **C — Recipes** | Recipe-runtime composer (not yet built) chains primitives via `for await` / `for`; result is consumed lazily, no full intermediate result-set in memory unless required |
+| **Mechanism** | In-memory `Iterable<Row>` for ≤budget; Tier 2 sqlite-wasm cursor for above-budget. Recipe declares scale hint; runtime dispatches |
+
+## TL;DR
+
+User pushed back (2026-05-19): "make sure the join logic on the backend is optimized from the beginning... streaming approach... certain operations aren't optimized yet across tooling."
+
+The Phase 5+6 Layer A primitives shipped as `Array → Array`. That was fine for unit tests + integration tests (≤30 rows), but it's the wrong shape for the recipe runtime we're about to wire — once primitives have array call sites, every consumer assumes the full result is in memory.
+
+**Decision**: refactor every primitive to iterable-first shape NOW, before the recipe runtime wiring. Keep array overloads for compatibility with existing tests + small-data ergonomics. Document the streamability matrix per primitive.
+
+## Streamability matrix
+
+| Primitive | Streamable single-pass? | Implementation |
+|---|---|---|
+| `filter` | ✅ Trivially — generator | `function* filterStream(rows: Iterable<Row>, pred: (r: Row) => boolean): Iterable<Row>` |
+| `bind` | ✅ Trivially — generator | Pure row-by-row transform |
+| `project` | ✅ Trivially — generator | Pick-subset; row-by-row |
+| `aggregate` (count/sum/min/max) | ✅ Accumulator-based | Single-pass, constant memory |
+| `aggregate` (median/percentile) | ⚠️ Needs full data OR approximation | t-digest or sorted-sample for large inputs; defer to Tier 2 SQL for v0.1.6+ |
+| `inner / outer / anti join` | ⚠️ Hybrid — hash smaller side, stream larger | Memory bounded by smaller side. Standard hash-join (DuckDB/Polars). Caller can choose which side to materialize. |
+| `set-op` (union/intersection/difference) | ⚠️ Hybrid — hash one side, stream the other | Same shape as joins. Union is streamable from one side + dedup-set. |
+| `diff` | ❌ Both sides indexed | Inherently set-comparison; stays array-based. Document the contract. |
+| `traverse(depth=*)` / closure | ❌ Iterative-fixpoint; non-streaming by nature | Stays Tier 2 SQL (recursive CTE). |
+
+## ChunkyCSV provenance
+
+User authored ChunkyCSV (chunked-iterable CSV processing) — same mental model: chunks flow through transforms, hash-build is the only operation that buffers, and the smaller side gets buffered while the larger streams. Crosswalker's IMPORT side already aligns with this (PapaParse → `AsyncIterable<Row>` → generation engine, shipped v0.1.4.5). The QUERY-side primitives now adopt the same shape.
+
+**What we borrow from ChunkyCSV**: the pattern. **What we have to write ourselves**: (a) integration with Tier 2 sqlite-wasm for spill-to-disk when in-memory hash exceeds budget (novel — pending Ch 34 deliverable for design validation), (b) the recipe-runtime composer that chains primitives lazily (application-specific). Hash-build join, accumulator aggregate, generator filter/bind/project are standard CS — no novel algorithms.
+
+## Why now (not deferred to v0.1.7+)
+
+The recipe runtime is the next piece (gap #1 + #5 from the 2026-05-19 shift-left audit). Once the runtime is wired with array-based primitives, every consumer (pivot, future hierarchy, future table) assumes the full row-set is materialized. Refactoring after that costs much more. This is the cheap moment.
+
+## Out-of-scope (defer to Ch 34 deliverable + v0.1.7+)
+
+| Item | Why deferred |
+|---|---|
+| Spill-to-disk for joins/set-ops/diffs exceeding RAM budget | Needs Ch 34 design validation (DuckDB out-of-core, Polars streaming, DataFusion chunked execution survey). Filing Ch 34 deliverable in parallel with this refactor. |
+| Chunked-merge for distributed result sets | v0.2+ federation territory |
+| Approximate aggregates (t-digest median, HyperLogLog distinct count) | Niche; recipe-author can fall back to Tier 2 SQL for now |
+| Recipe-runtime composer ("primitive pipeline executor") | Phase 7 or v0.1.7 Phase 1; depends on this refactor landing first |
+
+## Migration / backward-compat
+
+| Surface | Plan |
+|---|---|
+| Existing array-based call sites in tests | Keep the array overloads — `bind(rows: Row[], ...) → Row[]` calls `bindStream(rows, ...)` internally and materializes |
+| Existing integration tests (Phase 6.1) | Continue passing; array overloads stay valid |
+| New streaming call sites in recipe runtime | Use `*Stream` variants directly; consume via `for` / `for await` |
+| Public API surface (when v0.1.7 recipe-runtime composer ships) | Generic `Iterable<Row>` parameter accepts both arrays AND generators |
+
+## Implementation plan (this commit)
+
+1. `src/views/filter-primitive.ts` (new) — extract filter from "implicit Bases-native" to an explicit module with both `filter(rows[], pred)` array form and `filterStream(rows, pred)` generator form
+2. `src/views/bind-primitive.ts` — add `bindStream()` + `bindManyStream()` generators
+3. `src/views/join-primitives.ts` — add `*Stream` variants: hash-build on right side, stream left
+4. `src/views/set-op-primitive.ts` — add streaming union/intersection/difference (right side hashed)
+5. `src/views/diff-primitive.ts` — documented as array-only (inherently set-comparison); no streaming variant
+6. `tests/integration/streaming-primitives.test.ts` (new) — exercise streaming variants over realistic fixtures wrapped as iterables; assert same output as array versions
+7. Keep existing array overloads; existing tests stay green
+
+## Ch 34 deliverable
+
+Filed 2026-05-08; never run. Queueing now for fresh-agent research session. The deliverable should answer:
+
+- What spill-to-disk pattern does DuckDB / Polars / DataFusion use when a join's hash exceeds RAM?
+- How does sqlite-wasm handle out-of-core? Does it have a comparable pattern (temp tables in OPFS)?
+- What's the right "scale hint" recipe authors declare (`small / medium / large`)?
+- Should Crosswalker route above-threshold queries to a worker thread for cooperative yielding?
+
+Once the deliverable lands, the spill-to-disk + chunked-merge integration code goes into Phase 7 / v0.1.7 Phase 1.
+
+## Related
+
+- [v0.1.4.5 streaming refactor](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md) — IMPORT-side `AsyncIterable<Row>` shipped
+- [Phase 5 scope log](/crosswalker/agent-context/zz-log/2026-05-18-phase-5-scope-join-primitive-substrate/) — the join substrate this refactor reshapes
+- [Phase 6.1 integration tests](/crosswalker/agent-context/zz-log/2026-05-18-query-state-location-synthesis/) — the realistic-data test foundation this builds on
+- [Ch 34 — Streaming / chunked query execution at ontology-web scale](/crosswalker/agent-context/zz-challenges/34-streaming-chunked-query-execution/) — research brief; deliverable to be filed in parallel with this work
+- [Query primitives concept](/crosswalker/concepts/query-primitives/) — locked 8-primitive set; this refactor updates the implementation, not the verbs

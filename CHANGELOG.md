@@ -8,6 +8,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### v0.1.6 Phase 6.2 — Streaming Layer A primitives (iterable-first) (2026-05-19, ✅ Done)
+
+User direction (2026-05-19): "make sure the join logic on the back end is all optimized from the beginning... streaming approach... certain operations aren't optimized yet across tooling." Phase 5+6 shipped Layer A primitives as `Array → Array`, which would have locked every recipe-runtime consumer to materialized intermediate results. Decision: refactor to **iterable-first** shape NOW, before wiring the recipe-runtime composer. See [Streaming primitive refactor log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-05-19-streaming-primitive-refactor/) for full reasoning + streamability matrix.
+
+**Pattern**: hash-build the smaller (right) side; stream the larger (left). DuckDB / Polars / ChunkyCSV pattern. Memory bounded by smaller side.
+
+**New module**:
+- `src/views/filter-primitive.ts` — explicit Layer A filter (was previously implicit Bases-native). `filter()` array form + `filterStream()` generator + `filterStreamAsync()` for I/O-bound sources.
+
+**New streaming variants** (alongside existing array forms — backward compat preserved):
+- `bind-primitive.ts`: `bindStream()` + `bindManyStream()` — pure generators, single-pass, lazy
+- `join-primitives.ts`: `innerJoinStream()` / `leftOuterJoinStream()` / `antiJoinStream()` (hash-build right; stream left). `rightOuterJoinStream` / `fullOuterJoinStream` materialize then delegate (callers should swap sides for true streaming when right side is large). `executeJoinStream()` dispatcher.
+- `set-op-primitive.ts`: `intersectionStream()` / `differenceStream()` / `unionStream()` (right hashed; left streamed). `setOpStream()` dispatcher. Union with `right`/`merge` conflict strategies is documented as not pure single-pass (caller can dedup downstream).
+
+**Streamability matrix** (locked):
+
+| Primitive | Single-pass streamable? | Memory |
+|---|---|---|
+| filter / bind / project | ✅ Trivially (generators) | O(1) per row |
+| aggregate (count/sum/min/max) | ✅ Accumulator | O(1) per group |
+| aggregate (median/percentile) | ⚠️ Defer to Tier 2 SQL | — |
+| inner / left-outer / anti-join | ✅ Hash right; stream left | O(right) |
+| right-outer / full-outer join | ⚠️ Both sides indexed | Materialized |
+| set-op (union/inter/diff) | ✅ Hash one; stream other | O(hashed-side) |
+| diff | ❌ Both sides indexed (inherent) | Materialized — documented in module header |
+| traverse(depth=*) / closure | ❌ Iterative fixpoint | Stays Tier 2 SQL |
+
+**ChunkyCSV alignment**: same shape as user's prior chunked-iterable + hash-build-join pattern. IMPORT-side already aligned via v0.1.4.5 (PapaParse → `AsyncIterable<Row>` → generation engine); QUERY-side now matches. We don't write new *core* logic — borrowed standard CS (hash-build join, accumulator aggregate, generator filter). The novel piece deferred to v0.1.7+ is the spill-to-disk integration with Tier 2 sqlite-wasm when in-memory hash exceeds budget.
+
+**Ch 34 — Streaming query execution** ([brief](https://cybersader.github.io/crosswalker/agent-context/zz-challenges/34-streaming-chunked-query-execution/)) — filed 2026-05-08, deliverable not yet run. Queued in parallel with this refactor for fresh-agent research session on DuckDB out-of-core / Polars streaming / DataFusion chunked execution patterns to inform the v0.1.7+ spill-to-disk work.
+
+**Tests:** 32 suites / 524 tests / all pass (+15 from 509 baseline).
+- `tests/integration/streaming-primitives.test.ts` (15 tests):
+  - Array/stream parity per primitive over realistic fixtures (CSF, 800-53, ISO 27001, SOC 2, CIS v8, ATT&CK, 3 crosswalks)
+  - Lazy evaluation probe (generator doesn't consume input until iteration)
+  - "Hash-build is on the right side" memory-shape probe (right fully consumed before left starts producing matches)
+  - Pipelined composition: `filterStream → bindStream → antiJoinStream` end-to-end
+
+Backward-compat: every existing test continues to pass against the array overloads. No public API broken.
+
 ### v0.1.6 Phase 6.1 — Integration tests over realistic fixtures (2026-05-19, ✅ Done)
 
 User audit (2026-05-19): "Did the tests actually use real data, or example files?" Honest answer was no — all unit tests through Phase 6 used hand-crafted toy data; the realistic fixtures under `tools/fixtures/realistic/` were sitting unused (zero `grep` hits across `tests/`). This phase closes that gap.

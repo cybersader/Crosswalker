@@ -60,3 +60,46 @@ export function bindMany(rows: BindRow[], bindings: Array<[string, BindFormula]>
 	}
 	return current;
 }
+
+// ---------------------------------------------------------------------------
+// Streaming variants (Phase 6.2) — single-pass, constant memory.
+// Same semantics; lazy evaluation. Consumers iterate via for-of.
+// ---------------------------------------------------------------------------
+
+/**
+ * Streaming variant of `bind` — yields one row at a time. Constant memory.
+ * Accepts any `Iterable<BindRow>` (including arrays, generators, async
+ * source materialized).
+ *
+ * Example:
+ *   for (const row of bindStream(reader, 'curie', r => `nist:${r.id}`)) {
+ *     // row already has the new column; original wasn't mutated
+ *   }
+ */
+export function* bindStream<T = unknown>(
+	rows: Iterable<BindRow>,
+	name: string,
+	fn: BindFormula<T>,
+): Iterable<BindRow> {
+	if (name === '') {
+		throw new Error('bind: column name must be non-empty');
+	}
+	for (const r of rows) {
+		yield { ...r, [name]: fn(r) };
+	}
+}
+
+/**
+ * Streaming variant of `bindMany` — chains multiple binds lazily.
+ * Each generator wraps the previous; data flows through one row at a time.
+ */
+export function bindManyStream(
+	rows: Iterable<BindRow>,
+	bindings: Array<[string, BindFormula]>,
+): Iterable<BindRow> {
+	let current: Iterable<BindRow> = rows;
+	for (const [name, fn] of bindings) {
+		current = bindStream(current, name, fn);
+	}
+	return current;
+}

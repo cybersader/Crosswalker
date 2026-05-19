@@ -184,6 +184,160 @@ export function antiJoin(left: JoinEntry[], right: JoinEntry[], config: JoinConf
 // Helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Streaming variants (Phase 6.2)
+//
+// Strategy: hash-build the RIGHT side in memory (caller picks which side is
+// smaller via the leftOn/rightOn config — convention is "right is smaller").
+// Then stream the LEFT side row-by-row through the hash. Memory bounded by
+// the right-side index.
+//
+// Filter/bind/project upstream of a join stay generator-form, so joins are
+// composable with the lazy generator pipeline.
+//
+// For anti-join + outer-joins, we also need to track which right-side keys
+// have been seen for full-outer's right-only pass — kept O(right) memory.
+//
+// diff stays array-only (inherently set-comparison); see diff-primitive.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Streaming inner join. Right side is buffered into a key→bucket index;
+ * left side flows through one entry at a time. Memory: O(right).
+ */
+export function* innerJoinStream(
+	left: Iterable<JoinEntry>,
+	right: Iterable<JoinEntry>,
+	config: JoinConfig,
+): Iterable<JoinEntry> {
+	const rightIndex = indexIterableByKey(right, config.rightOn);
+	for (const l of left) {
+		const k = extractKey(l, config.leftOn);
+		if (k == null) continue;
+		const matches = rightIndex.get(k);
+		if (!matches) continue;
+		for (const r of matches) {
+			yield mergeRow(l, r, config.rightPrefix);
+		}
+	}
+}
+
+/**
+ * Streaming left-outer join. Right buffered; left streams; null-pad on miss.
+ * Memory: O(right).
+ */
+export function* leftOuterJoinStream(
+	left: Iterable<JoinEntry>,
+	right: Iterable<JoinEntry>,
+	config: JoinConfig,
+): Iterable<JoinEntry> {
+	const rightIndex = indexIterableByKey(right, config.rightOn);
+	for (const l of left) {
+		const k = extractKey(l, config.leftOn);
+		const matches = k != null ? rightIndex.get(k) : undefined;
+		if (!matches || matches.length === 0) {
+			yield mergeRow(l, null, config.rightPrefix);
+		} else {
+			for (const r of matches) {
+				yield mergeRow(l, r, config.rightPrefix);
+			}
+		}
+	}
+}
+
+/**
+ * Streaming anti-join (Layer A primitive #6). Right key-set buffered; left
+ * streams. Yields LEFT rows that have NO match in right.
+ * Memory: O(right) for the key set.
+ */
+export function* antiJoinStream(
+	left: Iterable<JoinEntry>,
+	right: Iterable<JoinEntry>,
+	config: JoinConfig,
+): Iterable<JoinEntry> {
+	const rightKeys = new Set<string>();
+	for (const r of right) {
+		const k = extractKey(r, config.rightOn);
+		if (k != null) rightKeys.add(k);
+	}
+	for (const l of left) {
+		const k = extractKey(l, config.leftOn);
+		if (k == null || !rightKeys.has(k)) {
+			yield { ...l };
+		}
+	}
+}
+
+/**
+ * Streaming right-outer + full-outer require buffering one side to know
+ * which right rows were unmatched. Materialize-then-stream: collects left
+ * into an array, then streams once both sides are known.
+ *
+ * For true single-pass right-outer at scale, callers should SWAP left/right
+ * and use leftOuterJoinStream — algebraically equivalent.
+ */
+export function rightOuterJoinStream(
+	left: Iterable<JoinEntry>,
+	right: Iterable<JoinEntry>,
+	config: JoinConfig,
+): Iterable<JoinEntry> {
+	// Swap convention: right-outer(L, R) = left-outer(R, L) with swapped key roles
+	// + the row-merge order reversed. Simplest impl: just materialize and delegate.
+	const leftArr = Array.from(left);
+	const rightArr = Array.from(right);
+	return rightOuterJoin(leftArr, rightArr, config);
+}
+
+export function fullOuterJoinStream(
+	left: Iterable<JoinEntry>,
+	right: Iterable<JoinEntry>,
+	config: JoinConfig,
+): Iterable<JoinEntry> {
+	const leftArr = Array.from(left);
+	const rightArr = Array.from(right);
+	return fullOuterJoin(leftArr, rightArr, config);
+}
+
+/**
+ * Streaming dispatcher. Routes to the correct *Stream function per mode.
+ * For right-outer + full-outer, materializes both sides (see above).
+ */
+export function executeJoinStream(
+	left: Iterable<JoinEntry>,
+	right: Iterable<JoinEntry>,
+	config: JoinConfig,
+): Iterable<JoinEntry> {
+	const mode = config.mode ?? 'inner';
+	switch (mode) {
+		case 'inner': return innerJoinStream(left, right, config);
+		case 'left-outer': return leftOuterJoinStream(left, right, config);
+		case 'right-outer': return rightOuterJoinStream(left, right, config);
+		case 'full-outer': return fullOuterJoinStream(left, right, config);
+		case 'anti': return antiJoinStream(left, right, config);
+		default: {
+			const _exhaustive: never = mode;
+			throw new Error(`Unknown join mode: ${_exhaustive}`);
+		}
+	}
+}
+
+/** Build a Map keyed by extractKey() from any Iterable. */
+function indexIterableByKey(entries: Iterable<JoinEntry>, on: KeyExtractor): Map<string, JoinEntry[]> {
+	const index = new Map<string, JoinEntry[]>();
+	for (const e of entries) {
+		const k = extractKey(e, on);
+		if (k == null) continue;
+		const bucket = index.get(k);
+		if (bucket) bucket.push(e);
+		else index.set(k, [e]);
+	}
+	return index;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers (array form retains its original implementations above)
+// ---------------------------------------------------------------------------
+
 function extractKey(entry: JoinEntry, on: KeyExtractor): string | null {
 	if (typeof on === 'function') {
 		const v = on(entry);
