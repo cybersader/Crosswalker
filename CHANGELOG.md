@@ -8,6 +8,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### v0.1.6 Phase 6.1 — Integration tests over realistic fixtures (2026-05-19, ✅ Done)
+
+User audit (2026-05-19): "Did the tests actually use real data, or example files?" Honest answer was no — all unit tests through Phase 6 used hand-crafted toy data; the realistic fixtures under `tools/fixtures/realistic/` were sitting unused (zero `grep` hits across `tests/`). This phase closes that gap.
+
+**New test helper**: `tests/helpers/fixture-loader.ts` — pure-function loaders for the 9 realistic fixtures:
+- `loadConceptFixture(name)` returns typed concept rows (CSF, 800-53 AC, ISO 27001, SOC 2, CIS v8, MITRE ATT&CK Persistence subsets)
+- `loadCrosswalkFixture(name)` returns typed crosswalk rows; coerces `confidence` to number; auto-strips SSSOM TSV header comments
+- `REALISTIC_FIXTURES` const lists every fixture by category for parameterized "every fixture parses" sanity tests
+
+**New integration suite**: `tests/integration/primitives-on-realistic-data.test.ts` — 30 tests in 8 describe blocks:
+- Loader sanity (9 tests) — every fixture parses + has expected row shape
+- `filter` over CSF function = "GOVERN" + 800-53 top-level controls
+- `bind` derived CURIEs, title-length metrics, confidence-threshold flags over real SSSOM rows
+- `aggregate` group-by-count over CSF concepts + crosswalk predicates
+- `anti-join` "CSF concepts with NO mapping to ATT&CK" + "ISO concepts unmapped to SOC 2"
+- Join modes — `innerJoin` CSF × 800-53 crosswalk (overlapping fixture data), `leftOuterJoin` preserves all CSF concepts, cross-fixture traversal back to AC controls
+- `set-op` realistic comparisons — CIS ∩ SOC 2 empty (different id naming); CIS ∪ SOC 2 = sum (no key collisions); CSF concepts NOT subjects of CSF→800-53 mappings
+- `diff` synthesized v1→v2 deltas over real concept rows: renamed title detection, audit-timestamp noise ignored via `ignoreFields`, fuzzy `confidence` comparison via custom `equalsFn`
+- Cross-fixture composition — pipeline `filter → bind → executeJoin` for "AC controls referenced by high-strength CSF mappings"; framework-overlap-by-id query
+
+**Realistic-data findings that the tests document via passing assertions**:
+- CSF concepts fixture covers GOVERN+IDENTIFY; CSF→ATT&CK mapping targets PROTECT+DETECT — `inner-join over non-overlapping fixture subsets returns empty (realistic data shape)` test explicitly captures this
+- Join field-merging: right-side `id` becomes `r_id` when both sides have `id` (default `rightPrefix='r_'`)
+- Match-type → strength mapping (`exact: 1.0, close: 0.85, broad: 0.7`) used for confidence-style filters when source crosswalks use enum match_type instead of numeric confidence
+
+**Tests:** 31 suites / 509 tests / all pass (+30 from 479 baseline). Build + lint clean.
+
+This is the integration-test foundation v0.1.7+ work builds on — same loader powers future exporter tests, recipe-runtime tests, and Tier 2 SQL helper tests.
+
 ### v0.1.6 Phase 6 — Layer A primitive expansion (bind / set-op / diff) (2026-05-18, ✅ Done)
 
 Closes the [Ch 29 8-primitive set](https://cybersader.github.io/crosswalker/agent-context/zz-research/2026-05-09-challenge-29-ontology-web-query-verbs-validation/). The locked Layer A vocabulary is now complete: `filter / traverse / bind / project / aggregate / anti-join / set-op / diff`. Ships the three additions from Ch 29's revision in pure-function form, engine-neutral, no Obsidian dependency.
