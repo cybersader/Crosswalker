@@ -1,0 +1,40 @@
+---
+title: "For internal audit"
+description: How an internal-audit team uses Crosswalker within the unified risk model — point audit tests at the shared control objects instead of a separate control universe, and write findings to a shared register that GRC and compliance also see.
+tags: [example, internal-audit, controls, findings, unified-risk-model]
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note">
+**Audience: internal audit.** The key move: audit doesn't maintain its *own* control universe — it tests against the **shared controls** in the [unified risk model](/crosswalker/examples/unified-risk-model/) and writes to the **shared finding register**. That keeps audit, GRC, and compliance looking at the same reality.
+</Aside>
+
+## What you own in the model
+
+| Entity | Your role |
+|---|---|
+| Assessment (audit) | ◎ own |
+| Finding / Issue (+ remediation) | ◎ own |
+| Control | ● test (GRC/ISRM owns the library) |
+| Risk / Risk Scenario | ● use for risk-based planning |
+| Requirement / Framework | ○ reference |
+
+## How you get into it
+
+1. **Reuse the shared control library.** Your audit programs reference the same control objects GRC/ISRM maintains — no parallel control universe to keep in sync.
+2. **Map tests to controls.** An audit test points at a control (which already hangs off the relevant CRI / framework requirements via the crosswalk), so a passed/failed test rolls up to framework coverage automatically.
+3. **Write findings to the shared register.** A finding records *against* the control/requirement that failed — visible to GRC and compliance, who own remediation alongside you.
+4. **Plan risk-based.** Use the shared risk scenarios (tagged to CRI functions) to scope the audit universe.
+
+## Why this beats a siloed audit tool
+
+A standalone audit workpaper engine ([Pentana / Ideagen](/crosswalker/concepts/related-tooling/), AuditBoard) keeps its own objectives-risks-controls-tests library. That's fine — but if it doesn't share the control objects with GRC, you get drift: audit tests one control definition, GRC manages another. In the unified model, **the control is one object**; audit tests it, GRC maintains it, compliance maps obligations to it. Crosswalker can hold that shared control + crosswalk layer your audit tool points at.
+
+## Related
+
+- [Unified risk model](/crosswalker/examples/unified-risk-model/) — the shared model
+- [For GRC / ISRM](/crosswalker/examples/for-grc-isrm/) — who owns the control library you test
+- [Related tooling](/crosswalker/concepts/related-tooling/) — audit engines (Pentana, AuditBoard) + where they connect

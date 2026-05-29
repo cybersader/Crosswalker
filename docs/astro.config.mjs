@@ -98,6 +98,10 @@ export default defineConfig({
           autogenerate: { directory: 'features' },
         },
         {
+          label: 'Examples',
+          autogenerate: { directory: 'examples', collapsed: true },
+        },
+        {
           label: 'Concepts',
           autogenerate: { directory: 'concepts', collapsed: true },
         },

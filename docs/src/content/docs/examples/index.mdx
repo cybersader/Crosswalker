@@ -1,0 +1,34 @@
+---
+title: Examples
+description: Recommended, worked implementations of Crosswalker for specific problem domains and audiences. Not universal concepts (those live under Concepts) and not onboarding basics (Getting started) — these are "here's how a real team applies Crosswalker for X."
+tags: [examples, implementations, use-cases]
+sidebar:
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note">
+**What this section is.** Crosswalker is a general [ontology-lifecycle-management](/crosswalker/concepts/ontology-lifecycle/) system — it isn't *only* for risk/compliance work. The pages under **Concepts** describe what's true for all of Crosswalker; **Getting started** covers onboarding. This **Examples** section is different: recommended, worked implementations for a specific domain or audience — "here's how a real team gets into it and actually uses it," not bare-bones usage and not a sales pitch.
+</Aside>
+
+## The risk / GRC / audit / compliance domain
+
+The primary launch domain. These teams share overlapping problem areas (governance, internal audit, regulatory + operational compliance, third-party risk) and benefit from operating on one shared model rather than disconnected tools.
+
+- **[Unified risk model (for risk & GRC teams)](/crosswalker/examples/unified-risk-model/)** — the shared data model: CRI Profile at the center, every framework crosswalked to it, shared entities (control / requirement / framework / asset / vendor / process / finding / evidence / incident) with per-team ownership. The "assess once, comply many" backbone.
+
+Per-role entry points (how each reader gets in):
+
+- **[For internal audit](/crosswalker/examples/for-internal-audit/)** — point audit tests at the shared control objects; write to a shared finding register.
+- **[For GRC / ISRM (operational compliance)](/crosswalker/examples/for-grc-isrm/)** — own the control + crosswalk spine; collect evidence once, reuse across frameworks. **This is Crosswalker's home lane.**
+- **[For regulatory compliance](/crosswalker/examples/for-regulatory-compliance/)** — map regulatory obligations down to the shared controls. Note: reg-change tracking itself is a different (Lane 1) job — Crosswalker is a supporting spine here, not the CMS.
+
+<Aside type="caution">
+**Regulatory compliance ≠ operational compliance.** Two distinct jobs: *regulatory compliance* (Lane 1 — tracking laws and their changes) vs *operational / control compliance* (Lane 2 — maintaining controls + framework crosswalks). Crosswalker is a Lane 2 tool. See the [two-lane framing](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling).
+</Aside>
+
+## Related
+
+- [Related tooling (GRC, audit, compliance, risk)](/crosswalker/concepts/related-tooling/) — the platforms each team already uses + where Crosswalker fits
+- [Framework corpus + tooling checkpoint](/crosswalker/agent-context/zz-log/2026-05-29-framework-corpus-and-tooling-checkpoint/) — the working doc for building a real framework corpus toward these implementations

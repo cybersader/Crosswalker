@@ -1,15 +1,23 @@
 ---
-title: Unified risk model
-description: A shared data model (ontology) that internal-audit, GRC/ISRM, and compliance teams can operate on together — with CRI Profile as the authority-of-record and every other framework crosswalked to it. The "assess once, comply many" backbone that any tool (Crosswalker included) can implement.
-tags: [uro, unified-risk-model, ontology, cri-profile, grc, audit, compliance, data-model]
+title: "Unified risk model (for risk & GRC teams)"
+description: A recommended implementation for risk/GRC/audit/compliance teams — a shared data model (ontology) they operate on together, with CRI Profile as the authority-of-record and every other framework crosswalked to it. The "assess once, comply many" backbone Crosswalker (or any related tool) can implement. A domain-specific application, not a universal Crosswalker concept.
+tags: [uro, unified-risk-model, ontology, cri-profile, grc, audit, compliance, data-model, example]
 sidebar:
-  order: 8
+  order: 2
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
+<Aside type="note">
+**Audience: risk, GRC/ISRM, internal-audit, and compliance teams.** This is a *recommended implementation* of Crosswalker for a specific domain — not a universal Crosswalker concept (Crosswalker is a general [ontology-lifecycle-management](/crosswalker/concepts/ontology-lifecycle/) system; this is one applied use). Per-role entry points: [internal audit](/crosswalker/examples/for-internal-audit/) · [GRC / ISRM (operational compliance)](/crosswalker/examples/for-grc-isrm/) · [regulatory compliance](/crosswalker/examples/for-regulatory-compliance/).
+</Aside>
+
 <Aside type="tip">
 The unifying answer to "which tool should each team use?" is **not a single product — it's a shared data model**. Whatever tools internal-audit, GRC/ISRM, and compliance pick, if they all expose the *same* core entities with real relationships, the teams stay relatable instead of running three disconnected databases (or three spreadsheets pretending not to be). This page describes that model. Crosswalker is one way to implement it; so are the [related tools](/crosswalker/concepts/related-tooling/).
+</Aside>
+
+<Aside type="caution">
+**Two senses of "compliance" — keep them distinct.** *Regulatory compliance* (Lane 1: tracking laws + reg changes — Reg E/Z, BSA/AML, UDAAP) is a different job from *operational / control compliance* (Lane 2: maintaining a control library + framework crosswalks). Crosswalker is a **Lane 2** tool. In the table below, the "Compliance" column is the regulatory-compliance team's control-mapping touchpoints — their reg-change CMS itself lives in a [Lane 1 tool](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling). See [for regulatory compliance](/crosswalker/examples/for-regulatory-compliance/).
 </Aside>
 
 ## The problem this solves

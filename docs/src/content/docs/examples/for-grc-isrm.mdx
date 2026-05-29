@@ -1,0 +1,44 @@
+---
+title: "For GRC / ISRM (operational compliance)"
+description: How a GRC / information-security risk-management team uses Crosswalker — own the control + crosswalk spine, map controls to many frameworks at once, collect evidence once and reuse. This is Crosswalker's home lane (Lane 2 — operational/control compliance, distinct from regulatory compliance).
+tags: [example, grc, isrm, operational-compliance, lane-2, controls, crosswalk]
+sidebar:
+  order: 3
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip">
+**This is Crosswalker's home lane.** GRC/ISRM does *operational / control compliance* (Lane 2): maintain a control library, map it to many frameworks at once, collect evidence once, reuse it. That's exactly the [control + crosswalk spine](/crosswalker/concepts/related-tooling/#where-crosswalker-fits) Crosswalker is built to be. (The other "compliance" — tracking regulatory changes — is [Lane 1](/crosswalker/examples/for-regulatory-compliance/), a different job.)
+</Aside>
+
+## What you own in the [unified risk model](/crosswalker/examples/unified-risk-model/)
+
+GRC/ISRM is the **system-of-record owner** for the spine: authorities/frameworks, requirements, the control library, risk scenarios, and evidence. Everyone else reads these; you maintain them.
+
+| Entity | Your role |
+|---|---|
+| Authority / Framework (CRI + crosswalked CSF/800-53/ISO) | ◎ own |
+| Requirement / Diagnostic Statement | ◎ own |
+| Control (reference + applied) | ◎ own |
+| Evidence | ◎ own (collect once) |
+| Risk / Risk Scenario | ◎ own (ERM co-owns) |
+| Asset | ◎ own (with IT) |
+
+## How you get into it
+
+1. **Stand up the spine.** Import your top-of-house authority ([CRI Profile](/crosswalker/reference/registry/cri/)) and the frameworks you map to ([NIST CSF 2.0](/crosswalker/reference/registry/nist/), 800-53, ISO 27001) via `Crosswalker: Import structured data` → concept notes per framework.
+2. **Import the crosswalks.** Bring in CRI ↔ CSF ↔ 800-53 mappings via `Crosswalker: Import SSSOM mapping file` → [junction notes](/crosswalker/concepts/terminology/) carrying typed [STRM](/crosswalker/reference/registry/strm/) relationships. This is the "assess once, comply many" wiring: one control hangs off many requirements.
+3. **Build coverage + gap views.** `Crosswalker: Insert query into note` → pick a coverage-matrix recipe → see which CRI statements are covered (and which controls are missing) across frameworks. Anti-join recipes surface "controls with no evidence."
+4. **Collect evidence once.** Attach evidence to the control; the crosswalk means it answers every framework that control maps to.
+
+## Where the line is
+
+Crosswalker is the relatable control/crosswalk backbone — not a full GRC platform. Evidence-automation pipelines, risk quantification, and BCP/IR workflows live in your other tools (see [related tooling](/crosswalker/concepts/related-tooling/)); they connect to Crosswalker at the **shared control**.
+
+## Related
+
+- [Unified risk model](/crosswalker/examples/unified-risk-model/) — the shared model you anchor
+- [For internal audit](/crosswalker/examples/for-internal-audit/) · [For regulatory compliance](/crosswalker/examples/for-regulatory-compliance/)
+- [Related tooling](/crosswalker/concepts/related-tooling/) — Lane 2 neighbors (CISO Assistant, RegScale, SCF)
+- [Query primitives](/crosswalker/concepts/query-primitives/) — the verbs behind coverage/gap views
