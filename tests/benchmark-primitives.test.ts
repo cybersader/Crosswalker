@@ -45,7 +45,12 @@ describe('runBenchmark', () => {
 			expect(r.inputSize).toBeGreaterThan(0);
 			expect(r.durationMs).toBeGreaterThanOrEqual(0);
 			expect(typeof r.rowsPerSec).toBe('number');
+			// Phase 6.3.1: heap delta is a number (Chromium/Electron) or null (jsdom)
+			expect(r.heapDeltaBytes === null || typeof r.heapDeltaBytes === 'number').toBe(true);
 		}
+		// Summary carries heap-measurability flag + peak
+		expect(typeof summary.heapMeasurable).toBe('boolean');
+		expect(summary.peakHeapBytes === null || typeof summary.peakHeapBytes === 'number').toBe(true);
 	});
 
 	it('runs both array and stream variants for the streamable primitives', () => {

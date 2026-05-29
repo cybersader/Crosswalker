@@ -37,6 +37,8 @@ export interface PrimitiveResult {
 	outputSize: number;
 	durationMs: number;
 	rowsPerSec: number;
+	/** Heap delta in bytes (used JS heap after − before), if measurable. null otherwise. */
+	heapDeltaBytes: number | null;
 }
 
 export interface BenchmarkSummary {
@@ -45,9 +47,24 @@ export interface BenchmarkSummary {
 	totalDurationMs: number;
 	startedAt: string;
 	finishedAt: string;
+	/** Peak used JS heap (bytes) observed during the run, if measurable. */
+	peakHeapBytes: number | null;
+	/** Whether performance.memory was available (Chromium/Electron only). */
+	heapMeasurable: boolean;
 }
 
-const DEFAULT_SCALES = [100, 1000, 10000];
+// Bigger scales (Phase 6.3.1) — 10k was too small to reveal RAM/streaming
+// characteristics. 1M stresses joins enough to expose hash-build memory cost.
+const DEFAULT_SCALES = [1_000, 100_000, 1_000_000];
+
+/**
+ * Read the current used JS heap size in bytes. Available in Chromium/Electron
+ * via the non-standard `performance.memory` API. Returns null where absent.
+ */
+function readHeapBytes(): number | null {
+	const mem = (performance as unknown as { memory?: { usedJSHeapSize?: number } }).memory;
+	return typeof mem?.usedJSHeapSize === 'number' ? mem.usedJSHeapSize : null;
+}
 
 /**
  * Generate `n` synthetic concept rows with realistic field shapes.
@@ -218,14 +235,21 @@ export function runBenchmark(opts: { scales?: number[]; debug?: DebugLog } = {})
 
 	const finishedAt = new Date().toISOString();
 	const totalDurationMs = performance.now() - totalStart;
+	const heapMeasurable = readHeapBytes() !== null;
+	const peakHeapBytes = results.reduce<number | null>((peak, r) => {
+		if (r.heapDeltaBytes == null) return peak;
+		return peak == null ? r.heapDeltaBytes : Math.max(peak, r.heapDeltaBytes);
+	}, null);
 
 	debug?.info('perf', 'benchmark-complete', `Benchmark complete in ${totalDurationMs.toFixed(0)}ms`, {
 		scales,
 		totalResults: results.length,
 		totalDurationMs,
+		heapMeasurable,
+		peakHeapBytes,
 	});
 
-	return { scales, results, totalDurationMs, startedAt, finishedAt };
+	return { scales, results, totalDurationMs, startedAt, finishedAt, peakHeapBytes, heapMeasurable };
 }
 
 function recordTime(
@@ -236,7 +260,11 @@ function recordTime(
 	inputSize: number,
 	fn: () => number,
 ): void {
+	const heapBefore = readHeapBytes();
 	const { result: outputSize, durationMs } = timeIt(fn);
+	const heapAfter = readHeapBytes();
+	const heapDeltaBytes =
+		heapBefore != null && heapAfter != null ? heapAfter - heapBefore : null;
 	const rowsPerSec = inputSize / (durationMs / 1000);
 	const entry: PrimitiveResult = {
 		primitive,
@@ -245,6 +273,7 @@ function recordTime(
 		outputSize,
 		durationMs,
 		rowsPerSec,
+		heapDeltaBytes,
 	};
 	results.push(entry);
 
@@ -255,6 +284,8 @@ function recordTime(
 		outputSize,
 		durationMs,
 		rowsPerSec: Math.round(rowsPerSec),
+		heapDeltaBytes,
+		heapDeltaMB: heapDeltaBytes != null ? +(heapDeltaBytes / 1048576).toFixed(2) : null,
 	});
 }
 
@@ -265,7 +296,13 @@ function recordTime(
 export function formatBenchmarkSummary(summary: BenchmarkSummary): string {
 	const lines: string[] = [];
 	lines.push(`Crosswalker primitives benchmark — ${summary.totalDurationMs.toFixed(0)}ms total`);
-	lines.push(`Scales: ${summary.scales.join(', ')} rows`);
+	lines.push(`Scales: ${summary.scales.map((s) => s.toLocaleString()).join(', ')} rows`);
+	if (summary.heapMeasurable) {
+		const peakMB = summary.peakHeapBytes != null ? (summary.peakHeapBytes / 1048576).toFixed(1) : '?';
+		lines.push(`Heap measurable: yes · peak op heap delta: ${peakMB} MB`);
+	} else {
+		lines.push('Heap measurable: no (performance.memory unavailable in this runtime)');
+	}
 	lines.push('');
 
 	// Group by primitive, show array vs stream side-by-side per scale
@@ -279,8 +316,9 @@ export function formatBenchmarkSummary(summary: BenchmarkSummary): string {
 	for (const [primitive, entries] of byPrimitive) {
 		lines.push(`◆ ${primitive}`);
 		for (const e of entries) {
+			const heap = e.heapDeltaBytes != null ? `${(e.heapDeltaBytes / 1048576).toFixed(1).padStart(7)} MB` : '     n/a';
 			lines.push(
-				`  ${e.mode.padEnd(6)} n=${String(e.inputSize).padStart(6)}  →  ${String(e.outputSize).padStart(6)} rows  ${e.durationMs.toFixed(2).padStart(8)}ms  ${Math.round(e.rowsPerSec).toLocaleString().padStart(12)} rows/sec`,
+				`  ${e.mode.padEnd(6)} n=${String(e.inputSize).padStart(9)}  →  ${String(e.outputSize).padStart(9)} rows  ${e.durationMs.toFixed(2).padStart(9)}ms  ${Math.round(e.rowsPerSec).toLocaleString().padStart(14)} rows/sec  ${heap}`,
 			);
 		}
 		lines.push('');
