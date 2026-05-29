@@ -113,9 +113,9 @@ The picker fires the [Phase 4.5 orchestrator](https://github.com/cybersader/Cros
 
 1. Reads the recipe `recipes/v0-1/coverage-matrix.json` from the bundled catalog
 2. Renders the Bases YAML via the [recipe-templates module](https://github.com/cybersader/Crosswalker/blob/main/src/views/recipe-templates.ts) with user params (e.g. `confidence_threshold: 0.7`)
-3. Writes a generated `.base` file at `_crosswalker/views/q-2026-05-16-<8hex>.base`
+3. Writes a generated `.base` file at `_crosswalker/views/q-2026-05-16-<hex8>.base`
 4. Writes the canonical `crosswalker_query:` frontmatter to the user's note via `app.fileManager.processFrontMatter()`
-5. Inserts `![[_crosswalker/views/q-2026-05-16-<8hex>.base]]` at cursor
+5. Inserts `![[_crosswalker/views/q-2026-05-16-<hex8>.base]]` at cursor
 
 The generated `.base` file:
 

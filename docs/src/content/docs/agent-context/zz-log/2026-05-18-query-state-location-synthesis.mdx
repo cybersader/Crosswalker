@@ -46,7 +46,7 @@ This **re-homes** the Phase 4.5 architecture (frontmatter-canonical, `recipe + p
 | 1.1 | **Folder-pack layout wins.** Phase 4.5's flat `_crosswalker/views/q-<id>.base` dump has no answer for "where does the snapshot/export/audit go?" Layout A doesn't scale to Phase 5+. | ✅ |
 | 1.2 | **Folder-note magic embeds are NOT vanilla Obsidian.** `![[csf-coverage]]` does not resolve to `csf-coverage/index.md` without the LostPaul Folder Notes community plugin. That violates Commitment #3 (mobile parity, no plugin dependencies). | ✅ |
 | 1.3 | **`recipe + params` regenerates load-bearing artifacts but 5+ adjacent artifacts are NOT regenerable.** Non-regenerable: (a) user annotations, (b) audit snapshots (v0.1.8), (c) Bases hand-edits, (d) exports (v0.1.7), (e) materialized results (Phase 5). All need per-query sibling slots. | ✅ |
-| 1.4 | **Slug is display; `query_id` (existing `q-YYYY-MM-DD-<8hex>`) is durable identity.** Rename-safe by keying scanner + writers on `query_id`, not folder path. | ✅ |
+| 1.4 | **Slug is display; `query_id` (existing `q-YYYY-MM-DD-<hex8>`) is durable identity.** Rename-safe by keying scanner + writers on `query_id`, not folder path. | ✅ |
 | 1.5 | **Layout C (hybrid back-pointer) rejected.** Two-source drift cost; backlinks pane already gives "where embedded?" UX. | ✅ |
 | 1.6 | **"No folder" steelman rejected.** Loses Commitment #5 (runtime-agnostic recipe schema), Commitment #2's single coupling point, and has no per-query home for Phase 5+ derivatives. | ✅ |
 | 1.7 | **Migration before Phase 5.** Phase 4.5 state is fully regenerable from `crosswalker_query:` frontmatter; migration is mechanical + idempotent. New sub-phase: Phase 4.6. | ✅ |
@@ -60,7 +60,7 @@ This **re-homes** the Phase 4.5 architecture (frontmatter-canonical, `recipe + p
 | Folder name | `csf-coverage--a1b2c3d4/` | `csf-coverage/` | **B+ clean folder names** |
 | Canonical file | `csf-coverage--a1b2c3d4.md` (same-name) | `index.md` | **B+ `index.md`** |
 | Embed user types | `![[<slug>--<id8>]]` (resolves natively) | `![[<slug>/view.base]]` (explicit) | **B+ explicit embed** |
-| Collision policy | Always `--<id8>` suffix on folder | Refuse-and-prompt (picker) + `-<4hex>` (programmatic) | **B+ mixed policy** |
+| Collision policy | Always `--<id8>` suffix on folder | Refuse-and-prompt (picker) + `-<hex4>` (programmatic) | **B+ mixed policy** |
 | Filename aesthetic | Ugly — `--<id8>` always visible | Clean | **B+** |
 
 **Why B+ over B′**: matches the user's "embed is just `!` + wikilink, it shouldn't be checked" intuition more honestly. The explicit `![[<slug>/view.base]]` is literal about what's being embedded — there's no resolver hidden trick. `--<id8>` in A is a constant cosmetic tax users in the common case never hit. B+'s `query_id` lives in frontmatter (durable) without polluting filesystem names.
@@ -115,7 +115,7 @@ The user's explicit ask: *"We need to account for the weird issues and edge case
 | 5 | Slug with leading digits | Allow — Obsidian + filesystems tolerate `1-coverage/` | No special handling |
 | **Collisions** | | | |
 | 6 | Interactive picker — user creates same slug twice | Modal: 3 options: **Open existing** (default), **Pick new name** (text input), **Force suffix** (auto `<slug>-2`/`-3`/...). Default focus on Open existing. | The common case (90%) is "user forgot they made it already" — Open existing covers it. No silent rename. |
-| 7 | Programmatic create (agent / future MCP / wizard-draft) | Append `-<4hex>` random suffix. Never silently `-2`/`-3`. | Avoids the brief's flagged anti-pattern ("user can't find auto-renamed query"). Suffix is detectable. |
+| 7 | Programmatic create (agent / future MCP / wizard-draft) | Append `-<hex4>` random suffix. Never silently `-2`/`-3`. | Avoids the brief's flagged anti-pattern ("user can't find auto-renamed query"). Suffix is detectable. |
 | 8 | User pre-creates the folder/file at canonical path | Read existing `index.md`. If valid `crosswalker_query:` → treat as the existing query (UPDATE flow). If not → refuse with Notice: "A folder exists at `_crosswalker/queries/<slug>/` but is not a Crosswalker query. Rename it or pick a different slug." | Defensive; never overwrite user content |
 | 9 | Case-insensitivity (macOS HFS+ vs Linux ext4) | Slug is always lowercased before write. Collision check is case-insensitive. | Cross-platform identity-stability |
 | **Rename / move** | | | |
@@ -158,7 +158,7 @@ The user's explicit ask: *"We need to account for the weird issues and edge case
 
 **Preserved (no semantic change)**:
 - `crosswalker_query:` frontmatter shape (schema bumps 1 → 2 to record canonical-location change)
-- `query_id` format (`q-<YYYY-MM-DD>-<8hex>`)
+- `query_id` format (`q-<YYYY-MM-DD>-<hex8>`)
 - AJV validation
 - Idempotent regeneration via `Refresh query views`
 - All Phase 3.5c observability events (category=`view`)
@@ -186,7 +186,7 @@ The user's explicit ask: *"We need to account for the weird issues and edge case
 | Surface | Tests |
 |---|---|
 | Slug derivation | Pure-function tests for cases 1-5 from §4 above (kebab-case, fallback, reserved names, truncation, leading digits) |
-| Collision policy | Picker modal tests for case 6 (3 options surface); programmatic tests for case 7 (`-<4hex>` suffix added) |
+| Collision policy | Picker modal tests for case 6 (3 options surface); programmatic tests for case 7 (`-<hex4>` suffix added) |
 | Folder layout writer | `apply-query-to-note.test.ts` extended for new write target |
 | Folder layout reader | `regenerate-query-views.test.ts` extended for `_crosswalker/queries/**/index.md` walk |
 | Migration idempotency | New `migrate-query-layout.test.ts` — mock vault with Phase 4.5 queries → migrate → assert new layout → migrate again → no-op |
@@ -198,7 +198,7 @@ The user's explicit ask: *"We need to account for the weird issues and edge case
 - [ ] `Crosswalker: Refresh query views` is idempotent on second run (no writes when YAML body unchanged)
 - [ ] `![[<slug>/view.base]]` renders on Obsidian Desktop + Mobile (Capacitor) with no Folder Notes plugin
 - [ ] Slug collision via picker surfaces the 3-option modal (Open / Pick new / Force suffix); default focus on Open existing
-- [ ] Programmatic create produces `-<4hex>` suffix when slug collides
+- [ ] Programmatic create produces `-<hex4>` suffix when slug collides
 - [ ] Migration command moves test-vault's 3 existing queries to new layout without breaking existing embeds
 - [ ] Phase 3.5c trace-IDs thread through migration command for diagnosis
 - [ ] `bun run lint` + `bun run build` clean
@@ -228,7 +228,7 @@ The user's explicit ask: *"We need to account for the weird issues and edge case
 |---|---|---|
 | Query state canonical location | 🚧 Phase 4.5 = frontmatter on host note; flagged for Ch 38 stress-test | ✅ **Locked: Layout B+ `_crosswalker/queries/<slug>/index.md`** |
 | Per-query derivative home (Phase 5/v0.1.7/v0.1.8) | ❓ undefined | ✅ **Locked: sibling subfolders under `<slug>/`** |
-| Slug-collision policy | ❓ open | ✅ **Locked: refuse-and-prompt (picker) + `-<4hex>` (programmatic)** |
+| Slug-collision policy | ❓ open | ✅ **Locked: refuse-and-prompt (picker) + `-<hex4>` (programmatic)** |
 | Embed format | ⚠️ Phase 4.5 uses opaque `q-<id>.base` paths | ✅ **Locked: `![[<slug>/view.base]]` explicit** |
 | Phase 5 gating | ❓ ready to start | 🚧 **Blocked by Phase 4.6 migration** |
 | Phase 4.5 status | ✅ Done 2026-05-15 | ⚠️ **Re-homed by Phase 4.6** (does not revert; canonical state moves) |
