@@ -90,6 +90,30 @@ Filed 2026-05-08; never run. Queueing now for fresh-agent research session. The 
 
 Once the deliverable lands, the spill-to-disk + chunked-merge integration code goes into Phase 7 / v0.1.7 Phase 1.
 
+## Empirical validation (2026-05-19, desktop Electron, in-vault benchmark)
+
+Ran `Crosswalker: Run primitives benchmark (perf)` at scales 1k / 100k / 1M on real desktop hardware. Key results at **1M rows**:
+
+| Op | array | stream | winner |
+|---|---|---|---|
+| filter | 57.6ms | **15.7ms** | stream **3.6×** |
+| set-op-intersection | 331ms | **135ms** | stream **2.4×** |
+| inner-join | 690ms | **434ms** | stream **1.6×** |
+| left-outer-join | 490ms | 514ms | ~tied |
+| anti-join | 105ms | 107ms | ~tied |
+| diff (array-only) | **643ms** | — | slowest; can't stream |
+
+**Confirmed:**
+1. Streaming wins decisively where it matters — joins + set-ops + filter at scale. The iterable-first refactor paid off as designed.
+2. `left-outer-join` / `anti-join` tie — they preserve all left rows so output is input-sized either way; no materialization advantage.
+3. **`diff` is the bottleneck (643ms, non-streamable)** — both sides indexed. *The* candidate for Tier 2 SQL spill at ontology-web scale (Ch 34 work). `inner-join` at 1M+ is the second candidate.
+
+**Methodology caveats (honest):**
+- The `heapDeltaBytes` numbers are **GC-noisy and directional only** — negative deltas (`-107MB`, `-615MB`) mean GC fired mid-op, not that memory shrank. `performance.memory` around a single sync call catches collection events. Real retained-memory measurement needs forced GC between ops (`--expose-gc`, unavailable in Obsidian) or steady-state sampling. Treat heap data as "this op allocates a large working set" (joins/diff/bind ~80–110MB at 1M) vs "this op stays flat" (scan-shaped ops), not as precise figures.
+- The benchmark harness **under-sells** streaming's memory win: it calls `consume()` to materialize every streaming result into an array for apples-to-apples timing. In a real pipeline (`filterStream → joinStream → render first N`) the full intermediate is never materialized — that win is invisible to this harness, which only proves the *speed* win.
+
+**Scale verdict:** ≤100k rows all sub-55ms (no concern). 1M heavy ops 0.4–0.7s each, briefly froze the UI (synchronous; expected). Desktop-fine; mobile would need chunking/worker-thread (Ch 34).
+
 ## Related
 
 - [v0.1.4.5 streaming refactor](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md) — IMPORT-side `AsyncIterable<Row>` shipped
