@@ -58,6 +58,17 @@ bun run serve:both       # Option 5 — docs + plugin in parallel
 bun run serve:share      # Option 6 — docs + Tailscale
 ```
 
+### Windows double-click launchers
+
+Two `.bat` files at the repo root, for when you'd rather double-click than open a terminal:
+
+| File | Runs | Use |
+|---|---|---|
+| `serve.bat` | `bun run serve` | Interactive menu (docs / plugin / both / tunnel / tests) |
+| `serve-docs.bat` | `bun run serve:docs` | Docs dev server only → http://localhost:4321/crosswalker/ |
+
+Both `cd` to the repo root first, so they work from anywhere, and pause on exit so the window stays open if something errors.
+
 ## Plugin development workflow
 
 ```bash
