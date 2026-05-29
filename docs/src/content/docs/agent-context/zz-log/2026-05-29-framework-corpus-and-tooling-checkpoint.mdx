@@ -1,0 +1,80 @@
+---
+title: "Checkpoint — framework corpus + GRC tooling landscape (set up camp)"
+description: "Working checkpoint for the realistic-crosswalking / Unified Risk Ontology (URO) effort. Captures: which framework files to obtain + their copyright/licensing status + the gitignored _licensed/ handling pattern; where the GRC/IRM tooling landscape now lives in the KB (ecosystem page, two-lane framing); and the Frameworks folder scaffold. The place to set up camp for pulling real framework data in and crosswalking toward a CRI-centered URO."
+sidebar:
+  order: -20260529
+  label: "05-29 · Framework corpus + tooling checkpoint"
+tags: [log, checkpoint, frameworks, copyright, licensing, uro, grc-tooling, cri-profile, corpus]
+date: 2026-05-29
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip">
+This is a **working checkpoint** — the place to set up camp for the realistic-crosswalking push. Goal: pull real framework files into `test-vault/Frameworks/`, crosswalk them, and work toward a **Unified Risk Ontology (URO)** with **CRI Profile at the center**. Everything you need to start is linked here.
+</Aside>
+
+## Where we are
+
+After v0.1.6's query substrate landed (8 Layer A primitives, streaming variants, join/set-op/diff, benchmark + bundled-fixture commands), the next practical step is **realistic crosswalking in practice** — feeding actual framework data through the import → query → crosswalk pipeline instead of toy fixtures. This checkpoint sets up the corpus + the legal handling for that.
+
+## The URO goal (context)
+
+The driving use case (from 2026-05 financial-institution stack research): a **Unified Risk Ontology** that lets Internal Audit, GRC/ISRM, and Compliance operate on the *same* shared entities — risks, controls, frameworks, assets, vendors, processes, findings, evidence, incidents — with **CRI Profile as the authority-of-record** for the GRC/InfoSec team and every other framework crosswalked *to* it (via [OLIR](/crosswalker/reference/registry/olir/) / [STRM](/crosswalker/reference/registry/strm/)). The load-bearing joints are the **control** and the **crosswalk**: one control hangs off multiple framework requirements → *assess once, comply many*.
+
+Crosswalker's role in that model: the **Lane 2 control + crosswalk spine** (see the [two-lane framing](/crosswalker/concepts/ecosystem/#two-lanes-of-compliance-tooling)), kept as plain-text notes you own.
+
+## 1. Framework corpus — what to get + copyright handling
+
+Full get-these list + per-framework licensing lives in the corpus manifest: **`test-vault/Frameworks/PROVENANCE.md`** (committed). Summary:
+
+| Status | Frameworks | Handling |
+|---|---|---|
+| 🟢 **Public domain — commit freely** | NIST CSF 2.0, 800-53 r5, 800-171, FFIEC, HIPAA, CMMC, NYDFS 500, DORA, MITRE ATT&CK (attribute) | `Frameworks/public/` |
+| 🔴 **Copyrighted — local only** | **CRI Profile** (the spine), ISO 27001:2022, SOC 2 / AICPA TSC, PCI DSS | `Frameworks/_licensed/` (gitignored) |
+| 🟡 **Restrictive CC — gitignore to be safe** | CIS Controls v8, Secure Controls Framework | `Frameworks/_licensed/` (subset OK) |
+
+### The handling pattern (set up 2026-05-29)
+
+```
+test-vault/Frameworks/
+├── public/      ← committed (public-domain + laws/regs + your generated notes)
+└── _licensed/   ← GITIGNORED (raw copyrighted vendor files — never committed)
+```
+
+`.gitignore` carries `test-vault/Frameworks/_licensed/`. Drop copyrighted source files there; they stay local. Crosswalker's **generated output** (your own paraphrased concept notes + crosswalk junction notes) is derived work — it can live in `public/` and be committed. The raw vendor *text* (CRI/ISO/SOC2/PCI diagnostic statements) stays in `_licensed/` only.
+
+**Rule of thumb:** US-government frameworks + actual laws/regs are public domain → commit. Proprietary vendor frameworks → `_licensed/`. You can still test with them; just don't commit their raw text.
+
+### Existing test fixtures (already in repo)
+
+Small subsets already live at `tools/fixtures/realistic/` (synthetic-shape-correct, safe to commit): NIST CSF 2.0 (Govern+Identify), 800-53 AC family, ISO 27001:2022 subset, SOC 2 subset, CIS Controls v8 subset, MITRE ATT&CK Persistence subset, + 3 crosswalks (CSF→800-53, ISO→SOC2 SSSOM, CSF→ATT&CK SSSOM). These power the [Phase 6.1 integration tests](/crosswalker/agent-context/zz-log/2026-05-19-streaming-primitive-refactor/) and the `Crosswalker: Import bundled test fixture (dev)` command. For *real* crosswalking, replace/augment with full files per the table above.
+
+## 2. GRC tooling landscape — now in the KB
+
+The platform/tool landscape from the FI stack research is captured at **[concepts/ecosystem](/crosswalker/concepts/ecosystem/)**:
+
+- **[Two lanes of compliance tooling](/crosswalker/concepts/ecosystem/#two-lanes-of-compliance-tooling)** — Lane 1 (regulatory/CMS, atomic unit = obligation) vs Lane 2 (control/framework ops, atomic unit = control). Crosswalker is Lane 2.
+- **Tooling tiers** — FI-specialized / enterprise GRC / open-source, with TCO + run-burden tradeoffs.
+- **Standards-based-crosswalking differentiator** — the durable company Crosswalker keeps: CISO Assistant (OLIR), RegScale (OSCAL), SCF (STRM) — tools where a "CRI ↔ CSF ↔ 800-53" relationship is auditable + portable, not locked in a vendor.
+- **Named roster** — Lane-2 spines, FI-specialized, enterprise GRC/IRM, internal-audit engines, crosswalk metaframeworks.
+
+The full multivariate analysis (coverage matrix, TCO table, role-fit, the CRI-centered unified-model table) lives in the user's private research session; the KB captures the load-bearing framing + positioning.
+
+## How to work out of here (the camp)
+
+1. **Obtain framework files** per `PROVENANCE.md` — public ones into `Frameworks/public/`, proprietary into `Frameworks/_licensed/`. Log each in the PROVENANCE per-file table.
+2. **Import concepts**: `Crosswalker: Import structured data` (CSV/XLSX/JSON) → Tier 1 concept notes.
+3. **Import crosswalks**: `Crosswalker: Import SSSOM mapping file` (or the bundled-fixture dev command) → junction notes in `_crosswalker/mappings/`.
+4. **Query/crosswalk**: `Crosswalker: Insert query into note` → pick a recipe → pivot/coverage views render over the junction data.
+5. **Benchmark/observe**: `Crosswalker: Run primitives benchmark (perf)` for scale; `cat crosswalker-debug.log | jq 'select(.category=="view" or .category=="perf")'` to trace.
+
+## Related
+
+- [Frameworks corpus manifest](https://github.com/cybersader/crosswalker/blob/main/test-vault/Frameworks/PROVENANCE.md) — get-these list + per-file provenance (repo)
+- [Ecosystem — GRC tooling landscape + two lanes](/crosswalker/concepts/ecosystem/)
+- [Framework data sources](/crosswalker/reference/framework-data-sources/) — source files, sheets, column mappings per framework
+- [Framework standards](/crosswalker/concepts/framework-standards/)
+- [Registry: CRI](/crosswalker/reference/registry/cri/) · [NIST](/crosswalker/reference/registry/nist/) · [CIS](/crosswalker/reference/registry/cis/) · [MITRE](/crosswalker/reference/registry/mitre/) · [ISO](/crosswalker/reference/registry/iso/) · [SCF/STRM](/crosswalker/reference/registry/strm/) · [SSSOM](/crosswalker/reference/registry/sssom/) · [OSCAL](/crosswalker/reference/registry/oscal/)
+- [Institutional landscape](/crosswalker/concepts/institutional-landscape/) — who creates/maintains/mandates ontologies (the URO's human side)
+- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — the query substrate this corpus will exercise

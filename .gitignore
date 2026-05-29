@@ -95,3 +95,6 @@ venv/
 # Python output
 cri_framework/
 frameworks_export.xlsx
+
+# Copyrighted framework source files — local only, never committed
+test-vault/Frameworks/_licensed/
