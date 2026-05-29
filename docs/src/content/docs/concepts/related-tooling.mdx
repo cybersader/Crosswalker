@@ -1,0 +1,81 @@
+---
+title: Related tooling (GRC, audit, compliance, risk)
+description: The landscape of tools the internal-audit, GRC/ISRM, compliance, and TPRM teams already use — and where Crosswalker fits among them. Not Crosswalker's own ecosystem; these are adjacent/related platforms across the same problem domains.
+tags: [grc, audit, compliance, tprm, related-tools, landscape]
+sidebar:
+  order: 7
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note">
+This page is **not** Crosswalker's own integration ecosystem (for that — the Obsidian plugins Crosswalker complements — see [Ecosystem](/crosswalker/concepts/ecosystem/)). These are the **related tools** that internal-audit, GRC/ISRM, compliance, and third-party-risk teams already operate, and where a tool like Crosswalker fits among them. It's the map for "we already have Tandem and Pentana — where would Crosswalker (or anything else) sit?"
+</Aside>
+
+## Why this page exists
+
+Across a regulated organization, several teams share overlapping problem domains — governance, internal audit, compliance (regulatory + control), third-party / vendor risk, business-impact analysis, business continuity, incident response. They each reach for tools, and those tools' capabilities overlap in a Venn-diagram way: some cover one domain well, some span several, and their data models are often too specific (or not specific enough) for a shared way of working.
+
+Crosswalker is one option in that landscape — specifically a **control + crosswalk spine** (see [where it fits](#where-crosswalker-fits) below). This page maps the surrounding tools so the fit is legible. For the shared data model these teams can operate on *together* around any of these tools, see [Unified risk model](/crosswalker/concepts/unified-risk-model/).
+
+## Two lanes of "compliance" tooling
+
+A useful distinction when mapping this market: "compliance management" is really **two different jobs**, and most tools only do one well.
+
+| Lane | Atomic unit | The job | Owner | Representative tools |
+|---|---|---|---|---|
+| **Lane 1 — Regulatory / CMS** | a **regulatory obligation** (tool points you at what *changed*) | Track laws + reg changes (Reg E/Z, BSA/AML, UDAAP, NCUA/CFPB/FFIEC); maintained reg-content feeds; policy mapping; complaint + exam mgmt | Compliance officer | Ncontracts/Ncomply, 360factors Predict360, Quantivate, SBS TRAC |
+| **Lane 2 — Control / framework ops** | a **control** (you point the tool at requirements) | Maintain a control library; map controls to many frameworks at once; collect evidence once + reuse; stay audit-ready | ISRM / GRC engineer | Hyperproof, Anecdotes, Vanta, Drata, CISO Assistant, RegScale, Crosswalker |
+
+The shorthand test: Lane 1's atomic unit is a **regulatory obligation** (the tool points you at what changed); Lane 2's atomic unit is a **control** (you point the tool at the requirements). You generally need one tool in *each* lane — a Lane-2 tool, however good, won't give you maintained regulatory-change content.
+
+## Where Crosswalker fits
+
+**Crosswalker is a Lane 2 tool** — specifically the *control + crosswalk spine* role: it maps one control/concept across many authorities and keeps those relationships durable via typed [crosswalk edges](/crosswalker/reference/registry/strm/). It does **not** do Lane 1 (no maintained regulatory-change content). "Assess once, comply many" — a single control hanging off multiple framework requirements — is the same job [CISO Assistant](#named-roster) (OLIR-based) and the [SCF](/crosswalker/reference/registry/scf/) (STRM-based) do. Crosswalker's differentiator is **plain-text ownership in your own knowledge base** rather than a vendor database.
+
+## Tooling tiers
+
+Three philosophies. A regulated mid-size org typically ends up **federated** — different tools per team over a shared control model — not single-platform:
+
+| Tier | Examples | Tradeoff |
+|---|---|---|
+| **FI-specialized** (examiner-friendly, content maintained) | Tandem, Ncontracts/Venminder, Quantivate, 360factors, SBS TRAC, DefenseStorm, Isora | Low run-burden (content pre-paid); narrower data model |
+| **Enterprise GRC/IRM** (configurable, single model) | Archer, ServiceNow IRM, AuditBoard, LogicGate, Diligent, MetricStream, Fusion, Hyperproof, Anecdotes | Powerful + relatable model; high cost + 1+ FTE to run |
+| **Open-source / buildable** (ontology-clean, you run it) | CISO Assistant (OLIR), RegScale (OSCAL-native), Eramba, SimpleRisk, the [SCF](/crosswalker/reference/registry/scf/) (STRM), Crosswalker | Free/cheap license but high TCO — you self-host + maintain libraries |
+
+**Standards-based crosswalking is the durable differentiator.** Only a handful use a *standards-based* crosswalk method that survives tool changes rather than a proprietary black box: **CISO Assistant** ([OLIR](/crosswalker/reference/registry/olir/)), **RegScale** ([OSCAL](/crosswalker/reference/registry/oscal/)), the **SCF** ([STRM](/crosswalker/reference/registry/strm/)) — and **Crosswalker** (commits to STRM's 5-relationship vocabulary + [SSSOM](/crosswalker/reference/registry/sssom/) envelope). These are the tools where a "CRI ↔ CSF ↔ 800-53" relationship is auditable and portable, not locked inside a vendor.
+
+## Named roster
+
+**Lane-2 control / crosswalk spines** (Crosswalker's neighborhood):
+- **[CISO Assistant](https://github.com/intuitem/ciso-assistant-community)** — open-source, OLIR-based crosswalks, decoupled control model (define a control once, reuse across frameworks), 150+ frameworks. The closest ontology match to Crosswalker's goal; difference is CISO Assistant is a full GRC database, Crosswalker is plain-text notes you own.
+- **RegScale** — [OSCAL](/crosswalker/reference/registry/oscal/)-native compliance automation; free tier carries all four CRI Profile tiers as catalogs
+- **Hyperproof / Anecdotes** — control-ops + evidence automation (value is cloud-estate-dependent); proprietary cross-mapping
+- **Drata / Vanta / Secureframe / Scrut** — SaaS continuous-compliance (SOC 2 / ISO heritage; not built for FFIEC/NCUA exams)
+- **Apptega** — framework crosswalking as a service
+- **HITRUST MyCSF** — compliance framework management
+
+**FI-specialized** (examiner-friendly, content maintained):
+- **Tandem** (CoNetrix) — FFIEC/GLBA risk assessment, BCP, vendor docs
+- **Ncontracts / Venminder / Quantivate** — integrated FI risk + reg-CMS + TPRM
+- **360factors Predict360** — ABA-endorsed reg-change + ERM
+- **SBS TRAC** — licensed/endorsed CRI Profile module
+- **DefenseStorm / Isora GRC** — bank/CU cyber-GRC + ISRM
+
+**Enterprise GRC/IRM** (configurable single model, high TCO):
+- **Archer · ServiceNow IRM · AuditBoard · LogicGate · Diligent · MetricStream · Fusion Risk Management**
+
+**Internal-audit engines:**
+- **Ideagen Internal Audit (Pentana)** — ORCT workpaper library, audit universe
+
+**Crosswalk + control metaframeworks** (data, not platforms):
+- **[Secure Controls Framework (SCF)](/crosswalker/reference/registry/scf/)** — 1,400+ controls, [STRM](/crosswalker/reference/registry/strm/)-mapped to 250+ authorities; free CSV/OSCAL
+- **NIST [OSCAL](/crosswalker/reference/registry/oscal/) catalogs** — machine-readable control catalogs + the interchange standard for portability
+
+## Related
+
+- [Unified risk model](/crosswalker/concepts/unified-risk-model/) — the shared data model these teams operate on *together* around any of these tools (CRI at the center)
+- [Ecosystem](/crosswalker/concepts/ecosystem/) — Crosswalker's own integration neighbors (Obsidian plugins)
+- [Framework standards](/crosswalker/concepts/framework-standards/) · [Framework data sources](/crosswalker/reference/framework-data-sources/)
+- [Institutional landscape](/crosswalker/concepts/institutional-landscape/) — who creates/maintains/mandates the frameworks these tools consume
+- Registry: [CRI](/crosswalker/reference/registry/cri/) · [OLIR](/crosswalker/reference/registry/olir/) · [STRM](/crosswalker/reference/registry/strm/) · [OSCAL](/crosswalker/reference/registry/oscal/) · [SSSOM](/crosswalker/reference/registry/sssom/)

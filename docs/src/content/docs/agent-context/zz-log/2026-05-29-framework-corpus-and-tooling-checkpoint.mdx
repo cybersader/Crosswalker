@@ -1,6 +1,6 @@
 ---
 title: "Checkpoint — framework corpus + GRC tooling landscape (set up camp)"
-description: "Working checkpoint for the realistic-crosswalking / Unified Risk Ontology (URO) effort. Captures: which framework files to obtain + their copyright/licensing status + the gitignored _licensed/ handling pattern; where the GRC/IRM tooling landscape now lives in the KB (ecosystem page, two-lane framing); and the Frameworks folder scaffold. The place to set up camp for pulling real framework data in and crosswalking toward a CRI-centered URO."
+description: "Working checkpoint for the realistic-crosswalking / Unified Risk Ontology (URO) effort. Captures: which framework files to obtain + their copyright/licensing status + the gitignored _licensed/ handling pattern; where the GRC/IRM tooling landscape + unified risk model now live in the KB; and the Frameworks folder scaffold. The place to set up camp for pulling real framework data in and crosswalking toward a CRI-centered URO."
 sidebar:
   order: -20260529
   label: "05-29 · Framework corpus + tooling checkpoint"
@@ -22,7 +22,7 @@ After v0.1.6's query substrate landed (8 Layer A primitives, streaming variants,
 
 The driving use case (from 2026-05 financial-institution stack research): a **Unified Risk Ontology** that lets Internal Audit, GRC/ISRM, and Compliance operate on the *same* shared entities — risks, controls, frameworks, assets, vendors, processes, findings, evidence, incidents — with **CRI Profile as the authority-of-record** for the GRC/InfoSec team and every other framework crosswalked *to* it (via [OLIR](/crosswalker/reference/registry/olir/) / [STRM](/crosswalker/reference/registry/strm/)). The load-bearing joints are the **control** and the **crosswalk**: one control hangs off multiple framework requirements → *assess once, comply many*.
 
-Crosswalker's role in that model: the **Lane 2 control + crosswalk spine** (see the [two-lane framing](/crosswalker/concepts/ecosystem/#two-lanes-of-compliance-tooling)), kept as plain-text notes you own.
+Crosswalker's role in that model: the **Lane 2 control + crosswalk spine** (see the [two-lane framing](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling)), kept as plain-text notes you own. The shared model itself is the [unified risk model](/crosswalker/concepts/unified-risk-model/).
 
 ## 1. Framework corpus — what to get + copyright handling
 
@@ -50,16 +50,19 @@ test-vault/Frameworks/
 
 Small subsets already live at `tools/fixtures/realistic/` (synthetic-shape-correct, safe to commit): NIST CSF 2.0 (Govern+Identify), 800-53 AC family, ISO 27001:2022 subset, SOC 2 subset, CIS Controls v8 subset, MITRE ATT&CK Persistence subset, + 3 crosswalks (CSF→800-53, ISO→SOC2 SSSOM, CSF→ATT&CK SSSOM). These power the [Phase 6.1 integration tests](/crosswalker/agent-context/zz-log/2026-05-19-streaming-primitive-refactor/) and the `Crosswalker: Import bundled test fixture (dev)` command. For *real* crosswalking, replace/augment with full files per the table above.
 
-## 2. GRC tooling landscape — now in the KB
+## 2. Related tooling + unified risk model — now in the KB
 
-The platform/tool landscape from the FI stack research is captured at **[concepts/ecosystem](/crosswalker/concepts/ecosystem/)**:
+Two concept pages capture the FI stack research:
 
-- **[Two lanes of compliance tooling](/crosswalker/concepts/ecosystem/#two-lanes-of-compliance-tooling)** — Lane 1 (regulatory/CMS, atomic unit = obligation) vs Lane 2 (control/framework ops, atomic unit = control). Crosswalker is Lane 2.
+**[Related tooling (GRC, audit, compliance, risk)](/crosswalker/concepts/related-tooling/)** — the adjacent platforms across these problem domains + where Crosswalker fits among them (NOT Crosswalker's own ecosystem):
+- **[Two lanes of compliance tooling](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling)** — Lane 1 (regulatory/CMS, atomic unit = obligation) vs Lane 2 (control/framework ops, atomic unit = control). Crosswalker is Lane 2.
 - **Tooling tiers** — FI-specialized / enterprise GRC / open-source, with TCO + run-burden tradeoffs.
-- **Standards-based-crosswalking differentiator** — the durable company Crosswalker keeps: CISO Assistant (OLIR), RegScale (OSCAL), SCF (STRM) — tools where a "CRI ↔ CSF ↔ 800-53" relationship is auditable + portable, not locked in a vendor.
+- **Standards-based-crosswalking differentiator** — the durable company Crosswalker keeps: CISO Assistant (OLIR), RegScale (OSCAL), SCF (STRM).
 - **Named roster** — Lane-2 spines, FI-specialized, enterprise GRC/IRM, internal-audit engines, crosswalk metaframeworks.
 
-The full multivariate analysis (coverage matrix, TCO table, role-fit, the CRI-centered unified-model table) lives in the user's private research session; the KB captures the load-bearing framing + positioning.
+**[Unified risk model](/crosswalker/concepts/unified-risk-model/)** — the shared data model IA / GRC / compliance operate on *together* around any of these tools, with CRI Profile at the center: the shared-entity table (control, requirement, framework, asset, vendor, process, finding, evidence, incident) with per-team ownership roles, and the "assess once, comply many" backbone.
+
+The full multivariate analysis (coverage matrix, TCO table, role-fit) lives in the user's private research session; the KB captures the load-bearing framing + positioning.
 
 ## How to work out of here (the camp)
 
@@ -72,7 +75,8 @@ The full multivariate analysis (coverage matrix, TCO table, role-fit, the CRI-ce
 ## Related
 
 - [Frameworks corpus manifest](https://github.com/cybersader/crosswalker/blob/main/test-vault/Frameworks/PROVENANCE.md) — get-these list + per-file provenance (repo)
-- [Ecosystem — GRC tooling landscape + two lanes](/crosswalker/concepts/ecosystem/)
+- [Related tooling — GRC/audit/compliance platforms + two lanes](/crosswalker/concepts/related-tooling/)
+- [Unified risk model — the shared CRI-centered model](/crosswalker/concepts/unified-risk-model/)
 - [Framework data sources](/crosswalker/reference/framework-data-sources/) — source files, sheets, column mappings per framework
 - [Framework standards](/crosswalker/concepts/framework-standards/)
 - [Registry: CRI](/crosswalker/reference/registry/cri/) · [NIST](/crosswalker/reference/registry/nist/) · [CIS](/crosswalker/reference/registry/cis/) · [MITRE](/crosswalker/reference/registry/mitre/) · [ISO](/crosswalker/reference/registry/iso/) · [SCF/STRM](/crosswalker/reference/registry/strm/) · [SSSOM](/crosswalker/reference/registry/sssom/) · [OSCAL](/crosswalker/reference/registry/oscal/)

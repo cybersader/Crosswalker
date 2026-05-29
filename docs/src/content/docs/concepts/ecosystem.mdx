@@ -1,99 +1,51 @@
 ---
 title: Ecosystem
-description: Where Crosswalker fits in the Obsidian and GRC landscape.
-tags: [obsidian-plugins, grc, frameworks]
+description: Crosswalker's own integration ecosystem — the Obsidian plugins it complements and the import/export bridges it offers. For adjacent GRC/audit/compliance platforms, see Related tooling.
+tags: [obsidian-plugins, integrations, frameworks]
+sidebar:
+  order: 9
 ---
 
-## Obsidian plugins
+import { Aside } from '@astrojs/starlight/components';
 
-Crosswalker is designed to complement existing Obsidian tools:
+<Aside type="note">
+This page is **Crosswalker's own integration ecosystem** — the Obsidian plugins it works alongside and the data bridges it offers. Looking for the GRC / internal-audit / compliance **platforms** Crosswalker is related to (Tandem, CISO Assistant, RegScale, Archer, etc.)? Those are [related tooling](/crosswalker/concepts/related-tooling/). For the shared data model teams operate on, see [unified risk model](/crosswalker/concepts/unified-risk-model/).
+</Aside>
 
-| Plugin | Relationship |
-|--------|-------------|
-| **[Dataview](/crosswalker/concepts/metadata-ecosystem/)** | Query Crosswalker-generated frontmatter |
-| **[Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/)** | Create table/card views of framework data |
-| **Folder Notes** | Treat framework folders as navigable notes |
-| **Templater** | Customize generated note templates |
-| **QuickAdd** | Create macros for evidence linking |
+## Obsidian plugins Crosswalker complements
 
-## GRC tools
+Crosswalker generates plain-text notes that other Obsidian plugins can read, query, and render — it doesn't replace them, it feeds them.
 
-> [!tip] Metadata ecosystem
-> For a detailed analysis of how Obsidian's metadata landscape is evolving (Properties, Dataview, Bases, Datacore) and what it means for Crosswalker, see [Obsidian metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/).
+| Plugin | What Crosswalker provides it | What it does for you | Required? |
+|---|---|---|---|
+| **[Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/)** | concept + junction notes with structured frontmatter | table / card / pivot views over framework data (the v0.1 query layer) | Recommended (core plugin) |
+| **[Dataview](/crosswalker/concepts/metadata-ecosystem/)** | the same frontmatter | alternative query language for users already on Dataview | Optional |
+| **Folder Notes** | framework folder hierarchy | turn framework folders into navigable index notes | Optional |
+| **Templater** | generated note structure | customize note templates beyond Crosswalker's defaults | Optional |
+| **QuickAdd** | concept + evidence notes | macros for evidence linking / capture workflows | Optional |
 
-Crosswalker doesn't replace GRC platforms — it provides a knowledge-layer complement:
+<Aside type="tip">
+For how Obsidian's structured-metadata landscape is evolving (Properties, Dataview, Bases, Datacore) and what it means for Crosswalker's query layer, see [Obsidian metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/).
+</Aside>
+
+## Data bridges (import / export)
+
+Crosswalker is a knowledge-layer complement, not a GRC platform — it moves framework data in and out as portable files:
 
 - **Import from**: [NIST](/crosswalker/reference/registry/nist/), [CIS](/crosswalker/reference/registry/cis/), [MITRE](/crosswalker/reference/registry/mitre/), [ISO](/crosswalker/reference/registry/iso/), [CRI](/crosswalker/reference/registry/cri/), [FFIEC](/crosswalker/reference/registry/ffiec/), and any CSV/XLSX/JSON source
-- **Export to**: Planned [OSCAL](/crosswalker/reference/registry/oscal/) export for interoperability (see the [crosswalk edge semantics commitment](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) and the [evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) for the two edge-type export targets)
-- **Bridge**: Plain-text notes that can feed into any system
-
-### Two lanes of "compliance" tooling
-
-A useful distinction when mapping the GRC tool market (surfaced during 2026-05 financial-institution stack research): "compliance management" is really **two different jobs**, and most tools only do one well.
-
-| Lane | Atomic unit | The job | Owner | Representative tools |
-|---|---|---|---|---|
-| **Lane 1 — Regulatory / CMS** | a **regulatory obligation** (tool points you at what *changed*) | Track laws + reg changes (Reg E/Z, BSA/AML, UDAAP, NCUA/CFPB/FFIEC); maintained reg-content feeds; policy mapping; complaint + exam mgmt | Compliance officer | Ncontracts/Ncomply, 360factors Predict360, Quantivate, SBS TRAC |
-| **Lane 2 — Control / framework ops** | a **control** (you point the tool at requirements) | Maintain a control library; map controls to many frameworks at once; collect evidence once + reuse; stay audit-ready | ISRM / GRC engineer | Hyperproof, Anecdotes, Vanta, Drata, CISO Assistant, RegScale, **Crosswalker** |
-
-**Crosswalker lives in Lane 2** — specifically the *control + crosswalk spine* role: it maps one control/concept across many authorities and keeps those relationships durable via typed [crosswalk edges](/crosswalker/reference/registry/strm/). It does **not** do Lane 1 (no maintained regulatory-change content). "Assess once, comply many" — a single control hanging off multiple framework requirements — is the same job [CISO Assistant](#ciso-assistant) (OLIR-based) and the [SCF](#scf-with-strm) (STRM-based) do; Crosswalker's differentiator is plain-text ownership in your own knowledge base.
-
-### Tooling tiers (the broader landscape)
-
-Three philosophies, mapped from the same research. A regulated mid-size org typically ends up **federated** (different tools per team over a shared control model), not single-platform:
-
-| Tier | Examples | Tradeoff |
-|---|---|---|
-| **FI-specialized** (examiner-friendly, content maintained) | Tandem, Ncontracts/Venminder, Quantivate, 360factors, SBS TRAC, DefenseStorm, Isora | Low run-burden (content pre-paid); narrower data model |
-| **Enterprise GRC/IRM** (configurable, single model) | Archer, ServiceNow IRM, AuditBoard, LogicGate, Diligent, MetricStream, Fusion, Hyperproof, Anecdotes | Powerful + relatable model; high cost + 1+ FTE to run |
-| **Open-source / buildable** (ontology-clean, you run it) | **CISO Assistant** (OLIR), **RegScale** (OSCAL-native), Eramba, SimpleRisk, the [SCF](#scf-with-strm) (STRM), Crosswalker | Free/cheap license but high TCO — you self-host + maintain libraries |
-
-**Standards-based crosswalking is the durable differentiator.** Only a handful of tools use a *standards-based* crosswalk method that survives tool changes rather than a proprietary black box: **CISO Assistant** ([OLIR](/crosswalker/reference/registry/olir/)), **RegScale** ([OSCAL](/crosswalker/reference/registry/oscal/)), the **SCF** ([STRM](/crosswalker/reference/registry/strm/)) — and **Crosswalker**, which commits to STRM's 5-relationship vocabulary + [SSSOM](/crosswalker/reference/registry/sssom/) envelope. This is the company Crosswalker keeps: tools where a "CRI ↔ CSF ↔ 800-53" relationship is auditable and portable, not locked inside a vendor.
-
-### CISO Assistant
-Open-source GRC tool supporting 80+ frameworks (NIST CSF, ISO 27001, SOC2, CIS, PCI DSS, NIS2, CMMC, GDPR, HIPAA, and more). Key features:
-- **Decoupling principle** — define controls once, reuse across frameworks
-- **Auto-mapping** — automatic crosswalks between supported standards
-- **API-first** — programmatic access for integration
-- [GitHub](https://github.com/intuitem/ciso-assistant-community)
-
-Where Crosswalker differs: CISO Assistant is a full GRC database; Crosswalker brings framework data *into your knowledge base* as plain-text notes you own.
-
-### SCF with STRM
-The [Secure Controls Framework](/crosswalker/reference/registry/scf/) uses [Set Theory Relationship Mapping (STRM)](/crosswalker/reference/registry/strm/) — a mathematical approach to crosswalking frameworks. The [STRM Excel bundle](https://securecontrolsframework.com/strm-bundle/) is one of the most comprehensive mapping datasets available. Crosswalker's [04-10 foundation synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) commits to STRM's 5-relationship vocabulary (paired with [SSSOM](/crosswalker/reference/registry/sssom/) as the metadata envelope) as the required `predicate_id` for every crosswalk edge.
-
-### Commercial + open-source platforms (named roster)
-
-Lane-2 control/crosswalk spines (Crosswalker's neighborhood):
-- **[CISO Assistant](https://github.com/intuitem/ciso-assistant-community)** — open-source, OLIR-based crosswalks, decoupled control model, 150+ frameworks (the closest ontology match to Crosswalker's goal)
-- **RegScale** — [OSCAL](/crosswalker/reference/registry/oscal/)-native compliance automation; free tier carries all four CRI Profile tiers as catalogs
-- **Hyperproof / Anecdotes** — control-ops + evidence automation (cloud-estate-dependent); proprietary cross-mapping
-- **Drata / Vanta / Secureframe / Scrut** — SaaS continuous-compliance (SOC 2 / ISO heritage; not built for FFIEC/NCUA exams)
-- **Apptega** — framework crosswalking as a service
-- **HITRUST MyCSF** — compliance framework management
-
-FI-specialized (examiner-friendly, content maintained):
-- **Tandem** (CoNetrix) — FFIEC/GLBA risk assessment, BCP, vendor docs
-- **Ncontracts / Venminder / Quantivate** — integrated FI risk + reg-CMS + TPRM
-- **360factors Predict360** — ABA-endorsed reg-change + ERM
-- **SBS TRAC** — licensed/endorsed CRI Profile module
-- **DefenseStorm / Isora GRC** — bank/CU cyber-GRC + ISRM
-
-Enterprise GRC/IRM (configurable single model, high TCO):
-- **Archer · ServiceNow IRM · AuditBoard · LogicGate · Diligent · MetricStream · Fusion Risk Management**
-
-Internal-audit engines:
-- **Ideagen Internal Audit (Pentana)** — ORCT workpaper library, audit universe
-
-Crosswalk + control metaframeworks (data, not platforms):
-- **[Secure Controls Framework (SCF)](/crosswalker/reference/registry/scf/)** — 1,400+ controls, [STRM](/crosswalker/reference/registry/strm/)-mapped to 250+ authorities; free CSV/OSCAL
-- **NIST [OSCAL](/crosswalker/reference/registry/oscal/) catalogs** — machine-readable control catalogs + the interchange standard for portability
-
-See [framework standards](/crosswalker/concepts/framework-standards/) and [framework data sources](/crosswalker/reference/framework-data-sources/) for the underlying framework reference + where to obtain each.
+- **Export to**: planned [OSCAL](/crosswalker/reference/registry/oscal/) export for interoperability (see the [crosswalk edge semantics commitment](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) and the [evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) for the two edge-type export targets)
+- **Bridge**: plain-text notes that can feed into any system — delete the plugin and your data remains
 
 ## Design philosophy
 
-1. **Plain text first** — Everything in markdown, YAML, and JSON
-2. **Framework agnostic** — Easy to add new frameworks
-3. **Tool-agnostic outputs** — Works with Bases, Dataview, or nothing
-4. **No lock-in** — Standard Obsidian files, delete the plugin and your data remains
+1. **Plain text first** — everything in markdown, YAML, and JSON
+2. **Framework agnostic** — easy to add new frameworks
+3. **Tool-agnostic outputs** — works with Bases, Dataview, or nothing
+4. **No lock-in** — standard Obsidian files; delete the plugin and your data remains
+
+## Related
+
+- [Related tooling (GRC, audit, compliance, risk)](/crosswalker/concepts/related-tooling/) — the adjacent platforms across these problem domains + where Crosswalker fits
+- [Unified risk model](/crosswalker/concepts/unified-risk-model/) — the shared data model teams operate on around a tool like Crosswalker
+- [Obsidian metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Properties / Dataview / Bases / Datacore landscape
+- [Framework standards](/crosswalker/concepts/framework-standards/) · [Framework data sources](/crosswalker/reference/framework-data-sources/)
