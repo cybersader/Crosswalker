@@ -1,7 +1,7 @@
 ---
 title: "For regulatory compliance"
-description: How a regulatory-compliance function fits the unified risk model — map regulatory obligations down to the shared controls so a reg change surfaces exactly what's affected. Important distinction Crosswalker does NOT do regulatory-change management (Lane 1); it's a supporting control-mapping spine, not the CMS.
-tags: [example, regulatory-compliance, lane-1, obligations, controls]
+description: How a regulatory-compliance function fits the unified risk model — map regulatory obligations down to the shared controls so a reg change surfaces exactly what's affected. Important distinction Crosswalker does NOT do regulatory-change management (obligation-centric); it's a supporting control-mapping spine, not the CMS.
+tags: [example, regulatory-compliance, obligation-centric, obligations, controls]
 sidebar:
   order: 5
 ---
@@ -9,7 +9,7 @@ sidebar:
 import { Aside } from '@astrojs/starlight/components';
 
 <Aside type="caution">
-**Set expectations first: regulatory compliance is a different job from operational compliance.** *Regulatory compliance* (Lane 1) is tracking laws and their *changes* — Reg E/Z, BSA/AML, UDAAP, NCUA/CFPB guidance — with maintained reg-content feeds, obligation libraries, complaint + exam management. **Crosswalker does NOT do this.** It has no maintained regulatory-change content; its atomic unit is a *control*, not a regulatory obligation. The reg-change CMS belongs in a [Lane 1 tool](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling) (Ncontracts/Ncomply, 360factors, Quantivate, SBS TRAC). This page is about how regulatory compliance *connects to* the unified model — not about replacing your CMS.
+**Set expectations first: regulatory compliance is a different job from operational compliance.** *Regulatory compliance* (obligation-centric) is tracking laws and their *changes* — Reg E/Z, BSA/AML, UDAAP, NCUA/CFPB guidance — with maintained reg-content feeds, obligation libraries, complaint + exam management. **Crosswalker does NOT do this.** It has no maintained regulatory-change content; its atomic unit is a *control*, not a regulatory obligation. The reg-change CMS belongs in a [obligation-centric tool](/crosswalker/concepts/compliance-control-vs-obligation/) (Ncontracts/Ncomply, 360factors, Quantivate, SBS TRAC). This page is about how regulatory compliance *connects to* the unified model — not about replacing your CMS.
 </Aside>
 
 ## Where you connect to the model
@@ -26,17 +26,17 @@ Regulatory compliance's value in the [unified risk model](/crosswalker/examples/
 
 ## How it works in practice
 
-1. **Your CMS owns reg-change** (Lane 1, separate tool). It tells you "Reg E amended — effective date X, here's the redline."
+1. **Your CMS owns reg-change** (obligation-centric, separate tool). It tells you "Reg E amended — effective date X, here's the redline."
 2. **Map the obligation to controls.** In the shared model, that obligation links *down* to the control(s) that satisfy it.
 3. **Trace impact.** A reg change now surfaces the exact controls + evidence affected — the join the unified model gives you for free.
 4. **Crosswalker's part:** holding the control + crosswalk layer that the obligation maps onto, as plain-text notes shared with audit and GRC.
 
 ## The control-shaped subset Crosswalker *does* help with
 
-Some regulatory expectations are *control-shaped* — "you must have these safeguards" (GLBA 501(b) Safeguards, FFIEC IT examination expectations, NCUA cyber guidance). Those express cleanly as controls + evidence, and Crosswalker handles them well via the same crosswalk machinery. The *consumer/transactional* regulatory pile (lending, deposits, disclosures) is not control-shaped and stays entirely in the Lane 1 CMS.
+Some regulatory expectations are *control-shaped* — "you must have these safeguards" (GLBA 501(b) Safeguards, FFIEC IT examination expectations, NCUA cyber guidance). Those express cleanly as controls + evidence, and Crosswalker handles them well via the same crosswalk machinery. The *consumer/transactional* regulatory pile (lending, deposits, disclosures) is not control-shaped and stays entirely in the obligation-centric CMS.
 
 ## Related
 
 - [Unified risk model](/crosswalker/examples/unified-risk-model/) — the shared model
 - [For GRC / ISRM](/crosswalker/examples/for-grc-isrm/) — owns the controls you map obligations to
-- [Related tooling — two lanes](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling) — Lane 1 (reg-CMS) vs Lane 2 (control ops); the tools for each
+- [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) — obligation-centric (reg-CMS) vs control-centric (control ops); the tools for each

@@ -18,20 +18,21 @@ Across a regulated organization, several teams share overlapping problem domains
 
 Crosswalker is one option in that landscape — specifically a **control + crosswalk spine** (see [where it fits](#where-crosswalker-fits) below). This page maps the surrounding tools so the fit is legible. For the shared data model these teams can operate on *together* around any of these tools, see [Unified risk model](/crosswalker/examples/unified-risk-model/).
 
-## Two lanes of "compliance" tooling
+## Two kinds of "compliance" tooling
 
-A useful distinction when mapping this market: "compliance management" is really **two different jobs**, and most tools only do one well.
+A useful distinction when mapping this market: "compliance management" is really **two different jobs**, and most tools only do one well — **[control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/)** (full treatment on that page):
 
-| Lane | Atomic unit | The job | Owner | Representative tools |
-|---|---|---|---|---|
-| **Lane 1 — Regulatory / CMS** | a **regulatory obligation** (tool points you at what *changed*) | Track laws + reg changes (Reg E/Z, BSA/AML, UDAAP, NCUA/CFPB/FFIEC); maintained reg-content feeds; policy mapping; complaint + exam mgmt | Compliance officer | Ncontracts/Ncomply, 360factors Predict360, Quantivate, SBS TRAC |
-| **Lane 2 — Control / framework ops** | a **control** (you point the tool at requirements) | Maintain a control library; map controls to many frameworks at once; collect evidence once + reuse; stay audit-ready | ISRM / GRC engineer | Hyperproof, Anecdotes, Vanta, Drata, CISO Assistant, RegScale, Crosswalker |
+| | **Control-centric** (control ops) | **Obligation-centric** (regulatory / CMS) |
+|---|---|---|
+| Atomic unit | a **control** | a **regulatory obligation** |
+| Owner | ISRM / GRC engineer | compliance officer |
+| Representative tools | Hyperproof, Anecdotes, Vanta, Drata, CISO Assistant, RegScale, **Crosswalker** | Ncontracts/Ncomply, 360factors, Quantivate, SBS TRAC |
 
-The shorthand test: Lane 1's atomic unit is a **regulatory obligation** (the tool points you at what changed); Lane 2's atomic unit is a **control** (you point the tool at the requirements). You generally need one tool in *each* lane — a Lane-2 tool, however good, won't give you maintained regulatory-change content.
+You generally need one tool of *each* kind — a control-centric tool, however good, won't give you maintained regulatory-change content. (This is informal shorthand, **not** the IIA Three Lines Model — see the [distinction page](/crosswalker/concepts/compliance-control-vs-obligation/#what-this-is-not).)
 
 ## Where Crosswalker fits
 
-**Crosswalker is a Lane 2 tool** — specifically the *control + crosswalk spine* role: it maps one control/concept across many authorities and keeps those relationships durable via typed [crosswalk edges](/crosswalker/reference/registry/strm/). It does **not** do Lane 1 (no maintained regulatory-change content). "Assess once, comply many" — a single control hanging off multiple framework requirements — is the same job [CISO Assistant](#named-roster) (OLIR-based) and the [SCF](/crosswalker/reference/registry/scf/) (STRM-based) do. Crosswalker's differentiator is **plain-text ownership in your own knowledge base** rather than a vendor database.
+**Crosswalker is a control-centric tool** — specifically the *control + crosswalk spine* role: it maps one control/concept across many authorities and keeps those relationships durable via typed [crosswalk edges](/crosswalker/reference/registry/strm/). It does **not** do obligation-centric compliance (no maintained regulatory-change content). "Assess once, comply many" — a single control hanging off multiple framework requirements — is the same job [CISO Assistant](#named-roster) (OLIR-based) and the [SCF](/crosswalker/reference/registry/scf/) (STRM-based) do. Crosswalker's differentiator is **plain-text ownership in your own knowledge base** rather than a vendor database.
 
 ## Tooling tiers
 
@@ -47,7 +48,7 @@ Three philosophies. A regulated mid-size org typically ends up **federated** —
 
 ## Named roster
 
-**Lane-2 control / crosswalk spines** (Crosswalker's neighborhood):
+**Control-centric crosswalk spines** (Crosswalker's neighborhood):
 - **[CISO Assistant](https://github.com/intuitem/ciso-assistant-community)** — open-source, OLIR-based crosswalks, decoupled control model (define a control once, reuse across frameworks), 150+ frameworks. The closest ontology match to Crosswalker's goal; difference is CISO Assistant is a full GRC database, Crosswalker is plain-text notes you own.
 - **RegScale** — [OSCAL](/crosswalker/reference/registry/oscal/)-native compliance automation; free tier carries all four CRI Profile tiers as catalogs
 - **Hyperproof / Anecdotes** — control-ops + evidence automation (value is cloud-estate-dependent); proprietary cross-mapping

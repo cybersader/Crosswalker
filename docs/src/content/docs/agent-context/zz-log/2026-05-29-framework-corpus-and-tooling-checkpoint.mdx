@@ -22,7 +22,7 @@ After v0.1.6's query substrate landed (8 Layer A primitives, streaming variants,
 
 The driving use case (from 2026-05 financial-institution stack research): a **Unified Risk Ontology** that lets Internal Audit, GRC/ISRM, and Compliance operate on the *same* shared entities — risks, controls, frameworks, assets, vendors, processes, findings, evidence, incidents — with **CRI Profile as the authority-of-record** for the GRC/InfoSec team and every other framework crosswalked *to* it (via [OLIR](/crosswalker/reference/registry/olir/) / [STRM](/crosswalker/reference/registry/strm/)). The load-bearing joints are the **control** and the **crosswalk**: one control hangs off multiple framework requirements → *assess once, comply many*.
 
-Crosswalker's role in that model: the **Lane 2 control + crosswalk spine** (see the [two-lane framing](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling)), kept as plain-text notes you own. The shared model itself is the [unified risk model](/crosswalker/examples/unified-risk-model/).
+Crosswalker's role in that model: the **control-centric control + crosswalk spine** (see [control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/)), kept as plain-text notes you own. The shared model itself is the [unified risk model](/crosswalker/examples/unified-risk-model/).
 
 ## 1. Framework corpus — what to get + copyright handling
 
@@ -55,10 +55,10 @@ Small subsets already live at `tools/fixtures/realistic/` (synthetic-shape-corre
 Two concept pages capture the FI stack research:
 
 **[Related tooling (GRC, audit, compliance, risk)](/crosswalker/concepts/related-tooling/)** — the adjacent platforms across these problem domains + where Crosswalker fits among them (NOT Crosswalker's own ecosystem):
-- **[Two lanes of compliance tooling](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling)** — Lane 1 (regulatory/CMS, atomic unit = obligation) vs Lane 2 (control/framework ops, atomic unit = control). Crosswalker is Lane 2.
+- **[Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/)** — obligation-centric (regulatory/CMS, atomic unit = obligation) vs control-centric (control/framework ops, atomic unit = control). Crosswalker is control-centric. (Informal framing — not the IIA Three Lines Model.)
 - **Tooling tiers** — FI-specialized / enterprise GRC / open-source, with TCO + run-burden tradeoffs.
 - **Standards-based-crosswalking differentiator** — the durable company Crosswalker keeps: CISO Assistant (OLIR), RegScale (OSCAL), SCF (STRM).
-- **Named roster** — Lane-2 spines, FI-specialized, enterprise GRC/IRM, internal-audit engines, crosswalk metaframeworks.
+- **Named roster** — control-centric spines, FI-specialized, enterprise GRC/IRM, internal-audit engines, crosswalk metaframeworks.
 
 **[Unified risk model](/crosswalker/examples/unified-risk-model/)** — the shared data model IA / GRC / compliance operate on *together* around any of these tools, with CRI Profile at the center: the shared-entity table (control, requirement, framework, asset, vendor, process, finding, evidence, incident) with per-team ownership roles, and the "assess once, comply many" backbone.
 
@@ -75,7 +75,7 @@ The full multivariate analysis (coverage matrix, TCO table, role-fit) lives in t
 ## Related
 
 - [Frameworks corpus manifest](https://github.com/cybersader/crosswalker/blob/main/test-vault/Frameworks/PROVENANCE.md) — get-these list + per-file provenance (repo)
-- [Related tooling — GRC/audit/compliance platforms + two lanes](/crosswalker/concepts/related-tooling/)
+- [Related tooling — GRC/audit/compliance platforms + control vs obligation](/crosswalker/concepts/related-tooling/)
 - [Unified risk model — the shared CRI-centered model](/crosswalker/examples/unified-risk-model/)
 - [Framework data sources](/crosswalker/reference/framework-data-sources/) — source files, sheets, column mappings per framework
 - [Framework standards](/crosswalker/concepts/framework-standards/)

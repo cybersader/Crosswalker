@@ -17,7 +17,7 @@ The unifying answer to "which tool should each team use?" is **not a single prod
 </Aside>
 
 <Aside type="caution">
-**Two senses of "compliance" — keep them distinct.** *Regulatory compliance* (Lane 1: tracking laws + reg changes — Reg E/Z, BSA/AML, UDAAP) is a different job from *operational / control compliance* (Lane 2: maintaining a control library + framework crosswalks). Crosswalker is a **Lane 2** tool. In the table below, the "Compliance" column is the regulatory-compliance team's control-mapping touchpoints — their reg-change CMS itself lives in a [Lane 1 tool](/crosswalker/concepts/related-tooling/#two-lanes-of-compliance-tooling). See [for regulatory compliance](/crosswalker/examples/for-regulatory-compliance/).
+**Two senses of "compliance" — keep them distinct.** *Obligation-centric (regulatory) compliance* — tracking laws + reg changes (Reg E/Z, BSA/AML, UDAAP) — is a different job from *control-centric (operational) compliance* — maintaining a control library + framework crosswalks. Crosswalker is a **control-centric** tool. In the table below, the "Compliance" column is the regulatory team's control-mapping touchpoints — their obligation-tracking system itself lives elsewhere. See [control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) and [for regulatory compliance](/crosswalker/examples/for-regulatory-compliance/).
 </Aside>
 
 ## The problem this solves
@@ -38,28 +38,56 @@ CRI-at-center is the FI default. The same model works with any top-of-house auth
 
 ## The shared entities
 
-Legend — ◎ system-of-record owner · ● active user (creates/updates) · ○ consumer/reference · – minimal
+Per-team role on each shared entity — **Owns** = system-of-record · Uses = active (creates/updates) · Reads = consumer/reference · – = minimal. Entity definitions follow the table.
 
-| Shared entity | What it is | IA | Compliance | GRC/ISRM | Tie to the CRI spine |
-|---|---|---|---|---|---|
-| **Authority / Framework** | CRI Profile + crosswalked CSF 2.0, 800-53, ISO 27001, FFIEC, NCUA | ○ | ● | ◎ | The spine — CRI is top-of-house; all others map to it |
-| **Requirement / Diagnostic Statement** | testable line items under each authority | ○ | ● | ◎ | CRI diagnostic statements = canonical cyber requirement set |
-| **Control (Reference + Applied)** | reusable control library vs. its real implementations | ● tests | ● relies on | ◎ | one control satisfies many CRI statements + crosswalked reqs |
-| **Risk / Risk Scenario** | threat × impact to an asset/process | ● risk-based planning | ○ | ◎ (ERM co-owns) | risks tag the CRI function/category they threaten |
-| **Asset** (data/systems/facilities) | what you're protecting | ○ | ○ | ◎ (with IT) | scoping — defines *where* CRI controls apply |
-| **Vendor / Third Party** | external entities + their services | ○ | ○ | ● security review | TPRM owns SoR; vendor controls assessed vs. CRI-derived reqs |
-| **Business Function / Process** (+ BIA: RTO/RPO) | critical processes + tolerances | ○ | ○ | ● | BCP/business owns SoR; criticality drives control rigor (CRI Govern/Identify) |
-| **Assessment** (risk / audit / vendor) | a point-in-time evaluation | ◎ audit | ● compliance assessment | ◎ risk | measures adherence to CRI requirements/tiers |
-| **Finding / Issue** (+ remediation) | a gap and its action plan | ◎ audit findings | ● | ● | maps back to the CRI requirement/control that failed |
-| **Evidence** | proof a control operates | ● relies on | ● | ◎ collect-once | proves CRI controls; reused across every crosswalked framework |
-| **Incident** | a realized event | ○ | ○ | ◎ (with SecOps) | maps to CRI Respond/Recover; feeds risk updates |
+| Shared entity | Internal Audit | Compliance | GRC / ISRM |
+|---|---|---|---|
+| **Authority / Framework** | Reads | Uses | **Owns** |
+| **Requirement / Diagnostic Statement** | Reads | Uses | **Owns** |
+| **Control** (reference + applied) | Uses (tests) | Uses (relies on) | **Owns** |
+| **Risk / Risk Scenario** | Uses (planning) | Reads | **Owns** (ERM co-owns) |
+| **Asset** | Reads | Reads | **Owns** (with IT) |
+| **Vendor / Third Party** | Reads | Reads | Uses (security review; TPRM owns) |
+| **Business Function / Process** (BIA) | Reads | Reads | Uses (BCP/business owns) |
+| **Assessment** (risk / audit / vendor) | **Owns** (audit) | Uses (compliance) | **Owns** (risk) |
+| **Finding / Issue** | **Owns** (audit) | Uses | Uses |
+| **Evidence** | Uses | Uses | **Owns** (collect once) |
+| **Incident** | Reads | Reads | **Owns** (with SecOps) |
+
+**Entity definitions + CRI tie:**
+
+- **Authority / Framework** — CRI Profile + crosswalked CSF 2.0 / 800-53 / ISO 27001 / FFIEC / NCUA. *The spine: CRI is top-of-house; all others map to it.*
+- **Requirement / Diagnostic Statement** — testable line items under each authority. *CRI diagnostic statements are the canonical cyber requirement set.*
+- **Control** — reusable control library vs. its real implementations. *One control satisfies many CRI statements + crosswalked requirements — the "assess once, comply many" joint.*
+- **Risk / Risk Scenario** — threat × impact to an asset/process. *Risks tag the CRI function/category they threaten.*
+- **Asset** — data, systems, facilities you protect. *Scoping: defines where CRI controls apply.*
+- **Vendor / Third Party** — external entities + their services. *Vendor controls assessed vs. CRI-derived requirements.*
+- **Business Function / Process (BIA)** — critical processes + tolerances (RTO/RPO). *Criticality drives control rigor (CRI Govern/Identify).*
+- **Assessment** — a point-in-time evaluation (risk / audit / vendor). *Measures adherence to CRI requirements/tiers.*
+- **Finding / Issue** — a gap and its remediation. *Maps back to the CRI requirement/control that failed.*
+- **Evidence** — proof a control operates. *Proves CRI controls; reused across every crosswalked framework.*
+- **Incident** — a realized event. *Maps to CRI Respond/Recover; feeds risk updates.*
 
 ## How it operates
 
 - **Internal Audit** doesn't get a separate control universe — its tests point at the shared control objects and write back to the shared finding register.
-- **Compliance** keeps its own reg-CMS, but maps each regulatory obligation *down* to the same controls, so a reg change surfaces exactly which controls and evidence are affected.
+- **Compliance** keeps its own obligation-tracking system, but maps each regulatory obligation *down* to the same controls, so a reg change surfaces exactly which controls and evidence are affected. (This is [obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) connecting to the [control-centric](/crosswalker/concepts/compliance-control-vs-obligation/) spine.)
 - **GRC/ISRM** owns the spine (authorities, requirements, controls) and the evidence — collected once, reused everywhere.
-- Nobody owns everything; each team owns the entities it's accountable for (◎) and reads the rest (○) — which is what keeps it relatable.
+- Nobody owns everything; each team **Owns** the entities it's accountable for and **Reads** the rest — which is what keeps it relatable.
+
+## How this relates to formal governance models
+
+The unified risk model is a **data / ontology model** — what the shared objects are and how they relate. That's a different (and complementary) axis from the **accountability models** that say *who is responsible for what*. The unified model is the substrate those governance models run on:
+
+| Model | What it governs | Relationship to the unified risk model |
+|---|---|---|
+| **IIA Three Lines Model** (formerly "Three Lines of Defense") | Accountability: 1st line = operational management (owns/manages risk); 2nd line = risk + compliance oversight; 3rd line = internal audit (independent assurance) | The unified model gives all three lines *one shared set of entities* to act on — 1st line operates controls, 2nd line oversees them, 3rd line audits them, all pointing at the same control + finding objects instead of separate databases. Note: the Three Lines is about *who*, not *what data* — it does **not** map to the control-vs-obligation tooling distinction. |
+| **COSO ERM / COSO Internal Control** | Enterprise risk + control framework principles | The risk, control, and assessment entities here are the objects a COSO program populates. |
+| **NIST RMF (SP 800-37)** | The lifecycle: categorize → select → implement → assess → authorize → monitor | The model's controls, assessments, evidence, and findings are the RMF lifecycle's working set; CRI/CSF/800-53 are the catalogs it draws from. |
+
+<Aside type="note">
+Don't confuse the **IIA Three Lines Model** (a formal *accountability* structure: 1st/2nd/3rd line) with the informal **[control-centric vs obligation-centric](/crosswalker/concepts/compliance-control-vs-obligation/)** *tooling* distinction. They're orthogonal — one is about who's responsible, the other about what a tool's atomic unit is.
+</Aside>
 
 ## Where Crosswalker fits
 
