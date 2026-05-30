@@ -9,6 +9,7 @@ import starlightImageZoom from 'starlight-image-zoom';
 import starlightHeadingBadges from 'starlight-heading-badges';
 import rehypeMermaid from 'rehype-mermaid';
 import starlightTagsPlugin from 'starlight-tags';
+import remarkGfm from 'remark-gfm';
 import remarkObsidianCallout from 'remark-obsidian-callout';
 import remarkWikiLink from 'remark-wiki-link';
 import rehypeExternalLinks from 'rehype-external-links';
@@ -31,7 +32,12 @@ export default defineConfig({
     },
   },
   markdown: {
+    // remark-gfm explicitly first: the @astrojs/mdx pipeline stopped
+    // auto-applying GFM (tables, strikethrough, etc.) to .mdx files after a
+    // dependency bump — plain .md kept it, .mdx lost it. Adding it here
+    // restores GFM tables for both .md and .mdx.
     remarkPlugins: [
+      remarkGfm,
       remarkObsidianCallout,
       [remarkWikiLink, { aliasDivider: '|' }],
     ],
