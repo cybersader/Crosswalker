@@ -26,13 +26,30 @@ Crosswalker's role in that model: the **control-centric control + crosswalk spin
 
 ## 1. Framework corpus — what to get + copyright handling
 
-Full get-these list + per-framework licensing lives in the corpus manifest: **`test-vault/Frameworks/PROVENANCE.md`** (committed). Summary:
+Full get-these list + per-framework licensing **+ clickable download links** lives in the corpus manifest: **[`test-vault/Frameworks/PROVENANCE.md`](https://github.com/cybersader/crosswalker/blob/main/test-vault/Frameworks/PROVENANCE.md)** (committed). Summary:
 
 | Status | Frameworks | Handling |
 |---|---|---|
-| 🟢 **Public domain — commit freely** | NIST CSF 2.0, 800-53 r5, 800-171, FFIEC, HIPAA, CMMC, NYDFS 500, DORA, MITRE ATT&CK (attribute) | `Frameworks/public/` |
+| 🟢 **Public domain — commit freely** | NIST CSF 2.0, 800-53 r5, 800-171, FFIEC, HIPAA, CMMC, NYDFS 500, DORA, MITRE ATT&CK (attribute), NIST OSCAL catalogs | `Frameworks/public/` |
 | 🔴 **Copyrighted — local only** | **CRI Profile** (the spine), ISO 27001:2022, SOC 2 / AICPA TSC, PCI DSS | `Frameworks/_licensed/` (gitignored) |
-| 🟡 **Restrictive CC — gitignore to be safe** | CIS Controls v8, Secure Controls Framework | `Frameworks/_licensed/` (subset OK) |
+| 🟡 **Restrictive CC — gitignore to be safe** | CIS Controls v8.1, Secure Controls Framework | `Frameworks/_licensed/` (subset OK) |
+
+### Download links (quick grab)
+
+Landing/download pages — verify version + registration/purchase terms at download time:
+
+- **CRI Profile** (spine) → [cyberriskinstitute.org/the-profile](https://cyberriskinstitute.org/the-profile/) (free, registration) 🔴
+- **NIST CSF 2.0** → [CPRT CSF 2.0](https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/CSF_2_0_0/home) (JSON/Excel) 🟢
+- **NIST 800-53 r5** → [usnistgov/oscal-content (SP800-53/rev5)](https://github.com/usnistgov/oscal-content/tree/main/nist.gov/SP800-53/rev5) 🟢
+- **NIST 800-171** → [usnistgov/oscal-content (SP800-171)](https://github.com/usnistgov/oscal-content/tree/main/nist.gov/SP800-171) 🟢
+- **MITRE ATT&CK** → [mitre-attack/attack-stix-data](https://github.com/mitre-attack/attack-stix-data) (STIX JSON; attribute) 🟢
+- **CIS Controls v8.1** → [cisecurity.org/controls/v8-1](https://www.cisecurity.org/controls/v8-1) (free, registration) 🟡
+- **ISO/IEC 27001:2022** → [iso.org/standard/27001](https://www.iso.org/standard/27001) (purchase) 🔴
+- **SOC 2 / AICPA TSC** → [AICPA Trust Services Criteria](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022) 🔴
+- **Secure Controls Framework + STRM** → [SCF download](https://securecontrolsframework.com/scf-download/) · [STRM](https://securecontrolsframework.com/set-theory-relationship-mapping-strm/) 🟡
+- **PCI DSS 4.0** → [PCI SSC Document Library](https://www.pcisecuritystandards.org/document_library/) 🔴
+- **FFIEC** → [ithandbook.ffiec.gov](https://ithandbook.ffiec.gov/) 🟢
+- **NYDFS 500** → [dfs.ny.gov cybersecurity](https://www.dfs.ny.gov/industry_guidance/cybersecurity) · **DORA** → [EUR-Lex 2022/2554](https://eur-lex.europa.eu/eli/reg/2022/2554/oj) · **HIPAA** → [hhs.gov](https://www.hhs.gov/hipaa/for-professionals/security/index.html) · **CMMC** → [dodcio.defense.gov/CMMC](https://dodcio.defense.gov/CMMC/) 🟢
 
 ### The handling pattern (set up 2026-05-29)
 
