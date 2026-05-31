@@ -98,3 +98,13 @@ frameworks_export.xlsx
 
 # Copyrighted framework source files — local only, never committed
 test-vault/Frameworks/_licensed/
+
+# === Repo-root framework corpus (raw downloads, ~400MB, mixed licensing) ===
+# Fail-closed: everything under Frameworks/ is local-by-default. Copyrighted
+# vendor files (CRI, CIS, ISO, SOC2/AICPA, PCI, SCF, CIS RAM) must NEVER be
+# committed — they live here locally only. The public-domain NIST/MITRE source
+# files that are already tracked stay tracked (gitignore doesn't untrack).
+# To commit a NEW public-domain file, add it explicitly: git add -f Frameworks/<file>
+Frameworks/
+# Belt-and-suspenders: copyrighted source files always stay local regardless of path.
+Frameworks/_licensed/
