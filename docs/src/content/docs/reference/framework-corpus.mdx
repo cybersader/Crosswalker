@@ -131,18 +131,102 @@ These are public-domain but large — kept local (gitignored) to avoid repo bloa
 
 ---
 
-## Gaps — frameworks we cite but lack good structured data
+## The broader landscape — every framework worth pulling
 
-| Framework | Status | Where to get the *structured* door |
-|---|---|---|
-| [ISO 27001 / 27002](/crosswalker/reference/registry/iso/) | ❌ missing (purchase-only) | No free structured form. Proxy via **SCF's ISO mapping columns** or CRI's crosswalk sheets |
-| NIST Privacy Framework | ❌ missing | [CPRT](https://csrc.nist.gov/projects/cprt) export (JSON/Excel) — same door as CSF |
-| CISA CPG | ❌ missing (CRI maps to it) | [CISA Cross-Sector Performance Goals](https://www.cisa.gov/cross-sector-cybersecurity-performance-goals) — free, public |
-| NYDFS Part 500 | ❌ missing | [dfs.ny.gov](https://www.dfs.ny.gov/industry_guidance/cybersecurity) — regulation text (obligation-centric) |
-| CSA CCM | ⚠️ only the TSC→CCM crosswalk | [Cloud Security Alliance CCM](https://cloudsecurityalliance.org/research/cloud-controls-matrix) — free w/ registration, XLSX |
-| OWASP ASVS / SAMM | ❌ missing | [OWASP](/crosswalker/reference/registry/owasp/) — free, structured (GitHub CSV/JSON) |
-| COBIT / COSO | ❌ missing (copyrighted) | ISACA / COSO — purchase; proxy via SCF mappings |
-| FAIR (risk quantification) | ❌ missing | Open FAIR — taxonomy is public |
+This is the **map of the territory**, not just what's downloaded — the cyber / infosec / GRC / risk / audit frameworks worth crosswalking, each with a grab-link. Status: ✅ in corpus · ⚠️ partial (have a crosswalk/subset) · 📥 to pull. License: 🟢 public/free · 🟡 registration/restrictive-CC · 🔴 purchase/copyrighted.
+
+### Threat-informed & adversary frameworks (MITRE family + friends)
+
+| Framework | What it is | Lic | Status | Source |
+|---|---|---|---|---|
+| MITRE ATT&CK (Enterprise/Mobile/ICS) | Adversary tactics & techniques | 🟢 | ✅ | [attack.mitre.org](https://attack.mitre.org/resources/attack-data-and-tools/) · [STIX](https://github.com/mitre-attack/attack-stix-data) |
+| MITRE D3FEND | Defensive countermeasures ontology | 🟢 | ✅ | [d3fend.mitre.org](https://d3fend.mitre.org/resources/) |
+| MITRE Engage | Adversary engagement / **cyber deception & denial** (ex-Shield) | 🟢 | ✅ | [engage.mitre.org](https://engage.mitre.org/) |
+| MITRE CAPEC | Common Attack Pattern Enumeration | 🟢 | 📥 | [capec.mitre.org](https://capec.mitre.org/data/index.html) |
+| MITRE CWE | Common Weakness Enumeration | 🟢 | 📥 | [cwe.mitre.org](https://cwe.mitre.org/data/downloads.html) |
+| CVE / NVD | Known vulnerabilities | 🟢 | ⚠️ have ATT&CK→CVE | [nvd.nist.gov](https://nvd.nist.gov/vuln/data-feeds) |
+| MITRE ATLAS | Adversarial AI/ML threat matrix | 🟢 | 📥 | [atlas.mitre.org](https://atlas.mitre.org/) |
+| MITRE CAR | Cyber Analytics Repository (detections) | 🟢 | 📥 | [car.mitre.org](https://car.mitre.org/) |
+| MITRE VERIS | Incident classification taxonomy | 🟢 | ✅ | [veriscommunity.net](https://veriscommunity.net/) |
+| Lockheed Cyber Kill Chain | 7-stage intrusion model | 🟡 | 📥 | [lockheedmartin.com](https://www.lockheedmartin.com/en-us/capabilities/cyber/cyber-kill-chain.html) |
+| Diamond Model | Intrusion analysis model | 🟢 | 📥 | [diamondmodel](https://www.activeresponse.org/the-diamond-model/) |
+
+### Security control frameworks (the core)
+
+| Framework | What it is | Lic | Status | Source |
+|---|---|---|---|---|
+| NIST CSF 2.0 | Functions/categories/subcategories | 🟢 | ✅ | [CPRT](https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/CSF_2_0_0/home) |
+| NIST 800-53 r5 | Control catalog + assessment | 🟢 | ✅ | [OSCAL content](https://github.com/usnistgov/oscal-content) |
+| NIST 800-171 | CUI protection (→ CMMC) | 🟢 | ✅ | [OSCAL](https://github.com/usnistgov/oscal-content) |
+| NIST SSDF (800-218) | Secure software development | 🟢 | 📥 | [csrc 800-218](https://csrc.nist.gov/pubs/sp/800/218/final) |
+| NIST 800-207 | Zero Trust Architecture | 🟢 | 📥 | [csrc 800-207](https://csrc.nist.gov/pubs/sp/800/207/final) |
+| NIST Privacy Framework | Privacy risk (CSF-shaped) | 🟢 | 📥 | [CPRT](https://csrc.nist.gov/projects/cprt) |
+| CIS Controls v8.1 | 18 controls / 153 safeguards | 🟡 | ✅ | [cisecurity.org](https://www.cisecurity.org/controls/v8-1) |
+| CIS Benchmarks | Per-technology hardening | 🟡 | 📥 | [cisecurity.org/benchmarks](https://www.cisecurity.org/cis-benchmarks) |
+| ISO/IEC 27001 / 27002 | ISMS + control set | 🔴 | 📥 | [iso.org/27001](https://www.iso.org/standard/27001) (proxy: SCF/CRI mappings) |
+| ISO 27017/27018/27701 | Cloud / PII / privacy ISMS | 🔴 | 📥 | [iso.org](https://www.iso.org/) |
+| Secure Controls Framework | 175+ framework hub via STRM | 🟡 | ✅ | [securecontrolsframework.com](https://securecontrolsframework.com/scf-download/) |
+| CSA Cloud Controls Matrix | Cloud control framework | 🟡 | ⚠️ crosswalk only | [cloudsecurityalliance.org/ccm](https://cloudsecurityalliance.org/research/cloud-controls-matrix) |
+| AICPA SOC 2 / TSC | Trust Services Criteria | 🔴 | ✅ | [aicpa-cima.com](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022) |
+
+### Sector, cloud & assurance programs
+
+| Framework | What it is | Lic | Status | Source |
+|---|---|---|---|---|
+| CRI Profile v2.0 | Financial-sector spine | 🔴 | ✅ | [cyberriskinstitute.org](https://cyberriskinstitute.org/the-profile/) |
+| FFIEC IT Handbook | US FI examination booklets | 🟢 | ✅ | [ithandbook.ffiec.gov](https://ithandbook.ffiec.gov/) |
+| FedRAMP | US gov cloud authorization | 🟢 | ✅ | [fedramp.gov](https://www.fedramp.gov/documents/) |
+| PCI DSS v4.0.1 | Payment card security | 🔴 | ✅ | [pcisecuritystandards.org](https://www.pcisecuritystandards.org/document_library/) |
+| HIPAA Security Rule | US healthcare PHI | 🟢 | ✅ | [hhs.gov](https://www.hhs.gov/hipaa/for-professionals/security/index.html) |
+| CMMC | US DoD contractor maturity | 🟢 | ✅ | [dodcio.defense.gov/CMMC](https://dodcio.defense.gov/CMMC/) |
+| CISA CPG | Cross-sector performance goals | 🟢 | 📥 | [cisa.gov/cpg](https://www.cisa.gov/cross-sector-cybersecurity-performance-goals-cpgs) |
+| HITRUST CSF | Healthcare-centric certifiable framework | 🔴 | 📥 | [hitrustalliance.net](https://hitrustalliance.net/) |
+| NERC CIP | Energy/grid critical infrastructure | 🟢 | 📥 | [nerc.com](https://www.nerc.com/pa/Stand/Pages/CIPStandards.aspx) |
+| SWIFT CSP | Financial messaging security | 🔴 | 📥 | [swift.com/csp](https://www.swift.com/myswift/customer-security-programme-csp) |
+
+### Regulatory & legal obligations (obligation-centric)
+
+| Regulation | Jurisdiction | Lic | Status | Source |
+|---|---|---|---|---|
+| DORA | EU financial digital resilience | 🟢 | ✅ | [EUR-Lex 2022/2554](https://eur-lex.europa.eu/eli/reg/2022/2554/oj) |
+| NIS2 | EU critical-entity security | 🟢 | 📥 | [EUR-Lex 2022/2555](https://eur-lex.europa.eu/eli/dir/2022/2555/oj) |
+| GDPR | EU data protection | 🟢 | ⚠️ TSC→GDPR crosswalk | [EUR-Lex 2016/679](https://eur-lex.europa.eu/eli/reg/2016/679/oj) |
+| NYDFS Part 500 | US (NY) financial cyber | 🟢 | 📥 | [dfs.ny.gov](https://www.dfs.ny.gov/industry_guidance/cybersecurity) |
+| SEC cyber disclosure | US public-company disclosure | 🟢 | 📥 | [sec.gov](https://www.sec.gov/rules/final/2023/33-11216.pdf) |
+
+### Risk management & quantification
+
+| Framework | What it is | Lic | Status | Source |
+|---|---|---|---|---|
+| NIST 800-30 / 800-39 | Risk assessment + risk mgmt process | 🟢 | 📥 | [csrc 800-30](https://csrc.nist.gov/pubs/sp/800/30/r1/final) |
+| ISO 31000 / 27005 | Risk mgmt principles / infosec risk | 🔴 | 📥 | [iso.org/31000](https://www.iso.org/iso-31000-risk-management.html) |
+| FAIR / Open FAIR | Quantitative cyber-risk taxonomy | 🟡 | 📥 | [fairinstitute.org](https://www.fairinstitute.org/) · [Open Group](https://www.opengroup.org/open-fair) |
+| NIST AI RMF | AI risk management | 🟢 | 📥 | [nist.gov/itl/ai-risk-management-framework](https://www.nist.gov/itl/ai-risk-management-framework) |
+| ISO 42001 | AI management system | 🔴 | 📥 | [iso.org/42001](https://www.iso.org/standard/42001) |
+
+### Application, product & supply-chain security
+
+| Framework | What it is | Lic | Status | Source |
+|---|---|---|---|---|
+| OWASP Top 10 | Web app risk list | 🟢 | 📥 | [owasp.org/Top10](https://owasp.org/www-project-top-ten/) |
+| OWASP ASVS | App security verification standard | 🟢 | 📥 | [GitHub ASVS](https://github.com/OWASP/ASVS) |
+| OWASP SAMM | Software assurance maturity | 🟢 | 📥 | [owaspsamm.org](https://owaspsamm.org/) |
+| OWASP MASVS | Mobile app security | 🟢 | 📥 | [mas.owasp.org](https://mas.owasp.org/MASVS/) |
+| SLSA | Supply-chain integrity levels | 🟢 | 📥 | [slsa.dev](https://slsa.dev/spec/v1.0/) |
+| BSIMM | Software security maturity (descriptive) | 🟡 | 📥 | [bsimm.com](https://www.bsimm.com/) |
+
+### Internal audit & governance models
+
+| Framework | What it is | Lic | Status | Source |
+|---|---|---|---|---|
+| IIA Global Internal Audit Standards (IPPF) | Internal-audit profession standards | 🔴 | 📥 | [theiia.org/standards](https://www.theiia.org/en/standards/2024-standards/) |
+| COSO Internal Control + ERM | Governance / internal-control / ERM | 🔴 | 📥 | [coso.org](https://www.coso.org/guidance-on-ic) |
+| COBIT 2019 | IT governance & management | 🔴 | 📥 | [isaca.org/cobit](https://www.isaca.org/resources/cobit) |
+| IIA Three Lines Model | Risk governance roles | 🟢 | 📥 | [theiia.org/three-lines](https://www.theiia.org/en/content/position-papers/2020/the-iia-three-lines-model/) |
+
+<Aside type="tip" title="Pulling the missing ones">
+Most 📥 items have a free machine-readable door (MITRE = GitHub/STIX, NIST = CPRT/OSCAL, OWASP = GitHub, EU law = EUR-Lex XML). The 🔴 purchase-only ones (ISO, COBIT, COSO, HITRUST, SWIFT) usually have a **proxy**: [SCF](/crosswalker/reference/registry/scf/)'s STRM mapping columns already encode the relationships, so you can crosswalk *to* them without their copyrighted text. Drop anything you grab into `Frameworks/` (public) or `Frameworks/_licensed/` (copyrighted) and log it.
+</Aside>
 
 ## More CRI — what else to pull
 
