@@ -1,6 +1,6 @@
 ---
-title: "Ontological foundations of the unified control model — objective, risk, obligation, control, audit"
-description: "A key foundations log defining the core categories of the security/GRC/risk/audit problem domains and how they relate — the five 'kinds of being' (objective, risk, obligation, control, audit/finding), the prudential-vs-deontic split, why obligation is broader than compliance (governance vs regulatory vs contractual source), why risk is the ontologically strangest category (modal, relational, graded, future-pointing, half-epistemic), and why control earns the center. Direction emerging toward a 'Unified Control Model' with no privileged backbone; key decisions flagged open."
+title: "Ontological foundations of the Unified Control Assurance and Risk Model"
+description: "A key foundations log defining the core categories of the security/GRC/risk/audit problem domains and how they relate — the five 'kinds of being' (objective, risk, obligation, control, audit/finding) as the foundation, structured around the three useful practitioner perspectives that name the model: Control (GRC-operational), Assurance (audit), and Risk (ISRM). Covers the prudential-vs-deontic split, why obligation is broader than compliance (governance vs regulatory vs contractual source), why risk is the ontologically strangest category, and why control earns the center. Name chosen: Unified Control Assurance and Risk Model; remaining calls flagged open."
 sidebar:
   order: -20260601
   label: "06-01 · Unified control model — ontological foundations"
@@ -11,7 +11,7 @@ date: 2026-06-01
 import { Aside } from '@astrojs/starlight/components';
 
 <Aside type="note" title="Status — living foundations, direction emerging">
-This is a **foundations log**, not a final decision record. It captures the ontology/taxonomy worked out in discussion on 2026-06-01 following the [Ch 39](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) / [40](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) / [41](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) deliverables. The **definitions are firm**; the **direction is emerging** (Control as center, no privileged backbone); the **final calls are open** (name, default profiles, formal model write-up). When those lock, this graduates into a `concepts/` taxonomy page + a decision synthesis log.
+This is a **foundations log**, not a final decision record. It captures the ontology/taxonomy worked out in discussion on 2026-06-01 following the [Ch 39](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) / [40](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) / [41](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) deliverables. The **definitions are firm**; the **name is chosen** — **Unified Control Assurance and Risk Model** ("doesn't have to be perfect"); the model is structured around **the three useful practitioner lenses** (Control / Assurance / Risk, researched below); the **direction is emerging** (Control as center, no privileged backbone); **remaining calls are open** (default profiles, first crosswalk, formal model write-up). When those lock, this graduates into a `concepts/` taxonomy page + a decision synthesis log.
 </Aside>
 
 ## Why this log
@@ -123,7 +123,39 @@ Two different modes of normativity — **prudential (risk, "might/should")** and
             (writes Finding)
 ```
 
-Control is the center **not because it is privileged as a node type**, but because it is the one place where *governance mandates*, *risk mitigations*, and *compliance requirements* all land as the **same act**. That is the ontological justification for the working name **"Unified Control Model"** (object = control; the three lenses — risk, compliance/governance, audit — view it; assurance is the *stance* taken toward it). "Risk & Audit" is rejected as a category error: it conjoins a *domain of hazards* with an *epistemic stance toward claims*, and silently drops the obligation backbone.
+Control is the center **not because it is privileged as a node type**, but because it is the one place where *governance mandates*, *risk mitigations*, and *compliance requirements* all land as the **same act**. That justifies the chosen name **"Unified Control Assurance and Risk Model"** — its three words name the three useful practitioner lenses (next section): **Control** (the act), **Assurance** (the audit *stance* toward it), **Risk** (the prudential domain it serves). Governance and Compliance fold into Control (their obligations are *satisfied by* controls). "Unified Risk and Audit Model" was rejected as a category error — it conjoins a *domain of hazards* with an *epistemic stance toward claims* and silently drops the obligation backbone.
+
+## The useful perspectives — how audit & GRC actually operate the substrate
+
+The five kinds of being are the *foundation* (why the categories are distinct). On top of them sit the **useful working perspectives** practitioners actually use — and they are exactly the three words of the name. Each is a **lens over the same shared substrate**, with established frames worth modeling explicitly. *(Researched 2026-06-01; sources at the end of this section.)*
+
+### Control — the GRC-operational lens ("implement once, satisfy many")
+
+The control is the unit of work; the payoff is reuse.
+- **Common-control reuse:** one control satisfies many obligations/frameworks — the crosswalk payoff and the whole point of common-control libraries (SCF, OSCAL).
+- **Control function type:** *preventive* / *detective* / *corrective* (+ *directive*), and which one matters — **preventive & detective controls reduce *likelihood*; corrective controls reduce *impact*.** Maps onto NIST CSF functions (Protect / Detect / Respond-Recover).
+- **Control objective → control → control activity** hierarchy; controls provide *reasonable assurance* over the three classic objective categories (operations, reporting, **compliance**).
+- **Obligation coverage:** which duties (`internal-governance | external-regulatory | contractual`) do we owe, and does a control satisfy each? Governance and Compliance live here — their obligations are *discharged by* controls.
+- *Substrate:* `control —satisfies→ obligation`, `control —mitigates→ risk`; control carries a `function_type` attribute.
+
+### Risk — the ISRM lens ("buy risk down to appetite")
+
+Modeled on the ISO 31000 process (scope → assess → treat → monitor → report).
+- **Inherent → residual:** residual = inherent risk reduced by control effectiveness; *the movement between the two is the measure of how well controls work.*
+- **Risk appetite / tolerance:** appetite applies to **residual** risk — if residual exceeds tolerance, escalate or treat further; residual within appetite must be **formally accepted by a risk owner, documented, and monitored.** (This is the prudential discretion obligations lack — you can *accept* a risk; you cannot accept a breach.)
+- **Treatment options:** *avoid / transfer / mitigate / accept* — only *mitigate* creates controls; the other three are legitimate non-control responses.
+- *Substrate:* risk carries `inherent` + `residual` grades + a `treatment` decision; the `control —mitigates→ risk` edge carries effectiveness.
+
+### Assurance — the audit lens ("is it real, and is it covered?")
+
+- **Design vs operating effectiveness:** *design* = could the control work, judged at a point in time (SOC 2 Type 1); *operating* = does it work reliably over a period, tested by sampling (SOC 2 Type 2). **Two distinct states on the same control** — the single most useful audit distinction.
+- **Assurance coverage (combined assurance / assurance mapping):** for each key risk, *who* provides assurance and *when* — surfacing **coverage gaps** (no one looks), **duplication** (several do the same), and **single-point vulnerability** (one partial provider). The "are we testing the right things?" lens (IIA Standard 9.5, coordination & reliance).
+- **Findings lifecycle:** observation → finding → remediation → follow-up → closure — the audit output that feeds back into the substrate.
+- *Substrate:* control carries `design_status` + `operating_status`; `finding —concerns→ control/risk/obligation`; assurance coverage is a *query* over which findings/tests touch each risk.
+
+**Synthesis:** one substrate, three useful lenses. Control reuse + obligation coverage (GRC-operational); inherent→residual against appetite (ISRM); design/operating effectiveness + coverage + findings (assurance). The name **Unified Control Assurance and Risk Model** names exactly these three — and they map cleanly onto node attributes (`function_type`, `inherent`/`residual`/`treatment`, `design_status`/`operating_status`) and typed edges (`satisfies`, `mitigates`, `concerns`), so the practitioner perspectives are *queries over the schema*, not separate models.
+
+**Sources:** [design vs operating effectiveness](https://linfordco.com/blog/design-vs-operating-effectiveness/) · [inherent/residual + control effectiveness + appetite](https://adaptivegrc.com/resources/articles/inherent-residual-risk-controls/) · [combined assurance / assurance mapping](https://www.wolterskluwer.com/en/expert-insights/the-value-of-assurance-mapping) · [preventive/detective/corrective control types](https://www.flowgrc.com/blog/preventive-detective-corrective-controls) · [ISO 31000 risk treatment options](https://preteshbiswas.com/2024/01/04/iso-310002018-clause-6-5-risk-treatment/)
 
 ## Emerging direction (from Ch 39–41) — not yet locked
 
@@ -134,7 +166,7 @@ Control is the center **not because it is privileged as a node type**, but becau
 | Default general hub | NIST CSF 2.0 (outcomes) + 800-53 (controls); SCF/STRM as a local-only mapping accelerator + optional reconciliation hub. | candidate |
 | Backbone | **No privileged node**; a small typed set (control, risk, obligation, + asset/vendor/process/finding/evidence/incident) joined by typed edges. Control-/risk-/obligation-centric are *views*. | strong |
 | Audit | **Lens + requirement-producer**; only new first-class type is **Finding** (already in the entity list). | strong |
-| Name | **Unified Control Model** (or *Unified Control Assurance Model*). "Unified Risk and Audit Model" rejected. | candidate |
+| Name | **Unified Control Assurance and Risk Model** — names the three useful practitioner lenses (Control / Assurance / Risk). | **chosen** |
 
 ### Scope-creep guard (deferred / rejected — keep it pragmatic)
 - **Full OSCAL adoption** (Catalog/Profile/SSP/Assessment/POA&M) → defer to v0.1.7 *exporter* work; keep only the existing junction-note ↔ OSCAL `by-component` isomorphism.
@@ -143,10 +175,9 @@ Control is the center **not because it is privileged as a node type**, but becau
 - **MDM / "golden records" entity-resolution layer** → overkill; the practical core (ID normalization, `AC-2` vs `AC-02`) is already a known ETL step.
 
 ### Open decisions (need user sign-off before the formal write-up)
-1. Final **name**.
-2. Default **profiles** (general hub; FI = CRI profile) and the **first crosswalk** to build as proving ground.
-3. Whether to graduate this ontology into a `concepts/` taxonomy page now or after the model is built.
-4. Process the Ch 39–41 deliverables formally (publish to `zz-research/`, archive briefs, update the [unified risk model](/crosswalker/examples/unified-risk-model/) page) — currently **held**.
+1. Default **profiles** (general hub; FI = CRI profile) and the **first crosswalk** to build as proving ground.
+2. Whether to graduate this ontology + the useful-perspectives layer into a `concepts/` taxonomy page now or after the model is built.
+3. Process the Ch 39–41 deliverables formally (publish to `zz-research/`, archive briefs, update the [unified risk model](/crosswalker/examples/unified-risk-model/) page) — currently **held**.
 
 ## Related
 
