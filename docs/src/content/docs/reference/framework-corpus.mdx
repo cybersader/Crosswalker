@@ -1,6 +1,6 @@
 ---
 title: Security & GRC framework corpus
-description: The downloaded corpus of cybersecurity, information security, GRC, risk-management, internal-audit, and regulatory-compliance frameworks — classified by licensing tier (commit-safe vs local-only), what each file is, its format door (machine-readable vs PDF), keep/cut recommendation, and a link to each framework's registry home page + official download. The catalog for building realistic crosswalks toward a CRI-centered unified risk model.
+description: A directory of the cybersecurity, information security, GRC, risk-management, internal-audit and regulatory-compliance frameworks worth crosswalking — each with a durable source link, license tier, and source-data status — plus how Crosswalker handles their licensing on the way from ingestion to mapping.
 sidebar:
   order: 11
   label: Security & GRC corpus
@@ -9,263 +9,138 @@ tags: [frameworks, corpus, copyright, licensing, cri-profile, grc, security, ris
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page catalogs the corpus of **security and GRC frameworks** pulled for realistic crosswalking — scoped to Crosswalker's launch problem domains: **cybersecurity, information security, governance/risk/compliance (GRC), risk management, internal audit, and regulatory compliance**. For each file: what it is, whether it's safe to commit, and which files are *not actually frameworks or ontologies* and can be cut. Pair it with [framework data sources](/crosswalker/reference/framework-data-sources/) (parsing details: sheets, columns, ID formats) and the [registry](/crosswalker/reference/registry/) (each framework's home page).
+This is the **directory of security & GRC frameworks worth crosswalking** — scoped to Crosswalker's launch problem domains: **cybersecurity, information security, GRC, risk management, internal audit, and regulatory compliance**. Each entry links to a **durable home/landing page** (not a download URL — those rot), notes its **license**, and whether usable **source data is in hand**.
+
+<Aside type="tip" title="Using these in practice">
+Having the frameworks is step one. Turning them into a working crosswalk graph — cleaning inputs, importing concepts, mapping across frameworks, and storing the transform logic — is the real work. See: [unified risk model](/crosswalker/examples/unified-risk-model/) · [for internal audit](/crosswalker/examples/for-internal-audit/) · [for GRC / ISRM](/crosswalker/examples/for-grc-isrm/) · [for regulatory compliance](/crosswalker/examples/for-regulatory-compliance/) · [ETL & import pipeline](/crosswalker/concepts/etl-and-import/).
+</Aside>
 
 <Aside type="note" title="Scope">
-This is **not** a general framework catalog — every entry sits in the security/GRC/risk/audit space (NIST, MITRE, CRI, CIS, ISO 27k, SOC 2, PCI, FedRAMP, FFIEC, CMMC, HIPAA, DORA, SCF). Crosswalker's architecture is general-domain, but this corpus is deliberately narrowed to the [compliance & risk problem domains](/crosswalker/concepts/compliance-control-vs-obligation/) that are the primary launch use case.
+Not a general framework catalog — every entry sits in the security / GRC / risk / audit space. Crosswalker's architecture is general-domain, but this corpus is deliberately narrowed to the [compliance & risk problem domains](/crosswalker/concepts/compliance-control-vs-obligation/) that are the primary launch use case.
 </Aside>
 
-<Aside type="caution" title="Licensing is load-bearing">
-The corpus lives at repo-root `Frameworks/` and is **local-by-default** (gitignored, fail-closed). Only **public-domain US-government + MITRE** source files are committed. Copyrighted vendor files (CRI, CIS, ISO, AICPA/SOC 2, PCI, SCF) stay in `Frameworks/_licensed/` and are **never** committed. Crosswalker's *generated* notes (your own paraphrased concepts + crosswalk junctions) are derived work and can be committed; the raw vendor *text* cannot.
-</Aside>
+## The landscape — frameworks worth crosswalking
 
-## Licensing tiers at a glance
-
-| Tier | Meaning | Where it lives | Examples |
-|---|---|---|---|
-| 🟢 **Public domain** | US-gov work product or free-with-attribution; commit-safe | `Frameworks/` (committed) | NIST (CSF/800-53/800-171), MITRE (ATT&CK/D3FEND/Engage/VERIS), FedRAMP, FFIEC, HIPAA, CMMC, DORA/EU law |
-| 🟡 **Restrictive CC / registration** | Free but share-alike or registration-gated; keep local to be safe | `Frameworks/_licensed/` | CIS Controls, CIS RAM, Secure Controls Framework (SCF) |
-| 🔴 **Copyrighted** | Vendor IP, redistribution-restricted | `Frameworks/_licensed/` | **CRI Profile** (the spine), ISO 27001, AICPA SOC 2 / TSC, PCI DSS |
-
-<Aside type="note" title="Format door: structured vs PDF">
-A framework is only useful to Crosswalker if its content arrives **structured** (XLSX / CSV / JSON / XML), not as prose PDF. Where a framework ships only as PDF, the *machine-readable door* is noted — usually an OSCAL catalog (NIST), a CPRT export, an SCF/STRM mapping sheet, or legislative XML (EUR-Lex). PDF-only items are flagged ✂️ unless they're the sole obligation source.
-</Aside>
-
----
-
-## Recent additions (2026-06 expansion)
-
-A large second pull grew the corpus to **~225 files / ~690 MB** and closed most gaps. New framework families:
-
-- **MITRE threat-informed (big):** CAPEC (XML), CWE (XML), **ATLAS** (adversarial-AI; YAML + STIX), **CAR** analytics, D3FEND JSON — plus a stack of **CTID resource packs**: ATT&CK mappings for Azure / GCP / M365 / Intel vPro / CISA KEV, Sightings Ecosystem, Summiting the Pyramid, M3TID, Defending OT with ATT&CK, Threat Modeling with ATT&CK. 🟢
-- **CRI (the spine — major):** Profile **v2.1 + v2.2** (2026-04-27) workbooks, v2.2 Mappings Catalog, CRI↔DORA mappings + gap analysis, CRI↔800-53 r5.1.1, ATT&CK v16.1↔CRI v2.1, v2.0 Fact Sheet + User Guide, and **CRI FS-AI-RMF** (Financial-Services AI Risk Management Framework: stages 1–3 + tier 4 risk-and-control matrices + CISO/CTO guide). 🔴 → `_licensed/`
-- **AI frameworks:** NIST AI RMF (`NIST.AI.100-1`), AI RMF↔NIST crosswalks, Taxonomy of AI Trustworthiness, CRI FS-AI-RMF. 🟢/🔴
-- **CIS Benchmarks (~20):** AWS, Azure, GCP, Kubernetes, Docker, M365, SQL Server 2019/2022/2025, Chrome, GitHub, Intune, IIS, PostgreSQL, firewalls (Palo Alto, FortiGate, pfSense), Snowflake. 🟡 PDF
-- **Control frameworks:** NIST **800-207** Zero Trust, **800-218 SSDF** (structured table), **ISO 27001:2022 (ed.3) + Amd 1:2024 + 27002:2022 + 27001:2013** (🔴 PDF), CSA **CCM 4.1** (via CTID ATT&CK pack), SCF Capability-Maturity + Risk-Management models.
-- **Intrusion / deception models:** Lockheed **Cyber Kill Chain**, **Diamond Model**, Lockheed COBRA. 🟢/🟡
-- **Sector / governance:** **CISA CPG** checklist, **IIA Three Lines Model**, IIA internal-audit **competency framework (GPG)**, NCCoE FS-ITAM. 🟢
-- **Formats:** STIX 2.1 spec.
-
-<Aside type="caution" title="Copyright on the new files">
-The new **CRI** workbooks, **ISO 27001**, AICPA, and PCI files are 🔴 copyrighted. They're already safe (all of `Frameworks/` is gitignored, fail-closed), but for hygiene move them into `Frameworks/_licensed/` alongside the originals. Public-domain NIST/MITRE/CISA/FFIEC additions can stay loose.
-</Aside>
-
----
-
-## 🟢 Public domain — committed
-
-### NIST — the structured backbone
-
-| File | What it is | Door | Keep |
-|---|---|---|---|
-| `csf2.xlsx`, `cprt_CSF_2_0_0_*.json` | [CSF 2.0](/crosswalker/reference/registry/nist/) functions/categories/subcategories — XLSX + CPRT JSON | XLSX / JSON | ✅ ontology |
-| `sp800-53r5-control-catalog.xlsx`, `NIST_SP-800-53_rev5_catalog_load.csv`, `NIST_SP-800-53_rev5-derived-OSCAL.xlsx` | 800-53 Rev 5 control catalog (3 serializations) | XLSX / CSV | ✅ ontology |
-| `sp800-53ar5-assessment-procedures.{csv,xlsx}` | 800-53A assessment procedures | CSV / XLSX | ✅ ontology |
-| `Cybersecurity_Framework_v2-0_Concept_Crosswalk_800-53_final.xlsx` | NIST official CSF 2.0 ↔ 800-53 crosswalk | XLSX | ✅ crosswalk |
-| `nist_800_53-rev5_attack-14.1-enterprise.xlsx` | 800-53 ↔ ATT&CK ([CTID](/crosswalker/reference/registry/ctid/)) | XLSX | ✅ crosswalk |
-
-### MITRE — threat-informed ontologies (free, attribute)
-
-| File | What it is | Door | Keep |
-|---|---|---|---|
-| `enterprise-attack-v16.1.xlsx`, `enterprise-attack-v15.1.xlsx` | [ATT&CK](/crosswalker/reference/registry/mitre/) Enterprise techniques (two versions — good for [diff testing](/crosswalker/concepts/framework-versioning/)) | XLSX | ✅ ontology |
-| `d3fend.csv`, `d3fend-full-mappings.csv`, `d3fend_to_nist80053.csv`, `att&ck_to_d3fend.csv` | D3FEND ontology + crosswalks (ATT&CK, 800-53) | CSV | ✅ ontology + crosswalk |
-| `Engage-Data-V1.0.xlsx` | MITRE Engage (multi-sheet: goals/approaches/activities) | XLSX | ✅ ontology |
-| `Att&ckToCveMappings.csv`, `NISTCSF_MITRE.csv` | ATT&CK↔CVE, CSF↔ATT&CK crosswalks | CSV | ✅ crosswalk |
-
-### FedRAMP / DoD — one real control file, the rest is process
-
-| File | What it is | Keep |
-|---|---|---|
-| `FedRAMP_Security_Controls_Baseline.xlsx` | FedRAMP High/Mod/Low/LI-SaaS control baselines (structured) | ✅ ontology |
-| `FedRAMP-SAR-Appendix-B-*Traceability-Matrix*.xlsx`, `SSP-Appendix-A-*Security-Controls.docx`, `SSP-Appendix-J-*CRM-Workbook.xlsx` | Assessment/SSP control worksheets — structured but FedRAMP-process-specific | 🟡 optional |
-| `FedRAMP-POAM-Template.xlsx`, `FedRAMP-Initial-Authorization-Package-Checklist.xlsx`, `CSP_Annual_Assessment_Controls_Selection_Worksheet.xlsx`, `FedRAMP-High-Moderate-Low-LI-SaaS-Baseline-System-Security-Plan-(SSP).docx` | Blank templates / checklists | ✂️ not an ontology |
-| `FedRAMP_Branding_Guidance.pdf`, `FedRAMP_Policy_for_Cryptographic_Module_Selection*.pdf`, `3PAO_Obligations_and_Performance_Standards.pdf`, `CSP_A_FedRAMP_Authorization_Boundary_Guidance.pdf`, `CSP_Penetration_Test_Guidance.pdf`, `CSP_Timeliness_and_Accuracy_of_Testing_Requirements.pdf`, `Vulnerability_Scanning_Requirements_for_Containers.pdf`, `Vulnerability Management Infographic.pdf` | Guidance/branding/infographics | ✂️ cut |
-
-### FFIEC / HIPAA / CMMC — public, but PDF-only (obligation sources, not structured controls)
-
-| File(s) | What it is | Door | Keep |
-|---|---|---|---|
-| `ffiec_itbooklet_*.pdf` (×11: audit, infosec, management, BCM, dev&acq, outsourcing, retail/wholesale payments, AIO, supervision) | [FFIEC](/crosswalker/reference/registry/ffiec/) IT Examination Handbook booklets | PDF only | 🟡 obligation reference — keep infosec + audit; cut the rest |
-| `ffiec_itbooklet_informationsecurity (1).pdf` | duplicate of `…informationsecurity.pdf` | — | ✂️ dup |
-| `hipaa-simplification-201303.pdf` | HIPAA Security/Privacy Rule consolidated text | PDF (legal) | 🟡 obligation source |
-| `CMMC*.pdf`, `AssessmentGuide L1/L2/L3 v2.pdf`, `ScopingGuide L2/L3 v2.pdf`, `ModelOverviewv2.pdf`, `TechImplementationCMMC-Rqrmnts.pdf`, `HashingGuide_v2.14.pdf`, `CMMC-AlignmentNIST-Standards.pdf`, `CMMC-eMASS.pdf` | [CMMC](https://dodcio.defense.gov/CMMC/) model + assessment/scoping guides | PDF | ✂️ mostly cut — CMMC controls = NIST **800-171** (which we have structured) |
-| `NIST.SP.800-190.pdf` | Container security guidance (prose) | PDF | ✂️ cut (not a control set) |
-
-### EU law — machine-readable obligation sources (DORA)
-
-| File | What it is | Door | Keep |
-|---|---|---|---|
-| `2024-30983.xml` | DORA technical standard (Formex XML) | XML | ✅ obligation source |
-| `cellar_0caf473a-*.xml` | EUR-Lex Cellar XML — DORA Regulation [2022/2554](https://eur-lex.europa.eu/eli/reg/2022/2554/oj) | XML | ✅ obligation source |
-| `L_2022333EN.01000101.xml.html` | Same DORA reg, OJ HTML/XML export | XML/HTML | 🟡 redundant with cellar |
-
-### Big public bundles (local-only by size, not license)
-
-These are public-domain but large — kept local (gitignored) to avoid repo bloat; `git add -f` any you want tracked.
-
-| File | Size | What it is |
-|---|---|---|
-| `usnistgov…SP800-53_rev5.zip` | 62M | Full [OSCAL](/crosswalker/reference/registry/oscal/) content for 800-53 r5 |
-| `usnistgov…SP800-171.zip`, `…SP800-171_rev3.zip` | 2.8M ea | OSCAL content for 800-171 (r2 + r3) |
-| `oscal-content-1.4.0.zip` | 12M | OSCAL release bundle |
-| `enterprise-attack.json` | 51M | ATT&CK Enterprise STIX 2.1 bundle |
-| `mobile-attack.json`, `ics-attack.json` | 5.5M / 3.9M | ATT&CK Mobile + ICS STIX |
-| `veris-1.4.0.zip` | 7.3M | MITRE [VERIS](/crosswalker/reference/registry/mitre/) incident taxonomy |
-
----
-
-## 🟡 Restrictive CC / registration — local only
-
-| File(s) | What it is | Keep |
-|---|---|---|
-| `Secure.Controls.Framework.SCF.-.2026.1.1.xlsx` | [SCF](/crosswalker/reference/registry/scf/) — 175+ framework hub via [STRM](/crosswalker/reference/registry/strm/) (the interlingua) | ✅ metaframework |
-| `securecontrolsframework-2026.1.1.zip` (164M) | Full SCF release (PDFs + all mappings) | 🟡 huge — keep the xlsx, archive the zip |
-| `CIS_Controls_Version_8.1.2___March_2025.xlsx`, `…Change_Log…xlsx` | [CIS Controls](/crosswalker/reference/registry/cis/) v8.1.2 + changelog | ✅ ontology |
-| `_licensed/CIS_Controls_Version_8.1_6_24_2024.xlsx`, `_licensed/CIS_Controls_v8_Mapping_to_NIST_CSF_2_2023.xlsx` | CIS v8.1 + CSF crosswalk (purged from git history 2026-05-31) | ✅ ontology + crosswalk |
-| `CIS_Controls_Guide_v8.1.2_0325_v2.pdf` | CIS Controls companion guide (prose) | ✂️ cut (xlsx has the data) |
-| `CIS_Controls_Guide_v8.1.2_0325_v2 (1).pdf` | duplicate | ✂️ dup |
-| `CIS_RAM_v2.2_*` (×8: Core, IG1/2/3 Guides + Workbooks, VERIS DB) | CIS **Risk Assessment Method** — a methodology, not a control ontology | ✂️ cut (out of scope for crosswalking) |
-
----
-
-## 🔴 Copyrighted — local only (never commit)
-
-| File(s) | What it is | Keep |
-|---|---|---|
-| `_licensed/Final-CRI-Profile-v2.0-Public-CRI.xlsx`, `_licensed/Final-CRI-Profile-v2.0-Public.-Date-2024.02.29-2.xlsx` | **[CRI Profile](/crosswalker/reference/registry/cri/) v2.0 — the spine** of the [unified risk model](/crosswalker/examples/unified-risk-model/). Multi-sheet: structure + diagnostic statements + CSF/FFIEC/CISA crosswalks | ✅ **the center** |
-| `Trust-services-criteria.pdf` | AICPA SOC 2 / Trust Services Criteria | 🟡 PDF — get structured TSC if possible |
-| `2017-tsc-mapping-to-gdpr.xlsx`, `tsc_to_nist_800-53.xlsx`, `tsc_to_isaca_blockchain_framework.xlsx`, `TSC to CSA CCM.xls` | AICPA TSC crosswalks (→ GDPR, 800-53, ISACA blockchain, CSA CCM) | ✅ crosswalks (local) |
-| `privacy-management-framework.pdf` | AICPA Privacy Management Framework (ex-GAPP) | 🟡 PDF |
-| `PCI-DSS-v4_0_1.pdf`, `Prioritized-Approach-Tool-For-PCI-DSS-v4_0_1.xlsx` | PCI DSS v4.0.1 requirements + prioritized-approach (structured) | ✅ ontology (xlsx) |
-| `PCI-DSS-v4_x-QRG.pdf`, `PCI-DSS-v4.x-ROC-AOC-*.docx`, `Extra-Compensating-Controls-Worksheet.docx` | PCI quick-ref + report/compensating-control forms | ✂️ cut (templates) |
-
----
-
-## 🟡 Review — your own derived file
-
-| File | Why review |
-|---|---|
-| `Custom_financial_crosswalk_1.xlsx` | Your own crosswalk — currently **tracked** in git. If it embeds copyrighted control *text* (e.g. CRI/PCI diagnostic statements verbatim), move it to `_licensed/`. If it's only IDs/references + your own notes, it's fine to keep committed. **Decide before next push.** |
-
----
-
-## The broader landscape — every framework worth pulling
-
-This is the **map of the territory**, not just what's downloaded — the cyber / infosec / GRC / risk / audit frameworks worth crosswalking, each with a grab-link. Status: ✅ in corpus · ⚠️ partial (have a crosswalk/subset) · 📥 to pull. License: 🟢 public/free · 🟡 registration/restrictive-CC · 🔴 purchase/copyrighted.
+**Status** = whether usable source data is in hand: ✅ acquired · ⚠️ partial (a crosswalk or subset) · 📥 still to source. *(Whether a framework has been **ingested and tested through Crosswalker** is a separate status that comes online as we run the [ingestion → mapping pipeline](/crosswalker/concepts/etl-and-import/) — see "Using these in practice" above.)* **License**: 🟢 public / free · 🟡 registration / restrictive-CC · 🔴 purchase / copyrighted. **Source** links go to durable landing pages, not download URLs.
 
 ### Threat-informed & adversary frameworks (MITRE family + friends)
 
 | Framework | What it is | Lic | Status | Source |
 |---|---|---|---|---|
-| MITRE ATT&CK (Enterprise/Mobile/ICS) | Adversary tactics & techniques | 🟢 | ✅ | [attack.mitre.org](https://attack.mitre.org/resources/attack-data-and-tools/) · [STIX](https://github.com/mitre-attack/attack-stix-data) |
-| MITRE D3FEND | Defensive countermeasures ontology | 🟢 | ✅ | [d3fend.mitre.org](https://d3fend.mitre.org/resources/) |
+| MITRE ATT&CK (Enterprise/Mobile/ICS) | Adversary tactics & techniques | 🟢 | ✅ | [attack.mitre.org](https://attack.mitre.org/) |
+| MITRE D3FEND | Defensive countermeasures ontology | 🟢 | ✅ | [d3fend.mitre.org](https://d3fend.mitre.org/) |
 | MITRE Engage | Adversary engagement / **cyber deception & denial** (ex-Shield) | 🟢 | ✅ | [engage.mitre.org](https://engage.mitre.org/) |
-| MITRE CAPEC | Common Attack Pattern Enumeration | 🟢 | ✅ | [capec.mitre.org](https://capec.mitre.org/data/index.html) |
-| MITRE CWE | Common Weakness Enumeration | 🟢 | ✅ | [cwe.mitre.org](https://cwe.mitre.org/data/downloads.html) |
-| CVE / NVD + CISA KEV | Known + exploited vulnerabilities | 🟢 | ⚠️ ATT&CK↔CVE + KEV↔ATT&CK | [nvd.nist.gov](https://nvd.nist.gov/vuln/data-feeds) |
+| MITRE CAPEC | Common Attack Pattern Enumeration | 🟢 | ✅ | [capec.mitre.org](https://capec.mitre.org/) |
+| MITRE CWE | Common Weakness Enumeration | 🟢 | ✅ | [cwe.mitre.org](https://cwe.mitre.org/) |
+| CVE / NVD + CISA KEV | Known + exploited vulnerabilities | 🟢 | ⚠️ ATT&CK↔CVE + KEV↔ATT&CK | [nvd.nist.gov](https://nvd.nist.gov/) |
 | MITRE ATLAS | Adversarial AI/ML threat matrix | 🟢 | ✅ | [atlas.mitre.org](https://atlas.mitre.org/) |
 | MITRE CAR | Cyber Analytics Repository (detections) | 🟢 | ✅ | [car.mitre.org](https://car.mitre.org/) |
-| MITRE VERIS | Incident classification taxonomy | 🟢 | ✅ | [veriscommunity.net](https://veriscommunity.net/) |
-| CTID resource packs | ATT&CK mappings (Azure/GCP/M365/vPro/KEV) + Sightings, Summiting the Pyramid, M3TID, Defending OT, Threat Modeling w/ ATT&CK | 🟢 | ✅ | [ctid.mitre.org](https://ctid.mitre.org/) |
+| MITRE VERIS | Incident classification taxonomy | 🟢 | ✅ | [verisframework.org](https://verisframework.org/) |
+| CTID resource packs | ATT&CK mappings + threat-informed-defense projects (Sightings, Summiting the Pyramid, M3TID, …) | 🟢 | ✅ | [ctid.mitre.org](https://ctid.mitre.org/) |
 | Lockheed Cyber Kill Chain | 7-stage intrusion model | 🟡 | ✅ | [lockheedmartin.com](https://www.lockheedmartin.com/en-us/capabilities/cyber/cyber-kill-chain.html) |
-| Diamond Model | Intrusion analysis model | 🟢 | ✅ | [diamondmodel](https://www.activeresponse.org/the-diamond-model/) |
+| Diamond Model | Intrusion analysis model | 🟢 | ✅ | [activeresponse.org](https://www.activeresponse.org/the-diamond-model/) |
 
 ### Security control frameworks (the core)
 
 | Framework | What it is | Lic | Status | Source |
 |---|---|---|---|---|
-| NIST CSF 2.0 | Functions/categories/subcategories | 🟢 | ✅ | [CPRT](https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/CSF_2_0_0/home) |
-| NIST 800-53 r5 | Control catalog + assessment | 🟢 | ✅ | [OSCAL content](https://github.com/usnistgov/oscal-content) |
-| NIST 800-171 | CUI protection (→ CMMC) | 🟢 | ✅ | [OSCAL](https://github.com/usnistgov/oscal-content) |
-| NIST SSDF (800-218) | Secure software development | 🟢 | ✅ | [csrc 800-218](https://csrc.nist.gov/pubs/sp/800/218/final) |
-| NIST 800-207 | Zero Trust Architecture | 🟢 | ✅ | [csrc 800-207](https://csrc.nist.gov/pubs/sp/800/207/final) |
-| NIST Privacy Framework | Privacy risk (CSF-shaped) | 🟢 | 📥 | [CPRT](https://csrc.nist.gov/projects/cprt) |
-| CIS Controls v8.1 | 18 controls / 153 safeguards | 🟡 | ✅ | [cisecurity.org](https://www.cisecurity.org/controls/v8-1) |
-| CIS Benchmarks (~20) | Per-technology hardening (AWS, Azure, GCP, K8s, M365, SQL Server, …) | 🟡 | ✅ | [cisecurity.org/benchmarks](https://www.cisecurity.org/cis-benchmarks) |
-| ISO/IEC 27001 + 27002 | ISMS requirements + Annex A control catalog | 🔴 | ✅ 27001:2022 (+Amd 1:2024) + 27002:2022 + 2013 | [iso.org/27001](https://www.iso.org/standard/27001) |
+| NIST CSF 2.0 | Functions / categories / subcategories | 🟢 | ✅ | [nist.gov/cyberframework](https://www.nist.gov/cyberframework) |
+| NIST 800-53 r5 | Control catalog + assessment | 🟢 | ✅ | [csrc.nist.gov](https://csrc.nist.gov/projects/risk-management) |
+| NIST 800-171 | CUI protection (→ CMMC) | 🟢 | ✅ | [csrc.nist.gov](https://csrc.nist.gov/projects/protecting-controlled-unclassified-information) |
+| NIST SSDF (800-218) | Secure software development | 🟢 | ✅ | [csrc.nist.gov/projects/ssdf](https://csrc.nist.gov/projects/ssdf) |
+| NIST 800-207 | Zero Trust Architecture | 🟢 | ✅ | [csrc.nist.gov](https://csrc.nist.gov/pubs/sp/800/207/final) |
+| NIST Privacy Framework | Privacy risk (CSF-shaped) | 🟢 | 📥 | [nist.gov/privacy-framework](https://www.nist.gov/privacy-framework) |
+| CIS Controls v8.1 | 18 controls / 153 safeguards | 🟡 | ✅ | [cisecurity.org/controls](https://www.cisecurity.org/controls) |
+| CIS Benchmarks (~20) | Per-technology hardening (AWS, Azure, GCP, K8s, M365, SQL Server, …) | 🟡 | ✅ | [cisecurity.org](https://www.cisecurity.org/cis-benchmarks) |
+| ISO/IEC 27001 + 27002 | ISMS requirements + Annex A control catalog | 🔴 | ✅ 27001:2022 (+Amd 1:2024) + 27002:2022 | [iso.org](https://www.iso.org/standard/27001) |
 | ISO 27701 / 27017 / 27018 | Privacy (PIMS) / cloud / PII ISMS extensions | 🔴 | ⚠️ have 27701:2025; 27017/27018 missing | [iso.org](https://www.iso.org/) |
-| Secure Controls Framework | 175+ framework hub via STRM (+ maturity & risk models) | 🟡 | ✅ | [securecontrolsframework.com](https://securecontrolsframework.com/scf-download/) |
-| CSA Cloud Controls Matrix | Cloud control framework | 🟡 | ✅ CCM 4.1 (via CTID ATT&CK pack) | [cloudsecurityalliance.org/ccm](https://cloudsecurityalliance.org/research/cloud-controls-matrix) |
-| AICPA SOC 2 / TSC | Trust Services Criteria | 🔴 | ✅ | [aicpa-cima.com](https://www.aicpa-cima.com/resources/download/2017-trust-services-criteria-with-revised-points-of-focus-2022) |
+| Secure Controls Framework | 175+ framework hub via STRM (+ maturity & risk models) | 🟡 | ✅ | [securecontrolsframework.com](https://securecontrolsframework.com/) |
+| CSA Cloud Controls Matrix | Cloud control framework | 🟡 | ✅ CCM 4.1 (via CTID pack) | [cloudsecurityalliance.org](https://cloudsecurityalliance.org/research/cloud-controls-matrix) |
+| AICPA SOC 2 / TSC | Trust Services Criteria | 🔴 | ✅ | [aicpa-cima.com](https://www.aicpa-cima.com/) |
 
 ### Sector, cloud & assurance programs
 
 | Framework | What it is | Lic | Status | Source |
 |---|---|---|---|---|
-| CRI Profile v2.0 / 2.1 / 2.2 | Financial-sector spine + v2.2 mappings catalog + DORA / 800-53 / ATT&CK crosswalks + FS-AI-RMF | 🔴 | ✅ | [cyberriskinstitute.org](https://cyberriskinstitute.org/the-profile/) |
+| CRI Profile (v2.0–2.2) | Financial-sector spine + mappings catalog + DORA / 800-53 / ATT&CK crosswalks + FS-AI-RMF | 🔴 | ✅ | [cyberriskinstitute.org](https://cyberriskinstitute.org/the-profile/) |
 | FFIEC IT Handbook | US FI examination booklets | 🟢 | ✅ | [ithandbook.ffiec.gov](https://ithandbook.ffiec.gov/) |
-| FedRAMP | US gov cloud authorization | 🟢 | ✅ | [fedramp.gov](https://www.fedramp.gov/documents/) |
-| PCI DSS v4.0.1 | Payment card security | 🔴 | ✅ | [pcisecuritystandards.org](https://www.pcisecuritystandards.org/document_library/) |
-| HIPAA Security Rule | US healthcare PHI | 🟢 | ✅ | [hhs.gov](https://www.hhs.gov/hipaa/for-professionals/security/index.html) |
+| FedRAMP | US gov cloud authorization | 🟢 | ✅ | [fedramp.gov](https://www.fedramp.gov/) |
+| PCI DSS v4.0.1 | Payment card security | 🔴 | ✅ | [pcisecuritystandards.org](https://www.pcisecuritystandards.org/) |
+| HIPAA Security Rule | US healthcare PHI | 🟢 | ✅ | [hhs.gov/hipaa](https://www.hhs.gov/hipaa/for-professionals/security/) |
 | CMMC | US DoD contractor maturity | 🟢 | ✅ | [dodcio.defense.gov/CMMC](https://dodcio.defense.gov/CMMC/) |
-| CISA CPG | Cross-sector performance goals | 🟢 | ✅ | [cisa.gov/cpg](https://www.cisa.gov/cross-sector-cybersecurity-performance-goals-cpgs) |
+| CISA CPG | Cross-sector performance goals | 🟢 | ✅ | [cisa.gov](https://www.cisa.gov/cross-sector-cybersecurity-performance-goals-cpgs) |
 | HITRUST CSF | Healthcare-centric certifiable framework | 🔴 | 📥 | [hitrustalliance.net](https://hitrustalliance.net/) |
-| NERC CIP | Energy/grid critical infrastructure | 🟢 | 📥 | [nerc.com](https://www.nerc.com/pa/Stand/Pages/CIPStandards.aspx) |
-| SWIFT CSP | Financial messaging security | 🔴 | 📥 | [swift.com/csp](https://www.swift.com/myswift/customer-security-programme-csp) |
+| NERC CIP | Energy / grid critical infrastructure | 🟢 | 📥 | [nerc.com](https://www.nerc.com/) |
+| SWIFT CSP | Financial messaging security | 🔴 | 📥 | [swift.com](https://www.swift.com/) |
 
 ### Regulatory & legal obligations (obligation-centric)
 
 | Regulation | Jurisdiction | Lic | Status | Source |
 |---|---|---|---|---|
-| DORA | EU financial digital resilience | 🟢 | ✅ | [EUR-Lex 2022/2554](https://eur-lex.europa.eu/eli/reg/2022/2554/oj) |
-| NIS2 | EU critical-entity security | 🟢 | 📥 | [EUR-Lex 2022/2555](https://eur-lex.europa.eu/eli/dir/2022/2555/oj) |
-| GDPR | EU data protection | 🟢 | ⚠️ TSC→GDPR crosswalk | [EUR-Lex 2016/679](https://eur-lex.europa.eu/eli/reg/2016/679/oj) |
+| DORA | EU financial digital resilience | 🟢 | ✅ | [EUR-Lex (ELI 2022/2554)](https://eur-lex.europa.eu/eli/reg/2022/2554/oj) |
+| NIS2 | EU critical-entity security | 🟢 | 📥 | [EUR-Lex (ELI 2022/2555)](https://eur-lex.europa.eu/eli/dir/2022/2555/oj) |
+| GDPR | EU data protection | 🟢 | ⚠️ TSC→GDPR crosswalk | [EUR-Lex (ELI 2016/679)](https://eur-lex.europa.eu/eli/reg/2016/679/oj) |
 | NYDFS Part 500 | US (NY) financial cyber | 🟢 | 📥 | [dfs.ny.gov](https://www.dfs.ny.gov/industry_guidance/cybersecurity) |
-| SEC cyber disclosure | US public-company disclosure | 🟢 | 📥 | [sec.gov](https://www.sec.gov/rules/final/2023/33-11216.pdf) |
+| SEC cyber disclosure | US public-company disclosure | 🟢 | 📥 | [sec.gov](https://www.sec.gov/) |
 
 ### Risk management & quantification
 
 | Framework | What it is | Lic | Status | Source |
 |---|---|---|---|---|
-| NIST 800-30 / 800-39 | Risk assessment + risk mgmt process | 🟢 | 📥 | [csrc 800-30](https://csrc.nist.gov/pubs/sp/800/30/r1/final) |
-| ISO 31000 / 27005 | Risk mgmt principles / infosec risk | 🔴 | 📥 | [iso.org/31000](https://www.iso.org/iso-31000-risk-management.html) |
-| FAIR / Open FAIR | Quantitative cyber-risk taxonomy | 🟡 | 📥 | [fairinstitute.org](https://www.fairinstitute.org/) · [Open Group](https://www.opengroup.org/open-fair) |
-| NIST AI RMF | AI risk management (AI 100-1) | 🟢 | ✅ | [nist.gov/itl/ai-risk-management-framework](https://www.nist.gov/itl/ai-risk-management-framework) |
+| NIST 800-30 / 800-39 | Risk assessment + risk-mgmt process | 🟢 | 📥 | [csrc.nist.gov](https://csrc.nist.gov/) |
+| ISO 31000 / 27005 | Risk mgmt principles / infosec risk | 🔴 | 📥 | [iso.org](https://www.iso.org/iso-31000-risk-management.html) |
+| FAIR / Open FAIR | Quantitative cyber-risk taxonomy | 🟡 | 📥 | [fairinstitute.org](https://www.fairinstitute.org/) |
+| NIST AI RMF | AI risk management (AI 100-1) | 🟢 | ✅ | [nist.gov](https://www.nist.gov/itl/ai-risk-management-framework) |
 | CRI FS-AI-RMF | Financial-services AI risk & control matrix (stages 1–3 + tier 4) | 🔴 | ✅ | [cyberriskinstitute.org](https://cyberriskinstitute.org/) |
-| ISO 42001 | AI management system | 🔴 | 📥 | [iso.org/42001](https://www.iso.org/standard/42001) |
+| ISO 42001 | AI management system | 🔴 | 📥 | [iso.org](https://www.iso.org/standard/42001) |
 
 ### Application, product & supply-chain security
 
 | Framework | What it is | Lic | Status | Source |
 |---|---|---|---|---|
-| OWASP Top 10 | Web app risk list | 🟢 | 📥 | [owasp.org/Top10](https://owasp.org/www-project-top-ten/) |
-| OWASP ASVS | App security verification standard | 🟢 | 📥 | [GitHub ASVS](https://github.com/OWASP/ASVS) |
+| OWASP Top 10 | Web app risk list | 🟢 | 📥 | [owasp.org](https://owasp.org/www-project-top-ten/) |
+| OWASP ASVS | App security verification standard | 🟢 | 📥 | [owasp.org](https://owasp.org/www-project-application-security-verification-standard/) |
 | OWASP SAMM | Software assurance maturity | 🟢 | 📥 | [owaspsamm.org](https://owaspsamm.org/) |
-| OWASP MASVS | Mobile app security | 🟢 | 📥 | [mas.owasp.org](https://mas.owasp.org/MASVS/) |
-| SLSA | Supply-chain integrity levels | 🟢 | 📥 | [slsa.dev](https://slsa.dev/spec/v1.0/) |
+| OWASP MASVS | Mobile app security | 🟢 | 📥 | [mas.owasp.org](https://mas.owasp.org/) |
+| SLSA | Supply-chain integrity levels | 🟢 | 📥 | [slsa.dev](https://slsa.dev/) |
 | BSIMM | Software security maturity (descriptive) | 🟡 | 📥 | [bsimm.com](https://www.bsimm.com/) |
 
 ### Internal audit & governance models
 
 | Framework | What it is | Lic | Status | Source |
 |---|---|---|---|---|
-| IIA Global Internal Audit Standards (IPPF) | Internal-audit profession standards | 🔴 | ⚠️ have GPG competency framework; not the 2024 Standards | [theiia.org/standards](https://www.theiia.org/en/standards/2024-standards/) |
-| COSO Internal Control + ERM | Governance / internal-control / ERM | 🔴 | 📥 | [coso.org](https://www.coso.org/guidance-on-ic) |
+| IIA Global Internal Audit Standards | Internal-audit profession standards | 🔴 | ⚠️ have GPG competency framework; not the 2024 Standards | [theiia.org/standards](https://www.theiia.org/en/standards/) |
+| COSO Internal Control + ERM | Governance / internal-control / ERM | 🔴 | 📥 | [coso.org](https://www.coso.org/) |
 | COBIT 2019 | IT governance & management | 🔴 | 📥 | [isaca.org/cobit](https://www.isaca.org/resources/cobit) |
-| IIA Three Lines Model | Risk governance roles | 🟢 | ✅ | [theiia.org/three-lines](https://www.theiia.org/en/content/position-papers/2020/the-iia-three-lines-model/) |
+| IIA Three Lines Model | Risk governance roles | 🟢 | ✅ | [theiia.org](https://www.theiia.org/) |
 
 <Aside type="tip" title="Pulling the missing ones">
-Most 📥 items have a free machine-readable door (MITRE = GitHub/STIX, NIST = CPRT/OSCAL, OWASP = GitHub, EU law = EUR-Lex XML). The 🔴 purchase-only ones (ISO, COBIT, COSO, HITRUST, SWIFT) usually have a **proxy**: [SCF](/crosswalker/reference/registry/scf/)'s STRM mapping columns already encode the relationships, so you can crosswalk *to* them without their copyrighted text. Drop anything you grab into `Frameworks/` (public) or `Frameworks/_licensed/` (copyrighted) and log it.
+Most 📥 items have a free machine-readable door (MITRE on GitHub/STIX, NIST via CPRT/OSCAL, OWASP on GitHub, EU law via EUR-Lex ELI permalinks). The 🔴 purchase-only ones (ISO, COBIT, COSO, HITRUST, SWIFT) usually have a **proxy** — [SCF](/crosswalker/reference/registry/scf/)'s STRM mapping columns already encode the relationships, so you can crosswalk *to* them without their copyrighted text.
 </Aside>
 
-## More CRI — what's in & what's left
+## Licensing & copyright — what Crosswalker can share
 
-The CRI Profile is the spine. The corpus now holds **v2.0, v2.1, and v2.2** (2026-04-27) plus the v2.2 Mappings Catalog, CRI↔DORA / ↔800-53 r5.1.1 / ↔ATT&CK v16.1 crosswalks, the v2.0 Fact Sheet + User Guide, and the **FS-AI-RMF** risk-and-control matrices (stages 1–3 + tier 4). Still worth grabbing from [cyberriskinstitute.org/the-profile](https://cyberriskinstitute.org/the-profile/) (free, registration):
+Raw framework sources split three ways for handling:
 
-- **Impact Tiering Questionnaire** — the scoping instrument that sizes which diagnostic statements apply (not yet in corpus).
-- **Anything past v2.2** — check for newer point releases + changelogs.
-- **Quantification** material — for the assess-once-comply-many [unified risk model](/crosswalker/examples/unified-risk-model/) with risk scoring.
+| Tier | Frameworks | Handling |
+|---|---|---|
+| 🟢 Public domain / free | NIST, MITRE, FedRAMP, FFIEC, HIPAA, CMMC, CISA, DORA + EU law | commit-safe |
+| 🟡 Registration / restrictive CC | CIS (Controls + Benchmarks), Secure Controls Framework | local only |
+| 🔴 Copyrighted | CRI, ISO, AICPA / SOC 2, PCI, HITRUST, COBIT, COSO, IIA | local only |
 
-## Cleanup — non-framework files to cut
+The raw corpus lives at repo-root `Frameworks/` — **local-by-default** (fail-closed gitignore); copyrighted source files go in `Frameworks/_licensed/` and are never committed.
 
-Everything marked ✂️ above (guides, templates, branding, infographics, CIS RAM methodology, PDF-only duplicates of structured data). Recommended: move them to a gitignored `Frameworks/_archive/` rather than delete, so they're reversible. They're already gitignored, so this is purely working-corpus hygiene.
+The part that matters for *using* them: Crosswalker stores the **transform logic** (the import recipes + crosswalk mappings) and your **derived output** (paraphrased concept notes + crosswalk junction notes) — not the raw copyrighted text. So the mapping *logic* stays shareable even when the source standard isn't, which is how copyrighted inputs (CRI, ISO, PCI) can feed a crosswalk graph you can still publish. That's the [schema-as-primitive](/crosswalker/concepts/etl-and-import/) idea.
+
+<Aside type="caution" title="Open question — being worked out">
+Exactly how much of each source can be stored and shared (full IDs + titles? structure only? transform recipe only?) depends on the source's license and is still being worked out. The safe default today: keep copyrighted raw files in `_licensed/`, share only derived/paraphrased output + mapping logic. Flagged for deeper review before publishing crosswalks built on 🔴 sources.
+</Aside>
 
 ## Related
 
-- [Framework data sources](/crosswalker/reference/framework-data-sources/) — sheets, columns, ID formats, transforms per framework
+- [ETL & import pipeline](/crosswalker/concepts/etl-and-import/) — how sources get cleaned, ingested, and mapped (schema-as-primitive)
+- [Unified risk model](/crosswalker/examples/unified-risk-model/) — the CRI-centered shared model this corpus feeds
+- [Using in practice](/crosswalker/examples/) — per-domain implementations (internal audit, GRC/ISRM, regulatory compliance)
+- [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) — why control frameworks and regulations sit differently
 - [Registry](/crosswalker/reference/registry/) — each framework's home page + canonical facts
-- [Framework corpus + tooling checkpoint](/crosswalker/agent-context/zz-log/2026-05-29-framework-corpus-and-tooling-checkpoint/) — the working camp for this effort
-- [Unified risk model](/crosswalker/examples/unified-risk-model/) — the CRI-centered shared model the corpus feeds
-- [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) — why CRI/NIST (control) and DORA/HIPAA (obligation) sit differently
-- [Framework versioning](/crosswalker/concepts/framework-versioning/) — why two ATT&CK versions matter for diff testing
+- [Framework data sources](/crosswalker/reference/framework-data-sources/) — sheets, columns, ID formats, transforms per framework
