@@ -1,0 +1,66 @@
+---
+title: "Challenge 40: Control, risk, or obligation as the backbone entity?"
+description: "Decide what the unified model's nodes actually are — does everything hang off controls, risks, or obligations? Stress-test the implicit control-centric assumption against a risk-centric and an obligation-centric model, and determine whether the backbone is a single entity type or a small fixed set with typed edges. Feeds the unified-model shape and the Tier 1 schema."
+tags: [research, unified-risk-model, control, risk, obligation, schema, grc, audit, ch-40]
+date: 2026-06-01
+sidebar:
+  label: "40 · Backbone entity"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Depends on Challenge 39; shapes the Tier 1 schema]
+[Challenge 39](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) asks *what the spine is*; this asks *what the spine's nodes are*. The current model leans **control-centric** (a control hangs off many requirements). That may be right — or it may privilege one lens over the risk and obligation lenses that Audit and Compliance actually live in.
+:::
+
+## Why this exists
+
+"Assess once, comply many" implies one canonical thing you assess once. The KB implies that thing is the **control**. But three candidate backbones exist, and they correspond to the three teams:
+
+- **Control-centric** (security/control ops) — atomic unit = control; requirements and risks attach to it.
+- **Risk-centric** (risk management / ISRM) — atomic unit = risk; controls are mitigations, requirements are drivers.
+- **Obligation-centric** (regulatory/compliance) — atomic unit = obligation/requirement; controls are evidence of satisfaction.
+
+Picking one as *the* backbone privileges one team's worldview. Picking wrong forces the other two to bend their mental model to yours.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) | The two lenses already named; this adds the risk lens and forces a choice |
+| [Unified risk model](/crosswalker/examples/unified-risk-model/) | The current shared-entity set (control, requirement, risk, asset, vendor, process, finding, evidence, incident) |
+| [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Terminology](/crosswalker/concepts/terminology/) | The vault primitives + vocabulary any backbone must express |
+| [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) | The Tier 1 contract a backbone choice must fit |
+
+## What to investigate
+
+1. **Single backbone vs typed-node graph.** Is there one privileged entity, or a small fixed set (control, requirement/obligation, risk) joined by typed edges where *no* node is privileged? What does each cost in query complexity and in onboarding each team?
+2. **Model each candidate end-to-end.** For control-, risk-, and obligation-centric: show how the *same real question* ("does our incident-response control satisfy DORA Art. 17, NIST CSF RS, and CRI's incident diagnostics, and what risk does it reduce?") is expressed and answered. Which model answers all three lenses cleanly?
+3. **Edge semantics.** Whatever the backbone, the edges carry the meaning (satisfies / mitigates / requires / evidences / equivalent / subset). Confirm the [STRM set-theoretic](/crosswalker/reference/registry/strm/) + SSSOM edge vocabularies cover the needed relations across all three lenses.
+4. **Asymmetry of "assess once."** Does "assess once" actually mean assess the *control* once? Or assess the *risk* once and inherit? Or evidence the *obligation* once? The phrase may quietly assume the answer.
+5. **Schema implication.** State what the chosen backbone means for the Tier 1 schema — node types, required edges, and whether the schema should be *backbone-agnostic* (express all three, privilege none).
+
+## Deliverable shape
+
+- A recommendation: single backbone entity **or** a typed-node set with no privileged node — with the reasoning.
+- A worked example answering one cross-lens question under each model.
+- The concrete Tier 1 schema implication (node/edge types).
+
+## Anti-patterns
+
+- Defaulting to control-centric because the KB leans that way.
+- Forcing risk and compliance teams into a security-team mental model.
+- Treating "assess once, comply many" as self-evidently control-shaped.
+- Ignoring that the edge vocabulary may matter more than the node choice.
+
+## Success criteria
+
+- A clear, defended backbone decision (or a defended "no privileged node").
+- Cross-lens worked example that a fresh reader finds convincing.
+- An explicit Tier 1 schema consequence.
+
+## Related
+
+- [Challenge 39: The unified-model spine](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/)
+- [Challenge 41: Audit's structural role + model naming](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/)
+- [Control-centric vs obligation-centric](/crosswalker/concepts/compliance-control-vs-obligation/) · [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)

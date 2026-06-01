@@ -1,0 +1,59 @@
+---
+title: "Challenge 41: Is internal audit a spine element or a lens? (and what to name the model)"
+description: "Determine whether internal audit is a first-class structural element of the unified model or a consumer/lens over it — and let the model's name fall out of that decision. Weigh 'Unified Risk and Audit Model' against 'Unified Assurance Model', 'Unified GRC Model', and others. Naming follows structure, not the reverse."
+tags: [research, unified-risk-model, internal-audit, assurance, naming, grc, ch-41]
+date: 2026-06-01
+sidebar:
+  label: "41 · Audit role + naming"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Naming follows structure — settle the role first]
+The user is weighing "**Unified Risk and Audit Model**" as the name. Whether "audit" belongs *in the name* depends on whether internal audit is a **structural spine element** or a **lens/consumer** over a model whose backbone is something else. Decide the role, then name.
+:::
+
+## Why this exists
+
+The model serves three teams: Internal Audit, GRC/ISRM, and Compliance. The current framing treats them as *consumers* of a shared model. But the user's instinct to put "audit" in the name suggests audit may deserve **first-class structural status**, not just a viewing lens. And the recently-added [IIA Topical Requirements](/crosswalker/reference/framework-corpus/) (Cybersecurity, Third-Party, Resilience) are audit-origin *requirement sets* that crosswalk onto controls — evidence that the audit lens carries real structural content, not just a viewpoint.
+
+There is also a naming tension: "risk and audit" centers two of the three teams and drops **compliance**, while the industry umbrella term **assurance** covers all three.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [Unified risk model](/crosswalker/examples/unified-risk-model/) — "how this relates to governance models" | Already positions IIA Three Lines / COSO / NIST RMF relative to the model |
+| [examples/for-internal-audit](/crosswalker/examples/for-internal-audit/) | Internal audit treated as a first-class audience already |
+| [Control-centric vs obligation-centric](/crosswalker/concepts/compliance-control-vs-obligation/) | The lens vocabulary; "is NOT the IIA Three Lines Model" disambiguation lives here |
+| [Framework corpus — internal audit & governance](/crosswalker/reference/framework-corpus/) | IIA Standards 2024, Topical Requirements, Three Lines, COBIT — the audit-origin structural content |
+
+## What to investigate
+
+1. **Spine element vs lens.** Is internal audit (a) a structural node-type in the model (audit findings, audit requirements, assurance assertions as first-class entities), (b) a *view* over controls/risks/obligations, or (c) both — structural where it contributes requirement sets (IIA Topical Requirements), a lens where it queries others' entities? Model each and show the difference in the schema.
+2. **Audit's native entities.** Does the model need first-class **finding**, **assurance assertion**, **audit universe / auditable entity**, **engagement** entities — or do existing entities (control, risk, evidence, finding) already cover audit? Reference IIA Standards (5 domains / 15 principles / 52 standards) and the Topical Requirements to test coverage.
+3. **The compliance asymmetry.** If the name is "risk and audit," where does **compliance** sit? Is compliance subsumed under one of them, or is it a third co-equal the name is wrongly omitting?
+4. **Name candidates.** Evaluate, given the structural decision: **Unified Risk & Audit Model** · **Unified Assurance Model** · **Unified GRC Model** · **Unified Control & Risk Model** · **Unified Risk, Audit & Compliance Model**. Score on accuracy (does it describe the actual backbone?), breadth (does it cover all three teams?), and plainness (the user dislikes jargon/advertising-speak — see the "use-cases sounds like advertising" feedback). Recommend one, contingent on the [Challenge 39](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) + [40](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) outcomes.
+
+## Deliverable shape
+
+- A verdict on internal audit's role (spine element / lens / hybrid) with the schema consequence.
+- A list of audit-native entities the model does or doesn't need.
+- A recommended name, explicitly conditioned on the spine + backbone decisions, with runner-ups and why.
+
+## Anti-patterns
+
+- Naming before the structure is settled.
+- Putting "audit" in the name for sentiment rather than structural reason.
+- Dropping compliance silently.
+- Choosing a jargon-y umbrella ("assurance") if it alienates the plain-language audience — or rejecting it reflexively if it is the most accurate.
+
+## Success criteria
+
+- A defensible "audit is X" statement tied to the schema.
+- A name recommendation that *follows from* 39 + 40, not one that pre-empts them.
+
+## Related
+
+- [Challenge 39: The unified-model spine](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) · [Challenge 40: Backbone entity](/crosswalker/agent-context/zz-challenges/40-backbone-entity/)
+- [Unified risk model](/crosswalker/examples/unified-risk-model/) · [Framework corpus](/crosswalker/reference/framework-corpus/)

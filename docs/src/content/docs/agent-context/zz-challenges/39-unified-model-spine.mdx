@@ -1,0 +1,102 @@
+---
+title: "Challenge 39: Is there a unified-model spine — and is it CRI?"
+description: "Stress-test the assumption that the unified risk/audit/GRC model has a single spine and that the spine is the CRI Profile. Evaluate spine candidates (CRI, SCF/STRM, NIST CSF 2.0, NIST 800-53, ISO 27001/27002, synthetic/derived) against coverage, sector-neutrality, mapping availability, license, and durability — and seriously consider hub-and-spoke, peer-mesh, and no-designated-spine alternatives. Foundational input to the unified-model shape and to ingestion sequencing."
+tags: [research, unified-risk-model, spine, cri-profile, scf, strm, nist-csf, grc, audit, ch-39]
+date: 2026-06-01
+sidebar:
+  label: "39 · The unified-model spine"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::caution[Foundational — gates ingestion + the unified-model shape]
+The [unified risk model](/crosswalker/examples/unified-risk-model/) and the [2026-05-29 corpus checkpoint](/crosswalker/agent-context/zz-log/2026-05-29-framework-corpus-and-tooling-checkpoint/) both assume **CRI Profile is the spine** — the authority-of-record every other framework crosswalks *to*. That assumption was inherited, not tested. The full security/GRC/risk/audit framework corpus is now assembled, so we are about to ingest ~240 files **around a spine we have not validated**. Pick the wrong spine and re-mapping is expensive. Settle this before ingestion.
+:::
+
+## Why this exists
+
+The driving use case is a **unified model** that lets Internal Audit, GRC/ISRM, and Compliance operate on the *same* shared entities — "assess once, comply many." The load-bearing joint is the **crosswalk**: one control hangs off many framework requirements. The current design names **CRI Profile** as the spine all crosswalks resolve to.
+
+But CRI is **financial-sector-specific**. That makes it a strong spine *for a financial institution* and a questionable universal spine for a general security/GRC/audit model. The user has explicitly questioned whether CRI should be the spine at all. This challenge tests it from first principles.
+
+## What we already have
+
+| Asset | What it gives us |
+|---|---|
+| [Unified risk model](/crosswalker/examples/unified-risk-model/) | The current shared-entity model with CRI at the center (the assumption under test) |
+| [Security & GRC framework corpus](/crosswalker/reference/framework-corpus/) | The assembled data: which frameworks exist, license, and what we hold |
+| [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) | The two organizing lenses; relevant to what a spine must reconcile |
+| [Registry: CRI](/crosswalker/reference/registry/cri/) · [SCF](/crosswalker/reference/registry/scf/) · [STRM](/crosswalker/reference/registry/strm/) · [NIST](/crosswalker/reference/registry/nist/) · [OLIR](/crosswalker/reference/registry/olir/) | Spine-candidate facts + the existing crosswalk infrastructure |
+| [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) · [Problem](/crosswalker/concepts/problem/) | The pillars any spine decision must serve |
+| [v0.1 architectural commitments](/crosswalker/) — schema-as-primitive, 5-mechanism recipe grammar | The engine is **spine-agnostic** by design; a spine may be a UX/profile concern, not an engine one |
+
+## What to investigate
+
+### 1. Does a single spine even make sense?
+
+Enumerate and weigh the structural options — do **not** assume "one spine":
+
+- **Single real-framework spine** — everything maps to one chosen framework (CRI / CSF / 800-53).
+- **Synthetic / metaframework spine** — everything maps to a purpose-built interlingua (this is exactly what **SCF + STRM** already is — 175+ frameworks mapped through one set-theoretic hub).
+- **Hub-and-spoke with a designated hub** — one hub for convenience, but spokes can also map peer-to-peer.
+- **Peer mesh / no designated spine** — crosswalks are just edges; "spine" is a *view*, not a structural fact. (The schema-as-primitive engine arguably already works this way.)
+- **Multi-spine by domain** — FS → CRI; general security → NIST CSF; cross-framework reconciliation → SCF. Is a single universal spine a false goal?
+
+For each: what does it cost to add a new framework? to re-map when a framework versions? to answer "which controls satisfy requirement X across all frameworks"?
+
+### 2. Spine-candidate evaluation matrix
+
+Score each candidate against explicit criteria. Suggested candidates: **CRI Profile**, **SCF (via STRM)**, **NIST CSF 2.0**, **NIST 800-53**, **ISO 27001/27002**, and a **derived/synthetic spine** Crosswalker could mint itself.
+
+Suggested criteria (refine as needed):
+
+| Criterion | Question |
+|---|---|
+| Coverage breadth | How much of the security/GRC/risk/audit space does it span? |
+| Sector-neutrality | FS-only? Healthcare? General? |
+| Mapping availability | How many frameworks *already* crosswalk to it (free/structured)? |
+| License | Can mappings *to* it be shared without redistributing copyrighted text? |
+| Granularity | Control-level? Outcome-level? Does it lose detail as a hub? |
+| Durability / governance | Stable steward? Update cadence? Lock-in risk? |
+| Audit fit | Does it carry an audit/assurance lens, or only controls? |
+
+### 3. Is SCF/STRM the real spine candidate?
+
+SCF is explicitly built to be the interlingua. Seriously evaluate **SCF-as-spine**: pros (built for exactly this; STRM edge semantics already match Crosswalker's [set-theoretic edge model](/crosswalker/reference/registry/strm/); you already hold the STRM mapping files), cons (🟡 license, vendor-single-point, opinionated control set). Compare a synthetic-spine strategy against a real-framework spine.
+
+### 4. CRI's actual role
+
+If not the universal spine, **what is CRI**? A sector profile *on* the spine? The spine *only in FI contexts*? State precisely when CRI is and isn't the right center. The answer should let a financial institution still treat CRI as *their* authority-of-record without forcing that on a non-FI user.
+
+### 5. Implication for Crosswalker's architecture
+
+Does the **schema/engine** need a designated spine at all, or is "spine" purely a UX/profile layer over a peer crosswalk graph? Tie back to **schema-as-primitive** and the **5-mechanism recipe grammar**: if the engine is spine-agnostic, the spine becomes a *configuration/profile* decision, not an architectural one — which would make this a far cheaper, more reversible choice. Confirm or refute that.
+
+## Deliverable shape
+
+1. A ranked recommendation: **which structural model** (single/synthetic/hub-and-spoke/mesh/multi) and, if applicable, **which spine(s)**, with the decision criteria made explicit.
+2. A precise statement of **CRI's role** (spine / sector profile / FI-only authority).
+3. A clear verdict on whether **Crosswalker needs a designated spine** at the engine level, or only at the profile/UX level.
+4. Implications for **ingestion sequencing** (what to import first given the chosen model).
+
+## Anti-patterns (do not do these)
+
+- Rubber-stamping CRI because the KB currently says so.
+- Assuming a single spine is required.
+- Ignoring SCF/STRM as a synthetic-spine candidate.
+- Conflating "best spine for a financial institution" with "best universal spine."
+- Treating "spine" as an engine fact when it may be a view/profile.
+- Recommending anything that forces non-FI users into an FI-shaped model.
+
+## Success criteria
+
+- A non-CRI-biased, first-principles recommendation a fresh reader could act on.
+- Explicit criteria + scoring, not vibes.
+- A clear "when CRI / when not" rule.
+- A statement of whether this is a reversible profile choice or an irreversible architectural one.
+
+## Related
+
+- [Challenge 40: Control, risk, or obligation as the backbone entity?](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) — what the spine's nodes *are*
+- [Challenge 41: Is internal audit a spine element or a lens? (and what to name the model)](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/)
+- [Unified risk model](/crosswalker/examples/unified-risk-model/) · [Framework corpus](/crosswalker/reference/framework-corpus/) · [SCF/STRM](/crosswalker/reference/registry/strm/)
