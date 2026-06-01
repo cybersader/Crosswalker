@@ -30,13 +30,15 @@ Picking one as *the* backbone privileges one team's worldview. Picking wrong for
 | [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) | The two lenses already named; this adds the risk lens and forces a choice |
 | [Unified risk model](/crosswalker/examples/unified-risk-model/) | The current shared-entity set (control, requirement, risk, asset, vendor, process, finding, evidence, incident) |
 | [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Terminology](/crosswalker/concepts/terminology/) | The vault primitives + vocabulary any backbone must express |
+| [SSSOM](/crosswalker/reference/registry/sssom/) · [STRM](/crosswalker/reference/registry/strm/) | The edge metadata + set-theoretic relation vocabularies the backbone's edges rely on |
+| [ETL & import (schema-as-primitive)](/crosswalker/concepts/etl-and-import/) · [System architecture](/crosswalker/concepts/system-architecture/) | Where the backbone lands in the engine; what "backbone-agnostic schema" would mean |
 | [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) | The Tier 1 contract a backbone choice must fit |
 
 ## What to investigate
 
 1. **Single backbone vs typed-node graph.** Is there one privileged entity, or a small fixed set (control, requirement/obligation, risk) joined by typed edges where *no* node is privileged? What does each cost in query complexity and in onboarding each team?
 2. **Model each candidate end-to-end.** For control-, risk-, and obligation-centric: show how the *same real question* ("does our incident-response control satisfy DORA Art. 17, NIST CSF RS, and CRI's incident diagnostics, and what risk does it reduce?") is expressed and answered. Which model answers all three lenses cleanly?
-3. **Edge semantics.** Whatever the backbone, the edges carry the meaning (satisfies / mitigates / requires / evidences / equivalent / subset). Confirm the [STRM set-theoretic](/crosswalker/reference/registry/strm/) + SSSOM edge vocabularies cover the needed relations across all three lenses.
+3. **Edge semantics.** Whatever the backbone, the edges carry the meaning (satisfies / mitigates / requires / evidences / equivalent / subset). Confirm the [STRM set-theoretic](/crosswalker/reference/registry/strm/) + [SSSOM](/crosswalker/reference/registry/sssom/) edge vocabularies cover the needed relations across all three lenses.
 4. **Asymmetry of "assess once."** Does "assess once" actually mean assess the *control* once? Or assess the *risk* once and inherit? Or evidence the *obligation* once? The phrase may quietly assume the answer.
 5. **Schema implication.** State what the chosen backbone means for the Tier 1 schema — node types, required edges, and whether the schema should be *backbone-agnostic* (express all three, privilege none).
 

@@ -26,9 +26,11 @@ But CRI is **financial-sector-specific**. That makes it a strong spine *for a fi
 | [Unified risk model](/crosswalker/examples/unified-risk-model/) | The current shared-entity model with CRI at the center (the assumption under test) |
 | [Security & GRC framework corpus](/crosswalker/reference/framework-corpus/) | The assembled data: which frameworks exist, license, and what we hold |
 | [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) | The two organizing lenses; relevant to what a spine must reconcile |
-| [Registry: CRI](/crosswalker/reference/registry/cri/) · [SCF](/crosswalker/reference/registry/scf/) · [STRM](/crosswalker/reference/registry/strm/) · [NIST](/crosswalker/reference/registry/nist/) · [OLIR](/crosswalker/reference/registry/olir/) | Spine-candidate facts + the existing crosswalk infrastructure |
+| [Registry: CRI](/crosswalker/reference/registry/cri/) · [SCF](/crosswalker/reference/registry/scf/) · [STRM](/crosswalker/reference/registry/strm/) · [NIST](/crosswalker/reference/registry/nist/) · [OLIR](/crosswalker/reference/registry/olir/) · [CTID](/crosswalker/reference/registry/ctid/) · [SSSOM](/crosswalker/reference/registry/sssom/) | Spine-candidate facts + the existing crosswalk infrastructure + edge metadata model |
+| [Institutional landscape](/crosswalker/concepts/institutional-landscape/) · [Operational landscape](/crosswalker/concepts/operational-landscape/) | Who stewards / mandates each candidate — the durability + governance criterion |
+| [Framework versioning](/crosswalker/concepts/framework-versioning/) · [Ontology evolution](/crosswalker/concepts/ontology-evolution/) | Re-mapping cost when a spine candidate versions — a core differentiator between options |
 | [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) · [Problem](/crosswalker/concepts/problem/) | The pillars any spine decision must serve |
-| [v0.1 architectural commitments](/crosswalker/) — schema-as-primitive, 5-mechanism recipe grammar | The engine is **spine-agnostic** by design; a spine may be a UX/profile concern, not an engine one |
+| [System architecture](/crosswalker/concepts/system-architecture/) · [ETL & import (schema-as-primitive)](/crosswalker/concepts/etl-and-import/) | The engine is **spine-agnostic** by design (closed 5-mechanism recipe grammar; anyone emitting valid Tier 1 is a producer) — so a spine may be a UX/profile concern, not an engine one |
 
 ## What to investigate
 
@@ -70,7 +72,7 @@ If not the universal spine, **what is CRI**? A sector profile *on* the spine? Th
 
 ### 5. Implication for Crosswalker's architecture
 
-Does the **schema/engine** need a designated spine at all, or is "spine" purely a UX/profile layer over a peer crosswalk graph? Tie back to **schema-as-primitive** and the **5-mechanism recipe grammar**: if the engine is spine-agnostic, the spine becomes a *configuration/profile* decision, not an architectural one — which would make this a far cheaper, more reversible choice. Confirm or refute that.
+Does the **schema/engine** need a designated spine at all, or is "spine" purely a UX/profile layer over a peer crosswalk graph? Tie back to [schema-as-primitive](/crosswalker/concepts/etl-and-import/) and the 5-mechanism recipe grammar: if the engine is spine-agnostic, the spine becomes a *configuration/profile* decision, not an architectural one — which would make this a far cheaper, more reversible choice. Confirm or refute that.
 
 ## Deliverable shape
 
