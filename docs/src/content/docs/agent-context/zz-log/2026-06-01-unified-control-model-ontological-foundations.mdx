@@ -1,0 +1,158 @@
+---
+title: "Ontological foundations of the unified control model — objective, risk, obligation, control, audit"
+description: "A key foundations log defining the core categories of the security/GRC/risk/audit problem domains and how they relate — the five 'kinds of being' (objective, risk, obligation, control, audit/finding), the prudential-vs-deontic split, why obligation is broader than compliance (governance vs regulatory vs contractual source), why risk is the ontologically strangest category (modal, relational, graded, future-pointing, half-epistemic), and why control earns the center. Direction emerging toward a 'Unified Control Model' with no privileged backbone; key decisions flagged open."
+sidebar:
+  order: -20260601
+  label: "06-01 · Unified control model — ontological foundations"
+tags: [log, ontology, foundations, unified-control-model, risk, obligation, control, audit, assurance, governance, grc]
+date: 2026-06-01
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="Status — living foundations, direction emerging">
+This is a **foundations log**, not a final decision record. It captures the ontology/taxonomy worked out in discussion on 2026-06-01 following the [Ch 39](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) / [40](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) / [41](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) deliverables. The **definitions are firm**; the **direction is emerging** (Control as center, no privileged backbone); the **final calls are open** (name, default profiles, formal model write-up). When those lock, this graduates into a `concepts/` taxonomy page + a decision synthesis log.
+</Aside>
+
+## Why this log
+
+The driving goal is a unified model for the security / GRC / risk / internal-audit problem domains — one shared substrate that Governance, Risk, Compliance, and Internal Audit all operate on. Before building it (ingestion → mapping over the [framework corpus](/crosswalker/reference/framework-corpus/)), the foundational categories were pressure-tested from first principles. The result is a small, precise ontology that explains *why the model has the shape it does* — and a guiding constraint: **prudence, pragmatism, first principles; no scope creep, no over-engineering.**
+
+Two plain-language anchors used throughout (the rest of the doc assumes no philosophy background):
+- **Ontology** = what *kind of thing* something is; what sort of existence it has.
+- **Epistemology** = what we *know* and how sure we can be; the status of claims and beliefs.
+
+## Key definitions (ontologically precise, one line each)
+
+| Term | Definition |
+|---|---|
+| **Objective** | What the organization is trying to achieve — the value everything else is measured against (the reference point). |
+| **Risk** | A *possible* future event, weighted by likelihood and impact, that *matters because it affects an objective* — part real hazard, part knowledge-estimate. |
+| **Obligation** | A *standing duty* that binds you to act — "must, because an authority commands it," independent of your own risk calculus. |
+| **Control** | An actual *mechanism* that operates to manage a risk and/or discharge an obligation. |
+| **Audit** | The independent, evidence-based act of *adjudicating whether a claim matches reality*, producing a **finding**. |
+| **Assurance** | The genus audit belongs to — the *manufacture of warranted confidence* in a claim for someone who must rely on it but cannot verify it themselves. |
+| **Finding** | A persisted *assurance assertion* — audit's judgment about a control / risk / obligation (the one thing audit *writes*). |
+| **Governance** | The internal authority (board / executives / policy) that sets objectives, risk appetite, and **internal obligations**. |
+| **Compliance** | Adherence to **external** obligations (laws, regulations); one species of obligation, not the genus. |
+
+## The core ontology — five *kinds of being*
+
+The categories cannot be collapsed into one node type because they are **different kinds of existence**:
+
+| Category | What kind of *thing* it is | Mode of being | Verb |
+|---|---|---|---|
+| **Objective** | the value everything is measured against | the **reference point** | "want" |
+| **Risk** | a possible, graded, goal-relative, half-known event | **potentiality** (world ∩ mind) | "might" |
+| **Obligation** | a standing duty that binds | **actuality — deontic** | "must" |
+| **Control** | a mechanism that operates | **actuality — mechanism** | "does" |
+| **Audit / Finding** | a claim about whether the above is true | **knowledge (epistemic)** | "is it so?" |
+
+This table is the bedrock argument for **no privileged backbone node** (see [Ch 40](/crosswalker/agent-context/zz-challenges/40-backbone-entity/)): forcing a value, a potentiality, a duty, a mechanism, and a claim into one type destroys the distinctions that let the model answer real questions.
+
+## Two modes of normativity: risk (prudential) vs obligation (deontic)
+
+"Normativity" = the kind of "ought" / reason-for-action behind something.
+
+- **Risk is prudential** — "you *should* act, because of *consequences* to your objectives." It is **discretionary**: you can rationally **accept** a risk. Risk acceptance is a legitimate treatment.
+- **Obligation is deontic** (duty-based) — "you *must* act, because an *authority* commands it, **even if** it doesn't reduce your risk or serve your objectives." You **cannot "accept"** an obligation the way you accept a risk; non-compliance is a *breach*, not a treatment.
+
+**The "even if" test** is decisive: a true obligation binds even when it raises your risk or costs you objective-attainment (file the 72-hour breach notice; retain the record 7 years). **The asymmetry that proves they are distinct sets:** you can satisfy every obligation and still be wide open to risk ("compliant but breached"), and you can manage every risk and still be in breach of a formality unrelated to risk. Neither set contains the other → they are not the same thing. They *overlap heavily* (most obligations exist because someone judged them risk-reducing) — but **overlap ≠ identity**.
+
+Different satisfaction conditions follow: **risk is *lowered toward a threshold* (a magnitude); obligation is *binary discharged* (met or breached).**
+
+## Obligation ≠ compliance (the source dimension)
+
+Obligation is the genus; **compliance (regulatory) is one species.** Obligations sort by **authority-source**:
+
+| Source | Who imposes it | Sits under | Example |
+|---|---|---|---|
+| **External — regulatory/legal** | legislators, regulators | **Compliance** | DORA 72-hr notice; HIPAA |
+| **External — contractual** | counterparties | Legal / vendor mgmt | "encrypt customer data per the MSA" |
+| **Internal — governance** | board / executives / policy | **Governance** | internal password policy; mandated training; risk-appetite directives |
+
+This is *why it's **G**RC and not just R-C* — the **G** is the internal source of obligations. An executive mandate is a real deontic obligation ("must, because the board said so"), but it is **not "compliance"** in the regulatory sense — it's **Governance**.
+
+**The endogenous/exogenous nuance:**
+- **External obligations are exogenous** — handed to you; you can only comply or breach.
+- **Internal obligations are endogenous** — the org imposes them on itself, often *as* a governance or risk-treatment decision. The org can rewrite its own policy; no one can rewrite a statute. **Who holds the pen** is the deepest internal/external difference. But once set, an internal mandate is fully deontic for those bound by it.
+
+Schema consequence: **obligation stays one node type with an `authority_source` attribute** (`internal-governance | external-regulatory | contractual`) — so Governance queries its internal mandates and Compliance queries external duties, both distinct from Risk, all discharged by Control.
+
+## Risk is the strange one (where ontology meets epistemology)
+
+Risk is the least "thing-like" category. It is uniquely:
+
+1. **Possible, not actual** — about an event that hasn't happened and may never (modal). Everything else is a fact; risk is a *potential*.
+2. **Parasitic / relational** — it cannot exist without an objective it bears on. The same event (rain) is a risk to a picnic, an opportunity to a farmer, irrelevant to a submarine. Risk is *uncertainty that matters to a goal*, not a standalone object.
+3. **A magnitude, not a state** — likelihood × impact; you have *more* or *less* and reduce it toward a threshold.
+4. **Future-pointing** — obligation binds now, control runs now, a finding judges the past; risk alone aims at what hasn't occurred.
+5. **Bidirectional** — modern risk (ISO 31000 / COSO) is the *effect of uncertainty on objectives*, which can be threat **or** opportunity. Nothing else has an "upside."
+
+**The deep one:** risk is **half in the world, half in your head.** The *hazard* is real (ontological); **"the risk"** — the rating — is your *probability estimate*, which depends on what you know (epistemological). Knight's 1921 distinction sharpens it: **risk** = uncertainty you *can* put believable odds on; **(Knightian) uncertainty** = uncertainty you *can't*. So risk is a hybrid of a real possible event and your imperfect knowledge of it — the one category that **straddles the ontology/epistemology line.**
+
+**Flag for schema design:** because risk is so relation-like (parasitic, graded, half-epistemic), it is the node that is *most secretly an edge/overlay*. We reify "risk scenarios" as nodes for practicality, but ontologically risk is almost a **weighted field over the whole graph**. Keep that in mind when modeling it.
+
+## Audit & assurance are epistemic, not risk-reduction
+
+- **Audit** is *second-order*: it doesn't operate controls or reduce hazards — it **independently adjudicates whether a first-order claim matches reality**, producing justified belief (a finding) for someone who relies on the claim but didn't do the work.
+- **Assurance** is the genus: the **manufacture of warranted confidence** across a *trust gap*; it exists only because of **information asymmetry** — the agent who did the thing and the principal who must rely on it are different people.
+- **Orientation:** neither is oriented toward risk *reduction*; they reduce **information risk** — the meta-risk that *what you believe about your risk system is false*.
+
+The through-line: **risk management changes the world; assurance changes what you are entitled to believe about the world.** Audit is the **epistemology of the control system, not its physics** — it asks "is this *true*?", not "is this *safe*?".
+
+Precise relation to risk: audit adjudicates claims **to assure not *against* risk but *that risk and obligation are under adequate control*** — so what it assures is the **trustworthiness of the control system**, the one object that risk, compliance, and audit all orbit.
+
+**Internal audit is therefore a hybrid, not a backbone owner** (see [Ch 41](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/)): by professional independence (IIA Standard 1100 / the Three Lines Model) it **cannot own** the controls/risks/obligations it assesses. It is a **lens** that reads and tests others' entities, **plus a producer of requirement sets** (the IIA Topical Requirements enter the model as just another framework). The only first-class thing audit needs is the **finding**.
+
+## Control earns the center
+
+Two different modes of normativity — **prudential (risk, "might/should")** and **deontic (obligation, "must")** — converge on **one mechanism, the control ("does")**, whose reality is then **attested by audit ("is it true?")**, all in service of **objectives ("want")**.
+
+```text
+              OBJECTIVES                ← teleology: what you're trying to achieve
+            /     |      \
+   GOVERNANCE    RISK    COMPLIANCE     ← G + C = obligation (deontic, by source)
+   (internal    (pru-    (external          R = risk (prudential)
+    duty)       dential)  duty)
+            \     |      /
+               CONTROL                  ← the single act that discharges internal duty,
+            (the mechanism)               risk, AND external duty — the convergence point
+                  |
+                AUDIT                   ← epistemic: independently attests it's real
+            (writes Finding)
+```
+
+Control is the center **not because it is privileged as a node type**, but because it is the one place where *governance mandates*, *risk mitigations*, and *compliance requirements* all land as the **same act**. That is the ontological justification for the working name **"Unified Control Model"** (object = control; the three lenses — risk, compliance/governance, audit — view it; assurance is the *stance* taken toward it). "Risk & Audit" is rejected as a category error: it conjoins a *domain of hazards* with an *epistemic stance toward claims*, and silently drops the obligation backbone.
+
+## Emerging direction (from Ch 39–41) — not yet locked
+
+| Topic | Emerging position | Status |
+|---|---|---|
+| The spine | **No engine-level spine.** "Spine" is a per-profile *view* over a peer mesh of typed edges; the Tier-1 schema is the only load-bearing contract → the decision is *reversible config, not architecture*. | strong |
+| CRI's role | **FI-only profile / authority-of-record**, not the universal spine. | strong |
+| Default general hub | NIST CSF 2.0 (outcomes) + 800-53 (controls); SCF/STRM as a local-only mapping accelerator + optional reconciliation hub. | candidate |
+| Backbone | **No privileged node**; a small typed set (control, risk, obligation, + asset/vendor/process/finding/evidence/incident) joined by typed edges. Control-/risk-/obligation-centric are *views*. | strong |
+| Audit | **Lens + requirement-producer**; only new first-class type is **Finding** (already in the entity list). | strong |
+| Name | **Unified Control Model** (or *Unified Control Assurance Model*). "Unified Risk and Audit Model" rejected. | candidate |
+
+### Scope-creep guard (deferred / rejected — keep it pragmatic)
+- **Full OSCAL adoption** (Catalog/Profile/SSP/Assessment/POA&M) → defer to v0.1.7 *exporter* work; keep only the existing junction-note ↔ OSCAL `by-component` isomorphism.
+- **FAIR / Open FAIR risk-quant subgraph** → defer until a user needs quantified risk.
+- **RDF/OWL vs LPG substrate debate** → already settled (files-as-graph + SQLite sidecar); do not reopen.
+- **MDM / "golden records" entity-resolution layer** → overkill; the practical core (ID normalization, `AC-2` vs `AC-02`) is already a known ETL step.
+
+### Open decisions (need user sign-off before the formal write-up)
+1. Final **name**.
+2. Default **profiles** (general hub; FI = CRI profile) and the **first crosswalk** to build as proving ground.
+3. Whether to graduate this ontology into a `concepts/` taxonomy page now or after the model is built.
+4. Process the Ch 39–41 deliverables formally (publish to `zz-research/`, archive briefs, update the [unified risk model](/crosswalker/examples/unified-risk-model/) page) — currently **held**.
+
+## Related
+
+- Challenges: [39 — the spine](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) · [40 — backbone entity](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) · [41 — audit role + naming](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/)
+- [Unified risk model](/crosswalker/examples/unified-risk-model/) — the model this reshapes (CRI to be demoted to FI profile)
+- [Control-centric vs obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) — the prior framing this deepens (adds the risk + governance modes)
+- [Security & GRC framework corpus](/crosswalker/reference/framework-corpus/) — the data this model will be built over
+- [ETL & import (schema-as-primitive)](/crosswalker/concepts/etl-and-import/) — why the spine is a profile, not the engine
+- [Terminology](/crosswalker/concepts/terminology/) · [Problem](/crosswalker/concepts/problem/) · [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
