@@ -1,0 +1,130 @@
+---
+title: "Use-case test — the GRC corpus end-to-end through Crosswalker"
+description: A living end-to-end map of taking the downloaded GRC / audit / compliance framework corpus all the way through Crosswalker — ingest, parse, structure into Tier 1 concepts, crosswalk, and query into the unified ontology. The point is to see the whole pipeline at once, surface every applicable construct the tool already has, find the snags (most of the corpus is prose PDF), and decide what's worth building on top — toward the shareable community ecosystem. Disconnected pieces are fine for now; this is where they get connected.
+sidebar:
+  order: -20260602
+  label: "06-02 · GRC corpus end-to-end (use-case test)"
+tags: [log, use-case, ingestion, crosswalk, ontology, ecosystem, grc, corpus, pipeline]
+date: 2026-06-02
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="What this is — a living end-to-end map">
+This log takes the [security & GRC framework corpus](/crosswalker/reference/framework-corpus/) (253 files) and maps it **all the way through Crosswalker** — ingest → parse → structure → crosswalk → query → unified ontology. The goal is **not** a finished ontology; it's to *see the whole pipeline at once*, name every [construct the tool already has](/crosswalker/concepts/system-architecture/), find the snags in practice, and decide what's worth building on top. **Disconnected pieces are expected and fine** — this is the page where they get connected over time. The corpus is the **test use case**; the destination is the [unified model](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/).
+</Aside>
+
+## Why this exists
+
+We have the [name and direction](/crosswalker/agent-context/zz-log/2026-06-01-unified-control-model-ontological-foundations/) and the [build blueprint](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/). What we *don't* have is a concrete view of **the actual work** of getting 253 real framework files into a working ontology — and where Crosswalker helps, where it doesn't yet, and what we'd build to close the gap. The fastest way to get value is to **run the real use case and find the snags**, not to keep designing in the abstract.
+
+This also tests the longer bet: Crosswalker's bread-and-butter may be a **community ecosystem** where people share the *mechanisms* for building ontologies — crosswalks, and framework-ingestion-"as-code" recipes (see [Ecosystem vision](#the-ecosystem-bet-share-the-mechanisms-not-just-the-data) below). The GRC/audit/compliance corpus is the first real test of whether those mechanisms hold up.
+
+## The pipeline, end to end
+
+Six stages from raw files to queryable ontology. Each stage names the **Crosswalker construct** that does the work (and ✗ where the construct doesn't exist yet).
+
+<div style="display:flex; flex-wrap:wrap; gap:.6rem; margin:1.5rem 0; align-items:stretch;">
+<div style="flex:1 1 150px; border:1px solid var(--sl-color-hairline); border-radius:10px; padding:.7rem .8rem; background:var(--sl-color-bg-nav);"><div style="font-size:.7em; color:var(--sl-color-text-accent); font-weight:700;">1 · CORPUS</div><div style="font-weight:600; margin:.15rem 0;">253 files</div><div style="font-size:.82em; color:var(--sl-color-gray-2);">102 PDF · 113 structured · 29 zip. The GRC/audit/compliance frameworks.</div></div>
+<div style="flex:1 1 150px; border:1px solid var(--sl-color-hairline); border-radius:10px; padding:.7rem .8rem; background:var(--sl-color-bg-nav);"><div style="font-size:.7em; color:var(--sl-color-text-accent); font-weight:700;">2 · INGEST + PARSE</div><div style="font-weight:600; margin:.15rem 0;">by file type</div><div style="font-size:.82em; color:var(--sl-color-gray-2);">CSV ✓ · XLSX/JSON soon · YAML/XML specialized · <strong>PDF ✗</strong></div></div>
+<div style="flex:1 1 150px; border:1px solid var(--sl-color-hairline); border-radius:10px; padding:.7rem .8rem; background:var(--sl-color-bg-nav);"><div style="font-size:.7em; color:var(--sl-color-text-accent); font-weight:700;">3 · TIER 1 CONCEPTS</div><div style="font-weight:600; margin:.15rem 0;">notes + frontmatter</div><div style="font-size:.82em; color:var(--sl-color-gray-2);">generation engine + the 5-mechanism recipe grammar</div></div>
+<div style="flex:1 1 150px; border:1px solid var(--sl-color-hairline); border-radius:10px; padding:.7rem .8rem; background:var(--sl-color-bg-nav);"><div style="font-size:.7em; color:var(--sl-color-text-accent); font-weight:700;">4 · CROSSWALK EDGES</div><div style="font-weight:600; margin:.15rem 0;">junction notes</div><div style="font-size:.82em; color:var(--sl-color-gray-2);">STRM relations + SSSOM metadata. You already hold the mapping files.</div></div>
+<div style="flex:1 1 150px; border:1px solid var(--sl-color-hairline); border-radius:10px; padding:.7rem .8rem; background:var(--sl-color-bg-nav);"><div style="font-size:.7em; color:var(--sl-color-text-accent); font-weight:700;">5 · ONTOLOGY + QUERY</div><div style="font-weight:600; margin:.15rem 0;">graph + Bases views</div><div style="font-size:.82em; color:var(--sl-color-gray-2);">8 query primitives, materialized closure, recipes</div></div>
+<div style="flex:1 1 150px; border:1px solid var(--sl-color-accent); border-radius:10px; padding:.7rem .8rem; background:var(--sl-color-accent-low);"><div style="font-size:.7em; color:var(--sl-color-text-accent); font-weight:700;">6 · UNIFIED MODEL</div><div style="font-weight:600; margin:.15rem 0;">the lenses</div><div style="font-size:.82em; color:var(--sl-color-gray-2);">Control / Assurance / Risk over one graph</div></div>
+</div>
+
+The rest of this log drills into each stage — what's there, what's missing, and what each piece teaches.
+
+## Stage 1–2 — Ingestion: the file-type reality
+
+The single biggest practical finding: **the corpus is split almost in half between machine-readable and prose PDF.** What you can ingest *today* vs *soon* vs *not at all* is decided by format, not by framework.
+
+| Format | Count | Ingest path | Crosswalker construct | Status |
+|---|---|---|---|---|
+| **CSV** | 12 | direct parse | [CSV parser (PapaParse, streaming)](/crosswalker/concepts/etl-and-import/) | ✅ works today |
+| **XLSX** | 50 | parse sheets; handle merged cells, header rows, multi-sheet merge | `xlsx` parser — installed, **not yet wired** | 🟡 near-term |
+| **JSON** | 39 | parse; STIX/OSCAL/CPRT are deep + nested → need shaping | JSON parser — **TODO** | 🟡 near-term |
+| **YAML** | 8 | parse (ATT&CK navigator layers, ATLAS) | no YAML parser | 📥 specialized |
+| **XML** | 3 | EUR-Lex/Formex (DORA) — bespoke structure | no XML parser | 📥 specialized |
+| **ZIP** | 29 | **extract first**, then ingest inner files | none — manual unzip | 📥 pre-step |
+| **DOCX / XLS / HTML** | 9 | convert/parse | none | 📥 edge |
+| **PDF** | **102** | **no structured path** — prose | **none** | 🔴 **the snag** |
+
+**Two reads of this:**
+- **The structured 113** (CSV/XLSX/JSON/YAML/XML) are the real ingestion frontier — wiring up XLSX + JSON unlocks most of them (NIST/MITRE/SCF/CRI workbooks, STIX bundles, OSCAL, CPRT, the CTID mapping packs you hold).
+- **The 102 PDFs** are mostly prose (FFIEC booklets, HIPAA, CMMC guides, ISO, CRI/COBIT guides). Crosswalker has *no* PDF ingestion, and most of these don't *have* a clean structured door. This is where you decide: skip them, get the structured door instead (OSCAL/CPRT/STRM), or build PDF extraction (see snags). **There is likely a *subset* of PDFs that are tabular/structured enough to parse one way, and a majority of prose ones that need a different path entirely** — categorizing that subset is concrete next work.
+
+## Stage 3 — Structuring: the constructs that build the ontology
+
+Once parsed, these are the tools that turn rows into a vault ontology (concepts with hierarchy, frontmatter, tags, links). This is Crosswalker's [closed 5-mechanism recipe grammar](/crosswalker/concepts/hierarchy-primitives/):
+
+| Construct | What it does | Where |
+|---|---|---|
+| **Recipe grammar** (`folder \| file \| heading \| tag \| wikilink` × layout × also_emit × graph_edges) | Declarative spec for *how* a framework lays out as notes — the single coupling point `render(Recipe, ConceptIdentity) → Address` | [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) |
+| **Generation engine** | Creates folders + notes with managed `_crosswalker` frontmatter; re-import-safe merge | [build log §schema](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/) |
+| **Tier 1 schema** | The load-bearing contract every concept note conforms to | [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) |
+| **Import wizard / config manager** | Maps columns → roles (hierarchy / frontmatter / links / body); saves reusable configs (fingerprint-matched) | [ETL & import](/crosswalker/concepts/etl-and-import/) |
+
+## Stage 4 — Crosswalking: the edge constructs (we're data-rich here)
+
+This is where the corpus is *strongest* — you already hold dozens of **crosswalk files** (CTID ATT&CK mappings, SCF STRM mappings to 250+ frameworks, CRI↔DORA/800-53/ATT&CK, NIST official CSF↔800-53). Each becomes edges:
+
+| Construct | What it does | Where |
+|---|---|---|
+| **Junction notes** | One markdown file per crosswalk edge; 13-field flat YAML, OSCAL `by-component`-isomorphic | [build log](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/) |
+| **STRM relations** | 5 set-theoretic edge types (subset/intersects/equal/superset/no-relationship) + strength | [STRM registry](/crosswalker/reference/registry/strm/) |
+| **SSSOM metadata** | Mapping provenance: confidence, justification, author | [SSSOM registry](/crosswalker/reference/registry/sssom/) |
+| **SSSOM import command** | Ingests a mapping table → junction notes | v0.1.6 (shipped) |
+| **Materialized closure** | Precomputed transitive crosswalk reachability (recursive CTE, sqlite-wasm) | v0.1.6 Phase 3 |
+
+The held STRM mapping files are also the **proxy** for reaching copyrighted frameworks (ISO/COBIT/HITRUST) without their text — see the [corpus licensing section](/crosswalker/reference/framework-corpus/#licensing--copyright--what-crosswalker-can-share).
+
+## Stage 5 — Ontology + query: structuring *after* processing
+
+The processed graph becomes queryable — the "pull tabular views from the graph" layer:
+
+| Construct | What it does | Where |
+|---|---|---|
+| **8 query primitives** (filter · traverse · bind · project · aggregate · anti-join · set-op · diff) | The closed verb set for crosswalk/coverage queries | [query primitives](/crosswalker/concepts/query-primitives/) |
+| **Recipes + recipe-picker** | Saved, parameterized query shapes (coverage matrix, pivot, …) | v0.1.6 Phase 4 |
+| **Bases views** (`crosswalkerPivot`) | Renders pivots/coverage inside Obsidian | v0.1.6 |
+| **View shapes** | The taxonomy of output shapes (pivot, hierarchy, table, …) | [view shapes](/crosswalker/concepts/view-shapes/) |
+
+## Snags + develop-on-top candidates
+
+The point of running the real use case is to find these. Initial list (will grow):
+
+| Snag | Impact on the corpus | Build-on-top candidate |
+|---|---|---|
+| **No PDF ingestion** | ~102 files (40%) unreachable as data | PDF→structure extraction (tabular-PDF parser; or LLM-assisted extraction); or formalize "use the structured door instead" |
+| **XLSX parser not wired** | ~50 files (the core workbooks) blocked | finish XLSX integration (merged-cell forward-fill, header-row detection, multi-sheet merge) |
+| **JSON parser TODO** | ~39 files (STIX/OSCAL/CPRT) blocked | JSON parser + shaping for deep/nested bundles |
+| **ZIP is a manual pre-step** | 29 archives | auto-extract-and-ingest |
+| **YAML / XML specialized** | ATT&CK layers, ATLAS, EUR-Lex DORA | per-format adapters (lower priority) |
+| **Crosswalk files vary wildly in shape** | every mapping pack is different | a small library of crosswalk-import adapters (the "as-code" recipes — see ecosystem) |
+
+## The ecosystem bet — share the *mechanisms*, not just the data
+
+The durable value may not be the ontology itself but the **shareable mechanisms** for building one. Two artifact types fall straight out of the pipeline above:
+
+- **Crosswalks** — a junction-note set (or SSSOM table) mapping framework A ↔ B that someone produced once and others reuse.
+- **Framework-ingestion "as-code"** — a [recipe](/crosswalker/concepts/hierarchy-primitives/) + column-config that encodes *how to turn this specific framework file into a clean ontology* (the CRI workbook recipe, the OSCAL-JSON recipe, the SCF-STRM adapter…). Author it once; anyone with the same file gets the same vault.
+
+This is why the [registry is described as a future "community marketplace for framework configs"](/crosswalker/reference/registry/) — the GRC corpus is the first real stress test of whether those configs/crosswalks are genuinely shareable and reusable. Each snag above that we solve with a *reusable adapter* (rather than a one-off) is a vote for the ecosystem model.
+
+## How to work out of here
+
+1. Pick the **structured frontier first** — wire XLSX (unlocks the 50 workbooks) and confirm CSV on a real file.
+2. Run the [first crosswalk proving ground](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/) (CSF 2.0 ↔ 800-53) end-to-end; log what breaks here.
+3. Categorize the **102 PDFs** into "has a structured door" vs "prose-only" — decide the policy.
+4. Capture every reusable adapter as a candidate ecosystem artifact.
+5. Keep this log as the **map**; spin out detail logs per stage as the work deepens, and link them back here.
+
+## Related
+
+- [Building the unified model](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/) — the construction log this feeds (the destination ontology)
+- [Ontological foundations](/crosswalker/agent-context/zz-log/2026-06-01-unified-control-model-ontological-foundations/) — the model's why/name/direction
+- [Security & GRC framework corpus](/crosswalker/reference/framework-corpus/) · [Framework data sources](/crosswalker/reference/framework-data-sources/) — the files + their parse details
+- [ETL & import](/crosswalker/concepts/etl-and-import/) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Query primitives](/crosswalker/concepts/query-primitives/) · [View shapes](/crosswalker/concepts/view-shapes/) · [System architecture](/crosswalker/concepts/system-architecture/)
+- [Registry](/crosswalker/reference/registry/) (the future config marketplace) · [STRM](/crosswalker/reference/registry/strm/) · [SSSOM](/crosswalker/reference/registry/sssom/) · [OSCAL](/crosswalker/reference/registry/oscal/)
+- [v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) · [v0.1.7 — exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/)
