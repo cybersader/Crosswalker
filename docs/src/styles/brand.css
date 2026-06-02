@@ -355,3 +355,20 @@
   font-weight: 600;
   margin-bottom: 0.5rem;
 }
+
+/* ---------------------------------------------------------------------------
+   Mobile fix: hide the starlight-site-graph PIXI/WebGL graph on narrow screens.
+   The graph renders in the right "On this page" sidebar; below Starlight's 72rem
+   breakpoint that sidebar collapses into the mobile/tablet TOC dropdown. There,
+   the interactive canvas captured touch gestures and its always-on render loop
+   pegged the main thread — freezing the entire page (scroll + buttons), needing
+   a refresh. Hiding the panel removes touch capture AND lets the graph's
+   IntersectionObserver keep its ticker paused, freeing the main thread. The
+   graph still renders on desktop (>=72rem) where it lives in a stable sidebar.
+   --------------------------------------------------------------------------- */
+@media (max-width: 1151px) {
+  .slsg-graph-panel,
+  .slsg-graph-component {
+    display: none !important;
+  }
+}
