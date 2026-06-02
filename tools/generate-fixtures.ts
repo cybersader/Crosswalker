@@ -29,6 +29,8 @@ interface Args {
 	ontology: string;
 	clean: boolean;
 	deterministic: boolean;
+	/** Column aliasing: source-column -> canonical role (id/name/title/family/parent/description). */
+	map: Record<string, string>;
 }
 
 /**
@@ -63,7 +65,7 @@ const PRODUCER = {
 
 function parseArgs(argv: string[]): Args {
 	const envDeterministic = process.env.CROSSWALKER_FIXTURES_DETERMINISTIC === '1';
-	const args: Partial<Args> = { clean: false, deterministic: envDeterministic };
+	const args: Partial<Args> = { clean: false, deterministic: envDeterministic, map: {} };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === '--source') args.source = argv[++i];
@@ -71,6 +73,17 @@ function parseArgs(argv: string[]): Args {
 		else if (a === '--ontology') args.ontology = argv[++i];
 		else if (a === '--clean') args.clean = true;
 		else if (a === '--deterministic') args.deterministic = true;
+		else if (a === '--map') {
+			// --map "srcCol=role,srcCol2=role2" — alias a framework's real column
+			// names onto the canonical roles the generator expects.
+			const spec = argv[++i] || '';
+			const map: Record<string, string> = {};
+			for (const pair of spec.split(',')) {
+				const [src, dst] = pair.split('=').map((s) => s.trim());
+				if (src && dst) map[src] = dst;
+			}
+			args.map = map;
+		}
 		else if (a === '--help' || a === '-h') {
 			printHelp();
 			process.exit(0);
@@ -276,6 +289,17 @@ function main(): void {
 	mkdirSync(targetAbs, { recursive: true });
 
 	const rows = readCsv(sourceAbs);
+	// Column mapping (config-driven ingestion hook): alias a real framework's
+	// columns onto the canonical roles the generator expects, without hard-coding.
+	// e.g. 800-53's `identifier`/`control_text` -> `id`/`description`. This map is
+	// the seed of a per-framework ingestion config (the shareable "as-code" unit).
+	if (args.map && Object.keys(args.map).length > 0) {
+		for (const row of rows) {
+			for (const [src, dst] of Object.entries(args.map)) {
+				if (row[src] !== undefined) row[dst] = row[src];
+			}
+		}
+	}
 	console.log(`  rows:     ${rows.length}`);
 
 	let written = 0;

@@ -54,6 +54,10 @@ The single biggest practical finding: **the corpus is split almost in half betwe
 - **The structured 113** (CSV/XLSX/JSON/YAML/XML) are the real ingestion frontier — wiring up XLSX + JSON unlocks most of them (NIST/MITRE/SCF/CRI workbooks, STIX bundles, OSCAL, CPRT, the CTID mapping packs you hold).
 - **The 102 PDFs** are mostly prose (FFIEC booklets, HIPAA, CMMC guides, ISO, CRI/COBIT guides). Crosswalker has *no* PDF ingestion, and most of these don't *have* a clean structured door. This is where you decide: skip them, get the structured door instead (OSCAL/CPRT/STRM), or build PDF extraction (see snags). **There is likely a *subset* of PDFs that are tabular/structured enough to parse one way, and a majority of prose ones that need a different path entirely** — categorizing that subset is concrete next work.
 
+<Aside type="tip" title="Progress — first real ingestion (2026-06-02)">
+The [fixtures harness](#) (`tools/generate-fixtures.ts`) now ingests real frameworks. Running NIST **800-53** through it surfaced the first snag instantly: the harness hard-coded column names (`id`, `description`), but 800-53 uses `identifier`, `control_text` — so **0 rows** matched. The fix was a **config-driven column map**: a new `--map "identifier=id,control_text=description"` hook aliases a framework's real columns onto the canonical roles. With it, 800-53 ingests cleanly (**1,189 controls → Tier 1 notes**, headless, in seconds). That column map is the seed of the per-framework **ingestion config** — the shareable "as-code" unit ([Tier 3](#where-the-work-goes--and-by-who) below). **Snag → reusable fix, first try.**
+</Aside>
+
 ## Stage 3 — Structuring: the constructs that build the ontology
 
 Once parsed, these are the tools that turn rows into a vault ontology (concepts with hierarchy, frontmatter, tags, links). This is Crosswalker's [closed 5-mechanism recipe grammar](/crosswalker/concepts/hierarchy-primitives/):
@@ -112,6 +116,20 @@ The durable value may not be the ontology itself but the **shareable mechanisms*
 
 This is why the [registry is described as a future "community marketplace for framework configs"](/crosswalker/reference/registry/) — the GRC corpus is the first real stress test of whether those configs/crosswalks are genuinely shareable and reusable. Each snag above that we solve with a *reusable adapter* (rather than a one-off) is a vote for the ecosystem model.
 
+## Where the work goes — and by who
+
+The [operational landscape](/crosswalker/concepts/operational-landscape/) page sorts all project work into **five tiers** by *who does it* and *how often*. Mapping this use-case's work onto those tiers shows exactly where effort lands as we wire frameworks in — and it confirms the [ecosystem bet](#the-ecosystem-bet--share-the-mechanisms-not-just-the-data): the per-framework configs and crosswalks are **Tier 3 (community-shared)**, not user-repeated work.
+
+| Ingestion work | Tier (per [operational landscape](/crosswalker/concepts/operational-landscape/)) | Who does it |
+|---|---|---|
+| Parsers (CSV ✓, XLSX, JSON), the harness, generation engine | **Tier 1–2** — first-principles / refined software (build once, evolves slowly) | Crosswalker core |
+| **Per-framework ingestion config / recipe** (the column map, the recipe — the "as-code" unit) | **Tier 3** — community-maintained, shared | Community authors once; Crosswalker validates |
+| **Crosswalks** (junction-note sets / SSSOM tables, e.g. CSF↔800-53) | **Tier 3** — community-maintained, shared | Whoever maps once; everyone reuses |
+| Running ingestion on *your* files; reviewing the output | **Tier 5** — user work | Your team |
+| Re-ingesting when a framework versions | **Tier 4** — operational maintenance (automatable) | Crosswalker (automated) + a user trigger |
+
+**The leverage insight** (straight from operational-landscape): the more ingestion work we push from **Tier 5** (every user re-does it) down to **Tier 3** (someone authors a config or crosswalk *once*, everyone reuses it), the stronger both the tool and the ecosystem. The `--map` for 800-53 above is the first such Tier-5 → Tier-3 move — a reusable config seed instead of a one-off. **Every snag we solve with a reusable adapter is a vote for the ecosystem model**, and a unit of work that leaves the user's plate for good.
+
 ## How to work out of here
 
 1. Pick the **structured frontier first** — wire XLSX (unlocks the 50 workbooks) and confirm CSV on a real file.
@@ -126,5 +144,6 @@ This is why the [registry is described as a future "community marketplace for fr
 - [Ontological foundations](/crosswalker/agent-context/zz-log/2026-06-01-unified-control-model-ontological-foundations/) — the model's why/name/direction
 - [Security & GRC framework corpus](/crosswalker/reference/framework-corpus/) · [Framework data sources](/crosswalker/reference/framework-data-sources/) — the files + their parse details
 - [ETL & import](/crosswalker/concepts/etl-and-import/) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Query primitives](/crosswalker/concepts/query-primitives/) · [View shapes](/crosswalker/concepts/view-shapes/) · [System architecture](/crosswalker/concepts/system-architecture/)
+- [Operational landscape](/crosswalker/concepts/operational-landscape/) — the five tiers of work + who does it (the "where the work goes" map)
 - [Registry](/crosswalker/reference/registry/) (the future config marketplace) · [STRM](/crosswalker/reference/registry/strm/) · [SSSOM](/crosswalker/reference/registry/sssom/) · [OSCAL](/crosswalker/reference/registry/oscal/)
 - [v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) · [v0.1.7 — exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/)
