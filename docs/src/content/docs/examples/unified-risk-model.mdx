@@ -9,11 +9,11 @@ sidebar:
 import { Aside } from '@astrojs/starlight/components';
 
 <Aside type="note">
-**Audience: risk, GRC/ISRM, internal-audit, and compliance teams.** This is a *recommended implementation* of Crosswalker for a specific domain — not a universal Crosswalker concept (Crosswalker is a general [ontology-lifecycle-management](/crosswalker/concepts/ontology-lifecycle/) system; this is one applied use). Per-role entry points: [internal audit](/crosswalker/examples/for-internal-audit/) · [GRC / ISRM (operational compliance)](/crosswalker/examples/for-grc-isrm/) · [regulatory compliance](/crosswalker/examples/for-regulatory-compliance/).
+**Audience: risk/GRC, internal-audit, and compliance teams.** This is a *recommended implementation* of Crosswalker for a specific domain — not a universal Crosswalker concept (Crosswalker is a general [ontology-lifecycle-management](/crosswalker/concepts/ontology-lifecycle/) system; this is one applied use). Per-role entry points: [internal audit](/crosswalker/examples/for-internal-audit/) · [GRC / risk (operational compliance)](/crosswalker/examples/for-grc-isrm/) · [regulatory compliance](/crosswalker/examples/for-regulatory-compliance/).
 </Aside>
 
 <Aside type="tip">
-The unifying answer to "which tool should each team use?" is **not a single product — it's a shared data model**. Whatever tools internal-audit, GRC/ISRM, and compliance pick, if they all expose the *same* core entities with real relationships, the teams stay relatable instead of running three disconnected databases (or three spreadsheets pretending not to be). This page describes that model. Crosswalker is one way to implement it; so are the [related tools](/crosswalker/concepts/related-tooling/).
+The unifying answer to "which tool should each team use?" is **not a single product — it's a shared data model**. Whatever tools internal-audit, GRC/risk, and compliance pick, if they all expose the *same* core entities with real relationships, the teams stay relatable instead of running three disconnected databases (or three spreadsheets pretending not to be). This page describes that model. Crosswalker is one way to implement it; so are the [related tools](/crosswalker/concepts/related-tooling/).
 </Aside>
 
 <Aside type="caution">
@@ -22,9 +22,9 @@ The unifying answer to "which tool should each team use?" is **not a single prod
 
 ## The problem this solves
 
-In a regulated org, internal audit, GRC/ISRM, compliance, and third-party risk each own slices of the same reality — the same controls, frameworks, assets, vendors, processes, findings, and evidence — but their tools model that reality differently (or not relationally at all). The result is duplicated control libraries, crosswalks maintained in ad-hoc spreadsheets, and a reg change that nobody can trace to the controls it affects.
+In a regulated org, internal audit, GRC/risk, compliance, and third-party risk each own slices of the same reality — the same controls, frameworks, assets, vendors, processes, findings, and evidence — but their tools model that reality differently (or not relationally at all). The result is duplicated control libraries, crosswalks maintained in ad-hoc spreadsheets, and a reg change that nobody can trace to the controls it affects.
 
-A **unified risk model** (sometimes "unified operational risk model" / URO) fixes this by defining one set of shared entities + relationships that every team operates on through its own front-end — IA in an audit engine, compliance in a reg-CMS, ISRM in a control spine — over the same underlying objects.
+A **unified risk model** (sometimes "unified operational risk model" / URO) fixes this by defining one set of shared entities + relationships that every team operates on through its own front-end — IA in an audit engine, compliance in a reg-CMS, risk in a control spine — over the same underlying objects.
 
 ## CRI Profile as the spine
 
@@ -40,7 +40,7 @@ CRI-at-center is the FI default. The same model works with any top-of-house auth
 
 Per-team role on each shared entity — **Owns** = system-of-record · Uses = active (creates/updates) · Reads = consumer/reference · – = minimal. Entity definitions follow the table.
 
-| Shared entity | Internal Audit | Compliance | GRC / ISRM |
+| Shared entity | Internal Audit | Compliance | GRC / risk |
 |---|---|---|---|
 | **Authority / Framework** | Reads | Uses | **Owns** |
 | **Requirement / Diagnostic Statement** | Reads | Uses | **Owns** |
@@ -72,7 +72,7 @@ Per-team role on each shared entity — **Owns** = system-of-record · Uses = ac
 
 - **Internal Audit** doesn't get a separate control universe — its tests point at the shared control objects and write back to the shared finding register.
 - **Compliance** keeps its own obligation-tracking system, but maps each regulatory obligation *down* to the same controls, so a reg change surfaces exactly which controls and evidence are affected. (This is [obligation-centric compliance](/crosswalker/concepts/compliance-control-vs-obligation/) connecting to the [control-centric](/crosswalker/concepts/compliance-control-vs-obligation/) spine.)
-- **GRC/ISRM** owns the spine (authorities, requirements, controls) and the evidence — collected once, reused everywhere.
+- **GRC/risk** owns the spine (authorities, requirements, controls) and the evidence — collected once, reused everywhere.
 - Nobody owns everything; each team **Owns** the entities it's accountable for and **Reads** the rest — which is what keeps it relatable.
 
 ## How this relates to formal governance models

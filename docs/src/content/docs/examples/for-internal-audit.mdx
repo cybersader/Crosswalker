@@ -18,13 +18,13 @@ import { Aside } from '@astrojs/starlight/components';
 |---|---|
 | Assessment (audit) | ◎ own |
 | Finding / Issue (+ remediation) | ◎ own |
-| Control | ● test (GRC/ISRM owns the library) |
+| Control | ● test (GRC/risk owns the library) |
 | Risk / Risk Scenario | ● use for risk-based planning |
 | Requirement / Framework | ○ reference |
 
 ## How you get into it
 
-1. **Reuse the shared control library.** Your audit programs reference the same control objects GRC/ISRM maintains — no parallel control universe to keep in sync.
+1. **Reuse the shared control library.** Your audit programs reference the same control objects GRC/risk maintains — no parallel control universe to keep in sync.
 2. **Map tests to controls.** An audit test points at a control (which already hangs off the relevant CRI / framework requirements via the crosswalk), so a passed/failed test rolls up to framework coverage automatically.
 3. **Write findings to the shared register.** A finding records *against* the control/requirement that failed — visible to GRC and compliance, who own remediation alongside you.
 4. **Plan risk-based.** Use the shared risk scenarios (tagged to CRI functions) to scope the audit universe.
@@ -36,5 +36,5 @@ A standalone audit workpaper engine ([Pentana / Ideagen](/crosswalker/concepts/r
 ## Related
 
 - [Unified risk model](/crosswalker/examples/unified-risk-model/) — the shared model
-- [For GRC / ISRM](/crosswalker/examples/for-grc-isrm/) — who owns the control library you test
+- [For GRC / risk](/crosswalker/examples/for-grc-isrm/) — who owns the control library you test
 - [Related tooling](/crosswalker/concepts/related-tooling/) — audit engines (Pentana, AuditBoard) + where they connect
