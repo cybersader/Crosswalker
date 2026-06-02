@@ -1,0 +1,64 @@
+---
+title: "Ingestion tooling — the rapid framework-import loop (dev log)"
+description: Development journal for Crosswalker's headless ingestion harness (tools/generate-fixtures.ts) — the rapid, no-Obsidian loop that turns real framework files into Tier 1 concept notes. Tracks each capability built (config-driven column mapping, XLSX reader, …), the snags each real framework surfaces, and the decisions. The gritty build companion to the GRC-corpus end-to-end use-case map.
+sidebar:
+  order: -20260602
+  label: "06-02 · Ingestion tooling (dev log)"
+tags: [log, dev, ingestion, tooling, harness, xlsx, parser, csv]
+date: 2026-06-02
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="What this is — the ingestion-tooling build journal">
+The [GRC corpus end-to-end log](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/) is the high-level **map**; this is the gritty **build journal** for the harness that does pipeline stages 1–2 (ingest + parse). Each entry = a capability added to `tools/generate-fixtures.ts` + the snag the next real framework surfaced. The harness itself is [Tier 1–2 work](/crosswalker/concepts/operational-landscape/) (build once, evolves slowly); the per-framework configs it consumes are the [Tier 3](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/#where-the-work-goes--and-by-who) shareable units.
+</Aside>
+
+## The harness (the rapid loop)
+
+`tools/generate-fixtures.ts` — a headless `bun` CLI: **source file → Tier 1 concept notes** (schema-conformant), deterministic, drift-gated, **no Obsidian**. The fast iteration surface is: *point at a real file → inspect the notes → tweak the config → rerun (seconds)*. It started CSV-only with hard-coded columns; this log tracks its growth into a multi-format, config-driven importer — driven entirely by what real frameworks demand.
+
+## Capabilities built
+
+### `--map` — config-driven column mapping · 2026-06-02
+
+- **Snag:** the harness hard-coded canonical column names (`id`, `description`); real frameworks use their own (`identifier`, `control_text`) → **0 rows matched**.
+- **Fix:** `--map "srcCol=role,…"` aliases a framework's real columns onto the canonical roles (`id / name / title / family / parent / description`).
+- **Result:** NIST **800-53 r5** (CSV) went 0 → **1,189 control notes**.
+
+### XLSX reader — `--sheet` + `--header-row` · 2026-06-02
+
+- Built workbook ingestion on the `xlsx` lib: **select a sheet** (by name or 0-based index), **treat a chosen row as the header** (skips banner/preamble rows above it), coerce every cell to a trimmed string → feeds the same pipeline (so `--map` still applies).
+- **Result:** NIST **CSF 2.0** (`csf2.xlsx`, sheet `"CSF 2.0"`, header row 1) → **185 subcategory concepts** (the Function/Category group-header rows surface as empty-id and are skipped).
+
+## Snags surfaced (the live backlog)
+
+Running real frameworks *is* the requirements process. What's surfaced so far:
+
+| Snag | Seen on | What's needed |
+|---|---|---|
+| **Combined id + text cells** — `Subcategory` = `"DE.AE-01: Adverse events are analyzed…"` (code + name in one cell) | CSF 2.0 | a **field-split** transform: regex-extract the leading code → `id`, the remainder → `title` / `description` |
+| **Merged-cell forward-fill** — Function/Category sit only on group-header rows; empty on the child rows → `family` blank | CSF 2.0 | forward-fill hierarchy columns down into child rows (then group-headers can become parent concepts too) |
+| Empty-id rows skipped silently | 800-53, CSF | acceptable default; consider a `--strict` skipped-row report |
+| Per-framework invocation is a long CLI string | all | promote `--map` / `--sheet` / `--header-row` into a **config file** — the Tier-3 "as-code" unit |
+
+## Ingestion scoreboard
+
+| Framework | Format | Invocation (abridged) | Result |
+|---|---|---|---|
+| NIST 800-53 r5 | CSV | `--map identifier=id,control_text=description` | ✅ 1,189 controls |
+| NIST CSF 2.0 | XLSX | `--sheet "CSF 2.0" --header-row 1 --map Subcategory=id,…` | ✅ 185 (ids need split; hierarchy needs forward-fill) |
+
+## Next
+
+1. **Field-split transform** — unblocks clean CSF ids; many frameworks pack code + name in one cell. The biggest quality win.
+2. **Merged-cell forward-fill** — hierarchy for CSF / CRI / D3FEND-shaped workbooks.
+3. **Promote CLI flags → a per-framework config file** — the shareable Tier-3 artifact (the ecosystem unit).
+4. **JSON reader** — STIX / OSCAL / CPRT (39 files).
+5. **Golden fixtures** for 800-53 + CSF — regression safety as the harness grows.
+
+## Related
+
+- [GRC corpus end-to-end (use-case map)](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/) — the high-level pipeline this builds stages 1–2 of
+- [Building the unified model](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/) — the destination ontology
+- [ETL & import](/crosswalker/concepts/etl-and-import/) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Framework data sources](/crosswalker/reference/framework-data-sources/) · [Operational landscape](/crosswalker/concepts/operational-landscape/) (the work tiers)

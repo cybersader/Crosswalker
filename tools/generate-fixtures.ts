@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node
 import { dirname, join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 interface Args {
 	source: string;
@@ -31,6 +32,10 @@ interface Args {
 	deterministic: boolean;
 	/** Column aliasing: source-column -> canonical role (id/name/title/family/parent/description). */
 	map: Record<string, string>;
+	/** XLSX: sheet name, or a 0-based index as a string. Default: first sheet. */
+	sheet?: string;
+	/** XLSX: 0-based header-row index — skips banner/preamble rows above the headers. Default 0. */
+	headerRow: number;
 }
 
 /**
@@ -65,7 +70,7 @@ const PRODUCER = {
 
 function parseArgs(argv: string[]): Args {
 	const envDeterministic = process.env.CROSSWALKER_FIXTURES_DETERMINISTIC === '1';
-	const args: Partial<Args> = { clean: false, deterministic: envDeterministic, map: {} };
+	const args: Partial<Args> = { clean: false, deterministic: envDeterministic, map: {}, headerRow: 0 };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === '--source') args.source = argv[++i];
@@ -84,6 +89,8 @@ function parseArgs(argv: string[]): Args {
 			}
 			args.map = map;
 		}
+		else if (a === '--sheet') args.sheet = argv[++i];
+		else if (a === '--header-row') args.headerRow = parseInt(argv[++i], 10) || 0;
 		else if (a === '--help' || a === '-h') {
 			printHelp();
 			process.exit(0);
@@ -148,6 +155,55 @@ function readCsv(absPath: string): CsvRow[] {
 		process.exit(1);
 	}
 	return result.data;
+}
+
+/**
+ * Read an XLSX/XLS workbook into rows. Selects a sheet (by name or 0-based
+ * index), treats `headerRow` (0-based) as the header line — skipping any
+ * banner/preamble rows above it — and coerces every cell to a trimmed string
+ * so downstream logic matches the CSV path. Merged-cell forward-fill (for
+ * hierarchy columns like CSF's Function/Category) is NOT applied yet — a known
+ * follow-on; for now group-header rows surface as empty-id rows and are skipped.
+ */
+function readXlsx(absPath: string, sheet: string | undefined, headerRow: number): CsvRow[] {
+	if (!existsSync(absPath)) {
+		console.error(`Source workbook not found: ${absPath}`);
+		process.exit(1);
+	}
+	const wb = XLSX.readFile(absPath);
+	let sheetName = wb.SheetNames[0];
+	if (sheet !== undefined && sheet !== '') {
+		const asIndex = Number(sheet);
+		sheetName = Number.isInteger(asIndex) && String(asIndex) === sheet.trim()
+			? wb.SheetNames[asIndex]
+			: sheet;
+	}
+	const ws = wb.Sheets[sheetName];
+	if (!ws) {
+		console.error(`Sheet "${sheet}" not found. Available: ${wb.SheetNames.join(', ')}`);
+		process.exit(1);
+	}
+	const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+		range: headerRow, // start at this row; treat it as the header
+		defval: '',
+		blankrows: false,
+	});
+	return raw.map((r) => {
+		const row: CsvRow = {} as CsvRow;
+		for (const [k, v] of Object.entries(r)) {
+			row[k] = v === null || v === undefined ? '' : String(v).trim();
+		}
+		return row;
+	});
+}
+
+/** Dispatch on file extension: .xlsx/.xls -> workbook reader, else CSV. */
+function readSource(absPath: string, args: Args): CsvRow[] {
+	const lower = absPath.toLowerCase();
+	if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+		return readXlsx(absPath, args.sheet, args.headerRow);
+	}
+	return readCsv(absPath);
 }
 
 function buildFrontmatter(
@@ -288,7 +344,7 @@ function main(): void {
 
 	mkdirSync(targetAbs, { recursive: true });
 
-	const rows = readCsv(sourceAbs);
+	const rows = readSource(sourceAbs, args);
 	// Column mapping (config-driven ingestion hook): alias a real framework's
 	// columns onto the canonical roles the generator expects, without hard-coding.
 	// e.g. 800-53's `identifier`/`control_text` -> `id`/`description`. This map is

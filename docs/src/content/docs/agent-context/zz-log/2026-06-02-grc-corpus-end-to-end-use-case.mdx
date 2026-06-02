@@ -42,7 +42,7 @@ The single biggest practical finding: **the corpus is split almost in half betwe
 | Format | Count | Ingest path | Crosswalker construct | Status |
 |---|---|---|---|---|
 | **CSV** | 12 | direct parse | [CSV parser (PapaParse, streaming)](/crosswalker/concepts/etl-and-import/) | ✅ works today |
-| **XLSX** | 50 | parse sheets; handle merged cells, header rows, multi-sheet merge | `xlsx` parser — installed, **not yet wired** | 🟡 near-term |
+| **XLSX** | 50 | sheet select + header-row offset (merged-cell fill TODO) | **harness reads it now** — `--sheet` + `--header-row`; CSF 2.0 → 185 (see [ingestion dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/)) | 🟡 wired |
 | **JSON** | 39 | parse; STIX/OSCAL/CPRT are deep + nested → need shaping | JSON parser — **TODO** | 🟡 near-term |
 | **YAML** | 8 | parse (ATT&CK navigator layers, ATLAS) | no YAML parser | 📥 specialized |
 | **XML** | 3 | EUR-Lex/Formex (DORA) — bespoke structure | no XML parser | 📥 specialized |
@@ -141,6 +141,7 @@ The [operational landscape](/crosswalker/concepts/operational-landscape/) page s
 ## Related
 
 - [Building the unified model](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/) — the construction log this feeds (the destination ontology)
+- **[Ingestion tooling (dev log)](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/)** — the gritty build journal for the harness (stages 1–2): `--map`, the XLSX reader, the snag backlog, the scoreboard
 - [Ontological foundations](/crosswalker/agent-context/zz-log/2026-06-01-unified-control-model-ontological-foundations/) — the model's why/name/direction
 - [Security & GRC framework corpus](/crosswalker/reference/framework-corpus/) · [Framework data sources](/crosswalker/reference/framework-data-sources/) — the files + their parse details
 - [ETL & import](/crosswalker/concepts/etl-and-import/) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Query primitives](/crosswalker/concepts/query-primitives/) · [View shapes](/crosswalker/concepts/view-shapes/) · [System architecture](/crosswalker/concepts/system-architecture/)
