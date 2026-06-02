@@ -1,0 +1,74 @@
+---
+title: "Building the unified model — schema, entities, edges (construction log)"
+description: The construction log where the unified risk / control / assurance model gets actually built from its ontological foundations — the Tier 1 schema (entity types, attributes, typed edges), the worked model, and the first crosswalk proving ground. The foundations log gave the name and direction; this is where it becomes a buildable, then built, thing. Living log; foundation under validation with colleagues.
+sidebar:
+  order: -20260602
+  label: "06-02 · Building the unified model"
+tags: [log, build, unified-risk-model, schema, ontology, construction, tier1]
+date: 2026-06-02
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Status — under construction; foundation in validation">
+The [ontological foundations](/crosswalker/agent-context/zz-log/2026-06-01-unified-control-model-ontological-foundations/) log settled the **name and direction** (the *why*). This log is where the model gets **actually built** (the *what* and *how*): the Tier 1 schema, the entities and edges, the worked structure, and the first crosswalk. The foundation is being **validated with colleagues**; building proceeds in parallel and stays revisable until that lands. As each piece is built and validated, the related pages get **promoted from tentative "stakes" to load-bearing "pillars"** (see the last section).
+</Aside>
+
+## Why this log exists
+
+The [foundations log](/crosswalker/agent-context/zz-log/2026-06-01-unified-control-model-ontological-foundations/) gave us the categories (objective, risk, obligation, control, audit/finding), the three useful lenses (Control / Assurance / Risk), the name, and the field landscape. **None of that is a *built* model yet — it's the blueprint.** This log turns the blueprint into something real:
+
+1. **The Tier 1 schema** — concrete entity types, attributes, and typed edges (the buildable contract).
+2. **The worked model** — the entities + relationships as an actual graph you can populate.
+3. **The first crosswalk** — one real proving-ground crosswalk end-to-end through Crosswalker.
+
+## Schema deltas — the starting point
+
+Falling directly out of the foundation: the entity types, attributes, and edges the model needs. *(Draft — reconcile against [`spec/tier1.schema.json`](/crosswalker/agent-context/v0-1-schema-spec/) before committing; let the proving ground below confirm the minimum set rather than over-designing.)*
+
+### Entity (node) types
+
+| Entity | Key attributes (beyond identity) | From the foundation |
+|---|---|---|
+| **Objective** | — | the teleological root (what everything serves) |
+| **Risk** | `inherent`, `residual`, `treatment` (avoid / transfer / mitigate / accept), `appetite_band` | the risk lens |
+| **Obligation** | `authority_source` (internal-governance / external-regulatory / contractual) | obligation ≠ compliance |
+| **Control** | `function_type` (preventive / detective / corrective / directive), `design_status`, `operating_status` | the control + assurance lenses |
+| **Finding** | `severity`, `status` (open / remediated / accepted), `engagement_id` | audit — the one genuinely new first-class node |
+| **Asset · Vendor · Process · Evidence · Incident** | carried from the existing unified-model entity set | shared entities |
+
+### Edge (relationship) types
+
+| Edge | Between | Carries |
+|---|---|---|
+| `satisfies` | control → obligation | — |
+| `mitigates` | control → risk | effectiveness |
+| `concerns` | finding → control / risk / obligation | — |
+| `evidences` | evidence → control | status / freshness |
+| `requires` | obligation → control | — |
+| **crosswalk** | concept ↔ concept (framework ↔ framework) | STRM relation + SSSOM confidence / justification |
+
+**No privileged node** — "spine" is a profile/view, not a structural fact (per the foundation). Control-/risk-/obligation-centric are *query lenses* over this one graph.
+
+## Build plan
+
+1. **Reconcile** these deltas against the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — what already exists, what's new, what's the minimum.
+2. **Define** the entities + edges concretely (the worked model).
+3. **Build the first crosswalk** (proving ground): **NIST CSF 2.0 ↔ 800-53** — both public-domain, both held, and an official NIST concept-crosswalk exists — end-to-end through Crosswalker → render a coverage view.
+4. **Let the proving ground drive the schema** — build one real crosswalk; let it reveal which deltas are actually needed instead of designing them in the abstract.
+5. **Validate** the foundation + the built model with colleagues; revise.
+
+## From stakes to pillars
+
+As each piece is built and validated, these related pages get **upgraded from tentative "stakes" to settled "pillars"** — and reconciled with the foundation (several still say "**CRI at the center**," which is being demoted to a [financial-sector-specific](/crosswalker/reference/registry/cri/) FI-only profile):
+
+- [Unified risk model](/crosswalker/examples/unified-risk-model/) — the canonical model page (still CRI-centered → reconcile to Control-center / no-spine)
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the Tier 1 contract these deltas land in
+- [Framework corpus](/crosswalker/reference/framework-corpus/) + the [registry](/crosswalker/reference/registry/) — the data the model is built over
+- The per-domain examples: [internal audit](/crosswalker/examples/for-internal-audit/) · [GRC / risk](/crosswalker/examples/for-grc-isrm/) · [regulatory compliance](/crosswalker/examples/for-regulatory-compliance/)
+
+## Related
+
+- [Ontological foundations of the model](/crosswalker/agent-context/zz-log/2026-06-01-unified-control-model-ontological-foundations/) — the *why / name / direction* this builds from
+- Challenges [39 — spine](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) · [40 — backbone](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) · [41 — audit role + naming](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/)
+- [ETL & import (schema-as-primitive)](/crosswalker/concepts/etl-and-import/) · [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
