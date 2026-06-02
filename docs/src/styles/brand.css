@@ -372,3 +372,18 @@
     display: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Layout fix: stop wide content from widening the page (the recurring left/right
+   misalignment). An over-wide table scrolls inside its own box instead of pushing
+   the whole layout sideways; long URLs/tokens wrap instead of forcing horizontal
+   overflow. Tables stay full-width when they fit; only oversized ones scroll.
+   --------------------------------------------------------------------------- */
+.sl-markdown-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.sl-markdown-content {
+  overflow-wrap: break-word;
+}

@@ -11,17 +11,20 @@ date: 2026-06-01
 import { Aside } from '@astrojs/starlight/components';
 
 <Aside type="note" title="Status — living foundations, direction emerging">
-This is a **foundations log**, not a final decision record. It captures the ontology/taxonomy worked out in discussion on 2026-06-01 following the [Ch 39](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) / [40](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) / [41](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) deliverables. The **definitions are firm**; the **name is chosen** — **Unified Control Assurance and Risk Model** ("doesn't have to be perfect"); the model is structured around **the three useful practitioner lenses** (Control / Assurance / Risk, researched below); the **direction is emerging** (Control as center, no privileged backbone); **remaining calls are open** (default profiles, first crosswalk, formal model write-up). When those lock, this graduates into a `concepts/` taxonomy page + a decision synthesis log.
+This is a **foundations log**, not a final decision record. It captures the ontology/taxonomy worked out in discussion on 2026-06-01 following the [Ch 39](/crosswalker/agent-context/zz-challenges/39-unified-model-spine/) / [40](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) / [41](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) deliverables. The **definitions are firm**; the **name is being decided** (leaning *Unified Risk Model*; descriptive long-form *Unified Control Assurance and Risk Model* — see the [Naming section](#naming-the-model--by-what-principle)); the model is structured around **the three useful practitioner lenses** (Control / Assurance / Risk, researched below); the **direction is emerging** (Control as center, no privileged backbone); **remaining calls are open** (default profiles, first crosswalk, formal model write-up). When those lock, this graduates into a `concepts/` taxonomy page + a decision synthesis log.
 </Aside>
 
 ## Why this log
 
 The driving goal is a unified model for the security / GRC / risk / internal-audit problem domains — one shared substrate that Governance, Risk, Compliance, and Internal Audit all operate on. Before building it (ingestion → mapping over the [framework corpus](/crosswalker/reference/framework-corpus/)), the foundational categories were pressure-tested from first principles. The result is a small, precise ontology that explains *why the model has the shape it does* — and a guiding constraint: **prudence, pragmatism, first principles; no scope creep, no over-engineering.**
 
-Three plain-language anchors used throughout (the rest of the doc assumes no philosophy background):
-- **Ontology** = what *kind of thing* something is; what sort of existence it has.
-- **Epistemology** = what we *know* and how sure we can be; the status of claims and beliefs.
-- **Telos** = what something is ultimately *for* — its purpose, as distinct from what it is.
+<Aside type="tip" title="Plain-language key (no philosophy background needed)">
+Three words recur throughout — in plain terms:
+
+- **Ontology** — what *kind of thing* something is (its nature). *Think: "what is it?"*
+- **Epistemology** — what we *know* and how sure we can be. The adjective **epistemic** just means **knowledge-related** — about whether a claim is *true* and how confident we are, not about the thing itself. *Think: "is it true, and how do we know?"*
+- **Telos** — what something is ultimately *for* (its purpose). *Think: "what's it for?"*
+</Aside>
 
 ## Telos vs ontology — and why this ultimately serves flourishing
 
@@ -83,9 +86,9 @@ This doesn't have to be invented from scratch — and notably, the most integrat
 |---|---|
 | **COSO ERM** (2017) | **Value / objectives** — risk = the possibility events affect *achievement of objectives*; explicitly about value creation *and* preservation |
 | **OCEG GRC** (Red Book) | **Principled performance / objectives** — "reliably *achieve objectives*, address uncertainty, and act with integrity" |
-| **ISO 31000** | **Risk** — but defined as "effect of uncertainty *on objectives*" (bidirectional) |
-| **NIST RMF** (800-37 / 800-39) | **Risk management** process; control = the *response* to risk |
-| **Control catalogs** (800-53, ISO 27002, CIS) | **Controls** — the catalog *is* the structure; risk implicit |
+| [**ISO 31000**](/crosswalker/reference/registry/iso/) | **Risk** — but defined as "effect of uncertainty *on objectives*" (bidirectional) |
+| [**NIST RMF**](/crosswalker/reference/registry/nist/) (800-37 / 800-39) | **Risk management** process; control = the *response* to risk |
+| **Control catalogs** ([800-53](/crosswalker/reference/registry/nist/), [ISO 27002](/crosswalker/reference/registry/iso/), [CIS](/crosswalker/reference/registry/cis/)) | **Controls** — the catalog *is* the structure; risk implicit |
 | **Regulatory / compliance** | **Obligations / requirements** |
 | **IIA / internal audit** | **Risk-based assurance** — audit *where the risk is* |
 
@@ -98,7 +101,7 @@ The pattern: the **mature, integrated frameworks (COSO ERM, OCEG GRC) center on 
 | **Objective** | What the organization is trying to achieve — the value everything else is measured against (the reference point). |
 | **Risk** | A *possible* future event, weighted by likelihood and impact, that *matters because it affects an objective* — part real hazard, part knowledge-estimate. |
 | **Obligation** | A *standing duty* that binds you to act — "must, because an authority commands it," independent of your own risk calculus. |
-| **Control** | An actual *mechanism* that operates to manage a risk and/or discharge an obligation. |
+| **Control** | An actual *mechanism* (safeguard / countermeasure) that **modifies risk** — reduces the likelihood or impact of an unwanted outcome. By doing so it satisfies the obligations that require it and protects objectives. (Per ISO, a control is a *measure that maintains and/or modifies risk*; obligation-discharge is downstream of the risk-reduction, not a separate purpose.) |
 | **Audit** | The independent, evidence-based act of *adjudicating whether a claim matches reality*, producing a **finding**. |
 | **Assurance** | The genus audit belongs to — the *manufacture of warranted confidence* in a claim for someone who must rely on it but cannot verify it themselves. |
 | **Finding** | A persisted *assurance assertion* — audit's judgment about a control / risk / obligation (the one thing audit *writes*). |
@@ -201,7 +204,7 @@ The five kinds of being are the *foundation* (why the categories are distinct). 
 ### Control — the GRC-operational lens ("implement once, satisfy many")
 
 The control is the unit of work; the payoff is reuse.
-- **Common-control reuse:** one control satisfies many obligations/frameworks — the crosswalk payoff and the whole point of common-control libraries (SCF, OSCAL).
+- **Common-control reuse:** one control satisfies many obligations/frameworks — the crosswalk payoff and the whole point of common-control libraries ([SCF](/crosswalker/reference/registry/scf/), [OSCAL](/crosswalker/reference/registry/oscal/)).
 - **Control function type:** *preventive* / *detective* / *corrective* (+ *directive*), and which one matters — **preventive & detective controls reduce *likelihood*; corrective controls reduce *impact*.** Maps onto NIST CSF functions (Protect / Detect / Respond-Recover).
 - **Control objective → control → control activity** hierarchy; controls provide *reasonable assurance* over the three classic objective categories (operations, reporting, **compliance**).
 - **Obligation coverage:** which duties (`internal-governance | external-regulatory | contractual`) do we owe, and does a control satisfy each? Governance and Compliance live here — their obligations are *discharged by* controls.
@@ -226,16 +229,29 @@ Modeled on the ISO 31000 process (scope → assess → treat → monitor → rep
 
 **Sources:** [design vs operating effectiveness](https://linfordco.com/blog/design-vs-operating-effectiveness/) · [inherent/residual + control effectiveness + appetite](https://adaptivegrc.com/resources/articles/inherent-residual-risk-controls/) · [combined assurance / assurance mapping](https://www.wolterskluwer.com/en/expert-insights/the-value-of-assurance-mapping) · [preventive/detective/corrective control types](https://www.flowgrc.com/blog/preventive-detective-corrective-controls) · [ISO 31000 risk treatment options](https://preteshbiswas.com/2024/01/04/iso-310002018-clause-6-5-risk-treatment/)
 
+## Naming the model — by what principle?
+
+A name should *follow from what you name it by*. Several principles work, each defensible — the point is to name it **on purpose**, not by default:
+
+| Name it by… | Gives | The argument |
+|---|---|---|
+| **Its gravitational center (risk)** | **Unified Risk Model** | Everything orbits risk: a control is *defined* as a risk-reducer (ISO); internal audit is **risk-based** (you audit where the risk is — IIA risk-based prioritization); obligations mostly exist to reduce risk; objectives are defined by the risk *to* them. Risk is the one concept every lens touches — and it matches the existing [unified risk model](/crosswalker/examples/unified-risk-model/) page. |
+| **Its convergence act (control)** | **Unified Control Model** | The control is the single act where risk-mitigation, obligation-discharge, and governance-mandate all meet. |
+| **The three useful lenses** | **Unified Control Assurance and Risk Model** | Most descriptive — names what practitioners actually do ([Control](#the-useful-perspectives--how-audit--grc-actually-operate-the-substrate) / Assurance / Risk). |
+| **The umbrella** | **Unified Assurance / GRC Model** | Broadest single term; covers all three teams, but reads as jargon. |
+
+**Current lean: "Unified Risk Model."** Risk is the gravitational center *even for audit* (IIA's risk-based prioritization), and it aligns with the [existing model page](/crosswalker/examples/unified-risk-model/). The descriptive long-form **"Unified Control Assurance and Risk Model"** stays available when the three lenses need to be spelled out. This is a **low-stakes, reversible label** — the schema is name-agnostic — so it isn't worth over-bikeshedding; it just shouldn't be picked by accident.
+
 ## Emerging direction (from Ch 39–41) — not yet locked
 
 | Topic | Emerging position | Status |
 |---|---|---|
 | The spine | **No engine-level spine.** "Spine" is a per-profile *view* over a peer mesh of typed edges; the Tier-1 schema is the only load-bearing contract → the decision is *reversible config, not architecture*. | strong |
-| CRI's role | **FI-only profile / authority-of-record**, not the universal spine. | strong |
-| Default general hub | NIST CSF 2.0 (outcomes) + 800-53 (controls); SCF/STRM as a local-only mapping accelerator + optional reconciliation hub. | candidate |
+| CRI's role | [CRI](/crosswalker/reference/registry/cri/) is **financial-sector-specific** (banks, insurers, market infrastructures) — an **FI-only profile / authority-of-record**, not the universal spine. Never write it as if it applies generally. | strong |
+| Default general hub | [NIST CSF 2.0](/crosswalker/reference/registry/nist/) (outcomes) + 800-53 (controls); [SCF](/crosswalker/reference/registry/scf/)/[STRM](/crosswalker/reference/registry/strm/) as a local-only mapping accelerator + optional reconciliation hub. | candidate |
 | Backbone | **No privileged node**; a small typed set (control, risk, obligation, + asset/vendor/process/finding/evidence/incident) joined by typed edges. Control-/risk-/obligation-centric are *views*. | strong |
 | Audit | **Lens + requirement-producer**; only new first-class type is **Finding** (already in the entity list). | strong |
-| Name | **Unified Control Assurance and Risk Model** — names the three useful practitioner lenses (Control / Assurance / Risk). | **chosen** |
+| Name | Leaning **Unified Risk Model** (risk = gravitational center; matches the model page); **Unified Control Assurance and Risk Model** as descriptive long-form. See [Naming](#naming-the-model--by-what-principle). | leaning |
 
 ### Scope-creep guard (deferred / rejected — keep it pragmatic)
 - **Full OSCAL adoption** (Catalog/Profile/SSP/Assessment/POA&M) → defer to v0.1.7 *exporter* work; keep only the existing junction-note ↔ OSCAL `by-component` isomorphism.
