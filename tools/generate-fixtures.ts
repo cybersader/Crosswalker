@@ -23,6 +23,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { render, renderTemplate, type Recipe } from '../src/render';
 
 interface Args {
 	source: string;
@@ -36,6 +37,10 @@ interface Args {
 	sheet?: string;
 	/** XLSX: 0-based header-row index — skips banner/preamble rows above the headers. Default 0. */
 	headerRow: number;
+	/** Path to a Recipe JSON (spec/recipe.schema.json). When set, the real render() engine drives output. */
+	recipe?: string;
+	/** Template for the concept id (curie suffix) under --recipe, e.g. "{identifier}". Default "{id}". */
+	id?: string;
 }
 
 /**
@@ -91,13 +96,15 @@ function parseArgs(argv: string[]): Args {
 		}
 		else if (a === '--sheet') args.sheet = argv[++i];
 		else if (a === '--header-row') args.headerRow = parseInt(argv[++i], 10) || 0;
+		else if (a === '--recipe') args.recipe = argv[++i];
+		else if (a === '--id') args.id = argv[++i];
 		else if (a === '--help' || a === '-h') {
 			printHelp();
 			process.exit(0);
 		}
 	}
-	if (!args.source || !args.target || !args.ontology) {
-		console.error('Missing required args.\n');
+	if (!args.source || !args.target || (!args.ontology && !args.recipe)) {
+		console.error('Missing required args (need --source, --target, and --ontology or --recipe).\n');
 		printHelp();
 		process.exit(1);
 	}
@@ -328,7 +335,7 @@ function main(): void {
 	console.log(`Crosswalker fixture generator`);
 	console.log(`  source:   ${relative(REPO_ROOT, sourceAbs)}`);
 	console.log(`  target:   ${relative(REPO_ROOT, targetAbs)}`);
-	console.log(`  ontology: ${args.ontology}`);
+	console.log(`  ontology: ${args.ontology ?? '(from recipe)'}`);
 
 	const sourceBytes = readFileSync(sourceAbs);
 	const sourceHash = sha256Hex(sourceBytes);
@@ -359,19 +366,69 @@ function main(): void {
 	console.log(`  rows:     ${rows.length}`);
 
 	let written = 0;
-	for (const row of rows) {
-		const id = row.id?.trim();
-		if (!id) {
-			console.warn(`  skipped row with empty id: ${JSON.stringify(row)}`);
-			continue;
+	if (args.recipe) {
+		// Recipe-driven path: use the REAL render() engine (src/render) — the same
+		// pure function the plugin uses — instead of the harness's own frontmatter
+		// builder. The per-framework recipe (a spec/recipe.schema.json document)
+		// drives layout + frontmatter; the harness only derives identity (curie)
+		// and writes via fs (render() is vault-independent / pure).
+		const recipeAbs = resolve(REPO_ROOT, args.recipe);
+		const recipe = JSON.parse(readFileSync(recipeAbs, 'utf8')) as Recipe;
+		const recipeHash = sha256Hex(readFileSync(recipeAbs));
+		const ontology = recipe.source?.ontology ?? args.ontology ?? 'unknown';
+		const idTemplate = args.id ?? '{id}';
+		console.log(`  recipe:   ${relative(REPO_ROOT, recipeAbs)} (via real render())`);
+		let skipped = 0;
+		for (const row of rows) {
+			let idVal = '';
+			try {
+				idVal = renderTemplate(idTemplate, row as Record<string, unknown>).trim();
+			} catch {
+				skipped++; // id template can't resolve (e.g. group-header rows)
+				continue;
+			}
+			if (!idVal) { skipped++; continue; }
+			const curie = `${ontology}:${idVal}`;
+			let address;
+			try {
+				address = render(recipe, { curie, scope: row as Record<string, unknown> });
+			} catch (e) {
+				console.warn(`  skipped ${curie}: ${(e as Error).message}`);
+				skipped++;
+				continue;
+			}
+			const fm: Record<string, unknown> = { ...address.frontmatter };
+			if (address.tags.length > 0) fm.tags = address.tags;
+			if (address.aliases.length > 0) fm.aliases = address.aliases;
+			fm._crosswalker = {
+				spec_version: SPEC_VERSION,
+				source_ref: { file: sourceRef.file, curie: `${ontology}:_`, source_hash: sourceRef.sourceHash },
+				produced_at: args.deterministic ? DETERMINISTIC_TIMESTAMP : new Date().toISOString(),
+				producer: PRODUCER,
+				recipe: { id: recipe.recipe, hash: recipeHash },
+			};
+			const outPath = join(targetAbs, address.primary.path);
+			mkdirSync(dirname(outPath), { recursive: true });
+			const title = String(fm.title ?? curie);
+			writeFileSync(outPath, frontmatterToYaml(fm) + `# ${title}\n`);
+			written++;
 		}
-		const fm = buildFrontmatter(row, args.ontology, sourceRef, args.deterministic);
-		const body = buildBody(row, fm);
-		const filename = `${slugifyForFilesystem(id)}.md`;
-		const outPath = join(targetAbs, filename);
-		mkdirSync(dirname(outPath), { recursive: true });
-		writeFileSync(outPath, frontmatterToYaml(fm) + body);
-		written++;
+		if (skipped > 0) console.log(`  skipped:  ${skipped} rows (no id / unrenderable)`);
+	} else {
+		for (const row of rows) {
+			const id = row.id?.trim();
+			if (!id) {
+				console.warn(`  skipped row with empty id: ${JSON.stringify(row)}`);
+				continue;
+			}
+			const fm = buildFrontmatter(row, args.ontology, sourceRef, args.deterministic);
+			const body = buildBody(row, fm);
+			const filename = `${slugifyForFilesystem(id)}.md`;
+			const outPath = join(targetAbs, filename);
+			mkdirSync(dirname(outPath), { recursive: true });
+			writeFileSync(outPath, frontmatterToYaml(fm) + body);
+			written++;
+		}
 	}
 
 	console.log(`  wrote:    ${written} files`);
