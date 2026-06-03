@@ -14,6 +14,20 @@ import { Aside } from '@astrojs/starlight/components';
 The [GRC corpus end-to-end log](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/) is the high-level **map**; this is the gritty **build journal** for the harness that does pipeline stages 1–2 (ingest + parse). Each entry = a capability added to `tools/generate-fixtures.ts` + the snag the next real framework surfaced. The harness itself is [Tier 1–2 work](/crosswalker/concepts/operational-landscape/) (build once, evolves slowly); the per-framework configs it consumes are the [Tier 3](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/#where-the-work-goes--and-by-who) shareable units.
 </Aside>
 
+## Anchored to the implemented constructs — not ad-hoc
+
+The harness must **converge on the real, already-built ingestion constructs**, not grow its own logic. The transformation/ETL design was settled in the 2026-05 design phase ([schema-as-primitive](/crosswalker/concepts/etl-and-import/), RML/YARRRML-retargeted recipe + JSONata expression layer, the closed 5-mechanism grammar) — and a code investigation (2026-06-03) confirmed what's **live in `src/`**:
+
+| Construct | Status | The harness should use it for |
+|---|---|---|
+| **`spec/recipe.schema.json`** — import recipe (`source.levels`, `target.layout[]`, `also_emit`, `graph_edges` reserved) | ✅ implemented + AJV-validated | the per-framework "config" **is a recipe** — not CLI flags |
+| **`render(recipe, identity) → Address`** (pure; folder/file/heading wired, tag/wikilink fail-fast in v0.2) | ✅ implemented (`src/render/`) | compute path / frontmatter / tags / aliases — instead of the harness's own `buildFrontmatter` |
+| **`generateFromRecipe(app, data, recipe, …)`** | ✅ implemented (`src/generation/`) | the native recipe import path (Obsidian-bound — the headless harness calls the **pure `render()`** + writes via `fs`) |
+| **Template filters** `lower \| upper \| title \| slug \| tagsafe \| fs-safe \| truncate(N)` | ✅ closed set (`src/render/template.ts`) | recipe-expressed transforms (R2RML `{var\|filter}`) |
+| field-split (regex/split), merged-cell forward-fill, the ~40-primitive catalog, JSONata-in-templates | ❌ design-only | **the logic we build up** as real frameworks demand it |
+
+**The retarget:** the harness's `--map` / `--sheet` / `--header-row` are an *ad-hoc stand-in*. The disciplined path is: parse source → build `ConceptIdentity[]` → feed a real **Recipe** (`spec/recipe.schema.json`) through the implemented **`render()`** → write Tier 1. Each snag then **extends the real filter set / primitive catalog** — building up reusable ETL logic against first-principles constructs, which is the entire point of running the corpus in practice.
+
 ## The harness (the rapid loop)
 
 `tools/generate-fixtures.ts` — a headless `bun` CLI: **source file → Tier 1 concept notes** (schema-conformant), deterministic, drift-gated, **no Obsidian**. The fast iteration surface is: *point at a real file → inspect the notes → tweak the config → rerun (seconds)*. It started CSV-only with hard-coded columns; this log tracks its growth into a multi-format, config-driven importer — driven entirely by what real frameworks demand.
@@ -49,13 +63,13 @@ Running real frameworks *is* the requirements process. What's surfaced so far:
 | NIST 800-53 r5 | CSV | `--map identifier=id,control_text=description` | ✅ 1,189 controls |
 | NIST CSF 2.0 | XLSX | `--sheet "CSF 2.0" --header-row 1 --map Subcategory=id,…` | ✅ 185 (ids need split; hierarchy needs forward-fill) |
 
-## Next
+## Next — retarget onto the implemented constructs
 
-1. **Field-split transform** — unblocks clean CSF ids; many frameworks pack code + name in one cell. The biggest quality win.
-2. **Merged-cell forward-fill** — hierarchy for CSF / CRI / D3FEND-shaped workbooks.
-3. **Promote CLI flags → a per-framework config file** — the shareable Tier-3 artifact (the ecosystem unit).
-4. **JSON reader** — STIX / OSCAL / CPRT (39 files).
-5. **Golden fixtures** for 800-53 + CSF — regression safety as the harness grows.
+1. **Refactor the harness to call the real `render()` + a `Recipe`** (`spec/recipe.schema.json`) — drop the bespoke `buildFrontmatter`/`buildBody`. The per-framework config becomes a recipe JSON, validated against the schema. This is the load-bearing move: everything below rides on it.
+2. **field-split** → add a `split` / `regex-extract` **template filter** (extends the implemented closed set in `src/render/template.ts`): code → `id`, remainder → `title`. (Many frameworks pack code + name in one cell, e.g. CSF.)
+3. **merged-cell forward-fill** → a row pre-transform (the cross-structural **forward-fill** primitive) so hierarchy columns (CSF Function/Category, CRI, D3FEND) populate child rows.
+4. **Author real recipes** for 800-53 (CSV) + CSF 2.0 (XLSX) under `recipes/` + **golden fixtures** (regression).
+5. **JSON reader** (logical source + iterator path) → STIX / OSCAL / CPRT (39 files).
 
 ## Related
 
