@@ -81,6 +81,35 @@ CSV + XLSX are **flat row tables**: one row → one concept, columns → fields.
 
 This keeps the **single coupling point** (`render(Recipe, ConceptIdentity) → Address`) intact — JSON support is a new *front-end reader*, not a new engine. Direction confirmed; implementation is the next harness capability.
 
+### Header-key normalization · 2026-06-03
+
+- **Snag:** real workbooks bake **line breaks into header cells** — NIST's crosswalk has `Focal Document\r\nElement`; CRI's structure sheet has `Profile\r\nId`. A recipe referencing `{Profile Id}` silently matched *nothing* (the actual key was `Profile\r\nId`).
+- **Fix:** the XLSX reader now **normalizes header keys** — collapse internal whitespace + trim — so recipes reference clean single-space names. CSV path unaffected (no fixture drift).
+- **Result:** one small fix unblocks three frameworks — CRI ingestion *and* both NIST-OLIR crosswalks share the same newline-in-header layout.
+
+## End-to-end slice (depth-first): CSF 2.0 ↔ 800-53 ↔ CRI
+
+**Decision (2026-06-03):** stop accumulating import recipes that dead-end at Tier 1; drive a **small set all the way to a rendered Bases pivot** instead. One real crosswalk between real frameworks proves the entire product thesis — expansion afterward is just "add a recipe." (Per the [operational landscape](/crosswalker/concepts/operational-landscape/): depth-first maximizes the Tier 1–2 leverage before fanning out Tier 3 configs.)
+
+**Why these three:** CRI Profile is a **financial-sector (FI) profile** — *not* a generally-applicable framework — and its workbook is **itself a crosswalk hub**: it carries an inline NIST CSF mapping column and ships a companion CRI→800-53 mapping. Three nodes therefore yield **three real edges**, two of which share the identical NIST OLIR layout.
+
+| Tier | Node (concepts) | Edge (crosswalk) |
+|---|---|---|
+| Public (commit-safe) | NIST 800-53 r5 · NIST CSF 2.0 | **CSF → 800-53** (NIST official crosswalk) |
+| FI / licensed (local-only) | **CRI Profile v2.2** (F·C·S·DS) | **CRI → 800-53** · **CRI → CSF** |
+
+**Copyright handling:** CRI's source workbook + every rendered note stay in a **gitignored** vault folder (`test-vault/Frameworks/_licensed/`). What's committed = the *constructs* (CRI recipe, header-norm fix, the OLIR→SSSOM reader, tests) — **no copyrighted prose**. CRI notes also stamp `sector: financial-services`, so the FI-scoping travels with the data.
+
+**Stage A — nodes → Tier 1 (done 2026-06-03):** all three through the production `render()`, into the gitignored slice folder.
+
+| Node | Source | Notes |
+|---|---|---|
+| NIST 800-53 r5 | `…catalog_load.csv` | 1,189 |
+| NIST CSF 2.0 | `csf2.xlsx` | 185 |
+| CRI Profile v2.2 | CRI structure sheet (header row 2) | 472 (7 F · 28 C · 119 S · 318 DS) |
+
+**Stage B — the thesis (next): one reusable OLIR→SSSOM crosswalk reader.** Both the public CSF→800-53 crosswalk and the CRI→800-53 crosswalk use the **identical NIST OLIR layout** (`Focal Document Element` / `Reference Document Element` / `Strength of Relationship`). A single reader maps that → SSSOM rows (`subject_id` ← Focal, `object_id` ← Reference, `predicate_id` ← Strength, as skos close/broad/relatedMatch) → **junction notes** via the existing SSSOM importer. CRI→CSF comes from the inline mapping column. **Stages C/D:** open the slice in Obsidian → Tier 2 sidecar indexes → the `crosswalkerPivot` coverage matrix renders → manual verification (the part headless can't reach).
+
 ## Snags surfaced (the live backlog)
 
 Running real frameworks *is* the requirements process. What's surfaced so far:
@@ -88,7 +117,8 @@ Running real frameworks *is* the requirements process. What's surfaced so far:
 | Snag | Seen on | What's needed |
 |---|---|---|
 | ✅ **Combined id + text cells** — `Subcategory` = `"DE.AE-01: Adverse events…"` (code + name in one cell) | CSF 2.0 | **Resolved** → `split` / `regex` filters (above): `split(:,0)` → id, `split(:,1)\|trim` → title |
-| **Merged-cell forward-fill** — Function/Category sit only on group-header rows; empty on the child rows → `family` blank | CSF 2.0 | forward-fill hierarchy columns down into child rows (then group-headers can become parent concepts too) |
+| ✅ **Newline-in-header keys** — `Profile\r\nId`, `Focal Document\r\nElement` → recipe `{Profile Id}` matched nothing | CRI, NIST OLIR crosswalks | **Resolved** → header-key normalization in the XLSX reader (above) |
+| **Merged-cell forward-fill** — Function/Category sit only on group-header rows; empty on the child rows → `family` blank | CSF 2.0, CRI (Tier-1..4) | forward-fill hierarchy columns down into child rows (then group-headers can become parent concepts too) |
 | Empty-id rows skipped silently | 800-53, CSF | acceptable default; consider a `--strict` skipped-row report |
 | Per-framework invocation is a long CLI string | all | promote `--map` / `--sheet` / `--header-row` into a **config file** — the Tier-3 "as-code" unit |
 
@@ -98,15 +128,17 @@ Running real frameworks *is* the requirements process. What's surfaced so far:
 |---|---|---|---|
 | NIST 800-53 r5 | CSV | **recipe** `nist-800-53-flat.json` via real `render()` | ✅ 1,189 controls |
 | NIST CSF 2.0 | XLSX | **recipe** `nist-csf-2.json` (`split` filters) via real `render()` | ✅ 185 subcategories — clean `DE.AE-01.md` ids + split titles; hierarchy still needs forward-fill |
+| CRI Profile v2.2 | XLSX | **recipe** `cri-profile-v2-2.json` (header row 2; FI-sector, local-only) | ✅ 472 (F·C·S·DS); `sector: financial-services` stamped |
 
 ## Next — retarget onto the implemented constructs
 
 1. ✅ **Refactor the harness onto the real `render()` + a `Recipe`** — *done 2026-06-03* (800-53 renders through the production engine; legacy path retained).
 2. ✅ **field-split** → `split` / `regex` / `trim` filters added to the closed set — *done 2026-06-03* (CSF ids + titles clean through `render()`; 40 render tests). Follow-on: an `after(<delim>)` filter for multi-colon descriptions.
-3. **merged-cell forward-fill** → a row pre-transform (the cross-structural **forward-fill** primitive) so hierarchy columns (CSF Function/Category, CRI, D3FEND) populate child rows — then group-headers become parent concepts too.
-4. **AJV-validate recipes inside the harness** → run each `--recipe` JSON through AJV against `spec/recipe.schema.json` before rendering (see the callout above), so a malformed recipe fails fast with a precise error instead of a confusing render.
-5. **JSON reader** (logical source + iterator path) → STIX / OSCAL / CPRT (~39 files). High-level laid out above.
-6. **Author golden fixtures** for 800-53 + CSF under the drift gate (`bun run fixtures` + `check:fixtures-drift`).
+3. ✅ **Header-key normalization** → XLSX reader collapses newline-laden header keys — *done 2026-06-03* (unblocks CRI + both OLIR crosswalks).
+4. 🚧 **Stage B — OLIR→SSSOM crosswalk reader** (the thesis): map the shared NIST-OLIR layout → SSSOM rows → junction notes, for CSF→800-53 (public) + CRI→800-53 + CRI→CSF (local). Then Stages C/D: live Obsidian → Tier 2 → `crosswalkerPivot` renders → manual verify.
+5. **merged-cell forward-fill** → a row pre-transform (the cross-structural **forward-fill** primitive) so hierarchy columns (CSF Function/Category, CRI Tier-1..4) populate child rows — then group-headers become parent concepts too.
+6. **AJV-validate recipes inside the harness** → run each `--recipe` JSON through AJV against `spec/recipe.schema.json` before rendering (see the callout above), so a malformed recipe fails fast with a precise error instead of a confusing render.
+7. **JSON reader** (logical source + iterator path) → STIX / OSCAL / CPRT (~39 files). High-level laid out above.
 
 ## Related
 

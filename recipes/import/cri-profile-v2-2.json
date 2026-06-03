@@ -1,0 +1,21 @@
+{
+  "recipe": "cri-profile-v2-2-flat",
+  "source": { "ontology": "cri-profile", "levels": ["statement"] },
+  "target": {
+    "layout": [
+      { "level": "statement", "mechanism": "file", "template": "{Profile Id|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "title": "{CRI Profile Function / Category / Subcategory}",
+          "profile_id": "{Profile Id}",
+          "level": "{Level}",
+          "outline_id": "{Outline Id}",
+          "sector": "financial-services"
+        },
+        "user_preserve": ["reviewer", "status", "notes"]
+      }
+    }
+  }
+}

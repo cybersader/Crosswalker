@@ -20,6 +20,8 @@ Running the real GRC framework corpus through the headless ingestion harness (`t
 - **Regression test** pinning `fs-safe`'s hyphen/paren preservation (guards the latent control-byte bug fixed in the prior commit).
 - **New guard** `bun run check:log-labels` — every `zz-log/*.mdx` must carry a `sidebar.label` prefixed with its filename's `MM-DD ·` date, so dev/decision logs can't drift undated in the sidebar again. Fixed 4 previously-undated labels (streaming-refactor, phase-5-scope, logging-infra, query-state).
 - **Tests:** 34 suites / 545 tests / all pass (+3 filter tests).
+- **Header-key normalization** in the XLSX reader — collapses the embedded `\r\n` that NIST/CRI workbooks bake into header cells (`Profile\r\nId`, `Focal Document\r\nElement`), so recipes reference clean single-space column names. CSV path unaffected (no fixture drift).
+- **Depth-first end-to-end slice started** — drive a small set (NIST CSF 2.0 ↔ 800-53 ↔ CRI Profile v2.2, the FI-sector hub) all the way to a rendered Bases coverage pivot, rather than accumulating import recipes that stop at Tier 1. Stage A done: all three frameworks render to Tier 1 concept notes (1,189 + 185 + 472) through the production engine. New recipe `recipes/import/cri-profile-v2-2.json`. CRI's copyrighted source + output stay gitignored; only the recipe (no copyrighted text) is committed.
 
 ### v0.1.6 Phase 6.3 — Benchmark + bundled-fixture import (testable surface) (2026-05-19, ✅ Done)
 

@@ -198,7 +198,12 @@ function readXlsx(absPath: string, sheet: string | undefined, headerRow: number)
 	return raw.map((r) => {
 		const row: CsvRow = {} as CsvRow;
 		for (const [k, v] of Object.entries(r)) {
-			row[k] = v === null || v === undefined ? '' : String(v).trim();
+			// Normalize header KEYS: collapse internal whitespace (incl. the embedded
+			// \r\n that NIST/CRI workbooks bake into header cells — e.g. "Focal
+			// Document\r\nElement", "Profile\r\nId") and trim, so recipes can reference
+			// clean single-space names ("Profile Id", "Focal Document Element").
+			const key = k.replace(/\s+/g, ' ').trim();
+			row[key] = v === null || v === undefined ? '' : String(v).trim();
 		}
 		return row;
 	});
