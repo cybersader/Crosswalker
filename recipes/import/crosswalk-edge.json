@@ -1,0 +1,27 @@
+{
+  "recipe": "olir-crosswalk-edge",
+  "source": { "ontology": "xwalk", "levels": ["edge"] },
+  "target": {
+    "layout": [
+      {
+        "level": "edge",
+        "mechanism": "file",
+        "template": "cw-{subject_id|slug}--{object_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "subject_id": "{subject_id}",
+          "predicate_id": "{strm_predicate}",
+          "object_id": "{object_id}",
+          "match_confidence": "{match_confidence}",
+          "mapping_justification": "{mapping_justification}",
+          "mapping_provider": "{mapping_provider}",
+          "sssom_predicate": "{sssom_predicate}"
+        }
+      }
+    }
+  }
+}

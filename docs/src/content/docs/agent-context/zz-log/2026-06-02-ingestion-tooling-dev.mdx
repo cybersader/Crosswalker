@@ -108,7 +108,29 @@ This keeps the **single coupling point** (`render(Recipe, ConceptIdentity) → A
 | NIST CSF 2.0 | `csf2.xlsx` | 185 |
 | CRI Profile v2.2 | CRI structure sheet (header row 2) | 472 (7 F · 28 C · 119 S · 318 DS) |
 
-**Stage B — the thesis (next): one reusable OLIR→SSSOM crosswalk reader.** Both the public CSF→800-53 crosswalk and the CRI→800-53 crosswalk use the **identical NIST OLIR layout** (`Focal Document Element` / `Reference Document Element` / `Strength of Relationship`). A single reader maps that → SSSOM rows (`subject_id` ← Focal, `object_id` ← Reference, `predicate_id` ← Strength, as skos close/broad/relatedMatch) → **junction notes** via the existing SSSOM importer. CRI→CSF comes from the inline mapping column. **Stages C/D:** open the slice in Obsidian → Tier 2 sidecar indexes → the `crosswalkerPivot` coverage matrix renders → manual verification (the part headless can't reach).
+**Stage B — the thesis (done 2026-06-03): one reusable OLIR→SSSOM crosswalk reader.** Both the public CSF→800-53 crosswalk and the CRI→800-53 crosswalk use the **identical NIST OLIR layout** (`Focal Document Element` / `Reference Document Element` / `Relationship` / `Strength of Relationship`), so [`tools/crosswalk-from-olir.ts`](https://github.com/cybersader/crosswalker/blob/main/tools/crosswalk-from-olir.ts) serves them all. It maps the OLIR layout → **crosswalk-edge** Tier 1 notes via the **real `render()`** (`kind: 'crosswalk-edge'`, wired in v0.1.6) + the generic [`recipes/import/crosswalk-edge.json`](https://github.com/cybersader/crosswalker/blob/main/recipes/import/crosswalk-edge.json), and emits a standard **SSSOM TSV** as a shareable artifact. Every note is gated by the *same* `validateTier1Frontmatter` (AJV) the plugin uses — schema-valid or not written.
+
+The predicate chain is **OLIR → SKOS → STRM** (reuse, not new logic):
+
+| OLIR `Relationship` | → SKOS (in the SSSOM TSV) | → STRM `predicate_id` (in the note) |
+|---|---|---|
+| `equal` | `skos:exactMatch` | `is_equivalent_to` |
+| `subset of` | `skos:broadMatch` | `is_broader_than` ⚠️ |
+| `superset of` | `skos:narrowMatch` | `is_narrower_than` ⚠️ |
+| `intersects with` (+ blank) | `skos:relatedMatch` | `intersects_with` |
+
+`Strength` (0–10) → `match_confidence` (÷10, 0–1). `SKOS_TO_STRM` mirrors the (module-private) map in `src/import/sssom-importer.ts`.
+
+**Results (Stage B):**
+
+| Edge | Source | Edges | Predicates |
+|---|---|---|---|
+| **CSF 2.0 → 800-53** (public, commit-safe) | NIST official crosswalk | **740** | all `intersects_with` (no rel-type in source) |
+| **CRI → 800-53** (FI, local-only) | CRI→800-53 OLIR (20 family sheets) | **1,039** | 71 equivalent · 179 broader · 278 narrower · 511 intersects |
+
+⚠️ **Direction snag (flagged, not silently shipped):** the mirrored `SKOS_TO_STRM` labels `skos:broadMatch → is_broader_than` ("subject broader"), which **inverts standard SKOS** (where `A broadMatch B` ⇒ B is broader). So the directional CRI edges (`is_broader_than` ↔ `is_narrower_than`) may be swapped. The public CSF→800-53 pivot (all `intersects_with`) is unaffected. Resolve the convention — fix the map *or* the recipe-side OLIR→SKOS mapping — before trusting directional CRI edges. Logged as a snag below.
+
+**Stages C/D (manual — the part headless can't reach):** open the slice in Obsidian → Tier 2 sidecar indexes → the `crosswalkerPivot` coverage matrix renders. Step-by-step (with regen commands, since the slice is gitignored): [`TEST_CROSSWALK_PIVOT.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_CROSSWALK_PIVOT.md).
 
 ## Snags surfaced (the live backlog)
 
@@ -120,6 +142,8 @@ Running real frameworks *is* the requirements process. What's surfaced so far:
 | ✅ **Newline-in-header keys** — `Profile\r\nId`, `Focal Document\r\nElement` → recipe `{Profile Id}` matched nothing | CRI, NIST OLIR crosswalks | **Resolved** → header-key normalization in the XLSX reader (above) |
 | **Merged-cell forward-fill** — Function/Category sit only on group-header rows; empty on the child rows → `family` blank | CSF 2.0, CRI (Tier-1..4) | forward-fill hierarchy columns down into child rows (then group-headers can become parent concepts too) |
 | Empty-id rows skipped silently | 800-53, CSF | acceptable default; consider a `--strict` skipped-row report |
+| ⚠️ **SKOS→STRM direction inverts standard SKOS** — `broadMatch → is_broader_than` reads "subject broader" but standard SKOS `A broadMatch B` ⇒ B broader | CRI→800-53 (directional edges) | decide the convention; fix `SKOS_TO_STRM` *or* the OLIR→SKOS map. Counts (pivot) unaffected |
+| **Per-sheet banner rows** — OLIR family sheets (`AT`/`AU`/… after the first `Relationships-AC`) shift the header row → 803/1842 CRI→800-53 rows skipped | CRI→800-53 | per-sheet header detection (like `--header-row`) in `crosswalk-from-olir.ts` |
 | Per-framework invocation is a long CLI string | all | promote `--map` / `--sheet` / `--header-row` into a **config file** — the Tier-3 "as-code" unit |
 
 ## Ingestion scoreboard
@@ -129,13 +153,15 @@ Running real frameworks *is* the requirements process. What's surfaced so far:
 | NIST 800-53 r5 | CSV | **recipe** `nist-800-53-flat.json` via real `render()` | ✅ 1,189 controls |
 | NIST CSF 2.0 | XLSX | **recipe** `nist-csf-2.json` (`split` filters) via real `render()` | ✅ 185 subcategories — clean `DE.AE-01.md` ids + split titles; hierarchy still needs forward-fill |
 | CRI Profile v2.2 | XLSX | **recipe** `cri-profile-v2-2.json` (header row 2; FI-sector, local-only) | ✅ 472 (F·C·S·DS); `sector: financial-services` stamped |
+| **CSF 2.0 → 800-53** (edges) | XLSX (OLIR) | `crosswalk-from-olir.ts` → `render()` `kind: crosswalk-edge` + SSSOM TSV | ✅ 740 schema-valid edges (public; pivot-ready) |
+| **CRI → 800-53** (edges) | XLSX (OLIR ×20 sheets) | `crosswalk-from-olir.ts` (local-only) | ✅ 1,039 edges; predicate variety + confidence; direction snag flagged |
 
 ## Next — retarget onto the implemented constructs
 
 1. ✅ **Refactor the harness onto the real `render()` + a `Recipe`** — *done 2026-06-03* (800-53 renders through the production engine; legacy path retained).
 2. ✅ **field-split** → `split` / `regex` / `trim` filters added to the closed set — *done 2026-06-03* (CSF ids + titles clean through `render()`; 40 render tests). Follow-on: an `after(<delim>)` filter for multi-colon descriptions.
 3. ✅ **Header-key normalization** → XLSX reader collapses newline-laden header keys — *done 2026-06-03* (unblocks CRI + both OLIR crosswalks).
-4. 🚧 **Stage B — OLIR→SSSOM crosswalk reader** (the thesis): map the shared NIST-OLIR layout → SSSOM rows → junction notes, for CSF→800-53 (public) + CRI→800-53 + CRI→CSF (local). Then Stages C/D: live Obsidian → Tier 2 → `crosswalkerPivot` renders → manual verify.
+4. ✅ **Stage B — OLIR→SSSOM crosswalk reader** (the thesis) — *done 2026-06-03*: `crosswalk-from-olir.ts` → `render()` crosswalk-edge notes + SSSOM TSV; CSF→800-53 (740, public) + CRI→800-53 (1,039, local), all AJV-validated. **Now:** (a) Stages C/D — render the pivot in Obsidian per [`TEST_CROSSWALK_PIVOT.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_CROSSWALK_PIVOT.md); (b) resolve the SKOS→STRM direction convention; (c) CRI→CSF from the inline `NIST CSF v2 Mapping` column (a per-row extractor, not OLIR); (d) per-sheet header detection to recover the 803 skipped CRI rows.
 5. **merged-cell forward-fill** → a row pre-transform (the cross-structural **forward-fill** primitive) so hierarchy columns (CSF Function/Category, CRI Tier-1..4) populate child rows — then group-headers become parent concepts too.
 6. **AJV-validate recipes inside the harness** → run each `--recipe` JSON through AJV against `spec/recipe.schema.json` before rendering (see the callout above), so a malformed recipe fails fast with a precise error instead of a confusing render.
 7. **JSON reader** (logical source + iterator path) → STIX / OSCAL / CPRT (~39 files). High-level laid out above.
