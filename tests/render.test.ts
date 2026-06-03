@@ -68,6 +68,25 @@ describe('renderTemplate', () => {
 	it('applies the fs-safe filter — strips Windows-reserved chars', () => {
 		expect(renderTemplate('{c|fs-safe}', { c: 'foo<bar>baz' })).toBe('foo_bar_baz');
 		expect(renderTemplate('{c|fs-safe}', { c: 'a/b\\c?d*e' })).toBe('a_b_c_d_e');
+		// Hyphens, dots, parens are PRESERVED (regression: a stray "-" embedded as a
+		// literal control byte in the class used to clobber them + form a bad range).
+		expect(renderTemplate('{c|fs-safe}', { c: 'AC-2(1)' })).toBe('AC-2(1)');
+		expect(renderTemplate('{c|fs-safe}', { c: 'T1078.001' })).toBe('T1078.001');
+	});
+
+	it('applies the split filter — n-th segment by delimiter, trimmed', () => {
+		expect(renderTemplate('{c|split(:,0)}', { c: 'DE.AE-01: Adverse events' })).toBe('DE.AE-01');
+		expect(renderTemplate('{c|split(:,1)}', { c: 'DE.AE-01: Adverse events' })).toBe('Adverse events');
+		expect(renderTemplate('{c|split(:,5)}', { c: 'a:b' })).toBe(''); // out-of-range → empty
+	});
+
+	it('applies the regex filter — first match or capture group', () => {
+		expect(renderTemplate('{c|regex([A-Z.]+-\\d+)}', { c: 'GV.OC-01: text' })).toBe('GV.OC-01');
+		expect(renderTemplate('{c|regex(ZZZ)}', { c: 'abc' })).toBe(''); // no match → empty
+	});
+
+	it('applies the trim filter', () => {
+		expect(renderTemplate('{c|trim}', { c: '  hi  ' })).toBe('hi');
 	});
 
 	it('applies the truncate filter with argument', () => {

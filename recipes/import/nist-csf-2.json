@@ -1,0 +1,18 @@
+{
+  "recipe": "nist-csf-2-flat",
+  "source": { "ontology": "nist-csf-2", "levels": ["subcategory"] },
+  "target": {
+    "layout": [
+      { "level": "subcategory", "mechanism": "file", "template": "{Subcategory|split(:,0)|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "title": "{Subcategory|split(:,1)|trim}",
+          "subcategory_id": "{Subcategory|split(:,0)}"
+        },
+        "user_preserve": ["reviewer", "status", "notes"]
+      }
+    }
+  }
+}

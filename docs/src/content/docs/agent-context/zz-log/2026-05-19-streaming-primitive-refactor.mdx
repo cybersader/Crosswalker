@@ -3,7 +3,7 @@ title: "Streaming primitive refactor — Layer A goes iterable-first"
 description: "User surfaced that the Phase 5+6 Layer A primitives are array-based — won't scale. Decision (2026-05-19): refactor every primitive to iterable-first shape BEFORE wiring into the recipe runtime, so the API is correct from the first call site. Filter/bind/project are pure generators (single-pass, constant memory); join/anti-join/set-op use hash-build on the smaller side + stream the larger (DuckDB / Polars pattern, memory bounded by smaller side). diff stays array-based (inherently set-comparison). Closure/recursive-traversal stays Tier 2 SQL. Ch 34 deliverable queued in parallel for the chunked-merge + spill-to-disk question."
 sidebar:
   order: -20260519
-  label: "Streaming refactor · Layer A"
+  label: "05-19 · Streaming refactor · Layer A"
 tags: [log, phase-6-2, streaming, primitives, iterables, hash-join, chunky-csv, ch-34, v0-1-6]
 date: 2026-05-19
 ---

@@ -118,6 +118,38 @@ const FILTERS: Record<string, (v: unknown, arg?: string) => unknown> = {
 		const s = String(v);
 		return s.length > n ? s.slice(0, n) : s;
 	},
+	trim: (v) => String(v).trim(),
+	split: (v, arg) => {
+		// {var|split(<delim>,<index>)} — split on <delim>, return the n-th (0-based)
+		// segment, trimmed. For values that pack a code + name into one cell, e.g.
+		// CSF's "DE.AE-01: Adverse events are analyzed" → split(:,0) → "DE.AE-01".
+		if (arg === undefined) {
+			throw new RenderError(`split filter requires "<delim>,<index>", e.g. {var|split(:,0)}.`);
+		}
+		const m = arg.match(/^(.*),(\d+)$/);
+		if (!m) {
+			throw new RenderError(`split filter argument must be "<delim>,<index>"; got "${arg}".`);
+		}
+		const [, delim, idxStr] = m;
+		const parts = String(v).split(delim);
+		return (parts[parseInt(idxStr, 10)] ?? '').trim();
+	},
+	regex: (v, arg) => {
+		// {var|regex(<pattern>)} — return the first match of <pattern> (or its first
+		// capture group, if present). The pattern cannot contain ")" or "|" — the
+		// template parser reserves those — so reach for split() in those cases.
+		if (arg === undefined) {
+			throw new RenderError(`regex filter requires a pattern, e.g. {var|regex([A-Z.]+-\\d+)}.`);
+		}
+		let re: RegExp;
+		try {
+			re = new RegExp(arg);
+		} catch (e) {
+			throw new RenderError(`regex filter pattern is invalid (${(e as Error).message}).`);
+		}
+		const found = String(v).match(re);
+		return found ? (found[1] ?? found[0]) : '';
+	},
 };
 
 function applyFilter(filterExpr: string, value: unknown, originalTemplate: string): unknown {

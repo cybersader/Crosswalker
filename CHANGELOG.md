@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Ingestion harness — recipe `split` / `regex` / `trim` template filters + zz-log label guard (2026-06-03)
+
+Running the real GRC framework corpus through the headless ingestion harness (`tools/generate-fixtures.ts` → real `render()` + a `Recipe`) surfaced the first field-shape requirement and turned it into a first-class construct instead of harness glue.
+
+- **Three new template filters** in the closed set (`src/render/template.ts`), usable from any recipe's `{var|filter}` expressions:
+  - `split(<delim>,<index>)` — nth (0-based) delimiter segment, trimmed (e.g. CSF's `"DE.AE-01: Adverse events…"` → `split(:,0)` → `DE.AE-01`; `split(:,1)|trim` → the name)
+  - `regex(<pattern>)` — first match, or first capture group if present
+  - `trim` — strip surrounding whitespace
+- **First per-framework import recipe using them:** `recipes/import/nist-csf-2.json` — NIST CSF 2.0 → 185 subcategory concepts with clean `DE.AE-01.md` ids + split-out titles, all through the production engine.
+- **Regression test** pinning `fs-safe`'s hyphen/paren preservation (guards the latent control-byte bug fixed in the prior commit).
+- **New guard** `bun run check:log-labels` — every `zz-log/*.mdx` must carry a `sidebar.label` prefixed with its filename's `MM-DD ·` date, so dev/decision logs can't drift undated in the sidebar again. Fixed 4 previously-undated labels (streaming-refactor, phase-5-scope, logging-infra, query-state).
+- **Tests:** 34 suites / 545 tests / all pass (+3 filter tests).
+
 ### v0.1.6 Phase 6.3 — Benchmark + bundled-fixture import (testable surface) (2026-05-19, ✅ Done)
 
 User direction (2026-05-19): "keep moving forward to the point where I'll be able to start testing myself again. But also wire things into logging so we can test for speed, optimization, hardware usage." Two new commands give end-to-end visibility into the new primitive substrate without needing existing vault data.
