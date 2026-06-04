@@ -1,0 +1,96 @@
+---
+title: "Toward a first-principles taxonomy — data shape · relations · operations · view shape"
+description: Idea-capture log for a Crosswalker taxonomy of how data is represented, related, operated on, and viewed — grounded in relational algebra, OLAP aggregation, and graph traversal. Separates the *kinds* of operations (combine/join vs summarize/aggregate vs traverse) that collapse into "the matrix", maps them onto what already exists (query-primitives = Layer A, view-shapes = Layer B), and proposes the data-shape layer + a candidate-view menu for the GRC corpus.
+sidebar:
+  order: -20260604
+  label: "06-04 · Data/op/view taxonomy (idea capture)"
+tags: [log, taxonomy, query-engine, ontology, relational-algebra, views]
+date: 2026-06-04
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="What this is — and why over-scoping is fine here">
+A morning-read idea dump. The intent (user, 2026-06-04): build a first-principles taxonomy *inside Crosswalker* of how data is represented and related — because the project is, at heart, a tool for understanding **the shape of ontologies** and how to use them. Joining, left-joining, anti-joining — but also things that aren't joins at all, like summing. "I don't care if it's over-scoping" — this *is* the learning core of the project. The payoff: knowing the taxonomy tells us **which views to build** as we test through the GRC audit/compliance library.
+</Aside>
+
+## The instinct that started this: a pivot is not a join
+
+"A pivot could also be a left join — is that a thing?" No — and the *no* is the whole point. **Joining combines rows; summing collapses them. They are different families of operation.** A pivot is fundamentally a **group-and-aggregate** (OLAP), not a join. The join is an *optional upstream step* (to pull in unmapped rows so gaps show). Disentangling that is what this taxonomy is for. (See the [four dials log](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/) — this extends it from 4 dials into a fuller stack.)
+
+## The full stack (the meta-taxonomy)
+
+Five orthogonal layers. Each is an independent choice; reading top-to-bottom is the lifecycle of a question.
+
+| Layer | The question | Choices | Where it lives today |
+|---|---|---|---|
+| **1. Data shape** | how is the data *represented*? | relation/table · tree/hierarchy · **graph** · sequence | implicit — *no concept page yet* |
+| **2. Relations** | how do items *relate*? | hierarchical (broader/narrower) · associative (crosswalk) · membership · evidence · temporal | [terminology](/crosswalker/concepts/terminology/), partly |
+| **3. Operations** | what do you *do* to it? | reshape · combine · summarize · traverse · compare | [query-primitives](/crosswalker/concepts/query-primitives/) (flat list of 8) |
+| **4. View shape** | how is the result *drawn*? | table · list · pivot · graph · hierarchy · timeline | [view-shapes](/crosswalker/concepts/view-shapes/) ✅ |
+| **5. Layout + settings** | where do notes *live*; knobs | folder/file/heading/tag/wikilink; rowsBy/heatmap/sort | [hierarchy-primitives](/crosswalker/concepts/hierarchy-primitives/) ✅ |
+
+## Operation families — the meat (and the join-vs-sum split)
+
+The existing [query-primitives](/crosswalker/concepts/query-primitives/) page lists 8 operations *flat*. The missing first-principles move is to **group them by what they fundamentally do to a row-set**, grounded in established theory:
+
+| Family | What it does to rows | Primitives (ours) | Theory it comes from |
+|---|---|---|---|
+| **Reshape / select** | keep/drop rows + columns; derive new columns | `filter` · `project` · `bind` | relational algebra (σ select, π project) |
+| **Combine / relate** | *widen* — stitch two row-sets on a key | `join` (inner/left/right/full/**anti**/semi) · `set-op` (∪ ∩ −) | relational algebra (⋈, ∪, −) |
+| **Summarize / reduce** | *collapse* — many rows → one summary per group | `aggregate` (group-by + count/sum/avg/min/max/density) | **OLAP** — a GROUP BY *extension* to classic RA, not RA itself |
+| **Traverse** | *follow edges* — walk the graph, transitively | `traverse` (hop · transitive closure · neighborhood) | Datalog / SPARQL property paths (`p*`) — beyond RA |
+| **Compare** | delta between two snapshots | `diff` | version/ontology-specific |
+
+**The key distinctions to internalize:**
+- **Combine widens, summarize collapses.** A join adds columns (more about each row); an aggregate removes rows (fewer, summarized rows). Opposite directions.
+- **A pivot = combine (assemble) → summarize (group by row-axis × col-axis, aggregate a measure) → present as a matrix.** So a pivot belongs to the *summarize* family wearing a *view shape*. "Pivot = left join" was a category error: the left join, if present, is the *combine* step feeding it.
+- **Traverse is its own thing.** Following `broader`/`maps-to` edges transitively (CSF → 800-53 → CRI) is neither a join nor an aggregate — it's graph reachability (recursive). Classic RA can't even express it; that's why Tier 2 uses recursive CTEs.
+
+## Data shapes — the layer with no page yet
+
+The deepest first-principles point, and the one we haven't written down:
+
+| Shape | Structure | In Crosswalker |
+|---|---|---|
+| **Relation / table** | a set of tuples (rows × columns) | a *projection* of concepts/edges for one question |
+| **Tree / hierarchy** | mono-parent nesting | a framework's internal structure (SKOS `broader`) |
+| **Graph** | nodes + typed edges, many-to-many | **the substrate** — concepts are nodes, mappings + hierarchy are edges |
+| **Sequence** | ordered list | versions, timelines, audit trail |
+
+**Crosswalker is fundamentally a graph** (concepts + typed edges). Tables, trees, and matrices are *projections of that graph* chosen to answer a question. That single idea — *ontology = graph; every view = a projection of the graph* — is arguably the spine of the whole project and deserves its own concept page.
+
+## Candidate views for the GRC corpus (the practical payoff)
+
+Each view = an operation family + a view shape. This menu is what to pull from as we test the audit/compliance library:
+
+| View | Question it answers | Operation family | View shape | Status |
+|---|---|---|---|---|
+| **Coverage matrix** | where do framework A & B overlap? | summarize (count) | pivot | ✅ built |
+| **Coverage density** | how heavily is each area mapped? | summarize (count, grouped) | table / pivot | ✅ built |
+| **Gap / orphan** | which controls have *no* coverage? | combine (**anti-join**) | list / table | next |
+| **Overlap** | controls in *both* A and B | combine (set-op ∩) | list | buildable |
+| **Only-in-A** | in A but not B | combine (set-op −) | list | buildable |
+| **Crosswalk chain** | A → B → C transitive reach | traverse (closure) | graph / list | closure shipped |
+| **Bidirectional lookup** | what maps to X (either direction)? | reshape (filter) | table | ✅ built |
+| **Confidence-weighted coverage** | strong vs weak coverage | summarize (avg/sum of confidence) | pivot heatmap | buildable |
+| **Version diff** | what changed v1 → v2? | compare (diff) | table | primitive shipped |
+| **Framework-pair density** | which framework *pairs* are densest? | summarize (group by pair) | table | buildable |
+
+The pattern: most "compliance questions" are one operation family + one shape. Naming the family first tells you which primitive to reach for and which shape fits.
+
+## Concept pages to develop (proposal — not building tonight)
+
+1. **`concepts/data-shapes`** (new) — representation layer: relation / tree / graph / sequence, and the "ontology = graph, views = projections" spine.
+2. **Extend `concepts/query-primitives`** — group the 8 operations into the 5 families above (reshape / combine / summarize / traverse / compare) instead of a flat list; add the combine-widens-vs-summarize-collapses framing.
+3. **A taxonomy index** — graduate the [four dials log](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/) into a concept page that ties the 5 layers together (or fold into [system-architecture](/crosswalker/concepts/system-architecture/)).
+
+<Aside type="caution" title="Concept-page sprawl">
+Per the user: we may end up with too many concept pages and have to pare them into sections later. Fine for now — capture first, organize once the shape settles. Candidate future grouping: a `concepts/foundations/` section (data-shapes, operations, view-shapes, layout) vs `concepts/domain/` (the GRC/compliance pages).
+</Aside>
+
+## Related
+
+- [Four dials — layout · join · shape · view-settings](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/) — the seed this grows from
+- [Query primitives](/crosswalker/concepts/query-primitives/) (Layer A) · [View shapes](/crosswalker/concepts/view-shapes/) (Layer B) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) (layout)
+- [Ingestion tooling dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) · [System architecture](/crosswalker/concepts/system-architecture/) · [Terminology](/crosswalker/concepts/terminology/)
