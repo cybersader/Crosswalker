@@ -18,6 +18,26 @@ A morning-read idea dump. The intent (user, 2026-06-04): build a first-principle
 
 **Data morphology** — the study of the *forms* structured data takes, and the operations that transform one form into another. ("Morphology" is the study of form.) This is **not a general taxonomy**; it is the specific thing Crosswalker must describe to reason about ontologies well: every concept set has a *shape*, every view is a *shape*, and every operation is a *transformation between shapes*. Having the name lets us say precisely — *what shape is this, which operation am I applying, what shape am I rendering* — instead of blurring all three into "the table."
 
+## The mental model: shape, then three knobs
+
+The goal is an **intuitive mental model**, not an academic chart. Hold this: data has a **shape**, and then there are **three independent knobs**. Almost every confusion (*"is a pivot a join?"*, *"transpose vs x/y axes"*) is from mixing the knobs.
+
+> **Shape** what you've got → turn three knobs: **what it says** · **how it's laid out** · **how it looks**.
+
+| | Plain question | The knob controls… | Everyday words |
+|---|---|---|---|
+| **Shape** | what *kind* of thing is this? | the native form | list · tree · web · timeline |
+| **① Transform** | what should it **say**? | the *content* — which facts are present | keep (`filter`) · merge (`join`) · total (`sum`) |
+| **② Reshape** | how is it **laid out**? | the *grid layout* — same facts, moved | `transpose` · wide ↔ tall · roll-up / drill-down |
+| **③ Draw** | how should it **look**? | the *picture* — facts → visuals | x / y axes · color · bars vs dots |
+
+**The one rule that resolves everything:** the three knobs are independent.
+- **Transform** changes the *facts* — a sum removes rows, a join adds columns.
+- **Reshape** changes the *layout*, never the facts — transpose is the same data, spun.
+- **Draw** changes the *picture*, never the layout — x/y axes is a visual choice.
+
+"Is a pivot a join?" No — a pivot turns all three knobs at once (total → spread wide → put on axes), which is why it feels like one big thing. Pull the knobs apart and it's obvious. Everything below is the rigorous backing for these four moves.
+
 ## The instinct that started this: a pivot is not a join
 
 "A pivot could also be a left join — is that a thing?" No — and the *no* is the whole point. **Joining combines rows; summing collapses them. They are different families of operation.** A pivot is fundamentally a **group-and-aggregate** (OLAP), not a join. The join is an *optional upstream step* (to pull in unmapped rows so gaps show). Disentangling that is what this taxonomy is for. (See the [four dials log](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/) — this extends it from 4 dials into a fuller stack.)
