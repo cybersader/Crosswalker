@@ -55,23 +55,24 @@ The goal is an **intuitive mental model**, not an academic chart. Hold this: dat
 
 ## The full stack (the meta-taxonomy)
 
-Five orthogonal layers. Each is an independent choice; reading top-to-bottom is the lifecycle of a question.
+The **shape** the data starts in, the three action knobs (**transform · reshape · draw**), plus the relations inside it and where it physically lives. Each is an independent choice; reading top-to-bottom is the lifecycle of a question.
 
 | Layer | The question | Choices | Where it lives today |
 |---|---|---|---|
-| **1. Data shape** | how is the data *represented*? | relation/table · tree/hierarchy · **graph** · sequence | implicit — *no concept page yet* |
-| **2. Relations** | how do items *relate*? | hierarchical (broader/narrower) · associative (crosswalk) · membership · evidence · temporal | [terminology](/crosswalker/concepts/terminology/), partly |
-| **3. Operations** | what do you *do* to it? | reshape · combine · summarize · traverse · compare | [query-primitives](/crosswalker/concepts/query-primitives/) (flat list of 8) |
-| **4. View shape** | how is the result *drawn*? | table · list · pivot · graph · hierarchy · timeline | [view-shapes](/crosswalker/concepts/view-shapes/) ✅ |
-| **5. Layout + settings** | where do notes *live*; knobs | folder/file/heading/tag/wikilink; rowsBy/heatmap/sort | [hierarchy-primitives](/crosswalker/concepts/hierarchy-primitives/) ✅ |
+| **Shape** | how is the data *represented*? | relation/table · tree · **graph** · sequence | detailed below |
+| **Relations** | how do items *relate* — the kinds of edge? | hierarchical (broader/narrower) · associative (crosswalk) · membership · evidence | [terminology](/crosswalker/concepts/terminology/), partly |
+| **① Transform** | what should it *say*? — *change the facts* | select · combine · summarize · traverse · compare | [query-primitives](/crosswalker/concepts/query-primitives/) |
+| **② Reshape** | how is it *laid out*? — *same facts, moved* | transpose · wide ↔ long · roll-up / drill-down | OLAP cube ops · `tidyr` |
+| **③ Draw** *(view shape)* | how is it *drawn*? | table · list · pivot · graph · hierarchy · timeline | [view-shapes](/crosswalker/concepts/view-shapes/) ✅ |
+| **Layout + settings** | where do notes *live*; the knobs | folder/file/heading/tag/wikilink; rowsBy/heatmap/sort | [hierarchy-primitives](/crosswalker/concepts/hierarchy-primitives/) ✅ |
 
-## Operation families — the meat (and the join-vs-sum split)
+## The Transform knob, in five families (the join-vs-sum split)
 
-The existing [query-primitives](/crosswalker/concepts/query-primitives/) page lists 8 operations *flat*. The missing first-principles move is to **group them by what they fundamentally do to a row-set**, grounded in established theory:
+**Transform** — the knob that *changes the facts* — isn't one thing; it's five families, grouped by what each does to a row-set, every one grounded in established theory. (The [query-primitives](/crosswalker/concepts/query-primitives/) page lists these flat; here they're grouped.) Note: these are all **Transform** — *Reshape* (transpose) and *Draw* are the other two knobs, not families here.
 
 | Family | What it does to rows | Primitives (ours) | Theory it comes from |
 |---|---|---|---|
-| **Reshape / select** | keep/drop rows + columns; derive new columns | `filter` · `project` · `bind` | relational algebra (σ select, π project) |
+| **Select / derive** | keep/drop rows + columns; derive new columns | `filter` · `project` · `bind` | relational algebra (σ select, π project) |
 | **Combine / relate** | *widen* — stitch two row-sets on a key | `join` (inner/left/right/full/**anti**/semi) · `set-op` (∪ ∩ −) | relational algebra (⋈, ∪, −) |
 | **Summarize / reduce** | *collapse* — many rows → one summary per group | `aggregate` (group-by + count/sum/avg/min/max/density) | **OLAP** — a GROUP BY *extension* to classic RA, not RA itself |
 | **Traverse** | *follow edges* — walk the graph, transitively | `traverse` (hop · transitive closure · neighborhood) | Datalog / SPARQL property paths (`p*`) — beyond RA |
@@ -109,20 +110,20 @@ The relief: this is **well-trodden ground in data science**, already compressed 
 | Layer | Established grammar | The trivialized verb set | Crosswalker mapping |
 |---|---|---|---|
 | **Shape** | **Tidy data** (Wickham 2014) | rows = observations, cols = variables; long vs wide | data shapes (relation / tree / graph / sequence) |
-| **Transform** | **Grammar of data manipulation** (dplyr; relational algebra, Codd 1970) | one-table: `filter` · `select` · `mutate` · `arrange` · `summarise`+`group_by`; two-table: `join` (inner/left/right/full/anti/semi) · set-ops (∪ ∩ −) | reshape + combine + summarize families |
-| **Reshape** | **OLAP cube ops** + pivot (`tidyr`) | `transpose` · long↔wide (`pivot_longer`/`pivot_wider`) · roll-up · drill-down · slice · dice | layout change *without* changing content |
-| **Project / present** | **Grammar of graphics** (Wilkinson 1999; ggplot2, Wickham 2010) | data → aesthetics (`x`, `y`, `color`, `size`) → geometry (bar/point/tile/line) → facets / coords | view shapes (table / pivot / graph / hierarchy / timeline) |
+| **① Transform** | **Grammar of data manipulation** (dplyr; relational algebra, Codd 1970) | one-table: `filter` · `select` · `mutate` · `arrange` · `summarise`+`group_by`; two-table: `join` (inner/left/right/full/anti/semi) · set-ops (∪ ∩ −) | the five Transform families (select · combine · summarize · traverse · compare) |
+| **② Reshape** | **OLAP cube ops** + pivot (`tidyr`) | `transpose` · long↔wide (`pivot_longer`/`pivot_wider`) · roll-up · drill-down · slice · dice | layout change *without* changing content |
+| **③ Draw** *(present / visualize)* | **Grammar of graphics** (Wilkinson 1999; ggplot2, Wickham 2010) | data → aesthetics (`x`, `y`, `color`, `size`) → geometry (bar/point/tile/line) → facets / coords | view shapes (table / pivot / graph / hierarchy / timeline) |
 
 **The clarifying payoff** — the Excel examples live in *different* layers:
 - **`transpose`** (swap rows ↔ cols) is **reshape** — same content, different layout.
-- **"x / y axes"** is **project** — mapping a column to a visual position (an *aesthetic*); the grammar-of-graphics move.
-- Excel blurs them into "the pivot table"; data morphology keeps them apart. A pivot table is literally *group + aggregate* (transform) → *long-to-wide* (reshape) → *x = rows, y = cols, fill = measure* (project).
+- **"x / y axes"** is **draw** — mapping a column to a visual position (an *aesthetic*); the grammar-of-graphics move.
+- Excel blurs them into "the pivot table"; data morphology keeps them apart. A pivot table is literally *group + aggregate* (transform) → *long-to-wide* (reshape) → *x = rows, y = cols, fill = measure* (draw).
 
-So **one concept page is enough**: **Shape · Transform · Reshape · Project**, each a one-paragraph borrow from an existing grammar, then "here's how Crosswalker exposes it." The operation-families list above folds into **Transform**; reshape + project are the two layers it was missing.
+So **one concept page is enough**: **Shape · Transform · Reshape · Draw**, each a one-paragraph borrow from an existing grammar, then "here's how Crosswalker exposes it." The five families above unpack **Transform**; **Reshape** and **Draw** are the other two knobs — the moves Excel quietly bundles into "the pivot table."
 
 ## Candidate views for the GRC corpus (the practical payoff)
 
-Each view = a transform + a reshape + a projection. This menu is what to pull from as we test the audit/compliance library:
+Each view is a small recipe in the language above — a **transform** (which facts) → maybe a **reshape** (layout) → a **draw** (the view shape). This menu is what to pull from as we test the audit/compliance library:
 
 | View | Question it answers | Operation family | View shape | Status |
 |---|---|---|---|---|
@@ -132,7 +133,7 @@ Each view = a transform + a reshape + a projection. This menu is what to pull fr
 | **Overlap** | controls in *both* A and B | combine (set-op ∩) | list | buildable |
 | **Only-in-A** | in A but not B | combine (set-op −) | list | buildable |
 | **Crosswalk chain** | A → B → C transitive reach | traverse (closure) | graph / list | closure shipped |
-| **Bidirectional lookup** | what maps to X (either direction)? | reshape (filter) | table | ✅ built |
+| **Bidirectional lookup** | what maps to X (either direction)? | select (filter) | table | ✅ built |
 | **Confidence-weighted coverage** | strong vs weak coverage | summarize (avg/sum of confidence) | pivot heatmap | buildable |
 | **Version diff** | what changed v1 → v2? | compare (diff) | table | primitive shipped |
 | **Framework-pair density** | which framework *pairs* are densest? | summarize (group by pair) | table | buildable |
@@ -141,8 +142,8 @@ The pattern: most "compliance questions" are one operation family + one shape. N
 
 ## Concept pages to develop (proposal — not building tonight)
 
-1. **`concepts/data-morphology`** (new) — the home for this named concept: the data-shape layer (relation / tree / graph / sequence, and the "ontology = graph, views = projections" spine), the operation families, and how the five layers compose. The other concept pages become its sub-layers.
-2. **Extend `concepts/query-primitives`** — group the 8 operations into the 5 families above (reshape / combine / summarize / traverse / compare) instead of a flat list; add the combine-widens-vs-summarize-collapses framing.
+1. **`concepts/data-morphology`** (new) — the home for this named concept: the data-shape layer (relation / tree / graph / sequence, and the "ontology = graph, views = projections" spine), the operation families, and how the layers compose. The other concept pages become its sub-layers.
+2. **Extend `concepts/query-primitives`** — group the 8 operations into the 5 Transform families above (select / combine / summarize / traverse / compare) instead of a flat list; add the combine-widens-vs-summarize-collapses framing.
 3. **Cross-link** [view-shapes](/crosswalker/concepts/view-shapes/) (presentation) + [hierarchy-primitives](/crosswalker/concepts/hierarchy-primitives/) (layout) under the data-morphology umbrella; graduate the [four dials log](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/) into the layer-composition section.
 
 <Aside type="caution" title="Concept-page sprawl">
