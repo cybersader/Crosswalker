@@ -64,9 +64,27 @@ The deepest first-principles point, and the one we haven't written down:
 
 **Crosswalker is fundamentally a graph** (concepts + typed edges). Tables, trees, and matrices are *projections of that graph* chosen to answer a question. That single idea — *ontology = graph; every view = a projection of the graph* — is arguably the spine of the whole project and deserves its own concept page.
 
+## The trivialized taxonomy already exists — borrow it
+
+The relief: this is **well-trodden ground in data science**, already compressed into small, learnable "grammars." We don't invent data morphology — we adopt these and point them at ontology/graph data. This is what should inform how the tool names everything it does at the query / output / projection piece.
+
+| Layer | Established grammar | The trivialized verb set | Crosswalker mapping |
+|---|---|---|---|
+| **Shape** | **Tidy data** (Wickham 2014) | rows = observations, cols = variables; long vs wide | data shapes (relation / tree / graph / sequence) |
+| **Transform** | **Grammar of data manipulation** (dplyr; relational algebra, Codd 1970) | one-table: `filter` · `select` · `mutate` · `arrange` · `summarise`+`group_by`; two-table: `join` (inner/left/right/full/anti/semi) · set-ops (∪ ∩ −) | reshape + combine + summarize families |
+| **Reshape** | **OLAP cube ops** + pivot (`tidyr`) | `transpose` · long↔wide (`pivot_longer`/`pivot_wider`) · roll-up · drill-down · slice · dice | layout change *without* changing content |
+| **Project / present** | **Grammar of graphics** (Wilkinson 1999; ggplot2, Wickham 2010) | data → aesthetics (`x`, `y`, `color`, `size`) → geometry (bar/point/tile/line) → facets / coords | view shapes (table / pivot / graph / hierarchy / timeline) |
+
+**The clarifying payoff** — the Excel examples live in *different* layers:
+- **`transpose`** (swap rows ↔ cols) is **reshape** — same content, different layout.
+- **"x / y axes"** is **project** — mapping a column to a visual position (an *aesthetic*); the grammar-of-graphics move.
+- Excel blurs them into "the pivot table"; data morphology keeps them apart. A pivot table is literally *group + aggregate* (transform) → *long-to-wide* (reshape) → *x = rows, y = cols, fill = measure* (project).
+
+So **one concept page is enough**: **Shape · Transform · Reshape · Project**, each a one-paragraph borrow from an existing grammar, then "here's how Crosswalker exposes it." The operation-families list above folds into **Transform**; reshape + project are the two layers it was missing.
+
 ## Candidate views for the GRC corpus (the practical payoff)
 
-Each view = an operation family + a view shape. This menu is what to pull from as we test the audit/compliance library:
+Each view = a transform + a reshape + a projection. This menu is what to pull from as we test the audit/compliance library:
 
 | View | Question it answers | Operation family | View shape | Status |
 |---|---|---|---|---|
