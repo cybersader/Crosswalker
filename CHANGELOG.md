@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Crosswalk views — custom Bases pivot works on current Obsidian + rollup-by-default (2026-06-04)
+
+Driving the real crosswalk corpus through Obsidian surfaced (and fixed) a cluster of Bases-lifecycle incompatibilities in the `crosswalkerPivot` custom view — it now renders, configures, and tears down cleanly on current Obsidian Bases.
+
+- **Receives data + config again**: reads filtered entries from `controller.results` (a `Map` in current Bases, not the old `controller.entries` array), the per-view `config:` from `query.views[]`, and frontmatter from `entry.frontmatter` (not `.properties`). Handles Map / iterable / wrapped-value shapes.
+- **Lifecycle no-ops** (`focus`, `getEphemeralState`/`setEphemeralState`, `getState`/`setState`, `onResize`) so leaf-switching + workspace-restore don't throw "x is not a function" and silently abort navigation.
+- **Rollup by default**: pivot defaults to `subject_group × object_group` (compact function×family matrix) when edges carry group fields, else leaf `subject_id × object_id`. Removed the noisy "sparse pivot" warning bar (coverage matrices are inherently sparse).
+- **Edges carry rollup axes**: `crosswalk-from-olir.ts` + `crosswalk-edge.json` emit `subject_group`/`object_group` (CSF function / 800-53 family) + `source_framework`/`target_framework`.
+- **Decision log**: four dials — layout · join · shape · view-settings (a pivot is a *shape*, not a join; the join feeding it decides whether gaps show).
+- **Roadmap**: parked incremental Tier 2 projection (kill the load-time reproject) + a "this will be heavy — load anyway?" confirm gate.
+- Tests: 545 pass.
+
 ### Ingestion harness — recipe `split` / `regex` / `trim` template filters + zz-log label guard (2026-06-03)
 
 Running the real GRC framework corpus through the headless ingestion harness (`tools/generate-fixtures.ts` → real `render()` + a `Recipe`) surfaced the first field-shape requirement and turned it into a first-class construct instead of harness glue.

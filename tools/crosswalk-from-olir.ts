@@ -148,6 +148,16 @@ const slug = (s: string) =>
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '');
 
+/** Local part of a CURIE (drop the `prefix:`). */
+const localOf = (curie: string) => curie.split(':').slice(1).join(':') || curie;
+
+/** Roll-up group key for an id: its leading letters — the CSF function (GV.OC-01
+ *  → GV) or the 800-53 family (AC-2 → AC). Enables family×function coverage views. */
+const groupOf = (curie: string) => {
+	const local = localOf(curie);
+	return local.match(/^[A-Za-z]+/)?.[0] ?? local;
+};
+
 interface SssomRow {
 	subject_id: string;
 	predicate_id: string; // SKOS (standard SSSOM)
@@ -283,6 +293,10 @@ function main(): void {
 		const scope: Record<string, unknown> = {
 			subject_id: sssom.subject_id,
 			object_id: sssom.object_id,
+			subject_group: groupOf(sssom.subject_id), // roll-up axis (CSF function / 800-53 family)
+			object_group: groupOf(sssom.object_id),
+			source_framework: a.subjectPrefix,
+			target_framework: a.objectPrefix,
 			strm_predicate: skosToStrm(sssom.predicate_id),
 			sssom_predicate: sssom.predicate_id,
 			mapping_justification: sssom.mapping_justification,

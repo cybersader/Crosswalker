@@ -1,0 +1,72 @@
+---
+title: "Four orthogonal dials — layout · join · shape · view-settings (is a pivot a left join?)"
+description: A clarity log untangling four concerns that collapse into one when you stare at a coverage matrix — where the note physically lives (layout), which rows are in the set (join/verbs), how the set is drawn (shape), and the knobs on that shape (view-settings). Answers "can a pivot also be a left join?" and records what Crosswalker supports on each dial today.
+sidebar:
+  order: -20260603
+  label: "06-03 · Four dials (join vs shape vs layout)"
+tags: [log, architecture, query, pivot, join, views]
+date: 2026-06-03
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="The question that prompted this">
+While building crosswalk coverage views (2026-06-03), a sharp question came up: *"a pivot could also be a left join — is that even a thing in our system?"* It is — but only because **a join and a pivot are two different dials**, plus two more that get conflated with them. This log pins down the four so we can account for each independently.
+</Aside>
+
+## The four dials
+
+When you look at a coverage matrix, four independent decisions are baked into what you see. Turning one does not turn the others.
+
+| Dial | Concern | The question it answers | Choices | Layer |
+|---|---|---|---|---|
+| **Layout** | where the note physically lives | "where on disk does this concept/edge sit?" | folder · file · heading · tag · wikilink | Tier 1 emission ([hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/)) |
+| **Join / verbs** | which rows are in the set | "matches only? everything? just the gaps?" | inner · left · right · full · **anti** (+ filter, traverse, aggregate, diff…) | Layer A (relational) |
+| **Shape** | how the set is drawn | "matrix? list? tree? graph?" | pivot · table · list · hierarchy · graph · timeline | Layer B (presentation) |
+| **View-settings** | knobs on the chosen shape | "which axis? heatmap? sort? empty=gap/zero?" | rowsBy · colsBy · cellOp · heatmap · sort · empty | Layer B config |
+
+The whole point: **a crosswalk-edge note (layout) can be inner/left/anti-joined (verb) and drawn as a pivot/table/list (shape) with any settings.** One dataset answers many questions precisely because these stay orthogonal. Bake join semantics into the view, or layout into the query, and you lose that.
+
+## "Is a pivot a left join?"
+
+**No — a pivot is a *shape*; a join is a *verb* that produces the row-set the pivot draws.** But the join *type* is exactly what changes whether the pivot shows gaps:
+
+| Feed the pivot with… | …and the matrix shows |
+|---|---|
+| **inner** join (CSF ⋈ mappings) | only CSF subcategories that *have* a mapping — populated cells only |
+| **left** join (CSF ⟕ mappings) | *every* CSF subcategory, even unmapped — unmapped appear as **empty rows / gap cells** |
+| **anti** join (CSF ▷ mappings) | *only* the unmapped subcategories — the gap list itself |
+
+So "a pivot of a left join" is a real, useful thing: it's the **coverage matrix with the gaps left visible** instead of silently dropped. "A pivot of an anti-join" is the **gap report**. Same shape, different verb feeding it.
+
+## What Crosswalker supports on each dial today
+
+<Aside type="caution" title="The honest state (2026-06-03)">
+The dials exist as designed, but they aren't all *wired together* yet — notably, today's pivot is implicitly an **inner** join.
+</Aside>
+
+| Dial | Shipped | Gap |
+|---|---|---|
+| **Layout** | folder · file · heading (`src/render/mechanisms/`) | tag · wikilink reserved for v0.2 |
+| **Join / verbs** | inner · left · right · full · **anti** join + filter · bind · set-op · diff as Layer A primitives (`src/views/*-primitive.ts`); traverse/closure in Tier 2 | not yet wired *into* the pivot feed |
+| **Shape** | table · list · cards (Bases-native) · **pivot** (`crosswalkerPivot`) | hierarchy (v0.1.7–8) · graph · timeline (v0.2) |
+| **View-settings** | rowsBy · colsBy · cellOp · heatmap · sort · empty | reading them from the `.base` YAML is currently flaky — Bases moved the config location, so the view falls back to sensible defaults |
+
+**The load-bearing nuance:** the pivot view currently reads only the **materialized crosswalk-edge notes** — which are an *already-inner-joined* set (a note exists only where a mapping exists). So today's coverage matrix can't show gaps, because the unmapped subjects were never in its input. To get the **left/anti** behaviors (gaps, orphans) the pivot must be fed the **full concept universe** (the framework's concept notes) **joined** against the edges — i.e. wire the shipped join primitives (or a Tier 2 query) into the pivot feed, instead of pointing it at the edge folder alone.
+
+That is why, of the three coverage views, **"gap / orphan" is a different beast** than "density" or "lookup": density and lookup live entirely in the edge set (inner); gaps require the universe + a join.
+
+## Takeaway — account for all four, separately
+
+1. **Layout** is an emission decision (where the markdown lives). It does not constrain how you later query or draw it.
+2. **Join/verb** is what decides the rows — and is where "show me the gaps" lives. It is the dial people *mean* when they say "left join."
+3. **Shape** is purely how the resulting set is rendered. Pivot is one shape; it is never itself a join.
+4. **View-settings** are the per-shape knobs.
+
+Next concrete step toward this: feed the pivot a left/anti-joined set (concepts ⟕ edges) so a single coverage view can toggle between "matches only" and "with gaps" — turning the join dial without touching the shape.
+
+## Related
+
+- [Ingestion tooling dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) — where the crosswalk-edge notes (the layout dial) come from
+- [GRC corpus end-to-end](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/) — the pipeline these dials sit on
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) (layout) · [ETL & import](/crosswalker/concepts/etl-and-import/) · [Terminology](/crosswalker/concepts/terminology/)

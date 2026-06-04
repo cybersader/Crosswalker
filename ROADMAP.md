@@ -133,6 +133,8 @@ Performance enhancements + integration capabilities. Reframed by v0.1 stack-pivo
 - [ ] Comunica federation companion plugin — Comunica + N3 + HDT for cross-vault, cross-org, external SPARQL endpoint queries (conditional — honest assessment needed)
 - [ ] Compliance-export mode — opt-in profile picker exposing T2 OpenTimestamps and T3 audit options ("US litigation", "EU regulated", "Federal ATO", "Supply-chain")
 - [ ] Migration trigger UX — status-bar + modal prompts when user outgrows Tier 2-Lite
+- [ ] **Incremental Tier 2 projection** — auto-projection currently re-scans the whole vault on every load (~13s for ~1.9K concepts + 1.8K mappings, observed 2026-06-03). Persist the SQLite DB + skip unchanged notes (mtime/hash), or reproject on import only. Parked as future perf work; not blocking practical scoped views
+- [ ] **"This will be heavy — load anyway?" confirm gate** — estimate cost before rendering (pivot cell-count = distinct rows × cols; result-set size) and, past a soft threshold, show a confirm prompt instead of rendering immediately. Softer companion to the existing hard 250K-cell cutoff in `crosswalker-pivot-view`; applies to pivots and any large Bases-backed view
 - [ ] PQC dual-sign migration (2027+) — Ed25519 → ML-DSA-44 dual-sign per NIST IR 8547 timeline
 
 ## Deployment — "v2.0+ Tier 3 server guide"

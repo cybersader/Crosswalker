@@ -62,13 +62,12 @@ interface MinimalBasesEntry {
  * an instance, but we need access to the plugin handle for queryCrosswalk +
  * settings. Closure captures the plugin ref.
  */
-export function buildCrosswalkerPivotViewFactory(plugin: {
-	queryCrosswalk?: (
-		subjectOnt: string,
-		objectOnt: string,
-		predicateId?: string,
-	) => Promise<unknown[]>;
-}) {
+export type PivotPluginRef = {
+	queryCrosswalk?: (...args: unknown[]) => Promise<unknown[]>;
+	debug?: { info?: (category: string, op: string, msg: string, data?: Record<string, unknown>) => void };
+};
+
+export function buildCrosswalkerPivotViewFactory(plugin: PivotPluginRef) {
 	return (controller: unknown, containerEl: HTMLElement) => {
 		const view = new CrosswalkerPivotView(controller as MinimalBasesController, containerEl, plugin);
 		// Bases calls onload() on the returned object (it's a Component).
@@ -80,15 +79,21 @@ export function buildCrosswalkerPivotViewFactory(plugin: {
 class CrosswalkerPivotView extends Component {
 	private controller: MinimalBasesController;
 	private containerEl: HTMLElement;
-	private plugin: { queryCrosswalk?: (...args: unknown[]) => Promise<unknown[]> };
+	private plugin: PivotPluginRef;
 	private rootEl: HTMLElement | null = null;
 	/** Debounce re-renders during rapid Bases data updates. */
 	private renderDebounce: number | null = null;
+	/** Limits the entry-source diagnostic to the first few renders per instance. */
+	private diagCount = 0;
+	/** Set once we've logged a render that actually produced entries. */
+	private loggedNonEmpty = false;
+	/** Set once we've logged where the view config was found. */
+	private configProbeLogged = false;
 
 	constructor(
 		controller: MinimalBasesController,
 		containerEl: HTMLElement,
-		plugin: { queryCrosswalk?: (...args: unknown[]) => Promise<unknown[]> },
+		plugin: PivotPluginRef,
 	) {
 		super();
 		this.controller = controller;
@@ -100,11 +105,47 @@ class CrosswalkerPivotView extends Component {
 	onload(): void {
 		this.containerEl.empty();
 		this.rootEl = this.containerEl.createDiv({ cls: 'crosswalker-pivot-grid' });
-		this.render();
+		try {
+			this.render();
+		} catch (err) {
+			this.renderError(err instanceof Error ? err.message : String(err));
+		}
+	}
+
+	/** No-op focus handler. Obsidian's workspace restore may call focus() on the
+	 *  active leaf's view during reload; without this it can throw
+	 *  "n.focus is not a function" and abort app load. */
+	focus(): void {
+		/* intentionally empty */
+	}
+
+	/**
+	 * Obsidian / Bases probe these when a leaf is switched away or resized — to
+	 * save scroll/selection state before teardown. If a method is missing, the
+	 * call throws ("x is not a function") and Obsidian SILENTLY ABORTS the
+	 * navigation — the exact symptom of "I can't switch away from this base."
+	 * Safe no-op defaults (same fix shape as `focus()` above).
+	 */
+	getEphemeralState(): Record<string, unknown> {
+		this.plugin.debug?.info?.('view', 'pivot-lifecycle', 'getEphemeralState (switching away)');
+		return {};
+	}
+	setEphemeralState(): void {
+		/* no-op */
+	}
+	getState(): Record<string, unknown> {
+		return {};
+	}
+	setState(): void {
+		/* no-op */
+	}
+	onResize(): void {
+		/* no-op */
 	}
 
 	/** Component lifecycle: clean up on unmount. */
 	onunload(): void {
+		this.plugin.debug?.info?.('view', 'pivot-lifecycle', 'onunload (teardown)');
 		if (this.renderDebounce !== null) {
 			window.clearTimeout(this.renderDebounce);
 			this.renderDebounce = null;
@@ -147,12 +188,16 @@ class CrosswalkerPivotView extends Component {
 			return;
 		}
 
-		const rowsBy = (config.rowsBy ?? '').trim();
-		const colsBy = (config.colsBy ?? '').trim();
+		// Default axes: prefer the rolled-up group fields (compact, readable — a
+		// function×family matrix) when the edges carry them; fall back to the leaf id
+		// fields; always honor explicit config.
+		const sample = (entries[0] ?? {}) as PivotEntry;
+		const pick = (cfg: string | undefined, group: string, leaf: string): string =>
+			(cfg ?? (group in sample ? group : leaf in sample ? leaf : '')).trim();
+		const rowsBy = pick(config.rowsBy, 'subject_group', 'subject_id');
+		const colsBy = pick(config.colsBy, 'object_group', 'object_id');
 		if (!rowsBy || !colsBy) {
-			this.renderEmpty(
-				'Configure the pivot view: set "Rows by" and "Cols by" properties in the view options panel.',
-			);
+			this.renderEmpty('Set rows-by and cols-by in the view options to render this pivot.');
 			return;
 		}
 
@@ -184,14 +229,8 @@ class CrosswalkerPivotView extends Component {
 			return;
 		}
 
-		// Sparse-pivot SOFT warning — show but render the table
-		if (result.sparsePivotWarning) {
-			this.rootEl.createDiv({
-				cls: 'crosswalker-pivot-warning',
-				text: `Sparse pivot: ${result.rowKeys.length}×${result.colKeys.length} = ${cellCount.toLocaleString()} cells. Consider narrowing the Bases filter or using more selective row/col axes.`,
-			});
-		}
-
+		// Coverage matrices are inherently sparse (most subject×object pairs are
+		// unmapped), so a "sparse" banner is just noise here — intentionally omitted.
 		this.renderTable(result, config.heatmap === true);
 	}
 
@@ -279,17 +318,93 @@ class CrosswalkerPivotView extends Component {
 		err.createSpan({ text: ` Error: ${message}` });
 	}
 
-	/** Pull entries from controller.entries; normalize to PivotEntry shape. */
+	/**
+	 * Pull the Bases-filtered entries and normalize to PivotEntry shape. Bases has
+	 * moved where the filtered entries live across versions (controller.entries →
+	 * controller.data.entries → …), so we probe the known locations rather than
+	 * assuming one — and log the controller shape so the truth is visible in
+	 * crosswalker-debug.log when something doesn't line up.
+	 */
 	private collectEntries(): PivotEntry[] {
-		const raw = this.controller.entries ?? [];
-		const out: PivotEntry[] = [];
-		for (const e of raw) {
-			out.push(normalizeBasesEntry(e as MinimalBasesEntry));
-		}
-		return out;
+		const raw = this.resolveRawEntries();
+		return raw.map((e) => normalizeBasesEntry(e as MinimalBasesEntry));
 	}
 
-	/** Pull view options from controller.config (set via the View Options panel). */
+	/** Find the entries wherever this Bases version exposes them — handling Array,
+	 *  Map (current QueryController.results is a Map<file, BasesEntry>), and other
+	 *  iterables. First non-empty source wins. */
+	private resolveRawEntries(): unknown[] {
+		const c = this.controller as unknown as Record<string, unknown>;
+		const data = (c.data ?? {}) as Record<string, unknown>;
+		const query = (c.query ?? {}) as Record<string, unknown>;
+		const qstate = (c.queryState ?? {}) as Record<string, unknown>;
+		const candidates: Array<[string, unknown]> = [
+			['entries', c.entries],
+			['results', c.results],
+			['data', c.data],
+			['data.entries', data.entries],
+			['query.results', query.results],
+			['queryState.results', qstate.results],
+			['queryState.entries', qstate.entries],
+		];
+		let chosen = '(none)';
+		let arr: unknown[] = [];
+		for (const [name, val] of candidates) {
+			const a = toEntryArray(val);
+			if (a && a.length > 0) {
+				chosen = name;
+				arr = a;
+				break;
+			}
+			if (a && chosen === '(none)') {
+				chosen = `${name}(empty)`;
+				arr = a;
+			}
+		}
+		this.logEntryProbe(c, chosen, arr);
+		return arr;
+	}
+
+	/** Diagnostic: where entries came from + their runtime shape. Logged for the
+	 *  first few renders AND the first render that actually yields entries, so the
+	 *  exact controller/entry layout is visible in crosswalker-debug.log. */
+	private logEntryProbe(c: Record<string, unknown>, chosen: string, arr: unknown[]): void {
+		const hasEntries = arr.length > 0;
+		const firstPopulated = hasEntries && !this.loggedNonEmpty;
+		// Log at most twice per instance: the first render + the first populated one.
+		if (this.diagCount >= 1 && !firstPopulated) return;
+		this.diagCount++;
+		if (hasEntries) this.loggedNonEmpty = true;
+		const sample = arr[0] as Record<string, unknown> | undefined;
+		const propsRaw = sample?.properties;
+		this.plugin.debug?.info?.('view', 'pivot-entry-probe', 'crosswalkerPivot entry probe', {
+			chosenSource: chosen,
+			entryCount: arr.length,
+			resultsShape: shapeOf(c.results),
+			dataShape: shapeOf(c.data),
+			queryStateShape: shapeOf(c.queryState),
+			sampleEntryKeys: sample ? Object.keys(sample).slice(0, 25) : [],
+			samplePropsShape: shapeOf(propsRaw),
+			samplePropKeys:
+				propsRaw instanceof Map
+					? [...propsRaw.keys()].slice(0, 25).map(String)
+					: propsRaw && typeof propsRaw === 'object'
+						? Object.keys(propsRaw as object).slice(0, 25)
+						: [],
+			hasGetValue: typeof (sample as { getValue?: unknown })?.getValue === 'function',
+			hasFile: !!(sample as { file?: unknown })?.file,
+			sampleSubjectId: sample
+				? extractProp(normalizeBasesEntry(sample as MinimalBasesEntry), 'subject_id')
+				: undefined,
+		});
+	}
+
+	/**
+	 * Pull view options. Reads the `.base` view's `config:` block wherever this Bases
+	 * version exposes it (the controller no longer has a flat `.config`), and falls
+	 * back to the canonical crosswalk axes — `subject_id` × `object_id`, count — so
+	 * the coverage pivot renders out-of-the-box with no View-Options-panel fiddling.
+	 */
 	private collectConfig(): {
 		rowsBy?: string;
 		colsBy?: string;
@@ -301,11 +416,11 @@ class CrosswalkerPivotView extends Component {
 		colSort?: 'asc' | 'desc' | 'none';
 		emptyMessage?: string;
 	} {
-		const cfg = this.controller.config ?? {};
+		const cfg = this.resolveRawConfig();
 		return {
 			rowsBy: stringOption(cfg.rowsBy),
 			colsBy: stringOption(cfg.colsBy),
-			cellOp: aggregationOption(cfg.cellOp),
+			cellOp: aggregationOption(cfg.cellOp) ?? ('count' as PivotAggregationOp),
 			cellOf: stringOption(cfg.cellOf),
 			empty: emptyOption(cfg.empty),
 			heatmap: cfg.heatmap === true,
@@ -314,28 +429,136 @@ class CrosswalkerPivotView extends Component {
 			emptyMessage: stringOption(cfg.emptyMessage),
 		};
 	}
+
+	/** Find the active view's `config:` block. Bases moved it off `controller.config`;
+	 *  it now lives on the matching view inside `controller.query.views`. Probe the
+	 *  known spots, preferring the one that actually carries pivot axes. */
+	private resolveRawConfig(): Record<string, unknown> {
+		const c = this.controller as unknown as Record<string, unknown>;
+		const viewName = typeof c.viewName === 'string' ? c.viewName : undefined;
+		const q = (c.query ?? {}) as Record<string, unknown>;
+		let fromViews: Record<string, unknown> | undefined;
+		const views = q.views;
+		if (Array.isArray(views)) {
+			const byName = viewName
+				? views.find((v) => (v as Record<string, unknown>)?.name === viewName)
+				: undefined;
+			const byType = views.find(
+				(v) => (v as Record<string, unknown>)?.type === 'crosswalker-pivot',
+			);
+			const v = (byName ?? byType ?? views[0]) as Record<string, unknown> | undefined;
+			fromViews = v?.config as Record<string, unknown> | undefined;
+		}
+		const candidates: Array<[string, unknown]> = [
+			['config', c.config],
+			['view.config', (c.view as Record<string, unknown>)?.config],
+			['query.views[].config', fromViews],
+			['ctx.config', (c.ctx as Record<string, unknown>)?.config],
+			['viewConfig', c.viewConfig],
+		];
+		let chosen = '(none)';
+		let cfg: Record<string, unknown> = {};
+		for (const [name, val] of candidates) {
+			if (val && typeof val === 'object') {
+				const o = val as Record<string, unknown>;
+				if ('rowsBy' in o || 'colsBy' in o) {
+					chosen = name;
+					cfg = o;
+					break;
+				}
+				if (chosen === '(none)' && Object.keys(o).length > 0) {
+					chosen = `${name}(no-axes)`;
+					cfg = o;
+				}
+			}
+		}
+		if (!this.configProbeLogged) {
+			this.configProbeLogged = true;
+			this.plugin.debug?.info?.('view', 'pivot-config-probe', 'crosswalkerPivot config probe', {
+				chosenSource: chosen,
+				configKeys: Object.keys(cfg).slice(0, 25),
+				rowsBy: stringOption(cfg.rowsBy),
+				colsBy: stringOption(cfg.colsBy),
+			});
+		}
+		return cfg;
+	}
 }
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-/** Normalize a Bases entry to a flat property-bag for pivot extraction. */
+/** Normalize a Bases entry to a flat property-bag for pivot extraction. Frontmatter
+ *  lives in `entry.properties`, which across Bases versions is a plain object OR a
+ *  Map, with values that are sometimes wrapped ({ value } / { data }). Flatten to a
+ *  plain { key: scalar } bag, plus `file.*` paths mirroring Bases formula syntax. */
 function normalizeBasesEntry(entry: MinimalBasesEntry): PivotEntry {
-	// Bases puts frontmatter in `entry.properties`; the file path is at entry.file.path.
-	// We flatten properties to top level for property-name extractors, with a `file.*`
-	// prefix path mirroring Bases formula syntax (file.name, file.path, etc.).
-	const out: PivotEntry = { ...(entry.properties ?? {}) };
-	if (entry.file) {
-		out['file.path'] = entry.file.path;
-		out['file.name'] = entry.file.basename;
+	const e = entry as Record<string, unknown>;
+	const out: PivotEntry = {};
+	// Flatten the note's properties into a { key: scalar } bag. Bases versions differ:
+	// current builds expose `entry.frontmatter` (plain object), older ones
+	// `entry.properties` (object or Map). `implicit` holds computed/implicit props.
+	// First non-undefined wins. Values are sometimes wrapped ({ value } / { data }).
+	for (const src of [e.frontmatter, e.properties, e.implicit]) {
+		const pairs: Array<[string, unknown]> =
+			src instanceof Map
+				? [...src.entries()]
+				: src && typeof src === 'object'
+					? Object.entries(src as Record<string, unknown>)
+					: [];
+		for (const [k, v] of pairs) if (out[k] === undefined) out[k] = unwrapValue(v);
 	}
-	// Some Bases versions expose properties at the top level too.
-	for (const [k, v] of Object.entries(entry)) {
-		if (k === 'properties' || k === 'file') continue;
-		if (out[k] === undefined) out[k] = v;
+	const file = e.file as { path?: string; basename?: string } | undefined;
+	if (file) {
+		if (file.path) out['file.path'] = file.path;
+		if (file.basename) out['file.name'] = file.basename;
 	}
 	return out;
+}
+
+/** Coerce a Bases results container (Array | Map | Set | iterable) to an array. */
+function toEntryArray(v: unknown): unknown[] | null {
+	if (Array.isArray(v)) return v;
+	if (v instanceof Map || v instanceof Set) return [...v.values()];
+	if (
+		v &&
+		typeof v === 'object' &&
+		typeof (v as { [Symbol.iterator]?: unknown })[Symbol.iterator] === 'function'
+	) {
+		try {
+			return [...(v as Iterable<unknown>)];
+		} catch {
+			return null;
+		}
+	}
+	return null;
+}
+
+/** Unwrap a Bases property value one level: scalars pass through; wrapped values
+ *  ({ value } / { data }) yield their inner value. */
+function unwrapValue(v: unknown): unknown {
+	if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
+		const o = v as Record<string, unknown>;
+		if ('value' in o) return o.value;
+		if ('data' in o) return o.data;
+	}
+	return v;
+}
+
+/** Human-readable runtime shape, for the entry-probe diagnostic. */
+function shapeOf(v: unknown): string {
+	if (v === null || v === undefined) return String(v);
+	if (Array.isArray(v)) return `array(${v.length})`;
+	if (v instanceof Map) return `Map(${v.size})`;
+	if (v instanceof Set) return `Set(${v.size})`;
+	if (typeof v === 'object') {
+		const name = (v as { constructor?: { name?: string } }).constructor?.name ?? 'Object';
+		const iterable =
+			typeof (v as { [Symbol.iterator]?: unknown })[Symbol.iterator] === 'function';
+		return `object<${name}>${iterable ? '[iterable]' : ''}`;
+	}
+	return typeof v;
 }
 
 /** Extract a property by name; supports `file.path`, `note.x`, plain key. */
