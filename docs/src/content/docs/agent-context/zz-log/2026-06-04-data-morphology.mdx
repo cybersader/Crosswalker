@@ -1,9 +1,9 @@
 ---
-title: "Toward a first-principles taxonomy — data shape · relations · operations · view shape"
-description: Idea-capture log for a Crosswalker taxonomy of how data is represented, related, operated on, and viewed — grounded in relational algebra, OLAP aggregation, and graph traversal. Separates the *kinds* of operations (combine/join vs summarize/aggregate vs traverse) that collapse into "the matrix", maps them onto what already exists (query-primitives = Layer A, view-shapes = Layer B), and proposes the data-shape layer + a candidate-view menu for the GRC corpus.
+title: "Data morphology — the forms structured data takes, and the operations between them"
+description: Names and sketches "data morphology" — Crosswalker's first-principles taxonomy of the forms structured data takes (data shape + view shape) and the operations that transform between them. Grounded in relational algebra, OLAP aggregation, and graph traversal; separates the kinds of operation (combine/join vs summarize/aggregate vs traverse) that collapse into "the matrix"; maps onto query-primitives (Layer A) + view-shapes (Layer B); proposes the data-shape layer and a candidate-view menu for the GRC corpus.
 sidebar:
   order: -20260604
-  label: "06-04 · Data/op/view taxonomy (idea capture)"
+  label: "06-04 · Data morphology (idea capture)"
 tags: [log, taxonomy, query-engine, ontology, relational-algebra, views]
 date: 2026-06-04
 ---
@@ -13,6 +13,10 @@ import { Aside } from '@astrojs/starlight/components';
 <Aside type="note" title="What this is — and why over-scoping is fine here">
 A morning-read idea dump. The intent (user, 2026-06-04): build a first-principles taxonomy *inside Crosswalker* of how data is represented and related — because the project is, at heart, a tool for understanding **the shape of ontologies** and how to use them. Joining, left-joining, anti-joining — but also things that aren't joins at all, like summing. "I don't care if it's over-scoping" — this *is* the learning core of the project. The payoff: knowing the taxonomy tells us **which views to build** as we test through the GRC audit/compliance library.
 </Aside>
+
+## The name: data morphology
+
+**Data morphology** — the study of the *forms* structured data takes, and the operations that transform one form into another. ("Morphology" is the study of form.) This is **not a general taxonomy**; it is the specific thing Crosswalker must describe to reason about ontologies well: every concept set has a *shape*, every view is a *shape*, and every operation is a *transformation between shapes*. Having the name lets us say precisely — *what shape is this, which operation am I applying, what shape am I rendering* — instead of blurring all three into "the table."
 
 ## The instinct that started this: a pivot is not a join
 
@@ -81,9 +85,9 @@ The pattern: most "compliance questions" are one operation family + one shape. N
 
 ## Concept pages to develop (proposal — not building tonight)
 
-1. **`concepts/data-shapes`** (new) — representation layer: relation / tree / graph / sequence, and the "ontology = graph, views = projections" spine.
+1. **`concepts/data-morphology`** (new) — the home for this named concept: the data-shape layer (relation / tree / graph / sequence, and the "ontology = graph, views = projections" spine), the operation families, and how the five layers compose. The other concept pages become its sub-layers.
 2. **Extend `concepts/query-primitives`** — group the 8 operations into the 5 families above (reshape / combine / summarize / traverse / compare) instead of a flat list; add the combine-widens-vs-summarize-collapses framing.
-3. **A taxonomy index** — graduate the [four dials log](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/) into a concept page that ties the 5 layers together (or fold into [system-architecture](/crosswalker/concepts/system-architecture/)).
+3. **Cross-link** [view-shapes](/crosswalker/concepts/view-shapes/) (presentation) + [hierarchy-primitives](/crosswalker/concepts/hierarchy-primitives/) (layout) under the data-morphology umbrella; graduate the [four dials log](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/) into the layer-composition section.
 
 <Aside type="caution" title="Concept-page sprawl">
 Per the user: we may end up with too many concept pages and have to pare them into sections later. Fine for now — capture first, organize once the shape settles. Candidate future grouping: a `concepts/foundations/` section (data-shapes, operations, view-shapes, layout) vs `concepts/domain/` (the GRC/compliance pages).
