@@ -66,6 +66,12 @@ The full [security & GRC framework corpus](/crosswalker/reference/framework-corp
 - [Challenge 40: Control, risk, or obligation as the backbone entity?](/crosswalker/agent-context/zz-challenges/40-backbone-entity/) — What the model's nodes *are*. Stress-tests the implicit control-centric lean against risk- and obligation-centric models; shapes the Tier 1 schema.
 - [Challenge 41: Is internal audit a spine element or a lens? (and what to name the model)](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) — Decides audit's structural status and lets the model name ("Unified Risk and Audit Model" vs "Assurance" vs "GRC" …) follow from structure.
 
+### Filed 2026-06-14 — variable-depth hierarchy expressivity (render gap)
+
+Surfaced while making the [system model](/crosswalker/concepts/system-model/)'s `render()` diagram honest: the recipe's `layout` assumes **known depth**. Generating **variable / ragged-depth** hierarchy from a transform — across folder, tag (poly), heading, and graph-edge — is not first-class. Honest current-state in the [open-question log](/crosswalker/agent-context/zz-log/2026-06-14-variable-depth-hierarchy-open-question/).
+
+- [Challenge 42: Variable-depth hierarchy generation from recipe primitives](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) — **Follow-on to Ch 22.** How should a recipe express variable/ragged depth (split one packed key into however-many parts there are, per row, with smart fallback) without breaking the closed 5-mechanism grammar or `render()` determinism? Covers variadic split, ragged-depth + collapse + overflow, fallback semantics, polyhierarchical tag *layout*, data-driven heading depth, and graph-edge hierarchy.
+
 ## Archived (resolved)
 
 Challenges that have been resolved by a research deliverable and a corresponding log entry. The brief itself is preserved (re-runnable) — see each archived file for the resolution callout pointing to the resolving log.

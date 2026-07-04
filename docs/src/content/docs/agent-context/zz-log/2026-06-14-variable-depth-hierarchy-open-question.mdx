@@ -1,0 +1,71 @@
+---
+title: "Open question — variable-depth hierarchy generation from recipe primitives"
+description: "An architectural seam surfaced 2026-06-14 while illustrating render(): the recipe's layout maps KNOWN levels to mechanisms, so depth is fixed per recipe. Generating VARIABLE/ragged-depth hierarchy — splitting one packed key into however-many parts there are, per row, with smart fallback — is not first-class, across folder/tag/heading/graph-edge. This log records the question + the honest v0.1 state (grounded in code) + the decision to deep-research it (Challenge 42)."
+sidebar:
+  order: -20260614.1
+  label: "06-14 · Variable-depth hierarchy (open Q)"
+tags: [log, open-question, render, recipe, hierarchy, folder, tag, heading, graph-edges, expressivity, research-needed]
+date: 2026-06-14
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Open architectural question — not resolved here">
+This log **records** a question and the honest current-state answer; it does **not** settle it. The recipe's [`target.layout`](/crosswalker/agent-context/v0-1-schema-spec/) maps *known* source levels to mechanisms — depth is fixed per recipe. How a recipe should express a **variable / ragged-depth** hierarchy (split one packed key into however-many parts there are, per row, with smart fallback when the split is short or fails) is unsettled across all five mechanisms. The deep dive is [Challenge 42](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/).
+</Aside>
+
+## The question (user intent, 2026-06-14)
+
+Surfaced while making the [system model](/crosswalker/concepts/system-model/#hierarchy-is-a-choice-not-a-default)'s `render()` diagram honest. Paraphrased:
+
+> The `split()` example assumes splitting always yields a clean, fixed hierarchy. But you might regex a term into a **non-explicit** number of parts; the regex may break or over-split; you want **smart logic** to control depth. The same applies to **tags** (which behave as poly-hierarchies — structured, nested, and a concept can sit under many at once), to **headings** (structured by `#`-depth, 1–6), and you can even **emulate hierarchy with graph edges** (named frontmatter links: `parent`/`broader`/`partOf`, each thing pointing to the next). Note *content* is technically a target too, but it carries no structure, so it isn't a real primitive. **Does the system account for any of this?**
+
+The user flagged it as small-but-load-bearing: *"it is very important that we get this right."*
+
+## Honest v0.1 state (grounded in code)
+
+Short answer: **v0.1 does fixed/known depth well; it does not do variable/ragged depth, polyhierarchical tag *layout*, data-driven heading depth, or graph-edge hierarchy.**
+
+| Mechanism | How structure/depth is set today | Variable-depth? | Where |
+|---|---|---|---|
+| **folder** | ordered `layout`, **one entry per level**; each entry's `template` is `{var\|filter}` and produces **one** path segment | ❌ depth = number of entries, declared up front | `src/render/mechanisms/folder.ts`, `src/render/template.ts` |
+| **folder (wizard)** | `deriveIdSplitTemplates()` scans samples, finds delimiters present in **≥80%** of values, emits one `{col\|split(<delim>,0)}` template per delimiter (cumulative-prefix trick) | ❌ depth derived **once for the whole import** from aggregate samples — not per row | `src/generation/generation-engine.ts` (`deriveIdSplitTemplates`) |
+| **template filters** | closed set: `lower · upper · title · slug · tagsafe · fs-safe · truncate(N) · trim · split(<delim>,<index>) · regex(<pattern>)` | ❌ `split` returns **one** part by index; `regex` returns **one** match/first-group; neither yields a variadic list, and there's no `join`-to-path | `src/render/template.ts` |
+| **tag (as layout)** | `applyTagStub()` — **stub**, schema-reserved for v0.2. Tags ship only via `also_emit.tags` = a **fixed array** of templates (polyhierarchy via fixed entries; nested paths via literal `/`) | ❌ no data-driven tag depth/count | `src/render/mechanisms/tag.ts` |
+| **heading** | `applyHeading()` with `level_depth` (1–6) **fixed per entry** | ❌ depth not data-driven | `src/render/mechanisms/heading.ts` |
+| **wikilink / graph_edges** | `applyWikilinkStub()` — **stub**; `graph_edges` (`from/via/to`) **schema-reserved, v0.2** | ❌ hierarchy-via-named-edges not wired | `src/render/mechanisms/wikilink.ts` |
+| **note body** | written via templates; carries no hierarchy | n/a — not a structural primitive (user's own read) | — |
+
+**The crux:**
+
+- **Depth is fixed per recipe**, not per row. A uniform template set applies to every row.
+- Ragged hierarchies (row A has 3 levels, row B has 2) are handled only **degenerately**: a too-short value makes an empty segment → `applyFolder` silently skips it (`if (!segment) return`); a value lacking the delimiter makes `split(d,0)` return the *whole* value → can mint a folder named identically to the leaf. Rows **deeper** than the derived template set simply lose the extra depth.
+- There is **no first-class variadic split** ("break into however many parts there are and nest each"), **no depth cap/overflow policy**, and **no smart fallback** for a regex that returns nothing.
+
+This is consistent with — but narrower than — [Challenge 22](/crosswalker/agent-context/zz-challenges/archive/22-target-structure-expressivity/), which settled the *grammar shape* (5 mechanisms × ordered layout × `also_emit` × `graph_edges`) but assumed **known levels** and did not probe per-row variable depth.
+
+## What this means for the system-model diagram
+
+The [`render()` illustration](/crosswalker/concepts/system-model/#from-source-to-structure--render--the-5-mechanisms) shows `split(lineage, ";")` producing three folders. That is a **conceptual** depiction of *one key → nested parts*; v0.1 would express it as one layout entry per level using the index-based `split`, with the depth known in advance. The page now carries an honest "open question" callout pointing here, so the model isn't read as a promise the engine doesn't yet keep.
+
+## Decision
+
+1. **Record as open; do not fake support.** The diagram stays conceptual but is explicitly flagged; the schema/engine are described accurately wherever depth is discussed.
+2. **Deep-research it** via [Challenge 42](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) — the design space for variadic/ragged depth across all five mechanisms, with determinism + round-trip + commitment-#2 (closed grammar) as hard constraints.
+3. **Do not pre-judge a new mechanism.** This is about *expressivity within the existing layout* (better transforms / a layout-entry that can expand over an array / a path-valued template), **not** a sixth mechanism — adding one would break [commitment #2](/crosswalker/concepts/etl-and-import/).
+
+## Prior art — the author's own related public projects
+
+The depth-control problem isn't new to this author; three **public** projects circle it from other angles and are worth mining before [Challenge 42](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) runs:
+
+- **[Folder Tag Sync](https://github.com/cybersader/obsidian-folder-tag-sync)** ([docs](https://cybersader.github.io/obsidian-folder-tag-sync/)) — bidirectional **folder ↔ tag** sync via regex + a *typed rule model*: `FolderClassifier + TagVocabulary + TransferOp` triples with **eight library-science transfer primitives** — `identity · truncation · marker-only · promotion-to-root · flattening-to-leaf · post-coordination · aggregation · opaque`. This is the *same* hierarchy-mapping problem from the opposite direction, and it already names the depth-control operations Crosswalker's recipe grammar lacks: `truncation` caps depth, `flattening-to-leaf` collapses, `promotion-to-root` re-roots, `post-coordination` makes faceted/poly tags. **Strongest precedent** for the tag-polyhierarchy + ragged-depth sub-questions — and a vocabulary to reconcile against `layout`.
+- **[SEACOW(r)](https://github.com/cybersader/seacowr-knowledge-platform-meta-framework)** — knowledge-platform organization meta-framework cataloguing 100+ classification systems (PARA, Johnny Decimal, LATCH, library science) plus an explicit **relation/graph layer**. The classification-theory backdrop for "what shape can a hierarchy take, and when is folder vs tag vs graph the right one."
+- **[Jsonaut](https://github.com/cybersader/jsonaut)** — JSON tree → tabular flattening + transforms (`search_and_flatten`); the tree-transducer / ETL lineage behind Crosswalker's import side.
+
+## Related
+
+- [Challenge 42: Variable-depth hierarchy generation](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) — the deep-research brief this log opens
+- [Challenge 22: Target-structure expressivity](/crosswalker/agent-context/zz-challenges/archive/22-target-structure-expressivity/) — the predecessor that settled the grammar but assumed known depth
+- [System model · Hierarchy is a choice](/crosswalker/concepts/system-model/#hierarchy-is-a-choice-not-a-default) — where the question surfaced
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Conventions](/crosswalker/concepts/conventions/) · [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the surfaces a resolution would touch
+- [SKOS→STRM direction convention](/crosswalker/agent-context/zz-log/2026-06-12-skos-strm-direction-convention/) — relevant to the graph-edge-hierarchy sub-question
