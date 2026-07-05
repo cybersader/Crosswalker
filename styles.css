@@ -1370,6 +1370,60 @@
 	font-size: 0.9em;
 }
 
+/* Step 3 preview — render-report deviation banner (v0.1.6) */
+.crosswalker-render-banner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 12px;
+	margin-bottom: 10px;
+	border-radius: 6px;
+	font-size: 0.9em;
+}
+.crosswalker-render-banner.is-clean {
+	background: var(--background-secondary);
+	color: var(--text-muted);
+}
+.crosswalker-render-banner.is-warning {
+	background: var(--background-modifier-warning, rgba(255, 200, 0, 0.1));
+	color: var(--text-warning, var(--text-normal));
+	border-left: 3px solid var(--text-warning, var(--color-orange));
+}
+.crosswalker-render-details {
+	margin: 0 0 12px;
+}
+.crosswalker-render-details summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+.crosswalker-render-note-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	padding: 6px 2px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 0.85em;
+}
+.crosswalker-render-note-row:last-child {
+	border-bottom: none;
+}
+.crosswalker-render-note-row-num {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	min-width: 4.5em;
+}
+.crosswalker-render-note-row-detail {
+	flex: 1 1 auto;
+}
+.crosswalker-render-note-row-path {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-size: 0.9em;
+	word-break: break-all;
+}
+
 /* Step 1 file card + JSON record picker (2026-06-12 UX iteration 2) */
 .crosswalker-file-card {
 	border: 1px solid var(--background-modifier-border);

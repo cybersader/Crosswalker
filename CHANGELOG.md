@@ -16,7 +16,7 @@ One visible rule replaces three silent behaviors: **every row imports; every dev
 - Recorded deviations: `folder-level-skipped`, `split-no-delimiter`, `split-index-missing`, `regex-no-match` — each with a plain-language `detail` safe to surface directly in UI.
 - Both engine paths (wizard/legacy `generateNotes` and native `generateFromRecipe`) aggregate notes into **`GenerationResult.warnings`** (`{row, message}`) and the debug-log run summary now carries a warnings count.
 - 9 new unit tests pin the three failure modes + the determinism invariant (`tests/render-report.test.ts`).
-- Next (wizard UX): Step 3 preview banner — *"N rows match the pattern fully; M don't — here's where they'll land"* — fed by this report.
+- **Wizard UX**: the Step 3 preview now runs the same `render()` the generation engine uses against a sample of the previewed rows (capped at 200) and shows a summary banner — a quiet "All 200 previewed rows match the recipe pattern." when clean, or "187 of 200 previewed rows match the pattern fully. 13 rows don't — expand to see where they'll land." with an expandable per-row details list (row number, plain-language reason, resulting path; capped at 50 visible rows) when not. Aggregation logic lives in `summarizeRenderNotes()` (`src/render/summarize-render-notes.ts`, unit-tested independent of Obsidian).
 
 ### Ingestion harness: JSON iterator reader — STIX / OSCAL / CPRT unlocked (2026-06-12)
 

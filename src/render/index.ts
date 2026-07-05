@@ -25,6 +25,13 @@ import { applyWikilinkStub } from './mechanisms/wikilink';
 export type { Address, ConceptIdentity, SourceScope, RenderNote, RenderNoteCode, RenderReport } from './types';
 export { RenderError } from './template';
 export { renderTemplate } from './template';
+export {
+	summarizeRenderNotes,
+	DEFAULT_MAX_RENDER_NOTE_DETAILS,
+	type PreviewRowNotes,
+	type RenderNoteDetail,
+	type RenderNoteSummary,
+} from './summarize-render-notes';
 
 /**
  * The recipe shape we accept. Loose typing here matches the runtime contract

@@ -1,10 +1,17 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Modal, Setting, Notice, normalizePath } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
 import { parseXLSXFile, listXLSXSheets } from './parsers/xlsx-parser';
 import { parseJSONFile, suggestIterators, JsonStructure } from './parsers/json-parser';
-import { renderTemplate } from '../render';
+import {
+	render,
+	renderTemplate,
+	summarizeRenderNotes,
+	type RenderReport,
+	type PreviewRowNotes,
+} from '../render';
+import { legacyConfigToRecipe } from '../generation/legacy-recipe-shim';
 import { findMatchingConfigs, ConfigMatch } from '../config/config-manager';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
 import {
@@ -1200,6 +1207,14 @@ export class ImportWizardModal extends Modal {
 		stat('📁', estimate.folderCount, 'folders');
 		stat('🔗', estimate.linkCount, 'links');
 
+		// Render-report banner — per-row deviation summary (v0.1.6). Runs the
+		// same render() the generation engine uses, so "match the recipe
+		// pattern" here means the same thing it means at generate time.
+		const renderPreview = this.computePreviewRenderNotes(config);
+		if (renderPreview) {
+			this.renderDeviationBanner(container, renderPreview.perRow, renderPreview.totalSourceRows);
+		}
+
 		// Vault-shaped folder tree (DOM, not ASCII) from real sample rows
 		container.createEl('h4', { text: 'Folder structure' });
 		const tree = container.createEl('div', { cls: 'crosswalker-vault-tree' });
@@ -1213,6 +1228,92 @@ export class ImportWizardModal extends Modal {
 		const details = container.createEl('details', { cls: 'crosswalker-raw-preview' });
 		details.createEl('summary', { text: 'Exact file contents this will write (for the curious)' });
 		details.createEl('pre', { text: this.buildSampleNotePreview(config) });
+	}
+
+	/** Cap on how many rows the Step 3 deviation banner runs through render().
+	 *  Matches the existing `slice(0, 200)` sampling convention used elsewhere
+	 *  in this file (e.g. sampleValuesForColumn) — large sources still get an
+	 *  honest, fast preview instead of rendering every row. */
+	private static readonly PREVIEW_RENDER_SAMPLE_SIZE = 200;
+
+	/**
+	 * Run the same render() the generation engine uses against a sample of the
+	 * previewed rows, collecting a fresh RenderReport per row. This is what
+	 * lets the Step 3 banner say "matches the recipe pattern" and mean the
+	 * same thing generation will actually do — not a separate, hand-rolled
+	 * path-guessing heuristic.
+	 *
+	 * Returns null when there's nothing to preview (no eager row array, e.g.
+	 * a streaming source, or zero rows).
+	 */
+	private computePreviewRenderNotes(config: Partial<ImportRecipe>): { perRow: PreviewRowNotes[]; totalSourceRows: number } | null {
+		if (!this.parsedData || !Array.isArray(this.parsedData.rows)) return null;
+		const rows = this.parsedData.rows as Record<string, unknown>[];
+		if (rows.length === 0) return null;
+
+		let recipe: ReturnType<typeof legacyConfigToRecipe>;
+		try {
+			recipe = legacyConfigToRecipe(config as ImportRecipe);
+		} catch {
+			return null;
+		}
+
+		const sampleRows = rows.slice(0, ImportWizardModal.PREVIEW_RENDER_SAMPLE_SIZE);
+		const perRow: PreviewRowNotes[] = [];
+		sampleRows.forEach((row, i) => {
+			const rowNum = i + 1;
+			const report: RenderReport = { notes: [] };
+			try {
+				const address = render(recipe, { curie: `preview:${rowNum}`, scope: row }, report);
+				// Same basePath + normalizePath combination generation-engine's
+				// buildNoteDataViaRender uses, so the path shown here is the
+				// actual vault path the row will land at, not an approximation.
+				const path = this.outputPath
+					? normalizePath(`${this.outputPath}/${address.primary.path}`)
+					: normalizePath(address.primary.path);
+				perRow.push({ row: rowNum, notes: report.notes, path });
+			} catch {
+				// render() fail-fast errors (e.g. an empty filename) surface
+				// elsewhere in the wizard/generation flow — skip the row here
+				// rather than let one bad row break the whole preview banner.
+			}
+		});
+
+		return { perRow, totalSourceRows: this.parsedData.rowCount ?? rows.length };
+	}
+
+	/** Summary banner + expandable per-row details for render() deviations. */
+	private renderDeviationBanner(container: HTMLElement, perRow: PreviewRowNotes[], totalSourceRows: number) {
+		if (perRow.length === 0) return;
+		const summary = summarizeRenderNotes(perRow, totalSourceRows);
+
+		const banner = container.createEl('div', { cls: `crosswalker-render-banner is-${summary.tone}` });
+		banner.createEl('span', {
+			text: summary.tone === 'clean' ? '✅' : '⚠️',
+			cls: 'crosswalker-render-banner-icon'
+		});
+		banner.createEl('span', { text: summary.message, cls: 'crosswalker-render-banner-text' });
+
+		if (summary.tone === 'warning') {
+			const details = container.createEl('details', { cls: 'crosswalker-render-details' });
+			details.createEl('summary', {
+				text: summary.deviantCount === 1
+					? 'Show the row that doesn\'t match'
+					: `Show all ${summary.deviantCount} rows that don't match`
+			});
+			for (const d of summary.details) {
+				const row = details.createEl('div', { cls: 'crosswalker-render-note-row' });
+				row.createEl('span', { text: `Row ${d.row}`, cls: 'crosswalker-render-note-row-num' });
+				row.createEl('span', { text: d.detail, cls: 'crosswalker-render-note-row-detail' });
+				row.createEl('span', { text: d.path, cls: 'crosswalker-render-note-row-path' });
+			}
+			if (summary.moreCount > 0) {
+				details.createEl('div', {
+					text: `…and ${summary.moreCount} more rows`,
+					cls: 'crosswalker-render-note-row crosswalker-muted'
+				});
+			}
+		}
 	}
 
 	/** Title-role column name (drives sample filenames), if any. */
