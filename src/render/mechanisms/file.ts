@@ -5,7 +5,7 @@
  * Template should produce a `.md`-suffixed path (or we add the suffix).
  */
 
-import type { Address, SourceScope } from '../types';
+import type { Address, SourceScope, RenderReport } from '../types';
 import { renderTemplate, RenderError } from '../template';
 
 interface FileLayoutEntry {
@@ -14,8 +14,13 @@ interface FileLayoutEntry {
 	template: string;
 }
 
-export function applyFile(address: Address, entry: FileLayoutEntry, scope: SourceScope): void {
-	let segment = renderTemplate(entry.template, scope);
+export function applyFile(
+	address: Address,
+	entry: FileLayoutEntry,
+	scope: SourceScope,
+	report?: RenderReport,
+): void {
+	let segment = renderTemplate(entry.template, scope, report);
 	if (!segment) {
 		throw new RenderError(
 			`file mechanism produced empty path for level "${entry.level}". Template: "${entry.template}".`,

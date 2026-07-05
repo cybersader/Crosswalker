@@ -402,6 +402,13 @@ export interface GenerationResult {
 	created: string[];
 	skipped: string[];
 	errors: GenerationError[];
+	/**
+	 * Per-row render deviations (v0.1.6): rows that imported fine but didn't
+	 * fully fit the recipe's expected shape (skipped folder level, split/regex
+	 * fallback). Never blocks the import — surfaced so a "weird vault" is
+	 * never a mystery.
+	 */
+	warnings?: GenerationError[];
 	duration: number;
 }
 

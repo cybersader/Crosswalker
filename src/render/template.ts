@@ -14,7 +14,13 @@
  * Determinism: pure function. Same `(template, scope)` → byte-identical output.
  */
 
-import type { SourceScope } from './types';
+import type { SourceScope, RenderReport } from './types';
+
+/** Context handed to filters so they can record deviations without throwing. */
+interface FilterCtx {
+	template: string;
+	report?: RenderReport;
+}
 
 export class RenderError extends Error {
 	constructor(message: string) {
@@ -33,13 +39,18 @@ export class RenderError extends Error {
  *   renderTemplate('framework/{family.id|lower}/{control.id|tagsafe}', { ... })
  *   //=> 'framework/ac/ac-2'
  */
-export function renderTemplate(template: string, scope: SourceScope): string {
+export function renderTemplate(template: string, scope: SourceScope, report?: RenderReport): string {
 	return template.replace(/\{([^{}]+)\}/g, (_match, expr) => {
-		return interpolate(expr, scope, template);
+		return interpolate(expr, scope, template, report);
 	});
 }
 
-function interpolate(expr: string, scope: SourceScope, originalTemplate: string): string {
+function interpolate(
+	expr: string,
+	scope: SourceScope,
+	originalTemplate: string,
+	report?: RenderReport,
+): string {
 	// Split into variable-path and filter pipeline: `var.path|filter1|filter2`
 	const parts = expr.split('|').map((s) => s.trim());
 	const varPath = parts[0];
@@ -47,8 +58,9 @@ function interpolate(expr: string, scope: SourceScope, originalTemplate: string)
 
 	let value = resolvePath(varPath, scope, originalTemplate);
 
+	const ctx: FilterCtx = { template: originalTemplate, report };
 	for (const filterExpr of filters) {
-		value = applyFilter(filterExpr, value, originalTemplate);
+		value = applyFilter(filterExpr, value, ctx);
 	}
 
 	return String(value);
@@ -76,7 +88,7 @@ function resolvePath(path: string, scope: SourceScope, originalTemplate: string)
 	return cur;
 }
 
-const FILTERS: Record<string, (v: unknown, arg?: string) => unknown> = {
+const FILTERS: Record<string, (v: unknown, arg?: string, ctx?: FilterCtx) => unknown> = {
 	lower: (v) => String(v).toLowerCase(),
 	upper: (v) => String(v).toUpperCase(),
 	title: (v) =>
@@ -119,7 +131,7 @@ const FILTERS: Record<string, (v: unknown, arg?: string) => unknown> = {
 		return s.length > n ? s.slice(0, n) : s;
 	},
 	trim: (v) => String(v).trim(),
-	split: (v, arg) => {
+	split: (v, arg, ctx) => {
 		// {var|split(<delim>,<index>)} — split on <delim>, return the n-th (0-based)
 		// segment, trimmed. For values that pack a code + name into one cell, e.g.
 		// CSF's "DE.AE-01: Adverse events are analyzed" → split(:,0) → "DE.AE-01".
@@ -132,9 +144,26 @@ const FILTERS: Record<string, (v: unknown, arg?: string) => unknown> = {
 		}
 		const [, delim, idxStr] = m;
 		const parts = String(v).split(delim);
-		return (parts[parseInt(idxStr, 10)] ?? '').trim();
+		const idx = parseInt(idxStr, 10);
+		if (parts.length === 1) {
+			ctx?.report?.notes.push({
+				code: 'split-no-delimiter',
+				template: ctx.template,
+				detail:
+					idx === 0
+						? `"${String(v)}" contains no "${delim}" — the whole value was used as this piece.`
+						: `"${String(v)}" contains no "${delim}" — piece ${idx} came back empty.`,
+			});
+		} else if (idx >= parts.length) {
+			ctx?.report?.notes.push({
+				code: 'split-index-missing',
+				template: ctx.template,
+				detail: `"${String(v)}" splits on "${delim}" into ${parts.length} pieces — piece ${idx} doesn't exist, so it came back empty.`,
+			});
+		}
+		return (parts[idx] ?? '').trim();
 	},
-	regex: (v, arg) => {
+	regex: (v, arg, ctx) => {
 		// {var|regex(<pattern>)} — return the first match of <pattern> (or its first
 		// capture group, if present). The pattern cannot contain ")" or "|" — the
 		// template parser reserves those — so reach for split() in those cases.
@@ -148,24 +177,31 @@ const FILTERS: Record<string, (v: unknown, arg?: string) => unknown> = {
 			throw new RenderError(`regex filter pattern is invalid (${(e as Error).message}).`);
 		}
 		const found = String(v).match(re);
+		if (!found) {
+			ctx?.report?.notes.push({
+				code: 'regex-no-match',
+				template: ctx.template,
+				detail: `"${String(v)}" doesn't match the pattern "${arg}" — this piece came back empty.`,
+			});
+		}
 		return found ? (found[1] ?? found[0]) : '';
 	},
 };
 
-function applyFilter(filterExpr: string, value: unknown, originalTemplate: string): unknown {
+function applyFilter(filterExpr: string, value: unknown, ctx: FilterCtx): unknown {
 	// Parse `name` or `name(arg)`
 	const match = filterExpr.match(/^([a-z][a-z0-9_-]*)(?:\(([^)]*)\))?$/);
 	if (!match) {
-		throw new RenderError(`Malformed filter expression "${filterExpr}" in template "${originalTemplate}".`);
+		throw new RenderError(`Malformed filter expression "${filterExpr}" in template "${ctx.template}".`);
 	}
 	const [, name, arg] = match;
 
 	const fn = FILTERS[name];
 	if (!fn) {
 		throw new RenderError(
-			`Unknown filter "${name}" in template "${originalTemplate}". Allowed filters: ${Object.keys(FILTERS).join(', ')}.`,
+			`Unknown filter "${name}" in template "${ctx.template}". Allowed filters: ${Object.keys(FILTERS).join(', ')}.`,
 		);
 	}
 
-	return fn(value, arg);
+	return fn(value, arg, ctx);
 }

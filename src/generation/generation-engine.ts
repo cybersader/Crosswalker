@@ -24,7 +24,7 @@ import {
 	LinkMapping
 } from '../types/config';
 import { DebugLog } from '../utils/debug';
-import { render, RenderError, renderTemplate, type Recipe } from '../render';
+import { render, RenderError, renderTemplate, type Recipe, type RenderReport } from '../render';
 import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
@@ -256,6 +256,7 @@ export async function generateNotes(
 					// v0.1.3: build path + base frontmatter via render(); body/link
 					// content still comes from the existing column-role logic for
 					// backward-compat.
+					const renderReport: RenderReport = { notes: [] };
 					const noteData = buildNoteDataViaRender(
 						row,
 						rowNum,
@@ -263,7 +264,14 @@ export async function generateNotes(
 						options,
 						recipe,
 						config.name ?? 'unknown',
+						renderReport,
 					);
+					if (renderReport.notes.length > 0) {
+						result.warnings ??= [];
+						for (const note of renderReport.notes) {
+							result.warnings.push({ row: rowNum, message: note.detail });
+						}
+					}
 
 					// Skip if no valid path generated
 					if (!noteData.path) {
@@ -376,11 +384,12 @@ export async function generateNotes(
 
 	result.duration = Date.now() - startTime;
 
-	debug?.info('generation', 'complete', `Generation complete: ${result.created.length} created, ${result.errors.length} errors`, {
+	debug?.info('generation', 'complete', `Generation complete: ${result.created.length} created, ${result.errors.length} errors, ${result.warnings?.length ?? 0} warnings`, {
 		success: result.success,
 		created: result.created.length,
 		skipped: result.skipped.length,
 		errors: result.errors.length,
+		warnings: result.warnings?.length ?? 0,
 		duration: result.duration
 	});
 
@@ -428,6 +437,7 @@ function buildNoteDataViaRender(
 	options: GenerationOptions,
 	recipe: ReturnType<typeof legacyConfigToRecipe>,
 	ontologyId: string,
+	report?: RenderReport,
 ): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number } {
 	// 1. Build a CURIE for this row. Strategy: ontology + filename stem.
 	//    The filename is whatever the recipe's leaf file template resolves to.
@@ -438,7 +448,7 @@ function buildNoteDataViaRender(
 	//    names map to template variables).
 	let address;
 	try {
-		address = render(recipe, { curie, scope: row as Record<string, unknown> });
+		address = render(recipe, { curie, scope: row as Record<string, unknown> }, report);
 	} catch (err) {
 		if (err instanceof RenderError) {
 			throw new Error(`render() failed for row ${rowNum}: ${err.message}`);
@@ -1304,16 +1314,25 @@ export async function generateFromRecipe(
 				: defaultCurieLocalPart(row, rowNum);
 			const curie = `${curiePrefix}:${localPart}`;
 
-			// 2. Render
+			// 2. Render. The report collects per-row deviations (skipped folder
+			//    level, split/regex fallback) — the row still imports; the
+			//    deviation surfaces as a warning instead of silent weirdness.
+			const renderReport: RenderReport = { notes: [] };
 			let address;
 			try {
-				address = render(recipe, { curie, scope: row as Record<string, unknown> });
+				address = render(recipe, { curie, scope: row as Record<string, unknown> }, renderReport);
 			} catch (err) {
 				if (err instanceof RenderError) {
 					result.errors.push({ row: rowNum, message: `render() failed: ${err.message}` });
 					return;
 				}
 				throw err;
+			}
+			if (renderReport.notes.length > 0) {
+				result.warnings ??= [];
+				for (const note of renderReport.notes) {
+					result.warnings.push({ row: rowNum, message: note.detail });
+				}
 			}
 
 			// 3. Build full path
@@ -1433,11 +1452,12 @@ export async function generateFromRecipe(
 	if (result.errors.length > 0) result.success = false;
 	result.duration = Date.now() - startTime;
 
-	debug?.info('generation', 'recipe-complete', `generateFromRecipe: complete (${result.created.length} created, ${result.errors.length} errors)`, {
+	debug?.info('generation', 'recipe-complete', `generateFromRecipe: complete (${result.created.length} created, ${result.errors.length} errors, ${result.warnings?.length ?? 0} warnings)`, {
 		success: result.success,
 		created: result.created.length,
 		skipped: result.skipped.length,
 		errors: result.errors.length,
+		warnings: result.warnings?.length ?? 0,
 		duration: result.duration,
 	});
 

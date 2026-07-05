@@ -14,7 +14,7 @@
  * the body emitter (downstream) prefixes with the right number of `#`.
  */
 
-import type { Address, SourceScope } from '../types';
+import type { Address, SourceScope, RenderReport } from '../types';
 import { renderTemplate, RenderError } from '../template';
 
 interface HeadingLayoutEntry {
@@ -24,14 +24,19 @@ interface HeadingLayoutEntry {
 	level_depth?: number;
 }
 
-export function applyHeading(address: Address, entry: HeadingLayoutEntry, scope: SourceScope): void {
+export function applyHeading(
+	address: Address,
+	entry: HeadingLayoutEntry,
+	scope: SourceScope,
+	report?: RenderReport,
+): void {
 	if (entry.level_depth === undefined || entry.level_depth < 1 || entry.level_depth > 6) {
 		throw new RenderError(
 			`heading mechanism for level "${entry.level}" requires level_depth in 1..6; got ${entry.level_depth}.`,
 		);
 	}
 
-	const headingText = renderTemplate(entry.template, scope);
+	const headingText = renderTemplate(entry.template, scope, report);
 	if (!headingText) {
 		throw new RenderError(
 			`heading mechanism produced empty heading for level "${entry.level}". Template: "${entry.template}".`,

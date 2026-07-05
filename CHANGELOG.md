@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Render report: rows that don't fit the pattern are now visible (2026-07-05)
+
+One visible rule replaces three silent behaviors: **every row imports; every deviation is recorded.** Previously a row that didn't fit the recipe's ID pattern either silently lost a folder level (empty segment skipped), silently produced garbage nesting (`split()` with no delimiter falls back to the whole value — `AC-2/AC/AC-2.md`), or silently emitted an empty piece (`regex()` no-match) — a "weird vault" with no explanation.
+
+- `render()` gains an optional **observational `RenderReport`** — purely additive; output stays byte-identical with or without it (Pass-1 hashability unaffected).
+- Recorded deviations: `folder-level-skipped`, `split-no-delimiter`, `split-index-missing`, `regex-no-match` — each with a plain-language `detail` safe to surface directly in UI.
+- Both engine paths (wizard/legacy `generateNotes` and native `generateFromRecipe`) aggregate notes into **`GenerationResult.warnings`** (`{row, message}`) and the debug-log run summary now carries a warnings count.
+- 9 new unit tests pin the three failure modes + the determinism invariant (`tests/render-report.test.ts`).
+- Next (wizard UX): Step 3 preview banner — *"N rows match the pattern fully; M don't — here's where they'll land"* — fed by this report.
+
 ### Ingestion harness: JSON iterator reader — STIX / OSCAL / CPRT unlocked (2026-06-12)
 
 The headless harness (`tools/generate-fixtures.ts`) now reads **nested JSON sources** via the RML logical-source + iterator pattern (`tools/lib/json-source.ts`, 19 unit tests), completing the dev-log plan and unblocking the ~39-file JSON corpus:

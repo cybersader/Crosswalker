@@ -29,6 +29,36 @@ export interface ConceptIdentity {
 }
 
 /**
+ * Codes for per-row render deviations — the cases where a row didn't fit the
+ * recipe's expected shape and render() applied a fallback instead of failing.
+ * One visible rule (v0.1.6): every row imports; every deviation is recorded.
+ */
+export type RenderNoteCode =
+	| 'folder-level-skipped' // folder segment rendered empty → level dropped, note lands one level up
+	| 'split-no-delimiter' // split() found no delimiter in the value
+	| 'split-index-missing' // split() index past the number of pieces → empty string
+	| 'regex-no-match'; // regex() matched nothing → empty string
+
+export interface RenderNote {
+	code: RenderNoteCode;
+	/** Layout level id, when the deviation is tied to a specific level. */
+	level?: string;
+	/** The template that produced the deviation. */
+	template: string;
+	/** Plain-language explanation, safe to surface directly in the wizard. */
+	detail: string;
+}
+
+/**
+ * Optional collector passed through render(). When provided, mechanisms and
+ * template filters record deviations here. Never changes render() output —
+ * determinism (Ch 22 Pass-1 hashability) is unaffected.
+ */
+export interface RenderReport {
+	notes: RenderNote[];
+}
+
+/**
  * The Address output — what render() produces per concept.
  *
  * Per Ch 22 §3.1.

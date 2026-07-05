@@ -14,7 +14,7 @@
  * those emit on every note regardless of layout mechanism choice.
  */
 
-import type { ConceptIdentity, Address } from './types';
+import type { ConceptIdentity, Address, RenderReport } from './types';
 import { renderTemplate, RenderError } from './template';
 import { applyFolder } from './mechanisms/folder';
 import { applyFile } from './mechanisms/file';
@@ -22,7 +22,7 @@ import { applyHeading } from './mechanisms/heading';
 import { applyTagStub } from './mechanisms/tag';
 import { applyWikilinkStub } from './mechanisms/wikilink';
 
-export type { Address, ConceptIdentity, SourceScope } from './types';
+export type { Address, ConceptIdentity, SourceScope, RenderNote, RenderNoteCode, RenderReport } from './types';
 export { RenderError } from './template';
 export { renderTemplate } from './template';
 
@@ -65,8 +65,12 @@ export interface Recipe {
  * Throws `RenderError` for: unknown mechanism, missing template variable,
  * malformed filter, heading without level_depth, tag/wikilink as layout level
  * (deferred to v0.2).
+ *
+ * `report` (optional): when provided, per-row deviations (skipped folder
+ * levels, split/regex fallbacks) are recorded into it. Purely observational —
+ * output is byte-identical with or without it.
  */
-export function render(recipe: Recipe, identity: ConceptIdentity): Address {
+export function render(recipe: Recipe, identity: ConceptIdentity, report?: RenderReport): Address {
 	const address: Address = {
 		primary: { path: '' },
 		wikilinkTarget: '',
@@ -79,13 +83,13 @@ export function render(recipe: Recipe, identity: ConceptIdentity): Address {
 	for (const entry of recipe.target.layout) {
 		switch (entry.mechanism) {
 			case 'folder':
-				applyFolder(address, entry as Parameters<typeof applyFolder>[1], identity.scope);
+				applyFolder(address, entry as Parameters<typeof applyFolder>[1], identity.scope, report);
 				break;
 			case 'file':
-				applyFile(address, entry as Parameters<typeof applyFile>[1], identity.scope);
+				applyFile(address, entry as Parameters<typeof applyFile>[1], identity.scope, report);
 				break;
 			case 'heading':
-				applyHeading(address, entry as Parameters<typeof applyHeading>[1], identity.scope);
+				applyHeading(address, entry as Parameters<typeof applyHeading>[1], identity.scope, report);
 				break;
 			case 'tag':
 				applyTagStub();
@@ -106,17 +110,17 @@ export function render(recipe: Recipe, identity: ConceptIdentity): Address {
 	if (alsoEmit) {
 		if (alsoEmit.tags) {
 			for (const t of alsoEmit.tags) {
-				address.tags.push(renderTemplate(t, identity.scope));
+				address.tags.push(renderTemplate(t, identity.scope, report));
 			}
 		}
 		if (alsoEmit.aliases) {
 			for (const a of alsoEmit.aliases) {
-				address.aliases.push(renderTemplate(a, identity.scope));
+				address.aliases.push(renderTemplate(a, identity.scope, report));
 			}
 		}
 		if (alsoEmit.frontmatter?.managed) {
 			for (const [k, t] of Object.entries(alsoEmit.frontmatter.managed)) {
-				address.frontmatter[k] = renderTemplate(t, identity.scope);
+				address.frontmatter[k] = renderTemplate(t, identity.scope, report);
 			}
 		}
 	}
