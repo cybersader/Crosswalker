@@ -18,12 +18,13 @@
  * Or: bun run fixtures
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, readdirSync, copyFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { render, renderTemplate, type Recipe } from '../src/render';
+import { jsonToRows, parseWhere, applyWhere } from './lib/json-source';
 
 interface Args {
 	source: string;
@@ -37,10 +38,17 @@ interface Args {
 	sheet?: string;
 	/** XLSX: 0-based header-row index — skips banner/preamble rows above the headers. Default 0. */
 	headerRow: number;
+	/** JSON: iterator path locating the row array — e.g. "$.objects[*]", "$.catalog.groups[*].controls[*]". */
+	iterator?: string;
+	/** JSON: row filter — comma-ANDed "<dotted.path>=<value>" / "!=" clauses, e.g. "type=attack-pattern,revoked!=true". */
+	where?: string;
 	/** Path to a Recipe JSON (spec/recipe.schema.json). When set, the real render() engine drives output. */
 	recipe?: string;
 	/** Template for the concept id (curie suffix) under --recipe, e.g. "{identifier}". Default "{id}". */
 	id?: string;
+	/** Dir of committed example `.base` files to copy into --target alongside the notes
+	 *  (so the synthetic fixture set ships with ready-to-open reference views). */
+	examples?: string;
 }
 
 /**
@@ -96,8 +104,11 @@ function parseArgs(argv: string[]): Args {
 		}
 		else if (a === '--sheet') args.sheet = argv[++i];
 		else if (a === '--header-row') args.headerRow = parseInt(argv[++i], 10) || 0;
+		else if (a === '--iterator') args.iterator = argv[++i];
+		else if (a === '--where') args.where = argv[++i];
 		else if (a === '--recipe') args.recipe = argv[++i];
 		else if (a === '--id') args.id = argv[++i];
+		else if (a === '--examples') args.examples = argv[++i];
 		else if (a === '--help' || a === '-h') {
 			printHelp();
 			process.exit(0);
@@ -118,14 +129,24 @@ Usage:
   bun tools/generate-fixtures.ts --source <csv> --target <dir> --ontology <slug> [--clean]
 
 Args:
-  --source <csv>      Input CSV path (relative to repo root). First row is headers.
-                      Required columns: id. Optional: name, title, family, family_name,
-                      parent, description.
+  --source <file>     Input path (relative to repo root): .csv (first row =
+                      headers), .xlsx/.xls (see --sheet/--header-row), or .json
+                      (see --iterator/--where). Required column/field: id (or
+                      use --map / a --recipe --id template). Optional: name,
+                      title, family, family_name, parent, description.
   --target <dir>      Output directory (relative to repo root). Will be created if
                       missing.
   --ontology <slug>   Ontology identifier; becomes the CURIE prefix and
                       _crosswalker.source_ref.curie.
   --clean             Empty the target directory before generating.
+  --iterator <path>   JSON: locate the row array inside a nested document —
+                      dotted keys + [*] fan-out only. e.g. '$.objects[*]' (STIX),
+                      '$.response.elements.elements[*]' (NIST CPRT),
+                      '$.catalog.groups[*].controls[*]' (OSCAL). Omit when the
+                      document IS a top-level array.
+  --where <clauses>   JSON: comma-ANDed row filters, '<dotted.path>=<value>' or
+                      '!='. e.g. 'type=attack-pattern,revoked!=true'. A missing
+                      field never =-matches and always !=-matches.
   --deterministic     Stable produced_at timestamp (2026-05-04T00:00:00.000Z)
                       instead of Date.now(). Required for fixture-drift CI gates.
                       Equivalent to env CROSSWALKER_FIXTURES_DETERMINISTIC=1.
@@ -194,6 +215,12 @@ function readXlsx(absPath: string, sheet: string | undefined, headerRow: number)
 		range: headerRow, // start at this row; treat it as the header
 		defval: '',
 		blankrows: false,
+		// Formatted text, not raw values: CIS stores safeguard "4.10" as the
+		// NUMBER 4.1 with display text "4.10" — String(4.1) would silently
+		// collide it with safeguard 4.1 (one overwrites the other). raw:false
+		// reads every cell as what Excel displays, which is the contract the
+		// string-coercion below promises anyway.
+		raw: false,
 	});
 	return raw.map((r) => {
 		const row: CsvRow = {} as CsvRow;
@@ -209,13 +236,65 @@ function readXlsx(absPath: string, sheet: string | undefined, headerRow: number)
 	});
 }
 
-/** Dispatch on file extension: .xlsx/.xls -> workbook reader, else CSV. */
+/**
+ * Read a nested JSON source via the logical-source + iterator path
+ * (tools/lib/json-source.ts). `--iterator` locates the row array
+ * ($.objects[*] for STIX, $.response.elements.elements[*] for CPRT,
+ * $.catalog.groups[*].controls[*] for OSCAL); `--where` filters rows
+ * (type=attack-pattern,revoked!=true). Top-level scalars are coerced to
+ * trimmed strings (same contract as CSV/XLSX); nested objects/arrays
+ * survive so recipe templates can use dotted paths
+ * ({external_references.0.external_id}).
+ */
+function readJson(absPath: string, iterator: string | undefined, where: string | undefined): CsvRow[] {
+	if (!existsSync(absPath)) {
+		console.error(`Source JSON not found: ${absPath}`);
+		process.exit(1);
+	}
+	const text = readFileSync(absPath, 'utf8');
+	let result;
+	try {
+		result = jsonToRows(text, iterator, where);
+	} catch (e) {
+		console.error(`JSON source error: ${(e as Error).message}`);
+		process.exit(1);
+	}
+	if (result.skippedNonObjects > 0) {
+		console.warn(`  skipped:  ${result.skippedNonObjects} non-object item(s) yielded by the iterator`);
+	}
+	if (result.filteredOut > 0) {
+		console.log(`  filtered: ${result.filteredOut} row(s) excluded by --where "${where}"`);
+	}
+	// Top-level scalars are strings (coerced above); nested values intentionally
+	// remain objects/arrays for dotted template access — CsvRow's index signature
+	// is looser at runtime than its declared type for those keys.
+	return result.rows as unknown as CsvRow[];
+}
+
+/** Dispatch on file extension: .xlsx/.xls -> workbook reader, .json -> iterator reader, else CSV. */
 function readSource(absPath: string, args: Args): CsvRow[] {
 	const lower = absPath.toLowerCase();
 	if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-		return readXlsx(absPath, args.sheet, args.headerRow);
+		return applyWhereToRows(readXlsx(absPath, args.sheet, args.headerRow), args.where);
 	}
-	return readCsv(absPath);
+	if (lower.endsWith('.json')) {
+		// readJson applies --where itself (inside jsonToRows, pre-coercion).
+		return readJson(absPath, args.iterator, args.where);
+	}
+	return applyWhereToRows(readCsv(absPath), args.where);
+}
+
+/** `--where` is format-agnostic row filtering — apply it to flat-table readers
+ *  (CSV/XLSX) too, e.g. selecting CIS control-level rows ('CIS Safeguard=' →
+ *  rows where the safeguard cell is empty). The JSON path filters pre-coercion
+ *  inside jsonToRows; here rows are already flat string maps. */
+function applyWhereToRows(rows: CsvRow[], where: string | undefined): CsvRow[] {
+	if (!where) return rows;
+	const kept = applyWhere(rows, parseWhere(where)) as CsvRow[];
+	if (kept.length !== rows.length) {
+		console.log(`  filtered: ${rows.length - kept.length} row(s) excluded by --where "${where}"`);
+	}
+	return kept;
 }
 
 function buildFrontmatter(
@@ -437,6 +516,26 @@ function main(): void {
 	}
 
 	console.log(`  wrote:    ${written} files`);
+
+	// Copy committed example `.base` files into the target so the synthetic set
+	// ships with ready-to-open reference views (regenerated on every --clean run,
+	// keeping the fixture vault self-cleaning + iterable). Source of truth is the
+	// committed examples dir; the copies under test-vault are gitignored artifacts.
+	if (args.examples) {
+		const examplesAbs = resolve(REPO_ROOT, args.examples);
+		if (existsSync(examplesAbs)) {
+			let copied = 0;
+			for (const f of readdirSync(examplesAbs)) {
+				if (!f.endsWith('.base')) continue;
+				copyFileSync(join(examplesAbs, f), join(targetAbs, f));
+				copied++;
+			}
+			console.log(`  examples: ${copied} .base file(s) from ${relative(REPO_ROOT, examplesAbs)}/`);
+		} else {
+			console.warn(`  examples dir not found: ${relative(REPO_ROOT, examplesAbs)}`);
+		}
+	}
+
 	console.log(`  done.`);
 }
 

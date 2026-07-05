@@ -1,0 +1,43 @@
+# Committed source-of-truth reference Bases over the public, synthetic NIST-mini
+# fixtures. `bun run fixtures` copies this into test-vault/Frameworks/NIST-mini/
+# (a gitignored, regenerated artifact). Use it to test native Bases features
+# (grouping, cards, sort, filters) on non-licensed data and compare them against
+# the custom `crosswalker-pivot` view.
+filters:
+  and:
+    - file.inFolder("Frameworks/NIST-mini")
+    - file.ext == "md"
+properties:
+  control_id:
+    displayName: Control
+  title:
+    displayName: Title
+  family_name:
+    displayName: Family
+  family:
+    displayName: Fam
+views:
+  - type: table
+    name: By family (grouped)
+    groupBy:
+      property: family
+      direction: ASC
+    order:
+      - control_id
+      - title
+      - family_name
+    summaries:
+      control_id: values.length
+  - type: cards
+    name: Control cards
+    order:
+      - title
+      - control_id
+      - family_name
+  - type: table
+    name: Flat table
+    order:
+      - control_id
+      - title
+      - family
+      - family_name

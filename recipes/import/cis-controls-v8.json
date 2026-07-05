@@ -1,0 +1,24 @@
+{
+  "recipe": "cis-controls-v8-flat",
+  "source": { "ontology": "cis-v8", "levels": ["safeguard"] },
+  "target": {
+    "layout": [
+      { "level": "safeguard", "mechanism": "file", "template": "{CIS Safeguard|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "title": "{Title|trim}",
+          "safeguard_id": "{CIS Safeguard}",
+          "control": "{CIS Control|trim}",
+          "asset_class": "{Asset Class|trim}",
+          "security_function": "{Security Function|trim}",
+          "ig1": "{IG1|trim}",
+          "ig2": "{IG2|trim}",
+          "ig3": "{IG3|trim}"
+        },
+        "user_preserve": ["reviewer", "status", "notes"]
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "recipe": "nist-csf-2-cprt",
+  "source": { "ontology": "nist-csf-2", "levels": ["concept"] },
+  "target": {
+    "layout": [
+      { "level": "concept", "mechanism": "file", "template": "{element_identifier|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "title": "{title|trim}",
+          "csf_id": "{element_identifier}",
+          "level": "{element_type}",
+          "description": "{text|trim}"
+        },
+        "user_preserve": ["reviewer", "status", "notes"]
+      }
+    }
+  }
+}

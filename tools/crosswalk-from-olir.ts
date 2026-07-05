@@ -30,7 +30,11 @@
  *     --subject-prefix nist-csf-2 --object-prefix nist-800-53 \
  *     --target test-vault/_crosswalker/mappings/nist-csf-to-800-53 \
  *     [--sssom-out recipes/import/crosswalks/<name>.sssom.tsv] \
- *     [--provider "NIST OLIR"] [--clean] [--deterministic]
+ *     [--provider "NIST OLIR"] [--clean] [--deterministic] \
+ *     [--header-row 3] [--subject-col <name>] [--object-col <name>] \
+ *     [--depad subject|object|both] \
+ *     [--subject-note-folder Frameworks/_licensed/NIST-CSF-2] \
+ *     [--object-note-folder Frameworks/_licensed/NIST-800-53]
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
@@ -40,8 +44,19 @@ import * as XLSX from 'xlsx';
 import { render, type Recipe } from '../src/render';
 import { validateTier1Frontmatter, validateRecipe } from '../src/validation/validator';
 
-const SPEC_VERSION = 'https://crosswalker.dev/spec/tier1.schema.json';
-const DETERMINISTIC_TIMESTAMP = '2026-05-04T00:00:00.000Z';
+import {
+	SPEC_VERSION,
+	DETERMINISTIC_TIMESTAMP,
+	skosToStrm,
+	slug,
+	localOf,
+	groupOf,
+	depadId,
+	noteLink,
+	frontmatterToYaml,
+	writeSssomTsv,
+	type SssomRow,
+} from './lib/crosswalk-shared';
 
 /** Standard SKOS mapping predicate for each OLIR relationship label.
  *  Standard SKOS semantics: `A skos:broadMatch B` ⇒ B is broader than A. */
@@ -53,16 +68,6 @@ const OLIR_TO_SKOS: Record<string, string> = {
 };
 const DEFAULT_SKOS = 'skos:relatedMatch'; // OLIR with no relationship type → related
 
-/** Mirror of SKOS_TO_STRM in src/import/sssom-importer.ts (module-private there).
- *  Keep in sync if that map changes. Unknown → intersects_with. */
-const SKOS_TO_STRM: Record<string, string> = {
-	'skos:exactMatch': 'is_equivalent_to',
-	'skos:closeMatch': 'is_approximate_to',
-	'skos:broadMatch': 'is_broader_than',
-	'skos:narrowMatch': 'is_narrower_than',
-	'skos:relatedMatch': 'intersects_with',
-};
-const skosToStrm = (skos: string): string => SKOS_TO_STRM[skos] ?? 'intersects_with';
 
 interface Args {
 	source: string;
@@ -71,6 +76,17 @@ interface Args {
 	objectPrefix: string;
 	subjectCol: string;
 	objectCol: string;
+	/** 0-based header-row index — skips banner/preamble rows above the headers (default 0). */
+	headerRow: number;
+	/** Strip leading zeros from numeric id segments on one/both sides (AC-01 → AC-1,
+	 *  IR-04(02) → IR-4(2)). NIST 800-53's canonical ids are unpadded; OLIR workbooks pad. */
+	depad?: 'subject' | 'object' | 'both';
+	/** Vault-relative folder of the subject-side concept notes. When set, edge notes
+	 *  emit a `subject_note` wikilink + a linked body. Folder-qualified to dodge
+	 *  basename ambiguity (NIST-mini fixtures share basenames with _licensed sets). */
+	subjectNoteFolder?: string;
+	/** Same for the object side → `object_note`. */
+	objectNoteFolder?: string;
 	target: string;
 	sssomOut?: string;
 	provider: string;
@@ -82,6 +98,7 @@ function parseArgs(argv: string[]): Args {
 	const a: Partial<Args> = {
 		subjectCol: 'Focal Document Element',
 		objectCol: 'Reference Document Element',
+		headerRow: 0,
 		provider: 'OLIR crosswalk',
 		clean: false,
 		deterministic: process.env.CW_DETERMINISTIC === '1',
@@ -94,6 +111,10 @@ function parseArgs(argv: string[]): Args {
 		else if (v === '--object-prefix') a.objectPrefix = argv[++i];
 		else if (v === '--subject-col') a.subjectCol = argv[++i];
 		else if (v === '--object-col') a.objectCol = argv[++i];
+		else if (v === '--header-row') a.headerRow = parseInt(argv[++i], 10) || 0;
+		else if (v === '--depad') a.depad = argv[++i] as Args['depad'];
+		else if (v === '--subject-note-folder') a.subjectNoteFolder = argv[++i];
+		else if (v === '--object-note-folder') a.objectNoteFolder = argv[++i];
 		else if (v === '--target') a.target = argv[++i];
 		else if (v === '--sssom-out') a.sssomOut = argv[++i];
 		else if (v === '--provider') a.provider = argv[++i];
@@ -118,7 +139,7 @@ interface OlirRow {
 }
 
 /** Read every matching sheet of an OLIR workbook into normalized-key rows. */
-function readOlir(absPath: string, sheets: RegExp | undefined): OlirRow[] {
+function readOlir(absPath: string, sheets: RegExp | undefined, headerRow: number): OlirRow[] {
 	if (!existsSync(absPath)) {
 		console.error(`Source workbook not found: ${absPath}`);
 		process.exit(1);
@@ -128,8 +149,13 @@ function readOlir(absPath: string, sheets: RegExp | undefined): OlirRow[] {
 	const out: OlirRow[] = [];
 	for (const sn of names) {
 		const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sn], {
+			range: headerRow, // start at this row; treat it as the header (skips banner rows)
 			defval: '',
 			blankrows: false,
+			// Formatted text, not raw values — same fix as generate-fixtures.ts:
+			// Excel can store an id like "4.10" as the NUMBER 4.1, and String(4.1)
+			// silently collides it with id 4.1. Read what Excel displays.
+			raw: false,
 		});
 		for (const r of raw) {
 			const row: OlirRow = {};
@@ -142,29 +168,11 @@ function readOlir(absPath: string, sheets: RegExp | undefined): OlirRow[] {
 	return out;
 }
 
-const slug = (s: string) =>
-	s
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '');
 
-/** Local part of a CURIE (drop the `prefix:`). */
-const localOf = (curie: string) => curie.split(':').slice(1).join(':') || curie;
 
-/** Roll-up group key for an id: its leading letters — the CSF function (GV.OC-01
- *  → GV) or the 800-53 family (AC-2 → AC). Enables family×function coverage views. */
-const groupOf = (curie: string) => {
-	const local = localOf(curie);
-	return local.match(/^[A-Za-z]+/)?.[0] ?? local;
-};
 
-interface SssomRow {
-	subject_id: string;
-	predicate_id: string; // SKOS (standard SSSOM)
-	object_id: string;
-	mapping_justification: string;
-	confidence?: number;
-}
+
+
 
 /** Map one OLIR row to an SSSOM row. Returns null for rows missing either end. */
 function olirToSssom(row: OlirRow, a: Args): SssomRow | null {
@@ -185,74 +193,19 @@ function olirToSssom(row: OlirRow, a: Args): SssomRow | null {
 		if (!Number.isNaN(n)) confidence = Math.max(0, Math.min(1, n / 10));
 	}
 
+	const subjLocal = a.depad === 'subject' || a.depad === 'both' ? depadId(focal) : focal;
+	const objLocal = a.depad === 'object' || a.depad === 'both' ? depadId(reference) : reference;
 	return {
-		subject_id: `${a.subjectPrefix}:${focal}`,
+		subject_id: `${a.subjectPrefix}:${subjLocal}`,
 		predicate_id: skos,
-		object_id: `${a.objectPrefix}:${reference}`,
+		object_id: `${a.objectPrefix}:${objLocal}`,
 		mapping_justification: 'semapv:ManualMappingCuration',
 		confidence,
 	};
 }
 
-function frontmatterToYaml(fm: Record<string, unknown>): string {
-	const lines: string[] = ['---'];
-	for (const [k, v] of Object.entries(fm)) {
-		if (v === undefined) continue;
-		if (v && typeof v === 'object' && !Array.isArray(v)) {
-			lines.push(`${k}:`);
-			for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
-				if (v2 && typeof v2 === 'object') {
-					lines.push(`  ${k2}:`);
-					for (const [k3, v3] of Object.entries(v2 as Record<string, unknown>)) {
-						lines.push(`    ${k3}: ${yamlScalar(v3)}`);
-					}
-				} else {
-					lines.push(`  ${k2}: ${yamlScalar(v2)}`);
-				}
-			}
-		} else if (Array.isArray(v)) {
-			lines.push(`${k}: [${v.map((x) => yamlScalar(x)).join(', ')}]`);
-		} else {
-			lines.push(`${k}: ${yamlScalar(v)}`);
-		}
-	}
-	lines.push('---', '');
-	return lines.join('\n');
-}
 
-/** Numbers emit unquoted (so Obsidian/Bases reads them as numbers); strings get
- *  quoted when they contain YAML-significant characters. */
-function yamlScalar(v: unknown): string {
-	if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-	const s = String(v ?? '');
-	if (s === '' || /[:#"'\[\]{}|>&*!?,@`]/.test(s) || /^\s|\s$/.test(s)) {
-		return JSON.stringify(s);
-	}
-	return s;
-}
 
-function writeSssomTsv(rows: SssomRow[], a: Args, outPath: string): void {
-	const date = a.deterministic ? '2026-05-04' : new Date().toISOString().slice(0, 10);
-	const header = [
-		'# curie_map:',
-		`#   ${a.subjectPrefix}: "https://crosswalker.dev/ontology/${a.subjectPrefix}/"`,
-		`#   ${a.objectPrefix}: "https://crosswalker.dev/ontology/${a.objectPrefix}/"`,
-		'#   skos: "http://www.w3.org/2004/02/skos/core#"',
-		'#   semapv: "https://w3id.org/semapv/vocab/"',
-		`# mapping_set_id: "https://crosswalker.dev/crosswalks/${a.subjectPrefix}-to-${a.objectPrefix}"`,
-		`# subject_source: "${a.subjectPrefix}"`,
-		`# object_source: "${a.objectPrefix}"`,
-		`# mapping_provider: "${a.provider}"`,
-		`# mapping_date: "${date}"`,
-	];
-	const cols = ['subject_id', 'predicate_id', 'object_id', 'mapping_justification', 'confidence'];
-	const body = rows.map((r) =>
-		[r.subject_id, r.predicate_id, r.object_id, r.mapping_justification, r.confidence ?? '']
-			.join('\t'),
-	);
-	mkdirSync(resolve(outPath, '..'), { recursive: true });
-	writeFileSync(outPath, [...header, cols.join('\t'), ...body].join('\n') + '\n');
-}
 
 function main(): void {
 	const a = parseArgs(process.argv.slice(2));
@@ -266,7 +219,7 @@ function main(): void {
 		process.exit(1);
 	}
 
-	const olirRows = readOlir(resolve(a.source), a.sheets);
+	const olirRows = readOlir(resolve(a.source), a.sheets, a.headerRow);
 	const sourceHash = 'sha256-' + createHash('sha256').update(readFileSync(resolve(a.source))).digest('hex');
 
 	if (a.clean && existsSync(a.target)) rmSync(a.target, { recursive: true, force: true });
@@ -312,6 +265,12 @@ function main(): void {
 			if (fm[k] === '') delete fm[k];
 		}
 		if (sssom.confidence !== undefined) fm.match_confidence = sssom.confidence;
+		// Wikilinks to the concept notes (when folders are known) — makes edges
+		// navigable in Bases/graph instead of dead bare-CURIE strings.
+		const subjLocal = localOf(sssom.subject_id);
+		const objLocal = localOf(sssom.object_id);
+		if (a.subjectNoteFolder) fm.subject_note = noteLink(a.subjectNoteFolder, subjLocal);
+		if (a.objectNoteFolder) fm.object_note = noteLink(a.objectNoteFolder, objLocal);
 		fm._crosswalker = {
 			spec_version: SPEC_VERSION,
 			source_ref: {
@@ -331,13 +290,19 @@ function main(): void {
 			continue;
 		}
 
-		const body = `\`${sssom.subject_id}\` ${scope.strm_predicate} \`${sssom.object_id}\`\n`;
+		const subjRef = a.subjectNoteFolder
+			? noteLink(a.subjectNoteFolder, subjLocal)
+			: `\`${sssom.subject_id}\``;
+		const objRef = a.objectNoteFolder
+			? noteLink(a.objectNoteFolder, objLocal)
+			: `\`${sssom.object_id}\``;
+		const body = `${subjRef} ${scope.strm_predicate} ${objRef}\n`;
 		const fileName = `cw-${slug(sssom.subject_id)}--${slug(sssom.object_id)}.md`;
 		writeFileSync(resolve(a.target, fileName), frontmatterToYaml(fm) + body);
 		wrote++;
 	}
 
-	if (a.sssomOut) writeSssomTsv(sssomRows, a, resolve(a.sssomOut));
+	if (a.sssomOut) writeSssomTsv(sssomRows, { subjectPrefix: a.subjectPrefix, objectPrefix: a.objectPrefix, provider: a.provider, deterministic: a.deterministic }, resolve(a.sssomOut));
 
 	console.log(`  source:   ${a.source.split('/').pop()}`);
 	console.log(`  edges:    ${a.subjectPrefix} → ${a.objectPrefix}`);

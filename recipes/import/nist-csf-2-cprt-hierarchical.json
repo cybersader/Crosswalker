@@ -1,0 +1,23 @@
+{
+  "recipe": "nist-csf-2-cprt-hierarchical",
+  "source": { "ontology": "nist-csf-2", "levels": ["function", "category", "subcategory"] },
+  "target": {
+    "layout": [
+      { "level": "function", "mechanism": "folder", "template": "{element_identifier|split(.,0)}" },
+      { "level": "category", "mechanism": "folder", "template": "{element_identifier|split(-,0)}" },
+      { "level": "subcategory", "mechanism": "file", "template": "{element_identifier|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "csf_id": "{element_identifier}",
+          "function": "{element_identifier|split(.,0)}",
+          "category": "{element_identifier|split(-,0)}",
+          "level": "{element_type}",
+          "description": "{text|trim}"
+        },
+        "user_preserve": ["reviewer", "status", "notes"]
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "recipe": "scf-2026-flat",
+  "source": { "ontology": "scf", "levels": ["control"] },
+  "target": {
+    "layout": [
+      { "level": "control", "mechanism": "file", "template": "{SCF #|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "title": "{SCF Control|trim}",
+          "scf_id": "{SCF #}",
+          "domain": "{SCF Domain|trim}",
+          "description": "{Secure Controls Framework (SCF) Control Description|trim}"
+        },
+        "user_preserve": ["reviewer", "status", "notes"]
+      }
+    }
+  }
+}

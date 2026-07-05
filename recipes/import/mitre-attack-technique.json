@@ -1,0 +1,19 @@
+{
+  "recipe": "mitre-attack-technique-flat",
+  "source": { "ontology": "mitre-attack", "levels": ["technique"] },
+  "target": {
+    "layout": [
+      { "level": "technique", "mechanism": "file", "template": "{external_references.0.external_id|fs-safe}.md" }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "title": "{name|trim}",
+          "technique_id": "{external_references.0.external_id}",
+          "stix_id": "{id}"
+        },
+        "user_preserve": ["reviewer", "status", "notes"]
+      }
+    }
+  }
+}
