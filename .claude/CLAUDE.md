@@ -85,7 +85,7 @@ The canonical project KB is the docs site. For an agent new to the project:
 | [v0.1.4](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — Junction notes + crosswalk edges | ✅ Done (2026-05-05) |
 | [v0.1.4.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — Streaming refactor | ✅ Done (2026-05-05) |
 | [v0.1.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — Tier 2 sqlite-wasm sidecar | ✅ Done (2026-05-06) |
-| **[v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer + SSSOM + recipe UX** | 🚧 Phases 1 + 1.5 + 2 + 3 done; Phase 4 (recipe-picker UX) next |
+| **[v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer + SSSOM + recipe UX** | 🚧 Phases 1–6.4 ✅ (incl. 2026-06-12 ingestion-corpus sprint + wizard XLSX/JSON parity); v0.1.7 next |
 | [v0.1.7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — Exporters (STRM/OSCAL/SSSOM) | 📋 Planning |
 | [v0.1.8](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — Audit trail T1 default | 📋 Planning |
 | [v0.1-RC](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — Ship | 📋 Planning |
@@ -105,6 +105,8 @@ The canonical project KB is the docs site. For an agent new to the project:
 | **Bases not Dataview** — v0.1 query layer commitment; do NOT reference Dataview in user-facing surfaces or new code | Memory: `project_query_layer_bases_not_dataview.md` |
 | **Pattern A test-vault structure** — repo root has src/ + docs/ + spec/ + test-vault/ as siblings; build outputs into `test-vault/.obsidian/plugins/crosswalker/` | Confirmed 2026-05-04 |
 | **Plugin ships only `main.js + manifest.json + styles.css`** — `tools/`, `spec/`, KB don't bloat releases | Confirmed 2026-05-04 |
+| **Manual testing entry point** — `TEST_HANDS_ON_TOUR.md` at repo root is the master surface-coverage checklist (supersedes per-phase TEST_*.md guides for full passes) | Added 2026-06-12 |
+| **Screenshot Obsidian UI yourself — it IS automatable here** — real Obsidian runs via wdio + WSLg (`DISPLAY=:0 bun run e2e -- --spec tests/e2e/visual-*.spec.ts` → PNGs in `test-screenshots/`, readable by agents). Visual-verify rendering with a screenshot before claiming "can't render headlessly" or asking the user to eyeball. Never conclude Obsidian can't be screenshotted. | Memory: `reference_obsidian_screenshots_via_wdio.md`; `testing-patterns` skill |
 
 ## Roadmap conventions
 
@@ -171,6 +173,6 @@ See `docs/src/content/docs/development/setup.mdx` for the full `bun run` referen
 
 ---
 
-**Last Updated**: 2026-05-10 (v0.1.6 mid-milestone — Phases 1 + 1.5 + 2 + 3 ✅ shipped: recipe `query:` block schema, deterministic-fixtures + drift CI gate, SSSOM TSV import + materialized closure precompute, `crosswalkerPivot` registered Bases view. Phase 4 [recipe-picker UX] next.)
+**Last Updated**: 2026-06-12 (v0.1.6 mid-milestone, Phases 1–6.3 ✅. Ingestion corpus sprint: JSON iterator reader, CIS/SCF/ATT&CK ingests, proving-ground crosswalk triangle complete, SKOS→STRM direction convention fixed + test-pinned [zz-log 2026-06-12], navigable edges via --depad + subject_note/object_note wikilinks, GRC analysis views screenshot-verified.)
 **For**: Crosswalker Obsidian Plugin Development (v0.1 implementation phase)
 **Agent Role**: Implementation & Documentation Assistant

@@ -108,3 +108,11 @@ test-vault/Frameworks/_licensed/
 Frameworks/
 # Belt-and-suspenders: copyrighted source files always stay local regardless of path.
 Frameworks/_licensed/
+
+# Runtime artifacts (2026-06-12 knowledge-ops sweep)
+.claude/scheduled_tasks.lock
+# CK semantic-search index cache (MCP tool artifact, like docs/.astro)
+docs/src/content/docs/.ck/
+# Ephemeral user scratch notes in the test vault (wizard outputs, untitled)
+test-vault/Untitled.md
+test-vault/Test Query*.md

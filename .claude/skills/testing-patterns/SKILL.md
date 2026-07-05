@@ -12,7 +12,11 @@ Four testing surfaces. Each has a specific shape of behavior it validates well; 
 - "write a test for..."
 - "how should I test this?"
 - "the wdio harness is failing"
+- "screenshot it" / "does it render?" / "what does it look like?" / "visually verify"
+- "can you see it on your end?" / "verify the view/modal/heatmap renders"
 - "/test-pattern"
+
+> **Obsidian UI IS screenshottable here — do not claim otherwise.** Real Obsidian runs via wdio + WSLg. When you need to confirm a view/modal/pivot *renders correctly* (not just that the data is right), take a screenshot yourself — see [Visual verification](#visual-verification-screenshots) below. Never ask the user to eyeball something you can screenshot.
 
 ## The four surfaces
 
@@ -44,6 +48,37 @@ Convention: mirror `src/<module>.ts` → `tests/<module>.test.ts`.
 - Cross-framework crosswalk linking: import two frameworks, verify wikilinks resolve (planned, milestone v0.1.4)
 
 Convention: `tests/e2e/<feature>.spec.ts`. **Every v0.1 milestone gets at least one E2E spec.**
+
+### Visual verification (screenshots) — `visual-*.spec.ts`
+
+**This is how you confirm something *renders correctly* (a pivot heatmap, a modal, a Bases view, an embed) — by looking at it yourself, not by asking the user.** Real Obsidian runs here via WSLg.
+
+```bash
+DISPLAY=:0 bun run e2e -- --spec tests/e2e/visual-<name>.spec.ts
+# → PNGs in test-screenshots/ ; Read them directly to inspect rendering
+```
+
+Spec shape (copy `tests/e2e/visual-control-lens.spec.ts` or `visual-config-browser.spec.ts`):
+
+```typescript
+import { browser } from '@wdio/globals';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+const OUT = path.resolve('test-screenshots');
+// open a file/leaf, wait for render, capture:
+await browser.executeObsidian(async ({ app }, p) => {
+  const f = app.vault.getAbstractFileByPath(p);
+  await app.workspace.getLeaf(false).openFile(f);   // .base → Bases view; .md → note
+}, 'Control lens/1 - Overlap ... .base');
+await browser.pause(3000);                            // let Bases/the view render
+await browser.saveScreenshot(path.join(OUT, 'name.png'));
+```
+
+Gotchas:
+- Prefix the run with `DISPLAY=:0` (WSLg X socket at `/tmp/.X11-unix/X0`); a fresh shell shows `DISPLAY` unset but the display is live.
+- **Do not call `browser.setWindowSize()` / `maximizeWindow()`** — this Electron/CDP rejects `window/rect` (`Browser.getWindowForTarget wasn't found`) and fails the hook. Screenshot at default size.
+- For a Markdown note's embeds (`![[x.base]]`), switch the leaf to preview mode via `leaf.view.setState({...st, mode:'preview'})` before the screenshot.
+- A fast *data-only* sanity check (are the numbers right / are two views different data?) is to compute the grid from `test-vault/_crosswalker/mappings/<pair>/*.md` frontmatter — but that does **not** replace a screenshot for "does it look right."
 
 ### Playwright (`cd docs && bun run test:local`)
 
@@ -112,7 +147,8 @@ await expect(modal).toExist();
 | `Expected: "test-vault"` `Received: "test-vault-skBTQt"` | wdio-obsidian-service sandboxes the vault with random suffix | Match by prefix: `expect(name).toMatch(/^test-vault/)` |
 | `bun run e2e` hangs forever | Obsidian binary download in progress | First run downloads ~150 MB; subsequent runs use cache |
 | `app.plugins.plugins` TypeScript error | Internal Obsidian API not in `@types/obsidian` | Use `// @ts-expect-error` comment; documented in `obsidian-typings` |
-| `bun run e2e` fails with display error on bare WSL | No DISPLAY environment variable | WSLg works on Win11; CI uses headless via `xvfb-run` (planned for Wave 2) |
+| `bun run e2e` fails with a display error on WSL | `DISPLAY` unset in the shell | **WSLg provides the display — just prefix `DISPLAY=:0`** (socket at `/tmp/.X11-unix/X0`). Do NOT conclude "can't run Obsidian here." CI-only headless via `xvfb-run` is a separate, later concern. |
+| `window/rect` / `Browser.getWindowForTarget wasn't found` | `setWindowSize`/`maximizeWindow` unsupported by this Electron/CDP | Remove the resize call; screenshot at default window size |
 | Plugin changes not reflected in test | `onPrepare` ran build before edits | Either re-run `bun run e2e` or save+restart watch with `bun run dev` |
 
 ## Per-milestone E2E requirement

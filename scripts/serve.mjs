@@ -198,7 +198,57 @@ function runDocsBuild() {
   });
 }
 
+// esbuild ships per-platform native binaries the same way rollup does — the ROOT
+// node_modules suffers the identical WSL↔Windows contamination (esbuild errors
+// with "You installed esbuild for another platform"). Same cure: detect + clean
+// reinstall on this side. Note the sides ping-pong: healing for Windows breaks
+// the next WSL run (and vice versa) — that's inherent to sharing /mnt/c.
+function esbuildNativePkg() {
+  const { platform, arch } = process;
+  if (platform === 'win32' && arch === 'x64') return '@esbuild/win32-x64';
+  if (platform === 'win32' && arch === 'arm64') return '@esbuild/win32-arm64';
+  if (platform === 'linux' && arch === 'x64') return '@esbuild/linux-x64';
+  if (platform === 'linux' && arch === 'arm64') return '@esbuild/linux-arm64';
+  if (platform === 'darwin' && arch === 'x64') return '@esbuild/darwin-x64';
+  if (platform === 'darwin' && arch === 'arm64') return '@esbuild/darwin-arm64';
+  return null;
+}
+
+function ensureRootDeps() {
+  const nodeModules = resolve(repoRoot, 'node_modules');
+  let needsInstall = false;
+  let needsNuke = false;
+
+  if (!existsSync(nodeModules)) {
+    needsInstall = true;
+  } else {
+    const expectedEsbuild = esbuildNativePkg();
+    if (expectedEsbuild && !existsSync(resolve(nodeModules, expectedEsbuild))) {
+      log(`node_modules is missing ${expectedEsbuild} — likely installed on a different OS (WSL↔Windows).`);
+      needsNuke = true;
+      needsInstall = true;
+    }
+  }
+
+  if (needsNuke) {
+    log('Removing stale node_modules...');
+    rmSync(nodeModules, { recursive: true, force: true });
+    const lock = resolve(repoRoot, 'bun.lock');
+    if (existsSync(lock)) {
+      log('Removing bun.lock...');
+      rmSync(lock, { force: true });
+    }
+  }
+
+  if (needsInstall) {
+    log('Installing root dependencies (bun install)...');
+    execSync('bun install', { cwd: repoRoot, stdio: 'inherit', shell: true });
+    log('✅ root dependencies installed.');
+  }
+}
+
 function startPluginDev() {
+  ensureRootDeps();
   log('Starting plugin watch build → test-vault...');
   return track(spawn('bun', ['run', 'dev'], {
     cwd: repoRoot,

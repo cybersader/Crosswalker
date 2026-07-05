@@ -83,7 +83,7 @@ Covers parsers, config manager, generation engine logic. Fully headless — no O
 
 ### 2. Plugin manual testing (Obsidian)
 
-The plugin build outputs directly to `test-vault/.obsidian/plugins/crosswalker/` (configured in `esbuild.config.mjs`). Obsidian plugin UI can't be automated headlessly, so manual testing is still required for UX.
+The plugin build outputs directly to `test-vault/.obsidian/plugins/crosswalker/` (configured in `esbuild.config.mjs`). Obsidian UI **can** be driven and screenshotted here — real Obsidian runs via the WebdriverIO harness over WSLg (`DISPLAY=:0 bun run e2e -- --spec tests/e2e/visual-*.spec.ts` → PNGs in `test-screenshots/`, which agents can Read). **Visual-verify rendering yourself with a screenshot before asking the user to eyeball.** Manual testing is reserved only for deep interactive UX (focus/drag/multi-step flows). See the `testing-patterns` skill.
 
 1. `bun run serve:plugin` (or `bun run dev`) — starts the watch build
 2. Open `test-vault/` in Obsidian

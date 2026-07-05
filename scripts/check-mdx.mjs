@@ -187,7 +187,13 @@ async function main() {
 
   // Dot-per-file progress indicator — prints ✓ or ✗ as each file finishes
   for (const file of files) {
-    const content = await readFile(file, 'utf8');
+    let content = await readFile(file, 'utf8');
+    // Strip YAML frontmatter before compiling — Astro does, so the checker must
+    // too. Otherwise `<Row>`-style generics inside a frontmatter description
+    // false-positive as unclosed JSX (seen: AsyncIterable<Row> in v0.1.4.5 pages).
+    // Replace with blank lines so reported line numbers stay aligned.
+    const fm = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+    if (fm) content = fm[0].replace(/[^\n]/g, '') + content.slice(fm[0].length);
     try {
       await compile(content, { format: 'mdx', development: false });
       passed++;

@@ -29,11 +29,48 @@ bun tools/generate-fixtures.ts --source "Frameworks/CRI-Profile-ver.-2.2.2026-04
   --recipe recipes/import/cri-profile-v2-2.json --id "{Profile Id}" \
   --target "$SLICE/CRI-Profile" --clean --deterministic
 
+# CSF function + category hierarchy notes (from the CPRT JSON) — targets of the
+# group-level OLIR mappings; without these ~40 edge wikilinks dangle
+for lvl in function category; do
+  bun tools/generate-fixtures.ts --source "Frameworks/cprt_CSF_2_0_0_06-01-2026.json" \
+    --iterator '$.response.elements.elements[*]' --where "element_type=$lvl" \
+    --recipe recipes/import/nist-csf-2-cprt.json --id "{element_identifier}" \
+    --target "$SLICE/NIST-CSF-2" --deterministic
+done
+
+# CIS v8.1.2 — safeguards (153) + control-level notes (18; SCF references these as "N.0")
+bun tools/generate-fixtures.ts --source "Frameworks/CIS_Controls_Version_8.1.2___March_2025.xlsx" \
+  --sheet "Controls v8.1.2" --recipe recipes/import/cis-controls-v8.json \
+  --id "{CIS Safeguard}" --target "$SLICE/CIS-v8" --clean --deterministic
+bun tools/generate-fixtures.ts --source "Frameworks/CIS_Controls_Version_8.1.2___March_2025.xlsx" \
+  --sheet "Controls v8.1.2" --recipe recipes/import/cis-controls-v8-controls.json \
+  --id "{CIS Control|trim}" --where 'CIS Safeguard=' --target "$SLICE/CIS-v8" --deterministic
+
+# SCF 2026.1.1 — controls (1,468)
+bun tools/generate-fixtures.ts --source "Frameworks/Secure.Controls.Framework.SCF.-.2026.1.1.xlsx" \
+  --sheet "SCF 2026.1" --recipe recipes/import/scf-2026-flat.json \
+  --id "{SCF #}" --target "$SLICE/SCF" --clean --deterministic
+
+# SCF hub melt — 5,675 crosswalk edges into 7 frameworks (the STRM proxy)
+bun tools/crosswalk-from-melt.ts \
+  --source "Frameworks/Secure.Controls.Framework.SCF.-.2026.1.1.xlsx" --sheet "SCF 2026.1" \
+  --subject-col 'SCF #' --subject-prefix scf \
+  --melt 'CIS CSC 8.1=cis-v8;NIST CSF 2.0=nist-csf-2;NIST 800-53 R5=nist-800-53;ISO 27001 2022=iso-27001;ISO 27002 2022=iso-27002;AICPA TSC 2017:2022 (used for SOC 2)=aicpa-tsc;PCI DSS 4.0.1=pci-dss-4' \
+  --target-root "test-vault/_crosswalker/mappings" \
+  --depad-prefixes nist-800-53 \
+  --object-id-sub 'cis-v8=\.0$=' \
+  --subject-note-folder "Frameworks/_licensed/SCF" \
+  --object-note-folders 'cis-v8=Frameworks/_licensed/CIS-v8;nist-csf-2=Frameworks/_licensed/NIST-CSF-2;nist-800-53=Frameworks/_licensed/NIST-800-53' \
+  --provider "Secure Controls Framework" --clean --deterministic
+
 # Crosswalk-edge notes (the mappings the pivot counts)
 bun tools/crosswalk-from-olir.ts \
   --source "Frameworks/Cybersecurity_Framework_v2-0_Concept_Crosswalk_800-53_final.xlsx" \
   --sheets "Relationships" --subject-prefix nist-csf-2 --object-prefix nist-800-53 \
   --provider "NIST OLIR" --target "test-vault/_crosswalker/mappings/nist-csf-to-800-53" \
+  --depad object \
+  --subject-note-folder "Frameworks/_licensed/NIST-CSF-2" \
+  --object-note-folder "Frameworks/_licensed/NIST-800-53" \
   --clean --deterministic
 ```
 
@@ -90,15 +127,31 @@ bun tools/crosswalk-from-olir.ts \
   --source "Frameworks/wp-contentuploads202509CRI-Profile-v2.1-to-SP-800-53-Rev-5.1.1.Final_.2025.xlsx" \
   --subject-prefix nist-800-53 --object-prefix cri-profile \
   --provider "Cyber Risk Institute" \
+  --depad subject \
+  --subject-note-folder "Frameworks/_licensed/NIST-800-53" \
+  --object-note-folder "Frameworks/_licensed/CRI-Profile" \
   --target "test-vault/_crosswalker/mappings/cri-to-800-53" --clean --deterministic
 ```
 
-> **Known caveat (directional edges):** the OLIR→SKOS→STRM chain currently
-> inherits the implemented `SKOS_TO_STRM` direction convention, which appears to
-> invert standard SKOS for `broadMatch`/`narrowMatch`. So `is_broader_than` ↔
-> `is_narrower_than` on CRI edges may be swapped. The coverage *counts* are
-> unaffected (the pivot groups by subject/object, not direction). Resolve the
-> convention before trusting directional CRI edges — see the ingestion dev log.
+And the third triangle edge — CSF→CRI (154 edges, local-only), from the CRI
+workbook's own mapping sheet (OLIR-shaped; headers sit under 3 banner rows):
+
+```bash
+bun tools/crosswalk-from-olir.ts \
+  --source "Frameworks/CRI-Profile-ver.-2.2.2026-04-27.xlsx" \
+  --sheets '^NIST CSF v2 Mapping$' --header-row 3 \
+  --subject-col 'CSF / Profile Id' --object-col 'Profile Id' \
+  --subject-prefix nist-csf-2 --object-prefix cri-profile \
+  --provider "Cyber Risk Institute" \
+  --subject-note-folder "Frameworks/_licensed/NIST-CSF-2" \
+  --object-note-folder "Frameworks/_licensed/CRI-Profile" \
+  --target "test-vault/_crosswalker/mappings/nist-csf-to-cri" --clean --deterministic
+```
+
+> **Directional edges (resolved 2026-06-12):** the `SKOS_TO_STRM` map used to
+> invert standard SKOS for `broadMatch`/`narrowMatch`; it's fixed (broadMatch →
+> `is_narrower_than`, per SKOS semantics) and pinned by a unit test. Directional
+> STRM predicates on regenerated edges are now trustworthy.
 
 ## Report back
 

@@ -8,6 +8,102 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Ingestion harness: JSON iterator reader — STIX / OSCAL / CPRT unlocked (2026-06-12)
+
+The headless harness (`tools/generate-fixtures.ts`) now reads **nested JSON sources** via the RML logical-source + iterator pattern (`tools/lib/json-source.ts`, 19 unit tests), completing the dev-log plan and unblocking the ~39-file JSON corpus:
+
+- `--iterator '$.objects[*]'` locates the row array inside a nested document — closed, fail-fast syntax (dotted keys + `[*]` fan-out, multi-fan flattens à la OSCAL's `$.catalog.groups[*].controls[*]`); a missing key errors **listing the keys that are available**; indices/filters are rejected, pointing at `--where`.
+- `--where 'type=attack-pattern,revoked!=true'` filters rows with comma-ANDed `=`/`!=` clauses on dotted paths; a missing field never `=`-matches and always `!=`-matches.
+- Top-level scalars coerce to trimmed strings (same contract as the CSV/XLSX readers, so `--map` behaves identically across formats); **nested objects/arrays survive** for the dotted template paths `render()` already resolves (`{external_references.0.external_id}`).
+- Smoke-verified on the real corpus through the production `render()`: **MITRE ATT&CK STIX → 697 active techniques** (new `recipes/import/mitre-attack-technique.json`; clean `T1055.011.md` sub-technique filenames) and **NIST CPRT CSF 2.0 → 185 subcategories** (found cleaner than the XLSX path — pre-split id/text, no `[Withdrawn` artifact).
+- Test hygiene: repaired two calendar-rotted `DraftStore` tests (hardcoded 2026-05 dates crossed the 30-day expiry window as real time passed; now relative via a `daysAgo()` helper).
+
+### Ingestion harness: XLSX formatted-text fidelity + CIS & SCF ingested (2026-06-12)
+
+- **`raw: false` in the XLSX reader** — CIS stores safeguard "4.10" as the *number* 4.1 with display text "4.10"; `String(4.1)` silently collided it with safeguard 4.1 (one note overwrote the other). Cells are now read as the text Excel displays. Regression-verified: CSF (185) + CRI (472) re-renders byte-identical.
+- **CIS Controls v8.1.2** ingested via new `recipes/import/cis-controls-v8.json` → **153 safeguards** (the official count) with IG1-3, asset class, and security function in frontmatter; 18 control group-header rows skip cleanly. Local-only output (CC BY-NC-SA).
+- **SCF 2026.1.1** ingested via new `recipes/import/scf-2026-flat.json` → **1,468 controls** (domain + description in frontmatter). Local-only output (CC BY-ND). The sheet's ~250 per-framework mapping columns are the named follow-on (mapping-column melt → crosswalk edges — the STRM proxy into ISO/SOC 2/PCI/COBIT without their text).
+
+### Docs: illustrated "system model" page + Mermaid actually renders now (2026-06-13)
+
+- **New `concepts/system-model.mdx`** — the picture-first, diagram-rich map of the whole system (the visual front door `system-architecture` lacked). Seven hand-authored **HTML/CSS** flow diagrams — the source→vault→answers spine, an explicit **"two doors, one engine" ingest** diagram (wizard *or* harness — pick one, identical Tier 1 either way), the three tiers, the producers (schema-as-primitive), the `render()` + 5-mechanism coupling, vault→query→views, and the two surfaces — every box a clickable cross-link to its deep page. Linked in from the homepage, `system-architecture` (an Aside to the visual version), and the ETL hub.
+- **Dropped Mermaid for hand-authored HTML diagrams.** `rehype-mermaid` renders Mermaid via a headless browser at build time, which crashed anywhere Playwright browsers aren't installed — local Windows dev AND the deploy CI (which runs only `bun install` + `bun run build`). The HTML/CSS diagrams render everywhere with no build-time browser, match the dark theme exactly, and carry clickable links. (Bonus finding along the way: Mermaid had never actually rendered in this KB — Astro's Shiki was highlighting the ```mermaid fences into code blocks, so the existing `metadata-ecosystem` diagram was broken too; both are moot now.)
+- **`render()` deep-dive + "Hierarchy is a choice" (2026-06-14).** Rebuilt the `render()` section into a **Concept-record + Recipe-rules → finished-note** "lab" (legible species example instead of an opaque taxonomy code; a `split()` transformation deriving folders from one packed key), and added a **"Hierarchy is a choice, not a default"** section — a *same-data-four-shapes* illustration (folder / tag / heading / wikilink) plus the design rationale (closed 5-mechanism grammar, `render()` as the single coupling point, `also_emit` parallelism). Added an honest **"Open question — variable-depth structure"** callout: v0.1 renders fixed/known depth well, but variadic/ragged depth, polyhierarchical tag *layout*, data-driven heading depth, and graph-edge hierarchy are **not** first-class — recorded in a new zz-log and filed as **[Challenge 42](docs/src/content/docs/agent-context/zz-challenges/42-variable-depth-hierarchy-generation.mdx)** (with the author's public prior art — Folder Tag Sync, SEACOW(r), Jsonaut — cited as inputs).
+
+### Rapid-test loop: one-click reset (CLI + in-Obsidian) (2026-06-13)
+
+Completes the test loop so you can clear ad-hoc imports and re-import fast, without nuking the curated corpus — agent-driven and click-driven halves that agree:
+
+- **`bun run reset`** (`scripts/reset-test-vault.mjs`) — clears Crosswalker-generated notes from `test-vault/` outside a protected list (`Frameworks/_licensed/`, `NIST-mini/`, `_crosswalker/`, `GRC analysis/`, `PROVENANCE.md`); dry-run by default, `-- --yes` to delete, prunes empty folders. Double-click `reset.bat` for a preview-then-confirm one-click.
+- **"Reset imported notes (dev)" command** in Obsidian — scans for generated notes, groups them by output folder, shows the curated corpus as protected (not deletable), and offers per-folder Delete + "Delete all test notes" buttons. Uses `app.fileManager.trashFile` (honors your trash setting). Pairs with the existing "Import bundled test fixture (dev)" command — load a fixture, reset, repeat. (`src/views/reset-imports.ts`, +4 tests.)
+
+### Import wizard: id-driven folder hierarchy + clearer record picker (2026-06-13)
+
+The headline value prop — turning a flat taxonomy id into a structured vault tree — is now in the **wizard**, not just hand-written recipes.
+
+- **"Folder tree (from id)" column role** — set a taxonomy-id column (e.g. `element_identifier` = `DE.AE-02`) to this role and the wizard parses it into nested folders (`DE/ → DE.AE/ → DE.AE-02.md`) by detecting the id's delimiters (`deriveIdSplitTemplates`: finds the `. - _ / :` that appear in ≥80% of values, ordered by position, emits one `{col|split(d,0)}` folder level each). The "In the vault" preview shows the exact path the id produces. **Smart defaults auto-pick this role** when the title/id column is a structured id — so NIST CPRT now nests by function/category automatically instead of dumping flat. Plumbing: `HierarchyMapping.template` (an explicit folder template overriding `{column}`) threaded through the legacy-recipe shim. +8 tests including end-to-end `generateNotes` producing the nested tree.
+- **Record picker shows a concrete example** — each JSON list card now leads with a real example record ("e.g. element_type: subcategory · element_identifier: GV.OC-01 · …", empty fields skipped) so you see *what a record is*, with the confusing raw JSON path (`response → elements → elements`) demoted to a tiny grey "found in the file at:" line.
+
+### Generation engine: concurrent note writes (2026-06-13)
+
+Note generation was fully sequential — one `await vault.create` per row — so large imports (the 906-row CPRT test) crawled. Writes now run in a **bounded concurrency pool** (`forEachConcurrent`, default 8 in flight) in both `generateNotes` (wizard) and `generateFromRecipe` (SSSOM import); the wizard gets it automatically via the default. Correctness is preserved by design: each row's **synchronous prefix** (render + path-collision reservation) runs in row order, so reservation stays deterministic; only the async I/O tail overlaps. A new folder-creation **de-duplicator** (`createFolderEnsurer`) makes each folder + ancestor created exactly once — fixing the race where many concurrent rows targeting the same new folder would otherwise collide on `createFolder`. 11 new tests pin parallelism, the limit, in-order sync prefixes, async-iterable support, folder de-dup, and an end-to-end concurrent-vs-sequential output parity check.
+
+### Import wizard: Step-4 generation screen + id-driven hierarchy showcase (2026-06-13)
+
+- **Generation progress redesigned** — was a tiny default progress bar floating at the top-left of an otherwise-empty modal with the "Generate" button still active. Now a centered card fills the step: spinner, large percentage, accent progress bar, live "N / M notes" count; the footer button greys to "Generating…". Progress updates **in place** instead of re-rendering the entire modal every batch (the old `renderStep()` per-20-rows was a real drag on large imports).
+- **Showcase recipe: taxonomy id → vault structure** — `recipes/import/nist-csf-2-cprt-hierarchical.json` decomposes a CSF subcategory id (`DE.AE-02`) into a folder tree (`DE/ → DE.AE/ → DE.AE-02.md`) using the engine's `split`/`regex` template filters on the **single id field** — 6 functions → 34 categories → 185 subcategory leaves, with a proper `nist-csf-2:` curie prefix. Demonstrates [hierarchy primitives](https://cybersader.github.io/crosswalker/concepts/hierarchy-primitives/) + the 5-mechanism grammar; documented as §3.5 of the hands-on tour. Surfaced a named UI-parity gap: the wizard can't yet *derive* hierarchy by parsing an id (only whole-column-as-folder) — it's recipe/harness-only for now.
+
+### Import wizard: guided UX pass — record picker, smart defaults, visual previews (2026-06-13)
+
+A usability iteration after first hands-on testing, so the import "feels magical" instead of demanding config knowledge:
+
+- **JSON record picker** — no more typing `$.objects[*]`. The wizard inspects the file, finds every list of records inside it, and offers them as selectable cards (radio + record count + field-name chips). Primary-record lists rank above relationship/mapping lists, so e.g. NIST CPRT's `elements` (concepts) is pre-selected over its larger `relationships` list. The path syntax moves to an "Advanced" disclosure as the escape hatch. Root-array files show "this whole file is your list." (`suggestIterators()` in `json-parser.ts`, +4 tests.)
+- **Smart column defaults** — Step 2 arrives pre-configured with ✨-badged role suggestions (a real title/name column → Note title, a low-cardinality `family`/`category`/… → Hierarchy, a long-text `description`/`text` → Body). A matched saved config still supersedes them. Crucially, a title/name column is only suggested when it actually has distinct values — a fix for NIST CPRT, whose `title` column is 100% empty and silently produced 0-note generations.
+- **Loud failures** — a generation that creates 0 notes (or hits row errors) now raises a warning notice naming the first cause, instead of a silent "success."
+- **Visual previews** — Step 2 shows prominent row/column stat cards + a "what each column becomes in the vault" preview column; Step 3 replaced the ASCII tree + raw-markdown dump with stat cards, a real folder tree, and a mock note card (properties block + body), with raw markdown tucked into a disclosure.
+- **Wide-source UX** — Step 2 column filter + collapse of the all-default tail (special-role columns pinned) for sources like SCF (369 columns).
+- **Build fix** — `esbuild.config.mjs` watch now re-copies `styles.css` + `manifest.json` on change (previously copied once at startup, so mid-session CSS edits silently never deployed).
+
+### Import wizard: XLSX + JSON parsing — UI-parity gap #1 closed (2026-06-12)
+
+The wizard no longer stubs Excel and JSON ("not yet implemented" since the MVP) — both formats now parse through the same logic the headless harness proved on the real corpus ([UI parity audit](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/): UI first, config as the escape hatch).
+
+- **XLSX**: new `src/import/parsers/xlsx-parser.ts` — Step 1 gains a **sheet picker** (loaded on file select) and a **header-row offset** for banner rows. Carries the harness's hard-won contracts: formatted-text fidelity (`raw: false` — the CIS "4.10-stored-as-4.1" collision), header-key normalization (`\r\n` in header cells).
+- **JSON**: new `src/import/parsers/json-parser.ts` — Step 1 gains **iterator path** (`$.objects[*]`; empty = root array; errors list the keys that exist) and **row filter** (`type=attack-pattern,revoked!=true`) inputs. The shared core moved to `src/import/parsers/json-source-core.ts`; the harness now imports it from there (one reader, two doors — a working wizard config IS a working harness invocation).
+- +11 unit tests (`tests/wizard-parsers.test.ts`) pinning the 4.10 trap, banner-row skipping, sheet errors listing available names, and the STIX iterator+filter shape; new `visual-wizard-formats.spec.ts` drives the real wizard UI (DataTransfer file injection → Step-1 controls → parse → Step-2 columns).
+
+### Ingestion: SCF mapping-column melt — the STRM proxy hub goes live (2026-06-12)
+
+- **New extractor `tools/crosswalk-from-melt.ts`** unpivots wide mapping-column sheets into crosswalk edges (subject row × framework column × each id listed in the cell), through the same `render()` + AJV gate as the other extractors. Shared edge-emission helpers factored into `tools/lib/crosswalk-shared.ts` (one source of truth for the SKOS→STRM map, depad, wikilink, YAML, and SSSOM TSV emission — the OLIR tool now imports it, byte-identical output verified).
+- **SCF hub melted in one pass: 5,675 edges into 7 frameworks** (CIS 429 / CSF 611 / 800-53 1,117 / ISO 27001 316 / ISO 27002 506 / SOC 2 TSC 1,478 / PCI DSS 1,218). The ISO/SOC 2/PCI sets are the STRM proxy — coverage into copyrighted frameworks carrying only their control ids, never their text. Flat columns carry no relationship types (SCF's STRM detail exists only as 185 PDFs), so melt edges are honest `intersects_with`.
+- **`--where` is now format-agnostic** in the fixtures harness (was JSON-only) — e.g. `--where 'CIS Safeguard='` selects CIS's control-level group-header rows, which back-filled 18 CIS control notes (new `recipes/import/cis-controls-v8-controls.json`). With melt-side `--object-id-sub` normalizing SCF's `1.0`-style control refs, every SCF→CIS edge resolves on both ends.
+- **Corpus link integrity: 23,396 wikilinks, 99.82% resolve** (42 dead, all genuinely-absent concepts). New GRC view: `Framework adoption/3 - SCF hub - adopt once satisfy many.base` — SCF family × framework coverage matrix.
+
+### Crosswalks: SKOS→STRM direction fixed + navigable edges + GRC analysis views (2026-06-12)
+
+- **SKOS→STRM direction bug fixed** — the map in `src/import/sssom-importer.ts` (and its mirror in the OLIR tool) inverted standard SKOS: `A skos:broadMatch B` means B is the broader concept (A ⊂ B), but we emitted `A is_broader_than B`. Now `broadMatch → is_narrower_than` / `narrowMatch → is_broader_than`, **pinned by a new unit test** so the two maps can't silently re-invert. All three edge sets regenerated; committed SSSOM TSVs unaffected (they store the SKOS wire format).
+- **Edges are navigable** — `crosswalk-from-olir.ts` gains `--depad` (canonicalizes OLIR's zero-padded `AC-01` → NIST's `AC-1`) and `--subject-note-folder`/`--object-note-folder` (emit folder-qualified `subject_note`/`object_note` wikilinks + linked bodies). 7,732 links across the corpus, **99.5% resolve**; CSF function/category hierarchy notes back-filled from CPRT (`recipes/import/nist-csf-2-cprt.json`) to catch group-level mappings. Residual unresolved ids are genuinely-absent concepts (3 family-level 800-53 refs, IA-13 from r5.1.1, and ~11 CRI v2.2 extension ids that masquerade as CSF ids).
+- **GRC analysis suite extended** (`test-vault/GRC analysis/`): CSF×CRI triangle heatmap, an AC-2 "concept 360" lookup across all crosswalks (click-through links), a `Framework adoption/` lens (CIS IG1/IG2/IG3 maturity slices — 56/130/153; SCF 33-domain browser — headline finding: AI & Autonomous Technologies is now SCF's largest domain at 156 controls), plus a narrative index note. New `visual-grc-analysis.spec.ts` screenshots the suite in real Obsidian.
+
+### Crosswalks: CSF → CRI edges — the proving-ground triangle completes (2026-06-12)
+
+- `tools/crosswalk-from-olir.ts` gains `--header-row` (skip banner rows above the headers — partial fix for the per-sheet banner-row snag) and the same `raw: false` formatted-text fidelity as the fixtures harness. Regression-verified byte-identical: CSF→800-53 (740 edges + committed SSSOM TSV) and CRI→800-53 (1,039 edges).
+- **CSF 2.0 → CRI extracted** — the CRI workbook's "NIST CSF v2 Mapping" sheet turned out to be OLIR-shaped (just differently-labeled columns), so `--header-row 3` + `--subject-col`/`--object-col` aliases sufficed: **154 edges, 0 skipped** (49 exact / 92 broader / 13 related), local-only. All three proving-ground edges (CSF↔800-53, CRI↔800-53, CSF↔CRI) now exist; the SKOS→STRM direction snag now gates three directional edge sets and moves to the top of the queue.
+
+### Fixtures: example `.base` generation + test-vault cleanup (2026-06-05)
+
+- `bun run fixtures` now also emits committed reference `.base` files (from `tools/fixtures/examples/`) into the synthetic `NIST-mini/` fixture set via a new `--examples <dir>` flag — so the public, non-licensed fixture vault ships with ready-to-open native-Bases example views (grouped table / cards / flat) for testing feature alignment. `--clean` wipes + regenerates them, keeping the fixture vault self-cleaning and iterable.
+- Removed stale `test-vault/Frameworks/{Access Control,Audit,Configuration Management}/` — leftover folder-per-control experiments from an old `sample-nist-controls.csv` run (the duplicate `AC-1.md` notes that made wikilink resolution ambiguous). The Frameworks folder is now just `_licensed/` (gitignored, real import) + `NIST-mini/` (synthetic, regenerable).
+
+### Crosswalk pivot — reads per-view config + real heatmap shading (2026-06-05)
+
+Screenshot verification (real Obsidian via the WebdriverIO + WSLg harness) caught two latent bugs that made every `crosswalkerPivot` heatmap render as a plain, identical-looking number grid:
+
+- **Per-view config is read again**: current Obsidian Bases parses a view's options into `view.data` (top-level — where native views keep `order`/`groupBy`); `view.config` is reserved and `null` for custom views. The resolver now reads `view.data`, preferring top-level keys and falling back to a nested `data.config` block for older `.base` files. Before this, `rowsBy`/`colsBy`/`heatmap` were silently dropped and every pivot fell back to defaults — so two differently-configured views rendered identically.
+- **Heatmap actually shades**: with `heatmap: true` now applied, cells fade transparent→accent by a **perceptual sqrt intensity** curve (coverage counts are long-tailed; a linear scale washed the mid-range out to near-white). Endpoints unchanged; mid-range cells now visible.
+- **`.base` recipes**: pivot options now sit at the view's top level (canonical Bases shape); the nested `config:` block is still honored for back-compat.
+- **Visual-test infra**: `tests/e2e/visual-control-lens.spec.ts` screenshots the pivot + views via the wdio harness so rendering regressions are caught in-loop, not by eyeballing.
+
 ### Crosswalk views — custom Bases pivot works on current Obsidian + rollup-by-default (2026-06-04)
 
 Driving the real crosswalk corpus through Obsidian surfaced (and fixed) a cluster of Bases-lifecycle incompatibilities in the `crosswalkerPivot` custom view — it now renders, configures, and tears down cleanly on current Obsidian Bases.
