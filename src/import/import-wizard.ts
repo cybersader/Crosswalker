@@ -957,7 +957,7 @@ export class ImportWizardModal extends Modal {
 				cls: 'crosswalker-stat-value'
 			});
 			const meta = card.createEl('div', { cls: 'crosswalker-stat-meta' });
-			meta.createEl('span', { text: 'unique' });
+			meta.createEl('span', { text: 'Unique' });
 			if (totalRows > 0) {
 				const pct = Math.round((colInfo.uniqueCount / totalRows) * 100);
 				meta.createEl('span', {
@@ -966,7 +966,7 @@ export class ImportWizardModal extends Modal {
 				});
 			}
 			if (colInfo.hasEmptyValues) {
-				card.createEl('div', { text: 'has blanks', cls: 'crosswalker-stat-warning' });
+				card.createEl('div', { text: 'Has blanks', cls: 'crosswalker-stat-warning' });
 			}
 		}
 	}

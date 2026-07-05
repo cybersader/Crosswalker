@@ -298,7 +298,9 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Tier 2 sidecar').setHeading();
 
 		new Setting(containerEl)
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2" are Crosswalker's architecture-tier terms
 			.setName('Enable Tier 2 projection on vault load')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2"/"Bases" are Crosswalker/Obsidian proper terms
 			.setDesc('Auto-project canonical Tier 1 frontmatter into the .crosswalker.sqlite sidecar when the vault opens. Disable if you query Tier 1 directly via Bases and don\'t need fast SQL queries.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableTier2Projection)
@@ -309,6 +311,7 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Sidecar file path')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "SQLite" and "Tier 1" are proper product/architecture terms
 			.setDesc('Vault-relative path for the SQLite sidecar. Default: .crosswalker.sqlite at vault root. The file is deletable — the projector rebuilds it from canonical Tier 1 on next vault load.')
 			.addText(text => text
 				.setPlaceholder('.crosswalker.sqlite')
@@ -341,6 +344,7 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Enable debug log')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "NDJSON" and "trace_id" are technical identifiers, not proper nouns
 			.setDesc('Write NDJSON events to crosswalker-debug.log in vault root. Each line is one structured event (timestamp, level, category, op, msg, trace_id, ...freeform context). Read via: cat crosswalker-debug.log | jq')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableDebugLog)

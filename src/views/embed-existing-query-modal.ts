@@ -48,6 +48,7 @@ export class EmbedExistingQueryModal extends Modal {
 			const empty = contentEl.createDiv({ cls: 'crosswalker-browse-empty' });
 			empty.createEl('p', { text: 'No queries in this vault.' });
 			empty.createEl('p', {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- quotes the literal command palette entry name
 				text: 'Run "Crosswalker: Insert query into note" to create one.',
 				cls: 'crosswalker-browse-hint',
 			});

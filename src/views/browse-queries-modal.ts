@@ -54,6 +54,7 @@ export class BrowseQueriesModal extends Modal {
 
 		if (this.entries.length === 0) {
 			const empty = contentEl.createDiv({ cls: 'crosswalker-browse-empty' });
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- quotes the literal command palette entry name
 			empty.createEl('p', { text: 'Run "Crosswalker: Insert query into note" to create your first query.' });
 			this.renderFooter(contentEl);
 			return;
@@ -152,7 +153,7 @@ export class BrowseQueriesModal extends Modal {
 
 		this.renderIconButton(actions, 'link', 'Embed in active note', async () => {
 			if (!this.context.editor || !this.context.activeFile) {
-				new Notice('Open a markdown note to embed into.', 4000);
+				new Notice('Open a Markdown note to embed into.', 4000);
 				return;
 			}
 			this.close();

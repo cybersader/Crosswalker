@@ -372,7 +372,7 @@ export function parseCSVFileStream(
 			return {
 				async next(): Promise<IteratorResult<Record<string, any>>> {
 					// Loop until we have a row, the parse errors, or the parse completes
-					// eslint-disable-next-line no-constant-condition
+					 
 					while (true) {
 						if (parseError) throw parseError;
 

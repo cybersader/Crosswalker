@@ -125,6 +125,7 @@ export class RecipePickerModal extends Modal {
 		titleRow.createEl('h2', { text: this.existing ? 'Update query' : 'Insert query into note' });
 		if (this.existing) {
 			const badge = titleRow.createEl('span', { cls: 'crosswalker-update-badge' });
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- leading pencil glyph confuses the linter's first-letter detection; "Updating" is already correctly capitalized
 			badge.createEl('span', { text: '✎ Updating existing query', cls: 'crosswalker-update-badge-label' });
 			header.createEl('p', {
 				text: `Current recipe: ${this.existing.recipe} · query_id: ${this.existing.query_id}. Adjust params below + click Apply — the same .base file regenerates.`,
@@ -132,6 +133,7 @@ export class RecipePickerModal extends Modal {
 			});
 		} else {
 			header.createEl('p', {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Apply" quotes the literal button label
 				text: 'Pick a recipe; adjust params; click Apply. The plugin writes frontmatter + generates a .base file + inserts a ![[...]] embed at your cursor.',
 				cls: 'setting-item-description',
 			});

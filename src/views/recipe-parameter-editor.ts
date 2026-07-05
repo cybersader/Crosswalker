@@ -55,7 +55,8 @@ export function renderParameterEditor(
 
 	if (params.length === 0) {
 		container.createEl('p', {
-			text: 'This recipe has no exposed parameters to edit. Click Insert to add the block as-is.',
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Apply" quotes the literal button label
+			text: 'This recipe has no exposed parameters to edit. Click Apply to add the block as-is.',
 			cls: 'setting-item-description crosswalker-param-editor-empty',
 		});
 		return {

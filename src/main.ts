@@ -212,7 +212,7 @@ export default class CrosswalkerPlugin extends Plugin {
 			editorCallback: (editor, ctx) => {
 				const file = ctx.file;
 				if (!file) {
-					new Notice('Open a markdown note before running this command.', 5000);
+					new Notice('Open a Markdown note before running this command.', 5000);
 					return;
 				}
 				const traceId = this.debug.newTraceId();
@@ -295,7 +295,7 @@ export default class CrosswalkerPlugin extends Plugin {
 			editorCallback: async (editor, ctx) => {
 				const file = ctx.file;
 				if (!file) {
-					new Notice('Open a markdown note before running this command.', 5000);
+					new Notice('Open a Markdown note before running this command.', 5000);
 					return;
 				}
 				const traceId = this.debug.newTraceId();
@@ -371,6 +371,7 @@ export default class CrosswalkerPlugin extends Plugin {
 						const modal = new Modal(this.app);
 						modal.contentEl.createEl('h2', { text: 'Import a bundled test fixture' });
 						modal.contentEl.createEl('p', {
+							// eslint-disable-next-line obsidianmd/ui/sentence-case -- SSSOM is a domain acronym not in the linter's default acronym list
 							text: 'Populates _crosswalker/mappings/ with junction notes from a realistic SSSOM crosswalk. Useful for end-to-end pivot testing.',
 							cls: 'crosswalker-modal-subtitle',
 						});
@@ -434,6 +435,7 @@ export default class CrosswalkerPlugin extends Plugin {
 				modal.titleEl.setText('Reset imported notes');
 				const c = modal.contentEl;
 				if (groups.length === 0) {
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Crosswalker" is the plugin's proper name
 					c.createEl('p', { text: 'No Crosswalker-generated notes found.', cls: 'crosswalker-modal-subtitle' });
 				} else {
 					c.createEl('p', {
@@ -528,7 +530,7 @@ export default class CrosswalkerPlugin extends Plugin {
 			editorCallback: async (_editor, ctx) => {
 				const file = ctx.file;
 				if (!file) {
-					new Notice('Open a markdown note (query index.md or host) before materializing.', 5000);
+					new Notice('Open a Markdown note (query index.md or host) before materializing.', 5000);
 					return;
 				}
 				const traceId = this.debug.newTraceId();
@@ -606,6 +608,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// v0.1.5: Tier 2 sidecar — clear command
 		this.addCommand({
 			id: 'clear-tier-2-sidecar',
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2" are Crosswalker's architecture-tier terms
 			name: 'Clear Tier 2 sidecar (reproject from canonical Tier 1 on next open)',
 			callback: async () => {
 				try {
@@ -614,6 +617,7 @@ export default class CrosswalkerPlugin extends Plugin {
 						this.tier2Handle = null;
 					}
 					await clearSidecar(this, this.settings.tier2SidecarPath);
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2" are Crosswalker's architecture-tier terms
 					new Notice('Tier 2 sidecar cleared. Next query will reproject from Tier 1.');
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
@@ -640,7 +644,7 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'export-debug-log',
-			name: 'Export debug log to clipboard (last 1 MB, secrets redacted)',
+			name: 'Export debug log to clipboard (last 1 megabyte, secrets redacted)',
 			callback: async () => {
 				const content = await this.debug.readForExport();
 				if (!content) {
@@ -765,6 +769,7 @@ export default class CrosswalkerPlugin extends Plugin {
 				// so the user knows queries against Tier 2 may not return fresh
 				// results, but don't block the plugin lifecycle.
 				new Notice(
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2" are Crosswalker's architecture-tier terms
 					`Tier 2 projection failed (Tier 1 vault is unaffected; queries may be stale). See debug log.`,
 					6000,
 				);
