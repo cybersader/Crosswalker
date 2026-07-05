@@ -417,6 +417,66 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
+		// Rapid-test loop (dev): clear an ad-hoc test import in one click without
+		// touching the curated corpus / fixtures / views. The CLI twin is
+		// `bun run reset` (scripts/reset-test-vault.mjs) — same protected list.
+		this.addCommand({
+			id: 'reset-imported-notes',
+			name: 'Reset imported notes — delete a test import (dev)',
+			callback: async () => {
+				const { scanGeneratedImports, deleteImportedNotes } = await import('./views/reset-imports');
+				const { Modal, ButtonComponent, Notice } = await import('obsidian');
+				const groups = await scanGeneratedImports(this.app);
+				const deletable = groups.filter((g) => !g.protected);
+				const totalDeletable = deletable.reduce((n, g) => n + g.count, 0);
+
+				const modal = new Modal(this.app);
+				modal.titleEl.setText('Reset imported notes');
+				const c = modal.contentEl;
+				if (groups.length === 0) {
+					c.createEl('p', { text: 'No Crosswalker-generated notes found.', cls: 'crosswalker-modal-subtitle' });
+				} else {
+					c.createEl('p', {
+						text: 'Delete an ad-hoc test import. The curated corpus, fixtures, and views are listed but protected.',
+						cls: 'crosswalker-modal-subtitle',
+					});
+					for (const g of deletable) {
+						const row = c.createDiv({ cls: 'crosswalker-fixture-row' });
+						const txt = row.createDiv();
+						txt.createEl('div', { text: `${g.folder}/`, cls: 'crosswalker-fixture-title' });
+						txt.createEl('div', { text: `${g.count} generated notes`, cls: 'crosswalker-fixture-meta' });
+						new ButtonComponent(row).setButtonText('Delete').setWarning().onClick(async () => {
+							modal.close();
+							const n = await deleteImportedNotes(this.app, g.paths);
+							new Notice(`Deleted ${n} notes from ${g.folder}/`);
+						});
+					}
+					if (deletable.length === 0) {
+						c.createEl('p', { text: 'No deletable test imports — every generated note is curated corpus.', cls: 'crosswalker-fixture-meta' });
+					}
+					for (const g of groups.filter((x) => x.protected)) {
+						const row = c.createDiv({ cls: 'crosswalker-fixture-row crosswalker-fixture-protected' });
+						const txt = row.createDiv();
+						txt.createEl('div', { text: `${g.folder}/  ·  protected corpus`, cls: 'crosswalker-fixture-title' });
+						txt.createEl('div', { text: `${g.count} notes — kept`, cls: 'crosswalker-fixture-meta' });
+					}
+					const footer = c.createDiv({ cls: 'crosswalker-modal-footer' });
+					if (totalDeletable > 0) {
+						new ButtonComponent(footer)
+							.setButtonText(`Delete all ${totalDeletable} test notes`)
+							.setWarning()
+							.onClick(async () => {
+								modal.close();
+								const n = await deleteImportedNotes(this.app, deletable.flatMap((g) => g.paths));
+								new Notice(`Deleted ${n} test notes. Curated corpus untouched.`);
+							});
+					}
+					new ButtonComponent(footer).setButtonText('Cancel').onClick(() => modal.close());
+				}
+				modal.open();
+			},
+		});
+
 		// v0.1.6 Phase 6.3: run the Layer A primitive benchmark suite.
 		// No vault data needed — synthesizes data at varying scales (100/1k/10k
 		// rows), times each primitive (array + streaming variants), emits NDJSON

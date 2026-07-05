@@ -94,6 +94,9 @@ export interface GenerationOptions {
 
 	/** Progress callback */
 	onProgress?: (current: number, total: number, message: string) => void;
+
+	/** Max note writes in flight at once (default DEFAULT_CONCURRENCY). 1 = sequential. */
+	concurrency?: number;
 }
 
 interface GeneratedNoteData {
@@ -105,6 +108,83 @@ interface GeneratedNoteData {
 
 // Current schema version for _crosswalker metadata
 const CROSSWALKER_METADATA_VERSION = 1;
+
+// ============================================================================
+// Concurrency infrastructure (v0.1.6 — 2026-06-13)
+// ============================================================================
+
+/** Default number of note writes kept in flight at once. Vault writes are
+ *  I/O-bound, so a moderate pool gives a large wall-clock win over awaiting
+ *  one at a time, without overwhelming Obsidian's metadata cache. */
+export const DEFAULT_CONCURRENCY = 8;
+
+/**
+ * Drive a worker over a sync OR async iterable with a bounded number of
+ * concurrent invocations (a sliding window). Items are PULLED in order and
+ * each worker's synchronous prefix runs in order (JS is single-threaded), so
+ * any in-prefix bookkeeping — e.g. path-collision reservation — stays
+ * deterministic by item order even though the async tails overlap.
+ */
+export async function forEachConcurrent<T>(
+	source: Iterable<T> | AsyncIterable<T>,
+	limit: number,
+	worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+	const asyncFactory = (source as AsyncIterable<T>)[Symbol.asyncIterator];
+	const it: Iterator<T> | AsyncIterator<T> = asyncFactory
+		? asyncFactory.call(source)
+		: (source as Iterable<T>)[Symbol.iterator]();
+	let index = 0;
+	let drained = false;
+	const active = new Set<Promise<void>>();
+
+	const fill = async () => {
+		while (active.size < limit && !drained) {
+			const next = await it.next(); // works for sync + async iterators
+			if (next.done) { drained = true; break; }
+			const idx = index++;
+			const p = Promise.resolve(worker(next.value, idx)).finally(() => active.delete(p));
+			active.add(p);
+		}
+	};
+
+	await fill();
+	while (active.size > 0) {
+		await Promise.race(active);
+		await fill();
+	}
+}
+
+/**
+ * Folder-creation de-duplicator for concurrent writes. Without this, two notes
+ * destined for the same new folder would both see "doesn't exist" and both call
+ * createFolder → one throws "already exists". Each path (and its ancestors) is
+ * created exactly once; concurrent callers await the same promise.
+ */
+export function createFolderEnsurer(app: App): (path: string) => Promise<void> {
+	const cache = new Map<string, Promise<void>>();
+	const ensure = (path: string): Promise<void> => {
+		if (!path) return Promise.resolve();
+		const cached = cache.get(path);
+		if (cached) return cached;
+		const promise = (async () => {
+			const parent = getParentPath(path);
+			if (parent) await ensure(parent);
+			const normalized = normalizePath(path);
+			if (!app.vault.getAbstractFileByPath(normalized)) {
+				try {
+					await app.vault.createFolder(normalized);
+				} catch {
+					// A concurrent create won the race — the folder now exists,
+					// which is exactly what we wanted. Swallow.
+				}
+			}
+		})();
+		cache.set(path, promise);
+		return promise;
+	};
+	return ensure;
+}
 
 // ============================================================================
 // Main Generation Function
@@ -158,129 +238,130 @@ export async function generateNotes(
 		// (two source rows rendering to the same vault path).
 		const emittedPaths = new Set<string>();
 
-		// v0.1.4.5: iterate via for-await so streaming-row sources (AsyncIterable)
-		// work alongside the eager array case. Engine never accumulates the full
-		// dataset in RAM. Per the 2026-05-05 two-mode architecture decision.
+		// v0.1.4.5: iterate so streaming-row sources (AsyncIterable) work alongside
+		// the eager array case. v0.1.6 (2026-06-13): writes run in a bounded
+		// concurrency pool — the per-row SYNC prefix (render + collision reserve)
+		// runs in order, only the async I/O tail (folder ensure + write) overlaps.
 		const total = parsedData.rowCount > 0 ? parsedData.rowCount : -1;
-		let i = 0;
-		for await (const row of parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>) {
-			const rowNum = i + 1; // 1-indexed for user display
+		const ensureFolderOnce = createFolderEnsurer(app);
+		const limit = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
+		let completed = 0;
 
-			try {
-				// Report progress periodically
-				if (options.onProgress && i % 10 === 0) {
-					options.onProgress(i, total, `Processing row ${rowNum}`);
-				}
+		await forEachConcurrent(
+			parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>,
+			limit,
+			async (row, idx) => {
+				const rowNum = idx + 1; // 1-indexed for user display
+				try {
+					// v0.1.3: build path + base frontmatter via render(); body/link
+					// content still comes from the existing column-role logic for
+					// backward-compat.
+					const noteData = buildNoteDataViaRender(
+						row,
+						rowNum,
+						mapping,
+						options,
+						recipe,
+						config.name ?? 'unknown',
+					);
 
-				// v0.1.3: build path + base frontmatter via render(); body/link
-				// content still comes from the existing column-role logic for
-				// backward-compat. Engine-level body refactor is deferred to a
-				// future milestone where body templates land formally.
-				const noteData = buildNoteDataViaRender(
-					row,
-					rowNum,
-					mapping,
-					options,
-					recipe,
-					config.name ?? 'unknown',
-				);
-
-				// Skip if no valid path generated
-				if (!noteData.path) {
-					result.errors.push({
-						row: rowNum,
-						message: 'Could not generate file path - missing hierarchy or title data'
-					});
-					continue;
-				}
-
-				// Path collision detection — fail loud rather than silently
-				// overwriting one row's output with another's.
-				if (emittedPaths.has(noteData.path)) {
-					result.errors.push({
-						row: rowNum,
-						message: `Path collision: ${noteData.path} already produced by an earlier row in this import. Two source rows resolve to the same target file. Adjust your filename template or hierarchy mappings to disambiguate.`,
-					});
-					continue;
-				}
-				emittedPaths.add(noteData.path);
-
-				// Check if file exists
-				const fullPath = normalizePath(noteData.path);
-				const existingFile = app.vault.getAbstractFileByPath(fullPath);
-
-				if (existingFile instanceof TFile) {
-					if (options.overwriteMode === 'skip') {
-						result.skipped.push(fullPath);
-						debug?.info('generation', 'skipped-existing', `Skipped existing file ${fullPath}`, { path: fullPath });
-						continue;
-					} else if (options.overwriteMode === 'error') {
+					// Skip if no valid path generated
+					if (!noteData.path) {
 						result.errors.push({
 							row: rowNum,
-							message: `File already exists: ${fullPath}`
+							message: 'Could not generate file path - missing hierarchy or title data'
 						});
-						result.success = false;
-						continue;
+						return;
 					}
-					// 'replace' mode — merge with existing frontmatter so
-					// user-edited keys (reviewer, status, etc.) survive
-					// re-import. Per Ch 22 §8.4 managed/user_preserve split.
-					try {
-						const existingFm = await readExistingFrontmatter(app, existingFile);
-						if (existingFm && Object.keys(existingFm).length > 0) {
-							const managedKeys = computeManagedKeys(noteData.frontmatter, []);
-							noteData.frontmatter = mergeFrontmatter(
-								existingFm,
-								noteData.frontmatter,
-								managedKeys,
-							);
+
+					// Path collision detection — fail loud rather than silently
+					// overwriting one row's output with another's. (Runs in the sync
+					// prefix, so it's deterministic by row order under concurrency.)
+					if (emittedPaths.has(noteData.path)) {
+						result.errors.push({
+							row: rowNum,
+							message: `Path collision: ${noteData.path} already produced by an earlier row in this import. Two source rows resolve to the same target file. Adjust your filename template or hierarchy mappings to disambiguate.`,
+						});
+						return;
+					}
+					emittedPaths.add(noteData.path);
+
+					// Check if file exists
+					const fullPath = normalizePath(noteData.path);
+					const existingFile = app.vault.getAbstractFileByPath(fullPath);
+
+					if (existingFile instanceof TFile) {
+						if (options.overwriteMode === 'skip') {
+							result.skipped.push(fullPath);
+							debug?.info('generation', 'skipped-existing', `Skipped existing file ${fullPath}`, { path: fullPath });
+							return;
+						} else if (options.overwriteMode === 'error') {
+							result.errors.push({
+								row: rowNum,
+								message: `File already exists: ${fullPath}`
+							});
+							result.success = false;
+							return;
 						}
-					} catch (mergeErr) {
-						// Frontmatter parse/merge failure is non-fatal; fall
-						// back to writing the new frontmatter as-is. Log so
-						// the user can investigate if user-keys are lost.
-						debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${fullPath}; using new frontmatter as-is`, {
-							path: fullPath,
-							error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
-						});
+						// 'replace' mode — merge with existing frontmatter so
+						// user-edited keys (reviewer, status, etc.) survive
+						// re-import. Per Ch 22 §8.4 managed/user_preserve split.
+						try {
+							const existingFm = await readExistingFrontmatter(app, existingFile);
+							if (existingFm && Object.keys(existingFm).length > 0) {
+								const managedKeys = computeManagedKeys(noteData.frontmatter, []);
+								noteData.frontmatter = mergeFrontmatter(
+									existingFm,
+									noteData.frontmatter,
+									managedKeys,
+								);
+							}
+						} catch (mergeErr) {
+							debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${fullPath}; using new frontmatter as-is`, {
+								path: fullPath,
+								error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
+							});
+						}
+					}
+
+					// Ensure parent folder exists (de-duplicated across concurrent rows)
+					const parentPath = getParentPath(fullPath);
+					if (parentPath && options.createFolders) {
+						await ensureFolderOnce(parentPath);
+					}
+
+					// Build file content
+					const content = buildNoteContent(noteData.frontmatter, noteData.body);
+
+					// Create or update file
+					if (existingFile instanceof TFile) {
+						await app.vault.modify(existingFile, content);
+						debug?.info('generation', 'file-replaced', `Replaced existing file ${fullPath}`, { path: fullPath });
+					} else {
+						await app.vault.create(fullPath, content);
+						debug?.info('generation', 'file-created', `Created new file ${fullPath}`, { path: fullPath });
+					}
+
+					result.created.push(fullPath);
+				} catch (rowError) {
+					const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
+					result.errors.push({
+						row: rowNum,
+						message: errorMessage
+					});
+					debug?.error('generation', 'row-error', `Row ${rowNum} failed`, { row: rowNum, error: errorMessage });
+				} finally {
+					completed += 1;
+					if (options.onProgress && (completed % 10 === 0 || completed === total)) {
+						options.onProgress(completed, total, `Processing row ${completed}`);
 					}
 				}
-
-				// Ensure parent folder exists
-				const parentPath = getParentPath(fullPath);
-				if (parentPath && options.createFolders) {
-					await ensureFolderExists(app, parentPath);
-				}
-
-				// Build file content
-				const content = buildNoteContent(noteData.frontmatter, noteData.body);
-
-				// Create or update file
-				if (existingFile instanceof TFile) {
-					await app.vault.modify(existingFile, content);
-					debug?.info('generation', 'file-replaced', `Replaced existing file ${fullPath}`, { path: fullPath });
-				} else {
-					await app.vault.create(fullPath, content);
-					debug?.info('generation', 'file-created', `Created new file ${fullPath}`, { path: fullPath });
-				}
-
-				result.created.push(fullPath);
-
-			} catch (rowError) {
-				const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
-				result.errors.push({
-					row: rowNum,
-					message: errorMessage
-				});
-				debug?.error('generation', 'row-error', `Row ${rowNum} failed`, { row: rowNum, error: errorMessage });
-			}
-
-			i += 1;
-		}
+			},
+		);
 
 		// Final progress update
 		if (options.onProgress) {
-			options.onProgress(i, total, 'Complete');
+			options.onProgress(completed, total, 'Complete');
 		}
 
 	} catch (error) {
@@ -911,8 +992,50 @@ function generateImportId(): string {
  * tolerated — translated to single-brace `{X}` at use site. The render
  * engine only understands single-brace.
  */
+/**
+ * Detect the delimiter structure of a taxonomy-id column and return the folder
+ * templates that decompose it into a nested tree — the wizard equivalent of the
+ * hand-written hierarchical recipe (id `DE.AE-02` → `DE/ → DE.AE/ → DE.AE-02.md`).
+ *
+ * Strategy: find the delimiter characters that appear in (nearly) every value,
+ * ordered by where they first appear in a representative value, then emit one
+ * folder template `{col|split(<delim>,0)}` per delimiter — the cumulative prefix
+ * up to that delimiter. Domain-general: works for `AC-2` (→ `AC/`), `GV.OC-01`
+ * (→ `GV/ → GV.OC/`), `T1055.011` (→ `T1055/`), etc. Returns [] when the values
+ * have no consistent delimiter (nothing to split → caller falls back to flat).
+ */
+export function deriveIdSplitTemplates(column: string, values: string[]): string[] {
+	const DELIMS = ['.', '-', '_', '/', ':'];
+	const samples = values.map((v) => String(v ?? '').trim()).filter(Boolean).slice(0, 200);
+	if (samples.length === 0) return [];
+
+	// A delimiter qualifies if it appears (with content on both sides) in most
+	// values — ≥80% — so one-off punctuation doesn't create spurious folders.
+	const threshold = Math.max(1, Math.floor(samples.length * 0.8));
+	const qualifying = DELIMS.filter((d) => {
+		let hits = 0;
+		for (const s of samples) {
+			const i = s.indexOf(d);
+			if (i > 0 && i < s.length - 1) hits++;
+		}
+		return hits >= threshold;
+	});
+	if (qualifying.length === 0) return [];
+
+	// Order delimiters by their first position in a representative (longest) value,
+	// so cumulative `split(d,0)` prefixes nest correctly (`.` before `-` in CSF ids).
+	const rep = samples.reduce((a, b) => (b.length > a.length ? b : a), samples[0]);
+	const ordered = qualifying
+		.map((d) => ({ d, pos: rep.indexOf(d) }))
+		.filter((x) => x.pos >= 0)
+		.sort((a, b) => a.pos - b.pos)
+		.map((x) => x.d);
+
+	return ordered.map((d) => `{${column}|split(${d},0)}`);
+}
+
 export function buildConfigFromWizardState(
-	columnConfigs: Map<string, { useAs: string; outputKey: string }>,
+	columnConfigs: Map<string, { useAs: string; outputKey: string; folderTemplates?: string[] }>,
 	parsedColumns: string[],
 	appliedConfigFilename?: { template?: string; sanitize?: boolean; maxLength?: number }
 ): Partial<ImportRecipe> {
@@ -933,6 +1056,14 @@ export function buildConfigFromWizardState(
 					column: col,
 					level: hierarchyLevel++
 				});
+				break;
+
+			case 'folder-tree':
+				// Id-derived nested folders: one folder level per detected
+				// delimiter (templates computed by the wizard from sample values).
+				for (const template of config.folderTemplates ?? []) {
+					hierarchy.push({ column: col, level: hierarchyLevel++, template });
+				}
 				break;
 
 			case 'frontmatter':
@@ -976,10 +1107,16 @@ export function buildConfigFromWizardState(
 	//   3. Omitted — the legacy-recipe-shim falls back to first frontmatter
 	//      column → `{<column>}.md`
 	const titleCol = parsedColumns.find(col => columnConfigs.get(col)?.useAs === 'title');
+	// A folder-tree id column names the leaf file too (the full id), unless an
+	// explicit title column is set — matching the hierarchical recipe where the
+	// id is both the structure and the filename.
+	const folderTreeCol = parsedColumns.find(col => columnConfigs.get(col)?.useAs === 'folder-tree');
 
 	let resolvedFilename: { template: string; sanitize: boolean; maxLength?: number } | undefined;
 	if (titleCol) {
 		resolvedFilename = { template: `{${titleCol}}`, sanitize: true };
+	} else if (folderTreeCol) {
+		resolvedFilename = { template: `{${folderTreeCol}}`, sanitize: true };
 	} else if (appliedConfigFilename?.template) {
 		// Translate Mustache `{{X}}` → single-brace `{X}` for the new render
 		// engine. Pre-existing single-brace templates pass through unchanged
@@ -1098,6 +1235,8 @@ export interface RecipeImportOptions {
 	curiePrefix?: string;
 	/** Progress callback. */
 	onProgress?: (current: number, total: number, message: string) => void;
+	/** Max note writes in flight at once (default DEFAULT_CONCURRENCY). 1 = sequential. */
+	concurrency?: number;
 }
 
 /**
@@ -1144,21 +1283,21 @@ export async function generateFromRecipe(
 	}
 
 	const emittedPaths = new Set<string>();
-	// v0.1.4.5: streaming-friendly iteration. parsedData.rows may be either an
-	// eager array OR an AsyncIterable<Row> (true streaming from a 5MB+ CSV via
-	// PapaParse step callback, or from an external pipe). The for-await loop
-	// transparently handles both.
+	// v0.1.4.5: streaming-friendly iteration (array OR AsyncIterable<Row>).
+	// v0.1.6 (2026-06-13): writes run in a bounded concurrency pool; the sync
+	// prefix (render + collision reserve) stays in row order.
 	const total = parsedData.rowCount > 0 ? parsedData.rowCount : -1;
-	let i = 0;
+	const ensureFolderOnce = createFolderEnsurer(app);
+	const limit = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
+	let completed = 0;
 
-	for await (const row of parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>) {
-		const rowNum = i + 1;
+	await forEachConcurrent(
+		parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>,
+		limit,
+		async (row, idx) => {
+		const rowNum = idx + 1;
 
 		try {
-			if (options.onProgress && i % 10 === 0) {
-				options.onProgress(i, total, `Processing row ${rowNum}`);
-			}
-
 			// 1. Build CURIE for this row
 			const localPart = options.curieLocalPart
 				? options.curieLocalPart(row, rowNum)
@@ -1172,7 +1311,7 @@ export async function generateFromRecipe(
 			} catch (err) {
 				if (err instanceof RenderError) {
 					result.errors.push({ row: rowNum, message: `render() failed: ${err.message}` });
-					continue;
+					return;
 				}
 				throw err;
 			}
@@ -1188,7 +1327,7 @@ export async function generateFromRecipe(
 					row: rowNum,
 					message: 'Empty or invalid path produced by render(); check recipe.target.layout templates.',
 				});
-				continue;
+				return;
 			}
 
 			// 4. Path collision detection
@@ -1197,7 +1336,7 @@ export async function generateFromRecipe(
 					row: rowNum,
 					message: `Path collision: ${fullPath} already produced earlier in this import. Two source rows resolve to the same target file.`,
 				});
-				continue;
+				return;
 			}
 			emittedPaths.add(fullPath);
 
@@ -1224,7 +1363,7 @@ export async function generateFromRecipe(
 				}`;
 				if (strict) {
 					result.errors.push({ row: rowNum, message: errMsg });
-					continue;
+					return;
 				} else {
 					debug?.warn('generation', 'validation-warning', `Validation warning at ${fullPath} (non-strict mode)`, { path: fullPath, error: errMsg });
 				}
@@ -1235,11 +1374,11 @@ export async function generateFromRecipe(
 			if (existingFile instanceof TFile) {
 				if (options.overwriteMode === 'skip') {
 					result.skipped.push(fullPath);
-					continue;
+					return;
 				} else if (options.overwriteMode === 'error') {
 					result.errors.push({ row: rowNum, message: `File already exists: ${fullPath}` });
 					result.success = false;
-					continue;
+					return;
 				}
 				// 'replace' — merge with existing
 				try {
@@ -1262,7 +1401,7 @@ export async function generateFromRecipe(
 			// 8. Ensure parent folder
 			const parentPath = getParentPath(fullPath);
 			if (parentPath && createFolders) {
-				await ensureFolderExists(app, parentPath);
+				await ensureFolderOnce(parentPath);
 			}
 
 			// 9. Body — minimal default. Recipes can extend this in a future
@@ -1281,12 +1420,16 @@ export async function generateFromRecipe(
 			const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
 			result.errors.push({ row: rowNum, message: errorMessage });
 			debug?.error('generation', 'row-error', `Row ${rowNum} failed`, { row: rowNum, error: errorMessage });
+		} finally {
+			completed += 1;
+			if (options.onProgress && (completed % 10 === 0 || completed === total)) {
+				options.onProgress(completed, total, `Processing row ${completed}`);
+			}
 		}
+		},
+	);
 
-		i += 1;
-	}
-
-	if (options.onProgress) options.onProgress(i, total, 'Complete');
+	if (options.onProgress) options.onProgress(completed, total, 'Complete');
 	if (result.errors.length > 0) result.success = false;
 	result.duration = Date.now() - startTime;
 

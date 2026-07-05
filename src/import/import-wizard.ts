@@ -2,11 +2,15 @@ import { App, Modal, Setting, Notice } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
+import { parseXLSXFile, listXLSXSheets } from './parsers/xlsx-parser';
+import { parseJSONFile, suggestIterators, JsonStructure } from './parsers/json-parser';
+import { renderTemplate } from '../render';
 import { findMatchingConfigs, ConfigMatch } from '../config/config-manager';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
 import {
 	generateNotes,
 	buildConfigFromWizardState,
+	deriveIdSplitTemplates,
 	estimateOutput,
 	GenerationOptions
 } from '../generation/generation-engine';
@@ -37,12 +41,25 @@ export class ImportWizardModal extends Modal {
 	sourceFile: File | null = null;
 	sourceType: 'csv' | 'xlsx' | 'json' | null = null;
 	selectedSheet: string | null = null;
+	availableSheets: string[] = [];
+	xlsxHeaderRow: number = 0;
+	jsonIterator: string = '';
+	jsonWhere: string = '';
+	/** Detected structure of a selected JSON file (drives the record picker). */
+	jsonStructure: JsonStructure | null = null;
+	/** Step-2 column search filter (UX for very wide sources — SCF has 369 columns). */
+	columnFilter: string = '';
+	/** Step-2: reveal the collapsed default-role tail when a source is very wide. */
+	showAllColumns: boolean = false;
+	/** Columns whose roles were auto-suggested by heuristics (shown with a ✨ badge). */
+	suggestedColumns: Set<string> = new Set();
+	smartDefaultsApplied: boolean = false;
 	parsedData: ParsedData | null = null;
 	columnInfos: ColumnInfo[] = [];
 	config: Partial<ImportRecipe> = {};
 
 	// Column configuration state (captured from Step 2)
-	columnConfigs: Map<string, { useAs: string; outputKey: string }> = new Map();
+	columnConfigs: Map<string, { useAs: string; outputKey: string; folderTemplates?: string[] }> = new Map();
 
 	// Output settings (captured from Step 4)
 	outputPath: string = '';
@@ -57,6 +74,9 @@ export class ImportWizardModal extends Modal {
 	// Generation state
 	isGenerating: boolean = false;
 	generationProgress: { current: number; total: number; message: string } | null = null;
+	/** Live refs to the Step-4 progress DOM, so onProgress updates in place
+	 *  instead of re-rendering the whole modal every batch. */
+	progressEls: { pct: HTMLElement; fill: HTMLElement; count: HTMLElement } | null = null;
 
 	// Config matching state
 	configMatches: ConfigMatch[] = [];
@@ -254,27 +274,85 @@ export class ImportWizardModal extends Modal {
 				this.configMatches = [];
 				this.configWarnings = [];
 				this.parsedData = null;
+				this.availableSheets = [];
+				this.selectedSheet = null;
+				this.columnConfigs = new Map();
+				this.suggestedColumns = new Set();
+				this.smartDefaultsApplied = false;
+				if (this.sourceType === 'xlsx') {
+					try {
+						this.availableSheets = await listXLSXSheets(this.sourceFile);
+						this.selectedSheet = this.availableSheets[0] ?? null;
+					} catch (err) {
+						new Notice(`Could not read workbook sheets: ${err instanceof Error ? err.message : String(err)}`);
+					}
+				}
+				this.jsonStructure = null;
+				this.jsonIterator = '';
+				if (this.sourceType === 'json') {
+					try {
+						this.jsonStructure = suggestIterators(await this.sourceFile.text());
+						// Magical default: pre-select the biggest record list found.
+						const best = this.jsonStructure.candidates[0];
+						if (best) this.jsonIterator = best.iterator;
+					} catch (err) {
+						new Notice(`Could not inspect JSON structure: ${err instanceof Error ? err.message : String(err)}`);
+					}
+				}
 				this.renderStep(); // Re-render to show file info
 			}
 		});
 
-		// Show selected file info
+		// Show selected file info — a card that says how Crosswalker reads this
+		// file type, not just bare metadata.
 		if (this.sourceFile) {
-			const fileInfo = container.createEl('div', { cls: 'crosswalker-file-info' });
-			fileInfo.createEl('p', { text: `Selected: ${this.sourceFile.name}` });
-
-			const fileSizeMB = (this.sourceFile.size / 1024 / 1024).toFixed(2);
-			fileInfo.createEl('p', {
-				text: `Type: ${this.sourceType?.toUpperCase()} | Size: ${fileSizeMB} MB`,
+			const fmt = (bytes: number): string => {
+				if (bytes < 1024) return `${bytes} B`;
+				if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+				return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+			};
+			const typeMeta: Record<string, { icon: string; how: string }> = {
+				csv: { icon: '🧾', how: 'Each row becomes a note; columns become its properties.' },
+				xlsx: { icon: '📊', how: 'Pick the worksheet that holds your rows — each row becomes a note.' },
+				json: { icon: '🧩', how: 'Crosswalker finds the lists of records inside — pick the one to import; each record becomes a note.' },
+			};
+			const meta = typeMeta[this.sourceType ?? 'csv'] ?? typeMeta.csv;
+			const fileInfo = container.createEl('div', { cls: 'crosswalker-file-card' });
+			const headRow = fileInfo.createEl('div', { cls: 'crosswalker-file-card-head' });
+			headRow.createEl('span', { text: meta.icon, cls: 'crosswalker-file-card-icon' });
+			const headText = headRow.createEl('div');
+			headText.createEl('div', { text: this.sourceFile.name, cls: 'crosswalker-file-card-name' });
+			headText.createEl('div', {
+				text: `${this.sourceType?.toUpperCase()} · ${fmt(this.sourceFile.size)}`,
 				cls: 'setting-item-description'
 			});
+			fileInfo.createEl('p', { text: meta.how, cls: 'setting-item-description crosswalker-file-card-how' });
 
-			// If XLSX, show sheet selector (placeholder)
-			if (this.sourceType === 'xlsx') {
-				container.createEl('p', {
-					text: 'Sheet selection will appear after parsing.',
-					cls: 'setting-item-description'
-				});
+			// XLSX: sheet picker + header-row offset (banner rows above the real headers)
+			if (this.sourceType === 'xlsx' && this.availableSheets.length > 0) {
+				new Setting(container)
+					.setName('Sheet')
+					.setDesc('Which worksheet holds the rows to import.')
+					.addDropdown((dd) => {
+						for (const name of this.availableSheets) dd.addOption(name, name);
+						dd.setValue(this.selectedSheet ?? this.availableSheets[0]);
+						dd.onChange((v) => { this.selectedSheet = v; });
+					});
+				new Setting(container)
+					.setName('Header row')
+					.setDesc('0-based row index of the column headers — raise it to skip banner rows above them.')
+					.addText((t) => {
+						t.setValue(String(this.xlsxHeaderRow));
+						t.inputEl.type = 'number';
+						t.inputEl.min = '0';
+						t.onChange((v) => { this.xlsxHeaderRow = Math.max(0, parseInt(v, 10) || 0); });
+					});
+			}
+
+			// JSON: click-to-pick record list (no path syntax required) + an
+			// advanced escape hatch for manual iterator/filter entry.
+			if (this.sourceType === 'json') {
+				this.renderJsonRecordPicker(container);
 			}
 
 			// Show streaming info for large files
@@ -530,6 +608,11 @@ export class ImportWizardModal extends Modal {
 	applyConfig(config: SavedConfig) {
 		this.appliedConfig = config;
 		this.configWarnings = [];
+		// A matched config supersedes heuristic suggestions — clear so the
+		// config's mappings re-initialize every column in Step 2.
+		this.columnConfigs = new Map();
+		this.suggestedColumns = new Set();
+		this.smartDefaultsApplied = true; // don't re-suggest over a config
 
 		// Validate column matches
 		if (this.parsedData && config.fingerprint.columnNames) {
@@ -624,13 +707,40 @@ export class ImportWizardModal extends Modal {
 			});
 		}
 
+		const step2Stats = container.createEl('div', { cls: 'crosswalker-stats-grid crosswalker-preview-stats' });
+		for (const [v, l] of [[this.parsedData.rowCount.toLocaleString(), 'rows'], [String(this.parsedData.columns.length), 'columns']] as const) {
+			const card = step2Stats.createEl('div', { cls: 'crosswalker-stat-card' });
+			card.createEl('div', { text: v, cls: 'crosswalker-stat-value crosswalker-stat-big' });
+			card.createEl('div', { text: l, cls: 'crosswalker-stat-label' });
+		}
+		if (this.suggestedColumns.size > 0 && !this.appliedConfig) {
+			const banner = container.createEl('div', { cls: 'crosswalker-suggest-banner' });
+			banner.createEl('span', {
+				text: `✨ Crosswalker pre-filled ${this.suggestedColumns.size} column role${this.suggestedColumns.size === 1 ? '' : 's'} based on the column names — review the ✨ rows below and adjust freely.`
+			});
+		}
+		// The two questions every first run asks, answered up front:
 		container.createEl('p', {
-			text: `Found ${this.parsedData.columns.length} columns and ${this.parsedData.rowCount.toLocaleString()} rows.`,
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Skip" and "Use as" quote literal control labels
+			text: 'All columns are imported as frontmatter properties by default — nothing is dropped unless you set it to Skip. Change "Use as" to map a column onto a different vault primitive (folder, filename, link, body); the last column previews the result.',
 			cls: 'setting-item-description'
 		});
 
 		// Build column mapping lookup from applied config
 		const configMapping = this.buildColumnMappingLookup();
+
+		// Search/filter — essential on wide sources (SCF: 369 columns)
+		const filterBar = container.createEl('div', { cls: 'crosswalker-column-filter' });
+		const filterInput = filterBar.createEl('input', {
+			type: 'search',
+			value: this.columnFilter,
+			attr: { placeholder: 'Filter columns by name, key, or sample value…' }
+		});
+		filterInput.addEventListener('input', () => {
+			this.columnFilter = filterInput.value;
+			this.showAllColumns = false;
+			renderRows();
+		});
 
 		// Column configuration table
 		const tableContainer = container.createEl('div', { cls: 'crosswalker-table-container' });
@@ -642,21 +752,100 @@ export class ImportWizardModal extends Modal {
 		headerRow.createEl('th', { text: 'Sample values' });
 		headerRow.createEl('th', { text: 'Use as' });
 		headerRow.createEl('th', { text: 'Output key' });
+		headerRow.createEl('th', { text: 'In the vault' });
 
 		const tbody = table.createEl('tbody');
 
-		// Render each column
+		// Initialize configs for every column up front (sorting needs them)
 		for (const colInfo of this.columnInfos) {
-			const row = tbody.createEl('tr');
 			const colMapping = configMapping.get(colInfo.name.toLowerCase());
-
-			// Initialize column config if not set
 			if (!this.columnConfigs.has(colInfo.name)) {
 				this.columnConfigs.set(colInfo.name, {
 					useAs: colMapping?.useAs || 'frontmatter',
 					outputKey: colMapping?.outputKey || this.normalizeKey(colInfo.name)
 				});
 			}
+		}
+
+		/** Live "what this becomes in the vault" mini-preview — the 5-primitive
+		 *  grammar (folder | file | heading | tag | wikilink) made visible at the
+		 *  exact decision point. */
+		const vaultPreview = (cfg: { useAs: string; outputKey: string; folderTemplates?: string[] }, sample: string, columnName: string): string => {
+			const v = this.truncate(sample || 'value', 18);
+			switch (cfg.useAs) {
+				case 'hierarchy': return `📁 ${v}/`;
+				case 'folder-tree': {
+					// Show the actual nested path the id parses into, e.g.
+					// "DE.AE-02 → 📁 DE/DE.AE/DE.AE-02.md".
+					const parts = (cfg.folderTemplates ?? []).map((t) => {
+						try { return renderTemplate(t, { [columnName]: sample }); }
+						catch { return ''; }
+					}).filter(Boolean);
+					const tree = [...parts, `${this.truncate(sample || 'id', 14)}.md`].join('/');
+					return `📁 ${tree}`;
+				}
+				case 'title': return `📄 ${v}.md`;
+				case 'link': return `[[${v}]]`;
+				case 'body': return '¶ note body';
+				case 'skip': return '— not imported';
+				default: return `${cfg.outputKey || 'key'}: ${v}`;
+			}
+		};
+
+		/** Attention hierarchy: special-role + config-mapped columns float to the
+		 *  top; the long all-defaults tail collapses on very wide sources. */
+		const COLLAPSE_THRESHOLD = 25;
+		const DEFAULT_TAIL_SHOWN = 15;
+
+		const renderRows = () => {
+			tbody.empty();
+			const filter = this.columnFilter.trim().toLowerCase();
+			let infos = this.columnInfos;
+			if (filter) {
+				infos = infos.filter((ci) => {
+					const cfg = this.columnConfigs.get(ci.name);
+					return ci.name.toLowerCase().includes(filter)
+						|| (cfg?.outputKey ?? '').toLowerCase().includes(filter)
+						|| ci.sampleValues.slice(0, 3).some((sv) => String(sv).toLowerCase().includes(filter));
+				});
+			}
+			const isSpecial = (ci: typeof infos[number]) =>
+				(this.columnConfigs.get(ci.name)?.useAs ?? 'frontmatter') !== 'frontmatter'
+				|| configMapping.has(ci.name.toLowerCase());
+			const special = infos.filter(isSpecial);
+			const defaults = infos.filter((ci) => !isSpecial(ci));
+
+			let shown = [...special, ...defaults];
+			let hidden = 0;
+			if (!filter && !this.showAllColumns && infos.length > COLLAPSE_THRESHOLD) {
+				const tail = defaults.slice(0, DEFAULT_TAIL_SHOWN);
+				hidden = defaults.length - tail.length;
+				shown = [...special, ...tail];
+			}
+
+			for (const colInfo of shown) renderRow(colInfo);
+
+			if (hidden > 0) {
+				const moreRow = tbody.createEl('tr');
+				const moreCell = moreRow.createEl('td', { attr: { colspan: '6' } });
+				const moreBtn = moreCell.createEl('button', {
+					text: `Show all columns (${hidden} more, all imported as frontmatter)`,
+					cls: 'crosswalker-show-all-btn'
+				});
+				moreBtn.addEventListener('click', () => {
+					this.showAllColumns = true;
+					renderRows();
+				});
+			}
+			if (filter && shown.length === 0) {
+				const emptyRow = tbody.createEl('tr');
+				emptyRow.createEl('td', { text: 'No columns match the filter.', attr: { colspan: '6' } });
+			}
+		};
+
+		const renderRow = (colInfo: ColumnInfo) => {
+			const row = tbody.createEl('tr');
+			const colMapping = configMapping.get(colInfo.name.toLowerCase());
 			const currentConfig = this.columnConfigs.get(colInfo.name)!;
 
 			// Add visual indicator if this column is from config
@@ -669,6 +858,8 @@ export class ImportWizardModal extends Modal {
 			nameCell.createEl('span', { text: colInfo.name });
 			if (colMapping) {
 				nameCell.createEl('span', { text: ' ⚙️', cls: 'crosswalker-config-icon', attr: { title: 'Pre-filled from config' } });
+			} else if (this.suggestedColumns.has(colInfo.name)) {
+				nameCell.createEl('span', { text: ' ✨', cls: 'crosswalker-config-icon', attr: { title: 'Suggested role — change freely' } });
 			}
 
 			// Detected type
@@ -692,6 +883,8 @@ export class ImportWizardModal extends Modal {
 			const useAsSelect = useAsCell.createEl('select', { cls: 'dropdown' });
 			useAsSelect.createEl('option', { text: 'Frontmatter', attr: { value: 'frontmatter' } });
 			useAsSelect.createEl('option', { text: 'Hierarchy level', attr: { value: 'hierarchy' } });
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "id" is the literal column-role label
+			useAsSelect.createEl('option', { text: 'Folder tree (from id)', attr: { value: 'folder-tree' } });
 			useAsSelect.createEl('option', { text: 'Note title', attr: { value: 'title' } });
 			useAsSelect.createEl('option', { text: 'Crosswalk link', attr: { value: 'link' } });
 			useAsSelect.createEl('option', { text: 'Body content', attr: { value: 'body' } });
@@ -699,13 +892,6 @@ export class ImportWizardModal extends Modal {
 
 			// Set value from stored state
 			useAsSelect.value = currentConfig.useAs;
-
-			// Update state on change
-			useAsSelect.addEventListener('change', () => {
-				currentConfig.useAs = useAsSelect.value;
-				this.columnConfigs.set(colInfo.name, currentConfig);
-				this.scheduleDraftSave();
-			});
 
 			// Output key (editable) - pre-fill from config or existing state
 			const keyCell = row.createEl('td');
@@ -717,13 +903,34 @@ export class ImportWizardModal extends Modal {
 			// eslint-disable-next-line obsidianmd/ui/sentence-case
 			keyInput.placeholder = 'output_key';
 
-			// Update state on change
+			// Live vault preview cell — updates as the role/key change
+			const sample = String(colInfo.sampleValues[0] ?? '');
+			const previewCell = row.createEl('td', { cls: 'crosswalker-vault-preview' });
+			const updatePreview = () => {
+				previewCell.setText(vaultPreview(currentConfig, sample, colInfo.name));
+			};
+			updatePreview();
+
+			// Update state on change (+ refresh the preview in place — no re-render,
+			// so dropdown focus survives; re-sorting happens on next full render)
+			useAsSelect.addEventListener('change', () => {
+				currentConfig.useAs = useAsSelect.value;
+				if (useAsSelect.value === 'folder-tree') {
+					currentConfig.folderTemplates = deriveIdSplitTemplates(colInfo.name, this.sampleValuesForColumn(colInfo.name));
+				}
+				this.columnConfigs.set(colInfo.name, currentConfig);
+				updatePreview();
+				this.scheduleDraftSave();
+			});
 			keyInput.addEventListener('input', () => {
 				currentConfig.outputKey = keyInput.value;
 				this.columnConfigs.set(colInfo.name, currentConfig);
+				updatePreview();
 				this.scheduleDraftSave();
 			});
-		}
+		};
+
+		renderRows();
 
 		// Unique values summary — stat-card grid (one card per column)
 		const statsHeading = container.createEl('h4', { text: 'Column statistics' });
@@ -981,26 +1188,138 @@ export class ImportWizardModal extends Modal {
 			this.appliedConfig?.config?.mapping?.filename
 		);
 
-		// Estimate output
+		// Estimate output — stat cards, not a sentence
 		const estimate = estimateOutput(this.parsedData, config);
+		const statRow = container.createEl('div', { cls: 'crosswalker-stats-grid crosswalker-preview-stats' });
+		const stat = (icon: string, value: number, label: string) => {
+			const card = statRow.createEl('div', { cls: 'crosswalker-stat-card' });
+			card.createEl('div', { text: `${icon} ${value.toLocaleString()}`, cls: 'crosswalker-stat-value' });
+			card.createEl('div', { text: label, cls: 'crosswalker-stat-label' });
+		};
+		stat('📄', estimate.noteCount, 'notes');
+		stat('📁', estimate.folderCount, 'folders');
+		stat('🔗', estimate.linkCount, 'links');
 
-		// Summary stats
-		const summaryContainer = container.createEl('div', { cls: 'crosswalker-preview-summary' });
-		summaryContainer.createEl('p', {
-			text: `Will create approximately: ${estimate.noteCount} notes, ${estimate.folderCount} folders, ${estimate.linkCount} links`,
-			cls: 'setting-item-description'
-		});
+		// Vault-shaped folder tree (DOM, not ASCII) from real sample rows
+		container.createEl('h4', { text: 'Folder structure' });
+		const tree = container.createEl('div', { cls: 'crosswalker-vault-tree' });
+		this.renderVaultTree(tree, config);
 
-		// Build folder tree preview from actual data
-		const treeContainer = container.createEl('div', { cls: 'crosswalker-tree-preview' });
-		const treePreview = this.buildFolderTreePreview(config);
-		treeContainer.createEl('pre', { text: treePreview });
-
-		// Sample note preview from first row
+		// Sample note — rendered as a mock Obsidian note, not raw markdown
 		container.createEl('h4', { text: 'Sample note' });
-		const notePreview = container.createEl('div', { cls: 'crosswalker-note-preview' });
-		const sampleNote = this.buildSampleNotePreview(config);
-		notePreview.createEl('pre', { text: sampleNote });
+		this.renderSampleNoteCard(container, config);
+
+		// Raw markdown for the detail-oriented (collapsed)
+		const details = container.createEl('details', { cls: 'crosswalker-raw-preview' });
+		details.createEl('summary', { text: 'Exact file contents this will write (for the curious)' });
+		details.createEl('pre', { text: this.buildSampleNotePreview(config) });
+	}
+
+	/** Title-role column name (drives sample filenames), if any. */
+	private titleColumn(): string | null {
+		for (const [name, cfg] of this.columnConfigs) {
+			if (cfg.useAs === 'title') return name;
+		}
+		return null;
+	}
+
+	/** Sample filename for a row — title column value, else first column value. */
+	private sampleFilename(row: Record<string, unknown>): string {
+		const titleCol = this.titleColumn();
+		const v = titleCol ? row[titleCol] : row[this.parsedData?.columns[0] ?? ''];
+		const base = String(v ?? 'note').trim() || 'note';
+		return `${this.truncate(base, 40)}.md`;
+	}
+
+	/** DOM folder tree: 📁 hierarchy folders from real values, 📄 sample notes. */
+	private renderVaultTree(tree: HTMLElement, config: Partial<ImportRecipe>) {
+		const line = (depth: number, icon: string, text: string, muted = false) => {
+			const el = tree.createEl('div', { cls: 'crosswalker-vault-tree-line' + (muted ? ' crosswalker-muted' : '') });
+			el.style.paddingLeft = `${depth * 22}px`;
+			el.setText(`${icon} ${text}`);
+		};
+		line(0, '📁', `${this.outputPath || 'output'}/`);
+
+		const sampleRows = this.parsedData && Array.isArray(this.parsedData.rows)
+			? (this.parsedData.rows as Record<string, unknown>[]).slice(0, 50)
+			: [];
+		const hierarchy = (config.mapping?.hierarchy ?? []).slice().sort((a, b) => a.level - b.level);
+
+		if (hierarchy.length === 0) {
+			for (const row of sampleRows.slice(0, 4)) line(1, '📄', this.sampleFilename(row));
+			if (sampleRows.length > 4) line(1, '⋯', `${(this.parsedData?.rowCount ?? sampleRows.length) - 4} more notes`, true);
+			if (sampleRows.length === 0) line(1, '📄', '(no rows)', true);
+			return;
+		}
+
+		// Group sample rows by their top-level folder value
+		const topCol = hierarchy[0].column;
+		const groups = new Map<string, Record<string, unknown>[]>();
+		for (const row of sampleRows) {
+			const seg = String(row[topCol] ?? '').trim();
+			if (!seg) continue;
+			if (!groups.has(seg)) groups.set(seg, []);
+			groups.get(seg)!.push(row);
+		}
+		let shownFolders = 0;
+		for (const [seg, rows] of groups) {
+			if (shownFolders >= 4) break;
+			shownFolders++;
+			line(1, '📁', `${seg}/`);
+			// second hierarchy level, if configured
+			const subCol = hierarchy[1]?.column;
+			if (subCol) {
+				const sub = String(rows[0][subCol] ?? '').trim();
+				if (sub) {
+					line(2, '📁', `${sub}/`);
+					for (const row of rows.slice(0, 2)) line(3, '📄', this.sampleFilename(row));
+					continue;
+				}
+			}
+			for (const row of rows.slice(0, 2)) line(2, '📄', this.sampleFilename(row));
+			if (rows.length > 2) line(2, '⋯', `${rows.length > 49 ? 'many' : rows.length - 2} more`, true);
+		}
+		if (groups.size > shownFolders) line(1, '⋯', `${groups.size - shownFolders} more folders`, true);
+	}
+
+	/** Mock Obsidian note: filename header + properties block + body snippet. */
+	private renderSampleNoteCard(container: HTMLElement, config: Partial<ImportRecipe>) {
+		const card = container.createEl('div', { cls: 'crosswalker-note-card' });
+		const rows = this.parsedData && Array.isArray(this.parsedData.rows)
+			? (this.parsedData.rows as Record<string, unknown>[])
+			: [];
+		const row = rows[0];
+		if (!row) {
+			card.createEl('p', { text: 'No rows to preview.', cls: 'setting-item-description' });
+			return;
+		}
+
+		card.createEl('div', { text: `📄 ${this.sampleFilename(row)}`, cls: 'crosswalker-note-card-title' });
+
+		const fmMappings = config.mapping?.frontmatter ?? [];
+		if (fmMappings.length > 0) {
+			const props = card.createEl('div', { cls: 'crosswalker-note-card-props' });
+			props.createEl('div', { text: 'Properties', cls: 'crosswalker-note-card-props-label' });
+			for (const fm of fmMappings.slice(0, 8)) {
+				const pr = props.createEl('div', { cls: 'crosswalker-note-card-prop' });
+				pr.createEl('span', { text: fm.key, cls: 'crosswalker-prop-key' });
+				pr.createEl('span', { text: this.truncate(String(row[fm.column] ?? ''), 60), cls: 'crosswalker-prop-value' });
+			}
+			if (fmMappings.length > 8) {
+				props.createEl('div', { text: `⋯ ${fmMappings.length - 8} more properties`, cls: 'crosswalker-note-card-prop crosswalker-muted' });
+			}
+		}
+
+		const bodyMappings = config.mapping?.body ?? [];
+		if (bodyMappings.length > 0) {
+			const body = card.createEl('div', { cls: 'crosswalker-note-card-body' });
+			body.createEl('div', { text: 'Note body', cls: 'crosswalker-note-card-props-label' });
+			for (const b of bodyMappings.slice(0, 2)) {
+				body.createEl('p', { text: this.truncate(String(row[b.column] ?? ''), 220) });
+			}
+		} else {
+			card.createEl('div', { text: 'No body content mapped — notes will be properties-only.', cls: 'setting-item-description crosswalker-note-card-body' });
+		}
 	}
 
 	/**
@@ -1167,20 +1486,27 @@ export class ImportWizardModal extends Modal {
 	renderStep4_Generate(container: HTMLElement) {
 		container.createEl('h3', { text: 'Generate notes' });
 
-		// Show generation progress if generating
+		// Show generation progress if generating — a centered card that fills the
+		// step instead of a tiny bar floating at the top.
 		if (this.isGenerating) {
-			const progressContainer = container.createEl('div', { cls: 'crosswalker-generation-progress' });
-			progressContainer.createEl('p', { text: 'Generating notes...' });
-			if (this.generationProgress) {
-				const percent = Math.round((this.generationProgress.current / this.generationProgress.total) * 100);
-				progressContainer.createEl('progress', {
-					attr: { value: String(percent), max: '100' }
-				});
-				progressContainer.createEl('p', {
-					text: `${this.generationProgress.message} (${percent}%)`,
-					cls: 'setting-item-description'
-				});
-			}
+			const wrap = container.createEl('div', { cls: 'crosswalker-gen-wrap' });
+			const card = wrap.createEl('div', { cls: 'crosswalker-gen-card' });
+			card.createEl('div', { cls: 'crosswalker-gen-spinner' });
+			card.createEl('div', { text: 'Generating notes', cls: 'crosswalker-gen-title' });
+
+			const prog = this.generationProgress;
+			const pctNum = prog && prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 0;
+			const pct = card.createEl('div', { text: `${pctNum}%`, cls: 'crosswalker-gen-pct' });
+			const bar = card.createEl('div', { cls: 'crosswalker-gen-bar' });
+			const fill = bar.createEl('div', { cls: 'crosswalker-gen-bar-fill' });
+			fill.style.width = `${pctNum}%`;
+			const count = card.createEl('div', {
+				text: prog ? `${prog.current.toLocaleString()} / ${prog.total.toLocaleString()} notes` : 'Starting…',
+				cls: 'crosswalker-gen-count setting-item-description'
+			});
+
+			// Hand these to onProgress so it can update without a full re-render.
+			this.progressEls = { pct, fill, count };
 			return;
 		}
 
@@ -1281,11 +1607,221 @@ export class ImportWizardModal extends Modal {
 			});
 		} else {
 			const generateBtn = footer.createEl('button', {
-				text: 'Generate',
+				text: this.isGenerating ? 'Generating…' : 'Generate',
 				cls: 'mod-cta'
 			});
-			generateBtn.addEventListener('click', () => {
-				this.generate();
+			generateBtn.disabled = this.isGenerating;
+			if (!this.isGenerating) {
+				generateBtn.addEventListener('click', () => {
+					this.generate();
+				});
+			}
+		}
+	}
+
+	/** "1 record" / "12 records" — pluralize the count label honestly. */
+	private recordsLabel(n: number): string {
+		return `${n.toLocaleString()} record${n === 1 ? '' : 's'}`;
+	}
+
+	/** Show what a record in this list ACTUALLY looks like — a concrete example
+	 *  ("element_type: subcategory · element_identifier: GV.OC-01 · …"), which
+	 *  communicates the content far better than a JSON path. Falls back to bare
+	 *  field-name chips only when every sampled field is empty. */
+	private renderSamplePreview(
+		parent: HTMLElement,
+		sample: Array<{ key: string; value: string }>,
+		sampleKeys: string[],
+		fieldCount: number,
+	) {
+		if (sample.length > 0) {
+			const wrap = parent.createEl('div', { cls: 'crosswalker-json-sample' });
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "e.g." abbreviation
+			wrap.createEl('span', { text: 'e.g. ', cls: 'crosswalker-json-sample-lead' });
+			sample.forEach((f, i) => {
+				if (i > 0) wrap.createEl('span', { text: ' · ', cls: 'crosswalker-json-sample-sep' });
+				wrap.createEl('span', { text: `${f.key}: `, cls: 'crosswalker-json-sample-key' });
+				wrap.createEl('span', { text: f.value, cls: 'crosswalker-json-sample-val' });
+			});
+			const more = fieldCount - sample.length;
+			if (more > 0) wrap.createEl('span', { text: ` · +${more} more fields`, cls: 'crosswalker-json-sample-more' });
+			return;
+		}
+		// All sampled fields were empty — show the field names so it's not blank.
+		if (sampleKeys.length === 0) return;
+		const chips = parent.createEl('div', { cls: 'crosswalker-chips' });
+		for (const k of sampleKeys.slice(0, 5)) chips.createEl('span', { text: k, cls: 'crosswalker-chip' });
+		const remaining = fieldCount - Math.min(5, sampleKeys.length);
+		if (remaining > 0) chips.createEl('span', { text: `+${remaining} more`, cls: 'crosswalker-chip crosswalker-chip-muted' });
+	}
+
+	/** Tiny, de-emphasized "where this lives in the file" line — the raw JSON
+	 *  path, available but not in the user's face (it confused GRC testers). */
+	private renderPathHint(parent: HTMLElement, label: string) {
+		parent.createEl('div', { text: `found in the file at: ${label}`, cls: 'crosswalker-json-pathhint' });
+	}
+
+	/**
+	 * JSON Step-1 surface: a plain-language record picker so a GRC (or any-domain)
+	 * user never has to know `$.objects[*]` syntax. Shows the lists Crosswalker
+	 * found inside the file as selectable cards (radio + record count + field
+	 * chips), a full-width "keep only matching" filter, and the raw path syntax
+	 * tucked under Advanced as the escape hatch.
+	 */
+	private renderJsonRecordPicker(container: HTMLElement) {
+		const st = this.jsonStructure;
+
+		if (st?.parseError) {
+			const warn = container.createEl('div', { cls: 'crosswalker-json-warning' });
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "JSON" is a proper-noun acronym
+			warn.createEl('div', { text: "⚠️ This file isn't valid JSON", cls: 'crosswalker-json-warning-title' });
+			warn.createEl('div', { text: st.parseError, cls: 'setting-item-description' });
+		} else if (st && st.rootIsArray) {
+			const c = st.candidates[0];
+			const card = container.createEl('div', { cls: 'crosswalker-json-pick crosswalker-json-pick-selected' });
+			const head = card.createEl('div', { cls: 'crosswalker-json-pick-head' });
+			head.createEl('span', { text: '●', cls: 'crosswalker-json-radio' });
+			const body = head.createEl('div', { cls: 'crosswalker-json-pick-body' });
+			const titleLine = body.createEl('div', { cls: 'crosswalker-json-pick-title' });
+			titleLine.createEl('span', { text: 'This whole file is your list of records', cls: 'crosswalker-json-pick-label' });
+			titleLine.createEl('span', { text: this.recordsLabel(st.rootCount), cls: 'crosswalker-json-count' });
+			if (c) this.renderSamplePreview(body, c.sample, c.sampleKeys, c.fieldCount);
+		} else if (st && st.candidates.length > 0) {
+			const intro = container.createEl('div', { cls: 'crosswalker-json-intro' });
+			intro.createEl('div', { text: 'Where are your records?', cls: 'crosswalker-json-intro-title' });
+			intro.createEl('div', {
+				text: 'This file nests its records inside it. Pick the list to import — each item in it becomes one note.',
+				cls: 'setting-item-description'
+			});
+			const pickList = container.createEl('div', { cls: 'crosswalker-json-picklist' });
+			const renderPicks = () => {
+				pickList.empty();
+				for (const c of st.candidates.slice(0, 6)) {
+					const selected = this.jsonIterator === c.iterator;
+					const card = pickList.createEl('div', {
+						cls: 'crosswalker-json-pick' + (selected ? ' crosswalker-json-pick-selected' : '')
+					});
+					const head = card.createEl('div', { cls: 'crosswalker-json-pick-head' });
+					head.createEl('span', { text: selected ? '●' : '○', cls: 'crosswalker-json-radio' });
+					const body = head.createEl('div', { cls: 'crosswalker-json-pick-body' });
+					const titleLine = body.createEl('div', { cls: 'crosswalker-json-pick-title' });
+					titleLine.createEl('span', { text: c.name, cls: 'crosswalker-json-pick-label' });
+					titleLine.createEl('span', { text: this.recordsLabel(c.count), cls: 'crosswalker-json-count' });
+					this.renderSamplePreview(body, c.sample, c.sampleKeys, c.fieldCount);
+					if (c.label !== c.name) this.renderPathHint(body, c.label);
+					card.addEventListener('click', () => {
+						this.jsonIterator = c.iterator;
+						renderPicks();
+					});
+				}
+			};
+			renderPicks();
+		} else if (st) {
+			const warn = container.createEl('div', { cls: 'crosswalker-json-warning' });
+			warn.createEl('div', { text: 'No record lists found in this file', cls: 'crosswalker-json-warning-title' });
+			warn.createEl('div', {
+				text: 'Use the advanced path below if your records live somewhere unusual.',
+				cls: 'setting-item-description'
+			});
+		}
+
+		// Full-width filter — much clearer than the far-right Setting control.
+		const filterBlock = container.createEl('div', { cls: 'crosswalker-field-block' });
+		filterBlock.createEl('label', { text: 'Keep only matching records (optional)', cls: 'crosswalker-field-label' });
+		filterBlock.createEl('div', {
+			text: 'Narrow to just the records you want. Write field=value to keep matches, or field!=value to drop them; combine several rules with commas.',
+			cls: 'setting-item-description'
+		});
+		const filterInput = filterBlock.createEl('input', { type: 'text', cls: 'crosswalker-field-input' });
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- literal filter example
+		filterInput.placeholder = 'e.g. status=active';
+		filterInput.value = this.jsonWhere;
+		filterInput.addEventListener('input', () => { this.jsonWhere = filterInput.value.trim(); });
+
+		// Escape hatch — manual path syntax (same as recipes + the command line).
+		const adv = container.createEl('details', { cls: 'crosswalker-advanced' });
+		adv.createEl('summary', { text: 'Advanced — type the record path yourself' });
+		const advBlock = adv.createEl('div', { cls: 'crosswalker-field-block' });
+		advBlock.createEl('div', {
+			text: 'The same path syntax recipes and the command line use. Leave empty when the file itself is the list.',
+			cls: 'setting-item-description'
+		});
+		const pathInput = advBlock.createEl('input', { type: 'text', cls: 'crosswalker-field-input' });
+		pathInput.placeholder = '$.objects[*]';
+		pathInput.value = this.jsonIterator;
+		pathInput.addEventListener('input', () => { this.jsonIterator = pathInput.value.trim(); });
+	}
+
+	/**
+	 * Guided defaults — conservative, visible, overridable. On a fresh parse
+	 * (no saved config matched) suggest obvious roles so a first import
+	 * "unfolds" instead of demanding per-column decisions:
+	 *   - a `title`/`name` column (or unique `id`-ish column) → Note title
+	 *   - one low-cardinality `family`/`category`/`group`/`domain`/`function`
+	 *     column → Hierarchy level (folders)
+	 *   - a long-text `description`/`statement`/`text` column → Body content
+	 * Suggested columns get a ✨ badge in Step 2; everything stays editable.
+	 * A matched saved config always supersedes these.
+	 */
+	/** Sample values for a column from the parsed rows (eager array only; used
+	 *  for delimiter detection in the folder-tree role). Streaming sources return
+	 *  the column's pre-computed sampleValues instead. */
+	private sampleValuesForColumn(name: string): string[] {
+		if (this.parsedData && Array.isArray(this.parsedData.rows)) {
+			return (this.parsedData.rows as Record<string, unknown>[])
+				.slice(0, 200)
+				.map((r) => String(r[name] ?? ''));
+		}
+		return (this.columnInfos.find((c) => c.name === name)?.sampleValues ?? []).map((v) => String(v ?? ''));
+	}
+
+	applySmartDefaults() {
+		if (this.smartDefaultsApplied || this.appliedConfig || this.columnInfos.length === 0) return;
+		this.smartDefaultsApplied = true;
+		const rowCount = this.parsedData?.rowCount ?? 0;
+		const lower = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+		const set = (name: string, useAs: string) => {
+			this.columnConfigs.set(name, { useAs, outputKey: this.normalizeKey(name) });
+			this.suggestedColumns.add(name);
+		};
+
+		// Note title: prefer an explicit title/name column — but only when it
+		// actually carries distinct values (CPRT's subcategory rows have a `title`
+		// column that is 100% EMPTY; suggesting it produced 0-note generations).
+		// Fall back to a unique id-ish column.
+		const usableAsTitle = (c: ColumnInfo) => c.uniqueCount >= Math.max(2, rowCount * 0.5);
+		const titleCol =
+			this.columnInfos.find((c) => ['title', 'name', 'control_name'].includes(lower(c.name)) && usableAsTitle(c)) ??
+			this.columnInfos.find((c) => /(^|_)id(entifier)?$/.test(lower(c.name)) && c.uniqueCount >= rowCount * 0.9);
+		if (titleCol) {
+			// If the title/id column is a structured taxonomy id (DE.AE-02), the
+			// magic move is to PARSE it into a folder tree instead of dumping flat.
+			const folderTemplates = deriveIdSplitTemplates(titleCol.name, this.sampleValuesForColumn(titleCol.name));
+			if (folderTemplates.length > 0) {
+				this.columnConfigs.set(titleCol.name, { useAs: 'folder-tree', outputKey: this.normalizeKey(titleCol.name), folderTemplates });
+				this.suggestedColumns.add(titleCol.name);
+			} else {
+				set(titleCol.name, 'title');
+			}
+		}
+
+		// One hierarchy level: an obviously-grouping column with low cardinality.
+		const hierCol = this.columnInfos
+			.filter((c) => c !== titleCol)
+			.filter((c) => /(family|category|group|domain|function|class)/.test(lower(c.name)))
+			.filter((c) => c.uniqueCount > 1 && c.uniqueCount <= Math.max(20, rowCount * 0.1))
+			.sort((a, b) => a.uniqueCount - b.uniqueCount)[0];
+		if (hierCol) set(hierCol.name, 'hierarchy');
+
+		// Body: a long-text description column.
+		const bodyCol = this.columnInfos
+			.filter((c) => c !== titleCol && c !== hierCol)
+			.find((c) => /(description|statement|text|guidance)/.test(lower(c.name)));
+		if (bodyCol) set(bodyCol.name, 'body');
+
+		if (this.suggestedColumns.size > 0) {
+			this.plugin.debug.info('wizard', 'smart-defaults', `Suggested roles for ${this.suggestedColumns.size} column(s)`, {
+				suggestions: Array.from(this.suggestedColumns).map((n) => ({ column: n, useAs: this.columnConfigs.get(n)?.useAs }))
 			});
 		}
 	}
@@ -1373,21 +1909,42 @@ export class ImportWizardModal extends Modal {
 
 				new Notice(`Parsed ${this.parsedData.rowCount} rows with ${this.parsedData.columns.length} columns.`);
 			} else if (this.sourceType === 'xlsx') {
-				// TODO: Implement XLSX parsing
-				new Notice('Excel file parsing not yet implemented.');
-				this.isParsing = false;
-				this.parseError = 'Excel (.xlsx) parsing is not yet implemented. Please use a CSV file for now.';
-				this.renderStep();
-				return false;
+				this.parsedData = await parseXLSXFile(this.sourceFile, {
+					sheet: this.selectedSheet ?? 0,
+					headerRow: this.xlsxHeaderRow,
+				});
+				this.columnInfos = analyzeColumns(this.parsedData);
+
+				this.plugin.debug.info('xlsx-parser', 'parse-complete', `XLSX parsed: ${this.parsedData.rowCount} rows × ${this.parsedData.columns.length} columns (sheet "${this.parsedData.sheetName}")`, {
+					rowCount: this.parsedData.rowCount,
+					columnCount: this.parsedData.columns.length,
+					sheetName: this.parsedData.sheetName,
+					headerRow: this.xlsxHeaderRow
+				});
+
+				new Notice(`Parsed ${this.parsedData.rowCount} rows with ${this.parsedData.columns.length} columns from sheet "${this.parsedData.sheetName}".`);
 			} else if (this.sourceType === 'json') {
-				// TODO: Implement JSON parsing
-				new Notice('JSON parsing not yet implemented.');
-				this.isParsing = false;
-				this.parseError = 'JSON parsing is not yet implemented. Please use a CSV file for now.';
-				this.renderStep();
-				return false;
+				const jsonResult = await parseJSONFile(this.sourceFile, {
+					iterator: this.jsonIterator,
+					where: this.jsonWhere,
+				});
+				this.parsedData = jsonResult;
+				this.columnInfos = analyzeColumns(this.parsedData);
+
+				this.plugin.debug.info('json-parser', 'parse-complete', `JSON parsed: ${jsonResult.rowCount} rows × ${jsonResult.columns.length} columns`, {
+					rowCount: jsonResult.rowCount,
+					columnCount: jsonResult.columns.length,
+					iterator: this.jsonIterator,
+					where: this.jsonWhere,
+					filteredOut: jsonResult.filteredOut,
+					skippedNonObjects: jsonResult.skippedNonObjects
+				});
+
+				const filtered = jsonResult.filteredOut > 0 ? ` (${jsonResult.filteredOut} filtered out)` : '';
+				new Notice(`Parsed ${jsonResult.rowCount} rows with ${jsonResult.columns.length} columns${filtered}.`);
 			}
 
+			this.applySmartDefaults();
 			this.isParsing = false;
 			return true;
 		} catch (error) {
@@ -1440,8 +1997,14 @@ export class ImportWizardModal extends Modal {
 			sourceFileName: this.sourceFile?.name,
 			onProgress: (current, total, message) => {
 				this.generationProgress = { current, total, message };
-				// Update UI periodically
-				if (current % 20 === 0 || current === total) {
+				// Update the progress card in place (no full re-render) when its
+				// DOM exists; otherwise fall back to a render.
+				if (this.progressEls) {
+					const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+					this.progressEls.pct.setText(`${pct}%`);
+					this.progressEls.fill.style.width = `${pct}%`;
+					this.progressEls.count.setText(`${current.toLocaleString()} / ${total.toLocaleString()} notes`);
+				} else if (current % 50 === 0 || current === total) {
 					this.renderStep();
 				}
 			}
@@ -1470,6 +2033,7 @@ export class ImportWizardModal extends Modal {
 			);
 
 			this.isGenerating = false;
+			this.progressEls = null;
 
 			this.plugin.debug.info('wizard', 'generate-complete', `Wizard generation complete (${result.created.length} created)`, {
 				success: result.success,
@@ -1485,6 +2049,17 @@ export class ImportWizardModal extends Modal {
 					(result.skipped.length > 0 ? `, skipped ${result.skipped.length} existing` : '') +
 					` in ${(result.duration / 1000).toFixed(1)}s`;
 				new Notice(message, 5000);
+
+				// "Success" with nothing created (or row-level errors) is a trap the
+				// user can't see — surface the first cause instead of a silent zero.
+				if (result.errors.length > 0) {
+					const first = result.errors[0];
+					new Notice(`⚠️ ${result.errors.length} row(s) failed — first error: ${typeof first === 'string' ? first : (first as { message?: string }).message ?? JSON.stringify(first)}`, 10000);
+				}
+				if (result.created.length === 0 && result.skipped.length === 0 && result.errors.length === 0) {
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Note title" and "In the vault" quote literal UI labels
+					new Notice('⚠️ Nothing was generated — check that the Note title column actually has values (Step 2 "In the vault" preview shows the filename each row would get).', 10000);
+				}
 
 				// Ask to save config if enabled and not using existing config
 				if (this.plugin.settings.promptToSaveConfig && !this.appliedConfig) {

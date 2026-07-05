@@ -305,11 +305,16 @@ function buildSyntheticRecipe(source: string, target: string, _folder: string): 
  * is the wire format. This normalization lets SSSOM imports populate STRM
  * frontmatter while preserving the original predicate as `sssom_predicate`.
  *
- * Mapping table (per Crosswalker v0.1 design + SKOS Mapping Properties spec):
+ * Direction convention (fixed 2026-06-12 — the original map inverted SKOS):
+ * per the SKOS spec, `A skos:broadMatch B` states that B is the BROADER
+ * concept (A "has a broader match"), i.e. A ⊂ B. STRM predicates read
+ * subject-verb-object, so that edge is `A is_narrower_than B`.
+ *
+ * Mapping table (per SKOS Mapping Properties spec + NIST IR 8477 set theory):
  *   skos:exactMatch    → is_equivalent_to    (perfect synonym)
  *   skos:closeMatch    → is_approximate_to   (near-synonym; exchangeable in many contexts)
- *   skos:broadMatch    → is_broader_than     (subject is broader than object)
- *   skos:narrowMatch   → is_narrower_than    (subject is narrower than object)
+ *   skos:broadMatch    → is_narrower_than    (object is broader ⇒ subject ⊂ object)
+ *   skos:narrowMatch   → is_broader_than     (object is narrower ⇒ subject ⊃ object)
  *   skos:relatedMatch  → intersects_with     (overlapping concepts)
  *
  * Unknown predicates fall back to `intersects_with` with a warning logged.
@@ -317,8 +322,8 @@ function buildSyntheticRecipe(source: string, target: string, _folder: string): 
 const SKOS_TO_STRM: Record<string, string> = {
 	'skos:exactMatch': 'is_equivalent_to',
 	'skos:closeMatch': 'is_approximate_to',
-	'skos:broadMatch': 'is_broader_than',
-	'skos:narrowMatch': 'is_narrower_than',
+	'skos:broadMatch': 'is_narrower_than',
+	'skos:narrowMatch': 'is_broader_than',
 	'skos:relatedMatch': 'intersects_with',
 };
 

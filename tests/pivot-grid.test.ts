@@ -256,9 +256,11 @@ describe('heatmapIntensity', () => {
 		expect(heatmapIntensity('text', { min: 0, max: 10 })).toBe(0);
 	});
 
-	it('normalizes value to 0-1 within range', () => {
+	it('maps value to 0-1 within range with a perceptual (sqrt) curve', () => {
+		// Endpoints stay exact; the mid-range is lifted (sqrt) so long-tailed
+		// coverage counts render as a visible gradient, not near-white cells.
 		expect(heatmapIntensity(0, { min: 0, max: 10 })).toBe(0);
-		expect(heatmapIntensity(5, { min: 0, max: 10 })).toBe(0.5);
+		expect(heatmapIntensity(5, { min: 0, max: 10 })).toBeCloseTo(Math.sqrt(0.5));
 		expect(heatmapIntensity(10, { min: 0, max: 10 })).toBe(1);
 	});
 

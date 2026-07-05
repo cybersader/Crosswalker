@@ -118,6 +118,30 @@ describe('importSssom — happy path with real fixture', () => {
 	});
 });
 
+describe('importSssom — SKOS→STRM direction convention', () => {
+	// Pins the direction semantics (fixed 2026-06-12 — the original map inverted SKOS).
+	// Per the SKOS spec, `A skos:broadMatch B` states B is the BROADER concept (A ⊂ B),
+	// so the STRM edge must read `A is_narrower_than B`. If this test fails, someone
+	// re-inverted the map — see SKOS_TO_STRM in src/import/sssom-importer.ts AND its
+	// mirror in tools/crosswalk-from-olir.ts (keep both in sync).
+	it('broadMatch → is_narrower_than, narrowMatch → is_broader_than', async () => {
+		// NOTE: the synthetic recipe requires subject_label/object_label/
+		// mapping_justification/confidence — rows missing any of them fail render().
+		const tsv = `subject_id\tsubject_label\tpredicate_id\tobject_id\tobject_label\tmapping_justification\tconfidence
+nist:AC-1\tPolicy\tskos:broadMatch\tiso:A.1\tGovernance\tsemapv:ManualMappingCuration\t0.9
+nist:AC-2\tAccounts\tskos:narrowMatch\tiso:A.2\tIdentity\tsemapv:ManualMappingCuration\t0.9`;
+		const { app, written } = makeMockApp();
+		const result = await importSssom(app, tsv, null, null, { runTier2Projection: false });
+		expect(result.generation?.created.length).toBe(2);
+
+		const contents = Array.from(written.values());
+		const broad = contents.find((c) => c.includes('skos:broadMatch'));
+		const narrow = contents.find((c) => c.includes('skos:narrowMatch'));
+		expect(broad).toContain('predicate_id: is_narrower_than');
+		expect(narrow).toContain('predicate_id: is_broader_than');
+	});
+});
+
 describe('importSssom — error paths', () => {
 	it('returns parse-error skip when TSV is missing required column', async () => {
 		const { app } = makeMockApp();

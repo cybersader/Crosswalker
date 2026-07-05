@@ -41,7 +41,9 @@ export function legacyConfigToRecipe(config: LegacyImportRecipe): Recipe {
 			layout.push({
 				level: `hierarchy-${h.level}`,
 				mechanism: 'folder',
-				template: `{${h.column}}`,
+				// An explicit template (e.g. `{id|split(.,0)}` for id-derived
+				// folder trees) wins; otherwise the whole column value is the segment.
+				template: h.template ?? `{${h.column}}`,
 			});
 		}
 	}

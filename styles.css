@@ -916,7 +916,7 @@
  * (0.0 → 1.0). Background fades from transparent → accent color.
  * Uses the Obsidian accent color so it adapts to the user's theme. */
 .crosswalker-pivot-cell-heatmap {
-	background: rgba(var(--interactive-accent-rgb, 100, 100, 200), calc(var(--crosswalker-pivot-cell-intensity, 0) * 0.4));
+	background: rgba(var(--interactive-accent-rgb, 100, 100, 200), calc(var(--crosswalker-pivot-cell-intensity, 0) * 0.6));
 }
 
 .crosswalker-pivot-empty,
@@ -1281,4 +1281,365 @@
 .crosswalker-confirm-warning {
 	color: var(--text-warning, var(--color-orange, #d97706));
 	font-size: 0.9em;
+}
+
+/* Step 2 wide-source UX (2026-06-12): column filter, vault preview, collapse */
+.crosswalker-column-filter {
+	margin: 8px 0;
+}
+.crosswalker-column-filter input {
+	width: 100%;
+}
+.crosswalker-vault-preview {
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	color: var(--text-muted);
+	white-space: nowrap;
+	max-width: 220px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.crosswalker-show-all-btn {
+	width: 100%;
+	font-size: 0.9em;
+}
+
+/* Step 3 preview redesign (2026-06-12): stat cards, DOM vault tree, note card */
+.crosswalker-preview-stats {
+	margin-bottom: 12px;
+}
+.crosswalker-vault-tree {
+	background: var(--background-secondary);
+	border-radius: 8px;
+	padding: 10px 14px;
+	font-family: var(--font-monospace);
+	font-size: 0.9em;
+	line-height: 1.7;
+}
+.crosswalker-vault-tree-line.crosswalker-muted,
+.crosswalker-muted {
+	color: var(--text-faint);
+}
+.crosswalker-note-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 14px 16px;
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+.crosswalker-note-card-title {
+	font-weight: 600;
+	font-size: 1.05em;
+	margin-bottom: 10px;
+}
+.crosswalker-note-card-props {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px 10px;
+	margin-bottom: 10px;
+	background: var(--background-secondary);
+}
+.crosswalker-note-card-props-label {
+	font-size: 0.75em;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	margin-bottom: 6px;
+}
+.crosswalker-note-card-prop {
+	display: flex;
+	gap: 10px;
+	padding: 2px 0;
+	font-size: 0.9em;
+}
+.crosswalker-prop-key {
+	color: var(--text-muted);
+	min-width: 140px;
+	font-family: var(--font-monospace);
+}
+.crosswalker-note-card-body p {
+	margin: 4px 0;
+	color: var(--text-normal);
+}
+.crosswalker-raw-preview {
+	margin-top: 10px;
+}
+.crosswalker-raw-preview summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+/* Step 1 file card + JSON record picker (2026-06-12 UX iteration 2) */
+.crosswalker-file-card {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px 14px;
+	margin: 10px 0;
+	background: var(--background-secondary);
+}
+.crosswalker-file-card-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+.crosswalker-file-card-icon {
+	font-size: 1.6em;
+}
+.crosswalker-file-card-name {
+	font-weight: 600;
+}
+.crosswalker-file-card-how {
+	margin: 8px 0 0;
+}
+.crosswalker-json-pick {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 10px 12px;
+	margin: 6px 0;
+	cursor: pointer;
+	transition: border-color 0.1s ease;
+}
+.crosswalker-json-pick:hover {
+	border-color: var(--interactive-accent);
+}
+.crosswalker-json-pick-selected {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+.crosswalker-json-pick-title {
+	font-weight: 600;
+}
+.crosswalker-advanced summary {
+	cursor: pointer;
+	color: var(--text-muted);
+	font-size: 0.9em;
+	margin: 8px 0;
+}
+.crosswalker-suggest-banner {
+	border-left: 3px solid var(--interactive-accent);
+	background: var(--background-secondary);
+	border-radius: 0 8px 8px 0;
+	padding: 10px 12px;
+	margin: 10px 0;
+}
+.crosswalker-stat-big {
+	font-size: 1.5em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+}
+/* Step 3 note-card: make keys visually distinct from values */
+.crosswalker-prop-key {
+	background: var(--background-modifier-hover);
+	border-radius: 4px;
+	padding: 0 6px;
+	font-size: 0.85em;
+	line-height: 1.8;
+}
+.crosswalker-note-card-prop:nth-child(even) {
+	background: var(--background-primary-alt);
+}
+
+/* ── Step 1 JSON record picker — polished redesign (2026-06-13) ──────────── */
+.crosswalker-json-intro {
+	margin: 14px 0 8px;
+}
+.crosswalker-json-intro-title {
+	font-weight: 600;
+	font-size: 1.05em;
+}
+.crosswalker-json-picklist {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 4px 0 14px;
+}
+.crosswalker-json-pick {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	padding: 12px 14px;
+	cursor: pointer;
+	background: var(--background-primary);
+	transition: border-color 0.12s ease, background 0.12s ease;
+}
+.crosswalker-json-pick:hover {
+	border-color: var(--interactive-accent-hover);
+	background: var(--background-modifier-hover);
+}
+.crosswalker-json-pick-selected,
+.crosswalker-json-pick-selected:hover {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+.crosswalker-json-pick-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+}
+.crosswalker-json-radio {
+	color: var(--interactive-accent);
+	font-size: 0.9em;
+	line-height: 1.5;
+	flex-shrink: 0;
+}
+.crosswalker-json-pick-body {
+	flex: 1;
+	min-width: 0;
+}
+.crosswalker-json-pick-title {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+}
+.crosswalker-json-pick-label {
+	font-weight: 600;
+	font-size: 1.02em;
+}
+.crosswalker-json-pick-path {
+	font-weight: 400;
+	font-size: 0.82em;
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+}
+.crosswalker-json-count {
+	flex-shrink: 0;
+	font-size: 0.8em;
+	font-weight: 600;
+	color: var(--interactive-accent);
+	background: var(--background-secondary);
+	border-radius: 999px;
+	padding: 1px 9px;
+	white-space: nowrap;
+}
+.crosswalker-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	margin-top: 8px;
+}
+.crosswalker-chip {
+	font-family: var(--font-monospace);
+	font-size: 0.78em;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	border-radius: 5px;
+	padding: 1px 7px;
+}
+.crosswalker-chip-muted {
+	color: var(--text-faint);
+	background: transparent;
+}
+.crosswalker-json-warning {
+	border-left: 3px solid var(--text-warning, var(--color-orange));
+	background: var(--background-secondary);
+	border-radius: 0 8px 8px 0;
+	padding: 10px 12px;
+	margin: 12px 0;
+}
+.crosswalker-json-warning-title {
+	font-weight: 600;
+	margin-bottom: 2px;
+}
+/* Full-width labelled inputs (replaces awkward far-right Setting controls) */
+.crosswalker-field-block {
+	margin: 14px 0;
+}
+.crosswalker-field-label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 2px;
+}
+.crosswalker-field-input {
+	width: 100%;
+	margin-top: 6px;
+}
+
+/* ── Step 4 generation progress — centered card (2026-06-13) ─────────────── */
+.crosswalker-gen-wrap {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 340px;
+}
+.crosswalker-gen-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	max-width: 420px;
+	text-align: center;
+}
+.crosswalker-gen-spinner {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	border: 3px solid var(--background-modifier-border);
+	border-top-color: var(--interactive-accent);
+	animation: crosswalker-spin 0.8s linear infinite;
+}
+@keyframes crosswalker-spin { to { transform: rotate(360deg); } }
+.crosswalker-gen-title {
+	font-weight: 600;
+	font-size: 1.1em;
+}
+.crosswalker-gen-pct {
+	font-size: 2.6em;
+	font-weight: 700;
+	color: var(--interactive-accent);
+	line-height: 1;
+}
+.crosswalker-gen-bar {
+	width: 100%;
+	height: 8px;
+	background: var(--background-modifier-border);
+	border-radius: 999px;
+	overflow: hidden;
+}
+.crosswalker-gen-bar-fill {
+	height: 100%;
+	background: var(--interactive-accent);
+	border-radius: 999px;
+	transition: width 0.2s ease;
+}
+.crosswalker-gen-count {
+	font-variant-numeric: tabular-nums;
+}
+
+/* JSON picker: concrete example record + de-emphasized path (2026-06-13 iter 3) */
+.crosswalker-json-sample {
+	margin-top: 7px;
+	font-size: 0.85em;
+	line-height: 1.5;
+}
+.crosswalker-json-sample-lead {
+	color: var(--text-faint);
+	font-style: italic;
+}
+.crosswalker-json-sample-key {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-size: 0.92em;
+}
+.crosswalker-json-sample-val {
+	color: var(--text-normal);
+}
+.crosswalker-json-sample-sep {
+	color: var(--text-faint);
+}
+.crosswalker-json-sample-more {
+	color: var(--text-faint);
+}
+.crosswalker-json-pathhint {
+	margin-top: 6px;
+	font-size: 0.75em;
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+}
+
+/* Reset-imports modal: dim the protected (non-deletable) corpus rows */
+.crosswalker-fixture-protected {
+	opacity: 0.55;
 }

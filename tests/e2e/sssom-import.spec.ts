@@ -97,8 +97,9 @@ describe('Crosswalker plugin — v0.1.6 Phase 2 SSSOM import (E2E)', function ()
 				({
 					'skos:exactMatch': 'is_equivalent_to',
 					'skos:closeMatch': 'is_approximate_to',
-					'skos:broadMatch': 'is_broader_than',
-					'skos:narrowMatch': 'is_narrower_than',
+					// Direction per SKOS spec: broadMatch's OBJECT is broader -> subject is narrower
+					'skos:broadMatch': 'is_narrower_than',
+					'skos:narrowMatch': 'is_broader_than',
 					'skos:relatedMatch': 'intersects_with',
 				})[p] ?? 'intersects_with';
 

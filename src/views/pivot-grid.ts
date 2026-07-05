@@ -260,5 +260,10 @@ function scalarOrString(v: unknown): PivotCell {
 export function heatmapIntensity(value: PivotCell, range: PivotGridResult['range']): number {
 	if (value === null || typeof value !== 'number' || !Number.isFinite(value) || range === null) return 0;
 	if (range.max === range.min) return value === range.max ? 1 : 0;
-	return Math.max(0, Math.min(1, (value - range.min) / (range.max - range.min)));
+	const linear = Math.max(0, Math.min(1, (value - range.min) / (range.max - range.min)));
+	// Perceptual curve: coverage counts are long-tailed (a few large outliers,
+	// many small cells). A linear scale washes the mid-range out to near-white,
+	// so the grid reads as plain numbers. A sqrt curve lifts the low/mid cells
+	// into a visible gradient while keeping the endpoints (0→0, max→1) exact.
+	return Math.sqrt(linear);
 }

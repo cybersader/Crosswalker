@@ -90,6 +90,11 @@ const mockDebug: DebugLog = {
 	trace: jest.fn(),
 } as never;
 
+/** ISO timestamp n days before now — keeps expiry-window tests calendar-proof. */
+function daysAgo(n: number): string {
+	return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function buildDraft(overrides: Partial<WizardDraft> = {}): WizardDraft {
 	const now = new Date().toISOString();
 	return {
@@ -164,8 +169,10 @@ describe('DraftStore — save + list round-trip', () => {
 	it('list() sorts drafts newest-first', async () => {
 		const { app } = createMockApp();
 		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
-		const older = buildDraft({ updatedAt: '2026-05-10T00:00:00.000Z', id: newDraftId() });
-		const newer = buildDraft({ updatedAt: '2026-05-15T00:00:00.000Z', id: newDraftId() });
+		// Relative dates — fixed timestamps rot past the 30-day expiry window
+		// as the calendar advances and start getting filtered by list().
+		const older = buildDraft({ updatedAt: daysAgo(5), id: newDraftId() });
+		const newer = buildDraft({ updatedAt: daysAgo(1), id: newDraftId() });
 		await store.save(older);
 		await store.save(newer);
 		const list = await store.list();
@@ -222,17 +229,18 @@ describe('DraftStore — max-drafts cap', () => {
 	it('enforces maxDrafts on save() by deleting oldest', async () => {
 		const { app } = createMockApp();
 		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 2 });
-		await store.save(buildDraft({ id: newDraftId(), updatedAt: '2026-05-10T00:00:00.000Z' }));
-		await store.save(buildDraft({ id: newDraftId(), updatedAt: '2026-05-11T00:00:00.000Z' }));
-		const newest = buildDraft({ id: newDraftId(), updatedAt: '2026-05-15T00:00:00.000Z' });
+		// Relative dates — see the sort test above for why fixed dates rot.
+		const oldestAt = daysAgo(6);
+		const middleAt = daysAgo(5);
+		const newestAt = daysAgo(1);
+		await store.save(buildDraft({ id: newDraftId(), updatedAt: oldestAt }));
+		await store.save(buildDraft({ id: newDraftId(), updatedAt: middleAt }));
+		const newest = buildDraft({ id: newDraftId(), updatedAt: newestAt });
 		await store.save(newest);
 		const list = await store.list();
 		expect(list).toHaveLength(2);
-		// Oldest (2026-05-10) should have been deleted; newest 2 kept
-		expect(list.map((d) => d.updatedAt)).toEqual([
-			'2026-05-15T00:00:00.000Z',
-			'2026-05-11T00:00:00.000Z',
-		]);
+		// Oldest should have been deleted; newest 2 kept
+		expect(list.map((d) => d.updatedAt)).toEqual([newestAt, middleAt]);
 	});
 
 	it('maxDrafts=0 disables the cap', async () => {

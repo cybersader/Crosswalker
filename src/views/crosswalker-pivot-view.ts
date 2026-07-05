@@ -430,9 +430,11 @@ class CrosswalkerPivotView extends Component {
 		};
 	}
 
-	/** Find the active view's `config:` block. Bases moved it off `controller.config`;
-	 *  it now lives on the matching view inside `controller.query.views`. Probe the
-	 *  known spots, preferring the one that actually carries pivot axes. */
+	/** Find the active view's pivot options. Bases parses each view's options into
+	 *  `view.data` (the same place native table views keep `order`/`groupBy`);
+	 *  `view.config` is a Bases-reserved field that is `null` for custom views.
+	 *  Older `.base` files nested our options under `data.config`, so we prefer
+	 *  top-level keys and fall back to that nested block for back-compat. */
 	private resolveRawConfig(): Record<string, unknown> {
 		const c = this.controller as unknown as Record<string, unknown>;
 		const viewName = typeof c.viewName === 'string' ? c.viewName : undefined;
@@ -447,12 +449,14 @@ class CrosswalkerPivotView extends Component {
 				(v) => (v as Record<string, unknown>)?.type === 'crosswalker-pivot',
 			);
 			const v = (byName ?? byType ?? views[0]) as Record<string, unknown> | undefined;
-			fromViews = v?.config as Record<string, unknown> | undefined;
+			const data = v?.data as Record<string, unknown> | undefined;
+			const nested = data?.config as Record<string, unknown> | undefined;
+			if (data || nested) fromViews = { ...(nested ?? {}), ...(data ?? {}) };
 		}
 		const candidates: Array<[string, unknown]> = [
+			['query.views[].data', fromViews],
 			['config', c.config],
 			['view.config', (c.view as Record<string, unknown>)?.config],
-			['query.views[].config', fromViews],
 			['ctx.config', (c.ctx as Record<string, unknown>)?.config],
 			['viewConfig', c.viewConfig],
 		];

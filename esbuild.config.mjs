@@ -1,7 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
-import { copyFileSync, mkdirSync, existsSync, statSync } from "fs";
+import { copyFileSync, mkdirSync, existsSync, statSync, watch } from "fs";
 
 const banner =
 `/*
@@ -88,5 +88,20 @@ if (prod) {
 	copyFileSync("styles.css", outdir + "styles.css");
 	copyTier2WasmArtifacts();
 	await context.watch();
-	console.log("Watching for changes...");
+
+	// esbuild only watches the JS bundle's import graph — styles.css and
+	// manifest.json are copied once above and would otherwise go stale mid-watch
+	// (the 2026-06-13 "new markup, no styling" bug). Watch them too.
+	for (const asset of ["styles.css", "manifest.json"]) {
+		watch(asset, () => {
+			try {
+				copyFileSync(asset, outdir + asset);
+				console.log(`[crosswalker] re-copied ${asset}`);
+			} catch (e) {
+				console.warn(`[crosswalker] failed to copy ${asset}: ${e.message}`);
+			}
+		});
+	}
+
+	console.log("Watching for changes (incl. styles.css + manifest.json)...");
 }

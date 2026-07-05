@@ -113,6 +113,10 @@ export interface HierarchyMapping {
 	column: string;
 	level: number;
 	transform?: TransformRule[];
+	/** Explicit folder template, overriding the default `{<column>}`. Used to
+	 *  derive a folder level from part of a value — e.g. `{id|split(.,0)}` to
+	 *  turn a taxonomy id like `DE.AE-02` into nested `DE/ → DE.AE/` folders. */
+	template?: string;
 }
 
 export interface FrontmatterMapping {
