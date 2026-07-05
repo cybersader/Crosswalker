@@ -71,7 +71,7 @@ Filters **chain** (`{Subcategory\|split(:,1)\|trim}`) — the pipeline already r
 - **Result:** CSF re-ingested through the real `render()` → clean `DE.AE-01.md` filenames (was the messy full-text), `subcategory_id: GV.OC-01`, titles with the code stripped. **40 render tests pass** (3 new: split / regex / trim, plus a regression test pinning `fs-safe` hyphen/paren preservation).
 - **Known edge → next filter:** a description containing its own colon (`A: B: C`) makes `split(:,1)` return just `B`. Motivates a future `after(<delim>)` ("everything past the first delimiter") filter — logged, not yet built.
 
-### JSON / nested-source reader — the high-level (next) · planned 2026-06-03
+### JSON / nested-source reader — `--iterator` + `--where` · built 2026-06-12
 
 CSV + XLSX are **flat row tables**: one row → one concept, columns → fields. The next class of sources (STIX bundles, OSCAL catalogs, NIST CPRT exports — ~39 JSON files in the corpus) are **nested**: concepts live at a path inside a tree, not as top-level rows. The reader **generalizes** the existing pipeline rather than forking it:
 
@@ -79,7 +79,48 @@ CSV + XLSX are **flat row tables**: one row → one concept, columns → fields.
 2. **Field access stays dotted:** `render()`'s template scope already resolves dotted paths (`{external_references.0.external_id}`), so once the iterator yields an object, the *same Recipe + same filters* apply — no new expression language. Deeply nested or computed pulls are where **JSONata-in-templates** (design-only, deferred) would eventually slot in.
 3. **One reader interface, three formats:** `readSource()` already dispatches on extension (`.csv` / `.xlsx`); `.json` adds a third branch that runs the iterator and emits the same `Record<string, unknown>[]` the downstream pipeline expects.
 
-This keeps the **single coupling point** (`render(Recipe, ConceptIdentity) → Address`) intact — JSON support is a new *front-end reader*, not a new engine. Direction confirmed; implementation is the next harness capability.
+This keeps the **single coupling point** (`render(Recipe, ConceptIdentity) → Address`) intact — JSON support is a new *front-end reader*, not a new engine.
+
+**Built 2026-06-12** as [`tools/lib/json-source.ts`](https://github.com/cybersader/crosswalker/blob/main/tools/lib/json-source.ts) (importable + 19 Jest tests), wired into `readSource()` via two flags:
+
+- `--iterator '$.objects[*]'` — closed syntax, fail-fast like `render()`: dotted keys + `[*]` fan-out only (multi-fan flattens, e.g. `$.catalog.groups[*].controls[*]`); indices/filters rejected with a pointed error. A top-level-array document needs no iterator; an object root without one errors **listing the available keys**.
+- `--where 'type=attack-pattern,revoked!=true'` — comma-ANDed `=`/`!=` row filters on dotted paths; a missing field never `=`-matches and always `!=`-matches (so `revoked!=true` keeps unmarked rows).
+
+Top-level scalars coerce to trimmed strings (the CSV/XLSX contract — `--map` and the id roles behave identically across formats); **nested objects/arrays survive** so recipe templates reach into them via the dotted paths `render()` already resolves.
+
+**Smoke results (real corpus files, real `render()`):**
+
+| Source | Invocation | Result |
+|---|---|---|
+| MITRE ATT&CK STIX (`enterprise-attack.json`, 25,843 objects) | `--iterator '$.objects[*]' --where 'type=attack-pattern,revoked!=true,x_mitre_deprecated!=true'` + recipe [`mitre-attack-technique.json`](https://github.com/cybersader/crosswalker/blob/main/recipes/import/mitre-attack-technique.json) (`--id '{external_references.0.external_id}'`) | ✅ **697 active techniques** — clean `T1055.011.md` sub-technique filenames via the dotted-path template; full Tier 1 provenance |
+| NIST CPRT CSF 2.0 export | `--iterator '$.response.elements.elements[*]' --where 'element_type=subcategory'` + `--map 'element_identifier=id,text=description'` | ✅ **185 subcategories** — exactly matching the XLSX-derived count |
+
+**Finding:** the CPRT JSON is a *cleaner* CSF source than `csf2.xlsx` — id and text arrive pre-split (no `split(:,0)` filters needed) and withdrawn entries are a separate `element_type`, so the XLSX path's `[Withdrawn` title artifact can't occur. Candidate: re-point the CSF recipe at CPRT and retire the XLSX snags.
+
+### Mapping-column melt — the SCF hub becomes 5,675 edges · 2026-06-12
+
+[`tools/crosswalk-from-melt.ts`](https://github.com/cybersader/crosswalker/blob/main/tools/crosswalk-from-melt.ts) — the third extractor (concepts → OLIR edges → **melt edges**), with the shared edge-emission path factored into `tools/lib/crosswalk-shared.ts`. It unpivots a wide mapping-column sheet: one subject row × one framework column × each `\r\n`-listed id in the cell → one crosswalk-edge note, through the same `render()` + AJV gate.
+
+- **One pass over the SCF 2026.1 sheet** (`--melt 'CIS CSC 8.1=cis-v8;NIST CSF 2.0=nist-csf-2;…'`) → **5,675 edges into 7 frameworks**: CIS 429 · CSF 611 · 800-53 1,117 · ISO 27001 316 · ISO 27002 506 · SOC 2/TSC 1,478 · PCI DSS 1,218.
+- **The STRM proxy, realized:** the ISO / SOC 2 / PCI edges reference those frameworks' control ids without carrying a word of their copyrighted text — coverage analysis into frameworks we can't ingest.
+- **Predicates are honest:** the flat columns carry no per-pair relationship type (SCF publishes that only in 185 per-framework STRM *PDFs* — below the input floor), so every melt edge is `skos:relatedMatch` → `intersects_with`. If a structured STRM source lands, regenerate with real predicates.
+- **Snag → construct:** SCF writes CIS *control-level* refs as `N.0` (`1.0` = Control 1) — 88 dead links until (a) `--object-id-sub 'cis-v8=\.0$='` normalization and (b) ingesting the 18 CIS control-level notes via the new format-agnostic `--where` (`--where 'CIS Safeguard='` selects the group-header rows — `--where` now applies to CSV/XLSX, not just JSON).
+- **Link integrity, whole corpus: 23,396 wikilinks · 42 dead · 99.82% resolve.** Every dead link is a genuinely-absent concept (IA-13, withdrawn enhancements, family-level 800-53 refs, CRI extension ids).
+
+### Navigable edges — `--depad` + folder-qualified wikilinks · 2026-06-12
+
+The "edges are dead bare CURIEs in Bases" gap, closed at generation level (per the backlog memory):
+
+- **`--depad subject|object|both`** — canonicalizes OLIR's zero-padded ids to NIST's unpadded form (`AC-01` → `AC-1`, `IR-04(02)` → `IR-4(2)`). Only the 800-53 side depads — CSF/CRI zeros ARE canonical (`GV.OC-01`, `DE.AE-02.01`).
+- **`--subject-note-folder` / `--object-note-folder`** — edge notes emit `subject_note`/`object_note` frontmatter wikilinks + a linked body. **Folder-qualified** (`[[Frameworks/_licensed/NIST-800-53/AC-1|AC-1]]`) because the synthetic NIST-mini fixtures share 8 basenames with the licensed set — bare basename links are ambiguous.
+- **Hierarchy back-fill:** OLIR maps at function/category/family level too; CSF function (6) + category (34) notes were generated from the CPRT JSON (`recipes/import/nist-csf-2-cprt.json`) so group-level edges resolve.
+- **Result: 7,732 wikilinks across the three edge sets, 99.5% resolve.** The 16 residual unresolved ids are *genuinely absent concepts* — 3 family-level 800-53 refs (PT/CP/IR), `IA-13` (added in r5.1.1, newer than our source), and ~11 **CRI v2.2 extension ids that masquerade as CSF ids** (`EX`, `GV.AU-*`, `GV.RM-08/09`, `PR.PS-07`). Don't stub those as CSF notes — they're CRI concepts wearing CSF-style names (a nice find: extension detection falls out of link-integrity checking).
+
+### Formatted-text fidelity (`raw: false`) — the CIS "4.10" trap · 2026-06-12
+
+- **Snag:** CIS stores safeguard **4.10** as the *number* `4.1` with display text `"4.10"`. The XLSX reader's `String(value)` produced `"4.1"` — **silently colliding with safeguard 4.1** (second note overwrites the first; 152 files where there should be 153, one of them wrong).
+- **Fix:** the XLSX reader now reads **formatted text** (`sheet_to_json` `raw: false`) — every cell is what Excel displays, which is the contract the string-coercion already promised. Regression-verified: CSF (185) and CRI (472) re-renders are byte-identical (modulo timestamp).
+- **Result:** CIS v8.1.2 ingests clean — `4.1.md` *and* `4.10.md` both exist.
 
 ### Header-key normalization · 2026-06-03
 
@@ -115,8 +156,8 @@ The predicate chain is **OLIR → SKOS → STRM** (reuse, not new logic):
 | OLIR `Relationship` | → SKOS (in the SSSOM TSV) | → STRM `predicate_id` (in the note) |
 |---|---|---|
 | `equal` | `skos:exactMatch` | `is_equivalent_to` |
-| `subset of` | `skos:broadMatch` | `is_broader_than` ⚠️ |
-| `superset of` | `skos:narrowMatch` | `is_narrower_than` ⚠️ |
+| `subset of` | `skos:broadMatch` | `is_narrower_than` (fixed 2026-06-12; was `is_broader_than` ⚠️) |
+| `superset of` | `skos:narrowMatch` | `is_broader_than` (fixed 2026-06-12; was `is_narrower_than` ⚠️) |
 | `intersects with` (+ blank) | `skos:relatedMatch` | `intersects_with` |
 
 `Strength` (0–10) → `match_confidence` (÷10, 0–1). `SKOS_TO_STRM` mirrors the (module-private) map in `src/import/sssom-importer.ts`.
@@ -127,8 +168,9 @@ The predicate chain is **OLIR → SKOS → STRM** (reuse, not new logic):
 |---|---|---|---|
 | **CSF 2.0 → 800-53** (public, commit-safe) | NIST official crosswalk | **740** | all `intersects_with` (no rel-type in source) |
 | **CRI → 800-53** (FI, local-only) | CRI→800-53 OLIR (20 family sheets) | **1,039** | 71 equivalent · 179 broader · 278 narrower · 511 intersects |
+| **CSF 2.0 → CRI** (FI, local-only) · *added 2026-06-12* | CRI workbook's own "NIST CSF v2 Mapping" sheet (`--header-row 3` + `--subject-col`/`--object-col` aliases — the layout is OLIR-shaped, just differently labeled) | **154** (0 skipped) | 49 exact · 92 broader · 13 related — **the third edge of the proving-ground triangle**; same direction-snag caveat as CRI→800-53 |
 
-⚠️ **Direction snag (flagged, not silently shipped):** the mirrored `SKOS_TO_STRM` labels `skos:broadMatch → is_broader_than` ("subject broader"), which **inverts standard SKOS** (where `A broadMatch B` ⇒ B is broader). So the directional CRI edges (`is_broader_than` ↔ `is_narrower_than`) may be swapped. The public CSF→800-53 pivot (all `intersects_with`) is unaffected. Resolve the convention — fix the map *or* the recipe-side OLIR→SKOS mapping — before trusting directional CRI edges. Logged as a snag below.
+✅ **Direction snag — resolved 2026-06-12.** It WAS a bug: the original `SKOS_TO_STRM` inverted standard SKOS. Fixed in both `src/import/sssom-importer.ts` and the tool mirror — `skos:broadMatch → is_narrower_than` (per SKOS, `A broadMatch B` ⇒ B is broader ⇒ A ⊂ B), `skos:narrowMatch → is_broader_than`. The convention is **pinned by a unit test** ("SKOS→STRM direction convention" in `tests/sssom-importer.test.ts`); all three edge sets regenerated; committed SSSOM TSVs unaffected (they store the SKOS wire format — exactly why `sssom_predicate` is preserved). Sanity anchor: `nist-csf-2:DE is_narrower_than cri-profile:DE` (CRI extends CSF's DETECT).
 
 **Stages C/D (manual — the part headless can't reach):** open the slice in Obsidian → Tier 2 sidecar indexes → the `crosswalkerPivot` coverage matrix renders. Step-by-step (with regen commands, since the slice is gitignored): [`TEST_CROSSWALK_PIVOT.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_CROSSWALK_PIVOT.md).
 
@@ -142,8 +184,8 @@ Running real frameworks *is* the requirements process. What's surfaced so far:
 | ✅ **Newline-in-header keys** — `Profile\r\nId`, `Focal Document\r\nElement` → recipe `{Profile Id}` matched nothing | CRI, NIST OLIR crosswalks | **Resolved** → header-key normalization in the XLSX reader (above) |
 | **Merged-cell forward-fill** — Function/Category sit only on group-header rows; empty on the child rows → `family` blank | CSF 2.0, CRI (Tier-1..4) | forward-fill hierarchy columns down into child rows (then group-headers can become parent concepts too) |
 | Empty-id rows skipped silently | 800-53, CSF | acceptable default; consider a `--strict` skipped-row report |
-| ⚠️ **SKOS→STRM direction inverts standard SKOS** — `broadMatch → is_broader_than` reads "subject broader" but standard SKOS `A broadMatch B` ⇒ B broader | CRI→800-53 (directional edges) | decide the convention; fix `SKOS_TO_STRM` *or* the OLIR→SKOS map. Counts (pivot) unaffected |
-| **Per-sheet banner rows** — OLIR family sheets (`AT`/`AU`/… after the first `Relationships-AC`) shift the header row → 803/1842 CRI→800-53 rows skipped | CRI→800-53 | per-sheet header detection (like `--header-row`) in `crosswalk-from-olir.ts` |
+| ⚠️ **SKOS→STRM direction inverts standard SKOS** — `broadMatch → is_broader_than` reads "subject broader" but standard SKOS `A broadMatch B` ⇒ B broader | CRI→800-53 (directional edges) | ✅ resolved 2026-06-12 — map flipped in src + tool, unit-test pinned, edge sets regenerated (see above) |
+| **Per-sheet banner rows** — OLIR family sheets (`AT`/`AU`/… after the first `Relationships-AC`) shift the header row → 803/1842 CRI→800-53 rows skipped | CRI→800-53 | 🟡 partial 2026-06-12 — `--header-row` added to `crosswalk-from-olir.ts` (fixes uniform banner offsets, e.g. the CSF→CRI sheet); the *per-sheet varying* case still needs detection |
 | Per-framework invocation is a long CLI string | all | promote `--map` / `--sheet` / `--header-row` into a **config file** — the Tier-3 "as-code" unit |
 
 ## Ingestion scoreboard
@@ -155,19 +197,25 @@ Running real frameworks *is* the requirements process. What's surfaced so far:
 | CRI Profile v2.2 | XLSX | **recipe** `cri-profile-v2-2.json` (header row 2; FI-sector, local-only) | ✅ 472 (F·C·S·DS); `sector: financial-services` stamped |
 | **CSF 2.0 → 800-53** (edges) | XLSX (OLIR) | `crosswalk-from-olir.ts` → `render()` `kind: crosswalk-edge` + SSSOM TSV | ✅ 740 schema-valid edges (public; pivot-ready) |
 | **CRI → 800-53** (edges) | XLSX (OLIR ×20 sheets) | `crosswalk-from-olir.ts` (local-only) | ✅ 1,039 edges; predicate variety + confidence; direction snag flagged |
+| MITRE ATT&CK (techniques) | JSON (STIX) | **recipe** `mitre-attack-technique.json` (`--iterator '$.objects[*]'` + `--where`) | ✅ 697 active techniques (smoke; sub-technique ids via dotted paths) |
+| NIST CSF 2.0 (via CPRT) | JSON (CPRT) | `--iterator '$.response.elements.elements[*]'` + `--where element_type=subcategory` | ✅ 185 (smoke) — cleaner source than `csf2.xlsx`; candidate to replace it |
+| CIS Controls v8.1.2 | XLSX | **recipe** `cis-controls-v8.json` (safeguard level; IG1-3 in frontmatter; local-only) | ✅ 153 safeguards — exactly the official count; `4.10` collision cured by `raw: false` |
+| SCF 2026.1.1 | XLSX | **recipe** `scf-2026-flat.json` (1,468 controls; local-only) | ✅ 1,468 controls; the ~250 framework-mapping columns await the **mapping-column melt → crosswalk edges** extractor (named next step) |
 
 ## Next — retarget onto the implemented constructs
 
 1. ✅ **Refactor the harness onto the real `render()` + a `Recipe`** — *done 2026-06-03* (800-53 renders through the production engine; legacy path retained).
 2. ✅ **field-split** → `split` / `regex` / `trim` filters added to the closed set — *done 2026-06-03* (CSF ids + titles clean through `render()`; 40 render tests). Follow-on: an `after(<delim>)` filter for multi-colon descriptions.
 3. ✅ **Header-key normalization** → XLSX reader collapses newline-laden header keys — *done 2026-06-03* (unblocks CRI + both OLIR crosswalks).
-4. ✅ **Stage B — OLIR→SSSOM crosswalk reader** (the thesis) — *done 2026-06-03*: `crosswalk-from-olir.ts` → `render()` crosswalk-edge notes + SSSOM TSV; CSF→800-53 (740, public) + CRI→800-53 (1,039, local), all AJV-validated. **Now:** (a) Stages C/D — render the pivot in Obsidian per [`TEST_CROSSWALK_PIVOT.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_CROSSWALK_PIVOT.md); (b) resolve the SKOS→STRM direction convention; (c) CRI→CSF from the inline `NIST CSF v2 Mapping` column (a per-row extractor, not OLIR); (d) per-sheet header detection to recover the 803 skipped CRI rows.
+4. ✅ **Stage B — OLIR→SSSOM crosswalk reader** (the thesis) — *done 2026-06-03*: `crosswalk-from-olir.ts` → `render()` crosswalk-edge notes + SSSOM TSV; CSF→800-53 (740, public) + CRI→800-53 (1,039, local), all AJV-validated. **Now:** (a) Stages C/D — render the pivot in Obsidian per [`TEST_CROSSWALK_PIVOT.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_CROSSWALK_PIVOT.md); (b) ✅ SKOS→STRM direction convention — resolved 2026-06-12 (map was inverted; fixed + test-pinned); (c) ✅ **CSF→CRI — done 2026-06-12**: the workbook's "NIST CSF v2 Mapping" *sheet* turned out to be OLIR-shaped (not a per-row column extract) — `--header-row 3` + column aliases on the existing tool → **154 edges, 0 skipped**, completing the triangle; (d) per-sheet header detection to recover the 803 skipped CRI rows (the new global `--header-row` covers single-sheet banner offsets; the multi-sheet case still needs detection).
 5. **merged-cell forward-fill** → a row pre-transform (the cross-structural **forward-fill** primitive) so hierarchy columns (CSF Function/Category, CRI Tier-1..4) populate child rows — then group-headers become parent concepts too.
 6. **AJV-validate recipes inside the harness** → run each `--recipe` JSON through AJV against `spec/recipe.schema.json` before rendering (see the callout above), so a malformed recipe fails fast with a precise error instead of a confusing render.
-7. **JSON reader** (logical source + iterator path) → STIX / OSCAL / CPRT (~39 files). High-level laid out above.
+7. ✅ **JSON reader** (logical source + iterator path) — *done 2026-06-12*: `--iterator` + `--where` in the harness (`tools/lib/json-source.ts`, 19 tests); smoke-verified on ATT&CK STIX (697 techniques via `render()`) + CPRT CSF (185). Unblocks the ~39-file JSON corpus (STIX / OSCAL / CPRT / Navigator layers). Follow-ons: YAML branch (same iterator idea), re-point CSF at CPRT.
+8. **SCF mapping-column melt → crosswalk edges** — the SCF sheet's ~250 per-framework mapping columns are the **STRM proxy** into copyrighted frameworks (ISO / SOC 2 / PCI / COBIT / HITRUST) without their text. Shape: unpivot — one column × one non-empty cell → N crosswalk-edge notes (`scf:GOV-01 → iso-27001:A.5.1`). A new extractor in the `crosswalk-from-olir.ts` family, not an OLIR layout.
 
 ## Related
 
 - [GRC corpus end-to-end (use-case map)](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/) — the high-level pipeline this builds stages 1–2 of
+- [URM ingestion readiness (per-framework checklist)](/crosswalker/agent-context/zz-log/2026-06-12-urm-ingestion-readiness/) — the scoreboard generalized to the whole corpus: every framework → floor status → named path to Tier 1
 - [Building the unified model](/crosswalker/agent-context/zz-log/2026-06-02-building-the-unified-model/) — the destination ontology
 - [ETL & import](/crosswalker/concepts/etl-and-import/) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [Framework data sources](/crosswalker/reference/framework-data-sources/) · [Operational landscape](/crosswalker/concepts/operational-landscape/) (the work tiers)

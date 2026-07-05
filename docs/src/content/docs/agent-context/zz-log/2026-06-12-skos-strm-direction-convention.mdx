@@ -1,0 +1,60 @@
+---
+title: "SKOS→STRM direction convention — broadMatch means the OBJECT is broader"
+description: "Decision log: the SKOS_TO_STRM predicate map inverted standard SKOS direction (broadMatch → is_broader_than). Resolved 2026-06-12 as a bug, not a convention choice. Canonical mapping table, the reasoning from both vocabularies, the unit-test guard, and what regenerated."
+sidebar:
+  order: -20260612.5
+  label: "06-12 · SKOS→STRM direction"
+tags: [log, decision, skos, strm, sssom, crosswalk, direction, predicates]
+date: 2026-06-12
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="What this is — the permanent direction contract">
+The [ingestion dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) records the discovery + fix narrative; this page is the **citable contract**: what Crosswalker's SKOS→STRM direction convention *is*, why, and the guard that keeps it. If you're implementing anything that touches `predicate_id`, read this first.
+</Aside>
+
+## The convention (canonical)
+
+STRM predicates read **subject-verb-object**. SKOS mapping properties read **"subject has-a-X-match"** — the property names the *object's* role.
+
+| SSSOM/SKOS predicate | SKOS semantics | STRM `predicate_id` |
+|---|---|---|
+| `skos:exactMatch` | perfect synonym | `is_equivalent_to` |
+| `skos:closeMatch` | near-synonym | `is_approximate_to` |
+| `skos:broadMatch` | **object is broader** (subject ⊂ object) | `is_narrower_than` |
+| `skos:narrowMatch` | **object is narrower** (subject ⊃ object) | `is_broader_than` |
+| `skos:relatedMatch` | overlapping | `intersects_with` |
+
+And one hop upstream, the OLIR chain: `subset of` (focal ⊂ reference) → `skos:broadMatch` → `is_narrower_than`. The OLIR→SKOS leg was always correct; only the SKOS→STRM leg was inverted.
+
+## The bug it replaces
+
+The original map read `skos:broadMatch → is_broader_than` with the comment "subject is broader than object" — a **misreading of SKOS**. Per the [SKOS reference](https://www.w3.org/TR/skos-reference/#mapping), `A skos:broadMatch B` asserts that A *has a broader match* B — B is the broader concept. The error shipped identically in both implementations (`src/import/sssom-importer.ts` and the mirror in `tools/crosswalk-from-olir.ts`), so tool and plugin agreed with each other while both disagreeing with the standard. Flagged 2026-06-03 while building CRI→800-53 edges; resolved 2026-06-12 as a bug (no evidence anywhere of an intentional non-standard convention).
+
+## Why direction matters (and what never broke)
+
+- **Coverage counts were always right** — the pivot groups by `subject_id`/`object_id`, not direction.
+- **Committed SSSOM TSVs were never wrong** — they store the SKOS predicate (the wire format). This is exactly why crosswalk-edge notes preserve `sssom_predicate` alongside the normalized `predicate_id`: the wire truth survives a normalization bug.
+- What *was* wrong: every directional `predicate_id` in generated edge notes, and anything downstream that would have trusted them — the v0.1.7 exporters (STRM/OSCAL) would have shipped inverted assertions.
+
+## Sanity anchors (real corpus, post-fix)
+
+- `nist-csf-2:DE is_narrower_than cri-profile:DE` — CRI's DETECT extends CSF's (adds "technology and"), so CSF ⊂ CRI ✓
+- `nist-800-53:AC-2 is_broader_than cri-profile:GV.RR-02.06` — an 800-53 control ⊃ a single CRI diagnostic statement ✓
+
+## The guard
+
+Unit test **"importSssom — SKOS→STRM direction convention"** (`tests/sssom-importer.test.ts`) pins `broadMatch → is_narrower_than` and `narrowMatch → is_broader_than` through the real importer. If it fails, someone re-inverted one of the **two copies** of the map — they must change together (the tool mirror documents this in place).
+
+## What regenerated
+
+All three proving-ground edge sets (2026-06-12): CSF→800-53 (740), CRI→800-53 (1,039), CSF→CRI (154). The CSF→CRI set is the visible proof — its 92 directional edges flipped from `is_broader_than` to `is_narrower_than` (CSF concepts are subsets of CRI's extended versions).
+
+## Related
+
+- [Ingestion tooling dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) — discovery narrative, snags table, the OLIR→SKOS→STRM chain
+- [URM ingestion readiness](/crosswalker/agent-context/zz-log/2026-06-12-urm-ingestion-readiness/) — the per-framework scoreboard this unblocked (queue item 4)
+- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Phase 2 shipped the SSSOM importer this map lives in
+- [Terminology](/crosswalker/concepts/terminology/) — STRM, SSSOM, crosswalk-edge definitions
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the `predicate_id` enum this convention populates

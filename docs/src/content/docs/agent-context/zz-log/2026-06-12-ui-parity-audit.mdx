@@ -1,0 +1,53 @@
+---
+title: "UI parity audit — every lifecycle stage gets a face, config is the escape hatch"
+description: "Design principle locked 2026-06-12: every ontology-lifecycle stage (Acquire → Import → Enrich → Maintain → Share) must be UI-interfaceable; recipes/CLI/config files are the programmatic escape hatch, never the only path. Per-stage parity matrix after the ingestion-corpus sprint, with the named gaps and their tracking homes."
+sidebar:
+  order: -20260612.7
+  label: "06-12 · UI parity audit"
+tags: [log, decision, ui, ux, lifecycle, parity, wizard, vision]
+date: 2026-06-12
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="What this is — the anti-tunnel-vision guard">
+The 2026-06 ingestion sprint built a lot of **headless** capability fast (JSON iterator reader, melt extractor, `--depad`, `--where`…). This audit checks that speed against the product vision: per the [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/), a user must be able to **peer into and drive every stage through UI**. Config files, recipes, and CLI flags are the escape hatch and the programmatic path — never the only door. Sanctioned exception: prose sources (PDF/HTML) below the [input floor](/crosswalker/concepts/etl-and-import/#data-input-requirements--what-crosswalker-can-ingest), which are explicitly external-ETL territory.
+</Aside>
+
+## The principle
+
+1. **UI first, config as escape hatch.** Every capability a user needs in the lifecycle gets a UI surface. The JSON recipe / CLI invocation behind it stays available for automation, agents, and power users — that duality is the point of [schema-as-primitive](/crosswalker/concepts/etl-and-import/), not a license to skip the UI.
+2. **Parity is tracked, not assumed.** New headless capability must name its UI surface (existing or roadmapped) in the same change. The pre-commit habit: "does this flag have a face?"
+3. **The architecture makes this cheap.** Recipes and queries are AJV-validated JSON *data*; `render()` is pure; the wizard and the headless tools share the same validator. A UI is a thin editor over objects that already exist — no rework debt accrues by building headless first, **as long as the gap is named**.
+
+## Parity matrix (as of 2026-06-12)
+
+| Lifecycle stage | Programmatic / escape hatch | UI today | Gap status |
+|---|---|---|---|
+| **Acquire** | user obtains source files | wizard file picker | ✅ by design (prose/PDF stays external ETL) |
+| **Import — Parse** | harness: CSV · XLSX (`--sheet`/`--header-row`) · JSON (`--iterator`/`--where`) | wizard parses CSV · XLSX (sheet picker + header-row offset) · JSON (iterator + row-filter inputs) — ✅ **closed same day** (the stubs dated to the MVP) | ✅ |
+| **Import — Transform** | recipes (`--map`, `--where`, template filters) | wizard column-config (CSV); config save/load/match/browse modals | 🟡 partial — no recipe *editor* UI; recipes are JSON-file-only |
+| **Import — Generate** | `render()` + engine, deterministic harness | wizard step 3 preview + step 4 generate | ✅ |
+| **Crosswalks / edges** | `crosswalk-from-olir.ts`, `crosswalk-from-melt.ts` | SSSOM TSV import modal ✅ — but workbook-extraction (OLIR / melt) has **no UI** | 🟡 named gap — "Import crosswalk from workbook" wizard path |
+| **Enrich** | `user_preserve` frontmatter contract | native Obsidian editing | ✅ by design |
+| **Query / analyze** | query frontmatter schema (escape hatch by design) | create / embed / browse commands + `crosswalkerPivot` + native Bases (v0.1.6 Phases 4.5–6.3) | ✅ — the strongest stage |
+| **Maintain** | re-import merge semantics; `diff` primitive (Phase 6) | re-run wizard; no diff/what-changed UI yet | 🟡 planned — v0.1.8 audit trail is exactly this |
+| **Share** | recipes as JSON; SSSOM TSV artifacts | config browser ✅; config export/import UI still TODO; exporters = v0.1.7 | 🟡 planned |
+
+## Named gaps → tracking homes
+
+1. ~~**Wizard XLSX + JSON wiring**~~ ✅ **closed 2026-06-12 (same day)** — `src/import/parsers/{xlsx-parser,json-parser}.ts` + Step-1 sheet picker / iterator + filter inputs; the JSON core moved INTO src (`json-source-core.ts`) and the harness now imports it from there — one reader, two doors.
+2. **Crosswalk-extraction UI** (edges 🟡) — OLIR + melt are CLI-only; a "Import crosswalk from workbook" flow can reuse the SSSOM modal's preview pattern.
+3. **Recipe editor** (Transform 🟡) — view/edit recipes in-app instead of JSON-file-only; the AJV schema gives the form for free.
+3a. ~~**Derive hierarchy from an id**~~ ✅ **closed 2026-06-13** — the wizard's new **"Folder tree (from id)"** column role parses a taxonomy id (`DE.AE-02` → `DE/ → DE.AE/ → DE.AE-02.md`) by auto-detecting its delimiters; the "In the vault" preview shows the tree, and smart-defaults auto-pick it for structured-id columns. Same result the `nist-csf-2-cprt-hierarchical.json` recipe produces, now point-and-click.
+4. **Diff / maintain UI** (🟡) — lands with v0.1.8 audit trail; the `diff` primitive (Phase 6) is already built for it.
+5. **Config/recipe share UI** (🟡) — export/import buttons; v0.1.7-adjacent.
+
+## Related
+
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — the stage model this audit walks
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive (why UI stays cheap) + the input floor (the prose exception)
+- [Operational landscape](/crosswalker/concepts/operational-landscape/) — the five tiers of work; UI surfaces are Tier 1–2
+- [Ingestion tooling dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) — the headless sprint this audit balances
+- [URM ingestion readiness](/crosswalker/agent-context/zz-log/2026-06-12-urm-ingestion-readiness/) — the corpus scoreboard
+- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — the query-stage UI that sets the parity bar

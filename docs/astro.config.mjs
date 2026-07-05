@@ -7,7 +7,10 @@ import starlightBlog from 'starlight-blog';
 import starlightAnnouncement from 'starlight-announcement';
 import starlightImageZoom from 'starlight-image-zoom';
 import starlightHeadingBadges from 'starlight-heading-badges';
-import rehypeMermaid from 'rehype-mermaid';
+// (Mermaid was dropped 2026-06-13: rehype-mermaid needs a headless browser at
+//  build time — broke the Windows dev box AND the deploy CI — and the diagrams
+//  read cleaner as hand-authored inline HTML/CSS anyway. Diagrams now live as
+//  styled HTML in the .mdx pages; no build-time browser, renders everywhere.)
 import starlightTagsPlugin from 'starlight-tags';
 import remarkGfm from 'remark-gfm';
 import remarkObsidianCallout from 'remark-obsidian-callout';
@@ -43,7 +46,6 @@ export default defineConfig({
     ],
     rehypePlugins: [
       [rehypeExternalLinks, { target: '_blank', rel: ['noopener', 'noreferrer'] }],
-      rehypeMermaid,
     ],
   },
   integrations: [

@@ -9,13 +9,15 @@ tags: [architecture, tiers, components, system, design, foundation, layered]
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page is the canonical entry point for understanding **how Crosswalker's pieces fit together.** It consolidates information that was previously scattered across the [ETL concept](/crosswalker/concepts/etl-and-import/), the [embedded substrates concept](/crosswalker/concepts/embedded-vs-server-substrates/), the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/), and per-milestone pages.
+This page is the **detailed reference** for how Crosswalker's pieces fit together — the component-to-tier matrix, the read/write flows, the codebase map. It consolidates information that was previously scattered across the [ETL concept](/crosswalker/concepts/etl-and-import/), the [embedded substrates concept](/crosswalker/concepts/embedded-vs-server-substrates/), the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/), and per-milestone pages.
 
-If you're new here, read this first.
+<Aside type="tip" title="Want the picture first?">
+For the **illustrated, diagram-first** version of everything below — the pipeline, the tiers, the producers, the query/output layers, each linked to its deep page — start at the [system model](/crosswalker/concepts/system-model/). Come back here for the detail.
+</Aside>
 
 ## TL;DR
 
-Crosswalker has **three storage tiers** and **six logical layers** that move data between them.
+Crosswalker has **three storage tiers** and **six logical layers** that move data between them. For the *convention* view of the same stack — the named DSL at each layer, built or adopted, as one map — see [Conventional systems in the stack](/crosswalker/concepts/conventions/).
 
 ```
                   CROSSWALKER IN ONE DIAGRAM

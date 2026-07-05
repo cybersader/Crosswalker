@@ -1,15 +1,15 @@
 ---
-title: Vault hierarchy primitives — folder, heading, tag, wikilink-graph
-description: Obsidian provides four orthogonal mechanisms for representing hierarchy in a vault. Real recipes compose them. The target-structure choice is what determines how a source ontology lands in Tier 1.
+title: "The four Obsidian primitives — folder, heading, tag, wikilink"
+description: "The four orthogonal structural primitives Obsidian gives you for representing hierarchy and relationships — folder, heading, tag, wikilink. Real recipes compose them; the target-structure choice determines how a source ontology lands in Tier 1. (File and frontmatter are the other two building blocks — see Mapping into Obsidian.)"
 sidebar:
   order: 8
-  label: "Hierarchy primitives"
+  label: "Obsidian primitives"
 tags: [vault, obsidian, hierarchy, polyhierarchy, target-structure, primitives]
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-Obsidian (and any plain-text Markdown vault) gives Crosswalker **four orthogonal mechanisms** for representing hierarchy. The same source ontology can be projected through any of them — or through compositions of them — and the choice is the import recipe author's. These four mechanisms are the load-bearing structural primitives that the import side of Crosswalker has to compose. STRM, SSSOM, junction notes, and the ontology diff primitives all operate on *concept identity* and don't care which mechanism a recipe chooses; the choice only affects how concept identities render as wikilink addresses ([Challenge 22](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/)).
+Obsidian (and any plain-text Markdown vault) gives Crosswalker **four orthogonal mechanisms** for representing hierarchy. The same source ontology can be projected through any of them — or through compositions of them — and the choice is the import recipe author's. These four mechanisms are the load-bearing structural primitives that the import side of Crosswalker has to compose. STRM, SSSOM, junction notes, and the ontology diff primitives all operate on *concept identity* and don't care which mechanism a recipe chooses; the choice only affects how concept identities render as wikilink addresses ([Challenge 22](/crosswalker/agent-context/zz-challenges/22-target-structure-expressivity/)). For how a recipe actually morphs external data onto these primitives, layer by layer, see [Mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/).
 
 ## The four primitives
 

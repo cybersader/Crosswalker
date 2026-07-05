@@ -9,7 +9,7 @@ tags: [etl, import, recipe, schema, primitive, marketplace, yarrrml, transforms]
 
 import { Aside } from '@astrojs/starlight/components';
 
-The import side is the hardest part of Crosswalker. *Everything* a user wants to do — query, crosswalk, evidence, version, share — flows through whatever they already have, in whatever shape it arrives, and lands in the [Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/). Get the import boundary right and the rest of the architecture works. Get it wrong and no amount of cleverness downstream rescues it.
+The import side is the hardest part of Crosswalker. *Everything* a user wants to do — query, crosswalk, evidence, version, share — flows through whatever they already have, in whatever shape it arrives, and lands in the [Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/). Get the import boundary right and the rest of the architecture works. Get it wrong and no amount of cleverness downstream rescues it. For the layer-by-layer map of every convention in the pipeline, see [Conventional systems in the stack](/crosswalker/concepts/conventions/); for the front-half morph onto Obsidian's primitives specifically, see [Mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/).
 
 This page frames how Crosswalker thinks about that boundary. **For the system-wide picture (all six layers, not just import), see the [system architecture page](/crosswalker/concepts/system-architecture/).**
 
@@ -17,20 +17,54 @@ This page frames how Crosswalker thinks about that boundary. **For the system-wi
 
 Most ingestion tools start with the engine and treat the output schema as a configuration knob. Crosswalker inverts that:
 
+<div class="not-content" style="display:flex; gap:.8rem; flex-wrap:wrap; align-items:stretch; margin:1.3rem 0;"><div style="flex:1 1 240px; padding:.8rem 1rem; border-radius:12px; border:1px dashed var(--sl-color-gray-3); background:transparent;"><div style="font-size:.62em; letter-spacing:.12em; text-transform:uppercase; color:var(--sl-color-gray-3); margin-bottom:.25rem;">Most ingestion tools</div><div style="font-size:1.05em; font-weight:700; margin-bottom:.3rem; color:var(--sl-color-gray-2);">Engine first</div><div style="font-size:.82em; color:var(--sl-color-gray-2); line-height:1.45;">The engine is load-bearing; the output schema is a config knob you tweak.</div></div><div style="flex:1 1 240px; padding:.8rem 1rem; border-radius:12px; border:1px solid var(--sl-color-text-accent); background:var(--sl-color-accent-low);"><div style="font-size:.62em; letter-spacing:.12em; text-transform:uppercase; color:var(--sl-color-text-accent); margin-bottom:.25rem;">Crosswalker</div><div style="font-size:1.05em; font-weight:700; margin-bottom:.3rem; color:var(--sl-color-text-accent);">Schema first</div><div style="font-size:.82em; color:var(--sl-color-gray-2); line-height:1.45;">The <strong>Tier 1 schema</strong> is the load-bearing contract. The engine is optional convenience — anyone who emits valid Tier 1 is a first-class producer.</div></div></div>
+
 > **The Tier 1 schema is the primitive.** Crosswalker is, before anything else, an *ingestion target* — a precise, machine-readable contract that says what canonical Markdown + frontmatter + folder layout + wikilinks looks like. The engine that produces conforming output is convenience. Anyone can produce conforming output any way they like.
 
-Architectural precedents for this stance: HTML, JSON Schema, OpenAPI, SBOM (SPDX/CycloneDX), CSVW, Markdown itself. Each is a *receiving format* — the spec is the load-bearing artifact; the producer ecosystem grew around it.
+You've seen this pattern before. **HTML** and **Markdown** are the clearest examples: the *format* is the shared contract everyone agrees on, and a whole ecosystem of tools grew up producing it — nobody owns an "official" generator. The spec is what's load-bearing; the producers are interchangeable. Tier 1 plays exactly that role for Crosswalker. *(Same pattern: JSON Schema, OpenAPI, SBOM formats like SPDX/CycloneDX, CSVW.)*
 
 Translated to Crosswalker:
 
-| Layer | Status |
-|---|---|
-| **Tier 1 schema** (the contract) | Load-bearing primitive. Machine-readable JSON Schema. |
-| **Bundled ETL engine** (the convenience) | Optional implementation that produces Tier 1 from common source shapes. |
-| **External producers** (custom code, dbt, Python, scrapers, MCP servers) | First-class citizens. Anything that emits valid Tier 1 is welcome. |
-| **Community marketplace** (pre-transformed bundles) | Once an ontology is shaped to Tier 1, it stays shaped. Communities share `.zip`s of Tier 1 directories. |
+<div class="not-content" id="the-four-pieces-stack" style="margin:1.3rem 0; padding:1rem 1.1rem; border:1px solid var(--sl-color-hairline); border-radius:14px; background:var(--sl-color-bg);">
+<div style="font-size:.6em; text-transform:uppercase; letter-spacing:.12em; color:var(--sl-color-gray-3); text-align:center; margin-bottom:.5rem;">Producers — interchangeable; adopt as many as you like</div>
+<div style="display:flex; gap:.6rem; flex-wrap:wrap; align-items:stretch;">
+<div style="flex:1 1 165px; padding:.7rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.8em;"><a href="#2-the-bundled-etl-engine-convenience" style="color:var(--sl-color-text-accent); text-decoration:none;">Bundled ETL engine</a></div><div style="font-size:.58em; text-transform:uppercase; letter-spacing:.08em; color:var(--sl-color-gray-3); margin:.15rem 0 .3rem;">convenience</div><div style="font-size:.7em; color:var(--sl-color-gray-2); line-height:1.45;">common formats in → Tier 1 out, without leaving Obsidian</div></div>
+<div style="flex:1 1 165px; padding:.7rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.8em;"><a href="#3-external-producers-custom-transforms" style="color:var(--sl-color-text-accent); text-decoration:none;">External producers</a></div><div style="font-size:.58em; text-transform:uppercase; letter-spacing:.08em; color:var(--sl-color-gray-3); margin:.15rem 0 .3rem;">your toolchain</div><div style="font-size:.7em; color:var(--sl-color-gray-2); line-height:1.45;">dbt · Python / Polars · scrapers · MCP servers · AI agents</div></div>
+<div style="flex:1 1 165px; padding:.7rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.8em;"><a href="#4-the-community-marketplace-transform-once-share-forever" style="color:var(--sl-color-text-accent); text-decoration:none;">Community marketplace</a></div><div style="font-size:.58em; text-transform:uppercase; letter-spacing:.08em; color:var(--sl-color-gray-3); margin:.15rem 0 .3rem;">transform once</div><div style="font-size:.7em; color:var(--sl-color-gray-2); line-height:1.45;">download a pre-built Tier 1 bundle; pull a diff when upstream updates</div></div>
+</div>
+<div style="text-align:center; margin:.45rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-text-accent);">↓</div><div style="font-size:.58em; color:var(--sl-color-text-accent); text-transform:uppercase; letter-spacing:.1em;">all emit valid Tier 1</div></div>
+<div style="padding:.8rem 1rem; border:2px solid var(--sl-color-text-accent); border-bottom-width:5px; border-radius:10px; background:var(--sl-color-accent-low); color:var(--sl-color-text-accent);"><div style="display:flex; align-items:center; justify-content:center; gap:.5rem; flex-wrap:wrap;"><span style="font-weight:800; font-size:.9em;"><a href="#1-the-tier-1-schema-machine-readable-contract" style="color:inherit; text-decoration:none;">Tier 1 schema</a></span><span style="font-size:.55em; font-weight:800; letter-spacing:.08em; text-transform:uppercase; border:1px solid var(--sl-color-text-accent); border-radius:4px; padding:.1rem .35rem;">the primitive</span></div><div style="text-align:center; font-size:.68em; margin-top:.3rem; color:var(--sl-color-gray-2);">the load-bearing contract — machine-readable JSON Schema, the single interface every producer targets. Swap the engine; the schema doesn’t move.</div></div>
+</div>
 
 This reframe collapses several open architectural questions (build vs buy, DSL choice, in-plugin vs external runtime, recipe location) into one commitment. The engine becomes swappable; the schema does not.
+
+## Data input requirements — what Crosswalker can ingest
+
+Crosswalker's contract is **shape-level, not format-level**: the engine consumes an **iterable of records** — an array of objects, each a `{column: value}` map. **It doesn't have to be tabular** — values can be nested objects/arrays, addressable via dotted paths in recipe templates (`{family.title}`, `{a.b.c}`). In practice that's a **CSV**, an **XLSX sheet**, or a **JSON array of (optionally nested) records**. *(Native **XML / RDF / OWL** isn't v0.1 — pre-convert it to JSON or CSV via the [bridge tooling](/crosswalker/examples/extraction-tooling/); native parsing is deferred to v0.2+.)* That's the minimum structure Crosswalker can parse — its **input floor**.
+
+<Aside type="danger" title="You can't feed it raw documents — it needs to be a structured format">
+<span style="display:inline-flex; align-items:center; gap:.35rem; vertical-align:middle; margin-right:.4rem;"><span style="background:#d23; color:#fff; font-weight:800; font-size:.62em; padding:.16rem .4rem; border-radius:4px; letter-spacing:.06em;">PDF</span><span style="color:#d23; font-weight:900; font-size:1.05em; line-height:1;">✗</span></span> A **PDF** — or a web page, a scanned image, a folder of policy `.docx` files, a raw API blob — has **no record structure yet**: nothing to iterate, no columns to map to recipe templates. It needs a **bridge step** first (see [extraction & ETL tooling](/crosswalker/examples/extraction-tooling/)). Crosswalker is deliberately **not** a document parser or scraper — it's an ingestion *target*. Keeping the floor at "structured records" is what keeps the engine small, streaming, and reproducible.
+</Aside>
+
+Bridging unstructured → structured is **your ETL/extraction tooling's job** — see [recommended extraction & ETL tooling](/crosswalker/examples/extraction-tooling/) for tools by source type. ([Mode 1](#the-two-mode-architecture--bundled-projector-or-direct-emission) composes with them directly.) The picture:
+
+<div class="not-content" style="margin:1.5rem 0; padding:1rem 1.1rem; border:1px solid var(--sl-color-hairline); border-radius:14px; background:var(--sl-color-bg);">
+<div style="display:flex; align-items:center; gap:.7rem; padding:.5rem .8rem; border:1px dashed var(--sl-color-gray-3); border-radius:10px; background:transparent;"><div style="flex:0 0 130px; font-weight:600; font-size:.8em; color:var(--sl-color-gray-2);">Needs a bridge first</div><div style="display:flex; flex-wrap:wrap; gap:.3rem; align-items:center;"><span style="display:inline-block; background:#d23; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">PDF</span><span style="display:inline-block; background:#2b579a; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">DOCX</span><span style="display:inline-block; background:#e44d26; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">HTML</span><span style="display:inline-block; background:#6b7280; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">IMG</span><span style="display:inline-block; background:#3b3f46; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">API</span><span style="display:inline-block; background:#6a4caf; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">XML</span><span style="display:inline-block; background:#6a4caf; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">RDF</span><span style="display:inline-block; background:#6a4caf; color:#fff; font-weight:700; font-size:.6em; padding:.16rem .42rem; border-radius:4px; letter-spacing:.04em;">OWL</span><span style="font-size:.68em; color:var(--sl-color-gray-3); font-style:italic;">— <span style="color:#d23;">red/grey</span> = no records yet · <span style="color:#6a4caf;">purple</span> = structured but not v0.1-native</span></div></div>
+<div style="text-align:center; margin:.4rem 0;"><div style="font-size:1.6em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.6em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">bridge it — your ETL / extraction tooling</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.5rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 130px; font-weight:600; font-size:.8em;">Bridge tooling <span style="color:var(--sl-color-gray-3); font-weight:400; font-size:.85em;">your job</span></div><div style="font-size:.74em; color:var(--sl-color-gray-2);">ChunkyCSV · JSONaut · Polars / DuckDB · dbt · Docling / unstructured.io · LLM extraction · Excel / Sheets export</div></div>
+<div style="text-align:center; margin:.4rem 0;"><div style="font-size:1.6em; line-height:.85; color:var(--sl-color-gray-3);">↓</div></div>
+<div style="text-align:center; margin:.5rem 0; padding:.6rem .7rem; border-radius:8px; background:var(--sl-color-accent-low); border:2px solid var(--sl-color-text-accent); color:var(--sl-color-text-accent); font-weight:700; font-size:.78em;">⎯⎯ The minimum input — structured records <code style="background:transparent; color:inherit;">&#123;column: value&#125;</code> · CSV · JSON · XLSX ⎯⎯</div>
+<div style="text-align:center; margin:.4rem 0;"><div style="font-size:1.6em; line-height:.85; color:var(--sl-color-text-accent);">↓</div><div style="font-size:.6em; color:var(--sl-color-text-accent); text-transform:uppercase; letter-spacing:.1em;">Crosswalker takes over</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.5rem .8rem; border:1px solid var(--sl-color-text-accent); border-left:4px solid var(--sl-color-text-accent); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 130px; font-weight:700; font-size:.8em; color:var(--sl-color-text-accent);">Crosswalker</div><div style="font-size:.74em; color:var(--sl-color-gray-2);">Mode 1 — bundled engine (rows + recipe)　·　Mode 2 — direct emission (Tier 1 Markdown)</div></div>
+<div style="text-align:center; margin:.4rem 0;"><div style="font-size:1.6em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.6em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">writes</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.5rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 130px; font-weight:600; font-size:.8em;">Tier 1 vault</div><div style="font-size:.74em; color:var(--sl-color-gray-2);">canonical Markdown + frontmatter — the source of truth</div></div>
+</div>
+
+Everything **above** the floor line is *your* job (or a tool you bring); everything **below** is Crosswalker's.
+
+<Aside type="tip" title="Bridge tooling — by what you're starting from">
+**Most GRC frameworks already clear the floor** — NIST / CIS / CRI ship as XLSX / CSV / OLIR, so feed them straight in. For the long tail (messy CSVs, nested JSON, PDFs, scraped sources), see **[recommended extraction & ETL tooling](/crosswalker/examples/extraction-tooling/)** — the right bridge by source type (ChunkyCSV, JSONaut, Polars / DuckDB / dbt, Docling / unstructured.io / LLM extraction).
+</Aside>
 
 ## The two-mode architecture — bundled projector or direct emission
 
@@ -45,49 +79,16 @@ The bundled engine has **one job**: take structured rows + a recipe, and emit Ti
 
 Both modes are **first-class architectural citizens** per the [schema-as-primitive commitment](#the-reframe--schema-is-the-primitive-etl-is-convenience). The schema (Tier 1) is the contract; the engine is convenience.
 
-```
-                            ┌─────────────────────┐
-   USER SOURCE DATA  ───►   │  Producer of choice │
-   (any shape, any size)    │  (external or inline) │
-                            └──────────┬──────────┘
-                                       │
-                ┌──────────────────────┴──────────────────────┐
-                │                                             │
-                ▼                                             ▼
-    ┌─ MODE 1 — Bundled projector ─────┐    ┌─ MODE 2 — Direct emission ─────┐
-    │  Producer emits:                  │    │  Producer emits:                │
-    │   structured rows                 │    │   Tier 1 Markdown directly      │
-    │   (CSV / JSON / XML / XLSX)       │    │                                 │
-    │                                   │    │  Examples:                      │
-    │  Examples:                        │    │   • AI agent writes per-concept │
-    │   • User uploads raw CSV in       │    │     .md files                   │
-    │     wizard (engine parses)        │    │   • Python script renders YAML  │
-    │   • ChunkyCSV streams huge XLSX → │    │     + Markdown end-to-end       │
-    │     emits cleaned CSV             │    │   • Pre-built vault bundle      │
-    │   • JSONaut transforms messy JSON │    │     downloaded from marketplace │
-    │     → emits normalized JSON       │    │                                 │
-    │   • dbt models project SQL → CSV  │    │  Bundled engine: not invoked    │
-    │                                   │    │                                 │
-    │  Bundled engine then:             │    │                                 │
-    │    parses input (streaming) →     │    │                                 │
-    │    iterates rows →                │    │                                 │
-    │    render() per row →             │    │                                 │
-    │    writes Tier 1 file →           │    │                                 │
-    │    discards row from RAM          │    │                                 │
-    └──────────────────┬────────────────┘    └─────────────────┬───────────────┘
-                       │                                       │
-                       └─────────────────┬─────────────────────┘
-                                         │
-                                         ▼
-                        ┌────────────────────────────────────┐
-                        │         TIER 1 VAULT               │
-                        │  Markdown + YAML frontmatter        │
-                        │  conforming to                      │
-                        │  spec/tier1.schema.json             │
-                        │  ────────────────────────           │
-                        │  THE LOAD-BEARING CONTRACT          │
-                        └────────────────────────────────────┘
-```
+<div class="not-content" style="margin:1.5rem 0; padding:1rem 1.1rem; border:1px solid var(--sl-color-hairline); border-radius:14px; background:var(--sl-color-bg);">
+<div style="text-align:center; padding:.6rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.85em;">Producer of choice</div><div style="font-size:.7em; color:var(--sl-color-gray-3); margin-top:.15rem;">external or inline · your source data, any shape, any size</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">chooses an entry point</div></div>
+<div style="display:flex; gap:.7rem; flex-wrap:wrap; align-items:stretch;">
+<div style="flex:1 1 260px; display:flex; flex-direction:column; padding:.7rem .8rem; border:1px solid var(--sl-color-text-accent); border-radius:10px; background:var(--sl-color-accent-low);"><div style="font-weight:700; font-size:.82em; color:var(--sl-color-text-accent);">Mode 1 — Bundled projector</div><div style="font-size:.74em; color:var(--sl-color-gray-2); margin:.3rem 0;">Producer emits <strong>structured rows</strong> · CSV / JSON / XML / XLSX</div><div style="font-size:.68em; color:var(--sl-color-gray-3); line-height:1.5; flex:1;">raw CSV in the wizard · ChunkyCSV streams a huge XLSX → cleaned CSV · JSONaut normalizes messy JSON · dbt projects SQL → CSV</div><div style="font-size:.68em; color:var(--sl-color-text-accent); margin-top:.45rem; padding-top:.4rem; border-top:1px dashed var(--sl-color-text-accent);">↳ engine: parse (streaming) → iterate → render() per row → write → discard</div></div>
+<div style="flex:1 1 260px; display:flex; flex-direction:column; padding:.7rem .8rem; border:1px solid var(--sl-color-gray-3); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.82em; color:var(--sl-color-gray-2);">Mode 2 — Direct emission</div><div style="font-size:.74em; color:var(--sl-color-gray-2); margin:.3rem 0;">Producer emits <strong>Tier 1 Markdown</strong> directly</div><div style="font-size:.68em; color:var(--sl-color-gray-3); line-height:1.5; flex:1;">an AI agent writes per-concept .md · a Python script renders YAML + Markdown end-to-end · a pre-built vault bundle from the marketplace</div><div style="font-size:.68em; color:var(--sl-color-gray-3); margin-top:.45rem; padding-top:.4rem; border-top:1px dashed var(--sl-color-gray-3);">↳ engine: not invoked</div></div>
+</div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-text-accent);">↓</div><div style="font-size:.58em; color:var(--sl-color-text-accent); text-transform:uppercase; letter-spacing:.1em;">both land at</div></div>
+<div style="text-align:center; padding:.7rem .8rem; border:2px solid var(--sl-color-text-accent); border-radius:10px; background:var(--sl-color-accent-low); color:var(--sl-color-text-accent);"><div style="font-weight:800; font-size:.85em;">Tier 1 vault</div><div style="font-size:.7em; margin-top:.15rem;">Markdown + YAML frontmatter · conforms to spec/tier1.schema.json · the load-bearing contract</div></div>
+</div>
 
 ### Why both modes matter
 
@@ -177,25 +178,16 @@ The user's existing tools fit this gap precisely. They specialize in **input cle
 
 A natural follow-on question once Mode 1's input contract is clear: **how much of the messy-source-cleanup problem does Crosswalker try to solve in-plugin?** Decided 2026-05-05 (see [transform-engine-depth and input-formats decision log](/crosswalker/agent-context/zz-log/2026-05-05-transform-engine-depth-and-input-formats/) + [Ch 26](/crosswalker/agent-context/zz-challenges/archive/26-transform-engine-depth-and-input-formats/)):
 
-```
-NARROW                                                                 BROAD
-  │                                                                       │
-  ▼                                                                       ▼
-v0.1 closed     v0.2 wizard     v0.3 inline       v0.5 port jsonaut/    v1.0 full
-filter set      adds basic      JSONata expr     chunkycsv as opt-in    in-plugin
-(7 filters,     transforms      sub-language     transform engine       transform IDE
-shipped)        (rename,        (already                                 (REJECTED —
-                trim,           committed in                             scope drift;
-                regex,          Ch 23 §6;                                could exceed
-                split)          just wires)                              Crosswalker
-                                                                         itself)
-
-                                       ▲                                    ▲
-                                       │                                    │
-                                  CHOSEN                              REJECTED
-                                  STOPPING                            (likely
-                                  POINT                               permanently)
-```
+<div class="not-content" style="margin:1.5rem 0; padding:1rem 1.1rem; border:1px solid var(--sl-color-hairline); border-radius:14px; background:var(--sl-color-bg);">
+<div style="display:flex; justify-content:space-between; font-size:.6em; text-transform:uppercase; letter-spacing:.13em; color:var(--sl-color-gray-3); margin-bottom:.55rem;"><span>◄ Narrow · engine does less</span><span>Broad · engine does more ►</span></div>
+<div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:stretch;">
+<div style="flex:1 1 135px; padding:.6rem .7rem; border:1px solid var(--sl-color-text-accent); border-radius:10px; background:var(--sl-color-accent-low);"><div style="font-weight:700; font-size:.78em; color:var(--sl-color-text-accent);">v0.1</div><div style="font-size:.66em; color:var(--sl-color-gray-2); margin-top:.25rem; line-height:1.4;">Closed 7-filter set</div><div style="font-size:.55em; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--sl-color-text-accent); margin-top:.35rem;">Shipped · baseline</div></div>
+<div style="flex:1 1 135px; padding:.6rem .7rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.78em; color:var(--sl-color-gray-2);">v0.2</div><div style="font-size:.66em; color:var(--sl-color-gray-2); margin-top:.25rem; line-height:1.4;">Wizard adds basic transforms — rename, trim, regex, split</div></div>
+<div style="flex:1 1 135px; padding:.6rem .7rem; border:2px solid var(--sl-color-text-accent); border-radius:10px; background:var(--sl-color-accent-low);"><div style="font-weight:700; font-size:.78em; color:var(--sl-color-text-accent);">v0.3</div><div style="font-size:.66em; color:var(--sl-color-gray-2); margin-top:.25rem; line-height:1.4;">Inline JSONata expression sub-language (already committed, Ch 23 §6 — just wires)</div><div style="font-size:.55em; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--sl-color-text-accent); margin-top:.35rem;">Chosen stopping point</div></div>
+<div style="flex:1 1 135px; padding:.6rem .7rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.78em; color:var(--sl-color-gray-2);">v0.5</div><div style="font-size:.66em; color:var(--sl-color-gray-2); margin-top:.25rem; line-height:1.4;">Port JSONaut / ChunkyCSV as an opt-in transform engine</div></div>
+<div style="flex:1 1 135px; padding:.6rem .7rem; border:1px dashed #d23; border-radius:10px; background:transparent;"><div style="font-weight:700; font-size:.78em; color:#d23;">v1.0</div><div style="font-size:.66em; color:var(--sl-color-gray-2); margin-top:.25rem; line-height:1.4;">Full in-plugin transform IDE</div><div style="font-size:.55em; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:#d23; margin-top:.35rem;">Rejected — scope drift, could exceed Crosswalker itself</div></div>
+</div>
+</div>
 
 | Phase | Wizard offers | Recipe author authors | External tool handles |
 |---|---|---|---|
@@ -256,40 +248,26 @@ interface ParsedData {
 
 The bundled engine's per-row pipeline (after Ch 22 + Ch 23 + Ch 24 design phase, implemented in [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) + [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) + [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/), with streaming wired in [v0.1.4.5](/crosswalker/reference/roadmap/milestones/)):
 
-```
-Row iterator                    ◄── streaming source
-(AsyncIterable<Row>)                  ChunkyCSV pipe / PapaParse step /
-   │                                   AsyncIterator<JSON record> / etc.
-   │  (one row pulled at a time)
-   ▼
-Row n
-   │
-   ▼
-ConceptIdentity {curie, scope}  ◄── scope = the row itself
-   │
-   ▼  + Recipe
-render(Recipe, Identity)        ◄── pure function (Ch 22 §3)
-   │                                 single coupling point
-   ▼
-Address {                       ◄── what render() returns
-  primary: {path, anchor?},
-  wikilinkTarget,
-  tags[], aliases[],
-  frontmatter (managed)
-}
-   │
-   ▼  + buildProvenance() + body
-validateTier1Frontmatter()      ◄── pre-write gate (v0.1.4)
-   │                                STRM enforcement here
-   ▼
-mergeFrontmatter(existing, new) ◄── user_preserve survives (Ch 22 §8.4)
-   │
-   ▼
-app.vault.create() / .modify()  ◄── Tier 1 file written
-   │
-   ▼
-Row n discarded from RAM        ◄── streaming complete; back for row n+1
-```
+<div class="not-content" style="margin:1.5rem 0; padding:1rem 1.1rem; border:1px solid var(--sl-color-hairline); border-radius:14px; background:var(--sl-color-bg);">
+<div style="font-size:.62em; text-transform:uppercase; letter-spacing:.13em; color:var(--sl-color-gray-3); text-align:center; margin-bottom:.5rem;">One row at a time — the engine’s per-row pipeline</div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">Row iterator</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">streaming source — ChunkyCSV pipe · PapaParse step · AsyncIterator of records</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">pull one row</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">Row n</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">the current record — only this one is resident</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">scope = the row itself</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">ConceptIdentity</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">&#123;curie, scope&#125; — the concept this row becomes</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">+ recipe</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.5rem .8rem; border:1px solid var(--sl-color-text-accent); border-left:4px solid var(--sl-color-text-accent); border-radius:10px; background:var(--sl-color-accent-low);"><div style="flex:0 0 215px; font-weight:700; font-size:.74em; color:var(--sl-color-text-accent);"><code style="font-size:.95em;">render(Recipe, Identity)</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">pure function — the <strong>single coupling point</strong> (Ch 22 §3); deterministic, hashable, replayable</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-text-accent);">↓</div><div style="font-size:.58em; color:var(--sl-color-text-accent); text-transform:uppercase; letter-spacing:.1em;">returns</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">Address</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">&#123;primary, wikilinkTarget, tags, aliases, frontmatter&#125;</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">+ buildProvenance() + body</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">validateTier1Frontmatter()</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">pre-write gate (v0.1.4) — STRM enforced here</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">mergeFrontmatter(existing, new)</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">user_preserve fields survive (Ch 22 §8.4)</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">write</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">vault.create() / .modify()</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">Tier 1 file written to disk</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">discard row → back for row n+1</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;">Streaming complete</div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">the full dataset never exists in RAM at once</div></div>
+</div>
 
 `render()` is the **single coupling point** between recipe and vault layout. Pass 1 is vault-independent (deterministic, hashable, replayable). Per [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/), this purity is what makes canonical-state hashing work.
 
@@ -312,7 +290,7 @@ This is why the import boundary needs first-principles thinking, not a "pick the
 
 ## The four architectural pieces
 
-Crosswalker's import space breaks into four orthogonal pieces. They compose; users adopt as much or as little as they want.
+Crosswalker's import space breaks into four orthogonal pieces. They compose; users adopt as much or as little as they want. *(See [the stack](#the-four-pieces-stack) above for the one-glance overview — the three producers sitting on the load-bearing schema.)*
 
 ### 1. The Tier 1 schema (machine-readable contract)
 
@@ -481,6 +459,7 @@ See the [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/
 ## Related
 
 **Concept pages:**
+- [System model](/crosswalker/concepts/system-model/) — the illustrated, diagram-first map of the whole pipeline this page is the ingest half of
 - [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — folder, file, heading, tag, wikilink and how recipes compose them via the 5-mechanism grammar
 - [The problem](/crosswalker/concepts/problem/) — hierarchy-vs-graph tension; why ingestion target matters
 - [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — Spec / Library / Integrations pillar that this page activates

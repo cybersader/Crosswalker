@@ -1,0 +1,125 @@
+---
+title: "URM ingestion readiness — the per-framework checklist"
+description: "Per-framework ingestion checklist for the Unified Risk Model corpus: what source format we hold, whether it clears Crosswalker's input floor, which reader parses it, and what recipe or adapter is still needed. Front-loads the ingest half of the lifecycle pipeline so every framework has a named path to Tier 1."
+sidebar:
+  order: -20260612
+  label: "06-12 · URM ingestion readiness"
+tags: [log, urm, ingestion, checklist, corpus, input-floor, readiness]
+date: 2026-06-12
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="What this is — the ingest readiness board">
+The [ingestion-tooling dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) is the harness build journal; the [GRC corpus end-to-end log](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/) is the pipeline map. This page is the **per-framework scoreboard**: every URM corpus member → the source format we hold → does it clear the [input floor](/crosswalker/concepts/etl-and-import/#data-input-requirements--what-crosswalker-can-ingest) → which reader parses it → what recipe/adapter is still missing. Goal: **every framework has a named path to Tier 1** before deep model-building starts.
+</Aside>
+
+## The sorting rule
+
+Per the [2026-06-02 decision](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/): **format decides ingestability, not framework**. So the checklist sorts by *distance from the floor*, not by framework importance:
+
+1. ✅ **Ingested** — through the production `render()` already
+2. 🟢 **Ready now** — structured file held + reader exists; only a recipe is missing
+3. 🟡 **Needs the JSON reader** — structured file held; the planned iterator-path reader unblocks it
+4. 🟠 **Needs a new adapter** — structured (YAML / XML) but no reader branch exists
+5. 🔴 **Below the floor** — prose PDF/HTML; needs a bridge step or the STRM proxy
+
+## Reader capability today (what can parse what)
+
+| Surface | Formats | Notes |
+|---|---|---|
+| **Plugin wizard** (Obsidian) | CSV · XLSX · JSON | ✅ XLSX (sheet picker + header row) and JSON (iterator + row filter) wired 2026-06-12 — same logic as the harness readers |
+| **Plugin SSSOM importer** | SSSOM TSV | dedicated modal + `importSssom()`; bundled fixtures one-click |
+| **Headless harness** (`tools/generate-fixtures.ts`) | CSV · XLSX | `--sheet` / `--header-row` / header-key normalization; recipe-driven via real `render()` |
+| **OLIR crosswalk tool** (`tools/crosswalk-from-olir.ts`) | XLSX (OLIR layout) | → crosswalk-edge notes + SSSOM TSV artifact |
+| **Harness JSON reader** | JSON (nested) | ✅ **built 2026-06-12** — `--iterator '$.objects[*]'` + `--where 'type=attack-pattern,revoked!=true'` ([dev log §JSON reader](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/)); smoke-verified on ATT&CK STIX (697) + CPRT CSF (185) |
+| **YAML / XML reader** | — | nothing; lower priority (YAML is a thin branch once the JSON iterator exists) |
+
+## 1 — ✅ Ingested (through the production engine)
+
+| Framework / edge | Source held | Recipe | Result | Caveats |
+|---|---|---|---|---|
+| **NIST 800-53 r5** | CSV (`NIST_SP-800-53_rev5_catalog_load.csv`) | `recipes/import/nist-800-53-flat.json` | 1,189 notes 🟢 commit-safe | ~~ID padding~~ resolved 2026-06-12 — `--depad` canonicalizes edge-side ids; wikilinks live |
+| **NIST CSF 2.0** | XLSX (`csf2.xlsx`, sheet "CSF 2.0", header row 1) | `recipes/import/nist-csf-2.json` (split filters) | 185 subcategories 🟢 | hierarchy columns need **forward-fill**; one `[Withdrawn` title parse artifact (`DE.AE-01`) |
+| **CRI Profile v2.2** | XLSX (structure sheet, header row 2) | `recipes/import/cri-profile-v2-2.json` | 472 notes (F·C·S·DS) 🔴 FI-only, local | `sector: financial-services` stamped; never treat as general-purpose |
+| **CSF 2.0 → 800-53** edges | XLSX (NIST OLIR crosswalk) | `crosswalk-edge.json` via OLIR tool | 740 edges 🟢 + SSSOM TSV | all `intersects_with` (source has no rel-type) |
+| **CRI → 800-53** edges | XLSX (OLIR ×20 family sheets) | same | 1,039 edges 🔴 local | **803/1,842 rows skipped** (per-sheet banner rows — still open); ~~direction snag~~ resolved 2026-06-12 |
+| **CSF 2.0 → CRI** edges *(2026-06-12)* | CRI workbook's "NIST CSF v2 Mapping" sheet — OLIR-shaped, `--header-row 3` + column aliases | same | **154 edges, 0 skipped** 🔴 local — completes the proving-ground triangle | 49 exact · 92 narrower (CSF ⊂ CRI) · 13 related; directions corrected 2026-06-12 |
+
+## 2 — 🟢 Ready now (file + reader exist; write the recipe)
+
+| Framework | File held | Reader | What's needed | License |
+|---|---|---|---|---|
+| **CIS Controls v8.1.2** | `CIS_Controls_Version_8.1.2___March_2025.xlsx` | harness XLSX | ✅ **ingested 2026-06-12** — `recipes/import/cis-controls-v8.json` → **153 safeguards** (official count; IG1-3 in frontmatter; the "4.10-stored-as-4.1" Excel trap cured via formatted-text reads) | 🟡 CC BY-NC-SA — local |
+| **SCF 2026.1.1** | `Secure.Controls.Framework.SCF.-.2026.1.1.xlsx` (+ `scf-extracted/`) | harness XLSX | ✅ **nodes + hub edges 2026-06-12** — `scf-2026-flat.json` → **1,468 controls**, and `tools/crosswalk-from-melt.ts` melted 7 mapping columns → **5,675 edges** (the STRM proxy hub for §5 is LIVE) | 🟡 CC BY-ND — local |
+| **MITRE ATT&CK** (techniques) | `enterprise-attack-v16.1.xlsx` (also v15.1) | harness XLSX | superseded — STIX JSON path smoke-verified instead (§3) | 🟢 attribute |
+| **FedRAMP baselines** | `FedRAMP_Security_Controls_Baseline.xlsx` | harness XLSX | recipe | 🟢 public |
+| **PCI DSS v4.0.1** (requirements) | `Prioritized-Approach-Tool-For-PCI-DSS-v4_0_1.xlsx` — a **structured door** despite PDF-first publishing | harness XLSX | recipe | 🔴 PCI SSC — local |
+| **SOC 2 / TSC** (criteria list) | `2017-tsc-mapping-to-gdpr.xlsx` — partial structured door (criteria IDs + text) | harness XLSX | recipe; verify coverage vs the PDF | 🔴 AICPA — local |
+| **CRI → CSF** edges | "NIST CSF v2 Mapping" **sheet** in the CRI workbook | OLIR tool + `--header-row 3` + column aliases | ✅ **extracted 2026-06-12** — turned out OLIR-shaped, no new extractor needed → 154 edges (§1) | 🔴 FI, local |
+| **CTID / D3FEND mapping packs** (edges) | `cri_profile-v2.1_attack-16.1-enterprise.csv` · `csa_ccm-4.1_attack-17.1-enterprise.csv` · `nist_800_53-rev5_attack-14.1-enterprise.xlsx` · `NISTCSF_MITRE.csv` · `d3fend*.csv` · `att&ck_to_d3fend.csv` · `Att&ckToCveMappings.csv` | harness CSV/XLSX | **per-pack crosswalk adapters** — every mapping pack has its own column layout (known: "crosswalk files vary wildly") | 🟢 mostly attribute |
+
+## 3 — 🟡 JSON sources (reader ✅ built 2026-06-12 — recipes remain)
+
+The **logical-source + iterator** reader landed (`--iterator` + `--where`, [dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/)) — these ~39 JSON files now only need recipes, same as §2:
+
+| Source | File held | Iterator | Status |
+|---|---|---|---|
+| **MITRE ATT&CK STIX** | `enterprise-attack.json` + `*_stix.json` packs | `$.objects[*]` + `--where type=attack-pattern,revoked!=true,x_mitre_deprecated!=true` | ✅ smoke-verified — **697 techniques** via `recipes/import/mitre-attack-technique.json` |
+| **NIST CPRT CSF 2.0 export** | `cprt_CSF_2_0_0_06-01-2026.json` | `$.response.elements.elements[*]` + `--where element_type=subcategory` | ✅ smoke-verified — **185 subcategories**; *cleaner than `csf2.xlsx`* (pre-split id/text; no `[Withdrawn` artifact) — candidate to replace the XLSX CSF path |
+| **OSCAL catalogs** (800-53; 800-171 on get-list) | OSCAL-derived XLSX held; raw OSCAL JSON via `usnistgov/oscal-content` | `$.catalog.groups[*].controls[*]` | recipe needed |
+| **ATT&CK Navigator layers** | `*_navigator_layer.json` (azure, gcp, cri, csa…) | `$.techniques[*]` | recipe needed (edge-shaped) |
+| **D3FEND JSON** | `d3fend.json`, `d3fend-full-mappings.json` | tbd — inspect | recipe needed |
+
+## 4 — 🟠 Needs a new adapter (YAML / XML)
+
+| Source | File held | Adapter needed |
+|---|---|---|
+| **MITRE ATLAS** | `ATLAS-2026.05.yaml` | YAML branch in `readSource()` (trivial once JSON reader exists — same iterator idea) |
+| **CTID YAML packs** | `*_attack-*.yaml` | same |
+| **DORA** (EU 2022/2554) | `cellar_*.xml` (EUR-Lex Formex) | XML adapter or one-off Formex → JSON pre-convert |
+| **SEC cyber disclosure rule** | `SEC-cyber-disclosure-*.xml` | same as DORA |
+
+## 5 — 🔴 Below the floor (prose; bridge or proxy)
+
+These have **no record structure** — per the [input floor](/crosswalker/concepts/etl-and-import/#data-input-requirements--what-crosswalker-can-ingest), they need a [bridge step](/crosswalker/examples/extraction-tooling/) or the **STRM proxy** (SCF's published mappings reach into copyrighted frameworks without their text):
+
+| Framework | What we hold | Decided / likely path |
+|---|---|---|
+| **ISO/IEC 27001:2022** | PDF only | ✅ **STRM proxy live 2026-06-12** — `scf-to-iso-27001` (316 edges) + `scf-to-iso-27002` (506); ISO ids only, zero ISO prose |
+| **SOC 2 / TSC** (full text) | PDF | ✅ **STRM proxy live 2026-06-12** — `scf-to-aicpa-tsc` (1,478 edges, incl. points-of-focus); never commit AICPA text |
+| **HIPAA Security Rule** | HTML/PDF (law) | LLM extraction of the rule structure (§164.xxx) — public domain, commit-safe |
+| **NYDFS 500** | HTML/PDF (law) | same — section-structured law text extracts well |
+| **FFIEC booklets / CAT** | PDF/HTML | extraction; CAT legacy has tabular appendices worth checking first |
+| **CMMC** | PDF | check for assessment-guide XLSX before building extraction |
+| **~102 corpus PDFs** (general) | PDF | triage rule from 06-02 stands: *has a structured door elsewhere → use it; prose-only → defer* |
+
+## Cross-cutting correctness snags (gate trust, not ingestion)
+
+| Snag | Affects | Status |
+|---|---|---|
+| **SKOS→STRM direction inversion** (`broadMatch → is_broader_than`) | all directional CRI edges | ⚠️ open — resolve before trusting direction; counts unaffected |
+| **803 skipped CRI→800-53 rows** (per-sheet banner headers) | CRI edge completeness | open — per-sheet header detection in the OLIR tool |
+| **ID padding** (`AC-2` vs `AC-02`) + duplicate fixture notes | crosswalk-edge → concept **wikilinks** (dead `scheme:` links in Bases) | open — known ETL normalization step |
+| **Merged-cell forward-fill** | CSF/CRI hierarchy columns blank on child rows | open — the named forward-fill primitive |
+| `[Withdrawn` title artifact (`DE.AE-01`) | CSF note quality | new — withdrawn-row handling in the CSF recipe |
+
+## Recommended order
+
+1. ✅ **JSON reader** — *done 2026-06-12* (`--iterator` + `--where`; ATT&CK + CPRT smoke-verified)
+2. ✅ **CIS v8.1.2 + SCF recipes** — *done 2026-06-12* (153 safeguards + 1,468 SCF controls into `_licensed/`; the melt extractor landed same-day — see item 5)
+3. ✅ **CRI → CSF extractor** — *done 2026-06-12* (the mapping sheet was OLIR-shaped; 154 edges via `--header-row` + column aliases; triangle complete)
+4. ✅ **Direction snag + padding fix** — *done 2026-06-12*. (a) SKOS→STRM map was inverted (a real bug, not a convention) — flipped in `src/import/sssom-importer.ts` + the tool mirror, pinned by a unit test, all 3 edge sets regenerated; committed SSSOM TSVs unaffected (SKOS is the wire format). (b) `--depad` canonicalizes OLIR's `AC-01` → `AC-1`; `--subject-note-folder`/`--object-note-folder` emit folder-qualified `subject_note`/`object_note` wikilinks → **7,732 links, 99.5% resolve**. CSF function/category notes back-filled from CPRT (`nist-csf-2-cprt.json`) to catch hierarchy-level mappings. Residual 16 unresolved ids are genuinely-absent concepts: 3 family-level 800-53 refs, IA-13 (r5.1.1, newer than our source), and ~11 **CRI v2.2 extension ids masquerading as CSF ids** (`EX`, `GV.AU-*`, `GV.RM-08/09`, `PR.PS-07`) — do not stub these as CSF notes
+5. **CTID mapping-pack adapters** (threat→control edges; feeds the Control lens)
+6. ✅ **SCF mapping-column melt** — *done 2026-06-12*: `tools/crosswalk-from-melt.ts` → 5,675 edges / 7 frameworks in one pass; ISO + SOC 2 + PCI now reachable as STRM-proxy edges (§5 mostly retired). PCI also got proxy edges (1,218), supplementing the §2 structured door
+7. ✅ **Wizard XLSX + JSON wiring** — *done 2026-06-12* ([UI parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) gap #1): sheet picker + header-row offset (XLSX), iterator + row-filter inputs (JSON); shared JSON core moved into `src/`, harness imports it
+8. §4 YAML/XML, then remaining §5 extractions (HIPAA/GDPR/COBIT columns are one more `--melt` arg each), as demand pulls
+
+## Related
+
+- [Ingestion tooling dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) — the harness this scoreboard runs on
+- [GRC corpus end-to-end use case](/crosswalker/agent-context/zz-log/2026-06-02-grc-corpus-end-to-end-use-case/) — the pipeline map (stages 1–2 = this page)
+- [Framework corpus + tooling checkpoint](/crosswalker/agent-context/zz-log/2026-05-29-framework-corpus-and-tooling-checkpoint/) — the get-list + licensing baseline
+- [URM questions in data-morphology terms](/crosswalker/agent-context/zz-log/2026-06-04-urm-questions-data-morphology/) — what the ingested corpus must answer
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — the input floor + two-mode architecture this checklist applies
+- [Extraction & ETL tooling](/crosswalker/examples/extraction-tooling/) — bridge tooling for §5

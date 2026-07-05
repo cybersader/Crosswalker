@@ -1,0 +1,44 @@
+---
+title: "Extraction & ETL tooling — getting your data to the input floor"
+description: "Recommended tools for turning messy or unstructured sources (huge CSVs, nested JSON, PDFs, scanned docs, web pages) into the structured records Crosswalker can ingest. Recommendations, not requirements — anything that emits structured column-value records (tabular or nested) clears the floor."
+tags: [example, etl, extraction, tooling, ingestion, input-floor, chunkycsv, jsonaut]
+sidebar:
+  label: "Extraction & ETL tooling"
+  order: 6
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Crosswalker's [input floor](/crosswalker/concepts/etl-and-import/#data-input-requirements--what-crosswalker-can-ingest) is **structured records** — an iterable of `{column: value}` maps (CSV, a JSON array of records, or an XLSX sheet). Crosswalker is an ingestion *target*, not a document parser or scraper. Getting *to* the floor from a messy or unstructured source is your ETL/extraction tooling's job.
+
+This page recommends tools for that bridge step, by what you're starting from. **These are recommendations, not requirements** — anything that emits structured records works, and most compliance frameworks already ship structured.
+
+<Aside type="tip" title="Most GRC frameworks already clear the floor">
+NIST 800-53, CIS, CRI, OSCAL profiles, and NIST OLIR crosswalks ship as **XLSX / CSV / JSON** — feed them straight in. The tooling below matters for the *long tail*: vendor PDFs, internal policy docs, scraped sources, bespoke spreadsheets.
+</Aside>
+
+## By what you're starting from
+
+| You have… | Reach for | Gets you to | Notes |
+|---|---|---|---|
+| **Huge / messy CSV or XLSX** | [ChunkyCSV](https://github.com/cybersader) | clean, streaming CSV | Author's own tool — streams multi-GB sources, cleans headers, handles merged-cell/banner-row mess. Composes with Crosswalker's Mode 1 streaming. |
+| **Messy / deeply-nested JSON** | [JSONaut](https://github.com/cybersader) | normalized JSON records | Author's own tool — flatten/reshape nested JSON into record arrays addressable by dotted paths. |
+| **SQL-shaped / tabular transforms** | [Polars](https://pola.rs/) · [DuckDB](https://duckdb.org/) · [dbt](https://www.getdbt.com/) | CSV / JSON | When you need joins, dedup, type-coercion, or window logic before the floor. DuckDB reads CSV/Parquet/JSON directly; dbt for warehouse-modeled data. |
+| **PDFs / scanned / HTML docs** | [Docling](https://github.com/DS4SD/docling) · [unstructured.io](https://unstructured.io/) · LLM extraction | tabular records | Layout-aware document → tables/JSON. LLM extraction (structured-output prompting) is the pragmatic path for "pull the control table out of this vendor PDF." |
+| **Spreadsheets you maintain** | Excel / Google Sheets **export to CSV** | CSV | The zero-tooling path. Keep curating in the sheet; export when you import. |
+| **Web pages / APIs** | a small script (Python `requests` + `pandas`, a scraper) | CSV / JSON | Bespoke per source; the output just has to be a record array. |
+| **XML / RDF / OWL** ontologies | [xmltodict](https://github.com/martinblech/xmltodict) · [RDFLib](https://rdflib.readthedocs.io/) · a SPARQL `CONSTRUCT` → CSV | JSON / CSV records | **Structured, but not v0.1-native** — convert first. XML is already a tree; RDF/OWL flatten to triples or JSON-LD records. Native parsing deferred to v0.2+. |
+| **Already structured** (most frameworks) | *nothing* | — | XLSX/CSV/JSON/OLIR clears the floor. Feed it straight in. |
+
+## How it hands off to Crosswalker
+
+Once your data is at the floor, Crosswalker takes over via one of [two modes](/crosswalker/concepts/etl-and-import/#the-two-mode-architecture--bundled-projector-or-direct-emission):
+
+- **Mode 1 — bundled projector**: hand the structured rows + a [recipe](/crosswalker/concepts/terminology/#recipe) to Crosswalker; it streams each record through [`render()`](/crosswalker/concepts/terminology/#render) and writes Tier 1. Composes naturally with ChunkyCSV/JSONaut (both stream).
+- **Mode 2 — direct emission**: your tool (or an AI agent) writes [Tier 1](/crosswalker/concepts/terminology/#tiers) Markdown directly, bypassing the engine.
+
+## Related
+
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — the input floor, the two-mode architecture, the transformation-primitive catalog
+- [Conventional systems in the stack](/crosswalker/concepts/conventions/) — where parsing/extraction sits in the whole pipeline
+- [Mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/) — once you're past the floor, how data becomes a vault

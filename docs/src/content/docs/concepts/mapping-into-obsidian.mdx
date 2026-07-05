@@ -1,0 +1,70 @@
+---
+title: "Mapping into Obsidian — from external data to vault primitives"
+description: "The front half of Crosswalker: how disparate external data (framework spreadsheets, crosswalks, ontologies) is morphed onto Obsidian's native primitives — folders, files, headings, tags, frontmatter, wikilinks. The conventions that take a source row to a note on disk: transformation primitives, the recipe grammar, render(), and the Tier 1 contract."
+sidebar:
+  label: "Mapping into Obsidian"
+  order: 3
+tags: [concepts, architecture, recipe, mapping, primitives, obsidian, foundation]
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Crosswalker's **front half** is a morph: take disparate external data — a NIST control spreadsheet, an OLIR crosswalk, a JSON ontology — and turn it into **Obsidian's own native structures**: folders, notes, headings, tags, frontmatter properties, and `[[wikilinks]]`. Nothing proprietary — just a vault you'd be happy to open without the plugin installed.
+
+This page covers that front side: **from a source row to a note on disk**. The hard part isn't writing files — it's doing the morph **systematically and modularly**, so the same source can land in different shapes, the rules are reusable across frameworks, and re-imports are safe. To make that possible we built a **named convention at each step**.
+
+<Aside type="tip" title="This is the front half of the stack">
+For the *whole pipeline end to end* — parse, morph, store, cache, query, output, export — see [Conventional systems in the stack](/crosswalker/concepts/conventions/). For the *component + data-flow* view see [system architecture](/crosswalker/concepts/system-architecture/). For the *target primitives themselves* see [the four Obsidian primitives](/crosswalker/concepts/hierarchy-primitives/).
+</Aside>
+
+## The targets — Obsidian's primitives
+
+Everything maps onto these six native Obsidian structures. The first four are the *structural* primitives ([the four Obsidian primitives](/crosswalker/concepts/hierarchy-primitives/) covers them in depth — and why each is the right or wrong carrier for a given ontology); **file** (the leaf note) and **frontmatter** (properties) are the other two building blocks.
+
+| Primitive | Carries | Example |
+|---|---|---|
+| **Folder** | path-based, single-parent hierarchy | `Frameworks/NIST-800-53/AC/` |
+| **File** (`.md`) | one note per concept (the leaf) | `AC-2.md` |
+| **Heading** | intra-file hierarchy | `## Account Management` |
+| **Tag** | polyhierarchy, location-independent | `#framework/nist/ac` |
+| **Frontmatter** | typed properties (Bases-queryable) | `control_id: AC-2` |
+| **Wikilink** | the graph — typed relationships | `[[AC-2]]`, `mapped_to: "[[ISO-A.9.2.1]]"` |
+
+## The conventions — source row to note on disk
+
+Each step of the morph, the convention that controls it, and where it's specified. (This is the front half of [the conventional systems](/crosswalker/concepts/conventions/); the contract is where it hands off to the rest of the pipeline.)
+
+| Step | The convention | In one line | Specified in |
+|---|---|---|---|
+| **Parse** — source → structured data | **transformation primitives** | a closed ~40-primitive catalog (slugify, split, regex, tree-from-flat, joins, type-coerce) that turns messy input into structured data | [etl-and-import](/crosswalker/concepts/etl-and-import/) |
+| **Morph** — structured data → vault shape | **the recipe grammar** | a closed 5-mechanism grammar — `folder \| file \| heading \| tag \| wikilink` × ordered `layout` × `also_emit` × `graph_edges` — saying *which Obsidian primitive carries what* | [Ch 22 deliverable](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) · [synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) |
+| **Address** — concept → place + links | **`render(Recipe, ConceptIdentity) → Address`** + 10 **template filters** | one pure, deterministic function turns a concept + recipe into its path, heading anchor, wikilink target, tags, and frontmatter — the single coupling point | [import-engine-design](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) |
+| **Identity** | **CURIE / ConceptIdentity** | every concept has one stable id (`nist-800-53:AC-2`) independent of where it's stored | [terminology](/crosswalker/concepts/terminology/) |
+| **Contract** — what lands on disk | **Tier 1 schema** (schema-as-primitive) | the canonical Markdown+frontmatter spec — plus `managed`/`user_preserve` ownership, the `_crosswalker` provenance block, and STRM/SSSOM for crosswalk edges | [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) · [the reframe](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience) |
+
+## What's wired vs. reserved
+
+The grammar is fully specified; only part is wired in v0.1. The line matters — it's where the front-side rough edges live.
+
+| Convention | v0.1 | Status |
+|---|---|---|
+| `folder` / `file` / `heading` mechanisms | ✅ wired | — |
+| template filters (10) | ✅ wired | — |
+| `managed` / `user_preserve` frontmatter | ✅ wired | — |
+| `tag` / `wikilink` as layout mechanisms | 📐 schema-reserved | **v0.2** |
+| `graph_edges` (concept ↔ concept links) | 📐 schema-reserved | **v0.2** |
+| body templates (note body recipe-driven) | ⛔ not yet | later |
+| identity normalization (`AC-01` vs `AC-1`, reserved chars) | 🟡 named, undecided | front-end work |
+| front-end ETL (raw xlsx → rows) | 🛠️ hand-wired per source | tooling/doc gap |
+
+So the "morph onto wikilinks" you'd expect for crosswalk navigation is the **reserved `wikilink` / `graph_edges`** part of the grammar — designed, not yet built. (It's why crosswalk-edge CURIEs don't yet click through to their concept notes.)
+
+## Related
+
+- [Conventional systems in the stack](/crosswalker/concepts/conventions/) — the whole pipeline end to end (this page is its front half)
+- [The four Obsidian primitives](/crosswalker/concepts/hierarchy-primitives/) — the structural target mechanisms (folder · heading · tag · wikilink), in depth
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive + the transformation-primitive catalog
+- [Target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — the recipe grammar + `render()` decision (commitment #2)
+- [Ch 22 — target-structure expressivity](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) — why the grammar is closed
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the Tier 1 contract
+- [Terminology](/crosswalker/concepts/terminology/) — CURIE, recipe, render, tiers
