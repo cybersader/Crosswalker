@@ -1,0 +1,103 @@
+---
+title: "Retrieval, and the finite shapes — Crosswalker's essence"
+description: "The project owner's articulation of what Crosswalker is for: libraries exist for retrieval — you structure reality into a navigable, language-based order so a person can decide what to know, walk the structure, and get it. An Obsidian vault is the same act. There is a finite number of shapes data can take (table · tree · graph · sequence — the data-morphology shapes), and Crosswalker owns that finite space rather than forcing one shape. The unifying reframe: every Crosswalker operation is a shape conversion — import decodes the shape frozen in a source and chooses the shapes it takes in the vault; query/views convert vault shapes into view shapes. Same finite vocabulary, run in opposite directions. Retrieval is the purpose; shape conversion is the means. Grounded in Weinberger's three orders of order."
+sidebar:
+  order: -20260705
+  label: "07-05 · Retrieval + finite shapes"
+tags: [log, essence, data-morphology, retrieval, view-shapes, hierarchy-primitives, vision, ux, wizard]
+date: 2026-07-05
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="What this is — the essence, in the project owner's words">
+Not a decision; a **framing**. The project owner articulated *why* Crosswalker exists and what its single load-bearing idea is. This log captures that faithfully so every later design choice can be checked against it. It sits under and names what [data morphology](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) already gave us the vocabulary for.
+</Aside>
+
+## Why libraries exist: retrieval
+
+A library is not shelves — it is **retrieval**. You take the sprawl of reality and structure it into a **language-based, visually navigable order** so that a person can *decide* what they want to know, *walk* the structure to it, and *retrieve* it. Call numbers, sections, spines facing out, labels at eye height: an intuitive order a stranger can navigate on their first visit.
+
+An [Obsidian](https://obsidian.md) vault is the same act. Folders, note titles, tags, links, headings — you structure reality into **language-based meaning** with a **visual/symbolic structure** intuitive enough to navigate. The [problem Crosswalker addresses](/crosswalker/concepts/problem/) — filesystems are trees, knowledge is a graph — is a retrieval problem underneath: how do you lay a graph of concepts into a medium a person can *walk*.
+
+> **Retrieval is the purpose. Everything else — import, structure, query — is in service of a person deciding what they want to know and reaching it.**
+
+## There is a finite number of shapes
+
+Data can only be *represented* in a few fundamental ways. Not many — a small, closed set, the way math has a handful of primitive structures everything else is built from:
+
+| Shape | Everyday form | In a vault |
+|---|---|---|
+| **Table** | a list, a spreadsheet | rows of concepts — a projection for one question |
+| **Tree** | nested shelves, an outline | a framework's internal nesting (folders, `broader`) |
+| **Graph** | a web, a mind-map | the substrate — concepts as nodes, mappings + hierarchy as edges |
+| **Sequence** | a thread, a timeline | versions, audit trail, ordered steps |
+
+This is not a new claim here — the KB already names it as **[data morphology](/crosswalker/concepts/terminology/#data-morphology)** and lays it out in the [06-04 data-morphology 101](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/#data-shapes--the-form-before-any-operation). Graph is the most general; a table is a graph with no edges, a tree is a graph where every node has one parent. Hold data in the most general shape that fits, project the rest.
+
+**Crosswalker is a tool that gets at these fundamentals.** It doesn't force your data into one shape (the spreadsheet's tyranny, the folder tree's single-parent tax). It **owns the finite shape space** and lets you move between the shapes deliberately.
+
+## The unifying reframe: every operation is a shape conversion
+
+This is the new idea in this entry. Everything Crosswalker does is *one thing* wearing two hats:
+
+| Operation | Reads (input shape) | Writes (output shape) | It is… |
+|---|---|---|---|
+| **Import** | the shape *frozen* in a source — a tree packed into ID strings (`AC-2(1)`), edges spread across mapping columns, a graph flattened into a CSV | the shapes it takes in the vault — [the five layout mechanisms](/crosswalker/concepts/hierarchy-primitives/): `folder \| file \| heading \| tag \| wikilink` | **decode → re-embody** |
+| **Query / views** | the shapes now living in the vault | [view shapes](/crosswalker/concepts/view-shapes/) — table · list · pivot · graph · hierarchy · timeline | **project → present** |
+
+Same finite vocabulary, **run in opposite directions.**
+
+- **Import** = *decode* the shape a source froze into its format, then *choose* which vault shapes carry it. A NIST control ID like `AC-2(1)` is a tree crushed into a string; a crosswalk sheet is a graph spread across columns. Import reads the hidden shape and re-embodies it as folders, headings, tags, and links via [`render(Recipe, ConceptIdentity) → Address`](/crosswalker/concepts/terminology/#render).
+- **Query/views** = *convert* vault shapes into view shapes. A coverage matrix is a graph projected to a pivot; a gap list is an anti-join projected to a list. The [query primitives](/crosswalker/concepts/query-primitives/) are the verbs; the view shapes are the destination.
+
+<div class="not-content" style="margin:1.8rem 0; padding:1.2rem 1.3rem; border:1px solid var(--sl-color-hairline); border-radius:14px; background:var(--sl-color-bg-nav);">
+<div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:1.1rem; text-align:center;">
+<div style="flex:0 1 150px;"><div style="font-size:.6em; letter-spacing:.14em; color:var(--sl-color-gray-3);">SOURCE</div><div style="margin-top:.35rem; font-size:.82em; color:var(--sl-color-gray-2);">shape <em>frozen</em> in a format<br/>(ID strings · mapping columns)</div></div>
+<div style="flex:0 0 auto; color:var(--sl-color-text-accent);"><div style="font-size:1.5em; line-height:1;">→</div><div style="font-size:.66em; color:var(--sl-color-gray-2);">import = decode</div></div>
+<div style="flex:0 1 170px; border:1px solid var(--sl-color-text-accent); border-radius:10px; padding:.7rem;"><div style="font-size:.6em; letter-spacing:.14em; color:var(--sl-color-text-accent);">VAULT SHAPES</div><div style="margin-top:.3rem; font-size:.8em; color:var(--sl-color-gray-2);">folder · file · heading<br/>tag · wikilink</div></div>
+<div style="flex:0 0 auto; color:var(--sl-color-text-accent);"><div style="font-size:1.5em; line-height:1;">→</div><div style="font-size:.66em; color:var(--sl-color-gray-2);">query = project</div></div>
+<div style="flex:0 1 150px;"><div style="font-size:.6em; letter-spacing:.14em; color:var(--sl-color-gray-3);">VIEW</div><div style="margin-top:.35rem; font-size:.82em; color:var(--sl-color-gray-2);">table · list · pivot<br/>graph · hierarchy · timeline</div></div>
+</div>
+<div style="text-align:center; font-size:.76em; color:var(--sl-color-gray-2); margin-top:1rem;">One finite shape vocabulary, converted in both directions. <strong>Retrieval is the purpose; shape conversion is the means.</strong></div>
+</div>
+
+The [data-morphology stack](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/#the-full-stack-the-meta-taxonomy) already framed the *query* side this way (shape → transform → reshape → draw). The reframe here is that **import is the same machine facing upstream** — and that the whole tool is best understood as a bidirectional shape converter, which is exactly why it belongs to the [general ontology-web engine, not just GRC](/crosswalker/concepts/what-makes-crosswalker-unique/).
+
+## The product implication: teach a person to *see* the shapes
+
+If the essence is shape conversion for retrieval, the interface must make the **finite shapes first-class** — visible, choosable, and taught *using the user's own data as the demonstration*.
+
+**What this asks of the UI:**
+
+- **Reveal, don't lecture.** The shapes are already known from everyday life — shelves (tree), labels (tag), lists (table), threads (sequence), names (identity). The UI surfaces choices the user *already understands*; it never delivers a data-modeling seminar.
+- **Show vault primitives at decision points.** At each choice, preview the concrete shape the data will take (this column becomes folders; this one becomes tags) — the [import-wizard UX direction](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/), where every decision point shows a vault-primitive preview.
+- **Practical tools on top of the fundamentals.** Import, [ontology-lifecycle](/crosswalker/concepts/what-makes-crosswalker-unique/) management, and knowledge-base retrieval are the day-job; the shape literacy rides underneath, earned by using them.
+
+**Direction for upcoming work:** the **view/query side already speaks this language** — view shapes and query primitives are named, mechanism-neutral, and shippable. The **import wizard does not yet** — it collects columns without naming the shapes it is decoding and re-embodying. Bringing the wizard up to the same shape vocabulary is the next move, and it lands inside the [UI-parity mandate](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/): every lifecycle stage gets a face, config/recipes are the escape hatch.
+
+## Grounding (light touch)
+
+The framing is not invented here — it is the settled ground of how order works. **David Weinberger, *Everything Is Miscellaneous* (2007)** — the three **orders of order**:
+
+| Order | What is ordered | Limit |
+|---|---|---|
+| **First** | the *things themselves* — physical arrangement (a book sits on one shelf) | one place per thing |
+| **Second** | *metadata about things* — separated catalogs, card indexes | still one authoritative order |
+| **Third** | *digital* — a thing lives in **many orders at once**; every attribute is a way in | order becomes cheap and plural |
+
+Crosswalker delivers **third-order freedom** (a concept reachable through folder, tag, link, and query at once) **inside a medium that keeps first-order comfort** — real files and folders you can hold, `git diff`, and read without the app. That is the whole trick: plural orders over durable plain files.
+
+Adjacent, one line each:
+
+- **Faceted classification (Ranganathan)** — a thing is described by independent facets, not one slot; you retrieve by combining them. The tag/link/folder mix is faceted retrieval.
+- **Clay Shirky, "Ontology Is Overrated" (2005)** — rigid top-down trees fail at scale; let structure emerge from use. Crosswalker's answer: own the *shapes*, don't mandate one *tree*.
+
+## Related
+
+- [Data morphology — the finite shapes and the operations between them](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) — the vocabulary this page builds on
+- [URM × data morphology — every question is a recipe](/crosswalker/agent-context/zz-log/2026-06-04-urm-questions-data-morphology/) — the query side, worked end-to-end
+- [UI parity audit — every lifecycle stage gets a face](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) — where the wizard-shape work is tracked
+- [View shapes](/crosswalker/concepts/view-shapes/) · [Query primitives](/crosswalker/concepts/query-primitives/) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the finite vocabularies, named
+- [The problem](/crosswalker/concepts/problem/) · [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) · [Vision](/crosswalker/agent-context/vision/) — the pillars this framing sits under
+- [System model](/crosswalker/concepts/system-model/) · [Terminology: data morphology](/crosswalker/concepts/terminology/#data-morphology)
