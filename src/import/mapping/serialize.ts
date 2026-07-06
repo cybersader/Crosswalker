@@ -95,12 +95,23 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 	const managed: Record<string, string> = {};
 
 	for (const structure of mapping.mappings) {
+		const structLayout: LayoutEntry[] = [];
 		for (const rule of structure.levels) {
-			emitLevel(rule, layout, tags, aliases, managed);
+			emitLevel(rule, structLayout, tags, aliases, managed);
 		}
 		if (structure.tail) {
-			layout.push(tailToEntry(structure.tail));
+			// render() walks layout in order, so the variadic tail (parent
+			// folders) must precede the leaf file/heading entry. Appending it
+			// after the leaf inverts every ragged path (T1055.001.md/T1055
+			// instead of T1055/T1055.001.md) — found via E2E screenshot.
+			const leafIdx = structLayout.findIndex(
+				(e) => e.mechanism === 'file' || e.mechanism === 'heading',
+			);
+			const tailEntry = tailToEntry(structure.tail);
+			if (leafIdx >= 0) structLayout.splice(leafIdx, 0, tailEntry);
+			else structLayout.push(tailEntry);
 		}
+		layout.push(...structLayout);
 	}
 
 	const also_emit = buildAlsoEmit(tags, aliases, managed);

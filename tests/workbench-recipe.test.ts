@@ -69,6 +69,18 @@ describe('MappingWorkbench recipe assembly', () => {
 		}
 	});
 
+	it('ragged ids nest under their parent folder (tail precedes the leaf in layout)', () => {
+		// Regression for the inverted-path bug found via E2E screenshot: the
+		// variadic tail entry was serialized after the file leaf, so render()
+		// produced "T1055.011.md/T1055" instead of "T1055/T1055.011.md".
+		const wb = makeWorkbench(attackRows());
+		const preview = wb.computePreview()!;
+		const paths = preview.addresses.map((a) => a.address.primary.path);
+		expect(paths).toContain('T1055/T1055.011.md');
+		expect(paths).toContain('T1055.md');
+		expect(paths.find((p) => p.includes('.md/'))).toBeUndefined();
+	});
+
 	it('nothing is dropped: non-structural columns default to frontmatter properties', () => {
 		const wb = makeWorkbench(attackRows());
 		const regions = wb.buildFinalRegions();

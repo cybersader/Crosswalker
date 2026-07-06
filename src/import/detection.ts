@@ -260,6 +260,14 @@ const HIERARCHY_SAMPLE_LIMIT = 500;
  * proposal (the user can still add the mapping manually).
  */
 const PACKED_MAX_WHITESPACE_FRACTION = 0.2;
+/**
+ * Id guard: taxonomy ids are (near-)unique per row. A low-cardinality column
+ * (a facet like "defense-evasion" repeated across rows) must never read as a
+ * packed hierarchy just because its values contain hyphens; without this guard
+ * the facet's pieces became folder levels concatenated onto the real
+ * hierarchy's paths (found via the workbench path regression test).
+ */
+const PACKED_MIN_DISTINCTNESS = 0.5;
 /** Max values sampled per column when computing a parent match rate. */
 const PARENT_SAMPLE_LIMIT = 500;
 /** Delimiter coverage below this → no packed-hierarchy signal at all. */
@@ -544,6 +552,10 @@ function detectPackedHierarchy(column: string, allValues: string[]): Detection |
 	// Prose guard — see PACKED_MAX_WHITESPACE_FRACTION.
 	const withWhitespace = sample.filter((v) => /\s/.test(v)).length;
 	if (withWhitespace / sample.length > PACKED_MAX_WHITESPACE_FRACTION) return null;
+
+	// Id guard — see PACKED_MIN_DISTINCTNESS.
+	const distinct = new Set(sample).size;
+	if (distinct / sample.length < PACKED_MIN_DISTINCTNESS) return null;
 
 	const stats = PACKED_DELIMITERS.map((d) => analyzeDelimiter(sample, d));
 	const uniform = stats.filter((s) => s.classification === 'uniform');

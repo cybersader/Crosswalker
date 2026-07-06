@@ -299,6 +299,23 @@ describe('body-candidate — long-text columns', () => {
 		expect(detections.find((d) => d.kind === 'body-candidate' && d.column === 'code')).toBeUndefined();
 	});
 
+	it('id guard: a low-cardinality facet with hyphens is never a packed hierarchy', () => {
+		// "defense-evasion" repeated across rows is a facet; its hyphen must not
+		// read as a level delimiter (its pieces became folder levels appended to
+		// the real hierarchy's paths).
+		const rows = Array.from({ length: 12 }, (_, i) => ({
+			technique_id: i < 8 ? `T10${55 + i}` : `T10${47 + i}.00${i - 7}`,
+			tactic: ['defense-evasion', 'privilege-escalation', 'initial-access'][i % 3],
+		}));
+		const detections = detect(rows);
+		expect(
+			detections.find((d) => d.kind === 'packed-hierarchy' && d.column === 'tactic'),
+		).toBeUndefined();
+		expect(
+			detections.find((d) => d.kind === 'facet-candidate' && d.column === 'tactic'),
+		).toBeDefined();
+	});
+
 	it('prose guard: sentence periods are never read as hierarchy delimiters', () => {
 		// Regression for the E2E-screenshot bug (2026-07-06): the description
 		// column's sentences classified as a ragged packed hierarchy, and the
