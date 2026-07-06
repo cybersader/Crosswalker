@@ -226,4 +226,72 @@ describe('validateRecipe', () => {
 		const result = validateRecipe(bad);
 		expect(result.valid).toBe(false);
 	});
+
+	it('accepts a variadic folder layout entry', () => {
+		const result = validateRecipe({
+			recipe: 'attack-variadic',
+			source: { ontology: 'mitre-attack', levels: ['technique'] },
+			target: {
+				layout: [
+					{ level: 'root', mechanism: 'folder', template: 'Techniques' },
+					{
+						level: 'technique',
+						mechanism: 'folder',
+						template: '{external_id}',
+						variadic: {
+							delimiter: '.',
+							segment: 'prefix',
+							drop_last: true,
+							max_depth: 6,
+							on_overflow: 'truncate',
+						},
+					},
+					{ level: 'technique', mechanism: 'file', template: '{external_id}.md' },
+				],
+			},
+		});
+		expect(result.valid).toBe(true);
+		expect(result.errors).toEqual([]);
+	});
+
+	it('accepts a minimal variadic block (only the required delimiter)', () => {
+		const result = validateRecipe({
+			recipe: 'attack-variadic-minimal',
+			source: { ontology: 'mitre-attack', levels: ['technique'] },
+			target: {
+				layout: [
+					{ level: 'technique', mechanism: 'folder', template: '{external_id}', variadic: { delimiter: '.' } },
+					{ level: 'technique', mechanism: 'file', template: '{external_id}.md' },
+				],
+			},
+		});
+		expect(result.valid).toBe(true);
+	});
+
+	it('rejects variadic on a non-folder (file) mechanism', () => {
+		const result = validateRecipe({
+			recipe: 'variadic-on-file',
+			source: { ontology: 'mitre-attack', levels: ['technique'] },
+			target: {
+				layout: [
+					{ level: 'technique', mechanism: 'file', template: '{external_id}.md', variadic: { delimiter: '.' } },
+				],
+			},
+		});
+		expect(result.valid).toBe(false);
+	});
+
+	it('rejects a variadic block missing the required delimiter', () => {
+		const result = validateRecipe({
+			recipe: 'variadic-no-delimiter',
+			source: { ontology: 'mitre-attack', levels: ['technique'] },
+			target: {
+				layout: [
+					{ level: 'technique', mechanism: 'folder', template: '{external_id}', variadic: { segment: 'prefix' } },
+					{ level: 'technique', mechanism: 'file', template: '{external_id}.md' },
+				],
+			},
+		});
+		expect(result.valid).toBe(false);
+	});
 });

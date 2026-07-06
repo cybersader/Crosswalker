@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Variable-depth folder nesting for ragged ids (2026-07-05)
+
+Ragged taxonomy ids — where some rows have more levels than others (ATT&CK `T1055` vs `T1055.011`, or any parent/child id family) — can now nest to their **own natural depth** instead of being dumped flat. A recipe folder level gains an optional **`variadic`** block that splits the level's rendered value and expands it into a variable number of folders per row:
+
+- `T1055` lands at `Techniques/T1055.md` (no parent folder — it has none); `T1055.011` lands at `Techniques/T1055/T1055.011.md` (nested under its parent) — from the **same** recipe.
+- Knobs: `delimiter` (required), `segment` (`prefix` → `X/X.Y/`, the default and CSF-style; or `part` → `X/Y/`), `drop_last` (default true — the leaf piece names the file, not a folder), `max_depth` (default 6 safety cap), `on_overflow` (`truncate` (default) records a deviation note and keeps the full id in the filename; or `error`).
+- Deterministic and observational-safe: folders derive only from the row's own value, and every skipped/truncated level is recorded in the render report (empty pieces → `folder-level-skipped`; overflow → new `variadic-overflow-truncated`).
+- Additive schema change (SchemaVer 1.2.0) — recipes without `variadic` validate and render **byte-identically** to before; `variadic` is schema-constrained to `mechanism: folder` only.
+- **Recipe-only for now** — the import wizard doesn't yet propose or edit `variadic` (planned wizard follow-up: detect the ragged-id signature a delimiter appearing in ~20–79% of rows and offer variable-depth nesting). 17 new unit tests (`tests/render-variadic.test.ts` + recipe-validation cases).
+
 ### Render report: rows that don't fit the pattern are now visible (2026-07-05)
 
 One visible rule replaces three silent behaviors: **every row imports; every deviation is recorded.** Previously a row that didn't fit the recipe's ID pattern either silently lost a folder level (empty segment skipped), silently produced garbage nesting (`split()` with no delimiter falls back to the whole value — `AC-2/AC/AC-2.md`), or silently emitted an empty piece (`regex()` no-match) — a "weird vault" with no explanation.

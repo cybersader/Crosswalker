@@ -14,15 +14,23 @@
  * those emit on every note regardless of layout mechanism choice.
  */
 
-import type { ConceptIdentity, Address, RenderReport } from './types';
+import type { ConceptIdentity, Address, RenderReport, VariadicConfig } from './types';
 import { renderTemplate, RenderError } from './template';
-import { applyFolder } from './mechanisms/folder';
+import { applyFolder, applyVariadicFolder } from './mechanisms/folder';
 import { applyFile } from './mechanisms/file';
 import { applyHeading } from './mechanisms/heading';
 import { applyTagStub } from './mechanisms/tag';
 import { applyWikilinkStub } from './mechanisms/wikilink';
 
-export type { Address, ConceptIdentity, SourceScope, RenderNote, RenderNoteCode, RenderReport } from './types';
+export type {
+	Address,
+	ConceptIdentity,
+	SourceScope,
+	RenderNote,
+	RenderNoteCode,
+	RenderReport,
+	VariadicConfig,
+} from './types';
 export { RenderError } from './template';
 export { renderTemplate } from './template';
 export {
@@ -50,6 +58,8 @@ export interface Recipe {
 			template: string;
 			level_depth?: number;
 			kind?: Tier1Kind;
+			/** Variable-depth folder expansion — valid on `mechanism: "folder"` only. */
+			variadic?: VariadicConfig;
 		}>;
 		also_emit?: {
 			tags?: string[];
@@ -88,9 +98,26 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 
 	// 1. Walk layout entries in order, dispatching per mechanism
 	for (const entry of recipe.target.layout) {
+		// `variadic` is a folder-only knob (heading/tag variants deferred).
+		// Fail fast rather than silently ignore it on any other mechanism.
+		if (entry.variadic && entry.mechanism !== 'folder') {
+			throw new RenderError(
+				`variadic is only valid on mechanism "folder"; found it on "${entry.mechanism}" at level "${entry.level}".`,
+			);
+		}
+
 		switch (entry.mechanism) {
 			case 'folder':
-				applyFolder(address, entry as Parameters<typeof applyFolder>[1], identity.scope, report);
+				if (entry.variadic) {
+					applyVariadicFolder(
+						address,
+						entry as Parameters<typeof applyVariadicFolder>[1],
+						identity.scope,
+						report,
+					);
+				} else {
+					applyFolder(address, entry as Parameters<typeof applyFolder>[1], identity.scope, report);
+				}
 				break;
 			case 'file':
 				applyFile(address, entry as Parameters<typeof applyFile>[1], identity.scope, report);

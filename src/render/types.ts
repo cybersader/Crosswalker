@@ -37,7 +37,49 @@ export type RenderNoteCode =
 	| 'folder-level-skipped' // folder segment rendered empty → level dropped, note lands one level up
 	| 'split-no-delimiter' // split() found no delimiter in the value
 	| 'split-index-missing' // split() index past the number of pieces → empty string
-	| 'regex-no-match'; // regex() matched nothing → empty string
+	| 'regex-no-match' // regex() matched nothing → empty string
+	| 'variadic-overflow-truncated'; // variadic split produced more segments than max_depth → extras dropped (full id still in the filename)
+
+/**
+ * Variable-depth folder expansion config for a `folder` layout entry.
+ *
+ * A fixed layout lists its folder levels ahead of time — one entry per level.
+ * Ragged ids (`T1055` vs `T1055.011`) carry a *different* number of pieces per
+ * row, so no fixed list fits every row. A `variadic` block explodes the entry's
+ * rendered scalar *after* templating (templates stay scalar — one value in, one
+ * value out) into a variable number of folder levels.
+ *
+ * Valid only on `mechanism: "folder"` (heading/tag variants deferred). Per the
+ * 2026-07-05 variadic-split design (§1–3). Determinism is preserved: segments
+ * derive only from the row's own value, so same input → same output.
+ */
+export interface VariadicConfig {
+	/** Delimiter the rendered scalar is split on (e.g. `.` for ATT&CK ids). */
+	delimiter: string;
+	/**
+	 * Folder-name shape per segment.
+	 *   'prefix' (default) → cumulative prefixes joined by the delimiter
+	 *     (`X.Y.Z` → `X`, `X.Y`); folder names stay globally unique + match the
+	 *     existing CSF recipe convention.
+	 *   'part' → raw pieces (`X.Y.Z` → `X`, `Y`).
+	 */
+	segment?: 'prefix' | 'part';
+	/**
+	 * Drop the final piece before building folders (default true) — the leaf
+	 * belongs to the `file` entry, which names it with the full id anyway.
+	 */
+	drop_last?: boolean;
+	/** Safety cap on the number of folder levels produced (default 6). */
+	max_depth?: number;
+	/**
+	 * What to do when the split produces more than `max_depth` segments.
+	 *   'truncate' (default) → keep the first `max_depth`, record a
+	 *     `variadic-overflow-truncated` note (no data loss — full id is in the
+	 *     filename).
+	 *   'error' → throw a RenderError.
+	 */
+	on_overflow?: 'truncate' | 'error';
+}
 
 export interface RenderNote {
 	code: RenderNoteCode;

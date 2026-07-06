@@ -4,7 +4,7 @@
   "title": "Crosswalker Import Recipe",
   "description": "The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.1.0 (additive bump 2026-05-09 per v0.1.6: optional `query:` block added per Ch 31; all existing recipes without `query:` continue to validate).",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.2.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design. All existing recipes without these keys continue to validate.",
 
   "$defs": {
     "mechanism": {
@@ -33,6 +33,44 @@
       "description": "Markdown heading depth (1-6, equivalent to # through ######). Required when mechanism is 'heading'. Ignored otherwise."
     },
 
+    "variadic": {
+      "type": "object",
+      "title": "Variadic folder expansion",
+      "description": "Variable-depth folder expansion for a folder layout entry. A fixed layout lists its folder levels ahead of time (one entry per level); ragged ids (e.g. ATT&CK 'T1055' vs 'T1055.011') carry a different number of pieces per row, so no fixed list fits every row. `variadic` explodes the entry's rendered scalar AFTER templating (templates stay scalar) into a variable number of folder levels. Valid ONLY on mechanism 'folder' (enforced by the layout_entry allOf if/then). Additive in SchemaVer 1.2.0; recipes without `variadic` continue to validate. Deterministic: segments derive only from the row's own value. Per the 2026-07-05 variadic-split design.",
+      "required": ["delimiter"],
+      "additionalProperties": false,
+      "properties": {
+        "delimiter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Delimiter the rendered scalar is split on. Example: '.' for ATT&CK technique ids ('T1055.011')."
+        },
+        "segment": {
+          "type": "string",
+          "enum": ["prefix", "part"],
+          "default": "prefix",
+          "description": "Folder-name shape per segment. 'prefix' (default): cumulative prefixes joined by the delimiter ('X.Y.Z' → 'X', 'X.Y') — globally-unique names, matches the CSF recipe convention. 'part': raw pieces ('X.Y.Z' → 'X', 'Y')."
+        },
+        "drop_last": {
+          "type": "boolean",
+          "default": true,
+          "description": "Drop the final piece before building folders (default true) — the leaf belongs to the file entry, which names it with the full id anyway."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 6,
+          "description": "Safety cap on the number of folder levels produced."
+        },
+        "on_overflow": {
+          "type": "string",
+          "enum": ["truncate", "error"],
+          "default": "truncate",
+          "description": "What to do when the split produces more than max_depth segments. 'truncate' (default): keep the first max_depth, record a deviation note (no data loss — the full id is in the filename). 'error': fail the render."
+        }
+      }
+    },
+
     "layout_entry": {
       "type": "object",
       "title": "Layout entry",
@@ -53,12 +91,17 @@
           "enum": ["concept", "junction-note", "crosswalk-edge"],
           "default": "concept",
           "description": "Tier 1 shape produced by this layout entry. 'concept' (default): standard concept-note (control/term/taxon/etc.); produces concept_note_frontmatter per spec/tier1.schema.json. 'junction-note': evidence-link triple (subject_concept, predicate, evidence_doc); 13-field schema. 'crosswalk-edge': between-ontology mapping; STRM predicate vocabulary + SSSOM-shaped envelope. Recipe authors typically declare `kind` on the leaf layout entry only — intermediate folder/heading entries leave it default."
-        }
+        },
+        "variadic": { "$ref": "#/$defs/variadic" }
       },
       "allOf": [
         {
           "if": { "properties": { "mechanism": { "const": "heading" } } },
           "then": { "required": ["level_depth"] }
+        },
+        {
+          "if": { "required": ["variadic"] },
+          "then": { "properties": { "mechanism": { "const": "folder" } } }
         }
       ]
     },

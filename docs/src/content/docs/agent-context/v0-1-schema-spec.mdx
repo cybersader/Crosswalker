@@ -470,6 +470,49 @@ Settings → "Recipe schema → Recipe query block schema style" picks the activ
 
 **Implementing milestone**: [v0.1.6 — Bases query layer](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) ships the schema (Phase 1 ✅) + the `crosswalkerPivot` view that consumes pivot-shaped queries (Phase 3) + recipe-picker UX that emits embedded `\`\`\`base` blocks (Phase 4) + opt-in materialization (Phase 5).
 
+### §4.6 Layout-entry `variadic` block (added 2026-07-05 — SchemaVer 1.2.0; additive)
+
+A fixed layout lists its folder levels ahead of time — one `layout_entry` per level. Ragged ids carry a **different number of pieces per row** (ATT&CK `T1055` vs `T1055.011`; any parent/child id family), so no fixed list fits every row — the result was a flat dump. A folder `layout_entry` can now carry an optional **`variadic`** block that explodes the entry's rendered scalar *after* templating (templates stay scalar — one value in, one value out) into a **variable number of folder levels**.
+
+**Backward compatibility**: purely additive (SchemaVer ADDITION). Recipes WITHOUT `variadic` validate and render byte-identically. The spec URI did NOT bump (`https://crosswalker.dev/spec/recipe.schema.json` stays). `variadic` is schema-constrained (layout_entry `allOf` if/then) to `mechanism: "folder"` only — heading/tag variants are deferred.
+
+**Fields:**
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `delimiter` | string (required) | — | What the rendered scalar is split on (e.g. `.` for ATT&CK ids). |
+| `segment` | `prefix` \| `part` | `prefix` | Folder-name shape. `prefix`: cumulative prefixes joined by the delimiter (`X.Y.Z` → `X`, `X.Y`) — globally-unique, CSF-convention. `part`: raw pieces (`X.Y.Z` → `X`, `Y`). |
+| `drop_last` | boolean | `true` | Drop the leaf piece before building folders — the `file` entry names it with the full id anyway. |
+| `max_depth` | integer ≥ 1 | `6` | Safety cap on folder levels produced. |
+| `on_overflow` | `truncate` \| `error` | `truncate` | Past `max_depth`: `truncate` keeps the first `max_depth` + records a `variadic-overflow-truncated` deviation note (no data loss — full id is in the filename); `error` fails the render. |
+
+**Semantics** (exact): render `template` → scalar → split on `delimiter` (empty pieces dropped, each → a `folder-level-skipped` note) → if `drop_last`, drop the final piece → build segments per `segment` mode → cap at `max_depth` → append each as a folder level (same path as fixed folders). Zero segments (a top-level id) is normal, not a deviation. Deterministic: segments derive only from the row's own value.
+
+**Example** (ATT&CK technique nesting — `T1055` and `T1055.011` from one recipe):
+
+```yaml
+layout:
+  - level: root
+    mechanism: folder
+    template: Techniques
+  - level: technique
+    mechanism: folder
+    template: "{external_id}"
+    variadic:
+      delimiter: "."
+      segment: prefix     # T1055.011 → parent folder T1055
+      drop_last: true     # leaf piece belongs to the file
+      max_depth: 6
+      on_overflow: truncate
+  - level: technique
+    mechanism: file
+    template: "{external_id}.md"
+```
+
+`T1055` → `Techniques/T1055.md` (no parent folder); `T1055.011` → `Techniques/T1055/T1055.011.md`.
+
+**Scope**: recipe-only in this round — the import wizard doesn't yet propose or edit `variadic` (planned follow-up: detect the ragged-id signature — a delimiter appearing in ~20–79% of rows — and offer variable-depth nesting). The full folder-note convention (`T1055` *becoming* the `T1055/` container as `T1055/T1055.md`) is a separate batch-scoped post-pass still under design.
+
 ## §5 Junction note 13-field schema (per evidence-link edge)
 
 Per [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/): evidence links are **edge-as-note reified** — one markdown file per evidence→control relationship.
