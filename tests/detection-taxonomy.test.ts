@@ -298,6 +298,17 @@ describe('body-candidate — long-text columns', () => {
 		const detections = detect(proseBodyRows);
 		expect(detections.find((d) => d.kind === 'body-candidate' && d.column === 'code')).toBeUndefined();
 	});
+
+	it('prose guard: sentence periods are never read as hierarchy delimiters', () => {
+		// Regression for the E2E-screenshot bug (2026-07-06): the description
+		// column's sentences classified as a ragged packed hierarchy, and the
+		// preview grew folders named with full sentences. Ids do not contain
+		// spaces; prose must produce a body candidate, never a structural one.
+		const detections = detect(proseBodyRows);
+		expect(
+			detections.find((d) => d.kind === 'packed-hierarchy' && d.column === 'description'),
+		).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -248,6 +248,18 @@ export type Detection =
 
 /** Max non-empty values sampled per column for packed-hierarchy analysis. */
 const HIERARCHY_SAMPLE_LIMIT = 500;
+/**
+ * Prose guard: taxonomy ids do not contain spaces. If more than this fraction
+ * of sampled values contains internal whitespace, the column is text (a title,
+ * a description), and its periods/colons are punctuation, not level delimiters.
+ * Without this guard a description column's sentences read as a ragged
+ * hierarchy and the preview grows folders named with full sentences (found via
+ * E2E screenshot 2026-07-06). Columns like CSF's packed "DE.AE-01: Adverse
+ * events are analyzed" are also excluded by design: extract-the-leading-token
+ * detection is a future refinement; a false folder tree is worse than a missed
+ * proposal (the user can still add the mapping manually).
+ */
+const PACKED_MAX_WHITESPACE_FRACTION = 0.2;
 /** Max values sampled per column when computing a parent match rate. */
 const PARENT_SAMPLE_LIMIT = 500;
 /** Delimiter coverage below this → no packed-hierarchy signal at all. */
@@ -528,6 +540,10 @@ interface DelimiterStats {
 function detectPackedHierarchy(column: string, allValues: string[]): Detection | null {
 	const sample = allValues.slice(0, HIERARCHY_SAMPLE_LIMIT);
 	if (sample.length === 0) return null;
+
+	// Prose guard — see PACKED_MAX_WHITESPACE_FRACTION.
+	const withWhitespace = sample.filter((v) => /\s/.test(v)).length;
+	if (withWhitespace / sample.length > PACKED_MAX_WHITESPACE_FRACTION) return null;
 
 	const stats = PACKED_DELIMITERS.map((d) => analyzeDelimiter(sample, d));
 	const uniform = stats.filter((s) => s.classification === 'uniform');
@@ -817,7 +833,7 @@ function detectLevelColumnChain(
 	// Cache pairwise FD agreement so we only compute each once.
 	const agreementCache = new Map<string, number>();
 	const fd = (child: string, parent: string): number => {
-		const key = `${child} ${parent}`;
+		const key = `${child}\u0000${parent}`;
 		let a = agreementCache.get(key);
 		if (a === undefined) {
 			a = functionalDependencyAgreement(sampleRows, child, parent);
