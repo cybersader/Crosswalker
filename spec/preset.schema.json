@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crosswalker.dev/spec/preset.schema.json",
+  "title": "Crosswalker Shape Preset",
+  "description": "A shape preset is a level-count-agnostic policy document (spec §3c½). It NEVER names columns or level counts; it speaks in quantifiers — every_level, leaf, tail (plus facets, links). That is what lets one preset serve any ontology, and what makes it the code-level escape hatch: a plain JSON file, schema-validated, writable without the UI, shareable. At instantiation time, detection supplies the concrete levels/facets/links of a specific source and the preset's rules are stamped onto matrix rows (preset × detection → StructureMapping). A preset is deliberately distinct from a saved mapping (which is fingerprint-bound to one source, stored by config-manager) — the two must never be conflated.",
+  "type": "object",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.0.0. Sibling of recipe.schema.json + tier1.schema.json. Column-agnostic by construction: no `$defs.destination` admits a `column` or `key` property, and every object sets additionalProperties:false, so a preset that names a column fails validation (that column-binding is detection's job, not the preset's).",
+
+  "$defs": {
+    "destinationPrimitive": {
+      "type": "string",
+      "enum": ["folder", "name", "note", "tag", "heading", "link", "property", "alias", "body"],
+      "description": "One of the Obsidian structuring primitives (spec §7c). folder/name/heading are structure carriers; tag/link/property are metadata carriers (which also carry structure — a nested tag path IS hierarchy); note materializes a level as its own concept note; alias/body are content carriers."
+    },
+
+    "presetDestination": {
+      "type": "object",
+      "title": "Preset destination",
+      "description": "A destination expressed as GENERIC policy — a primitive plus only its column-independent parameters. Column-bound parameters (a property/link frontmatter key, a tag namespace) are filled from the detection at instantiation, never named here. additionalProperties:false rejects any attempt to bind a column (`column`, `key`, …), which is what enforces level-agnosticism.",
+      "required": ["primitive"],
+      "additionalProperties": false,
+      "properties": {
+        "primitive": { "$ref": "#/$defs/destinationPrimitive" },
+        "path": {
+          "type": "string",
+          "enum": ["nested", "flat"],
+          "description": "tag only. 'nested' → a nested tag path (#technique/T1055); 'flat' → a single flat tag. Ignored for other primitives."
+        },
+        "order": {
+          "type": "integer",
+          "description": "tag only. Optional sibling-order hint within a polyhierarchy."
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6,
+          "description": "heading only. Base markdown heading depth; nested levels increment from here."
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["parent-on-child", "children-on-parent", "both"],
+          "description": "link only. Which side the frontmatter wikilink is written on."
+        },
+        "predicate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "link only. Typed predicate (e.g. 'skos:broader'). Generic — the concept ids come from the detection."
+        },
+        "list": {
+          "type": "boolean",
+          "description": "property only. True → the property is list-valued."
+        },
+        "position": {
+          "type": "string",
+          "enum": ["section", "append", "table-row"],
+          "description": "body only. Where body content is written into the host note."
+        }
+      }
+    },
+
+    "presetNaming": {
+      "type": "string",
+      "enum": ["part", "prefix", "joined", "joined-full"],
+      "description": "How a level's name is composed, quantified (no column names). 'part' → the single part; 'prefix' → cumulative prefix; 'joined' → merged pieces joined by the delimiter; 'joined-full' → the whole packed id (used for a leaf that keeps its full notation, e.g. 'T1055.011')."
+    },
+
+    "quantifierRule": {
+      "type": "object",
+      "title": "Quantified structural rule",
+      "description": "A rule applied to a quantified set of levels — every structural level, or just the leaf. Names the destinations and (optionally) the naming policy; never the columns.",
+      "required": ["destinations"],
+      "additionalProperties": false,
+      "properties": {
+        "destinations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/presetDestination" },
+          "description": "Where each level in this quantified set lands. Plural — a level may land as folder AND tag at once."
+        },
+        "naming": { "$ref": "#/$defs/presetNaming" }
+      }
+    },
+
+    "tailRule": {
+      "type": "object",
+      "title": "Quantified tail rule",
+      "description": "Policy for the variable-depth tail (the ragged 'however many levels remain' group). Serializes to a `variadic` folder block at instantiation. Column and delimiter come from the ragged detection.",
+      "additionalProperties": false,
+      "properties": {
+        "destinations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/presetDestination" },
+          "description": "Where the exploded tail levels land (folder only today). Defaults to a single folder destination if omitted."
+        },
+        "naming": {
+          "type": "string",
+          "enum": ["part", "prefix"],
+          "default": "prefix",
+          "description": "Per-segment folder-name shape (matches variadic.segment)."
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 6,
+          "description": "Safety cap on tail folder depth."
+        },
+        "on_overflow": {
+          "type": "string",
+          "enum": ["truncate", "error"],
+          "default": "truncate",
+          "description": "What to do past max_depth."
+        },
+        "placement": {
+          "type": "string",
+          "enum": ["sibling", "folder-note"],
+          "description": "parent-note placement (schema knob pending; carried for forward-compat, not yet serialized)."
+        }
+      }
+    },
+
+    "facetsRule": {
+      "type": "object",
+      "title": "Facets policy",
+      "description": "How low-cardinality facet detections land. The facet column and its tag namespace come from the detection.",
+      "required": ["destinations"],
+      "additionalProperties": false,
+      "properties": {
+        "destinations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/presetDestination" }
+        }
+      }
+    },
+
+    "linksRule": {
+      "type": "object",
+      "title": "Links policy",
+      "description": "How parent-column detections land. The parent column and frontmatter key come from the detection.",
+      "required": ["destinations"],
+      "additionalProperties": false,
+      "properties": {
+        "destinations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/presetDestination" }
+        }
+      }
+    }
+  },
+
+  "required": ["preset", "structural"],
+  "additionalProperties": false,
+
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema URI hint for editor autocomplete."
+    },
+    "preset": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Preset identifier (kebab-case slug). Examples: 'browsable-framework', 'deep-everything', 'flat-and-linked', 'single-reference-file'."
+    },
+    "label": {
+      "type": "string",
+      "description": "Human-readable working title shown in the preset picker."
+    },
+    "description": {
+      "type": "string",
+      "description": "One-line explanation of the house style this preset encodes."
+    },
+    "structural": {
+      "type": "object",
+      "title": "Structural policy",
+      "description": "How packed / level-per-column hierarchies land. Quantified: every_level applies to each interior structural level; leaf applies to the innermost (leaf-bearing) level; tail applies to the variadic remainder of a ragged hierarchy.",
+      "additionalProperties": false,
+      "properties": {
+        "every_level": { "$ref": "#/$defs/quantifierRule" },
+        "leaf": { "$ref": "#/$defs/quantifierRule" },
+        "tail": { "$ref": "#/$defs/tailRule" }
+      }
+    },
+    "facets": { "$ref": "#/$defs/facetsRule" },
+    "links": { "$ref": "#/$defs/linksRule" }
+  },
+
+  "examples": [
+    {
+      "preset": "deep-everything",
+      "structural": {
+        "every_level": { "destinations": [{ "primitive": "folder" }, { "primitive": "tag", "path": "nested" }] },
+        "leaf": { "destinations": [{ "primitive": "name" }], "naming": "joined-full" },
+        "tail": { "max_depth": 8, "on_overflow": "truncate" }
+      },
+      "facets": { "destinations": [{ "primitive": "tag" }] }
+    }
+  ]
+}
