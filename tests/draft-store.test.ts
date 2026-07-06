@@ -13,8 +13,10 @@ import {
 	columnConfigsToDict,
 	dictToColumnConfigs,
 	newDraftId,
+	resolveDraftSource,
 	type WizardDraft,
 } from '../src/import/draft-store';
+import type { ImportMapping } from '../src/import/mapping/types';
 import type { DebugLog } from '../src/utils/debug';
 import { TFile, TFolder } from 'obsidian';
 
@@ -318,6 +320,109 @@ describe('columnConfigsToDict / dictToColumnConfigs', () => {
 		expect(JSON.stringify(m)).toBe('{}');
 		// And the helper produces a proper object:
 		expect(JSON.stringify(columnConfigsToDict(m))).toContain('useAs');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Workbench mapping persistence (spec §7i)
+// ---------------------------------------------------------------------------
+
+/** A representative ragged-hierarchy ImportMapping (leaf + variadic tail). */
+function sampleWorkbenchMapping(): ImportMapping {
+	return {
+		mappings: [
+			{
+				levels: [
+					{
+						level: 'leaf',
+						source: { column: 'technique_id' },
+						destinations: [{ primitive: 'name' }],
+						naming: 'part',
+						missing: 'skip',
+						materialize: false,
+					},
+				],
+				tail: {
+					source: { column: 'technique_id' },
+					delimiter: '.',
+					drop_last: true,
+					destinations: [{ primitive: 'folder' }],
+					naming: 'prefix',
+					max_depth: 6,
+				},
+			},
+			{
+				levels: [
+					{
+						level: 'tactic',
+						source: { column: 'tactic' },
+						destinations: [{ primitive: 'tag', namespace: 'tactic' }],
+						naming: 'part',
+						missing: 'skip',
+						materialize: false,
+					},
+				],
+			},
+		],
+	};
+}
+
+describe('DraftStore — workbench mapping round-trip', () => {
+	it('persists a workbenchMapping and restores it deep-equal after save→list', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const workbenchMapping = sampleWorkbenchMapping();
+		const draft = buildDraft({ workbenchMapping });
+		await store.save(draft);
+		const list = await store.list();
+		expect(list).toHaveLength(1);
+		expect(list[0].workbenchMapping).toEqual(workbenchMapping);
+	});
+
+	it('restores a workbenchMapping deep-equal after load(id)', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const workbenchMapping = sampleWorkbenchMapping();
+		const draft = buildDraft({ workbenchMapping });
+		await store.save(draft);
+		const loaded = await store.load(draft.id);
+		expect(loaded).not.toBeNull();
+		expect(loaded!.workbenchMapping).toEqual(workbenchMapping);
+	});
+
+	it('omitting workbenchMapping stays undefined (classic mode drafts)', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const draft = buildDraft();
+		await store.save(draft);
+		const list = await store.list();
+		expect(list[0].workbenchMapping).toBeUndefined();
+	});
+});
+
+describe('resolveDraftSource — resume without re-selection (spec §7i)', () => {
+	it('re-parses automatically when vaultPath is set and the file exists', () => {
+		const draft = buildDraft({ sourceFile: { name: 'atlas.csv', vaultPath: 'Sources/atlas.csv' } });
+		const decision = resolveDraftSource(draft, (p) => p === 'Sources/atlas.csv');
+		expect(decision).toEqual({ action: 'reparse', vaultPath: 'Sources/atlas.csv' });
+	});
+
+	it('falls back to re-select when the vault file no longer exists', () => {
+		const draft = buildDraft({ sourceFile: { name: 'atlas.csv', vaultPath: 'Sources/atlas.csv' } });
+		const decision = resolveDraftSource(draft, () => false);
+		expect(decision).toEqual({ action: 'reselect' });
+	});
+
+	it('falls back to re-select for an external OS-picker file (vaultPath null)', () => {
+		const draft = buildDraft({ sourceFile: { name: 'atlas.csv', vaultPath: null } });
+		const decision = resolveDraftSource(draft, () => true);
+		expect(decision).toEqual({ action: 'reselect' });
+	});
+
+	it('falls back to re-select when there is no source file at all', () => {
+		const draft = buildDraft({ sourceFile: null });
+		const decision = resolveDraftSource(draft, () => true);
+		expect(decision).toEqual({ action: 'reselect' });
 	});
 });
 

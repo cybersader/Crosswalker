@@ -11,6 +11,7 @@
 import { MappingWorkbench } from '../src/import/workbench';
 import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import type { ParsedData } from '../src/types/config';
+import type { ImportMapping } from '../src/import/mapping/types';
 import type { DebugLog } from '../src/utils/debug';
 
 // A no-op DebugLog stub (the workbench only calls .info/.trace).
@@ -110,5 +111,54 @@ describe('MappingWorkbench recipe assembly', () => {
 		expect(wb.leafFileTemplate()).toMatch(/\.md$/);
 		// No body destinations by default → empty legacy body list.
 		expect(wb.getLegacyBodyMappings()).toEqual([]);
+	});
+});
+
+describe('MappingWorkbench draft rehydration (spec §7i)', () => {
+	// A deliberately minimal mapping, distinct from what browsable-framework would
+	// instantiate over attackRows (which adds folder/tag/link destinations). If the
+	// workbench honors initialMapping it stays name-only; if it re-detects instead
+	// it would balloon.
+	function seededMapping(): ImportMapping {
+		return {
+			mappings: [
+				{
+					levels: [
+						{
+							level: 'leaf',
+							source: { column: 'technique_id' },
+							destinations: [{ primitive: 'name' }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+		};
+	}
+
+	it('seeds the model from initialMapping instead of re-instantiating from detections', () => {
+		const rows = attackRows();
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		const initialMapping = seededMapping();
+		const wb = new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			initialMapping,
+			onChange: () => {},
+		});
+		expect(wb.getMapping()).toEqual(initialMapping);
+	});
+
+	it('without initialMapping, instantiates the preset over detections (baseline differs)', () => {
+		const wb = makeWorkbench(attackRows());
+		// The fresh instantiation is not the minimal name-only seed — it detects the
+		// packed hierarchy and facet, so the mapping is richer.
+		expect(wb.getMapping()).not.toEqual(seededMapping());
 	});
 });

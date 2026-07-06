@@ -17,6 +17,7 @@
 
 import { App, TFile, TFolder } from 'obsidian';
 import type { ColumnInfo, ImportRecipe } from '../types/config';
+import type { ImportMapping } from './mapping/types';
 import type { DebugLog } from '../utils/debug';
 
 // ---------------------------------------------------------------------------
@@ -49,6 +50,12 @@ export interface WizardDraft {
 	outputPath: string;
 	overwriteMode: 'skip' | 'replace' | 'error';
 	frameworkId: string;
+
+	// Shape-workbench mapping (spec §7i). Plain JSON — the whole ImportMapping is
+	// pure data, so it serializes and round-trips as-is. Present only when the
+	// draft was saved in workbench (beta) mode; on resume the workbench is
+	// rehydrated from it instead of re-detecting from scratch.
+	workbenchMapping?: ImportMapping;
 
 	// Applied saved-config reference (ID only; re-lookup at resume time)
 	appliedConfigId: string | null;
@@ -322,6 +329,29 @@ export function dictToColumnConfigs(
 		out.set(k, { useAs: v.useAs, outputKey: v.outputKey });
 	}
 	return out;
+}
+
+/**
+ * How to restore a draft's source data on resume (spec §7i).
+ *
+ * When the draft recorded a `sourceFile.vaultPath` AND that vault file still
+ * exists, the wizard re-reads and re-parses it automatically (no forced return
+ * to Step 1, no re-select prompt). Otherwise the file came from the OS picker
+ * (external, no vault path) or has since been deleted, and the wizard falls back
+ * to asking the user to re-select it.
+ *
+ * Pure decision function — the caller supplies a `vaultFileExists` predicate so
+ * this stays free of Obsidian imports and is unit-testable.
+ */
+export function resolveDraftSource(
+	draft: Pick<WizardDraft, 'sourceFile'>,
+	vaultFileExists: (path: string) => boolean,
+): { action: 'reparse'; vaultPath: string } | { action: 'reselect' } {
+	const vaultPath = draft.sourceFile?.vaultPath ?? null;
+	if (vaultPath && vaultFileExists(vaultPath)) {
+		return { action: 'reparse', vaultPath };
+	}
+	return { action: 'reselect' };
 }
 
 /**

@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, normalizePath } from 'obsidian';
+import { App, Modal, Setting, Notice, normalizePath, TFile } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
@@ -27,9 +27,11 @@ import {
 	dictToColumnConfigs,
 	newDraftId,
 	relativeTime,
+	resolveDraftSource,
 	type WizardDraft,
 } from './draft-store';
 import { MappingWorkbench } from './workbench';
+import type { ImportMapping } from './mapping/types';
 import { SHAPE_CARDS, deriveShapeCards } from './mapping/view-model';
 
 /**
@@ -73,6 +75,11 @@ export class ImportWizardModal extends Modal {
 	/** Shape workbench (beta). Created lazily in Step 2 when the setting is on;
 	 *  persists across step navigation. Null in classic column-mapping mode. */
 	workbench: MappingWorkbench | null = null;
+
+	/** A persisted workbench mapping awaiting rehydration into a freshly-built
+	 *  workbench (draft resume, spec §7i). Consumed once by renderStep2_Workbench,
+	 *  then cleared so later rebuilds re-instantiate from detections. */
+	private pendingWorkbenchMapping: ImportMapping | null = null;
 
 	// Output settings (captured from Step 4)
 	outputPath: string = '';
@@ -137,21 +144,23 @@ export class ImportWizardModal extends Modal {
 	}
 
 	/**
-	 * Hydrate wizard state from a saved draft. Re-parses the source data is
-	 * deferred until the user navigates back into Step 2 or beyond (the
-	 * columnInfos in the draft are sufficient for Step 2 rendering; Step 3+
-	 * preview and Step 4 generate will re-parse if needed). Source file is
-	 * not re-attached automatically — if user goes to Step 1 it will show
-	 * the previously-selected filename but require re-pick to load actual
-	 * file content.
+	 * Hydrate wizard state from a saved draft (spec §7i).
+	 *
+	 * When the draft recorded a `sourceFile.vaultPath` and that vault file still
+	 * exists, the source is re-read and re-parsed automatically through the normal
+	 * Step-1 parse path — `parsedData`/`columnInfos` are restored, detection re-runs
+	 * (via the workbench), and the wizard jumps straight to the saved step. Only
+	 * when the source was an external OS-picker file (no vault path) or the vault
+	 * file is gone do we fall back to bumping the user to Step 1 to re-select it.
+	 *
+	 * The workbench shape mapping (beta) is rehydrated from `draft.workbenchMapping`
+	 * so shape decisions survive the round-trip instead of re-detecting from scratch.
 	 */
-	private hydrateFromDraft(draft: WizardDraft): void {
+	private async hydrateFromDraft(draft: WizardDraft): Promise<void> {
 		this.draftId = draft.id;
 		this.currentStep = draft.currentStep;
-		// sourceFile (File object) can't be persisted; record the name so
-		// Step 1's hint shows what was picked, but the user must re-select
-		// to reload data. parsedData is intentionally null until re-parse.
 		this.sourceFile = null;
+		this.parsedData = null;
 		this.sourceType = draft.sourceType;
 		this.selectedSheet = draft.selectedSheet;
 		this.columnInfos = draft.columnInfos ?? [];
@@ -160,6 +169,12 @@ export class ImportWizardModal extends Modal {
 		this.outputPath = draft.outputPath ?? this.plugin.settings.defaultOutputPath;
 		this.overwriteMode = draft.overwriteMode ?? 'skip';
 		this.frameworkId = draft.frameworkId ?? '';
+		// Restored column decisions are authoritative — don't let a re-parse
+		// re-run the heuristic smart-defaults over them.
+		this.smartDefaultsApplied = true;
+		// Stash the persisted shape mapping for renderStep2_Workbench to consume.
+		this.pendingWorkbenchMapping = draft.workbenchMapping ?? null;
+		this.workbench = null;
 
 		// Re-attach applied config from settings if still present.
 		if (draft.appliedConfigId) {
@@ -171,20 +186,75 @@ export class ImportWizardModal extends Modal {
 			}
 		}
 
-		// If source data isn't available yet, signal: bump to Step 1 so the
-		// user re-selects the file. We preserve the column config map and
-		// applied state; once a fresh file with matching columns is parsed,
-		// Step 2 reads from columnConfigs as usual.
-		if (!this.parsedData && this.currentStep > 1) {
-			new Notice('Source file needs to be re-selected to resume this draft. Your column configuration has been preserved.', 8000);
-			this.currentStep = 1;
+		// Try to re-read + re-parse the source from the vault automatically.
+		if (this.currentStep > 1) {
+			const decision = resolveDraftSource(draft, (path) => {
+				return this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+			});
+			if (decision.action === 'reparse') {
+				const ok = await this.reparseFromVault(decision.vaultPath, draft.sourceFile?.name ?? 'source');
+				if (!ok) {
+					new Notice('Could not re-read the source file from the vault. Please re-select it to resume.', 8000);
+					this.currentStep = 1;
+					this.pendingWorkbenchMapping = null;
+				}
+			} else {
+				// External OS-picker file (no vault path) or the file is gone.
+				new Notice('Source file needs to be re-selected to resume this draft. Your column configuration has been preserved.', 8000);
+				this.currentStep = 1;
+				this.pendingWorkbenchMapping = null;
+			}
 		}
 
 		this.plugin.debug.info('drafts', 'resumed', 'Draft hydrated into wizard', {
 			draftId: draft.id,
-			step: draft.currentStep,
+			step: this.currentStep,
 			columnConfigCount: this.columnConfigs.size,
+			reparsed: !!this.parsedData,
+			seededWorkbench: !!this.pendingWorkbenchMapping,
 		});
+	}
+
+	/**
+	 * Re-read a source file from the vault and run it back through the normal
+	 * parse path (spec §7i). Reconstructs a `File` from the vault content so the
+	 * existing parsers are reused verbatim. Returns false on any failure so the
+	 * caller can fall back to re-selection.
+	 */
+	private async reparseFromVault(vaultPath: string, name: string): Promise<boolean> {
+		try {
+			const tfile = this.app.vault.getAbstractFileByPath(vaultPath);
+			if (!(tfile instanceof TFile)) return false;
+			let file: File;
+			if (this.sourceType === 'xlsx') {
+				const buf = await this.app.vault.readBinary(tfile);
+				file = new File([buf], name);
+			} else {
+				const text = await this.app.vault.read(tfile);
+				file = new File([text], name);
+			}
+			this.sourceFile = file;
+			return await this.parseSourceFile();
+		} catch (err) {
+			this.plugin.debug.warn('drafts', 'reparse-failed', 'Could not re-parse source from vault', {
+				vaultPath,
+				error: err instanceof Error ? err.message : String(err),
+			});
+			return false;
+		}
+	}
+
+	/**
+	 * Best-effort vault path for the currently-selected source file. The OS file
+	 * picker yields a browser `File` with no path, so we match by file name against
+	 * the vault; a unique match lets a resumed draft re-read it automatically
+	 * (spec §7i). Ambiguous / absent matches record null (external file).
+	 */
+	private findVaultPathForSource(): string | null {
+		if (!this.sourceFile) return null;
+		const name = this.sourceFile.name;
+		const matches = this.app.vault.getFiles().filter((f) => f.name === name);
+		return matches.length === 1 ? matches[0].path : null;
 	}
 
 	onClose() {
@@ -211,26 +281,31 @@ export class ImportWizardModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		// Header with back button at top
+		// Sticky nav chrome (spec §7h #1): Back (left) · step indicator (center) ·
+		// Next/Generate (right), all together as a fixed bar. Only the middle
+		// content region scrolls, so the primary CTA never reads as page output.
 		const header = contentEl.createEl('div', { cls: 'crosswalker-wizard-header' });
 
-		// Top navigation row (back button + step indicator)
 		const navRow = header.createEl('div', { cls: 'crosswalker-nav-row' });
 
+		const navLeft = navRow.createEl('div', { cls: 'crosswalker-nav-left' });
 		if (this.currentStep > 1) {
-			const backBtn = navRow.createEl('button', { text: 'Back', cls: 'crosswalker-back-btn' });
+			const backBtn = navLeft.createEl('button', { text: 'Back', cls: 'crosswalker-back-btn' });
 			backBtn.addEventListener('click', () => {
 				this.currentStep--;
 				this.renderStep();
 			});
 		} else {
-			navRow.createEl('div', { cls: 'crosswalker-back-placeholder' });
+			navLeft.createEl('div', { cls: 'crosswalker-back-placeholder' });
 		}
 
 		navRow.createEl('span', {
 			text: `Step ${this.currentStep} of ${this.totalSteps}`,
 			cls: 'crosswalker-step-indicator'
 		});
+
+		const navRight = navRow.createEl('div', { cls: 'crosswalker-nav-right' });
+		this.createPrimaryButton(navRight);
 
 		header.createEl('h2', { text: 'Import structured data' });
 
@@ -462,8 +537,8 @@ export class ImportWizardModal extends Modal {
 		const actions = row.createEl('div', { cls: 'crosswalker-draft-actions' });
 
 		const resumeBtn = actions.createEl('button', { text: 'Resume', cls: 'mod-cta' });
-		resumeBtn.addEventListener('click', () => {
-			this.hydrateFromDraft(draft);
+		resumeBtn.addEventListener('click', async () => {
+			await this.hydrateFromDraft(draft);
 			this.renderStep();
 		});
 
@@ -1005,12 +1080,17 @@ export class ImportWizardModal extends Modal {
 
 		const sig = this.parsedData.columns.join('|');
 		if (!this.workbench || this.workbench.columnsSignature() !== sig) {
+			// Draft resume (spec §7i): seed from the persisted mapping once, then
+			// clear it so a later column-signature change re-instantiates fresh.
+			const initialMapping = this.pendingWorkbenchMapping ?? undefined;
+			this.pendingWorkbenchMapping = null;
 			this.workbench = new MappingWorkbench({
 				parsedData: this.parsedData,
 				columnInfos: this.columnInfos,
 				outputPath: this.outputPath || this.plugin.settings.defaultOutputPath,
 				debug: this.plugin.debug,
 				defaultPresetId: 'browsable-framework',
+				initialMapping,
 				onChange: () => {
 					this.plugin.debug.trace('wizard', 'workbench-change', 'Workbench model changed');
 					this.scheduleDraftSave();
@@ -1312,7 +1392,7 @@ export class ImportWizardModal extends Modal {
 			createdAt: now,
 			updatedAt: now,
 			currentStep: this.currentStep,
-			sourceFile: this.sourceFile ? { name: this.sourceFile.name, vaultPath: null } : null,
+			sourceFile: this.sourceFile ? { name: this.sourceFile.name, vaultPath: this.findVaultPathForSource() } : null,
 			sourceType: this.sourceType,
 			selectedSheet: this.selectedSheet,
 			columnInfos: this.columnInfos,
@@ -1321,6 +1401,9 @@ export class ImportWizardModal extends Modal {
 			outputPath: this.outputPath,
 			overwriteMode: this.overwriteMode,
 			frameworkId: this.frameworkId,
+			// Persist the shape mapping when the workbench is active so resume can
+			// rehydrate the shape decisions instead of re-detecting (spec §7i).
+			...(this.workbench ? { workbenchMapping: this.workbench.getMapping() } : {}),
 			appliedConfigId: this.appliedConfig?.id ?? null,
 		};
 	}
@@ -1855,13 +1938,20 @@ export class ImportWizardModal extends Modal {
 
 	renderFooter(container: HTMLElement) {
 		const footer = container.createEl('div', { cls: 'crosswalker-wizard-footer' });
-
-		// Spacer (back button is now in header)
+		// Back lives in the sticky top nav; the footer keeps a mirrored primary CTA
+		// so it's reachable after scrolling long content too (spec §7h #1).
 		footer.createEl('div', { cls: 'crosswalker-footer-spacer' });
+		this.createPrimaryButton(footer);
+	}
 
-		// Next/Generate button
+	/**
+	 * Build the step's primary action button (Next on steps 1–3, Generate on the
+	 * last step) with its handler. Rendered in both the sticky top nav bar and the
+	 * footer, so navigation is always visible whatever the content height.
+	 */
+	private createPrimaryButton(container: HTMLElement): void {
 		if (this.currentStep < this.totalSteps) {
-			const nextBtn = footer.createEl('button', {
+			const nextBtn = container.createEl('button', {
 				text: this.isParsing ? 'Parsing...' : 'Next →',
 				cls: 'mod-cta'
 			});
@@ -1874,7 +1964,7 @@ export class ImportWizardModal extends Modal {
 				}
 			});
 		} else {
-			const generateBtn = footer.createEl('button', {
+			const generateBtn = container.createEl('button', {
 				text: this.isGenerating ? 'Generating…' : 'Generate',
 				cls: 'mod-cta'
 			});

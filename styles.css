@@ -20,21 +20,38 @@
 	overflow: hidden;
 }
 
+/* Sticky top chrome — never scrolls with content (spec §7h #1). The modal-content
+   is a flex column with a fixed height; flex-shrink:0 pins the header, flex:1 the
+   scrolling middle, flex-shrink:0 the footer. The background hides scrolled content
+   passing beneath the bar. */
 .crosswalker-wizard-header {
-	margin-bottom: 1.5em;
-	padding-bottom: 1em;
+	flex: 0 0 auto;
+	margin: 0 0 1em 0;
+	padding: 0.1em 0 0.8em 0;
 	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
 }
 
 .crosswalker-wizard-header h2 {
-	margin: 0.5em 0 0 0;
+	margin: 0.6em 0 0 0;
 }
 
 .crosswalker-nav-row {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 0.5em;
+	gap: 0.5em;
+}
+
+.crosswalker-nav-left,
+.crosswalker-nav-right {
+	display: flex;
+	align-items: center;
+	flex: 1 1 0;
+}
+
+.crosswalker-nav-right {
+	justify-content: flex-end;
 }
 
 .crosswalker-back-btn {
@@ -58,22 +75,26 @@
 	color: var(--text-muted);
 	font-size: 0.9em;
 	margin: 0;
+	text-align: center;
+	flex: 0 0 auto;
 }
 
 .crosswalker-wizard-content {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
-	margin-bottom: 1.5em;
+	margin-bottom: 1em;
 	padding-right: 0.25em; /* small inset so scrollbar doesn't clip content */
 }
 
 .crosswalker-wizard-footer {
+	flex: 0 0 auto;
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	padding-top: 1em;
 	border-top: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
 }
 
 .crosswalker-footer-spacer {
@@ -1764,12 +1785,20 @@
 	gap: 0.4em; font-size: 0.78em; padding: 0.1em 0;
 }
 .crosswalker-wb-colname { color: var(--text-normal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crosswalker-wb-badges { display: flex; gap: 0.2em; flex: none; }
+.crosswalker-wb-collist-hint { font-size: 0.72em; color: var(--text-muted); margin: 0.1em 0 0.35em; }
+.crosswalker-wb-badges { display: flex; gap: 0.25em; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+/* Uniform labeled chips (icon + short word), consistent height + hover (spec §7h #2). */
 .crosswalker-wb-badge {
+	display: inline-flex; align-items: center; gap: 0.2em;
 	border: 1px solid var(--background-modifier-border);
 	background: var(--background-primary);
-	border-radius: 5px; padding: 0 0.35em; font-size: 0.85em; cursor: pointer; line-height: 1.6;
+	border-radius: 99px; padding: 0.05em 0.5em; font-size: 0.72em; line-height: 1.5;
+	cursor: pointer; color: var(--text-muted);
 }
+.crosswalker-wb-badge:hover { border-color: var(--interactive-accent); color: var(--text-normal); }
+.crosswalker-wb-badge.is-active { border-color: var(--interactive-accent); color: var(--text-accent); background: var(--background-secondary); }
+.crosswalker-wb-badge-icon { font-size: 0.9em; }
+.crosswalker-wb-badge-label { text-transform: lowercase; letter-spacing: 0.02em; }
 .crosswalker-wb-badge.is-dismissed { opacity: 0.4; text-decoration: line-through; }
 
 .crosswalker-wb-evidence {
@@ -1785,8 +1814,11 @@
 .crosswalker-wb-hcol { display: flex; flex-direction: column; align-items: center; gap: 0.15em; font-size: 0.68em; color: var(--text-muted); }
 .crosswalker-wb-hbar { width: 24px; border-radius: 3px 3px 0 0; background: var(--interactive-accent); opacity: 0.85; }
 .crosswalker-wb-evidence-btns { display: flex; gap: 0.4em; }
-.crosswalker-wb-confirm { border: 1px solid var(--interactive-accent); color: var(--interactive-accent); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; }
-.crosswalker-wb-dismiss { border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; }
+.crosswalker-wb-confirm { border: 1px solid var(--interactive-accent); color: var(--interactive-accent); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; cursor: pointer; }
+.crosswalker-wb-confirm:disabled { cursor: default; opacity: 0.55; }
+.crosswalker-wb-dismiss { border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; cursor: pointer; }
+.crosswalker-wb-dismiss:disabled { cursor: default; opacity: 0.55; }
+.crosswalker-wb-dismiss:hover:not(:disabled) { color: var(--text-normal); border-color: var(--text-muted); }
 
 .crosswalker-wb-allcols { margin-top: 0.6em; font-size: 0.8em; }
 .crosswalker-wb-allcols summary { cursor: pointer; color: var(--text-muted); }

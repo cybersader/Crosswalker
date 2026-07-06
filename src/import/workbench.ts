@@ -115,6 +115,13 @@ export interface WorkbenchOptions {
 	outputPath: string;
 	debug: DebugLog;
 	defaultPresetId: string;
+	/**
+	 * A persisted mapping to seed the workbench with (draft resume, spec §7i).
+	 * When present, it replaces the fresh preset-instantiation so shape decisions
+	 * survive a close/reopen. Detections are still computed (for the evidence rail
+	 * and the preset-drift chip); only the mapping is taken from here.
+	 */
+	initialMapping?: ImportMapping;
 	/** Notified after any model change (for draft save / state mirroring). */
 	onChange: () => void;
 }
@@ -148,12 +155,15 @@ export class MappingWorkbench {
 		this.columnSig = opts.parsedData.columns.join('|');
 		this.detections = detectStructure(opts.parsedData, opts.columnInfos);
 		this.presetId = getBuiltInPreset(opts.defaultPresetId) ? opts.defaultPresetId : 'browsable-framework';
-		this.mapping = instantiate(this.currentPreset(), this.activeDetections());
+		// Draft resume (spec §7i): rehydrate from the persisted mapping when present,
+		// otherwise instantiate the preset over the fresh detections.
+		this.mapping = opts.initialMapping ?? instantiate(this.currentPreset(), this.activeDetections());
 		this.seedColumnDests();
 		opts.debug.info('wizard', 'workbench-init', 'Shape workbench initialized', {
 			detections: this.detections.length,
 			mappings: this.mapping.mappings.length,
 			preset: this.presetId,
+			seededFromDraft: !!opts.initialMapping,
 		});
 	}
 
@@ -281,8 +291,16 @@ export class MappingWorkbench {
 			text: `table · ${parsedData.rowCount.toLocaleString()} rows × ${parsedData.columns.length} columns`,
 		});
 
-		// Column list with detection badges.
+		// One-line hint that the badges are inspectable (spec §7h #2).
+		if (columnInfos.some((c) => this.detectionsForColumn(c.name).length > 0)) {
+			rail.createDiv({ cls: 'crosswalker-wb-collist-hint', text: 'Click a badge to inspect what we detected.' });
+		}
+
+		// Column list with detection badges. The evidence card expands inline as an
+		// accordion directly under the clicked column's row (spec §7h #3), so it
+		// stays visually tied to the column and never shoves "All columns" down.
 		const colList = rail.createDiv({ cls: 'crosswalker-wb-collist' });
+		let evidenceShown = false;
 		for (const col of columnInfos) {
 			const dets = this.detectionsForColumn(col.name);
 			const row = colList.createDiv({ cls: 'crosswalker-wb-colrow' });
@@ -290,25 +308,33 @@ export class MappingWorkbench {
 			const badges = row.createSpan({ cls: 'crosswalker-wb-badges' });
 			for (const d of dets) {
 				const key = this.detectionKey(d);
+				const active = this.openEvidence === key;
 				const badge = badges.createEl('button', {
-					cls: 'crosswalker-wb-badge' + (this.dismissed.has(key) ? ' is-dismissed' : ''),
-					text: this.badgeIcon(d),
+					cls: 'crosswalker-wb-badge'
+						+ (this.dismissed.has(key) ? ' is-dismissed' : '')
+						+ (active ? ' is-active' : ''),
 					attr: { title: this.badgeTitle(d), 'aria-label': this.badgeTitle(d) },
 				});
+				badge.createSpan({ cls: 'crosswalker-wb-badge-icon', text: this.badgeIcon(d) });
+				badge.createSpan({ cls: 'crosswalker-wb-badge-label', text: this.badgeLabel(d) });
 				badge.addEventListener('click', () => {
 					this.openEvidence = this.openEvidence === key ? null : key;
 					this.scheduleRerender();
 				});
 			}
+
+			// Inline evidence, anchored under the first column that owns the open
+			// detection (multi-column detections still render exactly once).
+			if (this.openEvidence && !evidenceShown) {
+				const openDet = dets.find((d) => this.detectionKey(d) === this.openEvidence);
+				if (openDet) {
+					this.renderEvidenceCard(colList, openDet);
+					evidenceShown = true;
+				}
+			}
 		}
 
-		// Evidence card for the open detection.
-		if (this.openEvidence) {
-			const d = this.detections.find((x) => this.detectionKey(x) === this.openEvidence);
-			if (d) this.renderEvidenceCard(rail, d);
-		}
-
-		// Demoted "all columns" destinations.
+		// Demoted "all columns" disclosure, pinned at the rail bottom.
 		this.renderAllColumns(rail);
 	}
 
@@ -349,7 +375,7 @@ export class MappingWorkbench {
 			this.dismissed.delete(key);
 			this.reinstantiate();
 		});
-		const dismissBtn = btns.createEl('button', { cls: 'crosswalker-wb-dismiss', text: 'Not structure' });
+		const dismissBtn = btns.createEl('button', { cls: 'crosswalker-wb-dismiss', text: 'Dismiss' });
 		dismissBtn.disabled = dismissed;
 		dismissBtn.addEventListener('click', () => {
 			this.dismissed.add(key);
@@ -886,6 +912,21 @@ export class MappingWorkbench {
 			case 'body-candidate': return '¶';
 			case 'edge-file': return '↔';
 			case 'row-type-discriminator': return '≡';
+		}
+	}
+
+	/** Short one-word chip label per detection kind (spec §7h #2). */
+	private badgeLabel(d: Detection): string {
+		switch (d.kind) {
+			case 'packed-hierarchy': return 'hierarchy';
+			case 'level-column-chain': return 'chain';
+			case 'facet-candidate': return 'facet';
+			case 'parent-column':
+			case 'multi-value-link': return 'link';
+			case 'title-candidate': return 'title';
+			case 'body-candidate': return 'text';
+			case 'edge-file': return 'edge';
+			case 'row-type-discriminator': return 'mixed';
 		}
 	}
 
