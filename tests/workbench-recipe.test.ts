@@ -1,0 +1,102 @@
+/**
+ * workbench-recipe.test.ts — the shape workbench's non-DOM integration logic.
+ *
+ * The DOM rendering of the workbench is covered later by e2e. This suite guards
+ * the wiring the UI depends on: recipe assembly (shape mappings + the demoted
+ * "all columns" frontmatter layer), the live preview render over sample rows,
+ * and the legacy body bridge used at generate time. Construction and these
+ * methods touch no Obsidian DOM.
+ */
+
+import { MappingWorkbench } from '../src/import/workbench';
+import { analyzeColumns } from '../src/import/parsers/csv-parser';
+import type { ParsedData } from '../src/types/config';
+import type { DebugLog } from '../src/utils/debug';
+
+// A no-op DebugLog stub (the workbench only calls .info/.trace).
+const debug = {
+	info() {},
+	trace() {},
+	warn() {},
+	error() {},
+} as unknown as DebugLog;
+
+function makeWorkbench(rows: Record<string, unknown>[]): MappingWorkbench {
+	const columns = rows.length ? Object.keys(rows[0]) : [];
+	const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+	return new MappingWorkbench({
+		parsedData,
+		columnInfos: analyzeColumns(parsedData),
+		outputPath: 'Frameworks',
+		debug,
+		defaultPresetId: 'browsable-framework',
+		onChange: () => {},
+	});
+}
+
+// Ragged ATT&CK ids (variadic) + a facet + a free-text column.
+function attackRows(): Record<string, unknown>[] {
+	const ids = ['T1055', 'T1059', 'T1003', 'T1071', 'T1027', 'T1005', 'T1055.011', 'T1059.001', 'T1003.001', 'T1071.004'];
+	const tactics = ['defense-evasion', 'execution', 'discovery'];
+	// Names deliberately carry no delimiters (real ATT&CK: "Process Injection"),
+	// so `name` reads as a title, not a packed hierarchy.
+	const names = ['Process Injection', 'Command Interpreter', 'OS Credential Dumping', 'Application Layer', 'Obfuscated Files', 'Data Staged', 'Portable Executable', 'PowerShell', 'LSASS Memory', 'DNS'];
+	return ids.map((id, i) => ({
+		technique_id: id,
+		name: names[i],
+		tactic: tactics[i % 3],
+		description: `A longer description of the technique used to test body detection and property emission for row ${i}.`,
+	}));
+}
+
+describe('MappingWorkbench recipe assembly', () => {
+	it('produces a recipe with a layout from the detected shapes', () => {
+		const wb = makeWorkbench(attackRows());
+		const recipe = wb.buildRecipe();
+		expect(recipe.target.layout.length).toBeGreaterThan(0);
+		// A file (leaf) entry always exists.
+		expect(recipe.target.layout.some((e) => e.mechanism === 'file')).toBe(true);
+	});
+
+	it('renders a live preview over sample rows (paths + no throw)', () => {
+		const wb = makeWorkbench(attackRows());
+		const preview = wb.computePreview();
+		expect(preview).not.toBeNull();
+		expect(preview!.addresses.length).toBeGreaterThan(0);
+		for (const a of preview!.addresses) {
+			expect(typeof a.address.primary.path).toBe('string');
+			expect(a.address.primary.path.length).toBeGreaterThan(0);
+		}
+	});
+
+	it('nothing is dropped: non-structural columns default to frontmatter properties', () => {
+		const wb = makeWorkbench(attackRows());
+		const regions = wb.buildFinalRegions();
+		const managed = regions.also_emit?.frontmatter?.managed ?? {};
+		// `name` is not a structural source, so it lands as a managed property.
+		expect(Object.keys(managed)).toContain('name');
+	});
+
+	it('returns null preview for a non-eager (streamed) source', async () => {
+		async function* gen() {
+			/* no rows */
+		}
+		const parsedData: ParsedData = { columns: ['id'], rows: gen(), rowCount: -1 };
+		const wb = new MappingWorkbench({
+			parsedData,
+			columnInfos: [],
+			outputPath: '',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			onChange: () => {},
+		});
+		expect(wb.computePreview()).toBeNull();
+	});
+
+	it('exposes a stable leaf file template and legacy body bridge', () => {
+		const wb = makeWorkbench(attackRows());
+		expect(wb.leafFileTemplate()).toMatch(/\.md$/);
+		// No body destinations by default → empty legacy body list.
+		expect(wb.getLegacyBodyMappings()).toEqual([]);
+	});
+});

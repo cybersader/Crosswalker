@@ -29,6 +29,8 @@ import {
 	relativeTime,
 	type WizardDraft,
 } from './draft-store';
+import { MappingWorkbench } from './workbench';
+import { SHAPE_CARDS, deriveShapeCards } from './mapping/view-model';
 
 /**
  * Import Wizard Modal
@@ -67,6 +69,10 @@ export class ImportWizardModal extends Modal {
 
 	// Column configuration state (captured from Step 2)
 	columnConfigs: Map<string, { useAs: string; outputKey: string; folderTemplates?: string[] }> = new Map();
+
+	/** Shape workbench (beta). Created lazily in Step 2 when the setting is on;
+	 *  persists across step navigation. Null in classic column-mapping mode. */
+	workbench: MappingWorkbench | null = null;
 
 	// Output settings (captured from Step 4)
 	outputPath: string = '';
@@ -690,7 +696,17 @@ export class ImportWizardModal extends Modal {
 	// Step 2: Configure Columns
 	// =========================================================================
 
+	/** Whether the beta shape workbench should drive step 2 (and feed 3/4). */
+	private isWorkbenchMode(): boolean {
+		return this.plugin.settings.enableShapeWorkbench && !!this.parsedData;
+	}
+
 	renderStep2_ConfigureColumns(container: HTMLElement) {
+		if (this.isWorkbenchMode()) {
+			this.renderStep2_Workbench(container);
+			return;
+		}
+
 		container.createEl('h3', { text: 'Configure columns' });
 
 		if (!this.parsedData) {
@@ -971,6 +987,148 @@ export class ImportWizardModal extends Modal {
 		}
 	}
 
+	// =========================================================================
+	// Step 2 (beta): the shape workbench
+	// =========================================================================
+
+	/** Render the shape-first workbench in place of the classic column table. */
+	private renderStep2_Workbench(container: HTMLElement): void {
+		if (!this.parsedData) {
+			container.createEl('p', { text: 'No data parsed. Please go back and select a file.' });
+			return;
+		}
+		container.createEl('h3', { text: 'Map the shapes' });
+		container.createEl('p', {
+			text: 'Detect the shapes in your source, pick how they land in the vault, and watch the preview update live. Accept the defaults for a good vault, or open a mapping to fine-tune.',
+			cls: 'setting-item-description',
+		});
+
+		const sig = this.parsedData.columns.join('|');
+		if (!this.workbench || this.workbench.columnsSignature() !== sig) {
+			this.workbench = new MappingWorkbench({
+				parsedData: this.parsedData,
+				columnInfos: this.columnInfos,
+				outputPath: this.outputPath || this.plugin.settings.defaultOutputPath,
+				debug: this.plugin.debug,
+				defaultPresetId: 'browsable-framework',
+				onChange: () => {
+					this.plugin.debug.trace('wizard', 'workbench-change', 'Workbench model changed');
+					this.scheduleDraftSave();
+				},
+			});
+		}
+		this.workbench.render(container.createDiv());
+	}
+
+	/** Step 3 in workbench mode: review the mapping's live output before generate. */
+	private renderStep3_WorkbenchReview(container: HTMLElement): void {
+		container.createEl('h3', { text: 'Review the vault' });
+		container.createEl('p', {
+			text: 'This is your own data rendered through the shape map. Check the structure, then generate.',
+			cls: 'setting-item-description',
+		});
+		if (!this.workbench) {
+			container.createEl('p', { text: 'Go back and configure the mapping first.' });
+			return;
+		}
+		const preview = this.workbench.computePreview();
+
+		// Estimate stat cards.
+		const statRow = container.createEl('div', { cls: 'crosswalker-stats-grid crosswalker-preview-stats' });
+		const stat = (icon: string, value: number, label: string) => {
+			const card = statRow.createEl('div', { cls: 'crosswalker-stat-card' });
+			card.createEl('div', { text: `${icon} ${value.toLocaleString()}`, cls: 'crosswalker-stat-value' });
+			card.createEl('div', { text: label, cls: 'crosswalker-stat-label' });
+		};
+		const noteCount = this.parsedData?.rowCount ?? 0;
+		let folders = 0;
+		let links = 0;
+		if (preview) {
+			const folderSet = new Set<string>();
+			for (const a of preview.addresses) {
+				const parts = a.address.primary.path.split('/');
+				parts.slice(0, -1).forEach((_, i) => folderSet.add(parts.slice(0, i + 1).join('/')));
+				links += Object.values(a.address.frontmatter).filter((v) => typeof v === 'string' && v.startsWith('[[')).length;
+			}
+			folders = folderSet.size;
+		}
+		stat('📄', noteCount, 'notes');
+		stat('📁', folders, 'folders (in sample)');
+		stat('🔗', links, 'links (in sample)');
+
+		// Deviation banner.
+		if (preview && preview.perRow.length) {
+			this.renderDeviationBanner(container, preview.perRow, preview.total);
+		}
+
+		// Folder tree + one note (reuse the workbench preview rail).
+		container.createEl('h4', { text: 'Live preview' });
+		this.workbench.render(container.createDiv({ cls: 'crosswalker-wb-review' }));
+	}
+
+	/** Step 4 in workbench mode: the shape-map recap (M4) above the generate controls. */
+	private renderStep4_WorkbenchRecap(container: HTMLElement): void {
+		if (!this.workbench) return;
+		container.createEl('h4', { text: 'Your shape map' });
+		const table = container.createEl('table', { cls: 'crosswalker-shape-map' });
+		const thead = table.createEl('thead').createEl('tr');
+		for (const h of ['From your file', 'Becomes', 'Count']) thead.createEl('th', { text: h });
+		const tbody = table.createEl('tbody');
+		const total = this.parsedData?.rowCount ?? 0;
+
+		const noteRow = tbody.createEl('tr');
+		noteRow.createEl('td', { cls: 'mono', text: 'Each row' });
+		noteRow.createEl('td', { text: 'Notes, one per row' });
+		noteRow.createEl('td', { text: total.toLocaleString() });
+
+		for (const m of this.workbench.getMapping().mappings) {
+			const cards = deriveShapeCards(m);
+			const shapes = SHAPE_CARDS.filter((c) => cards[c.id] !== 'off').map((c) => c.label.toLowerCase());
+			if (shapes.length === 0) continue;
+			const tr = tbody.createEl('tr');
+			tr.createEl('td', { cls: 'mono', text: this.workbenchMappingLabel(m) });
+			tr.createEl('td', { text: shapes.join(', ') });
+			tr.createEl('td', { text: '-' });
+		}
+		container.createEl('p', {
+			text: 'This map is saved as a reusable recipe. Re-run it on the next release, or hand it to the command line.',
+			cls: 'setting-item-description',
+		});
+	}
+
+	/**
+	 * Legacy config used only to carry body content + a stable filename stem when
+	 * generating in workbench mode. Path + frontmatter come from the workbench
+	 * recipe passed as `options.recipeOverride`.
+	 */
+	private buildWorkbenchConfig(): Partial<ImportRecipe> {
+		const wb = this.workbench;
+		const body = wb ? wb.getLegacyBodyMappings() : [];
+		const leaf = wb?.leafFileTemplate();
+		return {
+			name: 'shape-workbench',
+			mapping: {
+				hierarchy: [],
+				frontmatter: [],
+				links: [],
+				body,
+				...(leaf ? { filename: { template: leaf, sanitize: true } } : {}),
+			},
+		};
+	}
+
+	/** A short source-column label for a mapping (recap table). */
+	private workbenchMappingLabel(m: { levels: { source: unknown }[] }): string {
+		const cols = new Set<string>();
+		for (const l of m.levels) {
+			const src = l.source as { column?: string; constant?: string } | Array<{ column?: string }>;
+			if (Array.isArray(src)) src.forEach((r) => r.column && cols.add(r.column));
+			else if (src.column) cols.add(src.column);
+			else if (src.constant) cols.add(`"${src.constant}"`);
+		}
+		return [...cols].slice(0, 3).join(', ') || 'mapping';
+	}
+
 	/**
 	 * Build a lookup map from column name -> { useAs, outputKey } from applied config
 	 */
@@ -1172,6 +1330,10 @@ export class ImportWizardModal extends Modal {
 	// =========================================================================
 
 	renderStep3_Preview(container: HTMLElement) {
+		if (this.isWorkbenchMode()) {
+			this.renderStep3_WorkbenchReview(container);
+			return;
+		}
 		container.createEl('h3', { text: 'Preview output' });
 
 		container.createEl('p', {
@@ -1616,6 +1778,11 @@ export class ImportWizardModal extends Modal {
 			cls: 'setting-item-description'
 		});
 
+		// Shape-map recap (workbench mode) sits above the generate controls.
+		if (this.isWorkbenchMode()) {
+			this.renderStep4_WorkbenchRecap(container);
+		}
+
 		// Output path setting
 		new Setting(container)
 			.setName('Output path')
@@ -1654,8 +1821,8 @@ export class ImportWizardModal extends Modal {
 					this.scheduleDraftSave();
 				}));
 
-		// Summary with actual estimates
-		if (this.parsedData) {
+		// Summary with actual estimates (classic mode — workbench shows the recap instead).
+		if (this.parsedData && !this.isWorkbenchMode()) {
 			const config = buildConfigFromWizardState(
 				this.columnConfigs,
 				this.parsedData.columns,
@@ -2081,12 +2248,17 @@ export class ImportWizardModal extends Modal {
 		if (!this.parsedData) return;
 
 		// Build config from wizard state (preserves applied saved-config filename
-		// template when no column is explicitly marked as 'title').
-		const config = buildConfigFromWizardState(
-			this.columnConfigs,
-			this.parsedData.columns,
-			this.appliedConfig?.config?.mapping?.filename
-		);
+		// template when no column is explicitly marked as 'title'). In workbench
+		// mode the config only carries the legacy body mappings + a filename stem;
+		// path + frontmatter come from the workbench recipe (recipeOverride).
+		const workbenchMode = this.isWorkbenchMode() && !!this.workbench;
+		const config = workbenchMode
+			? this.buildWorkbenchConfig()
+			: buildConfigFromWizardState(
+				this.columnConfigs,
+				this.parsedData.columns,
+				this.appliedConfig?.config?.mapping?.filename
+			);
 
 		// Prepare generation options
 		const options: GenerationOptions = {
@@ -2096,6 +2268,7 @@ export class ImportWizardModal extends Modal {
 			frameworkId: this.frameworkId || undefined,
 			configId: this.appliedConfig?.id,
 			sourceFileName: this.sourceFile?.name,
+			...(workbenchMode && this.workbench ? { recipeOverride: this.workbench.buildRecipe() } : {}),
 			onProgress: (current, total, message) => {
 				this.generationProgress = { current, total, message };
 				// Update the progress card in place (no full re-render) when its

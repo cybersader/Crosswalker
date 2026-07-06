@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Shape workbench (beta): shape-first import on one live screen (2026-07-05)
+
+A new **Shape workbench** setting (default off) replaces the wizard's Step 2 column table with a live three-zone mapping screen: a **source rail** (columns with detection badges and evidence cards — packed-id hierarchies with depth histograms, level-per-column chains, facets, parent links, long-text body candidates, crosswalk-shaped files), a **mapping canvas** (preset dropdown → per-detection mapping cards → six Obsidian-primitive shape toggles with a combined "your mix on one row" preview → an editable per-level **matrix** with merge/split, naming, missing-value policy, and a grouped two-stage add-destination menu), and a **live vault preview rail** (folder tree, one rendered note, deviation banner) that re-renders on every change. Underneath: a level-agnostic **preset system** (`spec/preset.schema.json` + four built-ins), a `StructureMapping` model with cross-column and constant sources, preset-times-detection instantiation, and full recipe round-trip — the workbench generates through the same `render()` pipeline as recipes and the headless harness. Legacy Step 2 is untouched when the setting is off. (+72 unit tests across detection, mapping, view-model, and workbench recipe assembly.)
+
 ### Variable-depth folder nesting for ragged ids (2026-07-05)
 
 Ragged taxonomy ids — where some rows have more levels than others (ATT&CK `T1055` vs `T1055.011`, or any parent/child id family) — can now nest to their **own natural depth** instead of being dumped flat. A recipe folder level gains an optional **`variadic`** block that splits the level's rendered value and expands it into a variable number of folders per row:

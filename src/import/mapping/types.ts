@@ -74,8 +74,29 @@ export interface PartRef {
 	part?: number | [number, number];
 }
 
-/** A source is one PartRef, or several PartRefs merged (incl. across columns, spec §7b). */
-export type LevelSource = PartRef | PartRef[];
+/**
+ * A literal source (spec §7f). The rendered name is the constant string verbatim,
+ * bound to no column. Closes two fidelity gaps the round-trip work surfaced:
+ *   - literal frontmatter values — CIS `level: "control"` (a managed property whose
+ *     value is a plain string, not a `{template}`);
+ *   - literal path prefixes — `Frameworks/` as a constant-source folder level.
+ * A constant carries no delimiter, part, or filter chain (there is nothing to
+ * split or sanitize); those fields on the owning `LevelRule` are ignored for it.
+ */
+export interface ConstantRef {
+	constant: string;
+}
+
+/** One reference to source material: a (possibly split) column, or a literal. */
+export type SourceRef = PartRef | ConstantRef;
+
+/** A source is one ref, or several refs merged (incl. across columns, spec §7b). */
+export type LevelSource = SourceRef | SourceRef[];
+
+/** Narrow a SourceRef to a ConstantRef (literal source). */
+export function isConstantRef(ref: SourceRef): ref is ConstantRef {
+	return (ref as ConstantRef).constant !== undefined;
+}
 
 // ============================================================================
 // Destinations — the six Obsidian structuring primitives + content carriers
@@ -287,7 +308,13 @@ export function destinationRank(p: DestinationPrimitive): number {
 	return i === -1 ? DESTINATION_ORDER.length : i;
 }
 
-/** Normalize a LevelSource to a PartRef array (single ref → one-element array). */
-export function toPartRefs(source: LevelSource): PartRef[] {
+/** Normalize a LevelSource to a ref array (single ref → one-element array). */
+export function toSourceRefs(source: LevelSource): SourceRef[] {
 	return Array.isArray(source) ? source : [source];
 }
+
+/**
+ * Legacy alias for {@link toSourceRefs}. Kept because a source may now hold
+ * `ConstantRef`s too; the name is retained for call-site stability.
+ */
+export const toPartRefs = toSourceRefs;

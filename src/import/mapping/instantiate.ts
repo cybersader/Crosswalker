@@ -32,7 +32,7 @@ import type {
 	LevelSource,
 	LevelNaming,
 } from './types';
-import { DEFAULT_MISSING } from './types';
+import { DEFAULT_MISSING, isConstantRef } from './types';
 import { parseStructuralTemplate } from './serialize';
 
 /**
@@ -278,9 +278,10 @@ function presetNamingToLevel(naming: string | undefined): LevelNaming {
 // Small helpers
 // ============================================================================
 
-/** First column referenced by a source. */
+/** First column (or literal) referenced by a source. */
 function firstColumn(source: LevelSource): string {
-	return Array.isArray(source) ? source[0].column : source.column;
+	const ref = Array.isArray(source) ? source[0] : source;
+	return isConstantRef(ref) ? ref.constant : ref.column;
 }
 
 /** Last column of a chain (defensive: falls back to the first). */

@@ -1,0 +1,419 @@
+/**
+ * mapping/view-model.ts — the view-coherence law made executable (spec §3a½/§7a).
+ *
+ * ONE `ImportMapping` is the only state. The preset bar, the shape cards, the
+ * matrix, and the vault preview all read and write it THROUGH this module. Every
+ * function here is pure — it takes state and returns new state (or a derived
+ * read), never mutating in place — so a deeper view always shows exactly what a
+ * shallower one wrote and there is no second "simple mode" codepath.
+ *
+ * Two kinds of operation live here:
+ *   - WRITES that a coarse view performs on the model: toggling a shape card
+ *     (`toggleDestinationAcrossMapping`), merging/splitting matrix rows
+ *     (`mergeRows` / `splitRow`), adding/removing a single destination.
+ *   - READS the views render from the model: the per-mapping shape-card summary
+ *     (`deriveShapeCards`, which reports a genuinely mixed row set as `'mixed'`,
+ *     never as a wrong binary), and the preset-drift check that flips the preset
+ *     chip to `Custom (based on X)` (`isUnmodifiedPreset`).
+ *
+ * Pure module: NO Obsidian imports.
+ */
+
+import type { Detection } from '../detection';
+import type { Preset } from './presets';
+import { instantiate } from './instantiate';
+import type {
+	ImportMapping,
+	StructureMapping,
+	LevelRule,
+	TailRule,
+	Destination,
+	DestinationPrimitive,
+	LevelSource,
+	SourceRef,
+	PartRef,
+} from './types';
+import { destinationRank, toSourceRefs, isConstantRef, DEFAULT_MISSING } from './types';
+
+// ============================================================================
+// Shape cards (the coarse, per-mapping summary view — M2)
+// ============================================================================
+
+/** The six shape-card ids, in mockup (M2) display order. */
+export type ShapeCardId = 'folder' | 'name' | 'tag' | 'heading' | 'link' | 'property';
+
+/** Display order + labels for the six cards (sentence case, no em dashes). */
+export const SHAPE_CARDS: { id: ShapeCardId; label: string; primitive: DestinationPrimitive }[] = [
+	{ id: 'folder', label: 'Folders', primitive: 'folder' },
+	{ id: 'name', label: 'File names', primitive: 'name' },
+	{ id: 'tag', label: 'Tags', primitive: 'tag' },
+	{ id: 'heading', label: 'One file', primitive: 'heading' },
+	{ id: 'link', label: 'Links', primitive: 'link' },
+	{ id: 'property', label: 'Properties', primitive: 'property' },
+];
+
+/**
+ * A card's state across a mapping's rows:
+ *   - `on`    — the primitive is present on every row that could carry it.
+ *   - `off`   — present on none (or no row can carry it).
+ *   - `mixed` — present on some rows but not all. This is the honest tri-state
+ *               (spec §7a): a single toggle cannot represent a divergent row set,
+ *               so the card reports `mixed` rather than lie with a binary.
+ */
+export type ShapeCardState = 'on' | 'off' | 'mixed';
+
+/** A matrix row is either a level rule or the variadic tail. */
+interface Row {
+	kind: 'level' | 'tail';
+	destinations: Destination[];
+	isLeaf: boolean;
+}
+
+/** The rows of a mapping in matrix order: every level, then the tail (if any). */
+function rowsOf(m: StructureMapping): Row[] {
+	const rows: Row[] = m.levels.map((l) => ({
+		kind: 'level' as const,
+		destinations: l.destinations,
+		isLeaf: l.destinations.some((d) => d.primitive === 'name'),
+	}));
+	if (m.tail) {
+		rows.push({ kind: 'tail', destinations: m.tail.destinations, isLeaf: false });
+	}
+	return rows;
+}
+
+/**
+ * The rows a given primitive is eligible to land on:
+ *   - `name` lives on the leaf (the note itself), so its card is computed over
+ *     leaf rows only and is therefore never mixed.
+ *   - every other primitive lives on the structural (non-leaf) rows + the tail.
+ *   A single-level mapping (a facet or a bare link) has no leaf marker, so its
+ *   only row is eligible for the non-name primitives.
+ */
+function eligibleRows(rows: Row[], primitive: DestinationPrimitive): Row[] {
+	if (primitive === 'name') return rows.filter((r) => r.isLeaf);
+	return rows.filter((r) => !r.isLeaf);
+}
+
+/** Derive the on/off/mixed state of all six cards for one mapping. */
+export function deriveShapeCards(m: StructureMapping): Record<ShapeCardId, ShapeCardState> {
+	const rows = rowsOf(m);
+	const out = {} as Record<ShapeCardId, ShapeCardState>;
+	for (const card of SHAPE_CARDS) {
+		const eligible = eligibleRows(rows, card.primitive);
+		if (eligible.length === 0) {
+			out[card.id] = 'off';
+			continue;
+		}
+		const present = eligible.filter((r) => r.destinations.some((d) => d.primitive === card.primitive)).length;
+		out[card.id] = present === 0 ? 'off' : present === eligible.length ? 'on' : 'mixed';
+	}
+	return out;
+}
+
+// ============================================================================
+// Toggle a shape card across a mapping (coarse write — M2)
+// ============================================================================
+
+/**
+ * Add or remove a primitive across every eligible row of a mapping (the card
+ * toggle). Returns a NEW mapping; the input is never mutated.
+ *
+ * `on: true`  — adds the primitive (with sensible default params) to each
+ *               eligible row that lacks it, then canonicalizes destination order.
+ * `on: false` — removes the primitive from every eligible row.
+ *
+ * This is the single coupling point that keeps the card view and the matrix view
+ * coherent: both are just this write against the same model.
+ */
+export function toggleDestinationAcrossMapping(
+	m: StructureMapping,
+	primitive: DestinationPrimitive,
+	on: boolean,
+): StructureMapping {
+	const leafPrimitive = primitive === 'name';
+	const touchLevel = (rule: LevelRule): LevelRule => {
+		const isLeaf = rule.destinations.some((d) => d.primitive === 'name');
+		const eligible = leafPrimitive ? isLeaf : !isLeaf;
+		if (!eligible) return rule;
+		return withPrimitive(rule, primitive, on);
+	};
+
+	const levels = m.levels.map(touchLevel);
+	let tail = m.tail;
+	if (tail && !leafPrimitive) {
+		tail = withPrimitiveTail(tail, primitive, on);
+	}
+	return tail ? { levels, tail } : { levels };
+}
+
+/** Add/remove a primitive on one level rule (immutable). */
+function withPrimitive(rule: LevelRule, primitive: DestinationPrimitive, on: boolean): LevelRule {
+	const has = rule.destinations.some((d) => d.primitive === primitive);
+	if (on === has) return rule;
+	const destinations = on
+		? sortDestinations([...rule.destinations, defaultDestination(primitive, rule.source, rule.level)])
+		: rule.destinations.filter((d) => d.primitive !== primitive);
+	return { ...rule, destinations };
+}
+
+/** Add/remove a primitive on the tail rule (immutable). */
+function withPrimitiveTail(tail: TailRule, primitive: DestinationPrimitive, on: boolean): TailRule {
+	const has = tail.destinations.some((d) => d.primitive === primitive);
+	if (on === has) return tail;
+	const destinations = on
+		? sortDestinations([...tail.destinations, defaultDestination(primitive, tail.source, 'tail')])
+		: tail.destinations.filter((d) => d.primitive !== primitive);
+	return { ...tail, destinations };
+}
+
+// ============================================================================
+// Add / remove a single destination (matrix ⊕ menu + chip remove-x — M2b)
+// ============================================================================
+
+/**
+ * Add a fully-specified destination to one level of a mapping (the two-stage ⊕
+ * menu commits here). Idempotent on `(primitive, key)` identity. Returns a new
+ * mapping.
+ */
+export function addDestination(m: StructureMapping, levelIndex: number, dest: Destination): StructureMapping {
+	if (levelIndex < 0 || levelIndex >= m.levels.length) return m;
+	const levels = m.levels.map((rule, i) => {
+		if (i !== levelIndex) return rule;
+		if (rule.destinations.some((d) => sameDestination(d, dest))) return rule;
+		return { ...rule, destinations: sortDestinations([...rule.destinations, dest]) };
+	});
+	return m.tail ? { levels, tail: m.tail } : { levels };
+}
+
+/** Remove a destination (by primitive + optional key) from one level. New mapping. */
+export function removeDestination(
+	m: StructureMapping,
+	levelIndex: number,
+	primitive: DestinationPrimitive,
+	key?: string,
+): StructureMapping {
+	if (levelIndex < 0 || levelIndex >= m.levels.length) return m;
+	const levels = m.levels.map((rule, i) => {
+		if (i !== levelIndex) return rule;
+		return {
+			...rule,
+			destinations: rule.destinations.filter((d) => !(d.primitive === primitive && destKey(d) === key)),
+		};
+	});
+	return m.tail ? { levels, tail: m.tail } : { levels };
+}
+
+// ============================================================================
+// Merge / split matrix rows (regroup levels — M2b, buttons not drag for v1)
+// ============================================================================
+
+/**
+ * Merge level `index` with the next level into one row (spec §3a½: the "regroup"
+ * gesture = aggregation). The merged source becomes a contiguous part range when
+ * both levels index the same column consecutively, otherwise a cross-column
+ * `PartRef[]`. Naming flips to `joined`; destinations are the union of both.
+ * No-op when `index` is out of range or is the last level. Returns a new mapping.
+ */
+export function mergeRows(m: StructureMapping, index: number): StructureMapping {
+	if (index < 0 || index >= m.levels.length - 1) return m;
+	const a = m.levels[index];
+	const b = m.levels[index + 1];
+
+	const merged: LevelRule = {
+		level: `${a.level}+${b.level}`,
+		source: mergeSources(a, b),
+		destinations: sortDestinations(unionDestinations(a.destinations, b.destinations)),
+		naming: 'joined',
+		missing: a.missing,
+		materialize: a.materialize || b.materialize,
+	};
+	const delimiter = a.delimiter ?? b.delimiter;
+	if (delimiter !== undefined) merged.delimiter = delimiter;
+	const join = a.join ?? a.delimiter ?? b.delimiter;
+	if (join !== undefined) merged.join = join;
+	const filters = a.filters ?? b.filters;
+	if (filters !== undefined) merged.filters = filters;
+
+	const levels = [...m.levels.slice(0, index), merged, ...m.levels.slice(index + 2)];
+	return m.tail ? { levels, tail: m.tail } : { levels };
+}
+
+/**
+ * Split level `index` back into one row per part (the inverse regroup gesture).
+ * A part range `[i,j]` explodes into `j - i + 1` single-part levels; a
+ * cross-column `PartRef[]` explodes into one level per ref. A single-part /
+ * whole-column / constant source is not splittable — returns the mapping
+ * unchanged. Returns a new mapping.
+ */
+export function splitRow(m: StructureMapping, index: number): StructureMapping {
+	if (index < 0 || index >= m.levels.length) return m;
+	const rule = m.levels[index];
+	const pieces = splitSource(rule.source);
+	if (pieces.length < 2) return m;
+
+	const newLevels: LevelRule[] = pieces.map((source, k) => {
+		const level: LevelRule = {
+			level: `${rule.level}.${k + 1}`,
+			source,
+			destinations: sortDestinations(rule.destinations.map((d) => ({ ...d }))),
+			naming: 'part',
+			missing: rule.missing,
+			materialize: rule.materialize,
+		};
+		if (rule.delimiter !== undefined) level.delimiter = rule.delimiter;
+		if (rule.filters !== undefined) level.filters = [...rule.filters];
+		return level;
+	});
+
+	const levels = [...m.levels.slice(0, index), ...newLevels, ...m.levels.slice(index + 1)];
+	return m.tail ? { levels, tail: m.tail } : { levels };
+}
+
+// ============================================================================
+// Preset drift — the Custom label (spec §3c½ step 4)
+// ============================================================================
+
+/**
+ * True when `current` is exactly what `preset` instantiates over `detections`
+ * (no manual edits). The preset chip stays as the preset's name while this holds;
+ * the first edit that makes it false flips the chip to `Custom (based on X)`.
+ * Comparison is structural (key-order independent).
+ */
+export function isUnmodifiedPreset(current: ImportMapping, preset: Preset, detections: Detection[]): boolean {
+	return structuralEqual(current, instantiate(preset, detections));
+}
+
+// ============================================================================
+// Source merge / split helpers
+// ============================================================================
+
+/** Combine two level sources into one merged source (range when possible). */
+function mergeSources(a: LevelRule, b: LevelRule): LevelSource {
+	const refs = [...toSourceRefs(a.source), ...toSourceRefs(b.source)];
+	const asParts = refs.filter((r): r is PartRef => !isConstantRef(r));
+	if (
+		asParts.length === refs.length &&
+		asParts.every((r) => typeof r.part === 'number') &&
+		asParts.every((r) => r.column === asParts[0].column)
+	) {
+		const indices = (asParts as (PartRef & { part: number })[]).map((r) => r.part).sort((x, y) => x - y);
+		const consecutive = indices.every((n, i) => i === 0 || n === indices[i - 1] + 1);
+		if (consecutive) {
+			return { column: asParts[0].column, part: [indices[0], indices[indices.length - 1]] };
+		}
+	}
+	return refs;
+}
+
+/** Explode a source into its constituent single-ref sources (for split). */
+function splitSource(source: LevelSource): LevelSource[] {
+	const refs = toSourceRefs(source);
+	if (refs.length > 1) return refs.map((r) => r);
+	const only = refs[0];
+	if (!isConstantRef(only) && Array.isArray(only.part)) {
+		const [i, j] = only.part;
+		const out: LevelSource[] = [];
+		for (let k = i; k <= j; k++) out.push({ column: only.column, part: k });
+		return out;
+	}
+	return [source];
+}
+
+// ============================================================================
+// Destination helpers
+// ============================================================================
+
+/** A sensible default destination for a primitive toggled on over a source. */
+function defaultDestination(primitive: DestinationPrimitive, source: LevelSource, levelId: string): Destination {
+	const column = firstColumn(source);
+	switch (primitive) {
+		case 'folder':
+			return { primitive: 'folder' };
+		case 'name':
+			return { primitive: 'name' };
+		case 'note':
+			return { primitive: 'note' };
+		case 'alias':
+			return { primitive: 'alias' };
+		case 'tag':
+			return { primitive: 'tag', namespace: slug(column) };
+		case 'heading':
+			return { primitive: 'heading', hostRule: 'root', depth: 2 };
+		case 'link':
+			return { primitive: 'link', key: 'parent', direction: 'parent-on-child' };
+		case 'property':
+			return { primitive: 'property', key: propertyKey(column, levelId) };
+		case 'body':
+			return { primitive: 'body', position: 'section' };
+	}
+}
+
+/** The identity key of a destination (frontmatter key for property/link, else undefined). */
+export function destKey(d: Destination): string | undefined {
+	if (d.primitive === 'property' || d.primitive === 'link') return d.key;
+	return undefined;
+}
+
+/** Two destinations collide when they share a primitive and (for keyed ones) a key. */
+function sameDestination(a: Destination, b: Destination): boolean {
+	return a.primitive === b.primitive && destKey(a) === destKey(b);
+}
+
+/** Union two destination lists, de-duplicating on (primitive, key). */
+function unionDestinations(a: Destination[], b: Destination[]): Destination[] {
+	const out = [...a];
+	for (const d of b) {
+		if (!out.some((x) => sameDestination(x, d))) out.push(d);
+	}
+	return out;
+}
+
+/** Canonical destination order for stable, round-trip-safe output. */
+function sortDestinations(destinations: Destination[]): Destination[] {
+	return [...destinations].sort((a, b) => destinationRank(a.primitive) - destinationRank(b.primitive));
+}
+
+// ============================================================================
+// Small helpers
+// ============================================================================
+
+/** First column (or literal) referenced by a source. */
+function firstColumn(source: LevelSource): string {
+	const ref: SourceRef = toSourceRefs(source)[0];
+	return isConstantRef(ref) ? ref.constant : ref.column;
+}
+
+/** A frontmatter-safe property key from a column, falling back to the level id. */
+function propertyKey(column: string, levelId: string): string {
+	const base = column || levelId;
+	return base.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || levelId;
+}
+
+/** Slug a column into a tag namespace (mirrors serialize.slug). */
+function slug(column: string): string {
+	return column.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/** Structural (key-order independent) deep equality for plain JSON-ish values. */
+export function structuralEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== typeof b) return false;
+	if (a === null || b === null) return a === b;
+	if (Array.isArray(a) || Array.isArray(b)) {
+		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+		return a.every((v, i) => structuralEqual(v, b[i]));
+	}
+	if (typeof a === 'object') {
+		const ao = a as Record<string, unknown>;
+		const bo = b as Record<string, unknown>;
+		const ak = Object.keys(ao);
+		const bk = Object.keys(bo);
+		if (ak.length !== bk.length) return false;
+		return ak.every((k) => Object.prototype.hasOwnProperty.call(bo, k) && structuralEqual(ao[k], bo[k]));
+	}
+	return false;
+}
+
+/** Re-export so callers building matrices need the same default policy value. */
+export { DEFAULT_MISSING };

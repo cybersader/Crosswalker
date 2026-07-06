@@ -39,7 +39,7 @@ import type {
 	PartRef,
 	LevelNaming,
 } from './types';
-import { destinationRank, toPartRefs, DEFAULT_MISSING } from './types';
+import { destinationRank, toSourceRefs, isConstantRef, DEFAULT_MISSING } from './types';
 
 // ============================================================================
 // Recipe region shapes (structural subset of spec/recipe.schema.json)
@@ -189,12 +189,13 @@ function buildAlsoEmit(
 // ============================================================================
 
 /**
- * Build a template string from a source. Each PartRef becomes one interpolation:
+ * Build a template string from a source. Each ref becomes one piece:
+ *   - constant            → the literal string, verbatim (no braces, no filters)
  *   - whole column        → `{col}`
  *   - part index n        → `{col|split(delimiter,n)}`
  *   - range [i,j]         → `{col|split(delimiter,i)}` … `{col|split(delimiter,j)}`
- * Interpolations are concatenated with `join ?? delimiter ?? ''`. Trailing
- * filters chain inside each interpolation. This is the exact inverse of
+ * Pieces are concatenated with `join ?? delimiter ?? ''`. Trailing filters chain
+ * inside each interpolation. This is the exact inverse of
  * `parseStructuralTemplate`.
  */
 export function buildName(
@@ -204,20 +205,23 @@ export function buildName(
 	filters: string[] | undefined,
 ): string {
 	const sep = join ?? delimiter ?? '';
-	const bodies: string[] = [];
-	for (const ref of toPartRefs(source)) {
-		if (ref.part === undefined) {
-			bodies.push(withFilters(ref.column, filters));
+	const pieces: string[] = [];
+	for (const ref of toSourceRefs(source)) {
+		if (isConstantRef(ref)) {
+			// Literal — emitted as-is (a constant carries no split/filter).
+			pieces.push(ref.constant);
+		} else if (ref.part === undefined) {
+			pieces.push(`{${withFilters(ref.column, filters)}}`);
 		} else if (typeof ref.part === 'number') {
-			bodies.push(withFilters(`${ref.column}|split(${delimiter},${ref.part})`, filters));
+			pieces.push(`{${withFilters(`${ref.column}|split(${delimiter},${ref.part})`, filters)}}`);
 		} else {
 			const [i, j] = ref.part;
 			for (let k = i; k <= j; k++) {
-				bodies.push(withFilters(`${ref.column}|split(${delimiter},${k})`, filters));
+				pieces.push(`{${withFilters(`${ref.column}|split(${delimiter},${k})`, filters)}}`);
 			}
 		}
 	}
-	return bodies.map((b) => `{${b}}`).join(sep);
+	return pieces.join(sep);
 }
 
 /** Append a filter chain onto an interpolation body. */
@@ -398,8 +402,11 @@ export function parseStructuralTemplate(template: string): ParsedSource {
 	const separators = segments.filter((s): s is { kind: 'lit'; text: string } => s.kind === 'lit').map((s) => s.text);
 
 	if (interps.length === 0) {
-		// No interpolation at all — treat the whole literal as a column name.
-		return { source: { column: template }, filters: [] };
+		// No interpolation at all — a literal value (spec §7f). A brace-less
+		// template is never a column reference (real templates always use
+		// `{col}`); it is a constant, e.g. CIS `level: "control"` or a
+		// `Frameworks/` path prefix.
+		return { source: { constant: template }, filters: [] };
 	}
 
 	const parsedInterps = interps.map((s) => parseInterp(s.body));
@@ -483,7 +490,9 @@ function parseTagTemplate(template: string): { namespace: string; parsed: Parsed
 	const brace = template.indexOf('{');
 	const namespace = brace >= 0 ? template.slice(0, brace).replace(/\/+$/, '') : template;
 	const rest = brace >= 0 ? template.slice(brace) : '';
-	const parsed = rest ? parseStructuralTemplate(rest) : { source: { column: template } as PartRef, filters: [] };
+	const parsed: ParsedSource = rest
+		? parseStructuralTemplate(rest)
+		: { source: { constant: template }, filters: [] };
 	// The implicit tagsafe filter is not part of the level's own filter chain.
 	parsed.filters = parsed.filters.filter((f) => f !== 'tagsafe');
 	return { namespace, parsed };
@@ -501,19 +510,18 @@ function matchWikilink(template: string): string | null {
 
 /** Infer naming from a source shape (merged → 'joined'; single → 'part'). */
 function inferNaming(source: LevelSource): LevelNaming {
-	const refs = toPartRefs(source);
+	const refs = toSourceRefs(source);
 	if (refs.length > 1) return 'joined';
 	const only = refs[0];
-	if (Array.isArray(only.part)) return 'joined';
+	if (!isConstantRef(only) && Array.isArray(only.part)) return 'joined';
 	return 'part';
 }
 
 /** Canonical signature of a parsed source for metadata re-grouping. */
 function sourceSignature(parsed: ParsedSource): string {
-	const refs = toPartRefs(parsed.source).map((r) => ({
-		column: r.column,
-		part: r.part ?? null,
-	}));
+	const refs = toSourceRefs(parsed.source).map((r) =>
+		isConstantRef(r) ? { constant: r.constant } : { column: r.column, part: r.part ?? null },
+	);
 	return JSON.stringify({ refs, delimiter: parsed.delimiter ?? null, filters: parsed.filters });
 }
 
@@ -522,9 +530,10 @@ function synthLevelId(parsed: ParsedSource): string {
 	return firstColumn(parsed.source);
 }
 
-/** First column referenced by a source. */
+/** First column (or literal) referenced by a source — the level's identity key. */
 function firstColumn(source: LevelSource): string {
-	return toPartRefs(source)[0].column;
+	const ref = toSourceRefs(source)[0];
+	return isConstantRef(ref) ? ref.constant : ref.column;
 }
 
 /** Strip a trailing `.md` from a file template. */

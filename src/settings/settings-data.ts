@@ -43,6 +43,7 @@ export interface CrosswalkerSettings {
 	sampleValueCount: number;                   // How many samples to show (1-10)
 	confirmBeforeGenerate: boolean;             // Show confirmation before creating files
 	showProgressNotices: boolean;               // Show parsing/generation progress
+	enableShapeWorkbench: boolean;              // Beta: shape-first mapping workbench in Step 2 (spec 2026-07-05)
 
 	// ==========================================================================
 	// Advanced
@@ -117,6 +118,7 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	sampleValueCount: 3,
 	confirmBeforeGenerate: true,
 	showProgressNotices: true,
+	enableShapeWorkbench: false,
 
 	// Advanced
 	enableCustomTransforms: false,

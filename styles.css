@@ -1697,3 +1697,176 @@
 .crosswalker-fixture-protected {
 	opacity: 0.55;
 }
+
+/* ========================================================================== */
+/* Shape workbench (beta) — 3-zone mapping screen (spec 2026-07-05)            */
+/* ========================================================================== */
+
+.crosswalker-workbench {
+	display: grid;
+	grid-template-columns: minmax(190px, 1fr) minmax(320px, 1.6fr) minmax(220px, 1.2fr);
+	gap: 0.8em;
+	align-items: start;
+}
+
+/* Stack the zones vertically on narrow / mobile viewports. */
+@media (max-width: 700px) {
+	.crosswalker-workbench {
+		grid-template-columns: 1fr;
+	}
+}
+
+.crosswalker-wb-rail,
+.crosswalker-wb-canvas {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0.7em 0.75em;
+	background: var(--background-secondary);
+	min-width: 0;
+}
+
+.crosswalker-wb-eyebrow {
+	font-size: 0.66em;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+	margin-bottom: 0.5em;
+}
+
+.crosswalker-wb-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+	font-size: 0.76em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 99px;
+	padding: 0.1em 0.6em;
+	color: var(--text-muted);
+	background: var(--background-primary);
+	margin: 0.1em 0.2em 0.1em 0;
+}
+.crosswalker-wb-chip.is-mixed {
+	border-color: var(--text-warning);
+	color: var(--text-warning);
+}
+
+.mono,
+.crosswalker-wb-mini,
+.crosswalker-wb-tree {
+	font-family: var(--font-monospace);
+}
+
+/* -- source rail -- */
+.crosswalker-wb-source-file { font-size: 0.85em; margin-bottom: 0.4em; }
+.crosswalker-wb-collist { margin: 0.5em 0; display: flex; flex-direction: column; gap: 0.1em; }
+.crosswalker-wb-colrow {
+	display: flex; justify-content: space-between; align-items: center;
+	gap: 0.4em; font-size: 0.78em; padding: 0.1em 0;
+}
+.crosswalker-wb-colname { color: var(--text-normal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crosswalker-wb-badges { display: flex; gap: 0.2em; flex: none; }
+.crosswalker-wb-badge {
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	border-radius: 5px; padding: 0 0.35em; font-size: 0.85em; cursor: pointer; line-height: 1.6;
+}
+.crosswalker-wb-badge.is-dismissed { opacity: 0.4; text-decoration: line-through; }
+
+.crosswalker-wb-evidence {
+	border: 1px solid var(--interactive-accent);
+	border-radius: 7px; padding: 0.6em; margin: 0.5em 0;
+	background: var(--background-primary);
+	display: flex; flex-direction: column; gap: 0.5em;
+}
+.crosswalker-wb-evidence-title { font-weight: 600; font-size: 0.82em; }
+.crosswalker-wb-samples { font-size: 0.76em; color: var(--text-muted); line-height: 1.6; }
+.crosswalker-wb-evidence-cov { font-size: 0.76em; color: var(--text-muted); }
+.crosswalker-wb-hist { display: flex; gap: 0.6em; align-items: flex-end; }
+.crosswalker-wb-hcol { display: flex; flex-direction: column; align-items: center; gap: 0.15em; font-size: 0.68em; color: var(--text-muted); }
+.crosswalker-wb-hbar { width: 24px; border-radius: 3px 3px 0 0; background: var(--interactive-accent); opacity: 0.85; }
+.crosswalker-wb-evidence-btns { display: flex; gap: 0.4em; }
+.crosswalker-wb-confirm { border: 1px solid var(--interactive-accent); color: var(--interactive-accent); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; }
+.crosswalker-wb-dismiss { border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; }
+
+.crosswalker-wb-allcols { margin-top: 0.6em; font-size: 0.8em; }
+.crosswalker-wb-allcols summary { cursor: pointer; color: var(--text-muted); }
+.crosswalker-wb-allcol-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5em; padding: 0.15em 0; }
+.crosswalker-wb-allcol-row select { max-width: 45%; }
+
+/* -- mapping canvas -- */
+.crosswalker-wb-presetbar { display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; margin-bottom: 0.7em; font-size: 0.85em; }
+.crosswalker-wb-preset-label { color: var(--text-accent); font-size: 0.8em; }
+.crosswalker-wb-empty, .crosswalker-wb-preview-empty { font-size: 0.82em; color: var(--text-muted); padding: 0.6em 0; }
+
+.crosswalker-wb-mapcard {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px; padding: 0.55em 0.65em; margin-bottom: 0.5em;
+	background: var(--background-primary);
+}
+.crosswalker-wb-mapcard-head { display: flex; align-items: center; gap: 0.45em; flex-wrap: wrap; }
+.crosswalker-wb-mapcard-toggle, .crosswalker-wb-mapcard-rm { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.9em; }
+.crosswalker-wb-mapcard-rm { margin-left: auto; }
+.crosswalker-wb-summary-chips { display: flex; gap: 0.25em; flex-wrap: wrap; }
+
+.crosswalker-wb-shapes {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 0.5em; margin: 0.6em 0;
+}
+.crosswalker-wb-shape {
+	border: 1.5px solid var(--background-modifier-border);
+	border-radius: 8px; padding: 0.5em 0.55em; background: var(--background-secondary);
+	display: flex; flex-direction: column; gap: 0.35em;
+}
+.crosswalker-wb-shape.is-on { border-color: var(--interactive-accent); box-shadow: 0 0 0 2px var(--background-modifier-border-hover); }
+.crosswalker-wb-shape.is-mixed { border-color: var(--text-warning); }
+.crosswalker-wb-shape-top { display: flex; align-items: center; gap: 0.4em; }
+.crosswalker-wb-shape-title { font-size: 0.8em; font-weight: 600; }
+.crosswalker-wb-shape-afford { font-size: 0.72em; color: var(--text-muted); }
+.crosswalker-wb-whisper { font-size: 0.68em; color: var(--text-accent); }
+
+.crosswalker-wb-combined { margin: 0.5em 0; }
+.crosswalker-wb-combined-label { font-size: 0.78em; color: var(--text-muted); margin-bottom: 0.25em; }
+.crosswalker-wb-mini {
+	font-size: 0.74em; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+	background: var(--background-secondary); border: 1px solid var(--background-modifier-border);
+	border-radius: 6px; padding: 0.45em 0.55em; margin: 0; overflow-x: auto;
+}
+
+.crosswalker-wb-arrange { border: none; background: none; color: var(--text-accent); cursor: pointer; font-size: 0.8em; padding: 0.2em 0; }
+
+.crosswalker-wb-matrix-wrap { overflow-x: auto; margin-top: 0.4em; }
+.crosswalker-wb-matrix { width: 100%; border-collapse: collapse; font-size: 0.76em; }
+.crosswalker-wb-matrix th { text-align: left; font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 1px solid var(--background-modifier-border); padding: 0.3em 0.4em; }
+.crosswalker-wb-matrix td { padding: 0.35em 0.4em; border-bottom: 1px solid var(--background-modifier-border); vertical-align: top; }
+.crosswalker-wb-gestures { display: flex; gap: 0.25em; margin-top: 0.2em; }
+.crosswalker-wb-gestures button { font-size: 0.68em; border: 1px solid var(--background-modifier-border); background: var(--background-secondary); border-radius: 4px; padding: 0 0.35em; cursor: pointer; }
+.crosswalker-wb-tail-note { font-size: 0.68em; color: var(--text-accent); }
+.crosswalker-wb-chip-dest { position: relative; }
+.crosswalker-wb-chip-x { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.85em; padding: 0 0 0 0.2em; }
+.crosswalker-wb-chip-add { border-style: dashed; color: var(--text-accent); cursor: pointer; }
+
+.crosswalker-wb-addmenu {
+	border: 1px solid var(--interactive-accent); border-radius: 7px; padding: 0.5em;
+	margin-top: 0.4em; background: var(--background-primary); display: flex; flex-direction: column; gap: 0.2em;
+}
+.crosswalker-wb-addmenu-title { font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-accent); }
+.crosswalker-wb-addmenu-group { font-size: 0.66em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-top: 0.3em; }
+.crosswalker-wb-addmenu-item { border: none; background: none; text-align: left; color: var(--text-normal); cursor: pointer; font-size: 0.8em; padding: 0.1em 0.2em; }
+.crosswalker-wb-addmenu-item:hover { color: var(--text-accent); }
+.crosswalker-wb-addmenu-field { display: flex; justify-content: space-between; align-items: center; gap: 0.5em; font-size: 0.76em; padding: 0.15em 0; }
+.crosswalker-wb-addmenu-field input { max-width: 55%; }
+.crosswalker-wb-addmenu-btns { display: flex; gap: 0.4em; margin-top: 0.4em; }
+
+.crosswalker-wb-addmapping { margin-top: 0.5em; }
+.crosswalker-wb-addmapping select { width: 100%; }
+
+/* -- vault preview rail -- */
+.crosswalker-wb-tree { font-size: 0.74em; line-height: 1.55; white-space: pre-wrap; word-break: break-word; margin: 0 0 0.6em; }
+.crosswalker-wb-note { margin: 0.4em 0; }
+.crosswalker-wb-note-title { font-size: 0.8em; font-weight: 600; margin-bottom: 0.25em; }
+.crosswalker-wb-note-nav { display: flex; align-items: center; gap: 0.5em; font-size: 0.74em; color: var(--text-muted); margin: 0.3em 0; }
+.crosswalker-wb-note-nav button { border: 1px solid var(--background-modifier-border); background: var(--background-secondary); border-radius: 4px; padding: 0 0.4em; cursor: pointer; }
+
+.crosswalker-shape-map { width: 100%; border-collapse: collapse; font-size: 0.85em; margin: 0.5em 0; }
+.crosswalker-shape-map th { text-align: left; font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 1px solid var(--background-modifier-border); padding: 0.35em 0.5em; }
+.crosswalker-shape-map td { padding: 0.4em 0.5em; border-bottom: 1px solid var(--background-modifier-border); }

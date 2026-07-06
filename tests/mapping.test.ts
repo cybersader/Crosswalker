@@ -292,6 +292,53 @@ describe('round-trip law: mapping → regions → mapping', () => {
 			],
 		});
 	});
+
+	// ConstantRef (spec §7f) — literal sources round-trip exactly.
+	it('constant property value (CIS `level: "control"` shape)', () => {
+		assertRoundTrip({
+			mappings: [
+				{
+					levels: [
+						{
+							level: 'control',
+							source: { constant: 'control' },
+							destinations: [{ primitive: 'property', key: 'level' }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+		});
+	});
+
+	it('constant folder level (a literal `Frameworks/` path prefix)', () => {
+		assertRoundTrip({
+			mappings: [
+				{
+					levels: [
+						{
+							level: 'root',
+							source: { constant: 'Frameworks' },
+							destinations: [{ primitive: 'folder' }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+						{
+							level: 'leaf',
+							source: { column: 'id' },
+							destinations: [{ primitive: 'name' }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+		});
+	});
 });
 
 // ===========================================================================
@@ -377,27 +424,25 @@ describe('corpus — real recipes reconstruct + re-serialize equivalently', () =
 		assertReSerializesEquivalent(mitreRecipe as unknown as { target: RecipeRegions });
 	});
 
-	it('cis-controls-v8-controls (leaf with a trim|fs-safe filter chain)', () => {
+	it('cis-controls-v8-controls (leaf with a trim|fs-safe filter chain + a constant property)', () => {
 		const recipe = cisRecipe as unknown as { target: RecipeRegions };
 		const mapping = fromRecipe(recipe);
 		expect(mapping.mappings[0].levels[0].filters).toEqual(['trim', 'fs-safe']);
+		// The constant managed value ("level": "control", no {template}) reconstructs as a
+		// ConstantRef source (spec §7f), not a column reference.
+		const levelMapping = mapping.mappings.find((m) =>
+			m.levels.some((l) => l.destinations.some((d) => d.primitive === 'property' && d.key === 'level')),
+		);
+		expect(levelMapping).toBeDefined();
+		expect(levelMapping!.levels[0].source).toEqual({ constant: 'control' });
 		// Layout (the single file leaf) round-trips exactly.
 		const regions = toRecipeRegions(mapping);
 		expect(regions.layout).toEqual(recipe.target.layout);
-		// KNOWN LIMITATION (architect input): a CONSTANT managed value ("level": "control",
-		// no {template}) is not expressible in the source-based model — it reconstructs as a
-		// whole-column reference and re-serializes as "{control}". The templated keys are
-		// equivalent; the constant is the one lossy field. Pin both so the gap stays visible.
+		// FULL FIDELITY (spec §7f): every managed value now round-trips exactly — the
+		// constant `level: "control"` is no longer flattened to a `{control}` reference.
 		const originalManaged = recipe.target.also_emit!.frontmatter!.managed!;
 		const roundManaged = regions.also_emit!.frontmatter!.managed!;
-		for (const [key, value] of Object.entries(originalManaged)) {
-			if (value.includes('{')) {
-				expect(roundManaged[key]).toBe(value); // templated → equivalent
-			}
-		}
-		// TODO(architect): no model surface for constant (non-templated) frontmatter values.
-		expect(originalManaged.level).toBe('control');
-		expect(roundManaged.level).toBe('{control}');
+		expect(roundManaged).toEqual(originalManaged);
 	});
 });
 

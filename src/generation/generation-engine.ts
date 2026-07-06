@@ -97,6 +97,17 @@ export interface GenerationOptions {
 
 	/** Max note writes in flight at once (default DEFAULT_CONCURRENCY). 1 = sequential. */
 	concurrency?: number;
+
+	/**
+	 * A pre-built Recipe to render with, bypassing the legacy column-role shim.
+	 * The shape workbench (a first-class Tier 1 producer, commitment #1) emits a
+	 * real recipe via `toRecipeRegions`; folders / files / headings / variadic /
+	 * managed frontmatter / managed wikilinks all flow through render() faithfully
+	 * rather than being squeezed through `legacyConfigToRecipe`, which cannot
+	 * express variadic folders or nested tags. When set, `config.mapping` is still
+	 * used for legacy body content only.
+	 */
+	recipeOverride?: import('../render').Recipe;
 }
 
 interface GeneratedNoteData {
@@ -232,7 +243,9 @@ export async function generateNotes(
 
 		// v0.1.3: translate the legacy v0.1.0 config shape into a Ch 22 Recipe
 		// once before the per-row loop. The recipe is what render() consumes.
-		const recipe = legacyConfigToRecipe(config as ImportRecipe);
+		// The shape workbench passes a pre-built recipe (recipeOverride) so its
+		// full mechanism set survives; otherwise the legacy shim translates.
+		const recipe = options.recipeOverride ?? legacyConfigToRecipe(config as ImportRecipe);
 
 		// Track paths emitted in THIS generation pass to detect collisions
 		// (two source rows rendering to the same vault path).

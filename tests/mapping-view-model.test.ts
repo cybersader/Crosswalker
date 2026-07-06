@@ -1,0 +1,229 @@
+/**
+ * mapping-view-model.test.ts — the view-coherence law's pure operations (spec §3a½/§7a).
+ *
+ * Covers the writes a coarse view performs on the one ImportMapping (card
+ * toggles, row merge/split, add/remove destination) and the reads the views
+ * render from it (shape-card summary incl. the honest `mixed` state, preset-drift
+ * detection for the Custom label). Every function must be pure — asserted by
+ * checking the input is never mutated.
+ */
+
+import { detectStructure } from '../src/import/detection';
+import type { Detection } from '../src/import/detection';
+import { analyzeColumns } from '../src/import/parsers/csv-parser';
+import type { ParsedData } from '../src/types/config';
+
+import { BROWSABLE_FRAMEWORK, DEEP_EVERYTHING } from '../src/import/mapping/presets';
+import { instantiate } from '../src/import/mapping/instantiate';
+import { toRecipeRegions, fromRegions } from '../src/import/mapping/serialize';
+import type { StructureMapping, ImportMapping } from '../src/import/mapping/types';
+import {
+	deriveShapeCards,
+	toggleDestinationAcrossMapping,
+	addDestination,
+	removeDestination,
+	mergeRows,
+	splitRow,
+	isUnmodifiedPreset,
+	structuralEqual,
+} from '../src/import/mapping/view-model';
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+function detect(rows: Record<string, unknown>[]): Detection[] {
+	const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+	const data: ParsedData = { columns, rows, rowCount: rows.length };
+	return detectStructure(data, analyzeColumns(data));
+}
+
+function rowsFrom(column: string, values: string[]): Record<string, unknown>[] {
+	return values.map((v) => ({ [column]: v }));
+}
+
+// Uniform two-delimiter CSF ids → fixed folder levels + a leaf.
+const CSF = ['GV.OC-01', 'GV.OC-02', 'DE.AE-02', 'DE.AE-03', 'PR.AA-05', 'ID.AM-01'];
+// Ragged ATT&CK ids → variadic tail + leaf.
+const ATTACK = ['T1055', 'T1059', 'T1003', 'T1071', 'T1027', 'T1005', 'T1055.011', 'T1059.001', 'T1003.001', 'T1071.004'];
+
+function csfMapping(): StructureMapping {
+	return instantiate(BROWSABLE_FRAMEWORK, detect(rowsFrom('element_identifier', CSF))).mappings[0];
+}
+
+// ===========================================================================
+// 1. Shape-card summary derivation
+// ===========================================================================
+
+describe('deriveShapeCards', () => {
+	it('browsable CSF → folders on, file names on, everything else off', () => {
+		const cards = deriveShapeCards(csfMapping());
+		expect(cards.folder).toBe('on');
+		expect(cards.name).toBe('on');
+		expect(cards.tag).toBe('off');
+		expect(cards.property).toBe('off');
+		expect(cards.link).toBe('off');
+		expect(cards.heading).toBe('off');
+	});
+
+	it('deep-everything CSF → folders AND tags on across interior levels', () => {
+		const m = instantiate(DEEP_EVERYTHING, detect(rowsFrom('element_identifier', CSF))).mappings[0];
+		const cards = deriveShapeCards(m);
+		expect(cards.folder).toBe('on');
+		expect(cards.tag).toBe('on');
+		expect(cards.name).toBe('on');
+	});
+
+	it('ragged ATT&CK → folders on (from the tail), file names on', () => {
+		const m = instantiate(BROWSABLE_FRAMEWORK, detect(rowsFrom('technique_id', ATTACK))).mappings[0];
+		const cards = deriveShapeCards(m);
+		expect(cards.folder).toBe('on');
+		expect(cards.name).toBe('on');
+	});
+
+	it('reports a genuinely divergent row set as mixed, never a wrong binary', () => {
+		const m = csfMapping();
+		// Remove folder from just the FIRST interior level → folder now on some, not all.
+		const edited = removeDestination(m, 0, 'folder');
+		expect(deriveShapeCards(edited).folder).toBe('mixed');
+	});
+});
+
+// ===========================================================================
+// 2. Card toggles (coarse write across a mapping)
+// ===========================================================================
+
+describe('toggleDestinationAcrossMapping', () => {
+	it('turning Tags on adds a tag to every interior level; card reads on', () => {
+		const before = csfMapping();
+		const after = toggleDestinationAcrossMapping(before, 'tag', true);
+		expect(deriveShapeCards(after).tag).toBe('on');
+		// Input is never mutated (purity).
+		expect(deriveShapeCards(before).tag).toBe('off');
+	});
+
+	it('turning Folders off removes folders across the mapping; card reads off', () => {
+		const after = toggleDestinationAcrossMapping(csfMapping(), 'folder', false);
+		expect(deriveShapeCards(after).folder).toBe('off');
+	});
+
+	it('a card toggle round-trips back to the same state', () => {
+		const base = csfMapping();
+		const on = toggleDestinationAcrossMapping(base, 'property', true);
+		expect(deriveShapeCards(on).property).toBe('on');
+		const off = toggleDestinationAcrossMapping(on, 'property', false);
+		expect(deriveShapeCards(off).property).toBe('off');
+		// Round-trip preserves the rest of the mapping (structural equality with base).
+		expect(structuralEqual(off, base)).toBe(true);
+	});
+
+	it('toggled-on destinations still serialize (the write stays recipe-valid)', () => {
+		const after = toggleDestinationAcrossMapping(csfMapping(), 'tag', true);
+		const regions = toRecipeRegions({ mappings: [after] });
+		expect(regions.also_emit?.tags?.length ?? 0).toBeGreaterThan(0);
+	});
+});
+
+// ===========================================================================
+// 3. Add / remove a single destination (matrix ⊕ + chip remove)
+// ===========================================================================
+
+describe('addDestination / removeDestination', () => {
+	it('adds a property destination to one level and is idempotent on (primitive,key)', () => {
+		const m = csfMapping();
+		const once = addDestination(m, 0, { primitive: 'property', key: 'category' });
+		const twice = addDestination(once, 0, { primitive: 'property', key: 'category' });
+		const count = (mm: StructureMapping) =>
+			mm.levels[0].destinations.filter((d) => d.primitive === 'property').length;
+		expect(count(once)).toBe(1);
+		expect(count(twice)).toBe(1);
+		expect(count(m)).toBe(0); // input untouched
+	});
+
+	it('removes a keyed destination by primitive + key', () => {
+		const m = addDestination(csfMapping(), 0, { primitive: 'property', key: 'category' });
+		const removed = removeDestination(m, 0, 'property', 'category');
+		expect(removed.levels[0].destinations.some((d) => d.primitive === 'property')).toBe(false);
+	});
+});
+
+// ===========================================================================
+// 4. Merge / split matrix rows
+// ===========================================================================
+
+describe('mergeRows / splitRow', () => {
+	it('merges two consecutive folder levels into one joined range, then splits back', () => {
+		const m = csfMapping(); // levels: [part0 folder, part0(-) folder, leaf name]
+		expect(m.levels.length).toBe(3);
+		const merged = mergeRows(m, 0);
+		expect(merged.levels.length).toBe(2);
+		expect(merged.levels[0].naming).toBe('joined');
+
+		const split = splitRow(merged, 0);
+		expect(split.levels.length).toBe(3);
+		// input never mutated
+		expect(m.levels.length).toBe(3);
+	});
+
+	it('merge is a no-op on the last level or an out-of-range index', () => {
+		const m = csfMapping();
+		expect(mergeRows(m, m.levels.length - 1)).toBe(m);
+		expect(mergeRows(m, 99)).toBe(m);
+	});
+
+	it('split is a no-op on an unsplittable (single-part) source', () => {
+		const m = csfMapping();
+		// The leaf is a whole-column source — nothing to split.
+		const leafIndex = m.levels.length - 1;
+		expect(splitRow(m, leafIndex)).toBe(m);
+	});
+
+	it('a merged range serializes to one joined folder template (recipe-valid)', () => {
+		const merged = mergeRows(csfMapping(), 0);
+		const regions = toRecipeRegions({ mappings: [merged] });
+		const back = fromRegions(regions);
+		// Round-trips through the recipe layer (the merged row is representable).
+		expect(back.mappings[0].levels.length).toBe(merged.levels.length);
+	});
+});
+
+// ===========================================================================
+// 5. Preset drift — the Custom label
+// ===========================================================================
+
+describe('isUnmodifiedPreset', () => {
+	const detections = detect(rowsFrom('element_identifier', CSF));
+
+	it('a freshly instantiated preset is unmodified', () => {
+		const current = instantiate(BROWSABLE_FRAMEWORK, detections);
+		expect(isUnmodifiedPreset(current, BROWSABLE_FRAMEWORK, detections)).toBe(true);
+	});
+
+	it('any edit flips it to modified (the Custom label trigger)', () => {
+		const current = instantiate(BROWSABLE_FRAMEWORK, detections);
+		const edited: ImportMapping = {
+			mappings: [toggleDestinationAcrossMapping(current.mappings[0], 'tag', true), ...current.mappings.slice(1)],
+		};
+		expect(isUnmodifiedPreset(edited, BROWSABLE_FRAMEWORK, detections)).toBe(false);
+	});
+
+	it('a different preset is detected as modified relative to this one', () => {
+		const current = instantiate(DEEP_EVERYTHING, detections);
+		expect(isUnmodifiedPreset(current, BROWSABLE_FRAMEWORK, detections)).toBe(false);
+	});
+});
+
+// ===========================================================================
+// 6. structuralEqual
+// ===========================================================================
+
+describe('structuralEqual', () => {
+	it('is key-order independent', () => {
+		expect(structuralEqual({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
+	});
+	it('distinguishes different arrays and values', () => {
+		expect(structuralEqual([1, 2, 3], [1, 2])).toBe(false);
+		expect(structuralEqual({ a: 1 }, { a: 2 })).toBe(false);
+		expect(structuralEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+	});
+});

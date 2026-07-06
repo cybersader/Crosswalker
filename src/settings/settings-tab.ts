@@ -174,6 +174,16 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Wizard behavior').setHeading();
 
 		new Setting(containerEl)
+			.setName('Shape workbench (beta)')
+			.setDesc('Replace the column table in step 2 with a live mapping workbench: source rail, shape cards, a per-level matrix, and a live vault preview. Leave off to keep the classic column mapping.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableShapeWorkbench)
+				.onChange(async (value) => {
+					this.plugin.settings.enableShapeWorkbench = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName('Auto-save import drafts')
 			.setDesc('Save wizard state every few seconds while you work, so you can close the modal and resume later. Drafts live in _crosswalker/drafts/ (gitignored).')
 			.addToggle(toggle => toggle
