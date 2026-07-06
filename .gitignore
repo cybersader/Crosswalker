@@ -116,3 +116,6 @@ docs/src/content/docs/.ck/
 # Ephemeral user scratch notes in the test vault (wizard outputs, untitled)
 test-vault/Untitled.md
 test-vault/Test Query*.md
+
+# Crosswalker debug logs (rotated)
+test-vault/crosswalker-debug.log*
