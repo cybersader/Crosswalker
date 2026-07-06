@@ -108,6 +108,23 @@ The canonical project KB is the docs site. For an agent new to the project:
 | **Manual testing entry point** — `TEST_HANDS_ON_TOUR.md` at repo root is the master surface-coverage checklist (supersedes per-phase TEST_*.md guides for full passes) | Added 2026-06-12 |
 | **Screenshot Obsidian UI yourself — it IS automatable here** — real Obsidian runs via wdio + WSLg (`DISPLAY=:0 bun run e2e -- --spec tests/e2e/visual-*.spec.ts` → PNGs in `test-screenshots/`, readable by agents). Visual-verify rendering with a screenshot before claiming "can't render headlessly" or asking the user to eyeball. Never conclude Obsidian can't be screenshotted. | Memory: `reference_obsidian_screenshots_via_wdio.md`; `testing-patterns` skill |
 
+## Model tiering & delegation (how to spend the main session)
+
+The main session runs the strongest available model (Fable 5, or Opus 4.8 for easier problem tiers). **Spend it at the highest level of abstraction the task allows; push mechanical work down to subagents.** Added 2026-07-05 per user direction.
+
+| Layer | Model | Work |
+|---|---|---|
+| **Architect** (main session) | Fable 5 / Opus 4.8 | The hard ontological/data-model problems; specs + schema deltas; pseudocode skeletons; design decisions (captured in `.workspace/` design docs → `zz-log/`); reviewing delegated diffs; deciding what to delegate |
+| **Implementation** (subagents) | `sonnet` (default) or `opus` (mid-difficulty judgment work) | Mechanical implementation against a written spec; test authoring; themed commit batches; corpus/code surveys; doc sweeps |
+
+**The loop:** architect writes the spec (dated `.workspace/` design doc: exact semantics, worked examples, acceptance cases) → subagent implements exactly to spec, **no commits** → architect reviews the diff, runs the gates, commits. (Exception: pure git-chunking tasks may commit on a side branch; nothing is ever pushed by a subagent.)
+
+Rules:
+- Always set an explicit `model` on Agent calls — never inherit the frontier model into fully-specified mechanical work.
+- Hand subagents the env quirks (WSL /mnt/c: run tests via `node node_modules/jest/bin/jest.js`, never reinstall `node_modules`) and repo commit rules (no AI attribution, no personal data).
+- If the main session catches itself doing >~15 min of fully-specified mechanical work, delegate it.
+- Worked example of the loop: 2026-07-05 variadic folder expansion (`.workspace/2026-07-05-variadic-split-and-folder-note-design.md` → Sonnet implementation → architect review + commit).
+
 ## Roadmap conventions
 
 The roadmap lives in two places that must stay in sync:
@@ -173,6 +190,6 @@ See `docs/src/content/docs/development/setup.mdx` for the full `bun run` referen
 
 ---
 
-**Last Updated**: 2026-06-12 (v0.1.6 mid-milestone, Phases 1–6.3 ✅. Ingestion corpus sprint: JSON iterator reader, CIS/SCF/ATT&CK ingests, proving-ground crosswalk triangle complete, SKOS→STRM direction convention fixed + test-pinned [zz-log 2026-06-12], navigable edges via --depad + subject_note/object_note wikilinks, GRC analysis views screenshot-verified.)
+**Last Updated**: 2026-07-05 (v0.1.6 mid-milestone. Added model-tiering & delegation section. In flight on `feat/render-report`: per-row deviation report + Step 3 banner, variadic folder expansion for ragged ids [Ch 42 §1–3], parent_note placement resolved as a user choice [.workspace 2026-07-05 design doc].)
 **For**: Crosswalker Obsidian Plugin Development (v0.1 implementation phase)
-**Agent Role**: Implementation & Documentation Assistant
+**Agent Role**: Architect & Delegation Orchestrator (specs, decisions, reviews — implementation delegated to subagents)
