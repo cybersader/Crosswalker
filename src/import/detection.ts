@@ -90,6 +90,29 @@ export interface TagProposal {
 }
 
 /**
+ * How a confirmed body-candidate re-encodes: the column's cell value becomes the
+ * note body (a `BodyMapping` destination). No re-derivation needed — the wizard
+ * marks the column as the body source.
+ */
+export interface BodyProposal {
+	/** Destination primitive — always the note body for this detection. */
+	destination: 'body';
+}
+
+/**
+ * A row-type-discriminator carries no auto-recipe yet (spec §7d: "proposal kind
+ * only … flag for the UI"). The wizard surfaces the finding and lets the user
+ * decide how to split the mixed-level file; the engine does not act on it in
+ * v0.1.
+ */
+export interface DiscriminatorProposal {
+	/** Marker: this detection is a UI flag, not a serializable recipe region. */
+	mechanism: 'flag-for-ui';
+	/** Human-readable note for the wizard card. */
+	note: string;
+}
+
+/**
  * A single structural finding with its receipts. The discriminant `kind` selects
  * the payload; `proposal` (where present) is directly serializable to a recipe
  * region per the parity contract (spec §5).
@@ -132,6 +155,91 @@ export type Detection =
 			/** distinct / non-empty count — closeness to 1 means "one note name per row". */
 			distinctness: number;
 			sampleValues: string[];
+	  }
+	| {
+			/**
+			 * Hierarchy spread across separate columns (function, category,
+			 * subcategory) — the CPRT/SCF shape. Ordered parent→child; each column
+			 * becomes one fixed folder level. Detected by a functional-dependency
+			 * test: a child column's values map n:1 onto its parent's.
+			 */
+			kind: 'level-column-chain';
+			/** Ordered column list, parent (fewest distinct) → child (most distinct). */
+			columns: string[];
+			/** Per-column distinct-value count (the "fewer→more" evidence). */
+			cardinalities: Record<string, number>;
+			/** Per consecutive pair (parent[k], child[k+1]): the child→parent FD agreement. */
+			agreements: number[];
+			/** Up to 5 rendered "parent / … / child" sample paths — the card's receipts. */
+			sampleValues: string[];
+			/** One fixed folder level per chained column. */
+			proposal: LayoutProposal;
+	  }
+	| {
+			/**
+			 * One file mixes hierarchy levels as rows (CPRT does this): a
+			 * low-cardinality column whose values name levels AND correlate with
+			 * distinct column-fill patterns. Proposal is a UI flag only (spec §7d).
+			 */
+			kind: 'row-type-discriminator';
+			column: string;
+			/** Per discriminator value: its row count + which other columns it fills. */
+			values: { value: string; rowCount: number; filledColumns: string[] }[];
+			/** Max pairwise Jaccard distance between the per-value fill-sets (≥ 0.3 to fire). */
+			maxJaccardDistance: number;
+			/** Up to 5 discriminator values — the card's receipts. */
+			sampleValues: string[];
+			proposal: DiscriminatorProposal;
+	  }
+	| {
+			/**
+			 * File-level classification: the FILE is relationships, not concepts
+			 * (SSSOM/crosswalks). ≥2 id-like columns + optional predicate column,
+			 * no strong concept title. Routes to the crosswalk import path later.
+			 */
+			kind: 'edge-file';
+			subjectColumn: string;
+			/** Fraction of the subject column's values that match the id pattern. */
+			subjectConfidence: number;
+			objectColumn: string;
+			/** Fraction of the object column's values that match the id pattern. */
+			objectConfidence: number;
+			predicateColumn?: string;
+			/** Fraction of the predicate column's values that match the predicate shape. */
+			predicateConfidence?: number;
+			/** Up to 5 "subject | predicate | object" sample tuples — the card's receipts. */
+			sampleValues: string[];
+	  }
+	| {
+			/**
+			 * A column whose cells, after list-splitting, hold several ids from
+			 * another column's set (`related: T1055, T1548`). Proposes multiple
+			 * edges per row — distinct from the single-value parent-column.
+			 */
+			kind: 'multi-value-link';
+			column: string;
+			idColumn: string;
+			/** Fraction of exploded (list-split) values found in the id column's set. */
+			matchRate: number;
+			/** Mean number of list-split values per non-empty cell (> 1 to fire). */
+			avgValuesPerCell: number;
+			sampleValues: string[];
+			proposal: EdgeProposal;
+	  }
+	| {
+			/**
+			 * A long-text column → the note body. Fires on average length or on a
+			 * medium length with sentence punctuation, plus high distinctness.
+			 */
+			kind: 'body-candidate';
+			column: string;
+			/** Mean character length over the column's non-empty values. */
+			avgLength: number;
+			/** distinct / non-empty count. */
+			distinctness: number;
+			/** Up to 5 (truncated) sample values — the card's receipts. */
+			sampleValues: string[];
+			proposal: BodyProposal;
 	  };
 
 // ============================================================================
@@ -162,6 +270,73 @@ const FACET_CARDINALITY_RATIO = 0.05;
 /** Number of receipt sample values surfaced per detection. */
 const SAMPLE_VALUES = 5;
 
+// --- level-column-chain (spec §7d) ---
+/** Max aligned rows materialized for functional-dependency + fill-pattern tests. */
+const ROW_SAMPLE_LIMIT = 500;
+/**
+ * A column is a level-chain candidate only if its distinctness is at or below
+ * this — a hierarchy level *repeats* (function/category values recur across many
+ * rows). Near-unique columns (ids, titles, bodies) are excluded here.
+ */
+const LEVEL_CANDIDATE_MAX_DISTINCTNESS = 0.5;
+/**
+ * Functional-dependency agreement floor: the fraction of sampled rows whose
+ * child value maps to its dominant parent value. ≥ 0.95 tolerates dirt while
+ * still demanding a genuine n:1 child→parent dependency.
+ */
+const FD_AGREEMENT = 0.95;
+
+// --- row-type-discriminator (spec §7d) ---
+/** A discriminator column has at most this many distinct level-naming values. */
+const DISCRIMINATOR_MAX_CARDINALITY = 8;
+/**
+ * A discriminator's values must each recur (a level *type* labels many rows):
+ * cardinality must be at or below rows × this ratio, so per-value groups average
+ * ≥ 2 rows and single-row-per-value id columns are excluded.
+ */
+const DISCRIMINATOR_MAX_CARD_RATIO = 0.5;
+/** Fraction of a value's rows in which a column must be non-empty to count as "filled". */
+const DISCRIMINATOR_FILL_MIN = 0.5;
+/** Fraction of a candidate's values that must be non-numeric to "look like level names". */
+const DISCRIMINATOR_NONNUMERIC_MIN = 0.8;
+/**
+ * Max pairwise Jaccard distance between per-value fill-sets must reach this for
+ * the fill patterns to count as "materially different" (spec §7d).
+ */
+const DISCRIMINATOR_JACCARD_MIN = 0.3;
+
+// --- edge-file (spec §7d) ---
+/** Fraction of a column's values that must match the id pattern to be "id-like". */
+const EDGE_ID_PATTERN_MIN = 0.8;
+/** Fraction of a candidate predicate column's values that must match the predicate shape. */
+const EDGE_PREDICATE_SHAPE_MIN = 0.6;
+/** A predicate column holds at most this many distinct values. */
+const EDGE_PREDICATE_MAX_CARDINALITY = 8;
+/**
+ * If any column is a near-unique, non-numeric label at least this long on
+ * average, the file reads as *concept-shaped* (rows are concepts with names),
+ * which suppresses the edge-file (relationships) classification.
+ */
+const CONCEPT_TITLE_MIN_AVG_LEN = 25;
+
+// --- multi-value-link (spec §7d) ---
+/** Fraction of exploded (list-split) values that must hit the id set. */
+const MULTI_LINK_MATCH_MIN = 0.6;
+/** Mean list-split values per non-empty cell must exceed this (distinguishes from single-value parent). */
+const MULTI_LINK_AVG_MIN = 1;
+
+// --- body-candidate (spec §7d) ---
+/** Average length at/above which a column is a body candidate outright. */
+const BODY_AVG_LONG = 200;
+/** Average length at/above which a column is a body candidate *if* it also reads as prose. */
+const BODY_AVG_MEDIUM = 80;
+/** Fraction of samples that must contain sentence punctuation for the medium-length branch. */
+const BODY_PUNCT_MIN = 0.6;
+/** Body text is mostly one-per-row; require at least this distinctness. */
+const BODY_DISTINCTNESS_MIN = 0.7;
+/** Max characters of a body value surfaced as a receipt (longer values are truncated). */
+const BODY_SAMPLE_MAXLEN = 160;
+
 // ============================================================================
 // Entry point
 // ============================================================================
@@ -175,21 +350,29 @@ const SAMPLE_VALUES = 5;
  * best-effort on that small sample. Full-fidelity detection assumes an eager
  * `ParsedData` — which is what the wizard hands over at Step 2a.
  *
- * Output order is deterministic: packed-hierarchy (column order), then
- * parent-column (child-column order, then id-column order), then facet
- * (column order), then title (column order).
+ * Output order is deterministic: packed-hierarchy, level-column-chain,
+ * edge-file, parent-column, multi-value-link, row-type-discriminator, facet,
+ * body-candidate, title-candidate — each pass visiting columns in source order.
  */
 export function detectStructure(data: ParsedData, columns: ColumnInfo[]): Detection[] {
 	const columnInfo = new Map(columns.map((c) => [c.name, c]));
 	// Materialize normalized non-empty values per column once — every detector
 	// reads from this map so the source is scanned a single time.
 	const valuesByColumn = collectColumnValues(data, columns);
+	// Aligned, normalized sample rows (empties preserved) for the cross-column
+	// detectors (chain FD, discriminator fill-patterns, edge tuples). Null when
+	// the source is streaming — those detectors then no-op (spec §2: full-fidelity
+	// detection assumes the eager ParsedData the wizard hands over at Step 2a).
+	const sampleRows = collectSampleRows(data);
 
-	// Distinctness per column drives id-likeness / title / facet exclusions.
+	// Distinctness + raw cardinality per column drive id-likeness / level / facet.
 	const distinctnessByColumn = new Map<string, number>();
+	const cardinalityByColumn = new Map<string, number>();
 	for (const col of data.columns) {
 		const values = valuesByColumn.get(col) ?? [];
-		distinctnessByColumn.set(col, values.length === 0 ? 0 : new Set(values).size / values.length);
+		const card = new Set(values).size;
+		cardinalityByColumn.set(col, card);
+		distinctnessByColumn.set(col, values.length === 0 ? 0 : card / values.length);
 	}
 
 	// id-like columns: mostly-unique value sets. Used as parent-column reference
@@ -200,18 +383,20 @@ export function detectStructure(data: ParsedData, columns: ColumnInfo[]): Detect
 	const rowCount = countRows(data, valuesByColumn);
 
 	// --- Pass 1: packed-hierarchy (one detection per column, at most) ---
-	const packed: Detection[] = [];
-	const packedColumns = new Set<string>();
+	const packedByColumn = new Map<string, Detection>();
 	for (const col of data.columns) {
 		const detection = detectPackedHierarchy(col, valuesByColumn.get(col) ?? []);
-		if (detection) {
-			packed.push(detection);
-			packedColumns.add(col);
-		}
+		if (detection) packedByColumn.set(col, detection);
 	}
 
-	// --- Pass 2: parent-column (child column ⊆ an id column's value set) ---
-	const parents: Detection[] = [];
+	// --- Pass 2: level-column-chain (functional-dependency chain across columns) ---
+	// The single longest chain, if any. Its columns are "claimed" — excluded from
+	// facet/title candidacy below so a folder level isn't also proposed as a tag.
+	const chain = detectLevelColumnChain(data.columns, sampleRows, valuesByColumn, distinctnessByColumn, cardinalityByColumn);
+	const chainColumns = new Set<string>(chain ? chain.columns : []);
+
+	// --- Pass 3: parent-column (child column ⊆ an id column's value set) ---
+	const parents: Extract<Detection, { kind: 'parent-column' }>[] = [];
 	const parentColumns = new Set<string>();
 	for (const child of data.columns) {
 		if (idColumnSet.size === 0) break;
@@ -232,23 +417,84 @@ export function detectStructure(data: ParsedData, columns: ColumnInfo[]): Detect
 		}
 	}
 
-	// --- Pass 3: facet-candidate (low cardinality, not id/title/parent) ---
+	// --- Pass 4: edge-file (file-level classification: relationships, not concepts) ---
+	// Needs the parent detections (to tell a self-referential hierarchy from a
+	// crosswalk) and the average-length map (to spot a concept title).
+	const avgLengthByColumn = new Map<string, number>();
+	for (const col of data.columns) avgLengthByColumn.set(col, averageLength(valuesByColumn.get(col) ?? []));
+	const edgeFile = detectEdgeFile(
+		data.columns,
+		valuesByColumn,
+		sampleRows,
+		distinctnessByColumn,
+		cardinalityByColumn,
+		avgLengthByColumn,
+		parents,
+	);
+	// Suppression: an edge-file classification claims its subject/object id
+	// columns; a crosswalk file's subject ids must NOT propose folder nesting, so
+	// drop any packed-hierarchy proposals on the claimed id columns (spec §7d).
+	if (edgeFile) {
+		packedByColumn.delete(edgeFile.subjectColumn);
+		packedByColumn.delete(edgeFile.objectColumn);
+	}
+	const packed = data.columns.map((c) => packedByColumn.get(c)).filter((d): d is Detection => d !== undefined);
+	const packedColumns = new Set(packedByColumn.keys());
+
+	// --- Pass 5: multi-value-link (list-split cells hit another column's id set) ---
+	const multiLinks: Detection[] = [];
+	for (const col of data.columns) {
+		if (idColumnSet.size === 0) break;
+		for (const idCol of idColumns) {
+			if (col === idCol) continue;
+			const detection = detectMultiValueLink(col, idCol, valuesByColumn.get(col) ?? [], valuesByColumn.get(idCol) ?? []);
+			if (detection) {
+				multiLinks.push(detection);
+				break; // one id scheme per column
+			}
+		}
+	}
+
+	// --- Pass 6: row-type-discriminator (mixed-level file — UI flag only) ---
+	const discriminators = detectRowTypeDiscriminators(data.columns, sampleRows, distinctnessByColumn, cardinalityByColumn, rowCount);
+
+	// --- Pass 7: facet-candidate (low cardinality, not id/title/parent/chain) ---
 	const facets: Detection[] = [];
 	for (const col of data.columns) {
-		if (idColumnSet.has(col) || packedColumns.has(col) || parentColumns.has(col)) continue;
+		// Suppression: chain columns are claimed folder levels, not facets (spec §7d).
+		if (idColumnSet.has(col) || packedColumns.has(col) || parentColumns.has(col) || chainColumns.has(col)) continue;
 		const detection = detectFacet(col, valuesByColumn.get(col) ?? [], rowCount);
 		if (detection) facets.push(detection);
 	}
 
-	// --- Pass 4: title-candidate (high distinctness, non-numeric, not the id) ---
+	// --- Pass 8: body-candidate (long-text columns → body destination) ---
+	const bodies: Detection[] = [];
+	for (const col of data.columns) {
+		const detection = detectBody(col, valuesByColumn.get(col) ?? [], distinctnessByColumn.get(col) ?? 0, avgLengthByColumn.get(col) ?? 0);
+		if (detection) bodies.push(detection);
+	}
+
+	// --- Pass 9: title-candidate (high distinctness, non-numeric, not id/chain) ---
 	const titles: Detection[] = [];
 	for (const col of data.columns) {
 		if (packedColumns.has(col)) continue; // packed id columns are identity, not title
+		// Suppression: chain columns are claimed folder levels, not titles (spec §7d).
+		if (chainColumns.has(col)) continue;
 		const detection = detectTitle(col, valuesByColumn.get(col) ?? [], distinctnessByColumn.get(col) ?? 0, columnInfo.get(col));
 		if (detection) titles.push(detection);
 	}
 
-	return [...packed, ...parents, ...facets, ...titles];
+	return [
+		...packed,
+		...(chain ? [chain] : []),
+		...(edgeFile ? [edgeFile] : []),
+		...parents,
+		...multiLinks,
+		...discriminators,
+		...facets,
+		...bodies,
+		...titles,
+	];
 }
 
 // ============================================================================
@@ -413,7 +659,7 @@ function detectParentColumn(
 	idColumn: string,
 	childValues: string[],
 	idValues: string[],
-): Detection | null {
+): Extract<Detection, { kind: 'parent-column' }> | null {
 	if (childValues.length === 0 || idValues.length === 0) return null;
 	const idSet = new Set(idValues);
 	const sample = childValues.slice(0, PARENT_SAMPLE_LIMIT);
@@ -524,6 +770,452 @@ function detectTitle(
 }
 
 // ============================================================================
+// Level-column-chain detection (spec §7d)
+// ============================================================================
+
+/**
+ * Detect a hierarchy spread across separate columns (function, category,
+ * subcategory) — the CPRT/SCF shape. A parent column has fewer distinct values
+ * than its child, and the child's values map n:1 onto the parent's (functional
+ * dependency). We chain qualifying pairs into the single longest ordered path
+ * (fewer distinct → more distinct) and emit one detection with a fixed folder
+ * level per column.
+ *
+ * Row-alignment is required (which value co-occurs with which), so this reads
+ * `sampleRows`; on a streaming source (`sampleRows === null`) it no-ops.
+ */
+function detectLevelColumnChain(
+	columns: string[],
+	sampleRows: Record<string, string>[] | null,
+	valuesByColumn: Map<string, string[]>,
+	distinctnessByColumn: Map<string, number>,
+	cardinalityByColumn: Map<string, number>,
+): Extract<Detection, { kind: 'level-column-chain' }> | null {
+	if (!sampleRows || sampleRows.length === 0) return null;
+
+	// Candidate level columns: low-ish cardinality (values repeat), not near-unique.
+	const candidates = columns.filter((c) => {
+		const card = cardinalityByColumn.get(c) ?? 0;
+		const distinct = distinctnessByColumn.get(c) ?? 0;
+		return card >= 2 && (valuesByColumn.get(c)?.length ?? 0) > 0 && distinct <= LEVEL_CANDIDATE_MAX_DISTINCTNESS;
+	});
+	if (candidates.length < 2) return null;
+
+	// Order by cardinality ascending; source order breaks ties. Edges run strictly
+	// from lower-cardinality (parent) to higher-cardinality (child), so this is a
+	// DAG in list order and the longest path is a simple DP.
+	const sourceIndex = new Map(columns.map((c, i) => [c, i]));
+	const sorted = [...candidates].sort((a, b) => {
+		const d = (cardinalityByColumn.get(a) ?? 0) - (cardinalityByColumn.get(b) ?? 0);
+		return d !== 0 ? d : (sourceIndex.get(a) ?? 0) - (sourceIndex.get(b) ?? 0);
+	});
+
+	const n = sorted.length;
+	// dp[j] = length of the longest chain ending at sorted[j] as the child (deepest).
+	const dp = new Array<number>(n).fill(1);
+	const prev = new Array<number>(n).fill(-1);
+	// Cache pairwise FD agreement so we only compute each once.
+	const agreementCache = new Map<string, number>();
+	const fd = (child: string, parent: string): number => {
+		const key = `${child} ${parent}`;
+		let a = agreementCache.get(key);
+		if (a === undefined) {
+			a = functionalDependencyAgreement(sampleRows, child, parent);
+			agreementCache.set(key, a);
+		}
+		return a;
+	};
+
+	for (let j = 0; j < n; j++) {
+		for (let i = 0; i < j; i++) {
+			const parentCard = cardinalityByColumn.get(sorted[i]) ?? 0;
+			const childCard = cardinalityByColumn.get(sorted[j]) ?? 0;
+			if (parentCard >= childCard) continue; // need strictly fewer→more
+			if (fd(sorted[j], sorted[i]) < FD_AGREEMENT) continue;
+			if (dp[i] + 1 > dp[j]) {
+				dp[j] = dp[i] + 1;
+				prev[j] = i;
+			}
+		}
+	}
+
+	// Pick the longest chain; earliest end index breaks ties (determinism).
+	let best = 0;
+	for (let j = 1; j < n; j++) if (dp[j] > dp[best]) best = j;
+	if (dp[best] < 2) return null;
+
+	// Reconstruct parent→child.
+	const path: number[] = [];
+	for (let k = best; k !== -1; k = prev[k]) path.push(k);
+	path.reverse();
+	const chainCols = path.map((k) => sorted[k]);
+
+	const cardinalities: Record<string, number> = {};
+	for (const c of chainCols) cardinalities[c] = cardinalityByColumn.get(c) ?? 0;
+	const agreements: number[] = [];
+	for (let k = 0; k + 1 < chainCols.length; k++) {
+		agreements.push(round(fd(chainCols[k + 1], chainCols[k])));
+	}
+
+	// Receipts: up to 5 rendered "parent / … / child" sample paths (rows where the
+	// whole chain is present).
+	const sampleValues: string[] = [];
+	for (const row of sampleRows) {
+		if (chainCols.every((c) => row[c] !== '')) {
+			const path2 = chainCols.map((c) => row[c]).join(' / ');
+			if (!sampleValues.includes(path2)) sampleValues.push(path2);
+			if (sampleValues.length >= SAMPLE_VALUES) break;
+		}
+	}
+
+	return {
+		kind: 'level-column-chain',
+		columns: chainCols,
+		cardinalities,
+		agreements,
+		sampleValues,
+		proposal: { mechanism: 'fixed-folders', templates: chainCols.map((c) => `{${c}}`) },
+	};
+}
+
+/**
+ * Functional-dependency agreement of `childColumn → parentColumn`: over aligned
+ * rows where both are non-empty, group by the child value, take each group's
+ * dominant (most common) parent value, and return the fraction of rows that
+ * match their group's dominant parent. 1.0 = a clean n:1 dependency.
+ */
+function functionalDependencyAgreement(
+	rows: Record<string, string>[],
+	childColumn: string,
+	parentColumn: string,
+): number {
+	const byChild = new Map<string, Map<string, number>>();
+	let considered = 0;
+	for (const row of rows) {
+		const c = row[childColumn];
+		const p = row[parentColumn];
+		if (c === '' || c === undefined || p === '' || p === undefined) continue;
+		considered++;
+		let counts = byChild.get(c);
+		if (!counts) {
+			counts = new Map();
+			byChild.set(c, counts);
+		}
+		counts.set(p, (counts.get(p) ?? 0) + 1);
+	}
+	if (considered === 0) return 0;
+	let agree = 0;
+	for (const counts of byChild.values()) {
+		agree += Math.max(...counts.values());
+	}
+	return agree / considered;
+}
+
+// ============================================================================
+// Row-type-discriminator detection (spec §7d)
+// ============================================================================
+
+/**
+ * Detect a column that mixes hierarchy levels as rows: a low-cardinality column
+ * whose values name levels (mostly non-numeric) AND correlate with distinct
+ * column-fill patterns (per value, a materially different set of other columns
+ * is non-empty). "Materially different" = max pairwise Jaccard distance between
+ * the per-value fill-sets ≥ 0.3. Emits a UI-flag proposal only (no auto recipe).
+ *
+ * Requires row alignment (which columns each row fills), so reads `sampleRows`;
+ * no-ops on a streaming source.
+ */
+function detectRowTypeDiscriminators(
+	columns: string[],
+	sampleRows: Record<string, string>[] | null,
+	distinctnessByColumn: Map<string, number>,
+	cardinalityByColumn: Map<string, number>,
+	rowCount: number,
+): Detection[] {
+	if (!sampleRows || sampleRows.length === 0) return [];
+	const out: Detection[] = [];
+
+	for (const col of columns) {
+		const card = cardinalityByColumn.get(col) ?? 0;
+		if (card < 2 || card > DISCRIMINATOR_MAX_CARDINALITY) continue;
+		// A level *type* labels many rows: cardinality small relative to rows, so
+		// per-value groups average ≥ 2 (excludes 1-row-per-value id columns).
+		if (card > rowCount * DISCRIMINATOR_MAX_CARD_RATIO) continue;
+
+		// Group rows by this column's non-empty value.
+		const groups = new Map<string, Record<string, string>[]>();
+		let nonNumeric = 0;
+		let nonEmpty = 0;
+		for (const row of sampleRows) {
+			const v = row[col];
+			if (v === '' || v === undefined) continue;
+			nonEmpty++;
+			if (!isNumeric(v)) nonNumeric++;
+			let g = groups.get(v);
+			if (!g) {
+				g = [];
+				groups.set(v, g);
+			}
+			g.push(row);
+		}
+		if (groups.size < 2 || nonEmpty === 0) continue;
+		// Values must "look like level names" — mostly non-numeric.
+		if (nonNumeric / nonEmpty < DISCRIMINATOR_NONNUMERIC_MIN) continue;
+
+		// Fill-set per value: other columns non-empty in ≥ 50% of the group's rows.
+		const fillSets: { value: string; rowCount: number; filled: Set<string> }[] = [];
+		for (const [value, rows] of groups) {
+			const filled = new Set<string>();
+			for (const other of columns) {
+				if (other === col) continue;
+				let hits = 0;
+				for (const r of rows) if (r[other] !== '' && r[other] !== undefined) hits++;
+				if (hits / rows.length >= DISCRIMINATOR_FILL_MIN) filled.add(other);
+			}
+			fillSets.push({ value, rowCount: rows.length, filled });
+		}
+
+		// Max pairwise Jaccard distance between fill-sets.
+		let maxDistance = 0;
+		for (let i = 0; i < fillSets.length; i++) {
+			for (let j = i + 1; j < fillSets.length; j++) {
+				const dist = jaccardDistance(fillSets[i].filled, fillSets[j].filled);
+				if (dist > maxDistance) maxDistance = dist;
+			}
+		}
+		if (maxDistance < DISCRIMINATOR_JACCARD_MIN) continue;
+
+		out.push({
+			kind: 'row-type-discriminator',
+			column: col,
+			values: fillSets.map((f) => ({
+				value: f.value,
+				rowCount: f.rowCount,
+				filledColumns: [...f.filled].sort(),
+			})),
+			maxJaccardDistance: round(maxDistance),
+			sampleValues: [...groups.keys()].slice(0, SAMPLE_VALUES),
+			proposal: {
+				mechanism: 'flag-for-ui',
+				note: 'This column mixes hierarchy levels as rows. Confirm how to split it in the wizard.',
+			},
+		});
+	}
+	return out;
+}
+
+/** Jaccard distance between two string sets: 1 - |A∩B| / |A∪B| (empty∪empty → 0). */
+function jaccardDistance(a: Set<string>, b: Set<string>): number {
+	if (a.size === 0 && b.size === 0) return 0;
+	let intersection = 0;
+	for (const x of a) if (b.has(x)) intersection++;
+	const union = a.size + b.size - intersection;
+	return union === 0 ? 0 : 1 - intersection / union;
+}
+
+// ============================================================================
+// Edge-file detection (spec §7d)
+// ============================================================================
+
+/** An id-like value: a code token with a digit and no whitespace (T1055.011, GV.OC-01). */
+const ID_LIKE_RE = /^[A-Za-z0-9]+([._:-][A-Za-z0-9]+)*$/;
+/** A predicate-like value: a bare token or prefixed token (broader, skos:exactMatch). */
+const PREDICATE_LIKE_RE = /^[A-Za-z][A-Za-z0-9_]*(:[A-Za-z][A-Za-z0-9_]*)?$/;
+
+function isIdLikeValue(value: string): boolean {
+	if (value === '' || /\s/.test(value)) return false;
+	if (!/[0-9]/.test(value)) return false; // a pure word is a predicate/facet, not an id
+	return ID_LIKE_RE.test(value);
+}
+
+function isPredicateLikeValue(value: string): boolean {
+	if (value === '' || /\s/.test(value)) return false;
+	// A colon-namespaced token (skos:exactMatch) is fine even with no digit; a bare
+	// token with digits is an id, not a predicate.
+	if (/[0-9]/.test(value) && !value.includes(':')) return false;
+	return PREDICATE_LIKE_RE.test(value);
+}
+
+/**
+ * File-level classification: is the FILE relationships (SSSOM/crosswalks) rather
+ * than concepts? Fires when ≥2 columns are id-like (mostly id-pattern values),
+ * those two are NOT a self-referential hierarchy (no parent-column linking them),
+ * and no column reads as a concept title (a long near-unique label). Carries the
+ * subject/object/predicate guesses and confidences; no proposal (routes to the
+ * crosswalk import path later).
+ */
+function detectEdgeFile(
+	columns: string[],
+	valuesByColumn: Map<string, string[]>,
+	sampleRows: Record<string, string>[] | null,
+	distinctnessByColumn: Map<string, number>,
+	cardinalityByColumn: Map<string, number>,
+	avgLengthByColumn: Map<string, number>,
+	parents: Extract<Detection, { kind: 'parent-column' }>[],
+): Extract<Detection, { kind: 'edge-file' }> | null {
+	// id-like columns (by value pattern, not just distinctness — crosswalk subjects
+	// repeat, so distinctness alone would miss them).
+	const idLikeCols: { column: string; confidence: number }[] = [];
+	for (const col of columns) {
+		const values = valuesByColumn.get(col) ?? [];
+		if (values.length === 0 || (cardinalityByColumn.get(col) ?? 0) < 2) continue;
+		const fraction = values.reduce((n, v) => (isIdLikeValue(v) ? n + 1 : n), 0) / values.length;
+		if (fraction >= EDGE_ID_PATTERN_MIN) idLikeCols.push({ column: col, confidence: round(fraction) });
+	}
+	if (idLikeCols.length < 2) return null;
+
+	const subject = idLikeCols[0];
+	const object = idLikeCols[1];
+
+	// Suppression of a false positive: a self-referential hierarchy (id + parent_id)
+	// also has two id-like columns, but a parent-column detection links them. That
+	// is a hierarchy, not a crosswalk — do not classify as an edge-file.
+	const idLikeSet = new Set(idLikeCols.map((c) => c.column));
+	const hasHierarchyPair = parents.some((p) => idLikeSet.has(p.column) && idLikeSet.has(p.idColumn));
+	if (hasHierarchyPair) return null;
+
+	// Concept-shaped signal: a long, near-unique label means rows are concepts with
+	// names, not relationships. Its presence suppresses the edge-file classification.
+	const hasConceptTitle = columns.some(
+		(c) => (distinctnessByColumn.get(c) ?? 0) >= TITLE_DISTINCTNESS_MIN && (avgLengthByColumn.get(c) ?? 0) >= CONCEPT_TITLE_MIN_AVG_LEN,
+	);
+	if (hasConceptTitle) return null;
+
+	// Optional predicate column: low-cardinality, predicate-shaped, not an id column.
+	let predicateColumn: string | undefined;
+	let predicateConfidence: number | undefined;
+	for (const col of columns) {
+		if (col === subject.column || col === object.column) continue;
+		if ((cardinalityByColumn.get(col) ?? 0) > EDGE_PREDICATE_MAX_CARDINALITY) continue;
+		const values = valuesByColumn.get(col) ?? [];
+		if (values.length === 0) continue;
+		const fraction = values.reduce((n, v) => (isPredicateLikeValue(v) ? n + 1 : n), 0) / values.length;
+		if (fraction >= EDGE_PREDICATE_SHAPE_MIN) {
+			predicateColumn = col;
+			predicateConfidence = round(fraction);
+			break;
+		}
+	}
+
+	// Receipts: up to 5 "subject | predicate | object" tuples.
+	const sampleValues: string[] = [];
+	if (sampleRows) {
+		for (const row of sampleRows) {
+			const s = row[subject.column];
+			const o = row[object.column];
+			if (s === '' || s === undefined || o === '' || o === undefined) continue;
+			const p = predicateColumn ? row[predicateColumn] : '';
+			const tuple = predicateColumn ? `${s} | ${p} | ${o}` : `${s} | ${o}`;
+			if (!sampleValues.includes(tuple)) sampleValues.push(tuple);
+			if (sampleValues.length >= SAMPLE_VALUES) break;
+		}
+	}
+
+	return {
+		kind: 'edge-file',
+		subjectColumn: subject.column,
+		subjectConfidence: subject.confidence,
+		objectColumn: object.column,
+		objectConfidence: object.confidence,
+		...(predicateColumn ? { predicateColumn, predicateConfidence } : {}),
+		sampleValues,
+	};
+}
+
+// ============================================================================
+// Multi-value-link detection (spec §7d)
+// ============================================================================
+
+/**
+ * A multi-value link column holds several ids per cell (`related: T1055, T1548`).
+ * After list-splitting, the exploded values hit another column's id set at
+ * `matchRate` ≥ 0.6, and there is on average more than one value per non-empty
+ * cell — the "> 1" test is what separates it from the single-value parent-column
+ * (which matches raw whole-cell values). Proposes multiple edges per row.
+ */
+function detectMultiValueLink(
+	column: string,
+	idColumn: string,
+	columnValues: string[],
+	idValues: string[],
+): Detection | null {
+	if (columnValues.length === 0 || idValues.length === 0) return null;
+	const idSet = new Set(idValues);
+	let cells = 0;
+	let atoms = 0;
+	let matched = 0;
+	for (const cell of columnValues) {
+		const pieces = splitMultiValue(cell);
+		if (pieces.length === 0) continue;
+		cells++;
+		for (const p of pieces) {
+			atoms++;
+			if (idSet.has(p)) matched++;
+		}
+	}
+	if (cells === 0 || atoms === 0) return null;
+	const avgValuesPerCell = atoms / cells;
+	if (avgValuesPerCell <= MULTI_LINK_AVG_MIN) return null; // single-value → parent-column's job
+	const matchRate = matched / atoms;
+	if (matchRate < MULTI_LINK_MATCH_MIN) return null;
+	return {
+		kind: 'multi-value-link',
+		column,
+		idColumn,
+		matchRate: round(matchRate),
+		avgValuesPerCell: round(avgValuesPerCell),
+		sampleValues: columnValues.slice(0, SAMPLE_VALUES),
+		proposal: {
+			parentColumn: column,
+			idColumn,
+			frontmatterKey: 'related',
+			predicate: 'skos:related',
+		},
+	};
+}
+
+// ============================================================================
+// Body-candidate detection (spec §7d)
+// ============================================================================
+
+/**
+ * A long-text column belongs in the note body. Fires when the average value is
+ * long (≥ 200 chars) OR medium (≥ 80 chars) and reads as prose (sentence
+ * punctuation in ≥ 60% of samples), with high distinctness (body text is mostly
+ * one-per-row, which separates it from a repeated facet label).
+ */
+function detectBody(column: string, values: string[], distinctness: number, avgLength: number): Detection | null {
+	if (values.length === 0) return null;
+	if (distinctness < BODY_DISTINCTNESS_MIN) return null;
+	const punctCount = values.reduce((n, v) => (/[.!?]/.test(v) ? n + 1 : n), 0);
+	const punctFraction = punctCount / values.length;
+	const isLong = avgLength >= BODY_AVG_LONG;
+	const isProse = avgLength >= BODY_AVG_MEDIUM && punctFraction >= BODY_PUNCT_MIN;
+	if (!isLong && !isProse) return null;
+	return {
+		kind: 'body-candidate',
+		column,
+		avgLength: round(avgLength),
+		distinctness: round(distinctness),
+		sampleValues: values.slice(0, SAMPLE_VALUES).map(truncateSample),
+		proposal: { destination: 'body' },
+	};
+}
+
+/** Truncate a long body value for receipt display. */
+function truncateSample(value: string): string {
+	return value.length <= BODY_SAMPLE_MAXLEN ? value : value.slice(0, BODY_SAMPLE_MAXLEN) + '...';
+}
+
+/** Mean character length over non-empty values (0 for an empty column). */
+function averageLength(values: string[]): number {
+	if (values.length === 0) return 0;
+	let total = 0;
+	for (const v of values) total += v.length;
+	return total / values.length;
+}
+
+// ============================================================================
 // Shared helpers
 // ============================================================================
 
@@ -553,6 +1245,27 @@ function collectColumnValues(data: ParsedData, columns: ColumnInfo[]): Map<strin
 				if (s !== '') list.push(s);
 			}
 		}
+	}
+	return out;
+}
+
+/**
+ * Materialize aligned, normalized sample rows (empties preserved as '') for the
+ * cross-column detectors that need to know which values co-occur — chain FD,
+ * discriminator fill-patterns, edge tuples. Capped at `ROW_SAMPLE_LIMIT`.
+ *
+ * Returns null for a streaming source: an `AsyncIterable` can't be scanned
+ * synchronously, and the per-column sample on `ColumnInfo` isn't row-aligned, so
+ * the cross-column detectors simply no-op there (spec §2).
+ */
+function collectSampleRows(data: ParsedData): Record<string, string>[] | null {
+	if (!isEagerRows(data.rows)) return null;
+	const out: Record<string, string>[] = [];
+	for (const row of data.rows) {
+		const normalized: Record<string, string> = {};
+		for (const col of data.columns) normalized[col] = normalize(row[col]);
+		out.push(normalized);
+		if (out.length >= ROW_SAMPLE_LIMIT) break;
 	}
 	return out;
 }
