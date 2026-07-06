@@ -115,7 +115,7 @@ The main session runs the strongest available model (Fable 5, or Opus 4.8 for ea
 | Layer | Model | Work |
 |---|---|---|
 | **Architect** (main session) | Fable 5 / Opus 4.8 | The hard ontological/data-model problems; specs + schema deltas; pseudocode skeletons; design decisions (captured in `.workspace/` design docs → `zz-log/`); reviewing delegated diffs; deciding what to delegate |
-| **Implementation** (subagents) | `sonnet` (default) or `opus` (mid-difficulty judgment work) | Mechanical implementation against a written spec; test authoring; themed commit batches; corpus/code surveys; doc sweeps |
+| **Implementation** (subagents) | **Match the tier to the task's difficulty** — `sonnet` for fully-specified mechanical work (surveys, batch commits, sweeps, spec-exact implementation); `opus` when the work needs judgment (ambiguous integration, design-adjacent implementation, KB writing) | Implementation against a written spec; test authoring; themed commit batches; corpus/code surveys; doc sweeps |
 
 **The loop:** architect writes the spec (dated `.workspace/` design doc: exact semantics, worked examples, acceptance cases) → subagent implements exactly to spec, **no commits** → architect reviews the diff, runs the gates, commits. (Exception: pure git-chunking tasks may commit on a side branch; nothing is ever pushed by a subagent.)
 
