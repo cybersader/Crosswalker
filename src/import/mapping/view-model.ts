@@ -417,3 +417,121 @@ export function structuralEqual(a: unknown, b: unknown): boolean {
 
 /** Re-export so callers building matrices need the same default policy value. */
 export { DEFAULT_MISSING };
+
+// ============================================================================
+// Review-screen helpers (spec §7j) — pure, unit-tested
+// ============================================================================
+
+/**
+ * The default vault destination for an import (spec §7j #2). An explicit
+ * `outputPath` setting wins; otherwise derive `Frameworks/<source basename>`
+ * from the source file name (extension stripped). An empty / unknown source
+ * falls back to a stable `Frameworks/Imported` so the field is never blank.
+ */
+export function deriveDestinationDefault(outputPath: string, sourceFileName: string | null | undefined): string {
+	const explicit = (outputPath ?? '').trim();
+	if (explicit) return explicit;
+	const base = basenameNoExt(sourceFileName ?? '');
+	return base ? `Frameworks/${base}` : 'Frameworks/Imported';
+}
+
+/** Strip directory + extension from a file name, leaving the trimmed stem. */
+function basenameNoExt(fileName: string): string {
+	const name = fileName.split(/[\\/]/).pop() ?? '';
+	const dot = name.lastIndexOf('.');
+	const stem = dot > 0 ? name.slice(0, dot) : name;
+	return stem.trim();
+}
+
+/** Where an applied mapping came from (spec §7j #3). */
+export type ProvenanceOrigin = 'built-in' | 'yours' | 'custom';
+
+export interface Provenance {
+	origin: ProvenanceOrigin;
+	/** Short badge text: "Built-in" | "Yours" | "Custom (based on X)". */
+	badge: string;
+	/** True when this is the detection-recommended default (adds a Recommended tag). */
+	recommended: boolean;
+	/** One-line step-3 summary, e.g. "Browsable framework · built-in preset · unmodified". */
+	line: string;
+}
+
+export interface ProvenanceInput {
+	presetLabel: string;
+	isBuiltIn: boolean;
+	unmodified: boolean;
+	recommended: boolean;
+	appliedConfigName?: string | null;
+}
+
+/**
+ * Derive the provenance badge + line for a preset/config surface (spec §7j #3).
+ *   - a user-saved config that was applied reads as "Yours" (whatever the preset);
+ *   - an unmodified built-in preset reads as "Built-in" (and may be Recommended);
+ *   - anything edited off a preset reads as "Custom (based on <name>)".
+ */
+export function deriveProvenance(input: ProvenanceInput): Provenance {
+	const { presetLabel, isBuiltIn, unmodified, recommended, appliedConfigName } = input;
+	if (appliedConfigName) {
+		return {
+			origin: 'yours',
+			badge: 'Yours',
+			recommended: false,
+			line: `${appliedConfigName} · your saved config${unmodified ? '' : ' · edited'}`,
+		};
+	}
+	if (unmodified && isBuiltIn) {
+		return {
+			origin: 'built-in',
+			badge: 'Built-in',
+			recommended,
+			line: `${presetLabel} · built-in preset · unmodified`,
+		};
+	}
+	return {
+		origin: 'custom',
+		badge: `Custom (based on ${presetLabel})`,
+		recommended: false,
+		line: `${presetLabel} · custom · edited`,
+	};
+}
+
+/** One row of the step-3 shape-map recap table (spec §7j #1). */
+export interface ShapeMapRecapRow {
+	from: string;
+	becomes: string;
+	count: string;
+}
+
+/**
+ * Assemble the shape-map recap rows: a header row ("Each row → Notes, one per
+ * row → N") followed by one row per non-empty mapping (its source columns → the
+ * vault shapes it lands as). Pure — the wizard just renders these to a table.
+ */
+export function buildShapeMapRecap(mapping: ImportMapping, totalRows: number): ShapeMapRecapRow[] {
+	const rows: ShapeMapRecapRow[] = [{
+		from: 'Each row',
+		becomes: 'Notes, one per row',
+		count: totalRows.toLocaleString(),
+	}];
+	for (const m of mapping.mappings) {
+		const cards = deriveShapeCards(m);
+		const shapes = SHAPE_CARDS.filter((c) => cards[c.id] !== 'off').map((c) => c.label.toLowerCase());
+		if (shapes.length === 0) continue;
+		rows.push({ from: mappingColumnsLabel(m), becomes: shapes.join(', '), count: '-' });
+	}
+	return rows;
+}
+
+/** Up to three source columns (or literals) a mapping draws from — the recap "from" cell. */
+function mappingColumnsLabel(m: StructureMapping): string {
+	const cols = new Set<string>();
+	const collect = (source: LevelSource) => {
+		for (const ref of toSourceRefs(source)) {
+			cols.add(isConstantRef(ref) ? `"${ref.constant}"` : ref.column);
+		}
+	};
+	for (const l of m.levels) collect(l.source);
+	if (m.tail) collect(m.tail.source);
+	return [...cols].slice(0, 3).join(', ') || 'mapping';
+}

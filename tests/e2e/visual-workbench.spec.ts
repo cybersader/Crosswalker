@@ -51,23 +51,30 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		mkdirSync(OUT, { recursive: true });
 		// Let the (heavy) test vault finish its initial index before driving UI.
 		await browser.pause(6000);
-		// Enable the beta workbench on the live plugin.
+		// Enable the beta workbench on the live plugin. Also disable the config
+		// suggestion + draft features so the step-1 → step-2 advance is deterministic:
+		// a vault with saved configs would otherwise show a suggestion banner after
+		// parse and hold the wizard on step 1 (unrelated to what this spec verifies).
 		await browser.executeObsidian(async ({ app }) => {
 			// @ts-expect-error — internal plugins API
 			const plugin = app.plugins.plugins['crosswalker'];
 			plugin.settings.enableShapeWorkbench = true;
+			plugin.settings.enableConfigSuggestions = false;
+			plugin.settings.enableDraftSessions = false;
 			await plugin.saveSettings();
 		});
 	});
 
 	after(async () => {
-		// Close modal + restore the setting to its default (off).
+		// Close modal + restore the changed settings to their defaults.
 		await browser.executeObsidian(async ({ app }) => {
 			document.querySelector<HTMLElement>('.modal-close-button')?.click();
 			// @ts-expect-error — internal plugins API
 			const plugin = app.plugins.plugins['crosswalker'];
 			if (plugin) {
 				plugin.settings.enableShapeWorkbench = false;
+				plugin.settings.enableConfigSuggestions = true;
+				plugin.settings.enableDraftSessions = true;
 				await plugin.saveSettings();
 			}
 		});
@@ -239,6 +246,44 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		if (preview.ok) {
 			expect(preview.hasTree).toBe(true);
 			expect(preview.treeText).toContain('T1055');
+		}
+
+		// -- Stage F: advance to Step 3 → the new review screen (spec §7j #1).
+		//    Destination block + shape-map recap + stat chips + provenance line;
+		//    NO workbench re-render.
+		const review = await browser.executeObsidian(async () => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const modal = document.querySelector('.modal');
+			if (!modal) return { ok: false as const };
+			const next = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
+			if (!next) return { ok: false as const, reason: 'NO_NEXT' };
+			(next as HTMLButtonElement).click();
+			await sleep(800);
+			const prov = modal.querySelector('.crosswalker-provenance');
+			return {
+				ok: true as const,
+				h3: modal.querySelector('h3')?.textContent ?? '',
+				hasDest: !!modal.querySelector('.crosswalker-dest-block'),
+				hasReveal: !!modal.querySelector('.crosswalker-dest-reveal'),
+				destPath: modal.querySelector('.crosswalker-dest-crumb')?.textContent ?? '',
+				hasRecap: !!modal.querySelector('.crosswalker-shape-map'),
+				hasProvenance: !!prov,
+				provText: prov?.textContent ?? '',
+				hasBadge: !!modal.querySelector('.crosswalker-prov-badge'),
+				// The review screen must NOT re-render the live workbench (spec §7j #1).
+				workbenchPresent: !!modal.querySelector('.crosswalker-workbench'),
+			};
+		});
+		console.log('[workbench] review → ' + JSON.stringify(review));
+		await browser.saveScreenshot(path.join(OUT, 'wb-05-review.png'));
+		expect(review.ok).toBe(true);
+		if (review.ok) {
+			expect(review.hasDest).toBe(true);
+			expect(review.hasReveal).toBe(true);
+			expect(review.hasRecap).toBe(true);
+			expect(review.hasProvenance).toBe(true);
+			expect(review.hasBadge).toBe(true);
+			expect(review.workbenchPresent).toBe(false);
 		}
 	});
 });

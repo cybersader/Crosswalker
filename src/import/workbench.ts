@@ -24,7 +24,7 @@
 import type { ParsedData, ColumnInfo } from '../types/config';
 import { isEagerRows } from '../types/config';
 import type { Detection } from './detection';
-import { detectStructure } from './detection';
+import { detectStructure, defaultDestinationForColumn } from './detection';
 import type { DebugLog } from '../utils/debug';
 import {
 	render,
@@ -62,9 +62,19 @@ import {
 	mergeRows,
 	splitRow,
 	isUnmodifiedPreset,
+	deriveProvenance,
 	destKey,
 	type ShapeCardId,
+	type Provenance,
 } from './mapping/view-model';
+
+/** Render the provenance badge(s) for a preset/config surface (spec §7j #3). */
+export function renderProvenanceBadge(parent: HTMLElement, prov: Provenance): void {
+	parent.createSpan({ cls: `crosswalker-prov-badge is-${prov.origin}`, text: prov.badge });
+	if (prov.recommended) {
+		parent.createSpan({ cls: 'crosswalker-prov-badge is-recommended', text: 'Recommended' });
+	}
+}
 
 /** Per-column destination in the demoted "all columns" table (spec §3b). */
 type ColumnDest = 'property' | 'tag' | 'body' | 'title' | 'alias' | 'link' | 'skip';
@@ -108,6 +118,9 @@ const SHAPE_CARD_COPY: Record<ShapeCardId, { icon: string; afford: string; whisp
 };
 
 const PREVIEW_ROW_LIMIT = 20;
+
+/** How many sample notes the preview tree renders as clickable rows. */
+const TREE_ROW_LIMIT = 12;
 
 export interface WorkbenchOptions {
 	parsedData: ParsedData;
@@ -177,6 +190,22 @@ export class MappingWorkbench {
 		return this.mapping;
 	}
 
+	/**
+	 * Provenance of the current mapping (spec §7j #3) — feeds the preset badge in
+	 * the canvas and the step-3 provenance line. `appliedConfigName` is the name of
+	 * a user-saved config in effect (from the wizard), if any.
+	 */
+	provenance(appliedConfigName: string | null = null): Provenance {
+		const preset = this.currentPreset();
+		return deriveProvenance({
+			presetLabel: preset.label ?? preset.preset,
+			isBuiltIn: !!getBuiltInPreset(this.presetId),
+			unmodified: isUnmodifiedPreset(this.mapping, preset, this.activeDetections()),
+			recommended: this.presetId === this.opts.defaultPresetId,
+			appliedConfigName,
+		});
+	}
+
 	// =========================================================================
 	// Recipe assembly (shape mappings + the demoted column layer)
 	// =========================================================================
@@ -229,9 +258,24 @@ export class MappingWorkbench {
 
 	/** Columns the user routed to the note body — fed to the legacy body path at generate time. */
 	getLegacyBodyMappings(): { column: string; heading: string }[] {
+		// The primary body column (a detected body-candidate) becomes the clean
+		// document body: H1 + plain prose, no '## <key>' section heading. Secondary
+		// body columns keep their key as a section heading so several bodies stay
+		// distinguishable.
+		const bodyCandidates = new Set<string>();
+		for (const d of this.activeDetections()) {
+			if (d.kind === 'body-candidate') bodyCandidates.add(d.column);
+		}
 		const out: { column: string; heading: string }[] = [];
+		let primaryUsed = false;
 		for (const [col, dest] of this.columnDests) {
-			if (dest === 'body') out.push({ column: col, heading: this.keyOf(col) });
+			if (dest !== 'body') continue;
+			if (!primaryUsed && bodyCandidates.has(col)) {
+				out.push({ column: col, heading: '' });
+				primaryUsed = true;
+			} else {
+				out.push({ column: col, heading: this.keyOf(col) });
+			}
 		}
 		return out;
 	}
@@ -426,14 +470,20 @@ export class MappingWorkbench {
 		presetBar.createSpan({ text: 'Preset' });
 		const presetSel = presetBar.createEl('select', { cls: 'dropdown' });
 		for (const [id, preset] of Object.entries(BUILT_IN_PRESETS)) {
-			presetSel.createEl('option', { text: preset.label ?? id, attr: { value: id } });
+			// Provenance tags in the option labels (spec §7j #3): built-in, and the
+			// default preset is called out as recommended.
+			const tags = [
+				'built-in',
+				...(id === this.opts.defaultPresetId ? ['recommended'] : []),
+			];
+			presetSel.createEl('option', { text: `${preset.label ?? id} · ${tags.join(' · ')}`, attr: { value: id } });
 		}
 		presetSel.value = this.presetId;
 		presetSel.addEventListener('change', () => {
 			this.presetId = presetSel.value;
 			this.reinstantiate();
 		});
-		presetBar.createSpan({ cls: 'crosswalker-wb-preset-label', text: this.presetLabel() });
+		renderProvenanceBadge(presetBar, this.provenance());
 
 		// One card per mapping.
 		if (this.mapping.mappings.length === 0) {
@@ -702,25 +752,32 @@ export class MappingWorkbench {
 			return;
 		}
 
-		// Folder tree from the sample addresses.
-		const tree = rail.createEl('pre', { cls: 'crosswalker-wb-tree' });
-		tree.setText(this.buildTree(preview.addresses));
-
-		// One selected note.
+		// One selected note. Default selection = the first file (spec §7j #4).
 		const addrs = preview.addresses;
+		if (addrs.length) this.selectedNoteRow = Math.min(this.selectedNoteRow, addrs.length - 1);
+
+		// Folder tree from the sample addresses — clickable file rows select the
+		// note previewed below (spec §7j #4: the tree IS the selector, no pager).
+		const tree = rail.createDiv({ cls: 'crosswalker-wb-tree' });
+		for (const node of this.buildTreeNodes(addrs)) {
+			const row = tree.createDiv({
+				cls: 'crosswalker-wb-tree-row'
+					+ (node.isFile ? ' is-file' : '')
+					+ (node.isFile && node.addrIndex === this.selectedNoteRow ? ' is-selected' : ''),
+			});
+			row.style.paddingLeft = `${node.depth * 14}px`;
+			row.createSpan({ text: node.isFile ? node.label : `📁 ${node.label}/` });
+			if (node.isFile) {
+				const idx = node.addrIndex;
+				row.addEventListener('click', () => { this.selectedNoteRow = idx; this.scheduleRerender(); });
+			}
+		}
+		if (addrs.length > TREE_ROW_LIMIT) tree.createDiv({ cls: 'crosswalker-wb-tree-row crosswalker-muted', text: '… and more' });
+
 		if (addrs.length) {
-			this.selectedNoteRow = Math.min(this.selectedNoteRow, addrs.length - 1);
 			const note = rail.createDiv({ cls: 'crosswalker-wb-note' });
 			note.createDiv({ cls: 'crosswalker-wb-note-title', text: `📄 ${this.basename(addrs[this.selectedNoteRow].address.primary.path)}` });
 			note.createEl('pre', { cls: 'crosswalker-wb-mini', text: this.describeFrontmatter(addrs[this.selectedNoteRow].address) });
-			if (addrs.length > 1) {
-				const nav = rail.createDiv({ cls: 'crosswalker-wb-note-nav' });
-				const prev = nav.createEl('button', { text: 'Previous' });
-				prev.addEventListener('click', () => { this.selectedNoteRow = (this.selectedNoteRow - 1 + addrs.length) % addrs.length; this.scheduleRerender(); });
-				nav.createSpan({ text: `Row ${this.selectedNoteRow + 1} of ${addrs.length}` });
-				const next = nav.createEl('button', { text: 'Next' });
-				next.addEventListener('click', () => { this.selectedNoteRow = (this.selectedNoteRow + 1) % addrs.length; this.scheduleRerender(); });
-			}
 		}
 
 		// Deviation banner (reuses the render report summary).
@@ -778,18 +835,13 @@ export class MappingWorkbench {
 		this.applyChange();
 	}
 
-	private presetLabel(): string {
-		const preset = this.currentPreset();
-		const name = preset.label ?? preset.preset;
-		return isUnmodifiedPreset(this.mapping, preset, this.activeDetections())
-			? name
-			: `Custom (based on ${name})`;
-	}
-
 	private seedColumnDests(): void {
 		const structural = this.structuralColumns();
+		const detections = this.activeDetections();
 		for (const col of this.opts.parsedData.columns) {
-			this.columnDests.set(col, structural.has(col) ? 'skip' : 'property');
+			// Long-text (body-candidate) columns default to the note body; other
+			// non-structural columns default to a frontmatter property.
+			this.columnDests.set(col, structural.has(col) ? 'skip' : defaultDestinationForColumn(col, detections));
 		}
 	}
 
@@ -1045,23 +1097,34 @@ export class MappingWorkbench {
 		return lines.length > 2 ? lines.join('\n') : '';
 	}
 
-	private buildTree(addresses: { row: number; address: Address }[]): string {
-		const paths = addresses.map((a) => this.withBase(a.address.primary.path)).filter(Boolean).slice(0, 12);
+	/**
+	 * Build the preview tree as structured nodes (spec §7j #4). Folders are
+	 * de-duplicated by their cumulative prefix; every file row carries the index of
+	 * its address so a click can select that note. `addrIndex` for folders is -1.
+	 */
+	private buildTreeNodes(
+		addresses: { row: number; address: Address }[],
+	): { depth: number; label: string; isFile: boolean; addrIndex: number }[] {
 		const seen = new Set<string>();
-		const lines: string[] = [];
-		for (const p of paths) {
-			const parts = p.split('/');
+		const nodes: { depth: number; label: string; isFile: boolean; addrIndex: number }[] = [];
+		addresses.slice(0, TREE_ROW_LIMIT).forEach((entry, ai) => {
+			const full = this.withBase(entry.address.primary.path);
+			if (!full) return;
+			const parts = full.split('/');
 			let prefix = '';
 			parts.forEach((part, depth) => {
 				prefix += (prefix ? '/' : '') + part;
-				if (seen.has(prefix)) return;
-				seen.add(prefix);
 				const isFile = depth === parts.length - 1;
-				lines.push(`${'  '.repeat(depth)}${isFile ? '' : '📁 '}${part}${isFile ? '' : '/'}`);
+				if (!isFile) {
+					if (seen.has(prefix)) return;
+					seen.add(prefix);
+					nodes.push({ depth, label: part, isFile: false, addrIndex: -1 });
+				} else {
+					nodes.push({ depth, label: part, isFile: true, addrIndex: ai });
+				}
 			});
-		}
-		if (addresses.length > paths.length) lines.push(`… and more`);
-		return lines.join('\n') || '(no output)';
+		});
+		return nodes;
 	}
 
 	private basename(path: string): string {

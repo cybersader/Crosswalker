@@ -1893,12 +1893,79 @@
 .crosswalker-wb-addmapping select { width: 100%; }
 
 /* -- vault preview rail -- */
-.crosswalker-wb-tree { font-size: 0.74em; line-height: 1.55; white-space: pre-wrap; word-break: break-word; margin: 0 0 0.6em; }
+.crosswalker-wb-tree { font-size: 0.74em; line-height: 1.55; margin: 0 0 0.6em; }
+/* Clickable file rows select the previewed note (spec §7j #4) — folders inert. */
+.crosswalker-wb-tree-row { padding: 0.05em 0.25em; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crosswalker-wb-tree-row.is-file { cursor: pointer; }
+.crosswalker-wb-tree-row.is-file:hover { background: var(--background-modifier-hover); }
+.crosswalker-wb-tree-row.is-selected { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); color: var(--text-accent); font-weight: 600; }
 .crosswalker-wb-note { margin: 0.4em 0; }
 .crosswalker-wb-note-title { font-size: 0.8em; font-weight: 600; margin-bottom: 0.25em; }
-.crosswalker-wb-note-nav { display: flex; align-items: center; gap: 0.5em; font-size: 0.74em; color: var(--text-muted); margin: 0.3em 0; }
-.crosswalker-wb-note-nav button { border: 1px solid var(--background-modifier-border); background: var(--background-secondary); border-radius: 4px; padding: 0 0.4em; cursor: pointer; }
 
 .crosswalker-shape-map { width: 100%; border-collapse: collapse; font-size: 0.85em; margin: 0.5em 0; }
 .crosswalker-shape-map th { text-align: left; font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 1px solid var(--background-modifier-border); padding: 0.35em 0.5em; }
 .crosswalker-shape-map td { padding: 0.4em 0.5em; border-bottom: 1px solid var(--background-modifier-border); }
+
+/* ============================================================================
+   Step-2 header hint + step-3 review screen (spec §7j)
+   ============================================================================ */
+
+/* Consistent vertical rhythm: subtitle sits tight under the h3, the dismissible
+   hint is a single de-emphasized line (spec §7j #5). */
+.crosswalker-wb-subtitle { margin: 0.2em 0 0.6em; }
+.crosswalker-wb-hint {
+	display: flex; align-items: center; gap: 0.5em;
+	font-size: 0.82em; color: var(--text-muted);
+	background: var(--background-secondary); border: 1px solid var(--background-modifier-border);
+	border-radius: 6px; padding: 0.35em 0.6em; margin: 0 0 0.9em;
+}
+.crosswalker-wb-hint-text { flex: 1; }
+.crosswalker-wb-hint-x { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.85em; padding: 0 0.2em; }
+.crosswalker-wb-hint-x:hover { color: var(--text-normal); }
+
+/* Destination block (spec §7j #2) — prominent, breadcrumb path + reveal button. */
+.crosswalker-dest-block {
+	border: 1px solid var(--background-modifier-border); border-radius: 8px;
+	padding: 0.7em 0.8em; margin: 0.4em 0 1em; background: var(--background-secondary);
+}
+.crosswalker-dest-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6em; margin-bottom: 0.45em; }
+.crosswalker-dest-label { font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+.crosswalker-dest-reveal {
+	border: 1px solid var(--background-modifier-border); background: var(--background-primary);
+	color: var(--text-muted); border-radius: 5px; padding: 0.2em 0.7em; font-size: 0.78em; cursor: pointer;
+}
+.crosswalker-dest-reveal:hover { color: var(--text-normal); border-color: var(--interactive-accent); }
+.crosswalker-dest-pathwrap { display: flex; }
+.crosswalker-dest-crumb {
+	display: inline-flex; align-items: center; gap: 0.15em; flex-wrap: wrap;
+	border: 1px solid transparent; background: var(--background-primary);
+	border-radius: 6px; padding: 0.35em 0.6em; cursor: pointer;
+	font-family: var(--font-monospace); font-size: 0.95em; color: var(--text-normal);
+	text-align: left;
+}
+.crosswalker-dest-crumb:hover { border-color: var(--background-modifier-border); }
+.crosswalker-dest-seg { color: var(--text-normal); }
+.crosswalker-dest-sep { color: var(--text-faint); margin: 0 0.05em; }
+.crosswalker-dest-editicon { color: var(--text-faint); margin-left: 0.4em; font-size: 0.85em; }
+.crosswalker-dest-input {
+	width: 100%; font-family: var(--font-monospace); font-size: 0.95em;
+	padding: 0.35em 0.6em; border-radius: 6px;
+}
+
+/* Provenance line + badges (spec §7j #3). */
+.crosswalker-provenance { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35em; font-size: 0.85em; color: var(--text-muted); margin: 0.8em 0 0.2em; }
+.crosswalker-provenance-lead { color: var(--text-muted); }
+.crosswalker-provenance-text { color: var(--text-normal); }
+.crosswalker-prov-badge {
+	display: inline-flex; align-items: center; font-size: 0.72em; font-weight: 600;
+	border-radius: 99px; padding: 0.1em 0.55em; letter-spacing: 0.02em;
+	border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: var(--background-primary);
+}
+.crosswalker-prov-badge.is-built-in { border-color: var(--interactive-accent); color: var(--text-accent); }
+.crosswalker-prov-badge.is-yours { border-color: var(--color-green, var(--interactive-accent)); color: var(--color-green, var(--text-accent)); }
+.crosswalker-prov-badge.is-custom { border-color: var(--text-warning); color: var(--text-warning); }
+.crosswalker-prov-badge.is-recommended { border-color: var(--interactive-accent); color: var(--text-on-accent); background: var(--interactive-accent); }
+
+/* Step-4 read-only destination confirm (workbench mode). */
+.crosswalker-gen-confirm { font-size: 0.9em; margin: 0.4em 0 0.9em; color: var(--text-muted); }
+.crosswalker-gen-confirm-lead { color: var(--text-muted); }

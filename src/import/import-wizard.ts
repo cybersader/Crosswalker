@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, normalizePath, TFile } from 'obsidian';
+import { App, Modal, Setting, Notice, normalizePath, TFile, TFolder } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
@@ -30,9 +30,9 @@ import {
 	resolveDraftSource,
 	type WizardDraft,
 } from './draft-store';
-import { MappingWorkbench } from './workbench';
+import { MappingWorkbench, renderProvenanceBadge } from './workbench';
 import type { ImportMapping } from './mapping/types';
-import { SHAPE_CARDS, deriveShapeCards } from './mapping/view-model';
+import { buildShapeMapRecap, deriveDestinationDefault } from './mapping/view-model';
 
 /**
  * Import Wizard Modal
@@ -80,6 +80,11 @@ export class ImportWizardModal extends Modal {
 	 *  workbench (draft resume, spec §7i). Consumed once by renderStep2_Workbench,
 	 *  then cleared so later rebuilds re-instantiate from detections. */
 	private pendingWorkbenchMapping: ImportMapping | null = null;
+
+	/** Step-3 destination breadcrumb is in inline-edit mode (spec §7j #2). */
+	private destEditing: boolean = false;
+	/** The step-2 workbench one-line hint has been dismissed for the session (spec §7j #5). */
+	private workbenchHintDismissed: boolean = false;
 
 	// Output settings (captured from Step 4)
 	outputPath: string = '';
@@ -1074,9 +1079,20 @@ export class ImportWizardModal extends Modal {
 		}
 		container.createEl('h3', { text: 'Map the shapes' });
 		container.createEl('p', {
-			text: 'Detect the shapes in your source, pick how they land in the vault, and watch the preview update live. Accept the defaults for a good vault, or open a mapping to fine-tune.',
-			cls: 'setting-item-description',
+			text: 'Pick how each detected shape lands in your vault.',
+			cls: 'setting-item-description crosswalker-wb-subtitle',
 		});
+		// The longer explainer is a dismissible one-line hint (spec §7j #5), so the
+		// header stays a single title + subtitle after the first read.
+		if (!this.workbenchHintDismissed) {
+			const hint = container.createEl('div', { cls: 'crosswalker-wb-hint' });
+			hint.createEl('span', {
+				cls: 'crosswalker-wb-hint-text',
+				text: 'Accept the defaults for a good vault, or open a mapping to fine-tune. The preview on the right updates live.',
+			});
+			const x = hint.createEl('button', { cls: 'crosswalker-wb-hint-x', text: '✕', attr: { 'aria-label': 'Dismiss hint' } });
+			x.addEventListener('click', () => { this.workbenchHintDismissed = true; this.renderStep(); });
+		}
 
 		const sig = this.parsedData.columns.join('|');
 		if (!this.workbench || this.workbench.columnsSignature() !== sig) {
@@ -1100,20 +1116,42 @@ export class ImportWizardModal extends Modal {
 		this.workbench.render(container.createDiv());
 	}
 
-	/** Step 3 in workbench mode: review the mapping's live output before generate. */
+	/**
+	 * Step 3 in workbench mode: a true review screen (spec §7j #1). No workbench
+	 * re-render — a focused read-only recap that answers WHERE / WHAT / WHY at a
+	 * glance: destination block → shape-map recap → headline stats → deviation
+	 * banner → provenance line.
+	 */
 	private renderStep3_WorkbenchReview(container: HTMLElement): void {
-		container.createEl('h3', { text: 'Review the vault' });
+		container.createEl('h3', { text: 'Review and confirm' });
 		container.createEl('p', {
-			text: 'This is your own data rendered through the shape map. Check the structure, then generate.',
+			text: 'Where it lands, what gets made, and why these settings. Change anything, then generate.',
 			cls: 'setting-item-description',
 		});
 		if (!this.workbench) {
 			container.createEl('p', { text: 'Go back and configure the mapping first.' });
 			return;
 		}
-		const preview = this.workbench.computePreview();
 
-		// Estimate stat cards.
+		// (a) Destination block — WHERE.
+		this.renderDestinationBlock(container);
+
+		// (b) Shape-map recap table (moved here from step 4) — WHAT.
+		container.createEl('h4', { text: 'Your shape map' });
+		const recap = buildShapeMapRecap(this.workbench.getMapping(), this.parsedData?.rowCount ?? 0);
+		const table = container.createEl('table', { cls: 'crosswalker-shape-map' });
+		const thead = table.createEl('thead').createEl('tr');
+		for (const h of ['From your file', 'Becomes', 'Count']) thead.createEl('th', { text: h });
+		const tbody = table.createEl('tbody');
+		for (const r of recap) {
+			const tr = tbody.createEl('tr');
+			tr.createEl('td', { cls: 'mono', text: r.from });
+			tr.createEl('td', { text: r.becomes });
+			tr.createEl('td', { text: r.count });
+		}
+
+		// (c) Headline stat chips.
+		const preview = this.workbench.computePreview();
 		const statRow = container.createEl('div', { cls: 'crosswalker-stats-grid crosswalker-preview-stats' });
 		const stat = (icon: string, value: number, label: string) => {
 			const card = statRow.createEl('div', { cls: 'crosswalker-stat-card' });
@@ -1136,44 +1174,108 @@ export class ImportWizardModal extends Modal {
 		stat('📁', folders, 'folders (in sample)');
 		stat('🔗', links, 'links (in sample)');
 
-		// Deviation banner.
+		// (d) Deviation banner.
 		if (preview && preview.perRow.length) {
 			this.renderDeviationBanner(container, preview.perRow, preview.total);
 		}
 
-		// Folder tree + one note (reuse the workbench preview rail).
-		container.createEl('h4', { text: 'Live preview' });
-		this.workbench.render(container.createDiv({ cls: 'crosswalker-wb-review' }));
+		// (e) Provenance line — WHY TRUST.
+		this.renderProvenanceLine(container);
 	}
 
-	/** Step 4 in workbench mode: the shape-map recap (M4) above the generate controls. */
-	private renderStep4_WorkbenchRecap(container: HTMLElement): void {
-		if (!this.workbench) return;
-		container.createEl('h4', { text: 'Your shape map' });
-		const table = container.createEl('table', { cls: 'crosswalker-shape-map' });
-		const thead = table.createEl('thead').createEl('tr');
-		for (const h of ['From your file', 'Becomes', 'Count']) thead.createEl('th', { text: h });
-		const tbody = table.createEl('tbody');
-		const total = this.parsedData?.rowCount ?? 0;
-
-		const noteRow = tbody.createEl('tr');
-		noteRow.createEl('td', { cls: 'mono', text: 'Each row' });
-		noteRow.createEl('td', { text: 'Notes, one per row' });
-		noteRow.createEl('td', { text: total.toLocaleString() });
-
-		for (const m of this.workbench.getMapping().mappings) {
-			const cards = deriveShapeCards(m);
-			const shapes = SHAPE_CARDS.filter((c) => cards[c.id] !== 'off').map((c) => c.label.toLowerCase());
-			if (shapes.length === 0) continue;
-			const tr = tbody.createEl('tr');
-			tr.createEl('td', { cls: 'mono', text: this.workbenchMappingLabel(m) });
-			tr.createEl('td', { text: shapes.join(', ') });
-			tr.createEl('td', { text: '-' });
+	/**
+	 * The destination block (spec §7j #2): a prominent, autofilled, inline-editable
+	 * breadcrumb path plus a "Show in file explorer" button that reveals the target
+	 * folder without closing the modal.
+	 */
+	private renderDestinationBlock(container: HTMLElement): void {
+		// Autofill a sensible default the first time we reach the review screen.
+		if (!this.outputPath || !this.outputPath.trim()) {
+			this.outputPath = deriveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null);
 		}
-		container.createEl('p', {
-			text: 'This map is saved as a reusable recipe. Re-run it on the next release, or hand it to the command line.',
-			cls: 'setting-item-description',
-		});
+		const block = container.createEl('div', { cls: 'crosswalker-dest-block' });
+		const head = block.createEl('div', { cls: 'crosswalker-dest-head' });
+		head.createEl('div', { cls: 'crosswalker-dest-label', text: 'Destination' });
+		const revealBtn = head.createEl('button', { cls: 'crosswalker-dest-reveal', text: 'Show in file explorer' });
+		revealBtn.addEventListener('click', () => this.revealDestinationInExplorer());
+		this.renderDestinationPath(block.createEl('div', { cls: 'crosswalker-dest-pathwrap' }));
+	}
+
+	/** Breadcrumb path display / inline text editor toggle for the destination. */
+	private renderDestinationPath(wrap: HTMLElement): void {
+		if (this.destEditing) {
+			const input = wrap.createEl('input', { type: 'text', cls: 'crosswalker-dest-input', value: this.outputPath });
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- placeholder is an example vault path
+			input.placeholder = 'Frameworks/My import';
+			const commit = () => {
+				this.outputPath = input.value.trim() || this.outputPath;
+				this.destEditing = false;
+				this.scheduleDraftSave();
+				this.renderStep();
+			};
+			input.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') { e.preventDefault(); commit(); }
+				else if (e.key === 'Escape') { this.destEditing = false; this.renderStep(); }
+			});
+			input.addEventListener('blur', commit);
+			window.setTimeout(() => input.focus(), 0);
+			return;
+		}
+		const crumb = wrap.createEl('button', { cls: 'crosswalker-dest-crumb', attr: { title: 'Click to edit the destination path' } });
+		const segs = this.outputPath.split('/').filter(Boolean);
+		if (segs.length === 0) {
+			crumb.createEl('span', { cls: 'crosswalker-dest-seg', text: '(vault root)' });
+		} else {
+			segs.forEach((seg, i) => {
+				if (i > 0) crumb.createEl('span', { cls: 'crosswalker-dest-sep', text: '/' });
+				crumb.createEl('span', { cls: 'crosswalker-dest-seg', text: seg });
+			});
+		}
+		crumb.createEl('span', { cls: 'crosswalker-dest-editicon', text: '✎' });
+		crumb.addEventListener('click', () => { this.destEditing = true; this.renderStep(); });
+	}
+
+	/**
+	 * Reveal + highlight the destination folder in Obsidian's file-explorer pane
+	 * without closing the modal (spec §7j #2). Reveals the nearest existing ancestor
+	 * when the target folder doesn't exist yet; feature-detects the internal
+	 * file-explorer reveal method and falls back to a Notice when it's absent.
+	 */
+	private revealDestinationInExplorer(): void {
+		const target = this.outputPath.trim();
+		// Walk up to the nearest existing folder (target or an ancestor).
+		let folder: TFolder | null = null;
+		let probe = target;
+		while (probe) {
+			const af = this.app.vault.getAbstractFileByPath(normalizePath(probe));
+			if (af instanceof TFolder) { folder = af; break; }
+			const cut = probe.lastIndexOf('/');
+			probe = cut > 0 ? probe.slice(0, cut) : '';
+		}
+		if (!folder) folder = this.app.vault.getRoot();
+
+		const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
+		const view = leaf?.view as unknown as { revealInFolder?: (f: unknown) => void } | undefined;
+		if (leaf && view && typeof view.revealInFolder === 'function') {
+			this.app.workspace.revealLeaf(leaf);
+			view.revealInFolder(folder);
+			const exists = this.app.vault.getAbstractFileByPath(normalizePath(target)) instanceof TFolder;
+			if (!exists) {
+				new Notice(`That folder will be created when you generate. Showing the nearest existing folder: ${folder.path || 'vault root'}.`, 6000);
+			}
+		} else {
+			new Notice('Could not open the file explorer to reveal the folder. It will be created when you generate.', 6000);
+		}
+	}
+
+	/** The step-3 provenance line + badge (spec §7j #3). */
+	private renderProvenanceLine(container: HTMLElement): void {
+		if (!this.workbench) return;
+		const prov = this.workbench.provenance(this.appliedConfig?.name ?? null);
+		const line = container.createEl('div', { cls: 'crosswalker-provenance' });
+		line.createEl('span', { cls: 'crosswalker-provenance-lead', text: 'Using: ' });
+		line.createEl('span', { cls: 'crosswalker-provenance-text', text: prov.line });
+		renderProvenanceBadge(line, prov);
 	}
 
 	/**
@@ -1195,18 +1297,6 @@ export class ImportWizardModal extends Modal {
 				...(leaf ? { filename: { template: leaf, sanitize: true } } : {}),
 			},
 		};
-	}
-
-	/** A short source-column label for a mapping (recap table). */
-	private workbenchMappingLabel(m: { levels: { source: unknown }[] }): string {
-		const cols = new Set<string>();
-		for (const l of m.levels) {
-			const src = l.source as { column?: string; constant?: string } | Array<{ column?: string }>;
-			if (Array.isArray(src)) src.forEach((r) => r.column && cols.add(r.column));
-			else if (src.column) cols.add(src.column);
-			else if (src.constant) cols.add(`"${src.constant}"`);
-		}
-		return [...cols].slice(0, 3).join(', ') || 'mapping';
 	}
 
 	/**
@@ -1861,22 +1951,25 @@ export class ImportWizardModal extends Modal {
 			cls: 'setting-item-description'
 		});
 
-		// Shape-map recap (workbench mode) sits above the generate controls.
+		// Destination. In workbench mode it's chosen on the review screen (step 3),
+		// so step 4 just confirms it read-only. Classic mode keeps its editor here.
 		if (this.isWorkbenchMode()) {
-			this.renderStep4_WorkbenchRecap(container);
+			const confirm = container.createEl('div', { cls: 'crosswalker-gen-confirm' });
+			confirm.createEl('span', { cls: 'crosswalker-gen-confirm-lead', text: 'Creating in: ' });
+			confirm.createEl('span', { cls: 'mono', text: this.outputPath || this.plugin.settings.defaultOutputPath || '(vault root)' });
+		} else {
+			// Output path setting
+			new Setting(container)
+				.setName('Output path')
+				.setDesc('Folder where notes will be created')
+				.addText(text => text
+					.setPlaceholder('Ontologies')
+					.setValue(this.outputPath)
+					.onChange(value => {
+						this.outputPath = value;
+						this.scheduleDraftSave();
+					}));
 		}
-
-		// Output path setting
-		new Setting(container)
-			.setName('Output path')
-			.setDesc('Folder where notes will be created')
-			.addText(text => text
-				.setPlaceholder('Ontologies')
-				.setValue(this.outputPath)
-				.onChange(value => {
-					this.outputPath = value;
-					this.scheduleDraftSave();
-				}));
 
 		// Framework ID setting (for _crosswalker metadata)
 		new Setting(container)

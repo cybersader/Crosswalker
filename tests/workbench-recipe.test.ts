@@ -109,8 +109,10 @@ describe('MappingWorkbench recipe assembly', () => {
 	it('exposes a stable leaf file template and legacy body bridge', () => {
 		const wb = makeWorkbench(attackRows());
 		expect(wb.leafFileTemplate()).toMatch(/\.md$/);
-		// No body destinations by default → empty legacy body list.
-		expect(wb.getLegacyBodyMappings()).toEqual([]);
+		// The long `description` column is a body-candidate, so it defaults to the
+		// note body. As the PRIMARY body column it bridges with an empty heading
+		// (clean document body: H1 + prose, no '## description' section).
+		expect(wb.getLegacyBodyMappings()).toEqual([{ column: 'description', heading: '' }]);
 	});
 });
 
