@@ -847,9 +847,11 @@ function resolveTemplate(template: string, row: Record<string, any>): string {
 // ============================================================================
 
 /**
- * Build the note content from frontmatter and body
+ * Build the note content from frontmatter and body.
+ * Exported for tests: the YAML quoting rules here are load-bearing (an
+ * unquoted wikilink value silently breaks the whole graph).
  */
-function buildNoteContent(frontmatter: Record<string, any>, body: string): string {
+export function buildNoteContent(frontmatter: Record<string, any>, body: string): string {
 	const yamlLines = ['---'];
 
 	for (const [key, value] of Object.entries(frontmatter)) {
@@ -909,8 +911,12 @@ function formatYamlLine(key: string, value: any, indent: number): string {
  */
 function formatYamlValue(value: any): string {
 	if (typeof value === 'string') {
-		// Quote if contains special characters or looks like a number/boolean
+		// Quote if contains special characters or looks like a number/boolean.
+		// Leading YAML-structural characters MUST be quoted: an unquoted
+		// `[[T1078]]` parses as a nested array, so Obsidian indexes no link and
+		// the graph shows nothing connected (found 2026-07-10, first graph test).
 		if (
+			/^[[\]{}\-*&!|>%@`,'" \t]/.test(value) ||
 			value.includes(':') ||
 			value.includes('#') ||
 			value.includes('"') ||

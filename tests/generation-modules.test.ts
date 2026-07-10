@@ -313,3 +313,27 @@ describe('buildConfigFromWizardState', () => {
 		expect(fileEntries[0].template).toBe('{Control ID}.md');
 	});
 });
+
+describe('buildNoteContent: YAML quoting of link values (graph-connectivity regression)', () => {
+	// An unquoted `[[T1078]]` parses as a nested YAML array, so Obsidian indexes
+	// no link at all and the graph shows nothing connected (found 2026-07-10 on
+	// the first real graph test of a workbench import).
+	const { buildNoteContent } = jest.requireActual('../src/generation/generation-engine');
+
+	it('quotes wikilink property values so Obsidian indexes them as links', () => {
+		const out = buildNoteContent({ parent: '[[T1078]]' }, '');
+		expect(out).toContain('parent: "[[T1078]]"');
+	});
+
+	it('quotes other YAML-structural leading characters', () => {
+		const out = buildNoteContent({ a: '- leading dash', b: '{brace}', c: '*star' }, '');
+		expect(out).toContain('a: "- leading dash"');
+		expect(out).toContain('b: "{brace}"');
+		expect(out).toContain('c: "*star"');
+	});
+
+	it('leaves plain strings unquoted', () => {
+		const out = buildNoteContent({ title: 'Default Accounts' }, '');
+		expect(out).toContain('title: Default Accounts');
+	});
+});
