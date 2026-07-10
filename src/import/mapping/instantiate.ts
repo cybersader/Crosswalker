@@ -35,22 +35,134 @@ import type {
 import { DEFAULT_MISSING, isConstantRef } from './types';
 import { parseStructuralTemplate } from './serialize';
 
+/** A detection that would carry structural destinations (folders + a file leaf). */
+type StructuralDetection = Extract<Detection, { kind: 'packed-hierarchy' | 'level-column-chain' }>;
+
+/** Does this detection produce a structural mapping (folders/file leaf)? */
+function isStructural(d: Detection): d is StructuralDetection {
+	return d.kind === 'packed-hierarchy' || d.kind === 'level-column-chain';
+}
+
+/**
+ * Precedence rank for a structural detection — LOWER wins (spec §7g,
+ * single-structural constraint). One recipe = one primary address per row, so
+ * EXACTLY ONE mapping may carry structural destinations (folder/file/heading);
+ * two structural mappings concatenate into one recipe layout and render() walks
+ * them in order, interleaving the paths into garbage
+ * (`T1055/T1055.011.md/defense/defense-evasion.md`). When a source freezes its
+ * hierarchy in more than one place (separate level columns AND a packed id),
+ * instantiate must elect a single structural winner; the losers are DEMOTED (see
+ * `instantiate`), not dropped.
+ *
+ * Ordering rationale (strongest → weakest evidence, per the task precedence):
+ *   0. level-column-chain  — explicit, separate columns are the least ambiguous
+ *                            signal of an intended hierarchy.
+ *   1. packed-hierarchy uniform — a clean, same-depth delimiter across the id.
+ *   2. packed-hierarchy ragged  — a mixed-depth delimiter (weakest).
+ * Ties break by higher coverage, then by earlier appearance in `detections`
+ * (which the detection engine emits in source-column order, deterministically).
+ *
+ * This ranking is applied ONLY within the set of detections that can own a
+ * per-row-unique leaf (see `canOwnUniqueLeaf`) — the §7g eligibility gate. That
+ * gate is why NIST-CSF elects its packed id (unique) over its function/category
+ * chain (whose deepest column repeats): electing the chain would collapse 25 rows
+ * onto 9 notes, which violates "one primary address per row" more severely than
+ * the interleave it replaces. See the report for the architect-decision note.
+ */
+function structuralRank(d: StructuralDetection): number {
+	if (d.kind === 'level-column-chain') return 0;
+	return d.classification === 'uniform' ? 1 : 2;
+}
+
+/** Coverage proxy for the tie-break: packed uses its measured coverage; a chain
+ * (never more than one per source, so it never ties) uses its weakest FD agreement. */
+function structuralCoverage(d: StructuralDetection): number {
+	if (d.kind === 'packed-hierarchy') return d.coverage;
+	return d.agreements.length > 0 ? Math.min(...d.agreements) : 1;
+}
+
+/**
+ * The §7g eligibility gate: can this detection own a PER-ROW-UNIQUE primary
+ * address (a distinct leaf note per row)?
+ *
+ *   - A packed hierarchy's leaf is the whole id column, which cleared detection's
+ *     id-distinctness guard (`PACKED_MIN_DISTINCTNESS`) — it can carry a unique
+ *     address. Eligible.
+ *   - A level-column-chain's leaf is its DEEPEST column, which is low-cardinality
+ *     BY CONSTRUCTION (chain candidates require distinctness ≤ 0.5 in detection).
+ *     Such a column repeats across rows, so electing the chain as the structural
+ *     leaf collapses many rows onto one note (NIST-CSF: `GV.OC-01…05` all land on
+ *     `GOVERN/GV.OC/GV.OC.md`). A chain therefore cannot own a unique leaf and is
+ *     eligible only as a last resort (a chain-only source with no packed id).
+ *
+ * This gate is the reconciliation between the task's stated precedence
+ * (chain strongest) and §7g's load-bearing invariant (one primary address per
+ * row): the precedence orders the ELIGIBLE detections, the gate keeps a chain
+ * from silently eating rows when a unique packed id is present.
+ */
+function canOwnUniqueLeaf(d: StructuralDetection): boolean {
+	return d.kind === 'packed-hierarchy';
+}
+
+/**
+ * Elect the single structural winner (spec §7g). Ranks by `structuralRank`, then
+ * coverage, then source order, WITHIN the set of detections that can own a unique
+ * leaf (`canOwnUniqueLeaf`); if none qualify, falls back to the same ranking over
+ * every structural detection (a chain-only source still gets its hierarchy).
+ * Returns undefined when there is no structural detection at all. Replacement is
+ * on a STRICT improvement only, so on a full tie the earliest-appearing detection
+ * wins (the deterministic source-column-order tiebreak).
+ */
+function selectStructuralWinner(detections: Detection[]): StructuralDetection | undefined {
+	const structural = detections.filter(isStructural);
+	if (structural.length === 0) return undefined;
+	const eligible = structural.filter(canOwnUniqueLeaf);
+	const pool = eligible.length > 0 ? eligible : structural;
+
+	let winner = pool[0];
+	let winnerRank = structuralRank(winner);
+	let winnerCoverage = structuralCoverage(winner);
+	for (const d of pool.slice(1)) {
+		const rank = structuralRank(d);
+		const coverage = structuralCoverage(d);
+		if (rank < winnerRank || (rank === winnerRank && coverage > winnerCoverage)) {
+			winner = d;
+			winnerRank = rank;
+			winnerCoverage = coverage;
+		}
+	}
+	return winner;
+}
+
 /**
  * Instantiate a preset over a source's detections. Output order mirrors detection
  * order so the result is deterministic.
+ *
+ * Single-structural constraint (spec §7g): only ONE structural detection may
+ * carry folders + a file leaf. `selectStructuralWinner` elects it; every other
+ * structural detection is DEMOTED — it emits no structural mapping here and its
+ * column simply remains available to the per-column destination layer (typically
+ * a property). Losers are intentionally invisible as structural cards in the
+ * workbench, which is the acceptable UI signal for the demotion.
  */
 export function instantiate(preset: Preset, detections: Detection[]): ImportMapping {
 	const mappings: StructureMapping[] = [];
+	const structuralWinner = selectStructuralWinner(detections);
 
 	for (const detection of detections) {
 		switch (detection.kind) {
 			case 'packed-hierarchy':
-				mappings.push(instantiateStructural(preset, detection.proposal, detection.column));
+				// Demoted losers contribute nothing structural (no folders/files).
+				if (detection === structuralWinner) {
+					mappings.push(instantiateStructural(preset, detection.proposal, detection.column));
+				}
 				break;
 			case 'level-column-chain':
-				mappings.push(
-					instantiateStructural(preset, detection.proposal, lastColumn(detection.columns)),
-				);
+				if (detection === structuralWinner) {
+					mappings.push(
+						instantiateStructural(preset, detection.proposal, lastColumn(detection.columns)),
+					);
+				}
 				break;
 			case 'facet-candidate': {
 				const m = instantiateFacet(preset, detection.column);

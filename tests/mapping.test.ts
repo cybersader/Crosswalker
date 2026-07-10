@@ -158,6 +158,163 @@ describe('instantiation — packed hierarchy (real detections)', () => {
 	});
 });
 
+// ===========================================================================
+// 2b. Single-structural constraint (spec §7g) — one structural winner, losers demoted
+// ===========================================================================
+
+describe('single-structural constraint (spec §7g)', () => {
+	/** Exactly the mappings that carry a structural destination (folder/name/heading). */
+	function structuralMappings(m: ImportMapping) {
+		const isStructural = (p: string) => p === 'folder' || p === 'name' || p === 'heading';
+		return m.mappings.filter(
+			(s) =>
+				s.levels.some((l) => l.destinations.some((d) => isStructural(d.primitive))) ||
+				(s.tail !== undefined && s.tail.destinations.some((d) => isStructural(d.primitive))),
+		);
+	}
+
+	// A fixture with BOTH a level-column-chain (function → category) AND a packed id
+	// (the NIST-CSF shape). The chain columns are plain labels (no delimiters) so the
+	// only structural signals are the chain and the packed id — exactly two, of which
+	// exactly one must survive.
+	const csfHierarchical: Record<string, unknown>[] = [
+		{ id: 'G.1', function: 'Gov', category: 'Ctx' },
+		{ id: 'G.2', function: 'Gov', category: 'Ctx' },
+		{ id: 'G.3', function: 'Gov', category: 'Ctx' },
+		{ id: 'G.4', function: 'Gov', category: 'Risk' },
+		{ id: 'G.5', function: 'Gov', category: 'Risk' },
+		{ id: 'G.6', function: 'Gov', category: 'Risk' },
+		{ id: 'I.1', function: 'Ident', category: 'Asset' },
+		{ id: 'I.2', function: 'Ident', category: 'Asset' },
+		{ id: 'I.3', function: 'Ident', category: 'Asset' },
+		{ id: 'I.4', function: 'Ident', category: 'Assess' },
+		{ id: 'I.5', function: 'Ident', category: 'Assess' },
+		{ id: 'I.6', function: 'Ident', category: 'Assess' },
+	];
+
+	it('chain + packed id → exactly one structural mapping (the packed id wins; chain demoted)', () => {
+		const detections = detect(csfHierarchical);
+		// Sanity: the fixture really does surface BOTH structural signals.
+		expect(detections.some((d) => d.kind === 'level-column-chain')).toBe(true);
+		expect(detections.some((d) => d.kind === 'packed-hierarchy' && d.column === 'id')).toBe(true);
+
+		const mapping = instantiate(BROWSABLE_FRAMEWORK, detections);
+		const structural = structuralMappings(mapping);
+		expect(structural.length).toBe(1);
+
+		// The winner is the packed id (a per-row-unique leaf), NOT the function/
+		// category chain (whose deepest column repeats). Its leaf keeps the whole id.
+		const winner = structural[0];
+		const leaf = winner.levels.find((l) => l.destinations.some((d) => d.primitive === 'name'));
+		expect(leaf).toBeDefined();
+		expect(leaf!.source).toEqual({ column: 'id' });
+		// The folder level splits the packed id, not a chain column.
+		const folderLevel = winner.levels.find((l) => l.destinations.some((d) => d.primitive === 'folder'));
+		expect(folderLevel!.source).toEqual({ column: 'id', part: 0 });
+	});
+
+	it('demoted chain contributes NO folder/file (its columns fall to the per-column layer)', () => {
+		const detections = detect(csfHierarchical);
+		const mapping = instantiate(BROWSABLE_FRAMEWORK, detections);
+		// No structural mapping is sourced from a chain-only column (function).
+		const fromChainColumn = mapping.mappings.some((s) =>
+			s.levels.some(
+				(l) =>
+					l.destinations.some((d) => d.primitive === 'folder' || d.primitive === 'name') &&
+					JSON.stringify(l.source).includes('function'),
+			),
+		);
+		expect(fromChainColumn).toBe(false);
+	});
+
+	it('two packed-uniform detections → the earlier column wins (CIS id beats parent)', () => {
+		// CIS shape: `id` (CIS-1, CIS-1.1) AND `parent` (CIS-1) are BOTH packed-uniform
+		// on '-'. Tie on rank + coverage → source order elects `id`.
+		const cis: Record<string, unknown>[] = [
+			{ id: 'CIS-1', parent: '' },
+			{ id: 'CIS-1.1', parent: 'CIS-1' },
+			{ id: 'CIS-1.2', parent: 'CIS-1' },
+			{ id: 'CIS-2', parent: '' },
+			{ id: 'CIS-2.1', parent: 'CIS-2' },
+			{ id: 'CIS-3', parent: '' },
+		];
+		const detections = detect(cis);
+		const packed = detections.filter((d) => d.kind === 'packed-hierarchy');
+		expect(packed.length).toBeGreaterThanOrEqual(2); // both id and parent detected
+
+		const mapping = instantiate(BROWSABLE_FRAMEWORK, detections);
+		const structural = structuralMappings(mapping);
+		expect(structural.length).toBe(1);
+		const leaf = structural[0].levels.find((l) => l.destinations.some((d) => d.primitive === 'name'));
+		expect(leaf!.source).toEqual({ column: 'id' });
+	});
+
+	it('uniform beats ragged: a uniform packed id is elected over a ragged packed id', () => {
+		// Two independent packed columns: `uid` uniform on '-' (fixed folders), `rid`
+		// ragged on '.' (variadic tail). Uniform (rank 1) beats ragged (rank 2). The
+		// `title` column is a concept title that suppresses the edge-file
+		// classification (two id-like columns would otherwise read as a crosswalk).
+		const rows: Record<string, unknown>[] = [
+			{ uid: 'AC-1', rid: 'X1', title: 'Alpha policy and procedures definition' },
+			{ uid: 'AC-2', rid: 'X2', title: 'Beta account management controls' },
+			{ uid: 'AU-1', rid: 'X3.1', title: 'Gamma audit logging requirements' },
+			{ uid: 'AU-2', rid: 'X4', title: 'Delta event review procedures list' },
+			{ uid: 'CM-1', rid: 'X5.2', title: 'Epsilon configuration baseline policy' },
+			{ uid: 'CM-2', rid: 'X6', title: 'Zeta change control workflow steps' },
+			{ uid: 'IA-1', rid: 'X7.3', title: 'Eta identity verification standards' },
+			{ uid: 'IA-2', rid: 'X8', title: 'Theta multifactor enforcement rules' },
+		];
+		const detections = detect(rows);
+		const uid = detections.find((d) => d.kind === 'packed-hierarchy' && d.column === 'uid');
+		const rid = detections.find((d) => d.kind === 'packed-hierarchy' && d.column === 'rid');
+		expect(uid && uid.kind === 'packed-hierarchy' && uid.classification).toBe('uniform');
+		expect(rid && rid.kind === 'packed-hierarchy' && rid.classification).toBe('ragged');
+
+		const mapping = instantiate(BROWSABLE_FRAMEWORK, detections);
+		const structural = structuralMappings(mapping);
+		expect(structural.length).toBe(1);
+		// The uniform `uid` won: a fixed folder + leaf, no variadic tail.
+		expect(structural[0].tail).toBeUndefined();
+		const leaf = structural[0].levels.find((l) => l.destinations.some((d) => d.primitive === 'name'));
+		expect(leaf!.source).toEqual({ column: 'uid' });
+	});
+
+	it('toRecipeRegions throws loudly on a hand-built mapping with two structural mappings', () => {
+		const twoStructural: ImportMapping = {
+			mappings: [
+				{
+					levels: [
+						{ level: 'a', source: { column: 'id' }, destinations: [{ primitive: 'name' }], naming: 'part', missing: 'skip', materialize: false },
+					],
+				},
+				{
+					levels: [
+						{ level: 'b', source: { column: 'parent' }, destinations: [{ primitive: 'folder' }], naming: 'part', missing: 'skip', materialize: false },
+					],
+				},
+			],
+		};
+		expect(() => toRecipeRegions(twoStructural)).toThrow(/exactly one structural mapping/);
+		expect(() => toRecipeRegions(twoStructural)).toThrow(/a, b/); // names both offenders
+	});
+
+	it('toRecipeRegions allows one structural mapping + unlimited metadata-only mappings', () => {
+		const oneStructuralManyMeta: ImportMapping = {
+			mappings: [
+				{
+					levels: [
+						{ level: 'leaf', source: { column: 'id' }, destinations: [{ primitive: 'name' }], naming: 'part', missing: 'skip', materialize: false },
+					],
+				},
+				{ levels: [{ level: 'tactic', source: { column: 'tactic' }, destinations: [{ primitive: 'tag', namespace: 'tactic' }], naming: 'part', missing: 'skip', materialize: false }] },
+				{ levels: [{ level: 'parent', source: { column: 'parent' }, destinations: [{ primitive: 'link', key: 'parent', direction: 'parent-on-child' }], naming: 'part', missing: 'skip', materialize: false }] },
+				{ levels: [{ level: 'title', source: { column: 'title' }, destinations: [{ primitive: 'alias' }], naming: 'part', missing: 'skip', materialize: false }] },
+			],
+		};
+		expect(() => toRecipeRegions(oneStructuralManyMeta)).not.toThrow();
+	});
+});
+
 describe('instantiation — facet + parent-column', () => {
 	const rows: Record<string, unknown>[] = [];
 	const tactics = ['recon', 'access', 'execution', 'persistence', 'evasion', 'impact'];

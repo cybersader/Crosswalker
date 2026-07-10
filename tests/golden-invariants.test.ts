@@ -81,13 +81,17 @@ const SPECS: CorpusSpec[] = [
 	// MITRE: single packed hierarchy + fully-internal parent column → the clean,
 	// fully-connected reference corpus. Everything HARD.
 	{ file: 'mitre-attack-persistence-subset.csv', cleanPaths: true, resolveThreshold: 0 },
-	// CIS + NIST-CSF: id-packed AND a second structural source (parent / function+
-	// category) both emit a leaf, interleaving file+folder → `.md/` paths. Being
-	// fixed in the engine round. Path + resolution soft here.
-	{ file: 'cis-controls-v8-subset.csv', cleanPaths: false, resolveThreshold: null },
-	{ file: 'nist-csf-2.0-govern-identify.csv', cleanPaths: false, resolveThreshold: null },
+	// CIS + NIST-CSF: id-packed AND a second structural source (CIS parent column /
+	// NIST-CSF function+category chain). The single-structural constraint (spec §7g)
+	// now elects ONE structural winner in instantiate() — the packed id, which owns a
+	// per-row-unique leaf — and demotes the other, so no `.md/` interleave survives.
+	// Paths HARD; resolution stays report-only (root notes legitimately have no
+	// parent, so a 0-unresolved threshold would be wrong here).
+	{ file: 'cis-controls-v8-subset.csv', cleanPaths: true, resolveThreshold: null },
+	{ file: 'nist-csf-2.0-govern-identify.csv', cleanPaths: true, resolveThreshold: null },
 	// sample-nist: clean paths, but its `Related Controls` multi-value column is
-	// not split, so `related: [[AC-2, AC-3, PM-9]]` is one dead link. Engine round.
+	// not split, so `related: [[AC-2, AC-3, PM-9]]` is one dead link. Multi-value
+	// link emission is deferred to the Pass 1.5 round — resolution stays SOFT.
 	{ file: 'sample-nist-controls.csv', cleanPaths: true, resolveThreshold: null },
 ];
 
@@ -148,13 +152,14 @@ for (const spec of SPECS) {
 				expect(mdSlashPaths(vault)).toEqual([]);
 			});
 		} else {
-			// TODO(engine-round): CIS/NIST-CSF emit two structural mappings whose
-			// leaves interleave into `.md/` paths. Soft baseline until the detection
-			// agent collapses them; the drift test pins the exact current shape.
-			it('reports its ".md/" path baseline (soft, engine-round)', () => {
+			// Retained for any FUTURE corpus that legitimately can't yet collapse to a
+			// single structural mapping. The 2026-07 multi-structural interleave
+			// (CIS/NIST-CSF) is FIXED — instantiate() now elects one structural winner
+			// (spec §7g) — so no committed corpus currently takes this soft branch.
+			it('reports its ".md/" path baseline (soft)', () => {
 				const bad = mdSlashPaths(vault);
 				// eslint-disable-next-line no-console
-				console.warn(`TODO(engine-round) ${spec.file}: ${bad.length}/${vault.size} paths contain ".md/"`);
+				console.warn(`soft ".md/" baseline ${spec.file}: ${bad.length}/${vault.size} paths contain ".md/"`);
 				expect(bad.length).toBeGreaterThanOrEqual(0); // non-failing, documents the gap
 			});
 		}
@@ -169,9 +174,12 @@ for (const spec of SPECS) {
 				expect(unresolved.map((u) => `${u.note}#${u.key}→[[${u.target}]]`)).toEqual([]);
 				expect(links.length).toBeGreaterThan(0); // a connected corpus HAS edges
 			} else {
+				// TODO(pass-1.5): remaining unresolved links are multi-value link columns
+				// (sample-nist `Related Controls`) whose split emission is deferred to the
+				// Pass 1.5 round. Report-only until then.
 				// eslint-disable-next-line no-console
 				console.warn(
-					`TODO(engine-round) ${spec.file}: ${unresolved.length}/${links.length} wikilinks unresolved`,
+					`TODO(pass-1.5) ${spec.file}: ${unresolved.length}/${links.length} wikilinks unresolved`,
 				);
 				expect(unresolved.length).toBeGreaterThanOrEqual(0);
 			}

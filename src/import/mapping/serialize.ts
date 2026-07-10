@@ -82,6 +82,38 @@ const TAIL_LEVEL_ID = 'tail';
 // Serialization: mapping → recipe regions
 // ============================================================================
 
+/** Structural destination primitives — those that place a note in the vault tree. */
+function isStructuralDestination(dest: Destination): boolean {
+	return dest.primitive === 'folder' || dest.primitive === 'name' || dest.primitive === 'heading';
+}
+
+/** Does a mapping carry any structural destination (levels or tail)? */
+function hasStructuralDestination(m: StructureMapping): boolean {
+	if (m.levels.some((l) => l.destinations.some(isStructuralDestination))) return true;
+	return m.tail !== undefined && m.tail.destinations.some(isStructuralDestination);
+}
+
+/**
+ * Guard the single-structural constraint (spec §7g) LOUDLY. render() walks the
+ * concatenated layout in order, so two structural mappings interleave their
+ * folder/file entries into garbage paths (`T1055/T1055.011.md/defense/...`). A
+ * loud throw here beats silent path corruption. instantiate() already elects one
+ * structural winner; this catches a hand-built or mis-merged mapping that slipped
+ * past. Metadata-only mappings (tags/links/properties/aliases/body) are unlimited.
+ */
+function assertSingleStructural(mapping: ImportMapping): void {
+	const structural = mapping.mappings.filter(hasStructuralDestination);
+	if (structural.length > 1) {
+		const describe = (m: StructureMapping): string =>
+			m.levels.map((l) => l.level).join('+') + (m.tail ? '+tail' : '');
+		throw new Error(
+			`one recipe supports exactly one structural mapping (folder/name/heading); found ${structural.length}: ${structural
+				.map(describe)
+				.join(', ')}. Metadata-only mappings are unlimited; demote the extra structural detection in instantiate() (spec section 7g).`,
+		);
+	}
+}
+
 /**
  * Project an ImportMapping onto recipe regions. Structural destinations become
  * layout entries; metadata destinations become also_emit; a tail becomes a
@@ -89,6 +121,7 @@ const TAIL_LEVEL_ID = 'tail';
  * dropped.
  */
 export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
+	assertSingleStructural(mapping);
 	const layout: LayoutEntry[] = [];
 	const tags: string[] = [];
 	const aliases: string[] = [];
