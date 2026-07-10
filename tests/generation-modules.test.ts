@@ -13,8 +13,15 @@
 import { legacyConfigToRecipe } from '../src/generation/legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from '../src/generation/frontmatter-merge';
 import { buildProvenance } from '../src/generation/provenance';
-import { buildConfigFromWizardState } from '../src/generation/generation-engine';
-import type { ImportRecipe as LegacyImportRecipe } from '../src/types/config';
+import {
+	buildConfigFromWizardState,
+	buildNoteData,
+	buildNoteContent,
+	composeDocumentBody,
+	normalizeTagList,
+	normalizeAliasList,
+} from '../src/generation/generation-engine';
+import type { ImportRecipe as LegacyImportRecipe, MappingConfig } from '../src/types/config';
 
 // ---------------------------------------------------------------------------
 // legacy-recipe-shim
@@ -335,5 +342,175 @@ describe('buildNoteContent: YAML quoting of link values (graph-connectivity regr
 	it('leaves plain strings unquoted', () => {
 		const out = buildNoteContent({ title: 'Default Accounts' }, '');
 		expect(out).toContain('title: Default Accounts');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Tags + aliases emission (spec §7k item 3 — the connectedness mandate)
+// ---------------------------------------------------------------------------
+
+describe('normalizeTagList', () => {
+	it('strips leading # and de-dupes, preserving first-seen order', () => {
+		expect(
+			normalizeTagList(['#tactic/persistence', 'tactic/persistence', 'tactic/defense-evasion']),
+		).toEqual(['tactic/persistence', 'tactic/defense-evasion']);
+	});
+
+	it('trims and drops empty values', () => {
+		expect(normalizeTagList([' facet/a ', '', '   ', '#'])).toEqual(['facet/a']);
+	});
+
+	it('is deterministic (same input → deep-equal output)', () => {
+		const input = ['#a', 'b', 'a'];
+		expect(normalizeTagList(input)).toEqual(normalizeTagList(input));
+	});
+});
+
+describe('normalizeAliasList', () => {
+	it('trims, drops empties, de-dupes', () => {
+		expect(normalizeAliasList(['AC-2', ' AC-2 ', '', 'Account management'])).toEqual([
+			'AC-2',
+			'Account management',
+		]);
+	});
+});
+
+describe('tags/aliases → YAML block array via buildNoteContent', () => {
+	it('renders a tags array as a block list, one bare tag per line', () => {
+		const tags = normalizeTagList(['#tactic/persistence', 'tactic/persistence', 'tactic/defense-evasion']);
+		const out = buildNoteContent({ tags }, '');
+		expect(out).toContain('tags:');
+		expect(out).toContain('  - tactic/persistence');
+		expect(out).toContain('  - tactic/defense-evasion');
+		// De-duped: persistence appears exactly once.
+		expect(out.match(/- tactic\/persistence/g)?.length).toBe(1);
+		// No leading '#' leaked into the frontmatter values.
+		expect(out).not.toContain('#tactic');
+	});
+
+	it('renders an aliases array as a block list', () => {
+		const aliases = normalizeAliasList(['AC-2', 'Account management']);
+		const out = buildNoteContent({ aliases }, '');
+		expect(out).toContain('aliases:');
+		expect(out).toContain('  - AC-2');
+		expect(out).toContain('  - Account management');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Re-import merge for tags/aliases (union — user-added tags survive)
+// ---------------------------------------------------------------------------
+
+describe('mergeFrontmatter: tags/aliases union on re-import', () => {
+	it('preserves a user-added tag while re-applying every recipe tag', () => {
+		const existing = { tags: ['tactic/persistence', 'user/favorite'] };
+		const managed = { tags: ['tactic/persistence', 'tactic/defense-evasion'] };
+		const result = mergeFrontmatter(existing, managed, computeManagedKeys(managed));
+		// Recipe tags first (in recipe order), then the user extra; de-duped.
+		expect(result.tags).toEqual([
+			'tactic/persistence',
+			'tactic/defense-evasion',
+			'user/favorite',
+		]);
+	});
+
+	it('unions aliases the same way', () => {
+		const existing = { aliases: ['AC-2', 'my-nickname'] };
+		const managed = { aliases: ['AC-2', 'Account management'] };
+		const result = mergeFrontmatter(existing, managed, computeManagedKeys(managed));
+		expect(result.aliases).toEqual(['AC-2', 'Account management', 'my-nickname']);
+	});
+
+	it('uses recipe tags verbatim when the note has none yet', () => {
+		const existing = { title: 'X' };
+		const managed = { tags: ['a', 'b'] };
+		const result = mergeFrontmatter(existing, managed, computeManagedKeys(managed));
+		expect(result.tags).toEqual(['a', 'b']);
+	});
+
+	it('coerces a scalar existing tag value into the union', () => {
+		const existing = { tags: 'user/solo' };
+		const managed = { tags: ['recipe/one'] };
+		const result = mergeFrontmatter(existing, managed, computeManagedKeys(managed));
+		expect(result.tags).toEqual(['recipe/one', 'user/solo']);
+	});
+
+	it('is idempotent: merge(merge(x, y)) === merge(x, y) with tags present', () => {
+		const existing = { tags: ['tactic/persistence', 'user/favorite'] };
+		const managed = { tags: ['tactic/persistence', 'tactic/defense-evasion'] };
+		const keys = computeManagedKeys(managed);
+		const once = mergeFrontmatter(existing, managed, keys);
+		const twice = mergeFrontmatter(once, managed, keys);
+		expect(twice).toEqual(once);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// composeDocumentBody — H1 title + prose (spec §7k item 2)
+// ---------------------------------------------------------------------------
+
+describe('composeDocumentBody', () => {
+	it('prepends an H1 title and a blank line before the body', () => {
+		expect(composeDocumentBody('AC-2: Account management', 'Manages accounts.')).toBe(
+			'# AC-2: Account management\n\nManages accounts.',
+		);
+	});
+
+	it('returns the body unchanged when there is no title', () => {
+		expect(composeDocumentBody('', 'body only')).toBe('body only');
+	});
+
+	it('returns the body unchanged when there is no body content', () => {
+		expect(composeDocumentBody('A title', '   ')).toBe('   ');
+	});
+
+	it('is deterministic', () => {
+		expect(composeDocumentBody('t', 'b')).toBe(composeDocumentBody('t', 'b'));
+	});
+});
+
+// ---------------------------------------------------------------------------
+// buildNoteData — body columns become prose body, never a property
+// ---------------------------------------------------------------------------
+
+describe('buildNoteData: body destination', () => {
+	const options = { basePath: 'Frameworks/NIST', overwriteMode: 'skip' as const, createFolders: true };
+
+	function mappingWith(body: MappingConfig['body']): MappingConfig {
+		return {
+			hierarchy: [],
+			frontmatter: [{ column: 'name', key: 'title' }],
+			links: [],
+			body,
+			filename: { template: '{id}', sanitize: true },
+		};
+	}
+
+	const row = {
+		id: 'AC-2',
+		name: 'Account management',
+		description: 'The organization manages information system accounts. It reviews them.',
+	};
+
+	it('routes a body column to prose in the body, not to a frontmatter property', () => {
+		const note = buildNoteData(row, 1, mappingWith([{ column: 'description' }]), options, '', []);
+		expect(note.body).toContain('The organization manages information system accounts.');
+		// The body column must NOT leak into frontmatter as a property.
+		expect(note.frontmatter).not.toHaveProperty('description');
+		// A headless body mapping emits plain prose (no `## ` section heading).
+		expect(note.body).not.toContain('## ');
+	});
+
+	it('emits a `## Section` heading when the body mapping carries one', () => {
+		const note = buildNoteData(row, 1, mappingWith([{ column: 'description', heading: 'Description' }]), options, '', []);
+		expect(note.body).toContain('## Description');
+		expect(note.body).toContain('The organization manages information system accounts.');
+		expect(note.frontmatter).not.toHaveProperty('description');
+	});
+
+	it('is deterministic (same row → byte-identical body)', () => {
+		const a = buildNoteData(row, 1, mappingWith([{ column: 'description' }]), options, '', []);
+		const b = buildNoteData(row, 1, mappingWith([{ column: 'description' }]), options, '', []);
+		expect(a.body).toBe(b.body);
 	});
 });

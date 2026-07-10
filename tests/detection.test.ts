@@ -8,7 +8,7 @@
  * module extends but must not diverge from in the uniform case).
  */
 
-import { detectStructure } from '../src/import/detection';
+import { detectStructure, defaultDestinationForColumn } from '../src/import/detection';
 import type { Detection } from '../src/import/detection';
 import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import { deriveIdSplitTemplates } from '../src/generation/generation-engine';
@@ -37,6 +37,46 @@ function packedOf(detections: Detection[], column: string) {
 function rowsFrom(column: string, values: string[]): Record<string, unknown>[] {
 	return values.map((v) => ({ [column]: v }));
 }
+
+// ---------------------------------------------------------------------------
+// defaultDestinationForColumn (spec §7k item 2)
+// ---------------------------------------------------------------------------
+
+describe('defaultDestinationForColumn', () => {
+	const bodyDetection: Detection = {
+		kind: 'body-candidate',
+		column: 'description',
+		avgLength: 220,
+		distinctness: 0.99,
+		sampleValues: ['A long prose description of the control.'],
+		proposal: { destination: 'body' },
+	};
+
+	it('defaults a body-candidate column to the note body', () => {
+		expect(defaultDestinationForColumn('description', [bodyDetection])).toBe('body');
+	});
+
+	it('defaults every other column to a property', () => {
+		expect(defaultDestinationForColumn('name', [bodyDetection])).toBe('property');
+	});
+
+	it('defaults to property when there are no detections', () => {
+		expect(defaultDestinationForColumn('description', [])).toBe('property');
+	});
+
+	it('integration: a real long-prose column is routed to body', () => {
+		const rows = Array.from({ length: 12 }, (_, i) => ({
+			id: `AC-${i + 1}`,
+			description:
+				`Control ${i + 1}: the organization defines and manages a distinct policy. ` +
+				'It reviews the policy periodically and updates it as conditions change.',
+		}));
+		const { data, columns } = makeData(rows);
+		const detections = detectStructure(data, columns);
+		expect(defaultDestinationForColumn('description', detections)).toBe('body');
+		expect(defaultDestinationForColumn('id', detections)).toBe('property');
+	});
+});
 
 // ---------------------------------------------------------------------------
 // Packed-hierarchy — ragged (ATT&CK)

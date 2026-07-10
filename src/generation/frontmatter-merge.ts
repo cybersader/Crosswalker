@@ -30,6 +30,15 @@
  *
  * Always-managed special keys: `_crosswalker`, `curie` (overwritten on
  * every re-render).
+ *
+ * List-union special keys (`tags`, `aliases`): even though these are managed
+ * (the recipe emits them), their existing value is UNIONED with the new value
+ * rather than overwritten — recipe values first, then any user-added extras.
+ * This preserves a user's hand-added tags/aliases across re-import while still
+ * guaranteeing every recipe-emitted tag/alias is present. Tradeoff: a tag the
+ * recipe STOPS emitting is not removed on re-import (it now looks user-added).
+ * That is deliberate — silently deleting a user's tag is worse than keeping a
+ * stale one, and both are user-fixable. (spec §7k connectedness mandate.)
  */
 export function mergeFrontmatter(
 	existing: Record<string, unknown>,
@@ -48,10 +57,15 @@ export function mergeFrontmatter(
 
 	// 2. Apply managed values ONLY for keys still in managedKeys.
 	//    Keys removed from managedKeys (via user_preserve patterns) keep the
-	//    existing value, even if the recipe wrote them initially.
+	//    existing value, even if the recipe wrote them initially. The list-union
+	//    keys (tags/aliases) merge with the existing value instead of clobbering.
 	for (const [k, v] of Object.entries(managed)) {
 		if (managedKeys.has(k)) {
-			result[k] = v;
+			if (LIST_UNION_KEYS.has(k) && k in existing) {
+				result[k] = unionStringList(v, existing[k]);
+			} else {
+				result[k] = v;
+			}
 		}
 	}
 
@@ -61,6 +75,34 @@ export function mergeFrontmatter(
 	if ('curie' in managed) result.curie = managed.curie;
 
 	return result;
+}
+
+/**
+ * Managed keys whose values are UNIONED with the existing note's value on
+ * re-import (recipe values first, then user-added extras) instead of being
+ * overwritten wholesale. See mergeFrontmatter's doc comment for the rationale.
+ */
+const LIST_UNION_KEYS = new Set(['tags', 'aliases']);
+
+/**
+ * Union two frontmatter list values into a de-duplicated array, `managed`
+ * entries first (recipe order preserved), then any `existing` entries not
+ * already present. Scalars are coerced to a single-element list; empty/null
+ * values contribute nothing. Deterministic and idempotent
+ * (union(m, union(m, e)) === union(m, e)).
+ */
+function unionStringList(managed: unknown, existing: unknown): unknown[] {
+	const toArr = (v: unknown): unknown[] =>
+		Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [v];
+	const out: unknown[] = [];
+	const seen = new Set<string>();
+	for (const item of [...toArr(managed), ...toArr(existing)]) {
+		const key = String(item);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(item);
+	}
+	return out;
 }
 
 /**

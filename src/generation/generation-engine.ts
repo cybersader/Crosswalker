@@ -477,6 +477,21 @@ function buildNoteDataViaRender(
 	// 4. Frontmatter starts from render's output (curie + managed keys).
 	const frontmatter: Record<string, any> = { ...address.frontmatter };
 
+	// 4b. Carry tags + aliases from the render Address (spec §7k item 3).
+	//     buildNoteDataViaRender previously dropped both, so recipe-emitted
+	//     facet tags and id↔name aliases never reached the vault and the graph
+	//     stayed disconnected. Frontmatter tags are BARE (no leading '#'); we
+	//     strip any '#' defensively, drop empties, and de-dupe. Emission flows
+	//     through buildNoteContent's array branch (block-style YAML list).
+	if (address.tags.length > 0) {
+		const tags = normalizeTagList(address.tags);
+		if (tags.length > 0) frontmatter.tags = tags;
+	}
+	if (address.aliases.length > 0) {
+		const aliases = normalizeAliasList(address.aliases);
+		if (aliases.length > 0) frontmatter.aliases = aliases;
+	}
+
 	// 5. Layer in link content + body content from the legacy column-role
 	//    logic. We delegate to buildNoteData but only use its frontmatter
 	//    additions (links → frontmatter location) and body string.
@@ -487,6 +502,15 @@ function buildNoteDataViaRender(
 		if (k === '_crosswalker') continue;
 		if (!(k in frontmatter)) frontmatter[k] = v;
 	}
+
+	// 5b. Give the note a document shape (spec §7k item 2): an H1 title, a
+	//     blank line, then the body content (link sections + body-column prose).
+	//     Only when a title column drives the leaf filename AND there is body
+	//     content — a frontmatter-only note gets no forced heading. The title
+	//     text is the raw (unsanitized) leaf template value so an H1 reads
+	//     `# AC-2: Account management` even though the file is `AC-2- ....md`.
+	const titleText = mapping.filename?.template ? deriveTitleText(row, mapping, filenameStem) : '';
+	const body = composeDocumentBody(titleText, legacy.body);
 
 	// 6. Always write a fresh _crosswalker provenance block per
 	//    spec/tier1.schema.json. Captures the source ref + producer +
@@ -503,9 +527,77 @@ function buildNoteDataViaRender(
 	return {
 		path: fullPath,
 		frontmatter,
-		body: legacy.body,
+		body,
 		sourceRow: rowNum,
 	};
+}
+
+/**
+ * Normalize a list of rendered tag strings for a frontmatter `tags` array:
+ * strip any leading '#' (frontmatter tags are bare), trim, drop empties, and
+ * de-dupe preserving first-seen order. Deterministic. Exported for tests.
+ */
+export function normalizeTagList(tags: unknown[]): string[] {
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const t of tags) {
+		const clean = String(t).replace(/^#+/, '').trim();
+		if (clean === '' || seen.has(clean)) continue;
+		seen.add(clean);
+		out.push(clean);
+	}
+	return out;
+}
+
+/**
+ * Normalize a list of rendered alias strings: trim, drop empties, de-dupe.
+ * Deterministic. Exported for tests.
+ */
+export function normalizeAliasList(aliases: unknown[]): string[] {
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const a of aliases) {
+		const clean = String(a).trim();
+		if (clean === '' || seen.has(clean)) continue;
+		seen.add(clean);
+		out.push(clean);
+	}
+	return out;
+}
+
+/**
+ * Resolve a human-readable title for a note's H1 heading. Uses the leaf
+ * filename template resolved against the row (single-brace render syntax,
+ * pre-sanitization) so the H1 keeps characters a filename can't (`:`), falling
+ * back to the already-sanitized filename stem when the template can't resolve.
+ */
+function deriveTitleText(
+	row: Record<string, any>,
+	mapping: MappingConfig,
+	fallbackStem: string,
+): string {
+	if (mapping.filename?.template) {
+		try {
+			const raw = renderTemplate(mapping.filename.template, row as Record<string, unknown>)
+				.replace(/\.md$/i, '')
+				.trim();
+			if (raw) return raw;
+		} catch {
+			// Template variable missing — fall through to the sanitized stem.
+		}
+	}
+	return fallbackStem;
+}
+
+/**
+ * Assemble a document-style note body: an H1 title, a blank line, then the
+ * body content. Returns the body unchanged when there is no content OR no
+ * title (a frontmatter-only note gets no forced heading). Deterministic (no
+ * timestamps). Exported for tests.
+ */
+export function composeDocumentBody(titleText: string, body: string): string {
+	if (body.trim() === '' || titleText.trim() === '') return body;
+	return `# ${titleText}\n\n${body}`;
 }
 
 /**
@@ -567,7 +659,7 @@ const PLUGIN_VERSION = manifest.version;
  * for body/link content. v0.1.3 routes path + base frontmatter through
  * render() instead — see buildNoteDataViaRender above).
  */
-function buildNoteData(
+export function buildNoteData(
 	row: Record<string, any>,
 	rowNum: number,
 	mapping: MappingConfig,
@@ -1380,8 +1472,14 @@ export async function generateFromRecipe(
 
 			// 5. Compose frontmatter
 			const frontmatter: Record<string, any> = { ...address.frontmatter };
-			if (address.tags.length > 0) frontmatter.tags = address.tags;
-			if (address.aliases.length > 0) frontmatter.aliases = address.aliases;
+			if (address.tags.length > 0) {
+				const tags = normalizeTagList(address.tags);
+				if (tags.length > 0) frontmatter.tags = tags;
+			}
+			if (address.aliases.length > 0) {
+				const aliases = normalizeAliasList(address.aliases);
+				if (aliases.length > 0) frontmatter.aliases = aliases;
+			}
 			frontmatter._crosswalker = buildProvenance(
 				{
 					sourceFile: options.sourceFileName,

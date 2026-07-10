@@ -518,6 +518,32 @@ export function detectStructure(data: ParsedData, columns: ColumnInfo[]): Detect
 }
 
 // ============================================================================
+// Per-column default destination (spec §7k item 2)
+// ============================================================================
+
+/**
+ * The default destination for a non-structural column, given the source's
+ * structural detections. A body-candidate column (long prose — a control's
+ * description, a technique's detail) defaults to the note BODY so the generated
+ * note reads as a document, not a stub with its prose stuffed into a property.
+ * Every other column defaults to a frontmatter PROPERTY.
+ *
+ * Pure + deterministic. Only 'body' and 'property' are returned; tag / title /
+ * alias / link stay explicit user choices, never silent defaults. Wire this
+ * into the workbench's per-column seed in one line (see the seedColumnDests
+ * default `'property'`).
+ */
+export function defaultDestinationForColumn(
+	columnName: string,
+	detections: Detection[],
+): 'body' | 'property' {
+	for (const d of detections) {
+		if (d.kind === 'body-candidate' && d.column === columnName) return 'body';
+	}
+	return 'property';
+}
+
+// ============================================================================
 // Packed-hierarchy detection
 // ============================================================================
 
