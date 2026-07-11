@@ -176,6 +176,8 @@ export class MappingWorkbench {
 	private addMenuPrimitive: DestinationPrimitive | null = null;
 	private addMenuParams: Record<string, string> = {};
 	private selectedNoteRow = 0;
+	/** Source rail collapsed to a compact strip (screen-space design, spec §7n item 2). */
+	private sourceCollapsed = false;
 
 	private container: HTMLElement | null = null;
 	private rerenderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -266,7 +268,15 @@ export class MappingWorkbench {
 		if (tags.length) alsoEmit.tags = tags;
 		if (aliases.length) alsoEmit.aliases = aliases;
 		if (Object.keys(managed).length) alsoEmit.frontmatter = { managed };
-		return tags.length || aliases.length || Object.keys(managed).length ? { layout, also_emit: alsoEmit } : { layout };
+		const regions: RecipeRegions = tags.length || aliases.length || Object.keys(managed).length
+			? { layout, also_emit: alsoEmit }
+			: { layout };
+		// §7o root cause: toRecipeRegions(this.mapping) computes `base.enrichment`
+		// (Pass 1.5 batch enrichment — children lists, facet hubs, edge stats), but
+		// this method was rebuilding a fresh regions literal that dropped it, so
+		// enrichment never reached generation on the workbench path. Carry it through.
+		if (base.enrichment) regions.enrichment = base.enrichment;
+		return regions;
 	}
 
 	/** A full Recipe for render() / generation. */
@@ -311,7 +321,9 @@ export class MappingWorkbench {
 	render(container: HTMLElement): void {
 		this.container = container;
 		container.empty();
-		const grid = container.createDiv({ cls: 'crosswalker-workbench' });
+		const grid = container.createDiv({
+			cls: 'crosswalker-workbench' + (this.sourceCollapsed ? ' is-source-collapsed' : ''),
+		});
 		this.renderSourceRail(grid.createDiv({ cls: 'crosswalker-wb-rail crosswalker-wb-source' }));
 		this.renderCanvas(grid.createDiv({ cls: 'crosswalker-wb-canvas' }));
 		this.renderPreviewRail(grid.createDiv({ cls: 'crosswalker-wb-rail crosswalker-wb-preview' }));
@@ -344,8 +356,32 @@ export class MappingWorkbench {
 	// -------------------------------------------------------------------------
 
 	private renderSourceRail(rail: HTMLElement): void {
-		rail.createDiv({ cls: 'crosswalker-wb-eyebrow', text: 'Source' });
+		const eyebrowRow = rail.createDiv({ cls: 'crosswalker-wb-eyebrow crosswalker-wb-eyebrow-row' });
+		eyebrowRow.createSpan({ text: 'Source' });
 		const { parsedData, columnInfos } = this.opts;
+		const collapseBtn = eyebrowRow.createEl('button', {
+			cls: 'crosswalker-wb-collapse-btn',
+			attr: {
+				title: this.sourceCollapsed ? 'Expand the source rail' : 'Collapse the source rail',
+				'aria-label': this.sourceCollapsed ? 'Expand the source rail' : 'Collapse the source rail',
+			},
+		});
+		wbIcon(collapseBtn, this.sourceCollapsed ? 'chevrons-right' : 'chevrons-left');
+		collapseBtn.addEventListener('click', () => {
+			this.sourceCollapsed = !this.sourceCollapsed;
+			this.scheduleRerender();
+		});
+
+		if (this.sourceCollapsed) {
+			// Compact strip — enough to orient, none of the detail. The mapping
+			// canvas reclaims the reclaimed width via the grid's collapsed columns.
+			rail.createDiv({
+				cls: 'crosswalker-wb-chip',
+				text: `${parsedData.rowCount.toLocaleString()} rows × ${parsedData.columns.length} cols`,
+			});
+			return;
+		}
+
 		const fileLine = rail.createDiv({ cls: 'crosswalker-wb-source-file' });
 		fileLine.createEl('b', { text: this.sourceLabel() });
 		rail.createDiv({
@@ -694,7 +730,11 @@ export class MappingWorkbench {
 		for (const d of tail.destinations) this.destChip(lands, d);
 		tr.createEl('td', { cls: 'mono', text: tail.naming });
 		const miss = tr.createEl('td');
-		miss.createSpan({ text: `report · max ${tail.max_depth ?? 6}` });
+		const maxDepth = tail.max_depth ?? 6;
+		const overflowText = tail.on_overflow === 'error'
+			? `error past ${maxDepth} levels`
+			: `keep first ${maxDepth}, report the rest`;
+		miss.createSpan({ text: overflowText });
 	}
 
 	private renderDestinationChips(cell: HTMLElement, m: StructureMapping, mi: number, li: number, destinations: Destination[]): void {
@@ -784,9 +824,14 @@ export class MappingWorkbench {
 		const addrs = preview.addresses;
 		if (addrs.length) this.selectedNoteRow = Math.min(this.selectedNoteRow, addrs.length - 1);
 
+		// Tree + rendered note. Wrapped together so wide viewports (spec §7n item
+		// 2 — "generous" preview rail, tree and note side by side) can lay them out
+		// as a row via CSS; narrow viewports keep the original stacked order.
+		const treenote = rail.createDiv({ cls: 'crosswalker-wb-treenote' });
+
 		// Folder tree from the sample addresses — clickable file rows select the
 		// note previewed below (spec §7j #4: the tree IS the selector, no pager).
-		const tree = rail.createDiv({ cls: 'crosswalker-wb-tree' });
+		const tree = treenote.createDiv({ cls: 'crosswalker-wb-tree' });
 		for (const node of this.buildTreeNodes(addrs)) {
 			const row = tree.createDiv({
 				cls: 'crosswalker-wb-tree-row'
@@ -804,7 +849,7 @@ export class MappingWorkbench {
 		if (addrs.length > TREE_ROW_LIMIT) tree.createDiv({ cls: 'crosswalker-wb-tree-row crosswalker-muted', text: '… and more' });
 
 		if (addrs.length) {
-			const note = rail.createDiv({ cls: 'crosswalker-wb-note' });
+			const note = treenote.createDiv({ cls: 'crosswalker-wb-note' });
 			const noteTitle = note.createDiv({ cls: 'crosswalker-wb-note-title' });
 			wbIcon(noteTitle, 'file-text');
 			noteTitle.createSpan({ text: this.basename(addrs[this.selectedNoteRow].address.primary.path) });

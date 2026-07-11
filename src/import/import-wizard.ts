@@ -38,22 +38,53 @@ import {
 	bestRecognizedRecipe,
 	recipeMapping,
 	summarizeRecipeShapes,
+	RECIPE_REGISTRY,
 	type RecipeMatch,
 } from './recipe-registry';
 
 /**
- * Import Wizard Modal
+ * A host provides the DOM surface the import flow renders into and decides
+ * what "done" means. The modal host closes the modal; the workspace-view
+ * host resets the view back to its launchpad (spec §7n — the flow moves
+ * into the workspace tab; the modal remains a thin back-compat wrapper).
+ */
+export interface ImportFlowHost {
+	/** The element the flow renders into. Read once at construction; the
+	 *  flow owns clearing/rebuilding its own children on every re-render. */
+	containerEl: HTMLElement;
+	/** Called when the flow reaches a terminal "done" action (generation
+	 *  success, the results screen's Close button). */
+	close: () => void;
+}
+
+/**
+ * Import Flow — the full multi-step (soon: multi-zone) import experience.
  *
  * Multi-step wizard for importing structured data:
  * Step 1: Select source file
  * Step 2: Configure columns (hierarchy, frontmatter, links)
  * Step 3: Preview output
  * Step 4: Generate
+ *
+ * Host-agnostic (spec §7n): renders into whatever `ImportFlowHost` provides —
+ * a modal's contentEl, or a pane inside the Crosswalker workspace view. See
+ * `ImportWizardModal` below for the thin modal wrapper, and
+ * `src/views/workspace-view.ts` for the in-view host.
  */
-export class ImportWizardModal extends Modal {
+export class ImportFlow {
+	app: App;
 	plugin: CrosswalkerPlugin;
+	host: ImportFlowHost;
 	currentStep: number = 1;
 	totalSteps: number = 4;
+	/** Seed the flow to lead with a specific recognized recipe (the "Import
+	 *  again" affordance from the workspace view's installed-ontologies list,
+	 *  spec §7n item 3). Consumed once, on the first parsed file. */
+	presetRecipeId: string | null = null;
+	/** A vault file to pre-select on open (the file-explorer context-menu entry
+	 *  point, "Import into vault with Crosswalker"). Consumed once in `onOpen`:
+	 *  re-parsed automatically and the flow jumps straight to Step 2. */
+	pendingPrefill: TFile | null = null;
 
 	// Wizard state
 	sourceFile: File | null = null;
@@ -138,19 +169,32 @@ export class ImportWizardModal extends Modal {
 	// Populated on wizard open; refreshed after delete actions.
 	private availableDrafts: WizardDraft[] = [];
 
-	constructor(app: App, plugin: CrosswalkerPlugin) {
-		super(app);
+	constructor(app: App, plugin: CrosswalkerPlugin, host: ImportFlowHost) {
+		this.app = app;
 		this.plugin = plugin;
+		this.host = host;
 		// Initialize from settings
 		this.outputPath = plugin.settings.defaultOutputPath;
 	}
 
 	onOpen() {
-		this.modalEl.addClass('crosswalker-wizard-modal');
 		// Phase 3.6c (revised 2026-05-15): load any existing drafts upfront so
 		// Step 1 can render them as an always-visible section. No stacked
 		// modal — drafts surface inline, with an empty state when none exist.
-		void this.loadAvailableDrafts().then(() => this.renderStep());
+		void this.loadAvailableDrafts().then(async () => {
+			// File-explorer context menu entry point ("Import into vault with
+			// Crosswalker"): a file was already picked, so skip Step 1 entirely —
+			// re-parse it from the vault and land straight on Step 2.
+			if (this.pendingPrefill) {
+				const file = this.pendingPrefill;
+				this.pendingPrefill = null;
+				const name = file.name.toLowerCase();
+				this.sourceType = name.endsWith('.csv') ? 'csv' : name.endsWith('.json') ? 'json' : 'xlsx';
+				const ok = await this.reparseFromVault(file.path, file.name);
+				if (ok) this.currentStep = 2;
+			}
+			this.renderStep();
+		});
 	}
 
 	private async loadAvailableDrafts(): Promise<void> {
@@ -298,12 +342,12 @@ export class ImportWizardModal extends Modal {
 			void this.saveDraftNow();
 		}
 
-		const { contentEl } = this;
+		const contentEl = this.host.containerEl;
 		contentEl.empty();
 	}
 
 	renderStep() {
-		const { contentEl } = this;
+		const contentEl = this.host.containerEl;
 		contentEl.empty();
 
 		// Sticky nav chrome (spec §7h #1): Back (left) · step indicator (center) ·
@@ -801,6 +845,20 @@ export class ImportWizardModal extends Modal {
 			this.recognizedMatch = null;
 			return;
 		}
+		// "Import again" (workspace view, spec §7n item 3): the caller pre-armed a
+		// specific recipe id. Honor it directly rather than re-fingerprinting — the
+		// user already told us which ontology this is. Consumed once.
+		if (this.presetRecipeId) {
+			const entry = RECIPE_REGISTRY.find((e) => e.id === this.presetRecipeId);
+			this.presetRecipeId = null;
+			if (entry) {
+				this.recognizedMatch = { entry, score: 100 };
+				this.plugin.debug.info('wizard', 'recognized-source-preset', `Import again: preset recipe "${entry.id}"`, {
+					recipeId: entry.id,
+				});
+				return;
+			}
+		}
 		this.recognizedMatch = bestRecognizedRecipe(this.parsedData.columns);
 		if (this.recognizedMatch) {
 			this.plugin.debug.info('wizard', 'recognized-source', `Recognized "${this.recognizedMatch.entry.id}" (${this.recognizedMatch.score}% match)`, {
@@ -834,7 +892,7 @@ export class ImportWizardModal extends Modal {
 			origin: 'built-in',
 			badge: 'Built-in',
 			recommended: true,
-			line: `${entry.label} · vetted recipe · Built-in`,
+			line: `${entry.label} · built-in configuration`,
 		};
 		renderProvenanceBadge(head.createEl('div', { cls: 'crosswalker-recognized-badges' }), prov);
 
@@ -850,7 +908,7 @@ export class ImportWizardModal extends Modal {
 
 		// Actions — one confident primary, escape hatches beside it.
 		const actions = card.createEl('div', { cls: 'crosswalker-recognized-actions' });
-		const importBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Import with this recipe' });
+		const importBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Import with this configuration' });
 		importBtn.addEventListener('click', () => this.startRecognizedRecipe(3));
 		const customizeBtn = actions.createEl('button', { text: 'Customize' });
 		customizeBtn.addEventListener('click', () => this.startRecognizedRecipe(2));
@@ -1450,7 +1508,7 @@ export class ImportWizardModal extends Modal {
 			origin: 'built-in',
 			badge: 'Built-in',
 			recommended: true,
-			line: `${label} · vetted recipe · Built-in`,
+			line: `${label} · built-in configuration`,
 		};
 	}
 
@@ -1772,7 +1830,7 @@ export class ImportWizardModal extends Modal {
 			return null;
 		}
 
-		const sampleRows = rows.slice(0, ImportWizardModal.PREVIEW_RENDER_SAMPLE_SIZE);
+		const sampleRows = rows.slice(0, ImportFlow.PREVIEW_RENDER_SAMPLE_SIZE);
 		const perRow: PreviewRowNotes[] = [];
 		sampleRows.forEach((row, i) => {
 			const rowNum = i + 1;
@@ -2737,8 +2795,9 @@ export class ImportWizardModal extends Modal {
 					this.draftId = null;
 				}
 
-				// Close modal on success
-				this.close();
+				// Reached "done" — host decides what that means (close the
+				// modal, or reset the workspace view to its launchpad).
+				this.host.close();
 			} else {
 				// Show error summary
 				const errorSummary = result.errors.slice(0, 3)
@@ -2765,7 +2824,7 @@ export class ImportWizardModal extends Modal {
 	 * Render generation results (errors/warnings) in the modal
 	 */
 	renderGenerationResults(result: { success: boolean; created: string[]; skipped: string[]; errors: { row: number; message: string }[] }) {
-		const { contentEl } = this;
+		const contentEl = this.host.containerEl;
 		contentEl.empty();
 
 		contentEl.createEl('h2', { text: 'Generation results' });
@@ -2803,6 +2862,36 @@ export class ImportWizardModal extends Modal {
 		// Close button
 		const footer = contentEl.createEl('div', { cls: 'crosswalker-wizard-footer' });
 		const closeBtn = footer.createEl('button', { text: 'Close' });
-		closeBtn.addEventListener('click', () => this.close());
+		closeBtn.addEventListener('click', () => this.host.close());
+	}
+}
+
+/**
+ * Thin modal host for `ImportFlow` — back-compat surface for callers that
+ * still want a dialog (command palette, settings launchpad; the workspace
+ * view hosts the flow directly instead, spec §7n). Owns only the modal
+ * chrome (width class, open/close plumbing); all wizard logic lives in
+ * `ImportFlow`.
+ */
+export class ImportWizardModal extends Modal {
+	private flow: ImportFlow;
+
+	constructor(app: App, plugin: CrosswalkerPlugin, opts?: { presetRecipeId?: string; prefillFile?: TFile }) {
+		super(app);
+		this.flow = new ImportFlow(app, plugin, {
+			containerEl: this.contentEl,
+			close: () => this.close(),
+		});
+		if (opts?.presetRecipeId) this.flow.presetRecipeId = opts.presetRecipeId;
+		if (opts?.prefillFile) this.flow.pendingPrefill = opts.prefillFile;
+	}
+
+	onOpen() {
+		this.modalEl.addClass('crosswalker-wizard-modal');
+		this.flow.onOpen();
+	}
+
+	onClose() {
+		this.flow.onClose();
 	}
 }

@@ -250,35 +250,28 @@ describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
 		});
 	});
 
-	// eslint-disable-next-line jest/no-disabled-tests
-	it.skip('BUG: buildRecipe() must carry target.enrichment through (currently dropped)', () => {
+	it('buildRecipe() carries target.enrichment through (spec §7o root cause, fixed)', () => {
 		// Root cause (found 2026-07-11, generation-engine.ts/generation surface
 		// investigation of spec §7o): MappingWorkbench.buildFinalRegions() in
-		// src/import/workbench.ts computes `const base = toRecipeRegions(this.mapping)`
+		// src/import/workbench.ts computed `const base = toRecipeRegions(this.mapping)`
 		// (which DOES carry `base.enrichment`, per the sanity test above and
-		// serialize.ts's toRecipeRegions), but its final `return` reconstructs a
+		// serialize.ts's toRecipeRegions), but its final `return` reconstructed a
 		// brand-new RecipeRegions literal — `{ layout, also_emit }` or `{ layout }`
-		// — that never copies `base.enrichment` across. `enrichmentEnabled` in
-		// generateNotes (`!!recipe.target.enrichment`) is therefore always false
+		// — that never copied `base.enrichment` across. `enrichmentEnabled` in
+		// generateNotes (`!!recipe.target.enrichment`) was therefore always false
 		// on the wizard/workbench path, so Pass 1.5 (children lists + facet hub
-		// notes + edgeCount) never runs — regardless of whether facetsForRow is
-		// wired correctly (it is; see the facet-display-names describe block
+		// notes + edgeCount) never ran — regardless of whether facetsForRow was
+		// wired correctly (it was; see the facet-display-names describe block
 		// above and generate-notes-enrichment.test.ts).
 		//
-		// ONE-LINE FIX for the workbench.ts owner, in buildFinalRegions()'s
-		// return statement (~line 267):
+		// Fixed in buildFinalRegions()'s return statement: `if (base.enrichment)
+		// regions.enrichment = base.enrichment;` before returning.
 		//
-		//   const regions: RecipeRegions = tags.length || aliases.length || Object.keys(managed).length
-		//     ? { layout, also_emit: alsoEmit }
-		//     : { layout };
-		//   if (base.enrichment) regions.enrichment = base.enrichment;
-		//   return regions;
-		//
-		// Verified end-to-end (headless, outside this file) with that one-line
-		// patch applied: generateNotes on this exact 12-row fixture produces 17
-		// created files (12 leaf + 5 facet hubs meeting HUB_MIN_MEMBERS=2:
-		// Defense Evasion, Privilege Escalation, Execution, Command and Control,
-		// Persistence) and edgeCount 15. Un-skip this test once the fix lands.
+		// Verified end-to-end (headless, outside this file) with that patch
+		// applied: generateNotes on this exact 12-row fixture produces 17 created
+		// files (12 leaf + 5 facet hubs meeting HUB_MIN_MEMBERS=2: Defense Evasion,
+		// Privilege Escalation, Execution, Command and Control, Persistence) and
+		// edgeCount 15.
 		const wb = reproWorkbench();
 		const recipe = wb.buildRecipe();
 		expect(recipe.target.enrichment).toEqual({

@@ -130,7 +130,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 
 			const card = await waitFor('.crosswalker-recognized-card', 8000);
 			const primary = Array.from(modal.querySelectorAll('.crosswalker-recognized-actions button')).find(
-				(b) => b.textContent?.includes('Import with this recipe'),
+				(b) => b.textContent?.includes('Import with this configuration'),
 			);
 			return {
 				ok: !!card,
@@ -158,7 +158,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			expect(info.hasScratch).toBe(true);
 		}
 
-		// "Import with this recipe" jumps STRAIGHT to the review screen (spec §7m),
+		// "Import with this configuration" jumps STRAIGHT to the review screen (spec §7m),
 		// loaded via fromRecipe (round-trip law). The review provenance must read as
 		// VETTED "Built-in" — NOT the workbench's preset-drift "Custom".
 		const review = await browser.executeObsidian(async () => {
@@ -166,7 +166,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			const modal = document.querySelector('.modal');
 			if (!modal) return { ok: false as const };
 			const primary = Array.from(modal.querySelectorAll('.crosswalker-recognized-actions button')).find(
-				(b) => b.textContent?.includes('Import with this recipe'),
+				(b) => b.textContent?.includes('Import with this configuration'),
 			) as HTMLButtonElement | undefined;
 			if (!primary) return { ok: false as const, reason: 'NO_PRIMARY' };
 			primary.click();
@@ -197,7 +197,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			expect(review.h3).toContain('Review');
 			expect(review.hasRecap).toBe(true);
 			expect(review.badge).toContain('Built-in');
-			expect(review.provText.toLowerCase()).toContain('vetted');
+			expect(review.provText.toLowerCase()).toContain('built-in configuration');
 			expect(review.workbenchPresent).toBe(false);
 		}
 
