@@ -129,6 +129,34 @@ interface GeneratedNoteData {
 	sourceRow: number;
 }
 
+// ============================================================================
+// Pass 1.5 batch enrichment — shared between generateNotes and
+// generateFromRecipe (v0.1.6.1 — 2026-07-11)
+// ============================================================================
+
+/**
+ * One lightweight record per written note, collected during EITHER write loop
+ * (`generateNotes`'s legacy/workbench path or `generateFromRecipe`'s native
+ * path) so the shared post-stream enrichment phase (`applyEnrichment` below)
+ * can derive parent→children lists + facet hub notes without re-reading the
+ * vault. Only collected when the effective recipe declares `target.enrichment`.
+ */
+interface EnrichRecord extends EnrichNote {
+	body: string;
+}
+
+/**
+ * Minimal shape `applyEnrichment` needs to place facet hub notes and stamp
+ * provenance — a structural subset both `GenerationOptions` and
+ * `RecipeImportOptions` satisfy, so the same enrichment phase can run after
+ * either write loop without those two option shapes needing to unify.
+ */
+interface EnrichmentWriteOptions {
+	basePath: string;
+	sourceFileName?: string;
+	sourceVersion?: string;
+}
+
 // Current schema version for _crosswalker metadata
 const CROSSWALKER_METADATA_VERSION = 1;
 
@@ -263,6 +291,20 @@ export async function generateNotes(
 		// (two source rows rendering to the same vault path).
 		const emittedPaths = new Set<string>();
 
+		// Pass 1.5 enrichment (v0.1.6.1): the wizard/workbench path shares the
+		// SAME enrichment phase generateFromRecipe uses (see applyEnrichment
+		// below) — children lists, facet hub notes, and edgeCount are no longer
+		// exclusive to the native-recipe path. `ontologyId` mirrors
+		// generateFromRecipe's `recipe.source?.ontology ?? recipe.recipe`
+		// priority, falling back to the legacy config name (what buildNoteData
+		// ViaRender already used before this change, so per-row curies are
+		// unaffected when the recipe carries no `source.ontology`, e.g. the
+		// workbench recipe today).
+		const enrichmentEnabled = !!recipe.target.enrichment;
+		const ontologyId = recipe.source?.ontology ?? (config.name ?? 'unknown');
+		const curiePrefix = slugifyForCurie(ontologyId);
+		const enrichRecords: EnrichRecord[] = [];
+
 		// v0.1.4.5: iterate so streaming-row sources (AsyncIterable) work alongside
 		// the eager array case. v0.1.6 (2026-06-13): writes run in a bounded
 		// concurrency pool — the per-row SYNC prefix (render + collision reserve)
@@ -288,7 +330,7 @@ export async function generateNotes(
 						mapping,
 						options,
 						recipe,
-						config.name ?? 'unknown',
+						ontologyId,
 						renderReport,
 					);
 					if (renderReport.notes.length > 0) {
@@ -376,6 +418,21 @@ export async function generateNotes(
 					}
 
 					result.created.push(fullPath);
+
+					// Collect a record for Pass 1.5 enrichment (parent→children +
+					// facet hubs) — same collection generateFromRecipe performs.
+					if (enrichmentEnabled) {
+						const facets = options.facetsForRow
+							? options.facetsForRow(row as Record<string, unknown>, rowNum)
+							: facetMembershipsFromTags(noteData.tags);
+						enrichRecords.push({
+							path: fullPath,
+							curie: noteData.curie,
+							frontmatter: { ...noteData.frontmatter },
+							facets,
+							body: noteData.body,
+						});
+					}
 				} catch (rowError) {
 					const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
 					result.errors.push({
@@ -391,6 +448,28 @@ export async function generateNotes(
 				}
 			},
 		);
+
+		// Pass 1.5 — batch enrichment patch phase (post-stream), same phase
+		// generateFromRecipe runs. See applyEnrichment for the exact semantics
+		// (children lists + facet hub notes + edgeCount, re-import-safe merge).
+		if (enrichmentEnabled && enrichRecords.length > 0) {
+			try {
+				await applyEnrichment(
+					app,
+					recipe,
+					{ basePath: options.basePath, sourceFileName: options.sourceFileName, sourceVersion: options.frameworkVersion },
+					curiePrefix,
+					enrichRecords,
+					result,
+					debug,
+				);
+			} catch (enrichErr) {
+				const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
+				result.warnings ??= [];
+				result.warnings.push({ row: 0, message: `Enrichment pass failed: ${msg}` });
+				debug?.error('generation', 'enrichment-failed', 'Enrichment pass failed', { error: msg });
+			}
+		}
 
 		// Final progress update
 		if (options.onProgress) {
@@ -463,7 +542,7 @@ function buildNoteDataViaRender(
 	recipe: ReturnType<typeof legacyConfigToRecipe>,
 	ontologyId: string,
 	report?: RenderReport,
-): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number } {
+): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[] } {
 	// 1. Build a CURIE for this row. Strategy: ontology + filename stem.
 	//    The filename is whatever the recipe's leaf file template resolves to.
 	const filenameStem = deriveFilenameStem(row, mapping, rowNum);
@@ -541,6 +620,12 @@ function buildNoteDataViaRender(
 		frontmatter,
 		body,
 		sourceRow: rowNum,
+		// Curie + raw (tagsafe) rendered tags — needed only by the Pass 1.5
+		// enrichment collector in generateNotes (curie for deterministic sort /
+		// hub-note curie namespace; tags for the facetsForRow fallback when the
+		// caller doesn't supply mapping-driven facet memberships).
+		curie,
+		tags: address.tags,
 	};
 }
 
@@ -1430,9 +1515,6 @@ export async function generateFromRecipe(
 	// re-reading the vault. One lightweight record per written note. Only
 	// populated when the recipe declares target.enrichment.
 	const enrichmentEnabled = !!recipe.target.enrichment;
-	interface EnrichRecord extends EnrichNote {
-		body: string;
-	}
 	const enrichRecords: EnrichRecord[] = [];
 	// v0.1.4.5: streaming-friendly iteration (array OR AsyncIterable<Row>).
 	// v0.1.6 (2026-06-13): writes run in a bounded concurrency pool; the sync
@@ -1657,13 +1739,19 @@ export function facetMembershipsFromTags(tags: string[]): FacetMembership[] {
  * facet hubs from the in-memory records, then writes `children` onto parents and
  * materializes facet hub notes — both via the managed-merge path so re-imports
  * are idempotent and user prose / user frontmatter survives.
+ *
+ * Shared between `generateFromRecipe` (native Ch 22 recipes) and `generateNotes`
+ * (the legacy column-role / workbench path) — `options` only needs the
+ * structural subset both callers' option shapes carry (see
+ * `EnrichmentWriteOptions`), so this one phase runs identically after either
+ * write loop.
  */
 async function applyEnrichment(
 	app: App,
 	recipe: Recipe,
-	options: RecipeImportOptions,
+	options: EnrichmentWriteOptions,
 	curiePrefix: string,
-	records: Array<EnrichNote & { body: string }>,
+	records: EnrichRecord[],
 	result: GenerationResult,
 	debug?: DebugLog,
 ): Promise<void> {
