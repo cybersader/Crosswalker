@@ -1,5 +1,12 @@
-import { Plugin, Notice, TFile, MarkdownView } from 'obsidian';
+import { Plugin, Notice, TFile, TFolder, MarkdownView } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
+import {
+	isImportableExtension,
+	countTopLevelOntologyFolders,
+	formatOntologyStatusLabel,
+	checkFirstRun,
+	type TopLevelEntry,
+} from './ui/entry-points';
 import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
 import { SssomImportModal } from './import/sssom-import-modal';
@@ -50,6 +57,13 @@ export default class CrosswalkerPlugin extends Plugin {
 	settings: CrosswalkerSettings;
 	debug: DebugLog;
 	draftStore: DraftStore;
+
+	/**
+	 * Status bar "installed ontologies" indicator (discoverability entry
+	 * point 3). Held so the count can be refreshed on layout-ready and on
+	 * vault structure changes without re-adding the element.
+	 */
+	private ontologyStatusBarEl: HTMLElement | null = null;
 
 	// Validator + render + generation-module handles attached to the plugin
 	// instance so E2E tests + future command implementations can call them
@@ -194,8 +208,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// v0.1.6 Phase 2: SSSOM TSV import (per Ch 35)
 		this.addCommand({
 			id: 'import-sssom',
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- SSSOM is a proper-noun acronym (Simple Standard for Sharing Ontological Mappings); canonical casing required
-			name: 'Import SSSOM mapping file',
+			name: 'Import crosswalk mapping file',
 			callback: () => {
 				new SssomImportModal(this.app, this).open();
 			},
@@ -609,8 +622,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// v0.1.5: Tier 2 sidecar — clear command
 		this.addCommand({
 			id: 'clear-tier-2-sidecar',
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2" are Crosswalker's architecture-tier terms
-			name: 'Clear Tier 2 sidecar (reproject from canonical Tier 1 on next open)',
+			name: 'Clear fast query index (rebuilds automatically)',
 			callback: async () => {
 				try {
 					if (this.tier2Handle) {
@@ -618,11 +630,10 @@ export default class CrosswalkerPlugin extends Plugin {
 						this.tier2Handle = null;
 					}
 					await clearSidecar(this, this.settings.tier2SidecarPath);
-					// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2" are Crosswalker's architecture-tier terms
-					new Notice('Tier 2 sidecar cleared. Next query will reproject from Tier 1.');
+					new Notice('Fast query index cleared. It rebuilds automatically.');
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
-					new Notice(`Failed to clear Tier 2 sidecar: ${msg}`);
+					new Notice(`Failed to clear the fast query index: ${msg}`);
 					this.debug?.error('tier2', 'clear-failed', 'Tier 2 sidecar clear failed', { error: msg });
 				}
 			},
@@ -720,6 +731,61 @@ export default class CrosswalkerPlugin extends Plugin {
 			},
 		});
 
+		// Discoverability entry point 1+2: the file-explorer right-click menu
+		// and a file's "more options" (⋯) menu both fire the same workspace
+		// 'file-menu' event (Obsidian dispatches it from both surfaces), so one
+		// handler covers both without registering a dedicated view type for
+		// CSV/XLSX/JSON files.
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu, file) => {
+				if (!(file instanceof TFile)) return;
+				if (!isImportableExtension(file.extension)) return;
+				menu.addItem((item) => {
+					item
+						// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Crosswalker" is the plugin's proper name
+						.setTitle('Import into vault with Crosswalker')
+						.setIcon('import')
+						.onClick(() => {
+							// ImportWizardModal's constructor doesn't yet accept a
+							// prefill file — opens the standard wizard for now
+							// (source still needs re-selecting in Step 1). See the
+							// coordinator diff for the prefill param this entry
+							// point is designed to hand off to.
+							new ImportWizardModal(this.app, this).open();
+						});
+				});
+			}),
+		);
+
+		// Discoverability entry point 3: subtle status bar indicator showing
+		// how many ontologies are installed (top-level folders under the
+		// configured output path). Click opens the workspace tab via the
+		// existing view-type machinery — no import of the sibling-owned view
+		// module needed.
+		this.ontologyStatusBarEl = this.addStatusBarItem();
+		this.ontologyStatusBarEl.addClass('crosswalker-status-bar-item');
+		this.ontologyStatusBarEl.addClass('mod-clickable');
+		this.ontologyStatusBarEl.setAttr('aria-label', 'Open the Crosswalker workspace');
+		this.ontologyStatusBarEl.setText(formatOntologyStatusLabel(0));
+		this.ontologyStatusBarEl.addEventListener('click', () => {
+			void this.activateWorkspaceView();
+		});
+		this.registerEvent(
+			this.app.vault.on('create', (file) => {
+				if (file instanceof TFolder) this.refreshOntologyStatusBar();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				if (file instanceof TFolder) this.refreshOntologyStatusBar();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file) => {
+				if (file instanceof TFolder) this.refreshOntologyStatusBar();
+			}),
+		);
+
 		// v0.1.6 Phase 3: register the crosswalkerPivot custom Bases view
 		// (per Settled #2 + Ch 30). Public API path; Obsidian 1.10.0+ required.
 		// Bases-disabled fallback Notice surfaces if the user has the Bases
@@ -742,9 +808,71 @@ export default class CrosswalkerPlugin extends Plugin {
 			// content already matches). Catches stale state after the user
 			// hand-edits frontmatter or the recipe template changes.
 			void regenerateAll(this.app, this.debug);
+			// Discoverability entry point 3: now that the vault is indexed,
+			// the output folder's top-level children can be counted.
+			this.refreshOntologyStatusBar();
 		});
 
+		// Discoverability entry point 4: first-run / post-update notice. Fires
+		// once on a fresh install and once per version change, never twice for
+		// the same version. `lastSeenVersion` is persisted in plugin data
+		// alongside settings (loadSettings/saveSettings already merge the full
+		// data.json blob onto `this.settings`), without adding a field to
+		// settings-data.ts.
+		this.maybeShowFirstRunNotice();
+
 		this.debug.info('lifecycle', 'loaded', 'Crosswalker plugin loaded', { version: '0.1.6' });
+	}
+
+	/**
+	 * Recompute + repaint the status bar ontology count from the top-level
+	 * folders under the configured output path. Cheap — only ever looks at
+	 * one level, never recurses into the ontology folders themselves.
+	 */
+	private refreshOntologyStatusBar(): void {
+		if (!this.ontologyStatusBarEl) return;
+		const folder = this.app.vault.getAbstractFileByPath(this.settings.defaultOutputPath);
+		const entries: TopLevelEntry[] = folder instanceof TFolder
+			? folder.children.map((child) => ({ name: child.name, isFolder: child instanceof TFolder }))
+			: [];
+		const count = countTopLevelOntologyFolders(entries);
+		this.ontologyStatusBarEl.setText(formatOntologyStatusLabel(count));
+	}
+
+	/**
+	 * Discoverability entry point 4: a one-time, humble Notice (no modal
+	 * takeover) pointing new/updated users at the workspace tab. Gate state
+	 * (`lastSeenVersion`) is stored in plugin data directly rather than as a
+	 * typed settings field — see settings-data.ts ownership boundary.
+	 */
+	private maybeShowFirstRunNotice(): void {
+		const currentVersion = this.manifest.version;
+		const settingsWithGate = this.settings as CrosswalkerSettings & { lastSeenVersion?: string };
+		const check = checkFirstRun(settingsWithGate.lastSeenVersion ?? null, currentVersion);
+		if (!check.shouldShow) return;
+
+		settingsWithGate.lastSeenVersion = currentVersion;
+		void this.saveSettings();
+
+		// noticeEl (not the newer messageEl) is used for manifest.json's
+		// declared minAppVersion (1.0.0) compatibility — messageEl only
+		// exists since Obsidian 1.8.7.
+		const notice = new Notice('', 12000);
+		notice.noticeEl.createEl('div', { text: 'Crosswalker is ready.' });
+		const link = notice.noticeEl.createEl('a', {
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Crosswalker" is the plugin's proper name
+			text: 'Open the Crosswalker workspace to get started',
+			href: '#',
+		});
+		// Inline minimal styling (no styles.css touch — see delivery report):
+		// a bare <a> in a Notice inherits no link styling from Obsidian core.
+		link.style.textDecoration = 'underline';
+		link.style.cursor = 'pointer';
+		link.addEventListener('click', (evt) => {
+			evt.preventDefault();
+			notice.hide();
+			void this.activateWorkspaceView();
+		});
 	}
 
 	/**
