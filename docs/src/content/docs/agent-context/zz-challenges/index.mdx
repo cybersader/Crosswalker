@@ -72,6 +72,12 @@ Surfaced while making the [system model](/crosswalker/concepts/system-model/)'s 
 
 - [Challenge 42: Variable-depth hierarchy generation from recipe primitives](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) — **Follow-on to Ch 22.** How should a recipe express variable/ragged depth (split one packed key into however-many parts there are, per row, with smart fallback) without breaking the closed 5-mechanism grammar or `render()` determinism? Covers variadic split, ragged-depth + collapse + overflow, fallback semantics, polyhierarchical tag *layout*, data-driven heading depth, and graph-edge hierarchy.
 
+### Filed 2026-07-11 — the lifecycle arc's Act 2 (semantic-diff migration)
+
+Surfaced while drafting a five-act reframe of the product (import is Act 1; "your ontology updates and your world survives" is the proposed v0.2 headline, Act 2). The match-pass/impact-pass/review/apply sketch is architect-drafted, not stress-tested against real publisher behavior.
+
+- [Challenge 43: Version migration — the semantic-diff loop](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) — Stress-tests the semantic-diff/guided-migration loop against how NIST (CPRT), MITRE ATT&CK (STIX version bumps + published changelogs), and CIS (ad hoc, non-machine-readable) actually ship version deltas. Covers match-pass feasibility (curie stability across versions, publisher rename tables, SSSOM-style lexical/structural matching), split/merge semantics for evidence reassignment, the two axes of change (source-version change vs recipe change), and lineage storage. Builds directly on the pre-v0.1 [ontology evolution](/crosswalker/concepts/ontology-evolution/) + [data model resilience](/crosswalker/agent-context/data-model-resilience/) Foundation-phase research.
+
 ## Archived (resolved)
 
 Challenges that have been resolved by a research deliverable and a corresponding log entry. The brief itself is preserved (re-runnable) — see each archived file for the resolution callout pointing to the resolving log.

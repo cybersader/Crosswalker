@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Settings hub, recognized sources, and enrichment everywhere (2026-07-11)
+
+- **Settings open on a hub, not a wall of fields.** A start-here launchpad (import, manage saved configs, resume a draft) plus section cards with a glimpse of their current values; every setting that shapes output carries a live, illustrated preview built from your actual values (folder tree, property samples, cell-value formatting, link style). Folder fields autocomplete. All copy uses plain language instead of internal terminology.
+- **Recognized sources get a fast path.** When a selected file confidently matches one of the built-in, vetted import recipes (NIST CSF 2.0, MITRE ATT&CK, CIS Controls, NIST 800-53, CRI Profile, SCF), the wizard leads with a calm "Recognized: [source]" card instead of the full detection flow — plain-language summary of what will happen, one primary action to proceed straight to review, and a "Customize" option that opens the full mapping workbench if you want to adjust anything. An unedited recognized source is labeled Built-in; customizing it is labeled Custom, honestly.
+- **Every import now gets the richer output, not just some.** Parent notes get an auto-maintained list of their children; shared facet values (like categories or tags) get their own hub note listing every note that carries them; and the review screen shows a connection count so a disconnected import is visible before you generate. This previously only applied to imports built through the visual mapping workbench — it now applies uniformly to every import path.
+- **Visual polish pass on the mapping workbench**: consistent spacing, type, and shape across every card and badge; icons instead of emoji (so they render correctly everywhere, including screenshots); calmer evidence cards; and whole-card click targets.
+- **Testing**: added coverage for the recognized-source matching logic, the settings previews, and expanded end-to-end screenshot coverage (including dark theme and post-generation views).
+
 ### Connected vaults, honest review, resumable drafts (2026-07-06 → 2026-07-10)
 
 The first hands-on rounds of the shape workbench drove a fix-and-harden sweep:
