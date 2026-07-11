@@ -1725,6 +1725,11 @@
 .crosswalker-wizard-content {
 	container-type: inline-size;
 	container-name: cw-flow;
+	/* Pane-level horizontal scroll is a bug class, enforced: any residual
+	   few-px overflow from chrome is clipped. Wide content that legitimately
+	   needs horizontal room (preview trees, minis) scrolls inside its own
+	   bounded element instead. */
+	overflow-x: clip;
 }
 
 .crosswalker-workbench {
