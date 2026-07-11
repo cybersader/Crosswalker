@@ -129,13 +129,13 @@ export class RecipePickerModal extends Modal {
 			// eslint-disable-next-line obsidianmd/ui/sentence-case -- leading pencil glyph confuses the linter's first-letter detection; "Updating" is already correctly capitalized
 			badge.createEl('span', { text: '✎ Updating existing query', cls: 'crosswalker-update-badge-label' });
 			header.createEl('p', {
-				text: `Current recipe: ${this.existing.recipe} · query_id: ${this.existing.query_id}. Adjust params below + click Apply — the same .base file regenerates.`,
+				text: `Current template: ${this.existing.recipe} · query_id: ${this.existing.query_id}. Adjust params below + click Apply — the same .base file regenerates.`,
 				cls: 'setting-item-description',
 			});
 		} else {
 			header.createEl('p', {
 				// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Apply" quotes the literal button label
-				text: 'Pick a recipe; adjust params; click Apply. The plugin writes frontmatter + generates a .base file + inserts a ![[...]] embed at your cursor.',
+				text: 'Pick a query template; adjust params; click Apply. The plugin writes frontmatter + generates a .base file + inserts a ![[...]] embed at your cursor.',
 				cls: 'setting-item-description',
 			});
 		}
@@ -160,7 +160,7 @@ export class RecipePickerModal extends Modal {
 		const listContainer = contentEl.createEl('div', { cls: 'crosswalker-config-list crosswalker-recipe-list' });
 		if (this.recipes.length === 0) {
 			const empty = listContainer.createEl('div', { cls: 'crosswalker-empty-state' });
-			empty.createEl('p', { text: 'No recipes available.' });
+			empty.createEl('p', { text: 'No query templates available.' });
 		} else {
 			for (const r of this.recipes) {
 				this.renderRecipeCard(listContainer, r);

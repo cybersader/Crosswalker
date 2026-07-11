@@ -253,7 +253,7 @@ class CrosswalkerPivotView extends Component {
 			const list = wrap.createEl('ul');
 			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "SSSOM" is a domain acronym; quotes the literal command palette entry name
 			list.createEl('li', { text: 'No SSSOM crosswalks have been imported yet for the ontologies in this filter. Run "Crosswalker: Import SSSOM mapping file" to populate _crosswalker/mappings/.' });
-			list.createEl('li', { text: 'The recipe filter targets a folder that does not exist in this vault.' });
+			list.createEl('li', { text: "The query's filter targets a folder that does not exist in this vault." });
 			list.createEl('li', { text: 'A confidence threshold or filter clause is excluding every junction.' });
 		}
 	}

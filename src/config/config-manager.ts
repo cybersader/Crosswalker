@@ -332,7 +332,7 @@ export function importConfig(json: object): SavedConfig | null {
 		const imported: SavedConfig = {
 			schemaVersion: SAVED_CONFIG_SCHEMA_VERSION,
 			id: generateConfigId(),
-			name: data.config.name || 'Imported config',
+			name: data.config.name || 'Imported configuration',
 			description: data.config.description,
 			createdAt: now,
 			updatedAt: now,

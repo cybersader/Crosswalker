@@ -1,0 +1,92 @@
+---
+title: UI lexicon
+description: The canonical mapping from internal/KB vocabulary to what the plugin actually says on screen — and the rules that keep it that way.
+tags: [ui, terminology, grc]
+---
+
+Crosswalker's [terminology](/crosswalker/concepts/terminology/) page defines the KB's general-ontology
+vocabulary (concept, ontology, recipe, crosswalk, facet, hub…). That vocabulary is deliberately
+domain-neutral so the docs and internals read correctly for any structured source, not just
+compliance frameworks. But two rules constrain what the **plugin UI** — Notices, `setName`/`setDesc`,
+button labels, placeholders — is allowed to say:
+
+1. **Plain language, GRC-first.** User-facing surfaces (README, settings, wizard, modals) never expose
+   internal architecture vocabulary — STRM, SSSOM, Tier 2, sqlite-wasm, curie, and similar terms alienate
+   evaluators who are not plugin architects. See `feedback_readme_user_facing_surfaces`.
+2. **General-ontology words stay in docs/KB/internals.** "Ontology," "concept," and "framework mapping"
+   read fine in the KB; the shipped UI should read in plain English a GRC practitioner already knows.
+   See `feedback_general_ontology_positioning`.
+
+Neither rule says "never use a KB term" — it says **translate deliberately**, and translate the *same*
+KB term to the *same* UI word everywhere it shows up. This page is that mapping. It exists because one
+KB word — **recipe** — turned out to name three unrelated artifacts across the codebase, and a plugin
+owner testing their own UI could no longer tell which one a screen meant. That collision is the reason
+this page exists; the table below is the fix.
+
+## The three "recipe" collision (why this page exists)
+
+Before this pass, "recipe" appeared, unqualified, for three different things:
+
+| # | What it actually is | Where it lived | Was called |
+|---|---|---|---|
+| 1 | The import mapping grammar (`folder \| file \| heading \| tag \| wikilink` × `layout` × `also_emit`) — [Recipe (import recipe)](/crosswalker/concepts/terminology/#core-terms) in the KB | Saved by a user after an import (`SavedConfig`) | Already shipped as **"saved configuration"** in settings/config-browser — correct, no change |
+| 2 | A **bundled**, team-vetted instance of #1 for a known framework export (NIST CSF, CIS, MITRE…) | `src/import/recipe-registry.ts`, surfaced on the recognized-source card | `"vetted recipe"` next to a `Built-in` badge — redundant + jargon |
+| 3 | A Layer-C query composition (filter + traversal + pivot, e.g. "Coverage Matrix") that becomes a `.base` file once applied | `src/views/recipe-picker-modal.ts`, `recipe-loader.ts`, `recipe-templates.ts`, `recipe-parameter-editor.ts` | `"recipe"` in picker body copy, while the surrounding modals (`browse-queries-modal.ts`, `embed-existing-query-modal.ts`) already called the *same family* a **"query"** |
+
+Three different artifacts, one overloaded word, inconsistent even with itself (#3 disagreed with its own
+neighboring modals). The lexicon below assigns each a distinct, plain-language name and locks it in.
+
+## Canonical lexicon
+
+| Internal / KB term | User-facing term | Definition (≤7 words) | Where used |
+|---|---|---|---|
+| Recipe / import recipe / `ImportRecipe` | **Saved configuration** (short: **config**) | The saved rules for building your notes | `config-manager.ts`, `config-browser-modal.ts`, `settings-tab.ts` |
+| Bundled recipe (`RecipeRegistryEntry`, recognized-source fast path) | **Built-in configuration** | A ready-made, team-tested configuration for known sources | `recipe-registry.ts`, `import-wizard.ts` recognized-source card |
+| User-saved `SavedConfig` (provenance) | **Yours** (badge) / **your saved config** (prose) | Your own configuration, saved from a past import | `view-model.ts` provenance, `config-browser-modal.ts` |
+| Shape preset (`mapping/presets.ts`) | **Preset** | A reusable house style for choosing shapes | `workbench.ts` preset bar |
+| Saved mapping (spec §3c½ internal phrase) | **Saved configuration** (same as row 1 — spec's "saved mapping" and shipped UI's "saved configuration" are the same artifact; UI wording wins) | — | n/a (spec-vocabulary note only) |
+| Query recipe / Layer C recipe (pivot/table/list/cards composition) | **Query template** | A starting pattern you fill in and apply | `recipe-picker-modal.ts`, `recipe-loader.ts`, `recipe-templates.ts` |
+| Materialized query instance (frontmatter + generated `.base` file) | **Query** | A saved, filterable view of your vault | `browse-queries-modal.ts`, `embed-existing-query-modal.ts`, command palette |
+| [SSSOM](/crosswalker/reference/registry/sssom/) mapping file | **Crosswalk mapping file** | A file listing how two frameworks' items relate | `sssom-import-modal.ts`, `main.ts` command (fix-list) |
+| [Crosswalk](/crosswalker/concepts/terminology/#core-terms) | **Crosswalk** (no change — already plain) | A link showing two framework items correspond | `crosswalker-pivot-view.ts`, docs |
+| Tier 2 / sqlite-wasm sidecar projection | **Fast query index** | A background cache that speeds up big-vault queries | `settings-tab.ts` (correct), `main.ts` command (fix-list, currently leaks "Tier 2 sidecar") |
+| Ontology (as a plugin-home noun, e.g. "installed ontologies") | **Framework** (or the specific source name) | The structured source you imported | `workspace-view.ts` (fix-list — currently says "Installed ontologies") |
+| `WizardDraft` | **Draft** | Your in-progress import, saved to resume later | `draft-store.ts`, `import-wizard.ts` |
+| Structural `Detection` | **What we found** / detected shape | The plugin's evidence-backed guess at your data's shape | `workbench.ts`, `import-wizard.ts` |
+| Six-primitive `Destination` (folder/name/tag/heading/link/property) | **Shape** | One of six ways your data can live in the vault | `workbench.ts` shape cards |
+| `ConceptIdentity` / CURIE | *(not surfaced — stays internal)* | Stable id for one concept across the vault | render engine only |
+
+## Rules this page enforces
+
+- **Sentence case** on every UI string (Obsidian community-plugin lint requirement).
+- **No em dashes** in plugin UI copy — periods, colons, or commas instead (`feedback_no_em_dashes_in_ui`).
+- **One artifact, one name, everywhere it appears.** If a screen calls it a "configuration," no sibling
+  screen may call the same thing a "recipe," "mapping," or "preset."
+- **Preset ≠ saved configuration ≠ built-in configuration.** These are three genuinely distinct artifacts
+  (generic house style vs. your fingerprint-bound save vs. the team's vetted default) and must stay
+  visually and lexically distinct — badges (`Built-in` / `Yours` / `Custom (based on X)`) already carry
+  this distinction; prose copy must agree with the badges.
+- **Query template ≠ query.** A template is what you pick and configure; a query is what exists in your
+  vault after you apply one. `browse-queries-modal.ts` and `embed-existing-query-modal.ts` already get
+  this right — the picker (`recipe-picker-modal.ts`) has been brought into line.
+- **KB-internal acronyms (STRM, SSSOM, Tier 0/1/2, curie) never appear unglossed in UI strings.** When a
+  command must reference one for disambiguation, prefer the plain description ("crosswalk mapping file,"
+  "fast query index") over the acronym.
+
+## Applied vs. flagged
+
+This pass (2026-07-11, `feat/render-report`) directly edited the artifact's editable surface —
+`src/config/**`, `src/views/recipe-picker-modal.ts`, `src/views/crosswalker-pivot-view.ts`,
+`src/import/draft-store.ts` — for the renames above that were self-contained. Renames that require
+touching `import-wizard.ts`, `workbench.ts`, `main.ts`, `settings-tab.ts`, or `workspace-view.ts` are
+listed as a fix list handed to those files' owners (see the delivery/session log for this pass), since
+those files are out of this pass's editable surface.
+
+## Related
+
+- [Terminology](/crosswalker/concepts/terminology/) — the full KB glossary this page maps *from*
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
+- Shape-first wizard spec: `.workspace/2026-07-05-shape-first-wizard-spec.md` §3c½ (preset vs. saved
+  mapping) — the spec-level source for the preset/config distinction this page locks into UI copy
+- Memories: `feedback_readme_user_facing_surfaces`, `feedback_general_ontology_positioning`,
+  `feedback_no_em_dashes_in_ui`
