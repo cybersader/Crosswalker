@@ -227,3 +227,34 @@ describe('structuralEqual', () => {
 		expect(structuralEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
 	});
 });
+
+describe('markPlacementRelations: the connector overlay roles', () => {
+	const { buildParentPlacementPreview } = jest.requireActual('../src/import/mapping/view-model');
+	const paths = [
+		'Frameworks/T1078.md',
+		'Frameworks/T1078/T1078.001.md',
+		'Frameworks/T1078/T1078.002.md',
+		'Frameworks/T1003.md',
+	];
+
+	it('sibling tree: parent beside its folder, children inside, loner unmarked', () => {
+		const { sibling } = buildParentPlacementPreview(paths);
+		const byLabel = (l: string) => sibling.find((n: { label: string }) => n.label === l);
+		expect(byLabel('T1078.md').relation).toBe('parent');
+		const parentIdx = sibling.indexOf(byLabel('T1078.md'));
+		expect(byLabel('T1078.001.md').relation).toBe('child');
+		expect(byLabel('T1078.001.md').relationParentIndex).toBe(parentIdx);
+		expect(byLabel('T1078.002.md').relation).toBe('child');
+		expect(byLabel('T1003.md').relation).toBeUndefined();
+	});
+
+	it('folder-note tree: relocated parent inside its own folder is the parent', () => {
+		const { folderNote } = buildParentPlacementPreview(paths);
+		// Relocation preview: T1078.md now lives at Frameworks/T1078/T1078.md.
+		const files = folderNote.filter((n: { isFile: boolean }) => n.isFile);
+		const parent = files.find((n: { label: string; relation?: string }) => n.label === 'T1078.md');
+		expect(parent.relation).toBe('parent');
+		const children = files.filter((n: { relation?: string }) => n.relation === 'child');
+		expect(children.map((n: { label: string }) => n.label).sort()).toEqual(['T1078.001.md', 'T1078.002.md']);
+	});
+});

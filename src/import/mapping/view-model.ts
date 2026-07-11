@@ -576,6 +576,11 @@ export interface PathTreeNode {
 	depth: number;
 	label: string;
 	isFile: boolean;
+	/** Parent-child relation role for the placement previews (accent overlay). */
+	relation?: 'parent' | 'child';
+	/** Index into the flat node list of this node's relation group's parent —
+	 *  lets the renderer draw one connector rail per parent group. */
+	relationParentIndex?: number;
 }
 
 /**
@@ -632,12 +637,75 @@ export function toFolderNotePaths(paths: string[]): string[] {
 }
 
 /**
+ * Mark the parent-child relation on a placement-preview tree so the renderer
+ * can draw the connector overlay (owner request: "show some sort of purple
+ * line to show the connected pieces"). A file is a PARENT when a folder named
+ * after its stem exists in the tree (sibling shape: `T1078.md` beside
+ * `T1078/`) or when it sits inside a folder named after its own stem
+ * (folder-note shape: `T1078/T1078.md`). Files directly inside that folder
+ * are its CHILDREN. Pure walk over the flat node list; full paths are
+ * reconstructed from depths with a folder stack.
+ */
+export function markPlacementRelations(nodes: PathTreeNode[]): PathTreeNode[] {
+	// Reconstruct each node's full path.
+	const stack: string[] = [];
+	const fullPaths: string[] = nodes.map((n) => {
+		stack.length = n.depth;
+		const full = [...stack.slice(0, n.depth), n.label].join('/');
+		if (!n.isFile) stack[n.depth] = n.label;
+		return full;
+	});
+	const folderPaths = new Map<string, number>();
+	nodes.forEach((n, i) => {
+		if (!n.isFile) folderPaths.set(fullPaths[i], i);
+	});
+	const stemOf = (p: string): string => {
+		const dot = p.lastIndexOf('.');
+		return dot > 0 ? p.slice(0, dot) : p;
+	};
+	// Parent files: stem matches a folder path (sibling), or dir === stem's dir
+	// with folder name === file stem (folder-note: dir itself IS the stem path).
+	const parentFolderByPath = new Map<string, number>(); // folder path -> parent node index
+	nodes.forEach((n, i) => {
+		if (!n.isFile) return;
+		const full = fullPaths[i];
+		const stem = stemOf(full);
+		const dir = full.slice(0, Math.max(0, full.lastIndexOf('/')));
+		if (folderPaths.has(stem)) {
+			// sibling shape: T1078.md beside a T1078/ folder
+			n.relation = 'parent';
+			parentFolderByPath.set(stem, i);
+		} else if (dir && dir.split('/').pop() === stemOf(n.label)) {
+			// folder-note shape: T1078/T1078.md — folder named after the stem
+			n.relation = 'parent';
+			parentFolderByPath.set(dir, i);
+		}
+	});
+	// Children: files directly inside a parent's folder (excluding the parent itself).
+	nodes.forEach((n, i) => {
+		if (!n.isFile || n.relation === 'parent') return;
+		const full = fullPaths[i];
+		const dir = full.slice(0, Math.max(0, full.lastIndexOf('/')));
+		const parentIdx = parentFolderByPath.get(dir);
+		if (parentIdx !== undefined) {
+			n.relation = 'child';
+			n.relationParentIndex = parentIdx;
+		}
+	});
+	return nodes;
+}
+
+/**
  * Both parent-note placement previews (sibling + folder-note), built from the
  * same sample paths — the side-by-side mini-tree chooser (variadic-split
- * design §4, "the placement choice is a UI moment, not just a config key").
+ * design §4, "the placement choice is a UI moment, not just a config key"),
+ * with parent-child relations marked for the connector overlay.
  */
 export function buildParentPlacementPreview(
 	paths: string[],
 ): { sibling: PathTreeNode[]; folderNote: PathTreeNode[] } {
-	return { sibling: buildPathTree(paths), folderNote: buildPathTree(toFolderNotePaths(paths)) };
+	return {
+		sibling: markPlacementRelations(buildPathTree(paths)),
+		folderNote: markPlacementRelations(buildPathTree(toFolderNotePaths(paths))),
+	};
 }

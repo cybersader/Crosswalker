@@ -2628,3 +2628,46 @@
 	margin-bottom: var(--cw-s4, 16px);
 	flex-wrap: wrap;
 }
+
+/* === placement chooser: parent-child connector overlay === */
+/* The purple rail shows which pieces connect: it starts at the parent note
+   and runs to its last child. In sibling mode it crosses the folder row (the
+   parent lives OUTSIDE the folder); in folder-note mode it stays inside. */
+.crosswalker-wb-placement-tree .crosswalker-wb-tree-row {
+	position: relative;
+}
+.crosswalker-wb-placement-tree .cw-rel-parent > span {
+	color: var(--text-accent);
+	font-weight: 600;
+}
+.crosswalker-wb-placement-tree .cw-rel-parent .crosswalker-wb-tree-ico {
+	color: var(--text-accent);
+}
+.crosswalker-wb-placement-tree .cw-rel-rail::before,
+.crosswalker-wb-placement-tree .cw-rel-rail-start::before,
+.crosswalker-wb-placement-tree .cw-rel-rail-end::before {
+	content: '';
+	position: absolute;
+	left: var(--cw-rail-x, 6px);
+	width: 2px;
+	background: var(--interactive-accent);
+	opacity: 0.75;
+	top: 0;
+	bottom: 0;
+}
+.crosswalker-wb-placement-tree .cw-rel-rail-start::before {
+	top: 50%;
+}
+.crosswalker-wb-placement-tree .cw-rel-rail-end::before {
+	bottom: 50%;
+}
+.crosswalker-wb-placement-tree .cw-rel-child::after {
+	content: '';
+	position: absolute;
+	left: var(--cw-rail-x, 6px);
+	width: 9px;
+	height: 2px;
+	top: calc(50% - 1px);
+	background: var(--interactive-accent);
+	opacity: 0.75;
+}
