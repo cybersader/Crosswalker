@@ -106,6 +106,11 @@ const SPECS: CorpusSpec[] = [
 		resolveThreshold: null,
 		allowedUnresolved: new Set(['PM-9', 'AU-7', 'CM-8', 'SI-2']),
 	},
+	// Synthetic ragged fixture exercising Pass 1.5 folder-note relocation (design
+	// §5 case 5): two parents (X1000, X2000) relocate to X1000/X1000.md and
+	// X2000/X2000.md; a childless parent (X3000) stays a sibling. Fully internal
+	// — every link resolves.
+	{ file: 'folder-note-ragged-subset.csv', cleanPaths: true, resolveThreshold: 0 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -297,5 +302,59 @@ describe('golden invariants — MITRE connectivity (no orphan sub-techniques)', 
 	it('has no facet hub notes (single-valued tactic is not a facet)', () => {
 		const hubs = [...vault.entries()].filter(([, text]) => parseNoteAsConsumer(text).frontmatter.kind === 'facet');
 		expect(hubs.map(([p]) => p)).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Folder-note relocation — design §5 case 5 (HARD)
+// ---------------------------------------------------------------------------
+
+describe('golden invariants — folder-note relocation (design §5 case 5)', () => {
+	let vault: Vault;
+	let relocations: { curie: string; from: string; to: string }[];
+
+	beforeAll(async () => {
+		const built = await buildVaultDetailed(corpusPath('folder-note-ragged-subset.csv'));
+		vault = built.vault;
+		relocations = built.enrichment.relocations;
+	});
+
+	it('relocates both parents-with-children into folder-note form, sorted by curie', () => {
+		expect(relocations.map((r) => r.curie)).toEqual([
+			expect.stringContaining('X1000'),
+			expect.stringContaining('X2000'),
+		]);
+		expect(vault.has('X1000/X1000.md')).toBe(true);
+		expect(vault.has('X2000/X2000.md')).toBe(true);
+		// No stray sibling copies left behind.
+		expect(vault.has('X1000.md')).toBe(false);
+		expect(vault.has('X2000.md')).toBe(false);
+	});
+
+	it('a childless concept is left as a sibling (nothing to relocate into)', () => {
+		expect(vault.has('X3000.md')).toBe(true);
+	});
+
+	it('every inbound link to a relocated parent still resolves (basename-based)', () => {
+		const bns = basenames(vault);
+		const paths = new Set(vault.keys());
+		for (const [path, text] of vault) {
+			const { frontmatter } = parseNoteAsConsumer(text);
+			for (const t of extractWikilinkTargets(frontmatter.parent)) {
+				expect({ note: path, resolved: resolves(t, bns, paths) }).toEqual({ note: path, resolved: true });
+			}
+		}
+	});
+
+	it('the relocated parent still carries its own children list at the new path', () => {
+		const note = vault.get('X1000/X1000.md')!;
+		const { frontmatter } = parseNoteAsConsumer(note);
+		expect(extractWikilinkTargets(frontmatter.children)).toEqual(['X1000.001', 'X1000.002']);
+	});
+
+	it('two builds produce byte-identical vaults (determinism double-run, including relocation)', async () => {
+		const again = await buildVaultDetailed(corpusPath('folder-note-ragged-subset.csv'));
+		expect([...again.vault.entries()].sort()).toEqual([...vault.entries()].sort());
+		expect(again.enrichment.relocations).toEqual(relocations);
 	});
 });

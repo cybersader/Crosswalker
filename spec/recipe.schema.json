@@ -186,7 +186,7 @@
           "type": "string",
           "enum": ["sibling", "folder-note"],
           "default": "sibling",
-          "description": "Where a concept that is also a parent of other concepts lives. 'sibling': the concept note sits beside its children's folder (X.md next to X/). 'folder-note': the concept note moves inside its own folder as X/X.md. v0.1 implements 'sibling' only; 'folder-note' is accepted by the schema but falls back to 'sibling' at render time with a deviation note (relocation ships in a later chunk)."
+          "description": "Where a concept that is also a parent of other concepts lives. 'sibling': the concept note sits beside its children's folder (X.md next to X/). 'folder-note': the concept note moves inside its own folder as X/X.md via the batch enrichment pass. Relocation is evidence-based (applies only to parents whose children actually nest under their own-named folder), re-import write targets resolve by curie so relocated parents never duplicate, and flipping back to 'sibling' relocates symmetrically. Streamed sources fall back to 'sibling' with a deviation note (relocation requires the eager batch)."
         },
         "hub_note_folder": {
           "type": "string",

@@ -138,6 +138,13 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 	const managed: Record<string, string> = {};
 	const managedLinks: Record<string, ManagedLinkSpec> = {};
 
+	// A tail's `placement` is the more specific (per-hierarchy, wizard-facing)
+	// knob; the recipe only has ONE global `target.enrichment.parent_note`
+	// scope, so the last tail that sets `placement` wins over any explicit
+	// top-level `mapping.enrichment.parent_note` (see the module note + the
+	// `TailRule.placement` doc comment in types.ts — this closes that gap).
+	let tailPlacement: 'sibling' | 'folder-note' | undefined;
+
 	for (const structure of mapping.mappings) {
 		const structLayout: LayoutEntry[] = [];
 		for (const rule of structure.levels) {
@@ -154,13 +161,17 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 			const tailEntry = tailToEntry(structure.tail);
 			if (leafIdx >= 0) structLayout.splice(leafIdx, 0, tailEntry);
 			else structLayout.push(tailEntry);
+			if (structure.tail.placement !== undefined) tailPlacement = structure.tail.placement;
 		}
 		layout.push(...structLayout);
 	}
 
 	const also_emit = buildAlsoEmit(tags, aliases, managed, managedLinks);
 	const regions: RecipeRegions = also_emit ? { layout, also_emit } : { layout };
-	if (mapping.enrichment) regions.enrichment = mapping.enrichment;
+	const parentNote = tailPlacement ?? mapping.enrichment?.parent_note;
+	if (mapping.enrichment || parentNote !== undefined) {
+		regions.enrichment = { ...mapping.enrichment, ...(parentNote !== undefined ? { parent_note: parentNote } : {}) };
+	}
 	return regions;
 }
 
@@ -226,7 +237,9 @@ function tailToEntry(tail: TailRule): LayoutEntry {
 	if (tail.drop_last !== undefined) variadic.drop_last = tail.drop_last;
 	if (tail.max_depth !== undefined) variadic.max_depth = tail.max_depth;
 	if (tail.on_overflow !== undefined) variadic.on_overflow = tail.on_overflow;
-	// NOTE: tail.placement has no recipe surface yet (parent_note knob pending) — dropped.
+	// tail.placement has no PER-ENTRY recipe surface (the variadic block has no
+	// placement field) — it serializes to the recipe's global
+	// target.enrichment.parent_note instead, in toRecipeRegions (the caller).
 	return {
 		level: TAIL_LEVEL_ID,
 		mechanism: 'folder',
@@ -335,6 +348,11 @@ export function fromRegions(regions: RecipeRegions): ImportMapping {
 	for (const entry of regions.layout) {
 		if (entry.variadic) {
 			tail = variadicToTail(entry);
+			// The recipe's global target.enrichment.parent_note is the tail's
+			// placement — the reverse of toRecipeRegions' tail→enrichment
+			// promotion above. Only one tail carries a structural placement in
+			// v0.1's single-structural-mapping constraint, so this is exact.
+			if (regions.enrichment?.parent_note !== undefined) tail.placement = regions.enrichment.parent_note;
 			continue;
 		}
 		const isFile = entry.mechanism === 'file';

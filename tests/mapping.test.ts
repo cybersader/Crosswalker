@@ -485,6 +485,22 @@ describe('round-trip law: mapping → regions → mapping', () => {
 		});
 	});
 
+	// A tail's placement is the more specific, wizard-facing knob (variadic-split
+	// design §4); it round-trips symmetrically when the mapping's top-level
+	// enrichment.parent_note already agrees with it (the shape a real wizard
+	// selection produces — see the promotion test below for the one-way case).
+	it('tail `placement` round-trips (folder-note) alongside a matching top-level enrichment.parent_note', () => {
+		assertRoundTrip({
+			mappings: [
+				{
+					levels: [{ level: 'leaf', source: { column: 'tid' }, destinations: [{ primitive: 'name' }], naming: 'part', missing: 'skip', materialize: false }],
+					tail: { source: { column: 'tid' }, delimiter: '.', destinations: [{ primitive: 'folder' }], naming: 'prefix', placement: 'folder-note' },
+				},
+			],
+			enrichment: { parent_note: 'folder-note' },
+		});
+	});
+
 	// ConstantRef (spec §7f) — literal sources round-trip exactly.
 	it('constant property value (CIS `level: "control"` shape)', () => {
 		assertRoundTrip({
@@ -567,7 +583,25 @@ describe('lossy fields (no recipe surface — pinned so the gap stays visible)',
 		expect(back.filters).toBeUndefined();
 	});
 
-	it('tail `placement` does NOT survive serialization', () => {
+});
+
+// ===========================================================================
+// 4b. tail.placement → enrichment.parent_note promotion (no longer lossy)
+// ===========================================================================
+
+// `parent_note` (sibling|folder-note) shipped as a real engine behavior
+// (2026-07-10 batch-enrichment design, folder-note relocation chunk). The
+// recipe has exactly ONE global `target.enrichment.parent_note` scope, so a
+// tail's `placement` — set without an explicit top-level `enrichment` block,
+// e.g. by a preset/detection that only knows about the tail — PROMOTES to
+// that global scope on serialization. This is a one-way widening (a NEW
+// top-level `enrichment` field appears that wasn't in the input), so it is
+// intentionally NOT exercised via `assertRoundTrip` (which asserts exact
+// symmetry) — see the symmetric case in the round-trip law section above for
+// how a wizard-authored mapping (tail.placement + a matching top-level
+// enrichment.parent_note) round-trips exactly.
+describe('tail.placement promotes to the recipe global enrichment.parent_note', () => {
+	it('a tail-only placement (no top-level enrichment) sets target.enrichment.parent_note', () => {
 		const m: ImportMapping = {
 			mappings: [
 				{
@@ -576,9 +610,11 @@ describe('lossy fields (no recipe surface — pinned so the gap stays visible)',
 				},
 			],
 		};
-		const back = fromRegions(toRecipeRegions(m));
-		// TODO(architect): parent_note (sibling|folder-note) is a pending schema knob.
-		expect(back.mappings[0].tail!.placement).toBeUndefined();
+		const regions = toRecipeRegions(m);
+		expect(regions.enrichment).toEqual({ parent_note: 'folder-note' });
+
+		const back = fromRegions(regions);
+		expect(back.mappings[0].tail!.placement).toBe('folder-note');
 	});
 });
 

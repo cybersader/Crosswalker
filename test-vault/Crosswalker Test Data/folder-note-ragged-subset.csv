@@ -1,0 +1,9 @@
+id,title,tactic,parent,description
+X1000,Alpha Parent,TestTactic,,Alpha parent concept with two children — exercises the folder-note relocation (X1000.md moves inside X1000/).
+X1000.001,Alpha Child One,TestTactic,X1000,First child of Alpha Parent.
+X1000.002,Alpha Child Two,TestTactic,X1000,Second child of Alpha Parent.
+X2000,Beta Parent,TestTactic,,Beta parent concept with three children — a second relocation candidate, to exercise sorted-curie relocation order.
+X2000.001,Beta Child One,TestTactic,X2000,First child of Beta Parent.
+X2000.002,Beta Child Two,TestTactic,X2000,Second child of Beta Parent.
+X2000.003,Beta Child Three,TestTactic,X2000,Third child of Beta Parent.
+X3000,Gamma Standalone,TestTactic,,Standalone concept with no children — stays a sibling even with folder-note enabled (nothing to relocate into).

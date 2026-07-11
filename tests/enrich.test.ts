@@ -1,13 +1,16 @@
 /**
  * enrich.test.ts — Pass 1.5 batch enrichment (pure logic).
  *
- * Covers the 2026-07-10 batch-enrichment design §5 acceptance cases 1, 2, 4:
+ * Covers the 2026-07-10 batch-enrichment design §5 acceptance cases 1, 2, 4, 5:
  *   1. T1078 gains a sorted `children` list.
  *   2. A facet hub note (Persistence) materializes with kind:facet + members + H1.
  *   4. Deterministic (same notes → deep-equal result); user prose survives a
  *      re-import while `members` regenerates.
+ *   5. `parent_note: 'folder-note'` relocates T1078.md → T1078/T1078.md; the
+ *      symmetric flip-back; idempotency; the streamed v1 restriction; and the
+ *      collision guard.
  * Plus: children/parent derivation, edge count, multi-value link split (render),
- * folder-note fallback deviation, and hub min-members.
+ * and hub min-members.
  */
 
 import { render, splitLinkValues, type Recipe } from '../src/render';
@@ -20,12 +23,13 @@ import { mergeFrontmatter, computeManagedKeys } from '../src/generation/frontmat
 // synthetic fixture is where the multi-member hub case lives).
 // ---------------------------------------------------------------------------
 
-function note(path: string, id: string, parent: string, tactic: string): EnrichNote {
+function note(path: string, id: string, parent: string, tactic: string, renderedPath?: string): EnrichNote {
 	return {
 		path,
 		curie: `attack:${id}`,
 		frontmatter: { parent: `[[${parent}]]`, curie: `attack:${id}` },
 		facets: [{ namespace: 'tactic', value: tactic }],
+		...(renderedPath !== undefined ? { renderedPath } : {}),
 	};
 }
 
@@ -248,23 +252,146 @@ describe('render — managed_links multi-value split', () => {
 });
 
 // ===========================================================================
-// parent_note folder-note fallback (v0.1 sibling-only)
+// parent_note relocation (design §5 case 5 + §4 re-import identity)
 // ===========================================================================
 
-describe('enrich — parent_note folder-note falls back to sibling with a deviation', () => {
-	it('records a deviation and does NOT relocate parents in v0.1', () => {
+/** attackBatch(), but T1078 is ALREADY folder-note-shaped (as if a prior
+ *  import relocated it) — used to test the flip-back direction + idempotency.
+ *  T1078 carries `renderedPath: 'T1078.md'` — the POSITIVE evidence that
+ *  render() itself wants the sibling form this import (see the `renderedPath`
+ *  doc comment in enrich.ts); without it, flip-back must not fire (that's the
+ *  false-positive guard tested separately below). */
+function relocatedBatch(): EnrichNote[] {
+	return [
+		note('T1078/T1078.md', 'T1078', '', 'Persistence', 'T1078.md'),
+		note('T1078/T1078.001.md', 'T1078.001', 'T1078', 'Persistence'),
+		note('T1078/T1078.002.md', 'T1078.002', 'T1078', 'Persistence'),
+		note('T1078/T1078.003.md', 'T1078.003', 'T1078', 'Persistence'),
+		note('T1078/T1078.004.md', 'T1078.004', 'T1078', 'Persistence'),
+	];
+}
+
+describe('enrich — parent_note: folder-note relocation (design §5 case 5)', () => {
+	it('relocates T1078.md → T1078/T1078.md (a colliding folder already exists)', () => {
 		const result = enrich(attackBatch(), {
 			ontology: 'attack',
 			config: { ...CONFIG, parent_note: 'folder-note' },
 		});
+		expect(result.relocations).toEqual([{ curie: 'attack:T1078', from: 'T1078.md', to: 'T1078/T1078.md' }]);
+		expect(result.deviations).toEqual([
+			'parent_note: relocated attack:T1078 to folder-note form (T1078.md → T1078/T1078.md).',
+		]);
+		// Children list keyed by the FINAL (relocated) path.
+		expect(result.childrenByPath.has('T1078.md')).toBe(false);
+		expect(result.childrenByPath.get('T1078/T1078.md')).toEqual([
+			'[[T1078.001]]',
+			'[[T1078.002]]',
+			'[[T1078.003]]',
+			'[[T1078.004]]',
+		]);
+	});
+
+	it('relocations are processed in sorted-curie order (multi-parent determinism)', () => {
+		const batch = [
+			...attackBatch(),
+			note('T1548.md', 'T1548', '', 'Privilege Escalation'),
+			note('T1548/T1548.001.md', 'T1548.001', 'T1548', 'Privilege Escalation'),
+		];
+		const result = enrich(batch, { ontology: 'attack', config: { ...CONFIG, parent_note: 'folder-note' } });
+		expect(result.relocations.map((r) => r.curie)).toEqual(['attack:T1078', 'attack:T1548']);
+	});
+
+	it('a parent with no children is left as a sibling (no folder to relocate into)', () => {
+		const batch = [note('T1136.md', 'T1136', '', 'Persistence')];
+		const result = enrich(batch, { ontology: 'attack', config: { ...CONFIG, parent_note: 'folder-note' } });
+		expect(result.relocations).toEqual([]);
+	});
+
+	it('a parent whose children do NOT nest under its own folder is left as a sibling', () => {
+		// flat-and-linked shape: parent link exists, but no folder mirrors T1078.
+		const batch = [note('T1078.md', 'T1078', '', 'Persistence'), note('T1078.001.md', 'T1078.001', 'T1078', 'Persistence')];
+		const result = enrich(batch, { ontology: 'attack', config: { ...CONFIG, parent_note: 'folder-note' } });
+		expect(result.relocations).toEqual([]);
+	});
+
+	it('is idempotent: an already folder-note-shaped parent is not relocated again', () => {
+		const result = enrich(relocatedBatch(), { ontology: 'attack', config: { ...CONFIG, parent_note: 'folder-note' } });
+		expect(result.relocations).toEqual([]);
+		expect(result.deviations).toEqual([]);
+		expect(result.childrenByPath.get('T1078/T1078.md')).toHaveLength(4);
+	});
+
+	it('streamed sources fall back to sibling with a deviation (v1 restriction)', () => {
+		const result = enrich(attackBatch(), {
+			ontology: 'attack',
+			config: { ...CONFIG, parent_note: 'folder-note' },
+			streamed: true,
+		});
+		expect(result.relocations).toEqual([]);
 		expect(result.deviations).toHaveLength(1);
-		expect(result.deviations[0]).toMatch(/folder-note is not implemented/);
-		// Children still derived normally (sibling placement).
+		expect(result.deviations[0]).toMatch(/requires an eager \(non-streamed\) source/);
 		expect(result.childrenByPath.get('T1078.md')).toHaveLength(4);
 	});
 
-	it('sibling placement records no deviation', () => {
+	it('a batch-occupied target path is a collision guard, not a crash', () => {
+		const batch = [
+			...attackBatch(),
+			// An unrelated note happens to already occupy the relocation target.
+			note('T1078/T1078.md', 'other', '', 'Persistence'),
+		];
+		const result = enrich(batch, { ontology: 'attack', config: { ...CONFIG, parent_note: 'folder-note' } });
+		expect(result.relocations).toEqual([]);
+		expect(result.deviations).toHaveLength(1);
+		expect(result.deviations[0]).toMatch(/could not relocate attack:T1078/);
+		// Left at the sibling path — children list unaffected.
+		expect(result.childrenByPath.get('T1078.md')).toHaveLength(4);
+	});
+
+	it('sibling placement (default) records no deviation and no relocations', () => {
 		const result = enrich(attackBatch(), { ontology: 'attack', config: CONFIG });
+		expect(result.deviations).toEqual([]);
+		expect(result.relocations).toEqual([]);
+	});
+});
+
+describe('enrich — parent_note flip-back: folder-note → sibling (design §4, least-surprising)', () => {
+	it('relocates an already folder-note-shaped parent back to sibling when the config no longer asks for folder-note', () => {
+		const result = enrich(relocatedBatch(), { ontology: 'attack', config: CONFIG }); // config: parent_note 'sibling'
+		expect(result.relocations).toEqual([{ curie: 'attack:T1078', from: 'T1078/T1078.md', to: 'T1078.md' }]);
+		expect(result.deviations).toEqual([
+			'parent_note: relocated attack:T1078 back to sibling form (T1078/T1078.md → T1078.md).',
+		]);
+		expect(result.childrenByPath.has('T1078/T1078.md')).toBe(false);
+		expect(result.childrenByPath.get('T1078.md')).toHaveLength(4);
+	});
+
+	it('flip-back also fires when parent_note is left unset (sibling is the implicit default)', () => {
+		const { parent_note, ...rest } = CONFIG;
+		void parent_note;
+		const result = enrich(relocatedBatch(), { ontology: 'attack', config: rest });
+		expect(result.relocations).toHaveLength(1);
+		expect(result.relocations[0].to).toBe('T1078.md');
+	});
+
+	it('is idempotent: an already sibling-shaped batch has nothing to flip back', () => {
+		const result = enrich(attackBatch(), { ontology: 'attack', config: CONFIG });
+		expect(result.relocations).toEqual([]);
+	});
+
+	// The false-positive this whole `renderedPath` mechanism exists to prevent:
+	// a note that is folder-note-SHAPED (X/X.md) purely because that's what its
+	// OWN recipe layout always produces (e.g. NIST-CSF's committed golden
+	// `GV/GV.md` — a fixed top-level folder whose value equals the leaf's own
+	// basename), NOT because any parent_note relocation ever touched it. Path
+	// shape alone can't distinguish the two cases; only `renderedPath` (or its
+	// absence, here) can.
+	it('does NOT flip back a note that is natively folder-note-shaped by its own recipe layout (no renderedPath evidence)', () => {
+		const nativelyNested = [
+			note('GV/GV.md', 'GV', '', 'Govern'), // no renderedPath — render() intends exactly this path.
+			note('GV/GV.OC.md', 'GV.OC', 'GV', 'Govern'),
+		];
+		const result = enrich(nativelyNested, { ontology: 'csf', config: CONFIG });
+		expect(result.relocations).toEqual([]);
 		expect(result.deviations).toEqual([]);
 	});
 });
@@ -294,5 +421,6 @@ function serialize(r: ReturnType<typeof enrich>): unknown {
 		hubs: r.hubs,
 		edgeCount: r.edgeCount,
 		deviations: r.deviations,
+		relocations: r.relocations,
 	};
 }

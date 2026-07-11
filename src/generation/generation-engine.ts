@@ -29,7 +29,7 @@ import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
 import { validateTier1Frontmatter } from '../validation/validator';
-import { enrich, mergeHubBody, type EnrichNote, type HubNote } from './enrich';
+import { enrich, mergeHubBody, folderNoteCandidatePath, type EnrichNote, type HubNote } from './enrich';
 import type { FacetMembership } from '../import/mapping/facets';
 
 // ============================================================================
@@ -304,6 +304,10 @@ export async function generateNotes(
 		const ontologyId = recipe.source?.ontology ?? (config.name ?? 'unknown');
 		const curiePrefix = slugifyForCurie(ontologyId);
 		const enrichRecords: EnrichRecord[] = [];
+		// parent_note: 'folder-note' needs the whole batch's shape up front —
+		// a streamed (AsyncIterable) source can't provide that (design §3 step 2
+		// v1 restriction). applyEnrichment falls back to sibling + a deviation.
+		const isStreamed = !Array.isArray(parsedData.rows);
 
 		// v0.1.4.5: iterate so streaming-row sources (AsyncIterable) work alongside
 		// the eager array case. v0.1.6 (2026-06-13): writes run in a bounded
@@ -361,19 +365,23 @@ export async function generateNotes(
 					}
 					emittedPaths.add(noteData.path);
 
-					// Check if file exists
+					// Check if file exists. Consults BOTH the sibling path AND (when
+					// enrichment is on) the folder-note-relocated path by curie — see
+					// resolveWriteTarget's docstring (re-import identity, design §4).
 					const fullPath = normalizePath(noteData.path);
-					const existingFile = app.vault.getAbstractFileByPath(fullPath);
+					const target = resolveWriteTarget(app, fullPath, noteData.curie, enrichmentEnabled);
+					const existingFile = target.existingFile;
+					const writePath = target.writePath;
 
 					if (existingFile instanceof TFile) {
 						if (options.overwriteMode === 'skip') {
-							result.skipped.push(fullPath);
-							debug?.info('generation', 'skipped-existing', `Skipped existing file ${fullPath}`, { path: fullPath });
+							result.skipped.push(writePath);
+							debug?.info('generation', 'skipped-existing', `Skipped existing file ${writePath}`, { path: writePath });
 							return;
 						} else if (options.overwriteMode === 'error') {
 							result.errors.push({
 								row: rowNum,
-								message: `File already exists: ${fullPath}`
+								message: `File already exists: ${writePath}`
 							});
 							result.success = false;
 							return;
@@ -392,15 +400,15 @@ export async function generateNotes(
 								);
 							}
 						} catch (mergeErr) {
-							debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${fullPath}; using new frontmatter as-is`, {
-								path: fullPath,
+							debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${writePath}; using new frontmatter as-is`, {
+								path: writePath,
 								error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
 							});
 						}
 					}
 
 					// Ensure parent folder exists (de-duplicated across concurrent rows)
-					const parentPath = getParentPath(fullPath);
+					const parentPath = getParentPath(writePath);
 					if (parentPath && options.createFolders) {
 						await ensureFolderOnce(parentPath);
 					}
@@ -411,13 +419,13 @@ export async function generateNotes(
 					// Create or update file
 					if (existingFile instanceof TFile) {
 						await app.vault.modify(existingFile, content);
-						debug?.info('generation', 'file-replaced', `Replaced existing file ${fullPath}`, { path: fullPath });
+						debug?.info('generation', 'file-replaced', `Replaced existing file ${writePath}`, { path: writePath });
 					} else {
-						await app.vault.create(fullPath, content);
-						debug?.info('generation', 'file-created', `Created new file ${fullPath}`, { path: fullPath });
+						await app.vault.create(writePath, content);
+						debug?.info('generation', 'file-created', `Created new file ${writePath}`, { path: writePath });
 					}
 
-					result.created.push(fullPath);
+					result.created.push(writePath);
 
 					// Collect a record for Pass 1.5 enrichment (parent→children +
 					// facet hubs) — same collection generateFromRecipe performs.
@@ -426,7 +434,8 @@ export async function generateNotes(
 							? options.facetsForRow(row as Record<string, unknown>, rowNum)
 							: facetMembershipsFromTags(noteData.tags);
 						enrichRecords.push({
-							path: fullPath,
+							path: writePath,
+							renderedPath: fullPath,
 							curie: noteData.curie,
 							frontmatter: { ...noteData.frontmatter },
 							facets,
@@ -461,6 +470,7 @@ export async function generateNotes(
 					curiePrefix,
 					enrichRecords,
 					result,
+					isStreamed,
 					debug,
 				);
 			} catch (enrichErr) {
@@ -522,6 +532,48 @@ async function readExistingFrontmatter(app: App, file: TFile): Promise<Record<st
 		if (k !== 'position') result[k] = v;
 	}
 	return result;
+}
+
+/**
+ * Resolve the actual write target for a row, accounting for a prior Pass 1.5
+ * folder-note relocation (batch-enrichment design §4 — the "risky seam").
+ * `render()` always computes the SIBLING-shaped path (Pass 1 knows nothing
+ * about `parent_note`); a PRIOR import may have relocated this concept to its
+ * folder-note-shaped path (`X/X.md`), or a prior import may have left it
+ * folder-note-shaped when the CURRENT config has since flipped back to
+ * sibling. Re-import must find the note by CURIE wherever it actually lives —
+ * never assume the sibling path alone — or every re-import would create a
+ * stray duplicate there (which Pass 1.5 would then have to clean up after the
+ * fact instead of never creating it).
+ *
+ * Only consulted when the recipe declares `target.enrichment` at all — a
+ * plain (non-enrichment) import behaves exactly as before (one lookup, one
+ * path). The folder-note candidate check costs one extra synchronous vault
+ * lookup per row when enrichment is on; Pass 1.5 (not this function) is what
+ * actually DECIDES whether a concept should move — this only finds where it
+ * currently sits so the row write lands there instead of an orphaned sibling.
+ */
+function resolveWriteTarget(
+	app: App,
+	siblingPath: string,
+	curie: string,
+	enrichmentEnabled: boolean,
+): { existingFile: TFile | null; writePath: string } {
+	const direct = app.vault.getAbstractFileByPath(siblingPath);
+	if (direct instanceof TFile) return { existingFile: direct, writePath: siblingPath };
+	if (enrichmentEnabled) {
+		const candidatePath = folderNoteCandidatePath(siblingPath);
+		if (candidatePath !== siblingPath) {
+			const relocated = app.vault.getAbstractFileByPath(candidatePath);
+			if (relocated instanceof TFile) {
+				const fm = app.metadataCache.getFileCache(relocated)?.frontmatter;
+				if (fm && fm.curie === curie) {
+					return { existingFile: relocated, writePath: candidatePath };
+				}
+			}
+		}
+	}
+	return { existingFile: null, writePath: siblingPath };
 }
 
 /**
@@ -1516,6 +1568,10 @@ export async function generateFromRecipe(
 	// populated when the recipe declares target.enrichment.
 	const enrichmentEnabled = !!recipe.target.enrichment;
 	const enrichRecords: EnrichRecord[] = [];
+	// parent_note: 'folder-note' needs the whole batch's shape up front — a
+	// streamed (AsyncIterable) source can't provide that (design §3 step 2 v1
+	// restriction). applyEnrichment falls back to sibling + a deviation.
+	const isStreamed = !Array.isArray(parsedData.rows);
 	// v0.1.4.5: streaming-friendly iteration (array OR AsyncIterable<Row>).
 	// v0.1.6 (2026-06-13): writes run in a bounded concurrency pool; the sync
 	// prefix (render + collision reserve) stays in row order.
@@ -1617,14 +1673,18 @@ export async function generateFromRecipe(
 				}
 			}
 
-			// 7. Existing-file handling + merge
-			const existingFile = app.vault.getAbstractFileByPath(fullPath);
+			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND
+			//    (when enrichment is on) the folder-note-relocated path by curie —
+			//    see resolveWriteTarget's docstring (re-import identity, design §4).
+			const target = resolveWriteTarget(app, fullPath, curie, enrichmentEnabled);
+			const existingFile = target.existingFile;
+			const writePath = target.writePath;
 			if (existingFile instanceof TFile) {
 				if (options.overwriteMode === 'skip') {
-					result.skipped.push(fullPath);
+					result.skipped.push(writePath);
 					return;
 				} else if (options.overwriteMode === 'error') {
-					result.errors.push({ row: rowNum, message: `File already exists: ${fullPath}` });
+					result.errors.push({ row: rowNum, message: `File already exists: ${writePath}` });
 					result.success = false;
 					return;
 				}
@@ -1639,15 +1699,15 @@ export async function generateFromRecipe(
 						Object.assign(frontmatter, merged);
 					}
 				} catch (mergeErr) {
-					debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${fullPath}; using new frontmatter as-is`, {
-						path: fullPath,
+					debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${writePath}; using new frontmatter as-is`, {
+						path: writePath,
 						error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
 					});
 				}
 			}
 
 			// 8. Ensure parent folder
-			const parentPath = getParentPath(fullPath);
+			const parentPath = getParentPath(writePath);
 			if (parentPath && createFolders) {
 				await ensureFolderOnce(parentPath);
 			}
@@ -1661,16 +1721,16 @@ export async function generateFromRecipe(
 			if (existingFile instanceof TFile) {
 				await app.vault.modify(existingFile, content);
 			} else {
-				await app.vault.create(fullPath, content);
+				await app.vault.create(writePath, content);
 			}
-			result.created.push(fullPath);
+			result.created.push(writePath);
 
 			// Collect a record for Pass 1.5 enrichment (parent→children + facet hubs).
 			if (enrichmentEnabled) {
 				const facets = options.facetsForRow
 					? options.facetsForRow(row as Record<string, unknown>, rowNum)
 					: facetMembershipsFromTags(address.tags);
-				enrichRecords.push({ path: fullPath, curie, frontmatter: { ...frontmatter }, facets, body });
+				enrichRecords.push({ path: writePath, renderedPath: fullPath, curie, frontmatter: { ...frontmatter }, facets, body });
 			}
 		} catch (rowError) {
 			const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
@@ -1691,7 +1751,7 @@ export async function generateFromRecipe(
 	// the same managed-merge path so re-imports stay idempotent + user-safe.
 	if (enrichmentEnabled && enrichRecords.length > 0) {
 		try {
-			await applyEnrichment(app, recipe, options, curiePrefix, enrichRecords, result, debug);
+			await applyEnrichment(app, recipe, options, curiePrefix, enrichRecords, result, isStreamed, debug);
 		} catch (enrichErr) {
 			const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
 			result.warnings ??= [];
@@ -1753,12 +1813,19 @@ async function applyEnrichment(
 	curiePrefix: string,
 	records: EnrichRecord[],
 	result: GenerationResult,
+	streamed: boolean,
 	debug?: DebugLog,
 ): Promise<void> {
 	const config = recipe.target.enrichment ?? {};
 	const enrichment = enrich(
-		records.map((r) => ({ path: r.path, curie: r.curie, frontmatter: r.frontmatter, facets: r.facets })),
-		{ ontology: curiePrefix, config },
+		records.map((r) => ({
+			path: r.path,
+			curie: r.curie,
+			frontmatter: r.frontmatter,
+			facets: r.facets,
+			renderedPath: r.renderedPath,
+		})),
+		{ ontology: curiePrefix, config, streamed },
 	);
 	result.edgeCount = enrichment.edgeCount;
 
@@ -1767,11 +1834,60 @@ async function applyEnrichment(
 		for (const d of enrichment.deviations) result.warnings.push({ row: 0, message: d });
 	}
 
-	const byPath = new Map(records.map((r) => [r.path, r]));
+	const recordsByPath = new Map(records.map((r) => [r.path, r]));
+
+	// 0. Parent-note relocations (batch-enrichment design §3 step 2) — physically
+	//    move each file BEFORE the children-list patch below, which writes to
+	//    the FINAL (post-relocation) path — enrichment.childrenByPath is
+	//    already keyed by it. Processed in the order enrich() produced them
+	//    (sorted by curie, deterministic). By the time this runs, the row
+	//    write loop's resolveWriteTarget has already resolved every note to
+	//    wherever it CURRENTLY lives (curie-verified), so most relocations here
+	//    are genuinely NEW transitions — a note already in its target shape
+	//    never appears in `enrichment.relocations` (enrich()'s idempotency
+	//    guard), so re-importing the same config twice is a no-op here.
+	for (const reloc of enrichment.relocations) {
+		const record = recordsByPath.get(reloc.from);
+		const file = app.vault.getAbstractFileByPath(normalizePath(reloc.from));
+		if (!record || !(file instanceof TFile)) {
+			debug?.warn('generation', 'relocation-source-missing', `Could not relocate ${reloc.curie}: ${reloc.from} not found`, {
+				curie: reloc.curie,
+				from: reloc.from,
+			});
+			continue;
+		}
+		const toPath = normalizePath(reloc.to);
+		if (app.vault.getAbstractFileByPath(toPath)) {
+			// Shouldn't happen — enrich() already guards against in-batch path
+			// collisions. Something outside this batch occupies the target;
+			// leave the note where it is rather than risk clobbering it.
+			result.warnings ??= [];
+			result.warnings.push({
+				row: 0,
+				message: `parent_note: could not relocate ${reloc.curie} — ${toPath} already exists in the vault (not produced by this import).`,
+			});
+			continue;
+		}
+		const relocParentPath = getParentPath(toPath);
+		if (relocParentPath) await ensureFolderExists(app, relocParentPath).catch(() => {});
+		await app.vault.rename(file, toPath);
+
+		recordsByPath.delete(reloc.from);
+		record.path = toPath;
+		recordsByPath.set(toPath, record);
+
+		const createdIdx = result.created.indexOf(reloc.from);
+		if (createdIdx !== -1) {
+			result.created[createdIdx] = toPath;
+		} else {
+			const skippedIdx = result.skipped.indexOf(reloc.from);
+			if (skippedIdx !== -1) result.skipped[skippedIdx] = toPath;
+		}
+	}
 
 	// 1. Children lists — re-write each parent note with its managed `children` key.
 	for (const [path, children] of enrichment.childrenByPath) {
-		const record = byPath.get(path);
+		const record = recordsByPath.get(path);
 		if (!record) continue;
 		const file = app.vault.getAbstractFileByPath(normalizePath(path));
 		if (!(file instanceof TFile)) continue;

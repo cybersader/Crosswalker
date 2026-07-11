@@ -44,9 +44,15 @@
  *   - `LevelRule.naming.lookup` — needs the level's sibling columns in scope; a
  *     serialized `{otherColumn}` template is indistinguishable from a whole-column
  *     source on the way back.
- *   - `TailRule.placement` — the `parent_note: sibling | folder-note` knob is a
- *     pending schema addition (spec §4 + §5).
  *   - `ImportMapping.filters` (row filters) — no recipe surface yet (spec §7b).
+ *
+ * `TailRule.placement` (the `parent_note: sibling | folder-note` knob, spec
+ * §4 + §5) is WIRED as of the folder-note relocation chunk: it promotes to
+ * the recipe's single global `target.enrichment.parent_note` scope on
+ * serialization (last tail wins if several structural mappings somehow both
+ * set it — v0.1's single-structural-mapping constraint makes that vacuous in
+ * practice), and reconstructs onto every tail from that same global value on
+ * the way back. See serialize.ts's `toRecipeRegions`/`fromRegions`.
  */
 
 // ============================================================================
@@ -239,7 +245,7 @@ export interface TailRule {
 	max_depth?: number;
 	/** Overflow behavior past max_depth. */
 	on_overflow?: 'truncate' | 'error';
-	/** parent-note placement. Not serializable yet — schema knob pending (spec §4/§5). */
+	/** Parent-note placement (spec §4/§5). Promotes to the recipe's global `target.enrichment.parent_note` on serialization — see the module note. */
 	placement?: 'sibling' | 'folder-note';
 }
 
@@ -286,7 +292,7 @@ export interface Enrichment {
 	children_lists?: boolean;
 	/** How facet values materialize: 'none' | 'tags-only' | 'notes' (hub note + members). */
 	facet_notes?: 'none' | 'tags-only' | 'notes';
-	/** Parent-note placement: 'sibling' (v0.1) | 'folder-note' (accepted, falls back to sibling). */
+	/** Parent-note placement: 'sibling' (default) | 'folder-note' (Pass 1.5 relocates eligible parents into a same-named folder). */
 	parent_note?: 'sibling' | 'folder-note';
 	/** Optional folder for materialized facet hub notes (default: output root). */
 	hub_note_folder?: string;

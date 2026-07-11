@@ -29,7 +29,7 @@ import { instantiate } from '../../src/import/mapping/instantiate';
 import { BROWSABLE_FRAMEWORK } from '../../src/import/mapping/presets';
 import { toRecipeRegions } from '../../src/import/mapping/serialize';
 import { deriveFacetMemberships, type FacetMembership } from '../../src/import/mapping/facets';
-import { render, type Recipe } from '../../src/render';
+import { render, type Recipe, type RecipeEnrichment } from '../../src/render';
 import {
 	buildNoteContent,
 	normalizeTagList,
@@ -41,15 +41,27 @@ import { buildProvenance } from '../../src/generation/provenance';
 /** Fixed sentinel that replaces the wall-clock `produced_at` so goldens are stable. */
 export const PRODUCED_AT_SENTINEL = '1970-01-01T00:00:00.000Z';
 
-/** The four committed corpora under test-vault/Crosswalker Test Data/. */
+/** The committed corpora under test-vault/Crosswalker Test Data/. */
 export const CORPORA = [
 	'mitre-attack-persistence-subset.csv',
 	'cis-controls-v8-subset.csv',
 	'nist-csf-2.0-govern-identify.csv',
 	'sample-nist-controls.csv',
+	'folder-note-ragged-subset.csv',
 ] as const;
 
 export type CorpusFile = (typeof CORPORA)[number];
+
+/**
+ * Per-corpus `target.enrichment` overrides, merged onto the browsable-framework
+ * default AFTER `toRecipeRegions`. Every corpus otherwise shares the exact same
+ * pipeline (detection → instantiate → render); this is the one knob that
+ * varies, so ONE corpus can exercise Pass 1.5 folder-note relocation (design
+ * §5 case 5) without a second preset/pipeline path.
+ */
+const CORPUS_ENRICHMENT_OVERRIDES: Partial<Record<CorpusFile, Partial<RecipeEnrichment>>> = {
+	'folder-note-ragged-subset.csv': { parent_note: 'folder-note' },
+};
 
 /** Absolute path to a corpus CSV in the test vault. */
 export function corpusPath(file: string): string {
@@ -99,6 +111,8 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 	const detections = detectStructure(parsed, columns);
 	const mapping = instantiate(BROWSABLE_FRAMEWORK, detections);
 	const regions = toRecipeRegions(mapping);
+	const override = CORPUS_ENRICHMENT_OVERRIDES[basename(csvPath) as CorpusFile];
+	if (override) regions.enrichment = { ...regions.enrichment, ...override };
 	const recipe: Recipe = {
 		recipe: id,
 		source: { ontology: id },
@@ -160,12 +174,20 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 		fm._crosswalker = prov;
 	};
 
-	// Concept notes — patch in children, then attach provenance + serialize.
+	// Concept notes — relocate to the FINAL (post Pass-1.5 folder-note) path,
+	// patch in children (already keyed by that final path), then attach
+	// provenance + serialize. This in-memory harness has no vault to physically
+	// rename, so "applying" a relocation is just writing at `to` instead of the
+	// rendered sibling path — the only place this differs from
+	// generation-engine's real applyEnrichment (which does an actual
+	// app.vault.rename).
+	const relocationTo = new Map(enrichment.relocations.map((r) => [r.curie, r.to]));
 	for (const r of records) {
-		const children = enrichment.childrenByPath.get(r.path);
+		const finalPath = relocationTo.get(r.curie) ?? r.path;
+		const children = enrichment.childrenByPath.get(finalPath);
 		if (children) r.frontmatter.children = children;
 		attachProvenance(r.frontmatter);
-		vault.set(r.path, buildNoteContent(r.frontmatter, defaultBody(r.frontmatter)));
+		vault.set(finalPath, buildNoteContent(r.frontmatter, defaultBody(r.frontmatter)));
 	}
 
 	// Facet hub notes.
