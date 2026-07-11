@@ -107,6 +107,18 @@ Setup deferred until first concrete use case (likely CI fixture validation in Wa
 - Cache: `.obsidian-cache/` (gitignored) — downloaded Obsidian builds
 - Failure screenshots: `test-results/failure-<timestamp>.png` (gitignored)
 
+### Harness hygiene (added 2026-07-11)
+
+`onPrepare` in `wdio.conf.mts` runs three hardening steps before every `bun run e2e`, in order — see `tests/e2e/helpers/{process-hygiene,vault-hygiene}.ts`:
+
+1. **Process hygiene** (`killOrphanedTestProcesses`) — scans `/proc` for obsidian/chromedriver/esbuild processes whose cmdline matches this repo's path AND whose recorded parent PID is no longer alive (reparented to PID 1, or the parent already exited). Logs and kills only those. **Safe on a shared tree with concurrent sibling agents**: a live sibling run's processes always have a live parent (their own wdio/node runner), so this never touches an active run — only genuinely abandoned ones from a prior crash.
+2. **Vault hygiene** (`wipeGeneratedOutput(['GraphTest-*', 'GraphDemo'], vaultDir)`) — deletes Crosswalker-**generated** notes (frontmatter carries `_crosswalker:` with a nested `producer:` key) from matched top-level folders in the SOURCE `test-vault/`, before the service copies it into a sandbox. Never deletes a file lacking that marker, even inside a matched folder — hand-authored content is reported (`skippedNonGenerated`) and left alone. This is what keeps `visual-graph.spec.ts`'s `GraphTest-e2e/` output from re-accumulating the way `Frameworks/` did.
+3. **Build with retry** — runs `bun run build`; if the output matches the esbuild-service deadlock flake signature (`goroutine`/`deadlock` — a Go-runtime panic from esbuild's persistent build service), kills orphaned esbuild processes and retries once before giving up.
+
+**One-shot backlog cleanup** — `bun run e2e:clean` (`scripts/e2e-clean.mjs`) reports (default) or deletes (`--force`) the accumulated generated-note backlog specifically in `test-vault/Frameworks/`, using the same generated-note marker check. Protects the curated/licensed corpus (`_licensed/`, `NIST-mini/`, `PROVENANCE.md`) the same way `scripts/reset-test-vault.mjs` does — deleting that corpus isn't reproducible from a script. **Always dry-run first**; `--force` is a deliberate, human-reviewed step.
+
+**Process discipline for agents** — never start `bun run e2e` in the background and end your turn; orphaned wdio/obsidian pairs are exactly what step 1 above exists to clean up after. If you need the shell free while a long e2e run finishes, background it explicitly (`&`/`run_in_background`) but then actively poll for its exit within the same turn (e.g. `until ! kill -0 $PID; do sleep 3; done`) before reporting results — don't fire-and-forget.
+
 Standard test shape:
 
 ```typescript
@@ -150,6 +162,9 @@ await expect(modal).toExist();
 | `bun run e2e` fails with a display error on WSL | `DISPLAY` unset in the shell | **WSLg provides the display — just prefix `DISPLAY=:0`** (socket at `/tmp/.X11-unix/X0`). Do NOT conclude "can't run Obsidian here." CI-only headless via `xvfb-run` is a separate, later concern. |
 | `window/rect` / `Browser.getWindowForTarget wasn't found` | `setWindowSize`/`maximizeWindow` unsupported by this Electron/CDP | Remove the resize call; screenshot at default window size |
 | Plugin changes not reflected in test | `onPrepare` ran build before edits | Either re-run `bun run e2e` or save+restart watch with `bun run dev` |
+| `goroutines deadlock` in build output mid-run | Orphaned esbuild-service process from a prior crashed run | `onPrepare`'s build-with-retry (see [Harness hygiene](#harness-hygiene-added-2026-07-11)) auto-detects and retries once; if it still fails, manually check `ps aux \| grep esbuild` for leftovers matching this repo's path |
+| `Frameworks/` graph views look like a point cloud / screenshots degrade over runs | Generated-note backlog from historical runs (3,553 notes found 2026-07-11, 3,534 of which are the intentional curated `_licensed/` corpus — the true accidental backlog was 19 files) | `bun run e2e:clean` (dry-run first) to report + remove; `visual-graph.spec.ts` avoids this entirely by generating into a unique `GraphTest-e2e/` folder that `onPrepare`'s vault hygiene wipes every run |
+| Multiple `wdio run` processes touching the same repo at once (shared-tree, concurrent agents) | Two independent `bun run e2e` invocations racing `onPrepare`'s `bun run build` output | Pre-existing risk, not fully solvable from one agent's surface; the process-hygiene guard is deliberately conservative (only kills processes with a dead parent) so it never kills a live sibling's run — if a run seems stuck, check `ps aux` for a concurrent `wdio run` before assuming your own run hung |
 
 ## Per-milestone E2E requirement
 
