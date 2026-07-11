@@ -4,7 +4,7 @@
   "title": "Crosswalker Import Recipe",
   "description": "The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.2.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design. All existing recipes without these keys continue to validate.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.3.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design; 1.3.0 (2026-07-10, v0.1.6) added the optional `target.also_emit.frontmatter.managed_links` (list-valued managed wikilink arrays, for multi-value link columns) and the optional `target.enrichment` block (batch-scope Pass 1.5 enrichment: children lists, facet hub notes, parent-note placement) per the 2026-07-10 batch-enrichment design. All existing recipes without these keys continue to validate.",
 
   "$defs": {
     "mechanism": {
@@ -135,6 +135,23 @@
           "description": "Recipe-owned frontmatter. Keys → templates. Re-render overwrites these. Example: { framework: 'nist-800-53-r5', control_id: '{control.id}', family: '{family.id}' }.",
           "additionalProperties": { "$ref": "#/$defs/template" }
         },
+        "managed_links": {
+          "type": "object",
+          "description": "Recipe-owned, list-valued managed wikilink arrays (additive SchemaVer 1.3.0). Each key maps to a template plus optional split delimiters; the rendered value is split on those delimiters, each non-empty piece is wrapped in [[...]], and the key is emitted as a YAML array of wikilink strings. Used for multi-value link columns (e.g. a 'Related Controls' cell 'AC-2, AC-3, PM-9' → related: ['[[AC-2]]', '[[AC-3]]', '[[PM-9]]']). Single-value links stay in `managed` as scalar '[[...]]' strings. Re-render regenerates the array wholesale (managed, not unioned). Recipes without this key validate unchanged.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["template"],
+            "additionalProperties": false,
+            "properties": {
+              "template": { "$ref": "#/$defs/template" },
+              "split": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Delimiters the rendered value is split on before wikilinking each piece. Default when omitted: comma and semicolon."
+              }
+            }
+          }
+        },
         "user_preserve": {
           "type": "array",
           "description": "User-owned frontmatter key patterns. Re-render preserves these untouched. Glob patterns ('*notes*') or exact keys ('reviewer', 'status', 'evidence_links'). Default if omitted: empty (no preservation).",
@@ -144,6 +161,36 @@
             "description": "Frontmatter key (or glob) to preserve. Example: 'reviewer', 'status', '*-notes', '*'."
           },
           "examples": [["reviewer", "status", "evidence_links"], ["*notes*"], ["*"]]
+        }
+      }
+    },
+
+    "enrichment": {
+      "type": "object",
+      "title": "Batch enrichment (Pass 1.5)",
+      "description": "Optional batch-scope enrichment applied after every row renders (additive SchemaVer 1.3.0). render() stays pure and per-row; enrichment derives cross-row artifacts (children lists on parents, materialized facet hub notes) that no single row can know. Deterministic: same rows in → same vault out, with every derived list sorted by curie so input order never leaks. Recipes without this block emit no enrichment and validate unchanged. Per the 2026-07-10 batch-enrichment design.",
+      "additionalProperties": false,
+      "properties": {
+        "children_lists": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, every parent note gains a managed `children` array of wikilinks to its direct children (derived from the same parent relation the parent link uses), sorted by child curie. Regenerated wholesale on re-import (fully managed, not unioned)."
+        },
+        "facet_notes": {
+          "type": "string",
+          "enum": ["none", "tags-only", "notes"],
+          "default": "none",
+          "description": "How facet values materialize. 'none': nothing beyond the per-note facet tags. 'tags-only': facet tags only, no hub notes. 'notes': one synthetic hub note per facet value with a managed `members` list of its member notes (sorted by curie), a `kind: facet` discriminator, the facet tag, and an H1 body; user prose below the H1 survives re-import. Hub notes are emitted only for facet values with two or more members."
+        },
+        "parent_note": {
+          "type": "string",
+          "enum": ["sibling", "folder-note"],
+          "default": "sibling",
+          "description": "Where a concept that is also a parent of other concepts lives. 'sibling': the concept note sits beside its children's folder (X.md next to X/). 'folder-note': the concept note moves inside its own folder as X/X.md. v0.1 implements 'sibling' only; 'folder-note' is accepted by the schema but falls back to 'sibling' at render time with a deviation note (relocation ships in a later chunk)."
+        },
+        "hub_note_folder": {
+          "type": "string",
+          "description": "Optional vault-relative folder for materialized facet hub notes. When omitted, hub notes land at the output root beside the imported concepts."
         }
       }
     },
@@ -626,7 +673,8 @@
           "enum": ["absolute", "shortest"],
           "default": "absolute",
           "description": "Wikilink rendering style. 'absolute': always emit full-path form 'Folder/Sub/AC-2'; deterministic; hashable; what the canonical-state hash is computed against. 'shortest': downgrade to bare basename when unambiguous in the target vault; requires Pass 2 of render() with a VaultIndex; non-deterministic across users; deferred to v0.3."
-        }
+        },
+        "enrichment": { "$ref": "#/$defs/enrichment" }
       }
     },
 

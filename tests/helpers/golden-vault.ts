@@ -28,12 +28,14 @@ import { detectStructure } from '../../src/import/detection';
 import { instantiate } from '../../src/import/mapping/instantiate';
 import { BROWSABLE_FRAMEWORK } from '../../src/import/mapping/presets';
 import { toRecipeRegions } from '../../src/import/mapping/serialize';
+import { deriveFacetMemberships, type FacetMembership } from '../../src/import/mapping/facets';
 import { render, type Recipe } from '../../src/render';
 import {
 	buildNoteContent,
 	normalizeTagList,
 	normalizeAliasList,
 } from '../../src/generation/generation-engine';
+import { enrich, type EnrichNote, type EnrichmentResult } from '../../src/generation/enrich';
 import { buildProvenance } from '../../src/generation/provenance';
 
 /** Fixed sentinel that replaces the wall-clock `produced_at` so goldens are stable. */
@@ -67,9 +69,25 @@ export function goldenDir(file: string): string {
 /**
  * Build the in-memory vault for one corpus CSV. Returns Map<relativePath,
  * noteText>. Paths are the render() output (no output-base prefix) so goldens
- * stay focused on the emitted structure.
+ * stay focused on the emitted structure. Runs the full pipeline INCLUDING Pass
+ * 1.5 batch enrichment, so the committed goldens capture the enriched vault.
  */
 export async function buildVaultInMemory(csvPath: string): Promise<Map<string, string>> {
+	return (await buildVaultDetailed(csvPath)).vault;
+}
+
+/** buildVaultInMemory + the enrichment result (edge count, hubs) for invariants. */
+export interface BuiltVault {
+	vault: Map<string, string>;
+	enrichment: EnrichmentResult;
+}
+
+/**
+ * Build one corpus vault AND return the enrichment result. Same pipeline as
+ * buildVaultInMemory (which delegates here); exposed so the L3 invariants can
+ * assert edge count + hub reachability without re-parsing every note.
+ */
+export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 	const id = corpusId(csvPath);
 	const content = readFileSync(csvPath, 'utf8');
 	const parsed = await parseCSV(content);
@@ -88,8 +106,15 @@ export async function buildVaultInMemory(csvPath: string): Promise<Map<string, s
 	};
 
 	const prefix = slugForCurie(id);
-	const vault = new Map<string, string>();
 
+	// Pass 1 — render each row into a note record (frontmatter minus provenance).
+	interface Record0 {
+		path: string;
+		curie: string;
+		frontmatter: Record<string, unknown>;
+		facets: FacetMembership[];
+	}
+	const records: Record0[] = [];
 	parsed.rows.forEach((row, i) => {
 		const rowNum = i + 1;
 		const curie = `${prefix}:${curieLocalPart(row, rowNum)}`;
@@ -98,7 +123,9 @@ export async function buildVaultInMemory(csvPath: string): Promise<Map<string, s
 		const path = normalizeVaultPath(address.primary.path);
 		if (!path || path === '.md') return; // an unrenderable row surfaces elsewhere; skip in the vault
 
-		// Frontmatter assembly (mirrors generateFromRecipe steps 5/9/10).
+		// Frontmatter assembly (mirrors generateFromRecipe steps 5/9/10), minus the
+		// provenance block — that is attached last, AFTER enrichment, so a `children`
+		// list sorts before `_crosswalker` in the emitted YAML.
 		const frontmatter: Record<string, unknown> = { ...address.frontmatter };
 		if (address.tags.length > 0) {
 			const tags = normalizeTagList(address.tags);
@@ -108,18 +135,46 @@ export async function buildVaultInMemory(csvPath: string): Promise<Map<string, s
 			const aliases = normalizeAliasList(address.aliases);
 			if (aliases.length > 0) frontmatter.aliases = aliases;
 		}
+		records.push({ path, curie, frontmatter, facets: deriveFacetMemberships(mapping, row) });
+	});
+
+	// Pass 1.5 — batch enrichment (children lists + facet hubs + edge count).
+	const enrichNotes: EnrichNote[] = records.map((r) => ({
+		path: r.path,
+		curie: r.curie,
+		frontmatter: r.frontmatter,
+		facets: r.facets,
+	}));
+	const enrichment = enrich(enrichNotes, {
+		ontology: prefix,
+		config: recipe.target.enrichment ?? {},
+	});
+
+	const vault = new Map<string, string>();
+	const attachProvenance = (fm: Record<string, unknown>): void => {
 		const prov = buildProvenance(
 			{ sourceFile: basename(csvPath), recipeId: recipe.recipe },
 			'golden',
 		) as Record<string, unknown>;
 		prov.produced_at = PRODUCED_AT_SENTINEL; // normalize the one wall-clock field
-		frontmatter._crosswalker = prov;
+		fm._crosswalker = prov;
+	};
 
-		const body = defaultBody(frontmatter);
-		vault.set(path, buildNoteContent(frontmatter, body));
-	});
+	// Concept notes — patch in children, then attach provenance + serialize.
+	for (const r of records) {
+		const children = enrichment.childrenByPath.get(r.path);
+		if (children) r.frontmatter.children = children;
+		attachProvenance(r.frontmatter);
+		vault.set(r.path, buildNoteContent(r.frontmatter, defaultBody(r.frontmatter)));
+	}
 
-	return vault;
+	// Facet hub notes.
+	for (const hub of enrichment.hubs) {
+		attachProvenance(hub.frontmatter);
+		vault.set(hub.path, buildNoteContent(hub.frontmatter, hub.body));
+	}
+
+	return { vault, enrichment };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,8 @@
 ---
-related: "[[CM-1, CM-6, CM-8]]"
+related:
+  - "[[CM-1]]"
+  - "[[CM-6]]"
+  - "[[CM-8]]"
 curie: "sample-nist-controls:row-11"
 tags:
   - control-family/configuration-management

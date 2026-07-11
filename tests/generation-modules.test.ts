@@ -514,3 +514,22 @@ describe('buildNoteData: body destination', () => {
 		expect(a.body).toBe(b.body);
 	});
 });
+
+describe('render: empty managed values are omitted, not emitted as broken links', () => {
+	const { render } = jest.requireActual('../src/render');
+
+	it('omits a parent key whose template renders to an empty wikilink', () => {
+		const recipe = {
+			recipe: 'r',
+			target: {
+				layout: [{ level: 'leaf', mechanism: 'file', template: '{id}.md' }],
+				also_emit: { frontmatter: { managed: { parent: '[[{parent}]]', title: '{name}' } } },
+			},
+		};
+		const rootAddr = render(recipe, { curie: 'x:CIS-1', scope: { id: 'CIS-1', parent: '', name: 'Root' } });
+		expect(rootAddr.frontmatter.parent).toBeUndefined();
+		expect(rootAddr.frontmatter.title).toBe('Root');
+		const childAddr = render(recipe, { curie: 'x:CIS-1.1', scope: { id: 'CIS-1.1', parent: 'CIS-1', name: 'Child' } });
+		expect(childAddr.frontmatter.parent).toBe('[[CIS-1]]');
+	});
+});

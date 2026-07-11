@@ -23,6 +23,7 @@
 
 import type { Detection, LayoutProposal, EdgeProposal } from '../detection';
 import type { Preset, PresetDestination } from './presets';
+import { enrichmentForPreset } from './presets';
 import type {
 	ImportMapping,
 	StructureMapping,
@@ -169,9 +170,15 @@ export function instantiate(preset: Preset, detections: Detection[]): ImportMapp
 				if (m) mappings.push(m);
 				break;
 			}
-			case 'parent-column':
+			case 'parent-column': {
+				const m = instantiateLink(preset, detection.column, detection.proposal, false);
+				if (m) mappings.push(m);
+				break;
+			}
 			case 'multi-value-link': {
-				const m = instantiateLink(preset, detection.column, detection.proposal);
+				// A multi-value link cell holds several ids → a list-valued managed
+				// wikilink array (`related: ["[[…]]", …]`), not one scalar link.
+				const m = instantiateLink(preset, detection.column, detection.proposal, true);
 				if (m) mappings.push(m);
 				break;
 			}
@@ -190,7 +197,12 @@ export function instantiate(preset: Preset, detections: Detection[]): ImportMapp
 		if (column) mappings.push(fallbackNameMapping(column));
 	}
 
-	return { mappings };
+	// Batch enrichment (Pass 1.5): stamp the preset's enrichment defaults onto the
+	// mapping when it actually produced structure. An empty matrix (no detections)
+	// carries none — there is nothing to enrich. Serializes to recipe
+	// target.enrichment via toRecipeRegions.
+	const enrichment = enrichmentForPreset(preset.preset);
+	return enrichment && mappings.length > 0 ? { mappings, enrichment } : { mappings };
 }
 
 // ============================================================================
@@ -291,7 +303,12 @@ function instantiateFacet(preset: Preset, column: string): StructureMapping | nu
 	};
 }
 
-function instantiateLink(preset: Preset, column: string, proposal: EdgeProposal): StructureMapping | null {
+function instantiateLink(
+	preset: Preset,
+	column: string,
+	proposal: EdgeProposal,
+	list: boolean,
+): StructureMapping | null {
 	const dests = preset.links?.destinations;
 	if (!dests || dests.length === 0) return null;
 	return {
@@ -304,6 +321,7 @@ function instantiateLink(preset: Preset, column: string, proposal: EdgeProposal)
 						column,
 						linkKey: proposal.frontmatterKey,
 						predicate: proposal.predicate,
+						list,
 					}),
 				),
 				naming: 'part',
@@ -339,6 +357,8 @@ interface DestContext {
 	propertyKey?: string;
 	linkKey?: string;
 	predicate?: string;
+	/** True → a list-valued (multi-value) link destination. */
+	list?: boolean;
 }
 
 /** Fill a preset's generic destination with this source's column-bound params. */
@@ -365,6 +385,7 @@ function mapDestination(preset: PresetDestination, ctx: DestContext): Destinatio
 				key: ctx.linkKey ?? 'parent',
 				direction: preset.direction ?? 'parent-on-child',
 				...(ctx.predicate ? { predicate: ctx.predicate } : {}),
+				...(ctx.list ? { list: true } : {}),
 			};
 		case 'property':
 			return { primitive: 'property', key: ctx.propertyKey ?? ctx.column, ...(preset.list ? { list: true } : {}) };

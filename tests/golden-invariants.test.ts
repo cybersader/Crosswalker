@@ -14,7 +14,7 @@
  * lands, at which point the soft cases flip to hard.
  */
 
-import { buildVaultInMemory, corpusPath } from './helpers/golden-vault';
+import { buildVaultInMemory, buildVaultDetailed, corpusPath } from './helpers/golden-vault';
 import { parseNoteAsConsumer, assertLinkValue, extractWikilinkTargets } from './helpers/consumer-view';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,13 @@ interface CorpusSpec {
 	cleanPaths: boolean;
 	/** Hard link-resolution threshold (unresolved must be <=), or null to only report. */
 	resolveThreshold: number | null;
+	/**
+	 * When set, the ONLY wikilink targets allowed to stay unresolved (genuinely
+	 * out-of-subset ids the source references but doesn't include as rows). Every
+	 * other unresolved link is a hard failure. Converts a report-only corpus into
+	 * a precise guard once Pass 1.5 split its multi-value links.
+	 */
+	allowedUnresolved?: Set<string>;
 }
 
 const SPECS: CorpusSpec[] = [
@@ -89,10 +96,16 @@ const SPECS: CorpusSpec[] = [
 	// parent, so a 0-unresolved threshold would be wrong here).
 	{ file: 'cis-controls-v8-subset.csv', cleanPaths: true, resolveThreshold: null },
 	{ file: 'nist-csf-2.0-govern-identify.csv', cleanPaths: true, resolveThreshold: null },
-	// sample-nist: clean paths, but its `Related Controls` multi-value column is
-	// not split, so `related: [[AC-2, AC-3, PM-9]]` is one dead link. Multi-value
-	// link emission is deferred to the Pass 1.5 round — resolution stays SOFT.
-	{ file: 'sample-nist-controls.csv', cleanPaths: true, resolveThreshold: null },
+	// sample-nist: clean paths. Pass 1.5 now SPLITS its `Related Controls` cells
+	// into a wikilink array, so `related` links resolve individually. The only
+	// remaining unresolved targets are controls the source references but that are
+	// not in this subset (PM-9, AU-7, CM-8, SI-2) — asserted precisely below.
+	{
+		file: 'sample-nist-controls.csv',
+		cleanPaths: true,
+		resolveThreshold: null,
+		allowedUnresolved: new Set(['PM-9', 'AU-7', 'CM-8', 'SI-2']),
+	},
 ];
 
 // ---------------------------------------------------------------------------
@@ -173,15 +186,37 @@ for (const spec of SPECS) {
 			if (spec.resolveThreshold !== null) {
 				expect(unresolved.map((u) => `${u.note}#${u.key}→[[${u.target}]]`)).toEqual([]);
 				expect(links.length).toBeGreaterThan(0); // a connected corpus HAS edges
+			} else if (spec.allowedUnresolved) {
+				// Pass 1.5 split the multi-value `related` cells, so every unresolved
+				// target is now a genuinely out-of-subset control (referenced by the
+				// source but not present as a row) — NOT a split bug. HARD-assert the
+				// unresolved set is exactly those known out-of-subset ids.
+				const offenders = unresolved.filter((u) => !spec.allowedUnresolved!.has(u.target));
+				expect(offenders.map((u) => `${u.note}#${u.key}#[[${u.target}]]`)).toEqual([]);
+				expect(links.length).toBeGreaterThan(0);
 			} else {
-				// TODO(pass-1.5): remaining unresolved links are multi-value link columns
-				// (sample-nist `Related Controls`) whose split emission is deferred to the
-				// Pass 1.5 round. Report-only until then.
+				// Root notes legitimately have no parent; report-only.
 				// eslint-disable-next-line no-console
 				console.warn(
-					`TODO(pass-1.5) ${spec.file}: ${unresolved.length}/${links.length} wikilinks unresolved`,
+					`${spec.file}: ${unresolved.length}/${links.length} wikilinks unresolved (report-only)`,
 				);
 				expect(unresolved.length).toBeGreaterThanOrEqual(0);
+			}
+		});
+
+		// HARD (all corpora): every materialized facet hub is a connected node —
+		// >=2 members and every member link resolves. A hub with a dead or empty
+		// member list would be an isolated node (spec §7k connectedness mandate).
+		it('every facet hub note is connected (>=2 resolvable members)', () => {
+			const bns = basenames(vault);
+			const paths = new Set(vault.keys());
+			for (const [path, text] of vault) {
+				const { frontmatter } = parseNoteAsConsumer(text);
+				if (frontmatter.kind !== 'facet') continue;
+				const members = extractWikilinkTargets(frontmatter.members);
+				expect(members.length).toBeGreaterThanOrEqual(2);
+				const dead = members.filter((t) => !resolves(t, bns, paths));
+				expect({ hub: path, dead }).toEqual({ hub: path, dead: [] });
 			}
 		});
 
@@ -199,26 +234,68 @@ for (const spec of SPECS) {
 
 describe('golden invariants — MITRE connectivity (no orphan sub-techniques)', () => {
 	let vault: Vault;
+	let edgeCount: number;
 	beforeAll(async () => {
-		vault = await buildVaultInMemory(corpusPath('mitre-attack-persistence-subset.csv'));
+		const built = await buildVaultDetailed(corpusPath('mitre-attack-persistence-subset.csv'));
+		vault = built.vault;
+		edgeCount = built.enrichment.edgeCount;
 	});
 
-	it('every sub-technique (T*.0*) has a resolvable parent link; edge count > 0', () => {
+	it('every sub-technique (T*.0*) has a resolvable parent link', () => {
 		const bns = basenames(vault);
 		const paths = new Set(vault.keys());
 		const subNotes = [...vault.entries()].filter(([p]) => /T\d+\.\d+\.md$/.test(p));
 		expect(subNotes.length).toBeGreaterThan(0); // corpus actually has sub-techniques
 
-		let edges = 0;
+		let parentEdges = 0;
 		const orphans: string[] = [];
 		for (const [path, text] of subNotes) {
 			const { frontmatter } = parseNoteAsConsumer(text);
 			const targets = extractWikilinkTargets(frontmatter.parent);
 			const resolved = targets.filter((t) => resolves(t, bns, paths));
 			if (resolved.length === 0) orphans.push(path);
-			else edges += resolved.length;
+			else parentEdges += resolved.length;
 		}
 		expect(orphans).toEqual([]); // zero orphans — the graph is connected
-		expect(edges).toBeGreaterThan(0); // and it actually has edges
+		expect(parentEdges).toBeGreaterThan(0);
+	});
+
+	// Pass 1.5 STRENGTHENED: with browsable-framework defaults every parent gains a
+	// `children` list, so the graph now carries edges in BOTH directions. The
+	// enrichment edge count must exceed the parent-link count alone (children
+	// doubled it), and every child in a `children` list must resolve.
+	it('every parent has a resolvable children list; edgeCount exceeds parent links alone', () => {
+		const bns = basenames(vault);
+		const paths = new Set(vault.keys());
+
+		let notesWithChildren = 0;
+		let childEdges = 0;
+		let parentLinks = 0;
+		for (const [path, text] of vault) {
+			const { frontmatter } = parseNoteAsConsumer(text);
+			for (const t of extractWikilinkTargets(frontmatter.parent)) {
+				if (resolves(t, bns, paths)) parentLinks++;
+			}
+			const children = extractWikilinkTargets(frontmatter.children);
+			if (children.length > 0) notesWithChildren++;
+			const dead = children.filter((t) => !resolves(t, bns, paths));
+			expect({ note: path, dead }).toEqual({ note: path, dead: [] });
+			childEdges += children.length;
+		}
+		// The 5 top-level techniques (T1078/T1098/T1136/T1505/T1543) each have children.
+		expect(notesWithChildren).toBeGreaterThanOrEqual(5);
+		expect(childEdges).toBeGreaterThan(0);
+		// edgeCount = parent links + children entries (+ facet members; MITRE has 0
+		// facet hubs, its `tactic` column is single-valued and not a facet).
+		expect(edgeCount).toBe(parentLinks + childEdges);
+		expect(edgeCount).toBeGreaterThan(parentLinks); // children strictly added edges
+	});
+
+	// MITRE has no facet hubs (tactic cardinality 1), so "orphan count 0 INCLUDING
+	// facet hubs" holds vacuously — assert there are none, and that the general hub
+	// connectivity invariant (asserted per-corpus above) had nothing to fail on.
+	it('has no facet hub notes (single-valued tactic is not a facet)', () => {
+		const hubs = [...vault.entries()].filter(([, text]) => parseNoteAsConsumer(text).frontmatter.kind === 'facet');
+		expect(hubs.map(([p]) => p)).toEqual([]);
 	});
 });

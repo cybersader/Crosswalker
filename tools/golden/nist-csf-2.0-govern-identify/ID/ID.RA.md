@@ -1,6 +1,9 @@
 ---
 parent: "[[ID]]"
 curie: "nist-csf-2-0-govern-identify:ID.RA"
+children:
+  - "[[ID.RA-01]]"
+  - "[[ID.RA-02]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:

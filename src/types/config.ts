@@ -409,6 +409,14 @@ export interface GenerationResult {
 	 * never a mystery.
 	 */
 	warnings?: GenerationError[];
+	/**
+	 * Graph edges materialized by Pass 1.5 batch enrichment (v0.1.6): parent
+	 * links + children-list entries + facet-hub member entries. Surfaces the
+	 * connectedness of the imported vault on the review screen ("K graph edges").
+	 * A run that ships 0 edges is a visible warning, not a silent dead graph
+	 * (spec §7k). Undefined when enrichment did not run.
+	 */
+	edgeCount?: number;
 	duration: number;
 }
 

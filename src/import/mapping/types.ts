@@ -158,6 +158,13 @@ export type Destination =
 			direction: LinkDirection;
 			/** Typed predicate (e.g. 'skos:broader'). Not serializable via managed frontmatter yet. */
 			predicate?: string;
+			/**
+			 * True → a multi-value link column: the cell holds several ids
+			 * (`related: T1055, T1548`), each of which becomes one wikilink in a
+			 * managed ARRAY (serializes to `also_emit.frontmatter.managed_links`).
+			 * Undefined/false → a single-value scalar `[[…]]` in `managed`.
+			 */
+			list?: boolean;
 	  }
 	/** A plain queryable frontmatter field. */
 	| {
@@ -268,6 +275,24 @@ export interface StructureMapping {
 }
 
 /**
+ * Batch-scope enrichment config (Pass 1.5). Mirrors the recipe `target.enrichment`
+ * block (spec/recipe.schema.json $defs/enrichment) and round-trips through
+ * serialize. Composes existing mechanisms rather than adding a sixth: children
+ * lists reuse the parent relation, facet hubs reuse the facet tags. Per the
+ * 2026-07-10 batch-enrichment design.
+ */
+export interface Enrichment {
+	/** Managed `children` array on every parent note (sorted by child curie). */
+	children_lists?: boolean;
+	/** How facet values materialize: 'none' | 'tags-only' | 'notes' (hub note + members). */
+	facet_notes?: 'none' | 'tags-only' | 'notes';
+	/** Parent-note placement: 'sibling' (v0.1) | 'folder-note' (accepted, falls back to sibling). */
+	parent_note?: 'sibling' | 'folder-note';
+	/** Optional folder for materialized facet hub notes (default: output root). */
+	hub_note_folder?: string;
+}
+
+/**
  * The complete import model: every parallel hierarchy plus source-level row
  * filters (spec §7b). This is what all three workbench views read and write.
  */
@@ -275,6 +300,8 @@ export interface ImportMapping {
 	mappings: StructureMapping[];
 	/** Row-include predicates. Not serializable yet (lossy TODO). */
 	filters?: RowFilter[];
+	/** Batch-scope enrichment (Pass 1.5). Serializes to recipe `target.enrichment`. */
+	enrichment?: Enrichment;
 }
 
 // ============================================================================

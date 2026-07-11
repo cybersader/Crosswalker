@@ -29,6 +29,8 @@ import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
 import { validateTier1Frontmatter } from '../validation/validator';
+import { enrich, mergeHubBody, type EnrichNote, type HubNote } from './enrich';
+import type { FacetMembership } from '../import/mapping/facets';
 
 // ============================================================================
 // Types
@@ -1358,6 +1360,15 @@ export interface RecipeImportOptions {
 	onProgress?: (current: number, total: number, message: string) => void;
 	/** Max note writes in flight at once (default DEFAULT_CONCURRENCY). 1 = sequential. */
 	concurrency?: number;
+	/**
+	 * Facet memberships for a row — used by Pass 1.5 enrichment to materialize
+	 * facet hub notes with their original-case display names. When omitted, the
+	 * engine derives memberships from the rendered facet tags (which are tagsafe,
+	 * so hub names lose original casing). Callers that hold the ImportMapping
+	 * (the workbench) should pass a mapping-driven function via
+	 * `deriveFacetMemberships(mapping, row)` for faithful display names.
+	 */
+	facetsForRow?: (row: Record<string, unknown>, rowNum: number) => FacetMembership[];
 }
 
 /**
@@ -1404,6 +1415,15 @@ export async function generateFromRecipe(
 	}
 
 	const emittedPaths = new Set<string>();
+	// Pass 1.5 enrichment (v0.1.6): records collected during the stream so the
+	// post-stream patch phase can derive parent→children + facet hubs without
+	// re-reading the vault. One lightweight record per written note. Only
+	// populated when the recipe declares target.enrichment.
+	const enrichmentEnabled = !!recipe.target.enrichment;
+	interface EnrichRecord extends EnrichNote {
+		body: string;
+	}
+	const enrichRecords: EnrichRecord[] = [];
 	// v0.1.4.5: streaming-friendly iteration (array OR AsyncIterable<Row>).
 	// v0.1.6 (2026-06-13): writes run in a bounded concurrency pool; the sync
 	// prefix (render + collision reserve) stays in row order.
@@ -1552,6 +1572,14 @@ export async function generateFromRecipe(
 				await app.vault.create(fullPath, content);
 			}
 			result.created.push(fullPath);
+
+			// Collect a record for Pass 1.5 enrichment (parent→children + facet hubs).
+			if (enrichmentEnabled) {
+				const facets = options.facetsForRow
+					? options.facetsForRow(row as Record<string, unknown>, rowNum)
+					: facetMembershipsFromTags(address.tags);
+				enrichRecords.push({ path: fullPath, curie, frontmatter: { ...frontmatter }, facets, body });
+			}
 		} catch (rowError) {
 			const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
 			result.errors.push({ row: rowNum, message: errorMessage });
@@ -1565,11 +1593,26 @@ export async function generateFromRecipe(
 		},
 	);
 
+	// Pass 1.5 — batch enrichment patch phase (post-stream). Derives parent→children
+	// + facet hubs from the collected records (never re-reads the vault for the
+	// derivation), then writes children onto parents and materializes hub notes via
+	// the same managed-merge path so re-imports stay idempotent + user-safe.
+	if (enrichmentEnabled && enrichRecords.length > 0) {
+		try {
+			await applyEnrichment(app, recipe, options, curiePrefix, enrichRecords, result, debug);
+		} catch (enrichErr) {
+			const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
+			result.warnings ??= [];
+			result.warnings.push({ row: 0, message: `Enrichment pass failed: ${msg}` });
+			debug?.error('generation', 'enrichment-failed', 'Enrichment pass failed', { error: msg });
+		}
+	}
+
 	if (options.onProgress) options.onProgress(completed, total, 'Complete');
 	if (result.errors.length > 0) result.success = false;
 	result.duration = Date.now() - startTime;
 
-	debug?.info('generation', 'recipe-complete', `generateFromRecipe: complete (${result.created.length} created, ${result.errors.length} errors, ${result.warnings?.length ?? 0} warnings)`, {
+	debug?.info('generation', 'recipe-complete', `generateFromRecipe: complete (${result.created.length} created, ${result.errors.length} errors, ${result.warnings?.length ?? 0} warnings, ${result.edgeCount ?? 0} edges)`, {
 		success: result.success,
 		created: result.created.length,
 		skipped: result.skipped.length,
@@ -1579,6 +1622,119 @@ export async function generateFromRecipe(
 	});
 
 	return result;
+}
+
+/**
+ * Best-effort facet memberships from a note's rendered (tagsafe) facet tags.
+ * Each `namespace/value` tag → one membership; nested tags (several slashes)
+ * split on the LAST slash. Display value is the tagsafe token (lowercased) — the
+ * mapping-driven `facetsForRow` callback preserves original casing when the
+ * caller can supply it. Deterministic. Exported for tests.
+ */
+export function facetMembershipsFromTags(tags: string[]): FacetMembership[] {
+	const out: FacetMembership[] = [];
+	for (const tag of tags) {
+		const clean = String(tag).replace(/^#+/, '').trim();
+		const slash = clean.lastIndexOf('/');
+		if (slash <= 0 || slash === clean.length - 1) continue; // need namespace + value
+		out.push({ namespace: clean.slice(0, slash), value: clean.slice(slash + 1) });
+	}
+	return out;
+}
+
+/**
+ * Pass 1.5 enrichment patch phase (post-stream). Derives parent→children +
+ * facet hubs from the in-memory records, then writes `children` onto parents and
+ * materializes facet hub notes — both via the managed-merge path so re-imports
+ * are idempotent and user prose / user frontmatter survives.
+ */
+async function applyEnrichment(
+	app: App,
+	recipe: Recipe,
+	options: RecipeImportOptions,
+	curiePrefix: string,
+	records: Array<EnrichNote & { body: string }>,
+	result: GenerationResult,
+	debug?: DebugLog,
+): Promise<void> {
+	const config = recipe.target.enrichment ?? {};
+	const enrichment = enrich(
+		records.map((r) => ({ path: r.path, curie: r.curie, frontmatter: r.frontmatter, facets: r.facets })),
+		{ ontology: curiePrefix, config },
+	);
+	result.edgeCount = enrichment.edgeCount;
+
+	if (enrichment.deviations.length > 0) {
+		result.warnings ??= [];
+		for (const d of enrichment.deviations) result.warnings.push({ row: 0, message: d });
+	}
+
+	const byPath = new Map(records.map((r) => [r.path, r]));
+
+	// 1. Children lists — re-write each parent note with its managed `children` key.
+	for (const [path, children] of enrichment.childrenByPath) {
+		const record = byPath.get(path);
+		if (!record) continue;
+		const file = app.vault.getAbstractFileByPath(normalizePath(path));
+		if (!(file instanceof TFile)) continue;
+		// Rebuild deterministically: drop any STALE `children` (a prior import's
+		// merge may have preserved it at the front, since render() doesn't emit it),
+		// then re-append the fresh list just before the provenance block so the key
+		// order is identical on every re-import (matches the golden shape).
+		const { _crosswalker, children: _stale, ...rest } = record.frontmatter as Record<string, unknown>;
+		void _stale;
+		const frontmatter = { ...rest, children, ...(_crosswalker !== undefined ? { _crosswalker } : {}) };
+		await app.vault.modify(file, buildNoteContent(frontmatter, record.body));
+	}
+
+	// 2. Facet hub notes — create or merge, preserving user body prose + user keys.
+	const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
+	for (const hub of enrichment.hubs) {
+		const fullPath = options.basePath ? normalizePath(`${options.basePath}/${hub.path}`) : normalizePath(hub.path);
+		const frontmatter: Record<string, any> = { ...hub.frontmatter };
+		frontmatter._crosswalker = buildProvenance(
+			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe },
+			PLUGIN_VERSION,
+		);
+		let body = hub.body;
+
+		const existing = app.vault.getAbstractFileByPath(fullPath);
+		if (existing instanceof TFile) {
+			// Re-import: regenerate managed members, preserve user frontmatter + prose.
+			try {
+				const existingFm = await readExistingFrontmatter(app, existing);
+				if (existingFm && Object.keys(existingFm).length > 0) {
+					const managedKeys = computeManagedKeys(frontmatter, userPreserve);
+					const merged = mergeFrontmatter(existingFm, frontmatter, managedKeys);
+					Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
+					Object.assign(frontmatter, merged);
+				}
+				const existingText = await app.vault.read(existing);
+				body = mergeHubBody(stripFrontmatterBlock(existingText), hub.body);
+			} catch (mergeErr) {
+				debug?.warn('generation', 'hub-merge-failed', `Hub merge failed at ${fullPath}; using fresh content`, {
+					path: fullPath,
+					error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
+				});
+			}
+			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
+		} else {
+			const parentPath = getParentPath(fullPath);
+			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
+			await app.vault.create(fullPath, buildNoteContent(frontmatter, body));
+			result.created.push(fullPath);
+		}
+	}
+}
+
+/** Strip a leading `---\n…\n---` frontmatter block, returning the body text. */
+function stripFrontmatterBlock(text: string): string {
+	const normalized = text.replace(/\r\n/g, '\n');
+	if (!normalized.startsWith('---\n')) return normalized;
+	const end = normalized.indexOf('\n---', 3);
+	if (end === -1) return normalized;
+	const afterFence = normalized.indexOf('\n', end + 1);
+	return afterFence === -1 ? '' : normalized.slice(afterFence + 1);
 }
 
 /**

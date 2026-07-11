@@ -38,6 +38,7 @@ import type {
 	LevelSource,
 	PartRef,
 	LevelNaming,
+	Enrichment,
 } from './types';
 import { destinationRank, toSourceRefs, isConstantRef, DEFAULT_MISSING } from './types';
 
@@ -54,12 +55,19 @@ export interface LayoutEntry {
 	variadic?: VariadicConfig;
 }
 
+/** A managed list-valued wikilink spec (schema `managed_links`). */
+export interface ManagedLinkSpec {
+	template: string;
+	split?: string[];
+}
+
 /** The cross-cutting also_emit region. */
 export interface AlsoEmit {
 	tags?: string[];
 	aliases?: string[];
 	frontmatter?: {
 		managed?: Record<string, string>;
+		managed_links?: Record<string, ManagedLinkSpec>;
 		user_preserve?: string[];
 	};
 }
@@ -68,6 +76,8 @@ export interface AlsoEmit {
 export interface RecipeRegions {
 	layout: LayoutEntry[];
 	also_emit?: AlsoEmit;
+	/** Batch enrichment (Pass 1.5). Serializes to recipe target.enrichment. */
+	enrichment?: Enrichment;
 }
 
 /** A recipe (structural subset) accepted by `fromRecipe`. */
@@ -126,11 +136,12 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 	const tags: string[] = [];
 	const aliases: string[] = [];
 	const managed: Record<string, string> = {};
+	const managedLinks: Record<string, ManagedLinkSpec> = {};
 
 	for (const structure of mapping.mappings) {
 		const structLayout: LayoutEntry[] = [];
 		for (const rule of structure.levels) {
-			emitLevel(rule, structLayout, tags, aliases, managed);
+			emitLevel(rule, structLayout, tags, aliases, managed, managedLinks);
 		}
 		if (structure.tail) {
 			// render() walks layout in order, so the variadic tail (parent
@@ -147,8 +158,10 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 		layout.push(...structLayout);
 	}
 
-	const also_emit = buildAlsoEmit(tags, aliases, managed);
-	return also_emit ? { layout, also_emit } : { layout };
+	const also_emit = buildAlsoEmit(tags, aliases, managed, managedLinks);
+	const regions: RecipeRegions = also_emit ? { layout, also_emit } : { layout };
+	if (mapping.enrichment) regions.enrichment = mapping.enrichment;
+	return regions;
 }
 
 /** Emit one level's destinations into the appropriate regions. */
@@ -158,6 +171,7 @@ function emitLevel(
 	tags: string[],
 	aliases: string[],
 	managed: Record<string, string>,
+	managedLinks: Record<string, ManagedLinkSpec>,
 ): void {
 	const name = buildName(rule.source, rule.delimiter, rule.join, rule.filters);
 	for (const dest of rule.destinations) {
@@ -186,7 +200,13 @@ function emitLevel(
 				managed[dest.key] = name;
 				break;
 			case 'link':
-				managed[dest.key] = `[[${name}]]`;
+				if (dest.list) {
+					// Multi-value link → a list-valued managed wikilink array. The
+					// template is the bare column value; render() splits + wikilinks it.
+					managedLinks[dest.key] = { template: name };
+				} else {
+					managed[dest.key] = `[[${name}]]`;
+				}
 				break;
 			case 'alias':
 				aliases.push(name);
@@ -220,12 +240,19 @@ function buildAlsoEmit(
 	tags: string[],
 	aliases: string[],
 	managed: Record<string, string>,
+	managedLinks: Record<string, ManagedLinkSpec>,
 ): AlsoEmit | undefined {
 	const out: AlsoEmit = {};
 	if (tags.length) out.tags = tags;
 	if (aliases.length) out.aliases = aliases;
-	if (Object.keys(managed).length) out.frontmatter = { managed };
-	return tags.length || aliases.length || Object.keys(managed).length ? out : undefined;
+	const hasManaged = Object.keys(managed).length > 0;
+	const hasManagedLinks = Object.keys(managedLinks).length > 0;
+	if (hasManaged || hasManagedLinks) {
+		out.frontmatter = {};
+		if (hasManaged) out.frontmatter.managed = managed;
+		if (hasManagedLinks) out.frontmatter.managed_links = managedLinks;
+	}
+	return tags.length || aliases.length || hasManaged || hasManagedLinks ? out : undefined;
 }
 
 // ============================================================================
@@ -359,6 +386,17 @@ export function fromRegions(regions: RecipeRegions): ImportMapping {
 				attach(parseStructuralTemplate(template), { primitive: 'property', key });
 			}
 		}
+		// managed_links → list-valued link destinations. The stored template is the
+		// bare column value (no `[[…]]` wrapper — render() wikilinks each piece).
+		const managedLinks = emit.frontmatter?.managed_links ?? {};
+		for (const [key, spec] of Object.entries(managedLinks)) {
+			attach(parseStructuralTemplate(spec.template), {
+				primitive: 'link',
+				key,
+				direction: 'parent-on-child',
+				list: true,
+			});
+		}
 	}
 
 	// Canonicalize destination order on every level.
@@ -373,7 +411,7 @@ export function fromRegions(regions: RecipeRegions): ImportMapping {
 		mappings.push({ levels: [rule] });
 	}
 
-	return { mappings };
+	return regions.enrichment ? { mappings, enrichment: regions.enrichment } : { mappings };
 }
 
 /** Turn a parsed source + destinations into a LevelRule with default policies. */

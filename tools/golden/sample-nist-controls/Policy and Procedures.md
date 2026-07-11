@@ -1,12 +1,12 @@
 ---
-related:
-  - "[[AC-2]]"
-  - "[[AC-5]]"
-  - "[[AC-6]]"
-curie: "sample-nist-controls:row-3"
+curie: "sample-nist-controls:facet/control-name/policy-and-procedures"
+kind: facet
 tags:
-  - control-family/access-control
-  - control-name/access-enforcement
+  - control-name/policy-and-procedures
+members:
+  - "[[AC-1]]"
+  - "[[CM-1]]"
+  - "[[AU-1]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:
@@ -20,4 +20,4 @@ _crosswalker:
     id: sample-nist-controls
 ---
 
-# sample-nist-controls:row-3
+# Policy and Procedures

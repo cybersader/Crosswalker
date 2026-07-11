@@ -1,5 +1,8 @@
 ---
-related: "[[AC-2, AC-3, AC-6]]"
+related:
+  - "[[AC-2]]"
+  - "[[AC-3]]"
+  - "[[AC-6]]"
 curie: "sample-nist-controls:row-4"
 tags:
   - control-family/access-control

@@ -1,12 +1,13 @@
 ---
-related:
-  - "[[AC-2]]"
-  - "[[AC-5]]"
-  - "[[AC-6]]"
-curie: "sample-nist-controls:row-3"
+curie: "sample-nist-controls:facet/control-family/audit"
+kind: facet
 tags:
-  - control-family/access-control
-  - control-name/access-enforcement
+  - control-family/audit
+members:
+  - "[[AU-1]]"
+  - "[[AU-2]]"
+  - "[[AU-3]]"
+  - "[[AU-6]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:
@@ -20,4 +21,4 @@ _crosswalker:
     id: sample-nist-controls
 ---
 
-# sample-nist-controls:row-3
+# Audit

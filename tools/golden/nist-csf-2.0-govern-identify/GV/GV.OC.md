@@ -1,6 +1,12 @@
 ---
 parent: "[[GV]]"
 curie: "nist-csf-2-0-govern-identify:GV.OC"
+children:
+  - "[[GV.OC-01]]"
+  - "[[GV.OC-02]]"
+  - "[[GV.OC-03]]"
+  - "[[GV.OC-04]]"
+  - "[[GV.OC-05]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:

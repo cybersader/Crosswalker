@@ -513,6 +513,54 @@ layout:
 
 **Scope**: recipe-only in this round — the import wizard doesn't yet propose or edit `variadic` (planned follow-up: detect the ragged-id signature — a delimiter appearing in ~20–79% of rows — and offer variable-depth nesting). The full folder-note convention (`T1055` *becoming* the `T1055/` container as `T1055/T1055.md`) is a separate batch-scoped post-pass still under design.
 
+### §4.7 `also_emit.frontmatter.managed_links` (added 2026-07-10 — SchemaVer 1.3.0; additive)
+
+Single-value links live in `managed` as a scalar `"[[…]]"` string (`parent: "[[T1078]]"`). A **multi-value** link column — a cell holding several ids (`Related Controls: "AC-2, AC-3, PM-9"`) — needs a YAML **array** of wikilinks so each id is an indexable graph edge, not one dead `[[AC-2, AC-3, PM-9]]` string. `managed_links` is that region.
+
+Each key maps to `{ template, split? }`. render() renders `template` to a scalar, splits it on `split` (default comma + semicolon), wraps each non-empty trimmed piece in `[[…]]`, and emits the key as an array. An empty cell omits the key entirely (an empty managed array would still clobber a user value on re-import). Regenerated wholesale on re-import (managed, not unioned).
+
+**Backward compatibility**: purely additive (SchemaVer ADDITION). Recipes WITHOUT `managed_links` validate unchanged. Spec URI unchanged.
+
+```yaml
+also_emit:
+  frontmatter:
+    managed_links:
+      related:
+        template: "{Related Controls}"   # bare cell value — render() wikilinks each piece
+        split: [",", ";"]                 # optional; this is the default
+```
+
+`Related Controls: "AC-2, AC-3, PM-9"` → `related: ["[[AC-2]]", "[[AC-3]]", "[[PM-9]]"]`.
+
+### §4.8 `target.enrichment` block (Pass 1.5; added 2026-07-10 — SchemaVer 1.3.0; additive)
+
+`render()` is per-row pure (Pass 1, hashable). Four artifacts need **cross-row** knowledge, so an optional **batch-scope enrichment pass** runs *after* every row renders (`src/generation/enrich.ts`): children lists on parents, materialized facet hub notes, honest edge stats, and (reserved) folder-note placement. It never touches `render()`; determinism holds at batch level — every derived list is sorted by curie, hubs by path, so input order never leaks.
+
+**Backward compatibility**: purely additive. Recipes WITHOUT `enrichment` emit nothing new and validate unchanged. Spec URI unchanged.
+
+**Fields:**
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `children_lists` | boolean | `false` | Each parent note gains a managed `children` array of wikilinks to its direct children (derived from the same parent relation the parent link uses), sorted by child curie. Fully managed — regenerated wholesale on re-import (user extras inside the array are not preserved; `user_preserve` covers *separate* keys). |
+| `facet_notes` | `none` \| `tags-only` \| `notes` | `none` | `none`: nothing beyond per-note facet tags. `tags-only`: facet tags only, no hub notes. `notes`: one synthetic hub note per facet **value** with a managed `members` list (sorted by curie), `kind: facet`, the facet tag, and an H1 body; user prose below the H1 survives re-import. Hubs materialize only for values with ≥2 members. |
+| `parent_note` | `sibling` \| `folder-note` | `sibling` | Where a concept that is also a parent lives. `sibling`: `X.md` beside `X/` (v0.1). `folder-note`: `X/X.md` — schema-accepted but **falls back to sibling** at render time with a deviation note (relocation ships in a later chunk). |
+| `hub_note_folder` | string | *(output root)* | Optional vault-relative folder for materialized facet hub notes. |
+
+**Stats**: `GenerationResult.edgeCount` = parent links + children entries + facet-hub member entries — the review screen's "K graph edges" line (a run shipping 0 edges is a visible warning, not a silent dead graph).
+
+**Preset defaults** (stamped by `instantiate` onto `ImportMapping.enrichment`, then serialized to `target.enrichment`): `browsable-framework` → `children_lists: true`, `facet_notes: "notes"`. The hyperconnected default IS the default.
+
+```yaml
+target:
+  enrichment:
+    children_lists: true
+    facet_notes: notes
+    parent_note: sibling
+```
+
+**Scope**: recipe + preset in this round — the workbench UI knobs for enrichment and the review-screen edge count land in a follow-up UX round. Folder-note relocation (step 2 of the design) is a separate chunk.
+
 ## §5 Junction note 13-field schema (per evidence-link edge)
 
 Per [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/): evidence links are **edge-as-note reified** — one markdown file per evidence→control relationship.

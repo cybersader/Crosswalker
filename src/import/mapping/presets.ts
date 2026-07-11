@@ -15,7 +15,7 @@
  * Pure module: NO Obsidian imports.
  */
 
-import type { LinkDirection, BodyPosition } from './types';
+import type { LinkDirection, BodyPosition, Enrichment } from './types';
 
 // ============================================================================
 // Preset document types (mirror preset.schema.json)
@@ -156,6 +156,26 @@ export const BUILT_IN_PRESETS: Record<BuiltInPresetId, Preset> = {
 	'flat-and-linked': FLAT_AND_LINKED,
 	'single-reference-file': SINGLE_REFERENCE_FILE,
 };
+
+/**
+ * Batch enrichment (Pass 1.5) defaults per built-in preset. Kept as a lookup
+ * table rather than a field on the preset object so the built-ins stay valid
+ * against preset.schema.json unchanged. `instantiate` stamps the matching entry
+ * onto `ImportMapping.enrichment` (an unknown/custom preset gets no enrichment).
+ * Per the 2026-07-10 batch-enrichment design: browsable-framework is the
+ * hyperconnected default (children lists + facet hub notes).
+ */
+export const PRESET_ENRICHMENT_DEFAULTS: Record<BuiltInPresetId, Enrichment> = {
+	'browsable-framework': { children_lists: true, facet_notes: 'notes', parent_note: 'sibling' },
+	'deep-everything': { children_lists: true, facet_notes: 'notes', parent_note: 'sibling' },
+	'flat-and-linked': { children_lists: true, facet_notes: 'tags-only', parent_note: 'sibling' },
+	'single-reference-file': { children_lists: false, facet_notes: 'none', parent_note: 'sibling' },
+};
+
+/** Enrichment defaults for a preset id (undefined for an unknown/custom preset). */
+export function enrichmentForPreset(presetId: string): Enrichment | undefined {
+	return (PRESET_ENRICHMENT_DEFAULTS as Record<string, Enrichment>)[presetId];
+}
 
 /** The default preset for accept-all-defaults (settings may override, spec §3c½). */
 export const DEFAULT_PRESET_ID: BuiltInPresetId = 'browsable-framework';

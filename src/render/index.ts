@@ -66,12 +66,33 @@ export interface Recipe {
 			aliases?: string[];
 			frontmatter?: {
 				managed?: Record<string, string>;
+				/**
+				 * List-valued managed wikilink arrays (schema `managed_links`,
+				 * SchemaVer 1.3.0). Each key's template is rendered to a scalar,
+				 * split on `split` (default comma/semicolon), and each non-empty
+				 * piece is wrapped in `[[...]]`; the key emits as an array. Empty
+				 * results omit the key. Used for multi-value link columns.
+				 */
+				managed_links?: Record<string, { template: string; split?: string[] }>;
 				user_preserve?: string[];
 			};
 		};
 		graph_edges?: Array<{ from: string; via: string; to: string }>;
 		linkStyle?: 'absolute' | 'shortest';
+		/** Batch-scope Pass 1.5 enrichment (schema `enrichment`, SchemaVer 1.3.0).
+		 *  render() ignores it — it is consumed by the post-render enrichment pass
+		 *  (src/generation/enrich.ts). Carried here so the recipe stays the single
+		 *  contract. */
+		enrichment?: RecipeEnrichment;
 	};
+}
+
+/** The `target.enrichment` block (see spec/recipe.schema.json $defs/enrichment). */
+export interface RecipeEnrichment {
+	children_lists?: boolean;
+	facet_notes?: 'none' | 'tags-only' | 'notes';
+	parent_note?: 'sibling' | 'folder-note';
+	hub_note_folder?: string;
 }
 
 /**
@@ -154,7 +175,23 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 		}
 		if (alsoEmit.frontmatter?.managed) {
 			for (const [k, t] of Object.entries(alsoEmit.frontmatter.managed)) {
-				address.frontmatter[k] = renderTemplate(t, identity.scope, report);
+				const v = renderTemplate(t, identity.scope, report);
+				// Omit keys that render empty or as an empty wikilink target: a
+				// root concept has no parent, and emitting parent: "[[]]" puts a
+				// literal broken link on every root note (13 across the goldens
+				// when this was found). Skipping IS the correct missing-value
+				// semantic for metadata, not a deviation — no report note.
+				if (v === '' || v === '[[]]') continue;
+				address.frontmatter[k] = v;
+			}
+		}
+		if (alsoEmit.frontmatter?.managed_links) {
+			for (const [k, spec] of Object.entries(alsoEmit.frontmatter.managed_links)) {
+				const raw = renderTemplate(spec.template, identity.scope, report);
+				const links = splitLinkValues(raw, spec.split).map((v) => `[[${v}]]`);
+				// Omit the key entirely when the cell is empty — an empty managed
+				// array would still overwrite a user's value on re-import.
+				if (links.length > 0) address.frontmatter[k] = links;
 			}
 		}
 	}
@@ -193,4 +230,19 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 	}
 
 	return address;
+}
+
+/** Default list delimiters for a `managed_links` split (comma + semicolon). */
+const DEFAULT_LINK_SPLIT = [',', ';'];
+
+/**
+ * Split a rendered cell into the individual link values for a `managed_links`
+ * array: split on every delimiter in `delimiters` (default comma/semicolon),
+ * trim each piece, drop empties. Deterministic. Exported for tests.
+ */
+export function splitLinkValues(raw: string, delimiters?: string[]): string[] {
+	const delims = delimiters && delimiters.length > 0 ? delimiters : DEFAULT_LINK_SPLIT;
+	let pieces = [raw];
+	for (const d of delims) pieces = pieces.flatMap((p) => p.split(d));
+	return pieces.map((p) => p.trim()).filter((p) => p !== '');
 }

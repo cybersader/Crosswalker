@@ -1,6 +1,8 @@
 ---
-parent: "[[]]"
 curie: "cis-controls-v8-subset:CIS-1"
+children:
+  - "[[CIS-1.1]]"
+  - "[[CIS-1.2]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:

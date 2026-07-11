@@ -1,5 +1,8 @@
 ---
-related: "[[AU-2, AU-3, PM-9]]"
+related:
+  - "[[AU-2]]"
+  - "[[AU-3]]"
+  - "[[PM-9]]"
 curie: "sample-nist-controls:row-6"
 tags:
   - control-family/audit

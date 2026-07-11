@@ -450,6 +450,41 @@ describe('round-trip law: mapping → regions → mapping', () => {
 		});
 	});
 
+	// Pass 1.5 — a list-valued (multi-value) link destination serializes to
+	// also_emit.frontmatter.managed_links and reconstructs with list: true.
+	it('list-valued link (multi-value `related`) round-trips to managed_links', () => {
+		assertRoundTrip({
+			mappings: [
+				{
+					levels: [
+						{
+							level: 'Related Controls',
+							source: { column: 'Related Controls' },
+							destinations: [{ primitive: 'link', key: 'related', direction: 'parent-on-child', list: true }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+		});
+	});
+
+	// Pass 1.5 — the batch enrichment block round-trips through target.enrichment.
+	it('enrichment block round-trips (children_lists + facet_notes + parent_note)', () => {
+		assertRoundTrip({
+			mappings: [
+				{
+					levels: [
+						{ level: 'leaf', source: { column: 'id' }, destinations: [{ primitive: 'name' }], naming: 'part', missing: 'skip', materialize: false },
+					],
+				},
+			],
+			enrichment: { children_lists: true, facet_notes: 'notes', parent_note: 'sibling' },
+		});
+	});
+
 	// ConstantRef (spec §7f) — literal sources round-trip exactly.
 	it('constant property value (CIS `level: "control"` shape)', () => {
 		assertRoundTrip({
