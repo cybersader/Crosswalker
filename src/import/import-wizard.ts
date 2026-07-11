@@ -1599,8 +1599,8 @@ export class ImportFlow {
 		});
 	}
 
-	private revealDestinationInExplorer(): void {
-		const target = this.outputPath.trim();
+	private async revealDestinationInExplorer(): Promise<void> {
+		const target = this.outputPath.trim().replace(/\/+$/, '');
 		// Walk up to the nearest existing folder (target or an ancestor).
 		let folder: TFolder | null = null;
 		let probe = target;
@@ -1613,17 +1613,26 @@ export class ImportFlow {
 		if (!folder) folder = this.app.vault.getRoot();
 
 		const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0];
-		const view = leaf?.view as unknown as { revealInFolder?: (f: unknown) => void } | undefined;
-		if (leaf && view && typeof view.revealInFolder === 'function') {
-			this.app.workspace.revealLeaf(leaf);
-			view.revealInFolder(folder);
-			const exists = this.app.vault.getAbstractFileByPath(normalizePath(target)) instanceof TFolder;
-			if (!exists) {
-				new Notice(`That folder will be created when you generate. Showing the nearest existing folder: ${folder.path || 'vault root'}.`, 6000);
+		if (leaf) {
+			// Obsidian 1.7+ defers sidebar views that haven't been shown yet:
+			// leaf.view is then a placeholder WITHOUT revealInFolder, which made
+			// this feature-detect fail even though the explorer exists (owner
+			// hit the fallback notice on a folder that was right there). Reveal
+			// and load the leaf BEFORE grabbing the view.
+			await this.app.workspace.revealLeaf(leaf);
+			const maybeDeferred = leaf as unknown as { loadIfDeferred?: () => Promise<void> };
+			if (typeof maybeDeferred.loadIfDeferred === 'function') await maybeDeferred.loadIfDeferred();
+			const view = leaf.view as unknown as { revealInFolder?: (f: unknown) => void };
+			if (typeof view.revealInFolder === 'function') {
+				view.revealInFolder(folder);
+				const exists = this.app.vault.getAbstractFileByPath(normalizePath(target)) instanceof TFolder;
+				if (!exists) {
+					new Notice(`That folder will be created when you generate. Showing the nearest existing folder: ${folder.path || 'vault root'}.`, 6000);
+				}
+				return;
 			}
-		} else {
-			new Notice('Could not open the file explorer to reveal the folder. It will be created when you generate.', 6000);
 		}
+		new Notice('The file explorer is not available in this layout. The destination folder is created when you generate.', 6000);
 	}
 
 	/** The step-3 provenance line + badge (spec §7j #3). */

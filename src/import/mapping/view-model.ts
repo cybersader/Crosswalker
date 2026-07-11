@@ -429,10 +429,14 @@ export { DEFAULT_MISSING };
  * falls back to a stable `Frameworks/Imported` so the field is never blank.
  */
 export function deriveDestinationDefault(outputPath: string, sourceFileName: string | null | undefined): string {
-	const explicit = (outputPath ?? '').trim();
-	if (explicit) return explicit;
+	// Every import nests under its OWN root folder inside the global output
+	// path (owner, 2026-07-11): defaulting straight to `Frameworks/` flattened
+	// a whole import's top-level folders into the shared root, and the
+	// installed-frameworks list then showed every one of them as its own
+	// "framework". The per-import root also gives the home list one honest row.
+	const root = (outputPath ?? '').trim().replace(/\/+$/, '') || 'Frameworks';
 	const base = basenameNoExt(sourceFileName ?? '');
-	return base ? `Frameworks/${base}` : 'Frameworks/Imported';
+	return base ? `${root}/${base}` : `${root}/Imported`;
 }
 
 /** Strip directory + extension from a file name, leaving the trimmed stem. */
@@ -646,14 +650,17 @@ export function preferredParentNote(enabledPluginIds: Iterable<string>): {
 	value: 'sibling' | 'folder-note';
 	reason?: string;
 } {
+	// Folder-note is the default outright (owner, 2026-07-11): relocation is
+	// real, re-import safe, and contained parents read better. Detecting a
+	// folder-notes plugin only sharpens the explanation shown to the user.
 	const KNOWN = new Set(['folder-notes', 'folder-note-plugin', 'folder-note-core', 'aidenlx-folder-note', 'waypoint']);
 	for (const id of enabledPluginIds) {
 		const norm = id.toLowerCase();
 		if (KNOWN.has(norm) || norm.includes('folder-note') || norm.includes('foldernote')) {
-			return { value: 'folder-note', reason: 'Default because this vault uses a folder notes plugin.' };
+			return { value: 'folder-note', reason: 'Matches the folder notes plugin this vault uses.' };
 		}
 	}
-	return { value: 'sibling' };
+	return { value: 'folder-note' };
 }
 
 /**

@@ -57,6 +57,13 @@ export class Modal {
   onClose() {}
 }
 
+export class FuzzySuggestModal<T> extends Modal {
+  setPlaceholder = jest.fn();
+  getItems(): T[] { return []; }
+  getItemText(_item: T): string { return ''; }
+  onChooseItem(_item: T): void {}
+}
+
 export class Setting {
   constructor(_containerEl: HTMLElement) {}
   setName = jest.fn().mockReturnThis();

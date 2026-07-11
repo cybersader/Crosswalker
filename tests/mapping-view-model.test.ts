@@ -262,7 +262,7 @@ describe('markPlacementRelations: the connector overlay roles', () => {
 describe('preferredParentNote: adaptive default from installed plugins', () => {
 	const { preferredParentNote } = jest.requireActual('../src/import/mapping/view-model');
 
-	it('folder-note when a folder-notes plugin is enabled', () => {
+	it('folder-note with a plugin-specific reason when a folder-notes plugin is enabled', () => {
 		const r = preferredParentNote(new Set(['dataview', 'folder-notes']));
 		expect(r.value).toBe('folder-note');
 		expect(r.reason).toContain('folder notes');
@@ -273,9 +273,9 @@ describe('preferredParentNote: adaptive default from installed plugins', () => {
 		expect(preferredParentNote(['waypoint']).value).toBe('folder-note');
 	});
 
-	it('sibling when no folder-note plugin is present', () => {
+	it('folder-note outright even without a folder-notes plugin (owner default)', () => {
 		const r = preferredParentNote(new Set(['dataview', 'templater-obsidian']));
-		expect(r.value).toBe('sibling');
+		expect(r.value).toBe('folder-note');
 		expect(r.reason).toBeUndefined();
 	});
 });

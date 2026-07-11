@@ -37,12 +37,14 @@ const ATTACK_ROWS = [
 // ---------------------------------------------------------------------------
 
 describe('deriveDestinationDefault', () => {
-	it('honors an explicit outputPath setting', () => {
-		expect(deriveDestinationDefault('Ontologies/NIST', 'nist.csv')).toBe('Ontologies/NIST');
+	it('nests the import under its own root inside an explicit outputPath setting', () => {
+		// Owner (2026-07-11): flat imports polluted the shared root and the
+		// installed list; every import now gets its own per-source folder.
+		expect(deriveDestinationDefault('Ontologies/NIST', 'nist.csv')).toBe('Ontologies/NIST/nist');
 	});
 
-	it('trims an explicit setting', () => {
-		expect(deriveDestinationDefault('  Frameworks  ', 'x.csv')).toBe('Frameworks');
+	it('trims an explicit setting and still appends the per-import root', () => {
+		expect(deriveDestinationDefault('  Frameworks  ', 'x.csv')).toBe('Frameworks/x');
 	});
 
 	it('derives Frameworks/<basename> when the setting is blank', () => {
