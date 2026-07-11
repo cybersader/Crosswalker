@@ -34,6 +34,21 @@ The 0.1 design phase concluded with all named architectural questions resolved. 
 
 - [x] `tools/generate-fixtures.ts` + `tools/fixtures/synthetic/nist-mini.csv` — bootstraps reproducible test data via `bun run fixtures` without waiting for `render()`
 
+## v0.1 implementation status (as of 2026-07-11)
+
+Mirrors the docs [milestone status snapshot](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/) — that page is the live source; treat this as a snapshot.
+
+- [x] v0.1.1 — Type system + validation foundation (2026-05-04)
+- [x] v0.1.2 — `render()` v1 (2026-05-05)
+- [x] v0.1.3 — Generation engine integration (2026-05-05)
+- [x] v0.1.4 — Junction notes + crosswalk edges (2026-05-05)
+- [x] v0.1.4.5 — Streaming refactor (2026-05-05)
+- [x] v0.1.5 — Tier 2 sqlite-wasm sidecar projector (2026-05-06)
+- [ ] **v0.1.6 — Bases query layer + SSSOM import + recipe UX** — 🚧 in progress. Phases 1–6.4 (Bases pivot view, SSSOM import, primitives, ingestion-corpus sprint) shipped through 2026-06-12. A concurrent **shape-workbench side-arc** (2026-07-05 → 2026-07-11) then landed inside this milestone's window: the import wizard rebuilt as a live shape-mapping workbench (beta, opt-in), a connected-output mandate (children lists, facet hubs, edge-count guardrail via Pass 1.5 batch enrichment — wired for the workbench and native-recipe/harness paths; the classic column-table wizard path doesn't yet set an enrichment block, a named gap), a recognized-source fast path for the six bundled vetted recipes, a settings tab rebuilt as a navigable hub with live previews, and a `Crosswalker` workspace tab hosting the full import flow in-tab (launchpad + live installed-ontologies list), with the settings modal now a thin back-compat host of the same flow. Full record: [shape-workbench synthesis log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/). v0.1.7 is next.
+- [ ] v0.1.7 — Exporters (STRM TSV / OSCAL JSON) — planning
+- [ ] v0.1.8 — Audit trail T1 default — planning
+- [ ] v0.1-RC — Bundle, polish, ship — planning
+
 ## Foundation — earlier resolved decisions
 
 Pre-Ch-20 architectural commitments. All settled and feeding v0.1 implementation.

@@ -1,10 +1,12 @@
-# Hands-on tour — test every surface (2026-06-12 state)
+# Hands-on tour — test every surface (2026-07-11 state)
 
 The master checklist for a full manual pass over the plugin + corpus. Each
 section is independent; do them in order for the full story, or Ctrl+F the
 surface you care about. Automated coverage is noted per section so you know
-what's already machine-verified (576 unit tests + 11 visual/E2E specs) vs
+what's already machine-verified (800+ unit tests + 25+ visual/E2E specs) vs
 what only your hands can judge.
+
+**2026-07-11 additions** (the [shape-workbench side-arc](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/), tracked as [v0.1.6 Phase 7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)): §0.5 workspace tab, §1a recognized-source fast path, §1.7 shape workbench + review screen, §1.9 draft resume, §6.5 connected-output checks (children lists, facet hubs, edge stats — includes the known §7o gap). §8 settings tour rewritten for the new settings hub.
 
 > **Older per-feature guides** (deeper steps for one surface):
 > `TEST_CROSSWALK_PIVOT.md` (corpus regen + pivot), `TEST_PHASE_4_5.md` (query
@@ -19,6 +21,25 @@ what only your hands can judge.
 - [ ] First open after corpus regen: wait for the "Indexing vault..." toast to finish (~10k notes) — pivots render "No data" pre-index
 - [ ] Regenerate the local licensed corpus: run every block in `TEST_CROSSWALK_PIVOT.md` § 1 + § 5 (concepts, hierarchy back-fills, OLIR edges, SCF melt). Expect: **~7.4k concept notes + ~7.9k edge notes**, all gitignored
 - [ ] **Reset between test runs** — after doing ad-hoc imports, clear them for a clean slate: **in Obsidian** run the command **"Crosswalker: Reset imported notes (dev)"** (groups generated notes by folder, protects the corpus, per-folder + delete-all buttons), or **outside Obsidian** double-click `reset.bat` (preview then keypress-to-delete) / run `bun run reset` (dry-run) / `bun run reset -- --yes` (delete). It removes only Crosswalker-generated notes **outside** the protected corpus — `Frameworks/_licensed/`, `Frameworks/NIST-mini/`, `_crosswalker/`, `GRC analysis/`, and `PROVENANCE.md` are never touched. Hand-written notes are never touched
+
+## 0.5 Crosswalker workspace tab (NEW 2026-07-11)
+
+*Automated: `tests/workspace-view-helpers.test.ts` (pure helper). Manual value:
+the view actually opens, hosts the real flow, and counts stay live.*
+
+The whole import experience (`ImportFlow`) is host-agnostic — it renders into
+either this view or the settings-launched modal via the same
+`ImportFlowHost` interface. This tab is the primary, wide surface; the modal
+is a thin back-compat host of the identical flow.
+
+- [ ] Click the **Crosswalker ribbon icon** (left sidebar, network glyph) — a new workspace tab opens (an `ItemView`, not a modal), titled "Crosswalker"
+- [ ] Command palette → **Crosswalker: Open workspace** does the same; re-running it re-uses the existing leaf instead of opening a duplicate
+- [ ] **Home screen**: a launchpad (Import structured data · Manage saved configs · Resume a draft, the last only when draft auto-save is on) above an **Installed ontologies** list derived from your output folder's subfolders
+- [ ] Empty vault: the installed-ontologies section shows "Nothing imported yet. Run 'Import structured data' to bring in your first framework."
+- [ ] Click **Import structured data** — the flow (file select → recognized card or detection → workbench/classic Step 2 → review screen → generate) renders **in the tab itself**, wide, not in a modal
+- [ ] After generating, the flow calls "done" and the tab returns to the home screen with **fresh counts** — no manual refresh needed
+- [ ] Each installed-ontology row shows a live `N notes · N links` count and, when the folder name matches a bundled recipe, an **"Import again"** button (title: "Import again using the [recipe] recipe") that jumps straight into the flow preset to that recipe — skips fingerprint detection entirely
+- [ ] Import via the **modal** instead (command palette → **Crosswalker: Import structured data**, or the settings launchpad) — confirm it is the same flow/behavior, just windowed differently
 
 ## 1. Import wizard — CSV (the guided happy path)
 
@@ -35,6 +56,54 @@ magical? Reload the plugin first (toggle off/on) to pick up the 2026-06-12 UX.*
 - [ ] Step 4 generate → notes land at the output path, nested under family folders; re-run with overwrite mode `skip` and confirm nothing clobbers
 - [ ] **Config sharing (already built, easy to miss):** the saved-config JSON includes ALL column mappings — config browser → per-config **Export** + top-level **Import**. That JSON is the shareable unit for "here's how to import this framework's spreadsheet"
 - [ ] **Suggestions yield correctly**: apply a saved config → ✨ suggestions are replaced by the config's ⚙️ mappings (config always wins)
+
+## 1a. Recognized-source fast path (NEW 2026-07-11)
+
+*Automated: `tests/recipe-registry.test.ts` (149 tests) + `tests/e2e/visual-workbench.spec.ts`.
+Manual value: does the trust-forward card actually feel calmer than detection?*
+
+Six of the corpus sources match a bundled, vetted recipe closely enough
+(≥75% of the recipe's column signature) to skip the ordinary detection flow.
+`tools/fixtures/synthetic/nist-mini.csv` from §1 is a synthetic fixture and
+deliberately does **not** match — confirms unrecognized sources stay quiet on
+the classic flow.
+
+- [ ] Re-select `Frameworks/CIS_Controls_Version_8.1.2___March_2025.xlsx` (sheet `Controls v8.1.2`, header row `0`, from §2) — instead of landing straight on Step 2, a **"Recognized source"** card appears: badge-check icon, `CIS Controls v8.1.2` title, **Built-in** + **Recommended** badges, a one-line description, a row/shape/destination summary (`171 rows to 171 notes`, shape list, `into <output path>`)
+- [ ] Same for `Frameworks/cprt_CSF_2_0_0_06-01-2026.json` (§3 iterator/filter) — recognizes as NIST CSF 2.0 (CPRT export)
+- [ ] Three actions on the card: **Import with this recipe** (primary, `mod-cta`) jumps straight to the review screen; **Customize** opens the workbench pre-loaded from the recipe via `fromRecipe` (no re-detection — the round-trip law); **Start from scratch** dismisses the card for this session and falls back to ordinary detection
+- [ ] Click **Import with this recipe** → review screen's provenance line reads **Built-in** (unedited)
+- [ ] Click **Customize** instead, change one mapping in the workbench, then reach the review screen → provenance downgrades honestly to **Custom (based on `<recipe>`)**
+- [ ] From the workspace tab's Installed ontologies list (§0.5), click **Import again** on a previously-imported recognized source — jumps directly into the flow preset to that recipe, skipping fingerprint detection
+
+## 1.7 Shape workbench (beta) — live mapping screen + review screen (NEW 2026-07-05 → 2026-07-11)
+
+*Automated: +72 unit tests (detection, mapping, view-model, workbench recipe
+assembly) + `tests/e2e/visual-workbench.spec.ts` (four-zone screenshots, dark
+theme). Manual value: does editing feel live, and does the review screen
+actually earn trust before Generate?*
+
+Off by default — **Settings → Import behavior → Live mapping workbench**
+(§8). Turn it on before this section; it replaces Step 2's column table with
+one live three-zone screen for every source (CSV/XLSX/JSON alike).
+
+- [ ] Toggle the setting on, reload the plugin, then re-run §1's CSV happy path (or continue from §1a's "Customize")
+- [ ] **Source rail** (left): the file's columns with **detection badges** (e.g. packed-id hierarchy with a depth histogram, level-per-column chain, facet, parent link, long-text body candidate, crosswalk-shaped file) and evidence cards explaining *why* each badge fired
+- [ ] **Mapping canvas** (center): a **preset dropdown** at the top (provenance badges: Built-in / Yours / Custom (based on X); the detection's own default is tagged **Recommended**, never silently preselected) → per-detection **mapping cards** → **six shape toggles** (Folders · File names · Tags · Headings · Links · Properties) with a combined "your mix on one row" preview → an editable per-level **matrix** (merge/split levels, naming incl. `lookup`, per-level missing-value policy, a grouped two-stage "add destination" menu)
+- [ ] **Live vault preview rail** (right): a real folder tree, one fully-rendered sample note, and a **deviation banner** — all three re-render on every change (debounced), driven by the actual `render()` pipeline, not a mock
+- [ ] Open the matrix directly (skip the cards) — confirm it shows **exactly** what the preset + cards already wrote (the view-coherence law: every view reads/writes the same `StructureMapping`, no hidden state)
+- [ ] Pick a source with a ragged id (e.g. a mix of parent and child ids at different depths) — confirm the matrix's **tail rule** / variadic option nests rows to their own natural depth instead of flattening them all to one level
+- [ ] Proceed to the **review screen** (old Step 4, now a true review not a pushed-down workbench): destination block (breadcrumb path, inline edit, **"Show in file explorer"** without closing the modal/tab), the shape-map recap (e.g. `technique_id → folders · 823 notes`), stat chips including a **link-count guardrail** (a link-dead import announces itself before you can generate), the deviation banner, and the provenance line
+- [ ] Generate → confirm output matches the preview exactly (byte-for-byte on re-run with the same mapping)
+- [ ] Toggle the setting back off, reload — confirm §1's classic column table still works unchanged (legacy path untouched)
+
+## 1.9 Draft resume (workbench-aware) (NEW 2026-07-11)
+
+*Automated: `tests/workbench-recipe.test.ts` (86 tests). Manual value: does
+resuming actually restore the live mapping, not just the file selection?*
+
+- [ ] With **Live mapping workbench** on (§1.7) and **Auto-save import drafts** on (default, §8 Drafts), start an import, make a few edits in the matrix, then close the modal (or switch away from the workspace tab) without generating
+- [ ] Reopen via **Resume a draft** (settings launchpad, workspace-tab launchpad, or the wizard's Step 1 drafts list) — the source file re-reads and re-parses automatically (no forced re-selection) and the **workbench mapping is restored**, not reset to smart defaults
+- [ ] Known gap (unchanged from 2026-06-12): a draft started via the **XLSX or JSON** iterator/sheet-picker paths only persists CSV-era fields — the sheet choice / iterator path resets on resume. CSV-sourced workbench drafts are the fully-covered case
 
 ## 2. Import wizard — XLSX (NEW 2026-06-12)
 
@@ -133,6 +202,35 @@ Open each, in `GRC analysis/`:
 - [ ] Both index notes (`Control lens.md`, `Framework adoption.md`) render embedded views inline in reading mode
 - [ ] **Pivot interactivity**: in any heatmap, switch the view dropdown to the table view and back; resize the pane; close/reopen the tab — no errors, state survives
 
+## 6.5 Connected-output checks — children lists, facet hubs, edge stats (NEW 2026-07-11)
+
+*Automated: `tests/enrich.test.ts` + `tests/enrichment-reimport.test.ts` (Pass
+1.5 unit coverage) + `tests/e2e/visual-graph.spec.ts` (the "connectedness
+money shot" — a clean graph of a single import, not the accumulated
+`Frameworks/` backlog). Manual value: does a real vault actually come out
+connected, and does the known gap below still reproduce?*
+
+Pass 1.5 batch enrichment (`src/generation/enrich.ts`) runs after every row
+renders — but **only when the effective recipe declares `target.enrichment`**
+(`generation-engine.ts`: `enrichmentEnabled = !!recipe.target.enrichment`).
+That's true for the **shape workbench** path (its assembled recipe carries
+the chosen preset's enrichment block) and the **native recipe / headless
+harness** path (the recipe file declares it directly) — but the **classic
+Step-2 column-table wizard path** (Live mapping workbench **off**) goes
+through `legacyConfigToRecipe`, which never sets `target.enrichment` at all.
+So: **with the workbench off, no import gets children lists, facet hubs, or
+an edge count — not "sometimes," always.** This is a sharper, code-confirmed
+version of what CHANGELOG.md's "applies uniformly to every import path" line
+claims; verify it yourself rather than trusting that line.
+
+- [ ] With **Live mapping workbench ON** (§1.7), import a source with a clear parent/child id relationship (e.g. `Frameworks/enterprise-attack.json` from §3) using the default `browsable-framework` preset (keeps enrichment on — `single-reference-file` deliberately turns it off)
+- [ ] Open a **parent note** (e.g. a technique with a sub-technique) — frontmatter carries a managed **`children`** array, wikilinks, **sorted by curie**
+- [ ] Open a note with a **multi-value facet column** (e.g. a technique with 2 tactics) — confirm a **facet hub note** exists for each tactic value with ≥2 members: `kind: facet` frontmatter, a managed **`members`** list, and an H1 body
+- [ ] Add prose below the H1 in a facet hub note, then re-import the same source — confirm your prose **survives** (only the H1 + members list are managed) and `children`/`members` union-merge rather than clobber
+- [ ] Check `GenerationResult.edgeCount` (workbench review screen's stat chips, §1.7, or the debug log's `generation` category) — should be > 0 and roughly `parent links + children entries + member entries`
+- [ ] **Confirm the classic-path gap above**: with **Live mapping workbench OFF**, run the same source through §1's happy path → confirm parent notes get **no** `children` field and **no** facet hub notes materialize, regardless of preset. If you see enrichment fire on the classic path, that's a change worth logging (it would mean the shim gained enrichment wiring)
+- [ ] **Known open gap (§7o, filed 2026-07-11, unresolved as of this writing):** separately from the classic-path gap above, `tests/e2e/visual-graph.spec.ts` found a run where facet hub notes did **not** materialize (`hubCount: 0`) even **on the workbench path** with the default preset and no manual customization — the spec logs this as a non-fatal "FINDING" (not a hard test failure) so the graph screenshot still captures whatever state resulted. If you hit `hubCount: 0` **with the workbench on**, that's this bug — report exactly what you touched (or didn't) before Generate, since the repro conditions aren't fully pinned down yet
+
 ## 7. Edge notes + graph
 
 - [ ] Open any note in `_crosswalker/mappings/nist-csf-to-800-53/` — frontmatter has `subject_note`/`object_note` as live wikilinks AND the body line is linked
@@ -140,11 +238,23 @@ Open each, in `GRC analysis/`:
 - [ ] Local graph on a control note: edges visible as connections
 - [ ] Known-dangling links (deliberate, not bugs): `IA-13` (r5.1.1, newer than our source), `PT`/`CP`/`IR` family-level, CRI-extension ids (`EX`, `GV.AU-*`) — these render as unresolved (creates-on-click) by design
 
-## 8. Settings tour
+## 8. Settings tour (rewritten 2026-07-11 for the settings hub)
 
-- [ ] Settings → Crosswalker: walk every section; confirm sentence-case headings, no plugin name in headings
-- [ ] Toggle debug logging → `crosswalker-debug.log` appears in vault root; events carry `trace_id` (generate something to see a trace)
-- [ ] Change default output path → wizard step 4 default follows it
+*Automated: `tests/e2e/visual-settings.spec.ts`. Manual value: does the hub
+actually feel navigable, and do the live previews track your edits?*
+
+Settings → Crosswalker no longer opens on a flat field list — it opens on a
+**hub**: a launchpad, then a grid of section cards.
+
+- [ ] **Launchpad** at the top: **Import structured data** (opens the wizard), **Manage saved configs** (opens the config browser), and — only when draft auto-save is on — **Resume a draft**
+- [ ] **Section cards** below: Output · Naming · Cell values · Links between notes · Import behavior · Suggestions · Drafts · Advanced (collapsed) · Diagnostics · Saved configurations — each card shows a one-line glimpse of its current values (e.g. Naming shows `Snake case keys, flat`)
+- [ ] Click any card → opens that section's page with a **← All sections** back button; confirm sentence-case headings and no plugin name in headings (lint requirement, not just style)
+- [ ] Change a value with a **live preview** underneath it (Output's folder tree, Naming's sample property/frontmatter, Cell values' sample frontmatter, Links' sample frontmatter, Drafts'/Advanced's path chips) — confirm the preview updates **immediately**, without leaving the page
+- [ ] **Output** → change the default output folder (autocompletes against real vault folders) → the workspace tab's Installed ontologies list (§0.5) and the wizard's Step 4/review-screen default both follow it
+- [ ] **Import behavior** → toggle **Live mapping workbench** on/off → confirm §1.7's workbench vs. §1's classic table switches accordingly on the next import
+- [ ] **Diagnostics** → toggle **Write a debug log** on → `crosswalker-debug.log` appears in vault root; events carry `trace_id` (generate something to see a trace); expand **Log categories** and toggle one off, confirm its events stop appearing
+- [ ] **Advanced** (collapsed by default) → confirm **Fast query index** and **Query index file** are here, not in a separate "Debug" section (renamed/relocated from earlier releases)
+- [ ] Confirm **no "Custom transforms" setting appears anywhere** — it was vestigial and removed 2026-07-11 (see the [settings reference](https://cybersader.github.io/crosswalker/reference/settings/) for the full current field list)
 
 ## 9. Known caveats (don't file these as bugs)
 
@@ -157,8 +267,11 @@ Open each, in `GRC analysis/`:
 | All SCF melt edges are `intersects_with` | flat mapping columns carry no relationship type (SCF's STRM detail = 185 PDFs, below the input floor) |
 | CRI is financial-sector scoped | never treat CRI-derived views as general-purpose |
 | Wizard JSON/XLSX state isn't draft-persisted | iterator/sheet choices reset if you close mid-flow (draft persists CSV-era fields only) — known small gap |
+| Facet hub notes sometimes don't materialize (`hubCount: 0`) | open bug, §7o (2026-07-11), see §6.5 — not fully pinned down yet, report the path you took |
+| Live mapping workbench is off by default | it's still labeled beta — turn it on in Settings → Import behavior before §1.7 |
+| Workbench-driven wizard state resets on draft resume for XLSX/JSON | same underlying gap as the JSON/XLSX draft caveat above — CSV-sourced drafts are the fully-covered case (§1.9) |
 
 ## 10. Report back
 
 - Screenshot + `crosswalker-debug.log` lines (filter `jq 'select(.trace_id == "<id>")'`) for anything that errors
-- The UI-parity audit (`zz-log/2026-06-12-ui-parity-audit`) lists the *known* missing UI surfaces (crosswalk-extraction UI, recipe editor, diff UI, share buttons) — gaps beyond that list are findings
+- The UI-parity audit (`zz-log/2026-06-12-ui-parity-audit`, + its 2026-07-11 addendum) lists the *known* missing UI surfaces (crosswalk-extraction UI, recipe editor residual gap, enrichment-knobs-are-recipe-only, diff UI, share buttons) — gaps beyond that list are findings

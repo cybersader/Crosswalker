@@ -1,63 +1,153 @@
 ---
 title: Settings reference
-description: All Crosswalker plugin settings and their defaults.
-tags: [import-config, obsidian]
+description: Every Crosswalker setting, organized the way the settings tab now presents them — a launchpad, navigable section cards, and a live preview next to each control.
+tags: [import-config, obsidian, settings]
 ---
 
-## General
+import { Aside } from '@astrojs/starlight/components';
+
+Settings (2026-07-11 redesign) open on a **hub**, not a wall of fields. A start-here launchpad sits at the top, followed by a grid of section cards — each card shows a one-line glimpse of its current values, and opening a card shows the full controls plus a live preview built from your actual settings (a folder tree, a sample frontmatter block, a path chip). All copy uses plain language instead of internal terminology, per the project's [README / user-facing surfaces convention](/crosswalker/agent-context/vision/).
+
+This page lists every setting by section, in the same order they appear in the hub.
+
+## Launchpad
+
+Three first-class actions above the section grid, not buried in a card:
+
+| Action | What it does |
+|---|---|
+| **Import structured data** | Opens the [import wizard](/crosswalker/features/import-wizard/) |
+| **Manage saved configs** | Opens the [config browser](/crosswalker/features/config-system/) |
+| **Resume a draft** | Only shown when draft auto-save is on ([Drafts](#drafts)); opens the wizard's Step 1 draft picker |
+
+## Output
 
 | Setting | Default | Description |
-|---------|---------|-------------|
-| Default output path | `Ontologies` | Base folder for generated framework structures |
+|---|---|---|
+| Default output folder | `Ontologies` | Where new imports are created. Each import can override this in the wizard. Autocompletes against your vault's folders. |
 
-## Import defaults
+**Live preview**: a folder tree showing where a note would land under the current path.
+
+## Naming
 
 | Setting | Default | Options |
-|---------|---------|---------|
-| Key naming style | Snake case | As-is, Lowercase, Snake case, Camel case, Kebab case |
-| Array handling | As array | As array, Stringify, First, Last, Join |
-| Empty handling | Omit | Omit, Empty string, Null, Default |
-| Frontmatter style | Flat | Flat, Dot-to-nest, Group by prefix |
+|---|---|---|
+| Property key style | Snake case | As is, Lowercase, Snake case, Camel case, Kebab case |
+| Nested properties | Keep flat | Keep flat, Nest by dots, Group by prefix — how a dotted column name like `source.id` becomes frontmatter |
 
-## Link syntax
+**Live preview**: a sample property key and a sample frontmatter block reflecting the current choices.
+
+## Cell values
+
+| Setting | Default | Options |
+|---|---|---|
+| Multiple values in one cell | Keep as a list | Keep as a list, Keep as text, Take the first, Take the last, Join with a delimiter |
+| Empty cells | Leave the property out | Leave the property out, Write an empty string, Write null, Use a default value |
+
+**Live preview**: sample frontmatter for both settings.
+
+## Links between notes
+
+| Setting | Default | Options |
+|---|---|---|
+| Link style | Standard | Simple, Standard, Full (with a predicate), Custom |
+| Link property prefix | `crosswalker` | Used by the Full and Custom link styles to name the link property |
+
+**Live preview**: sample frontmatter showing the resulting link syntax.
+
+## Import behavior
+
+The section that used to be split across "Wizard behavior" now also carries the [shape workbench](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) toggle:
 
 | Setting | Default | Description |
-|---------|---------|-------------|
-| Link syntax preset | Standard | Simple, Standard, Full, Custom |
-| Custom link namespace | `crosswalker` | Namespace for typed link syntax |
+|---|---|---|
+| Live mapping workbench | Off (beta) | Replaces the Step 2 column table with the live workbench: a source rail, shape cards, a per-level matrix, and a live vault preview. Off keeps the classic column-mapping table. |
+| Confirm before creating files | On | Show a confirmation step before any notes are written |
+| Show progress notices | On | Pop a notice while parsing and generating |
+| Show column statistics | On | Show unique value counts and detected types in the wizard |
+| Show sample values | On | Show a few real cell values alongside each column |
+| Sample values shown | 3 | How many sample values to show per column (1–10) |
 
-## Config matching
+## Suggestions
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Enable config suggestions | On | Show saved config suggestions on import |
-| Match threshold | 50 | Minimum score (0-100) to suggest a config |
-| Pattern detection | On | Use data patterns for smarter matching |
-| Prompt to save config | On | Ask to save config after successful import |
-| Auto-apply exact match | Off | Skip confirmation on 100% column match |
-
-## Wizard behavior
+Saved-config matching — unchanged in behavior from earlier releases, renamed from "Config matching":
 
 | Setting | Default | Description |
-|---------|---------|-------------|
-| Show column statistics | On | Display unique counts and types in Step 2 |
-| Show sample values | On | Display sample data in column configuration |
-| Sample value count | 3 | Number of samples to show (1-10) |
-| Confirm before generate | On | Show confirmation dialog before creating files |
-| Show progress notices | On | Display progress during parsing/generation |
+|---|---|---|
+| Suggest a saved config | On | When a new file looks like one you've imported before, offer the matching config |
+| Match confidence | 50 | How closely a file must match a saved config before it's suggested (0–100) |
+| Detect data patterns | On | Look at value shapes, like control identifiers, for smarter matching |
+| Offer to save a config | On | After a successful import, ask whether to save the mapping for next time |
+
+## Drafts
+
+New in the 2026-05-15 draft-sessions work, still current:
+
+| Setting | Default | Description |
+|---|---|---|
+| Auto-save import drafts | On | Save wizard progress every few seconds so you can close the modal and resume later |
+| Draft expiry | 30 days | Drafts older than this many days are removed when the wizard opens. `0` keeps them forever. |
+| Maximum drafts | 20 | When there are more drafts than this, the oldest are removed. `0` for no limit. |
+
+**Live preview**: a path chip showing where drafts are stored in the vault.
 
 ## Advanced
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Custom transforms | Off | Enable user-defined column transforms |
-| Custom transforms path | (empty) | Path to transforms configuration |
-| Max rows for preview | 100 | Limit preview rows for performance |
-| Streaming threshold | 5 MB | File size that triggers streaming parser |
-
-## Debug
+Collapsed by default — rarely-touched knobs:
 
 | Setting | Default | Description |
-|---------|---------|-------------|
-| Enable debug log | Off | Write logs to `crosswalker-debug.log` |
-| Verbose logging | Off | Extra detailed log output |
+|---|---|---|
+| Streaming threshold | 5 MB | Files larger than this many megabytes are parsed with the streaming reader |
+| Preview row limit | 100 | How many rows the wizard preview loads. Lower is faster on large files. |
+| Fast query index | On | Keeps a background [Tier 2 sqlite-wasm sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) index so large vaults query quickly. Deletable — it rebuilds itself from your notes. |
+| Query index file | `.crosswalker.sqlite` | Where the background index is stored, relative to the vault root. Autocompletes against your vault's folders. |
+
+**Live preview**: a path chip showing the resolved index file location.
+
+<Aside type="note" title="Removed: custom transforms">
+Earlier releases documented "Custom transforms" and "Custom transforms path" settings here. Both were vestigial — never wired to the wizard or generation engine — and were removed from `CrosswalkerSettings` on 2026-07-11 along with the unused `recipeSchemaStyle` knob. The [transform system](/crosswalker/design/transformation/) remains a roadmapped v0.2 feature; when it ships, it will get its own settings section.
+</Aside>
+
+## Diagnostics
+
+Renamed from "Debug"; now a full logging console, not just an on/off switch:
+
+| Setting | Default | Description |
+|---|---|---|
+| Write a debug log | Off | Record structured events to a log note in your vault root (`crosswalker-debug.log`). Helpful when reporting an issue. |
+| Verbose logging | Off | Also record trace-level events. Adds a lot of volume — leave off unless chasing a specific issue. |
+
+**Live preview**: a path chip showing the log note's location.
+
+**Log categories** (collapsed, all on by default — every category is recorded unless you opt one out):
+
+| Category | Covers |
+|---|---|
+| `wizard` | Import wizard state transitions |
+| `csv-parser` | CSV and TSV parsing |
+| `generation` | Note generation pipeline |
+| `sssom-import` | Mapping file import |
+| `tier2` | Fast query index lifecycle and queries |
+| `config` | Saved config save, load, and match |
+| `view` | Query view rendering |
+| `drafts` | Wizard draft save, resume, and expiry |
+| `lifecycle` | Plugin load and unload |
+
+**Log actions**: Open, Export to clipboard, and Clear buttons — mirrored in the command palette.
+
+## Saved configurations
+
+| Setting | Description |
+|---|---|
+| Your saved configs | Count of saved configurations, with buttons to open the [config browser](/crosswalker/features/config-system/) or import a config from a JSON file |
+
+Full management (search, select, delete, export) lives in the config browser modal, opened from here or the launchpad.
+
+## Related
+
+- [Import wizard](/crosswalker/features/import-wizard/) — where Import behavior settings take effect
+- [Shape workbench synthesis](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) — the design decision behind the Live mapping workbench toggle
+- [Config system](/crosswalker/features/config-system/) — saved-config matching and the config browser
+- [Tier 2 sidecar milestone](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — what the Fast query index setting controls
+- [Managed / user_preserve](/crosswalker/concepts/terminology/#managed-user-preserve) — the frontmatter-ownership split that Naming and Cell values settings feed into
+- [UI-parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) — the "every setting gets a preview" principle in the wider UI-first mandate

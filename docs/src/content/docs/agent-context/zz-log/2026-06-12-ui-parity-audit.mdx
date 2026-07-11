@@ -43,6 +43,19 @@ The 2026-06 ingestion sprint built a lot of **headless** capability fast (JSON i
 4. **Diff / maintain UI** (🟡) — lands with v0.1.8 audit trail; the `diff` primitive (Phase 6) is already built for it.
 5. **Config/recipe share UI** (🟡) — export/import buttons; v0.1.7-adjacent.
 
+## 2026-07-11 addendum: workbench, fast path, and workspace view
+
+The [shape-workbench side-arc](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) (2026-07-05 → 2026-07-11, tracked as [v0.1.6 Phase 7](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)) moved several rows below. Kept terse per this page's original format — only the rows that changed, plus the honest new gaps the arc surfaced.
+
+| Lifecycle stage | What changed | Gap status |
+|---|---|---|
+| **Import — Transform** | The [shape workbench](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) (beta, opt-in setting) is now a real **UI over recipes** — three progressive views (preset picker → shape cards → per-level matrix) read and write the same `StructureMapping`, and every workbench mapping round-trips to a recipe file. This substantially closes gap #3 below. | 🟢 mostly closed for *import-time* mapping — narrows from 🟡 to a smaller residual gap: there is still no standalone "open any `recipe.json` and edit it in a form" surface outside an active import (see updated gap #3) |
+| **Acquire** | The **recognized-source fast path** gives the six bundled vetted recipes (NIST CSF 2.0, MITRE ATT&CK, CIS Controls, NIST 800-53, CRI Profile, SCF) a calmer on-ramp — a "Recognized: [source]" trust card instead of the full detection flow. Still file-picker based; the gap this closes is *confidence*, not *capability*. | ✅ by design, now friendlier |
+| **Enrich** | Pass 1.5 batch enrichment (managed children lists, facet hub notes, edge-count stat) runs whenever the effective recipe declares `target.enrichment` — true for the **shape workbench** and **native recipe / headless harness** paths, but **not** the classic Step-2 column-table wizard path (workbench off), whose `legacyConfigToRecipe` translation never sets an enrichment block. So it is closer to "two of three import paths," not "every path" — verified against `src/generation/generation-engine.ts` and `src/generation/legacy-recipe-shim.ts`, 2026-07-11, correcting `CHANGELOG.md`'s "applies uniformly to every import path" framing. Where it does run, it is fully automatic and headless — no on/off toggle or configuration surface in either wizard path. | 🟡 two named gaps: (1) **"Enrichment knobs are recipe-only"** — no UI to turn a facet hub off, rename it, or pick which relations get the children-list treatment; (2) **"Classic wizard path has no enrichment wiring"** — turning the workbench off silently drops connectedness entirely, with no UI signal that this happened |
+| **(new) Home / navigation** | The new **Crosswalker workspace tab** (ribbon icon + command) hosts the *entire* import flow — file select through recognized card, workbench, review screen, and generate — rendered wide, in-tab, via a host-agnostic `ImportFlow`/`ImportFlowHost` split. The settings-launched modal is now a thin back-compat host of the same flow, not a separate implementation. The tab's Installed ontologies list shows live note/link counts per imported folder plus a one-click "Import again" (re-runs the matched recipe, skipping fingerprint detection). | ✅ closed same arc — the deferral named in the design doc (`.workspace/2026-07-05-shape-first-wizard-spec.md` §7n) landed before ship |
+
+**Still true, unchanged by this arc:** crosswalk-extraction UI (gap #2), diff/maintain UI (gap #4), config/recipe share UI (gap #5) — none of those stages were touched by the wizard rebuild.
+
 ## Related
 
 - [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — the stage model this audit walks
@@ -50,4 +63,6 @@ The 2026-06 ingestion sprint built a lot of **headless** capability fast (JSON i
 - [Operational landscape](/crosswalker/concepts/operational-landscape/) — the five tiers of work; UI surfaces are Tier 1–2
 - [Ingestion tooling dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) — the headless sprint this audit balances
 - [URM ingestion readiness](/crosswalker/agent-context/zz-log/2026-06-12-urm-ingestion-readiness/) — the corpus scoreboard
-- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — the query-stage UI that sets the parity bar
+- [v0.1.6 milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — the query-stage UI that sets the parity bar; Phase 7 is the 2026-07-11 addendum's source
+- [Shape-workbench architecture synthesis (2026-07-11)](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) — the full record behind the addendum above
+- [Settings reference](/crosswalker/reference/settings/) — the Live mapping workbench toggle the addendum discusses
