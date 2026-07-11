@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### The workspace tab, everywhere entry points, and one vocabulary (2026-07-11, second batch)
+
+- **Crosswalker has a home now.** A dedicated workspace tab (ribbon icon, or click the status bar) hosts the entire import experience full width: launchpad, installed frameworks with live note and link counts plus an "Import again" action, and the whole mapping flow with a collapsible source rail and side-by-side preview on wide screens. The modal remains for quick command-palette use.
+- **Meet it where you work**: right-click any CSV, XLSX, or JSON file in the file explorer to import it (the file arrives pre-selected); a status-bar counter opens the workspace; a one-time notice after install points the way.
+- **One vocabulary**: the interface now speaks a single consistent language (saved configuration, built-in configuration, preset, query template), with the full lexicon published in the knowledge base. Internal jargon is gone from commands and notices.
+- **Fixed: enriched output was silently skipped on common paths.** Both the visual mapping flow and the classic wizard now actually produce children lists, category hub notes, and connection counts (two separate dropped-wiring bugs, both regression-pinned).
+- **Recognition tuned on real data**: the built-in configuration matcher was calibrated against 370 real framework exports; near-miss files no longer claim confident recognition, and crosswalk-shaped files are recognized as crosswalks.
+- **Diagnostics you can share**: a Copy diagnostics button produces a redacted report (never includes your file names, paths, or data) with session-correlated recent events; log levels and human-readable category names.
+- **Test infrastructure**: generated-output hygiene between e2e runs, orphan-process guards, and calmer flake-resistant specs.
+
 ### Settings hub, recognized sources, and enrichment everywhere (2026-07-11)
 
 - **Settings open on a hub, not a wall of fields.** A start-here launchpad (import, manage saved configs, resume a draft) plus section cards with a glimpse of their current values; every setting that shapes output carries a live, illustrated preview built from your actual values (folder tree, property samples, cell-value formatting, link style). Folder fields autocomplete. All copy uses plain language instead of internal terminology.
