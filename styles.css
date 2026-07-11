@@ -1668,7 +1668,8 @@
 /* Obsidian's own --font-ui-* vars so they scale with the user's UI zoom.      */
 /* ========================================================================== */
 
-.crosswalker-wizard-modal {
+.crosswalker-wizard-modal,
+.crosswalker-settings {
 	/* Spacing scale (4px base). */
 	--cw-s1: 4px;
 	--cw-s2: 8px;
@@ -2040,3 +2041,220 @@
 /* Step-4 read-only destination confirm (workbench mode). */
 .crosswalker-gen-confirm { font-size: var(--cw-fs-body); margin: var(--cw-s2) 0 var(--cw-s4); color: var(--text-muted); }
 .crosswalker-gen-confirm-lead { color: var(--text-muted); }
+
+/* ========================================================================== */
+/* Settings tab — launchpad + live illustrated previews (spec §7l)             */
+/* -------------------------------------------------------------------------- */
+/* Reuses the wizard's --cw-* tokens (re-scoped onto .crosswalker-settings) and */
+/* the .crosswalker-wb-tree / .crosswalker-wb-mini / .crosswalker-wb-chip mini- */
+/* preview components, so settings read as the same deliberate surface.        */
+/* ========================================================================== */
+
+/* -- Launchpad: first-class actions, not Setting rows -- */
+.crosswalker-settings-launchpad {
+	margin: var(--cw-s2) 0 var(--cw-s5);
+	padding: var(--cw-s4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--cw-radius-md);
+	background: var(--background-secondary);
+}
+.crosswalker-settings-launchpad-eyebrow {
+	font-size: var(--cw-fs-eyebrow);
+	font-weight: 600;
+	letter-spacing: var(--cw-track-eyebrow);
+	text-transform: uppercase;
+	color: var(--text-faint);
+	margin-bottom: var(--cw-s3);
+}
+.crosswalker-settings-launchpad-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--cw-s2);
+}
+.crosswalker-launch-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--cw-chip-gap);
+	padding: var(--cw-s2) var(--cw-s4);
+	font-size: var(--cw-fs-body);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--cw-radius-sm);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+.crosswalker-launch-btn:hover {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+.crosswalker-launch-btn.mod-cta {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-weight: 600;
+}
+.crosswalker-launch-btn.mod-cta:hover {
+	background: var(--interactive-accent-hover);
+}
+.crosswalker-launch-ico {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+.crosswalker-launch-ico .svg-icon {
+	width: var(--cw-icon);
+	height: var(--cw-icon);
+}
+
+/* -- Overview hub: section cards -- */
+.crosswalker-settings-cardgrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: var(--cw-s3);
+	margin-bottom: var(--cw-s4);
+}
+.crosswalker-settings-card {
+	display: flex;
+	align-items: center;
+	gap: var(--cw-s3);
+	text-align: left;
+	width: 100%;
+	padding: var(--cw-s3) var(--cw-s4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--cw-radius-md);
+	background: var(--background-secondary);
+	cursor: pointer;
+	transition: border-color 100ms ease, background 100ms ease;
+}
+.crosswalker-settings-card:hover {
+	border-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+.crosswalker-settings-card-ico {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	color: var(--text-accent);
+}
+.crosswalker-settings-card-ico .svg-icon { width: 18px; height: 18px; }
+.crosswalker-settings-card-body { flex: 1 1 auto; min-width: 0; }
+.crosswalker-settings-card-title {
+	font-size: var(--cw-fs-title);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+.crosswalker-settings-card-summary {
+	font-size: var(--cw-fs-small);
+	color: var(--text-muted);
+	margin-top: 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.crosswalker-settings-card-chevron {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	color: var(--text-faint);
+}
+.crosswalker-settings-card-chevron .svg-icon { width: var(--cw-icon); height: var(--cw-icon); }
+
+/* -- Section page: back affordance -- */
+.crosswalker-settings-pagenav {
+	margin: 0 0 var(--cw-s3);
+	padding-bottom: var(--cw-s2);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.crosswalker-settings-back {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--cw-chip-gap);
+	padding: var(--cw-s1) var(--cw-s2) var(--cw-s1) var(--cw-s1);
+	font-size: var(--cw-fs-body);
+	color: var(--text-muted);
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	box-shadow: none;
+}
+.crosswalker-settings-back:hover { color: var(--text-accent); background: transparent; }
+.crosswalker-settings-back-ico { display: inline-flex; align-items: center; }
+.crosswalker-settings-back-ico .svg-icon { width: var(--cw-icon); height: var(--cw-icon); }
+
+/* -- Live illustrated preview under a setting -- */
+.crosswalker-setting-preview {
+	margin: calc(-1 * var(--cw-s2)) 0 var(--cw-s4);
+	padding: var(--cw-s3);
+	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: var(--cw-radius-sm);
+	background: var(--background-secondary);
+}
+.crosswalker-setting-preview-label {
+	font-size: var(--cw-fs-eyebrow);
+	font-weight: 600;
+	letter-spacing: var(--cw-track-eyebrow);
+	text-transform: uppercase;
+	color: var(--text-faint);
+	margin-bottom: var(--cw-s2);
+}
+.crosswalker-setting-preview-body .crosswalker-wb-tree { margin: 0; }
+.crosswalker-setting-preview-body .crosswalker-wb-mini {
+	margin: 0;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+}
+.crosswalker-setting-preview-body .crosswalker-wb-chip {
+	margin: 0;
+	white-space: normal;
+	word-break: break-all;
+}
+
+/* Suggestion popover row for folder autocomplete. */
+.crosswalker-suggest-row {
+	display: flex;
+	align-items: center;
+	gap: var(--cw-chip-gap);
+}
+.crosswalker-suggest-ico {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-faint);
+}
+.crosswalker-suggest-ico .svg-icon { width: 14px; height: 14px; }
+
+/* -- Advanced / collapsible groups (details/summary, Obsidian-native feel) -- */
+.crosswalker-settings-advanced {
+	margin: var(--cw-s4) 0;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: var(--cw-s2);
+}
+.crosswalker-settings-advanced-summary {
+	display: flex;
+	align-items: center;
+	gap: var(--cw-chip-gap);
+	cursor: pointer;
+	list-style: none;
+	padding: var(--cw-s2) 0;
+	font-size: var(--cw-fs-title);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+.crosswalker-settings-advanced-summary::-webkit-details-marker { display: none; }
+.crosswalker-settings-advanced-ico {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-muted);
+	transition: transform 120ms ease;
+}
+.crosswalker-settings-advanced-ico .svg-icon { width: var(--cw-icon); height: var(--cw-icon); }
+.crosswalker-settings-advanced[open] > .crosswalker-settings-advanced-summary .crosswalker-settings-advanced-ico {
+	transform: rotate(90deg);
+}
+.crosswalker-settings-advanced-hint {
+	font-size: var(--cw-fs-small);
+	color: var(--text-muted);
+	margin: 0 0 var(--cw-s2);
+	line-height: 1.4;
+}

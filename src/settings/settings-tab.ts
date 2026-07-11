@@ -1,17 +1,133 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import {
+	AbstractInputSuggest,
+	App,
+	Notice,
+	PluginSettingTab,
+	Setting,
+	TFolder,
+	setIcon,
+} from 'obsidian';
 import { exportConfigToString, importConfig } from '../config/config-manager';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
+import { ImportWizardModal } from '../import/import-wizard';
 import { SavedConfig } from '../types/config';
 import CrosswalkerPlugin from '../main';
+import {
+	outputPathTree,
+	keyNamingSample,
+	arrayHandlingSample,
+	emptyHandlingSample,
+	frontmatterStyleSample,
+	linkSyntaxSample,
+	debugLogPathDisplay,
+	sidecarPathDisplay,
+	draftPathDisplay,
+	type PreviewTreeNode,
+} from './setting-previews';
+
+// Human labels for card summaries (a glimpse of each section's current values).
+const KEY_STYLE_LABEL: Record<string, string> = {
+	'as-is': 'As is',
+	lowercase: 'Lowercase',
+	snake_case: 'Snake case',
+	camelCase: 'Camel case',
+	'kebab-case': 'Kebab case',
+};
+const FM_STYLE_LABEL: Record<string, string> = {
+	flat: 'flat',
+	dot_to_nest: 'nested',
+	group_by_prefix: 'grouped',
+};
+const ARRAY_LABEL: Record<string, string> = {
+	as_array: 'keep as list',
+	stringify: 'keep as text',
+	first: 'take first',
+	last: 'take last',
+	join: 'join values',
+};
+const EMPTY_LABEL: Record<string, string> = {
+	omit: 'drop empty',
+	empty_string: 'empty string',
+	null: 'null',
+	default: 'default value',
+};
+const LINK_LABEL: Record<string, string> = {
+	simple: 'Simple',
+	standard: 'Standard',
+	full: 'Full',
+	custom: 'Custom',
+};
 
 /**
- * Crosswalker Settings Tab
- *
- * Provides the settings UI in Obsidian preferences.
- * Note: Uses sentence case per Obsidian plugin guidelines.
+ * Folder autocomplete for path-taking text fields. Suggests vault folders
+ * as the user types (case-insensitive substring match), using Obsidian's
+ * standard AbstractInputSuggest popover.
  */
+class FolderSuggest extends AbstractInputSuggest<TFolder> {
+	constructor(
+		app: App,
+		private inputEl: HTMLInputElement,
+		private onPick: (value: string) => void,
+	) {
+		super(app, inputEl);
+	}
+
+	protected getSuggestions(query: string): TFolder[] {
+		const q = query.toLowerCase();
+		const folders: TFolder[] = [];
+		// getAllLoadedFiles includes the vault root and every folder.
+		for (const f of this.app.vault.getAllLoadedFiles()) {
+			if (f instanceof TFolder && f.path.toLowerCase().includes(q)) {
+				folders.push(f);
+			}
+		}
+		folders.sort((a, b) => a.path.localeCompare(b.path));
+		return folders.slice(0, 100);
+	}
+
+	renderSuggestion(folder: TFolder, el: HTMLElement): void {
+		const row = el.createDiv({ cls: 'crosswalker-suggest-row' });
+		const ico = row.createSpan({ cls: 'crosswalker-suggest-ico' });
+		setIcon(ico, 'folder');
+		row.createSpan({ text: folder.path === '' ? '/ (vault root)' : folder.path });
+	}
+
+	selectSuggestion(folder: TFolder): void {
+		const value = folder.path;
+		this.inputEl.value = value;
+		this.inputEl.trigger('input');
+		this.onPick(value);
+		this.close();
+	}
+}
+
+/**
+ * Crosswalker settings tab.
+ *
+ * Two jobs (spec 2026-07-05 §7l): a launchpad (open the wizard, manage
+ * presets, resume a draft) and a teaching surface. Every setting that
+ * controls a vault-visible construct renders a small live preview built from
+ * the user's actual values, so the tab shows the Obsidian primitive it
+ * affects rather than only describing it.
+ *
+ * Uses sentence case per Obsidian plugin guidelines.
+ */
+/** One navigable section: a card on the overview + a page you can open. */
+interface SettingSection {
+	id: string;
+	title: string;
+	icon: string;
+	/** One-line summary with a glimpse of the section's current values. */
+	summary: () => string;
+	/** Render the section's settings onto its page. */
+	render: (root: HTMLElement) => void;
+}
+
 export class CrosswalkerSettingTab extends PluginSettingTab {
 	plugin: CrosswalkerPlugin;
+
+	/** Null = overview hub; otherwise the open section id. */
+	private activePage: string | null = null;
 
 	constructor(app: App, plugin: CrosswalkerPlugin) {
 		super(app, plugin);
@@ -21,451 +137,880 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		// Scope the wizard's --cw-* design tokens onto the settings tab so the
+		// previews and chrome read as one deliberate surface.
+		containerEl.addClass('crosswalker-settings');
 
-		// Output Section
-		new Setting(containerEl).setName('Output').setHeading();
-
-		new Setting(containerEl)
-			.setName('Default output path')
-			.setDesc('Default folder for imported data')
-			.addText(text => text
-				.setPlaceholder('Ontologies')
-				.setValue(this.plugin.settings.defaultOutputPath)
-				.onChange(async (value) => {
-					this.plugin.settings.defaultOutputPath = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Import Defaults Section
-		new Setting(containerEl).setName('Import defaults').setHeading();
-
-		new Setting(containerEl)
-			.setName('Key naming style')
-			.setDesc('How column names are converted to frontmatter keys')
-			.addDropdown(dropdown => dropdown
-				.addOption('as-is', 'As-is')
-				.addOption('lowercase', 'Lowercase')
-				.addOption('snake_case', 'Snake case')
-				.addOption('camelCase', 'Camel case')
-				.addOption('kebab-case', 'Kebab case')
-				.setValue(this.plugin.settings.defaultKeyNamingStyle)
-				.onChange(async (value: any) => {
-					this.plugin.settings.defaultKeyNamingStyle = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Array handling')
-			.setDesc('How to handle columns with multiple values')
-			.addDropdown(dropdown => dropdown
-				.addOption('as_array', 'Keep as YAML array')
-				.addOption('stringify', 'Convert to string')
-				.addOption('first', 'Take first value')
-				.addOption('last', 'Take last value')
-				.addOption('join', 'Join with delimiter')
-				.setValue(this.plugin.settings.defaultArrayHandling)
-				.onChange(async (value: any) => {
-					this.plugin.settings.defaultArrayHandling = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Empty value handling')
-			.setDesc('What to do when a cell is empty')
-			.addDropdown(dropdown => dropdown
-				.addOption('omit', 'Omit field entirely')
-				.addOption('empty_string', 'Include as empty string')
-				.addOption('null', 'Include as null')
-				.addOption('default', 'Use default value')
-				.setValue(this.plugin.settings.defaultEmptyHandling)
-				.onChange(async (value: any) => {
-					this.plugin.settings.defaultEmptyHandling = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Frontmatter style')
-			.setDesc('How to structure the YAML frontmatter')
-			.addDropdown(dropdown => dropdown
-				.addOption('flat', 'Flat')
-				.addOption('dot_to_nest', 'Dot notation creates nesting')
-				.addOption('group_by_prefix', 'Group by prefix')
-				.setValue(this.plugin.settings.defaultFrontmatterStyle)
-				.onChange(async (value: any) => {
-					this.plugin.settings.defaultFrontmatterStyle = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Link Syntax Section
-		new Setting(containerEl).setName('Typed links').setHeading();
-
-		new Setting(containerEl)
-			.setName('Link syntax preset')
-			.setDesc('Preset for typed link syntax')
-			.addDropdown(dropdown => dropdown
-				.addOption('simple', 'Simple')
-				.addOption('standard', 'Standard')
-				.addOption('full', 'Full')
-				.addOption('custom', 'Custom')
-				.setValue(this.plugin.settings.linkSyntaxPreset)
-				.onChange(async (value: any) => {
-					this.plugin.settings.linkSyntaxPreset = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Link namespace')
-			.setDesc('Namespace for typed links')
-			.addText(text => text
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
-				.setPlaceholder('crosswalker')
-				.setValue(this.plugin.settings.customLinkNamespace)
-				.onChange(async (value) => {
-					this.plugin.settings.customLinkNamespace = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Config Suggestions Section
-		new Setting(containerEl).setName('Smart suggestions').setHeading();
-
-		new Setting(containerEl)
-			.setName('Enable config suggestions')
-			.setDesc('Suggest saved configurations when columns match')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableConfigSuggestions)
-				.onChange(async (value) => {
-					this.plugin.settings.enableConfigSuggestions = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Match threshold')
-			.setDesc('Minimum match score (0-100) to suggest a config')
-			.addSlider(slider => slider
-				.setLimits(0, 100, 5)
-				.setValue(this.plugin.settings.configMatchThreshold)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.configMatchThreshold = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Enable pattern detection')
-			.setDesc('Analyze data patterns (like control identifiers) for smarter matching')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enablePatternDetection)
-				.onChange(async (value) => {
-					this.plugin.settings.enablePatternDetection = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Prompt to save config')
-			.setDesc('Ask to save configuration after successful import')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.promptToSaveConfig)
-				.onChange(async (value) => {
-					this.plugin.settings.promptToSaveConfig = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Wizard Behavior Section
-		new Setting(containerEl).setName('Wizard behavior').setHeading();
-
-		new Setting(containerEl)
-			.setName('Shape workbench (beta)')
-			.setDesc('Replace the column table in step 2 with a live mapping workbench: source rail, shape cards, a per-level matrix, and a live vault preview. Leave off to keep the classic column mapping.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableShapeWorkbench)
-				.onChange(async (value) => {
-					this.plugin.settings.enableShapeWorkbench = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Auto-save import drafts')
-			.setDesc('Save wizard state every few seconds while you work, so you can close the modal and resume later. Drafts live in _crosswalker/drafts/ (gitignored).')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableDraftSessions)
-				.onChange(async (value) => {
-					this.plugin.settings.enableDraftSessions = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Draft expiry (days)')
-			.setDesc('Drafts older than this auto-purge on wizard open. Set to 0 to never expire.')
-			.addSlider(slider => slider
-				.setLimits(0, 90, 1)
-				.setValue(this.plugin.settings.draftExpiryDays)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.draftExpiryDays = value;
-					this.plugin.draftStore.setConfig({
-						draftExpiryDays: value,
-						maxDrafts: this.plugin.settings.maxDrafts,
-					});
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Max drafts')
-			.setDesc('Cap on saved drafts. When exceeded, oldest are deleted. Set to 0 to disable the cap.')
-			.addSlider(slider => slider
-				.setLimits(0, 50, 1)
-				.setValue(this.plugin.settings.maxDrafts)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.maxDrafts = value;
-					this.plugin.draftStore.setConfig({
-						draftExpiryDays: this.plugin.settings.draftExpiryDays,
-						maxDrafts: value,
-					});
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Show column statistics')
-			.setDesc('Display unique value counts and detected types')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showColumnStatistics)
-				.onChange(async (value) => {
-					this.plugin.settings.showColumnStatistics = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Show sample values')
-			.setDesc('Display sample data in column configuration')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showSampleValues)
-				.onChange(async (value) => {
-					this.plugin.settings.showSampleValues = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Sample value count')
-			.setDesc('Number of sample values to show per column')
-			.addSlider(slider => slider
-				.setLimits(1, 10, 1)
-				.setValue(this.plugin.settings.sampleValueCount)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.sampleValueCount = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Confirm before generate')
-			.setDesc('Show confirmation dialog before creating files')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.confirmBeforeGenerate)
-				.onChange(async (value) => {
-					this.plugin.settings.confirmBeforeGenerate = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Advanced Section
-		new Setting(containerEl).setName('Advanced').setHeading();
-
-		new Setting(containerEl)
-			.setName('Enable custom transforms')
-			.setDesc('Allow custom JavaScript transform functions')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableCustomTransforms)
-				.onChange(async (value) => {
-					this.plugin.settings.enableCustomTransforms = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Streaming threshold')
-			.setDesc('File size in megabytes to trigger streaming parser (for large files)')
-			.addSlider(slider => slider
-				.setLimits(1, 50, 1)
-				.setValue(this.plugin.settings.streamingThresholdMB)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.streamingThresholdMB = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Max preview rows')
-			.setDesc('Limit rows shown in preview (for performance)')
-			.addSlider(slider => slider
-				.setLimits(10, 500, 10)
-				.setValue(this.plugin.settings.maxRowsForPreview)
-				.setDynamicTooltip()
-				.onChange(async (value) => {
-					this.plugin.settings.maxRowsForPreview = value;
-					await this.plugin.saveSettings();
-				}));
-
-		// Tier 2 sidecar (v0.1.5)
-		new Setting(containerEl).setName('Tier 2 sidecar').setHeading();
-
-		new Setting(containerEl)
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2" are Crosswalker's architecture-tier terms
-			.setName('Enable Tier 2 projection on vault load')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Tier 1"/"Tier 2"/"Bases" are Crosswalker/Obsidian proper terms
-			.setDesc('Auto-project canonical Tier 1 frontmatter into the .crosswalker.sqlite sidecar when the vault opens. Disable if you query Tier 1 directly via Bases and don\'t need fast SQL queries.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableTier2Projection)
-				.onChange(async (value) => {
-					this.plugin.settings.enableTier2Projection = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Sidecar file path')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "SQLite" and "Tier 1" are proper product/architecture terms
-			.setDesc('Vault-relative path for the SQLite sidecar. Default: .crosswalker.sqlite at vault root. The file is deletable — the projector rebuilds it from canonical Tier 1 on next vault load.')
-			.addText(text => text
-				.setPlaceholder('.crosswalker.sqlite')
-				.setValue(this.plugin.settings.tier2SidecarPath)
-				.onChange(async (value) => {
-					this.plugin.settings.tier2SidecarPath = value || '.crosswalker.sqlite';
-					await this.plugin.saveSettings();
-				}));
-
-		// Recipe schema (advanced — most users won't touch this)
-		new Setting(containerEl).setName('Recipe schema').setHeading();
-
-		new Setting(containerEl)
-			.setName('Recipe query block schema style')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- contains JSON Schema technical terms (oneOf, const, if/then/else) that must keep their canonical casing
-			.setDesc('Advanced: how the recipe query-block schema discriminates between view shapes (pivot, table, list, hierarchy, timeline). Both styles validate identically; they differ only in IDE autocomplete + error-message phrasing. Most users should leave this on Style A (the default).')
-			.addDropdown(dropdown => dropdown
-				// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
-				.addOption('A', 'Style A (default)')
-				// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
-				.addOption('B', 'Style B (advanced)')
-				.setValue(this.plugin.settings.recipeSchemaStyle)
-				.onChange(async (value) => {
-					this.plugin.settings.recipeSchemaStyle = value as 'A' | 'B';
-					await this.plugin.saveSettings();
-				}));
-
-		// Debug Section (Phase 3.5 — wide-event NDJSON logger)
-		new Setting(containerEl).setName('Debug').setHeading();
-
-		new Setting(containerEl)
-			.setName('Enable debug log')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "NDJSON" and "trace_id" are technical identifiers, not proper nouns
-			.setDesc('Write NDJSON events to crosswalker-debug.log in vault root. Each line is one structured event (timestamp, level, category, op, msg, trace_id, ...freeform context). Read via: cat crosswalker-debug.log | jq')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableDebugLog)
-				.onChange(async (value) => {
-					this.plugin.settings.enableDebugLog = value;
-					this.plugin.debug.setEnabled(value);
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Verbose logging')
-			.setDesc('Emit trace-level events (in addition to error/warn/info). Adds significant volume; useful when diagnosing a specific issue, otherwise leave off.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.verboseLogging)
-				.onChange(async (value) => {
-					this.plugin.settings.verboseLogging = value;
-					this.plugin.debug.setVerbose(value);
-					await this.plugin.saveSettings();
-				}));
-
-		// Category filters — suppress events from specific subsystems
-		new Setting(containerEl)
-			.setName('Category filters')
-			.setDesc('Suppress debug events from specific subsystems. Default: all categories emit. Toggle off any category you want to silence.')
-			.setHeading();
-
-		const KNOWN_CATEGORIES: { name: string; desc: string }[] = [
-			{ name: 'wizard', desc: 'Import wizard state transitions' },
-			{ name: 'csv-parser', desc: 'CSV/TSV parsing + streaming' },
-			{ name: 'generation', desc: 'Note generation pipeline' },
-			{ name: 'sssom-import', desc: 'SSSOM TSV import' },
-			{ name: 'tier2', desc: 'Tier 2 sqlite sidecar lifecycle + queries' },
-			{ name: 'config', desc: 'Saved config save/load/match' },
-			{ name: 'view', desc: 'Bases view rendering' },
-			{ name: 'drafts', desc: 'Wizard draft sessions (save/resume/expire)' },
-			{ name: 'lifecycle', desc: 'Plugin load/unload' },
-		];
-
-		for (const cat of KNOWN_CATEGORIES) {
-			new Setting(containerEl)
-				.setName(`Category: ${cat.name}`)
-				.setDesc(cat.desc)
-				.addToggle(toggle => toggle
-					.setValue(this.plugin.settings.debugLogCategoryFilters[cat.name] !== false)
-					.onChange(async (value) => {
-						// We store opt-OUT (false = suppressed). Omit the key when re-enabled
-						// to keep settings sparse.
-						if (value) {
-							delete this.plugin.settings.debugLogCategoryFilters[cat.name];
-						} else {
-							this.plugin.settings.debugLogCategoryFilters[cat.name] = false;
-						}
-						this.plugin.debug.setCategoryFilters(this.plugin.settings.debugLogCategoryFilters);
-						await this.plugin.saveSettings();
-					}));
+		const section = this.sections().find((s) => s.id === this.activePage);
+		if (section) {
+			this.renderSectionPage(containerEl, section);
+		} else {
+			this.renderOverview(containerEl);
 		}
+	}
 
-		new Setting(containerEl)
-			.setName('Log file actions')
-			.setDesc('Open, export, or clear the debug log. These are also available as command-palette commands.')
-			.addButton(btn => btn
-				.setButtonText('Open')
-				.onClick(async () => {
-					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:open-debug-log');
-				}))
-			.addButton(btn => btn
-				.setButtonText('Export to clipboard')
-				.onClick(async () => {
-					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:export-debug-log');
-				}))
-			.addButton(btn => btn
-				.setButtonText('Clear')
-				.setWarning()
-				.onClick(async () => {
-					await this.plugin.debug.clear();
-				}));
+	/** Navigate to a section page (or back to the hub with null) and re-render. */
+	private goTo(page: string | null): void {
+		this.activePage = page;
+		this.display();
+		// Keep the settings scroll near the top when switching pages.
+		const sc = this.containerEl.closest('.vertical-tab-content-container') as HTMLElement | null;
+		if (sc) sc.scrollTop = 0;
+	}
 
-		// Saved Configs Section
-		new Setting(containerEl).setName('Saved configurations').setHeading();
+	// =========================================================================
+	// Section registry — cards on the hub, pages you open
+	// =========================================================================
 
-		const configCount = this.plugin.settings.savedConfigs.length;
+	private sections(): SettingSection[] {
+		const s = this.plugin.settings;
+		return [
+			{
+				id: 'output',
+				title: 'Output',
+				icon: 'folder',
+				summary: () => s.defaultOutputPath || 'Vault root',
+				render: (root) => this.renderOutput(root),
+			},
+			{
+				id: 'naming',
+				title: 'Naming',
+				icon: 'type',
+				summary: () => `${KEY_STYLE_LABEL[s.defaultKeyNamingStyle]} keys, ${FM_STYLE_LABEL[s.defaultFrontmatterStyle]}`,
+				render: (root) => this.renderNaming(root),
+			},
+			{
+				id: 'values',
+				title: 'Cell values',
+				icon: 'list',
+				summary: () => `${ARRAY_LABEL[s.defaultArrayHandling]}, ${EMPTY_LABEL[s.defaultEmptyHandling]}`,
+				render: (root) => this.renderValues(root),
+			},
+			{
+				id: 'links',
+				title: 'Links between notes',
+				icon: 'link',
+				summary: () => `${LINK_LABEL[s.linkSyntaxPreset]} links`,
+				render: (root) => this.renderLinks(root),
+			},
+			{
+				id: 'import',
+				title: 'Import behavior',
+				icon: 'wand-2',
+				summary: () =>
+					`${s.enableShapeWorkbench ? 'Workbench on' : 'Classic mapping'}, ${s.confirmBeforeGenerate ? 'confirm first' : 'no confirm'}`,
+				render: (root) => this.renderImportBehavior(root),
+			},
+			{
+				id: 'suggestions',
+				title: 'Suggestions',
+				icon: 'sparkles',
+				summary: () => `${s.enableConfigSuggestions ? 'On' : 'Off'}, match ${s.configMatchThreshold}%`,
+				render: (root) => this.renderSuggestions(root),
+			},
+			{
+				id: 'drafts',
+				title: 'Drafts',
+				icon: 'history',
+				summary: () =>
+					s.enableDraftSessions
+						? `Auto-save on, ${s.draftExpiryDays === 0 ? 'never expire' : `${s.draftExpiryDays}-day expiry`}`
+						: 'Auto-save off',
+				render: (root) => this.renderDrafts(root),
+			},
+			{
+				id: 'advanced',
+				title: 'Advanced',
+				icon: 'sliders-horizontal',
+				summary: () => `${s.enableTier2Projection ? 'Fast index on' : 'Fast index off'}, stream at ${s.streamingThresholdMB} MB`,
+				render: (root) => this.renderAdvanced(root),
+			},
+			{
+				id: 'diagnostics',
+				title: 'Diagnostics',
+				icon: 'stethoscope',
+				summary: () =>
+					s.enableDebugLog ? (s.verboseLogging ? 'Verbose log on' : 'Debug log on') : 'Debug log off',
+				render: (root) => this.renderDiagnostics(root),
+			},
+			{
+				id: 'configs',
+				title: 'Saved configurations',
+				icon: 'bookmark',
+				summary: () => {
+					const n = s.savedConfigs.length;
+					return n === 0 ? 'None saved yet' : `${n} saved`;
+				},
+				render: (root) => this.renderSavedConfigs(root),
+			},
+		];
+	}
 
-		new Setting(containerEl)
-			.setName('Manage configurations')
-			.setDesc(configCount === 0
-				? 'No saved configurations yet'
-				: `${configCount} saved configuration${configCount === 1 ? '' : 's'}`)
-			.addButton(btn => btn
-				.setButtonText('Open browser')
-				.setCta()
-				.onClick(() => {
-					new ConfigBrowserModal(this.app, this.plugin, 'browse').open();
-				}))
-			.addButton(btn => btn
-				.setButtonText('Import')
-				.onClick(() => {
-					this.importConfigFromFile();
-				}));
+	// =========================================================================
+	// Overview hub — launchpad + section cards
+	// =========================================================================
 
-		// Quick list preview (just names, for reference)
-		if (configCount > 0) {
-			const listContainer = containerEl.createEl('div', { cls: 'crosswalker-config-quick-list' });
-			listContainer.createEl('p', {
-				text: 'Saved configs: ' + this.plugin.settings.savedConfigs.map(c => c.name).join(', '),
-				cls: 'setting-item-description'
+	private renderOverview(root: HTMLElement): void {
+		this.renderLaunchpad(root);
+
+		const grid = root.createDiv({ cls: 'crosswalker-settings-cardgrid' });
+		for (const section of this.sections()) {
+			const card = grid.createEl('button', { cls: 'crosswalker-settings-card' });
+			const ico = card.createSpan({ cls: 'crosswalker-settings-card-ico' });
+			setIcon(ico, section.icon);
+			const body = card.createDiv({ cls: 'crosswalker-settings-card-body' });
+			body.createDiv({ cls: 'crosswalker-settings-card-title', text: section.title });
+			body.createDiv({ cls: 'crosswalker-settings-card-summary', text: section.summary() });
+			const chevron = card.createSpan({ cls: 'crosswalker-settings-card-chevron' });
+			setIcon(chevron, 'chevron-right');
+			card.addEventListener('click', () => this.goTo(section.id));
+		}
+	}
+
+	// =========================================================================
+	// Section page — back nav + the section's settings and previews
+	// =========================================================================
+
+	private renderSectionPage(root: HTMLElement, section: SettingSection): void {
+		const nav = root.createDiv({ cls: 'crosswalker-settings-pagenav' });
+		const back = nav.createEl('button', { cls: 'crosswalker-settings-back' });
+		const ico = back.createSpan({ cls: 'crosswalker-settings-back-ico' });
+		setIcon(ico, 'chevron-left');
+		back.createSpan({ text: 'All sections' });
+		back.addEventListener('click', () => this.goTo(null));
+
+		section.render(root);
+	}
+
+	// =========================================================================
+	// Launchpad — first-class actions, not Setting rows
+	// =========================================================================
+
+	private renderLaunchpad(root: HTMLElement): void {
+		const bar = root.createDiv({ cls: 'crosswalker-settings-launchpad' });
+		bar.createDiv({
+			cls: 'crosswalker-settings-launchpad-eyebrow',
+			text: 'Start here',
+		});
+		const row = bar.createDiv({ cls: 'crosswalker-settings-launchpad-row' });
+
+		this.launchButton(row, 'download', 'Import structured data', true, () => {
+			new ImportWizardModal(this.app, this.plugin).open();
+		});
+
+		this.launchButton(row, 'bookmark', 'Manage saved configs', false, () => {
+			new ConfigBrowserModal(this.app, this.plugin, 'browse').open();
+		});
+
+		if (this.plugin.settings.enableDraftSessions) {
+			this.launchButton(row, 'history', 'Resume a draft', false, () => {
+				// Drafts are resumed from the wizard's step 1 picker.
+				new ImportWizardModal(this.app, this.plugin).open();
 			});
 		}
 	}
 
+	private launchButton(
+		parent: HTMLElement,
+		icon: string,
+		label: string,
+		cta: boolean,
+		onClick: () => void,
+	): void {
+		const btn = parent.createEl('button', {
+			cls: 'crosswalker-launch-btn' + (cta ? ' mod-cta' : ''),
+		});
+		const ico = btn.createSpan({ cls: 'crosswalker-launch-ico' });
+		setIcon(ico, icon);
+		btn.createSpan({ text: label });
+		btn.addEventListener('click', onClick);
+	}
+
+	// =========================================================================
+	// Output
+	// =========================================================================
+
+	private renderOutput(root: HTMLElement): void {
+		new Setting(root).setName('Output').setHeading();
+
+		const setting = new Setting(root)
+			.setName('Default output folder')
+			.setDesc('Where new imports are created. Each import can override this in the wizard.');
+
+		let refresh = () => {};
+		setting.addText((text) => {
+			text
+				.setPlaceholder('Frameworks')
+				.setValue(this.plugin.settings.defaultOutputPath)
+				.onChange(async (value) => {
+					this.plugin.settings.defaultOutputPath = value;
+					await this.plugin.saveSettings();
+					refresh();
+				});
+			new FolderSuggest(this.app, text.inputEl, async (value) => {
+				this.plugin.settings.defaultOutputPath = value;
+				await this.plugin.saveSettings();
+				refresh();
+			});
+		});
+
+		refresh = this.addPreview(root, 'Where imports land', (el) => {
+			this.renderTree(el, outputPathTree(this.plugin.settings.defaultOutputPath));
+		});
+	}
+
+	// =========================================================================
+	// Naming
+	// =========================================================================
+
+	private renderNaming(root: HTMLElement): void {
+		new Setting(root).setName('Naming').setHeading();
+
+		let refreshKey = () => {};
+		new Setting(root)
+			.setName('Property key style')
+			.setDesc('How column names become frontmatter property keys.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('as-is', 'As is')
+					.addOption('lowercase', 'Lowercase')
+					.addOption('snake_case', 'Snake case')
+					.addOption('camelCase', 'Camel case')
+					.addOption('kebab-case', 'Kebab case')
+					.setValue(this.plugin.settings.defaultKeyNamingStyle)
+					.onChange(async (value) => {
+						this.plugin.settings.defaultKeyNamingStyle = value as never;
+						await this.plugin.saveSettings();
+						refreshKey();
+					}),
+			);
+		refreshKey = this.addPreview(root, 'Sample property', (el) => {
+			this.renderCode(el, keyNamingSample(this.plugin.settings.defaultKeyNamingStyle));
+		});
+
+		let refreshFm = () => {};
+		new Setting(root)
+			.setName('Nested properties')
+			.setDesc('How dotted column names, like source.id, become frontmatter.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('flat', 'Keep flat')
+					.addOption('dot_to_nest', 'Nest by dots')
+					.addOption('group_by_prefix', 'Group by prefix')
+					.setValue(this.plugin.settings.defaultFrontmatterStyle)
+					.onChange(async (value) => {
+						this.plugin.settings.defaultFrontmatterStyle = value as never;
+						await this.plugin.saveSettings();
+						refreshFm();
+					}),
+			);
+		refreshFm = this.addPreview(root, 'Sample frontmatter', (el) => {
+			this.renderCode(el, frontmatterStyleSample(this.plugin.settings.defaultFrontmatterStyle));
+		});
+	}
+
+	// =========================================================================
+	// Values — multi-value cells and empty cells
+	// =========================================================================
+
+	private renderValues(root: HTMLElement): void {
+		new Setting(root).setName('Cell values').setHeading();
+
+		let refreshArr = () => {};
+		new Setting(root)
+			.setName('Multiple values in one cell')
+			.setDesc('How to handle a cell that holds several values, like a comma-separated list.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('as_array', 'Keep as a list')
+					.addOption('stringify', 'Keep as text')
+					.addOption('first', 'Take the first')
+					.addOption('last', 'Take the last')
+					.addOption('join', 'Join with a delimiter')
+					.setValue(this.plugin.settings.defaultArrayHandling)
+					.onChange(async (value) => {
+						this.plugin.settings.defaultArrayHandling = value as never;
+						await this.plugin.saveSettings();
+						refreshArr();
+					}),
+			);
+		refreshArr = this.addPreview(root, 'Sample frontmatter', (el) => {
+			this.renderCode(el, arrayHandlingSample(this.plugin.settings.defaultArrayHandling));
+		});
+
+		let refreshEmpty = () => {};
+		new Setting(root)
+			.setName('Empty cells')
+			.setDesc('What to write when a cell has no value.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('omit', 'Leave the property out')
+					.addOption('empty_string', 'Write an empty string')
+					.addOption('null', 'Write null')
+					.addOption('default', 'Use a default value')
+					.setValue(this.plugin.settings.defaultEmptyHandling)
+					.onChange(async (value) => {
+						this.plugin.settings.defaultEmptyHandling = value as never;
+						await this.plugin.saveSettings();
+						refreshEmpty();
+					}),
+			);
+		refreshEmpty = this.addPreview(root, 'Sample frontmatter', (el) => {
+			this.renderCode(el, emptyHandlingSample(this.plugin.settings.defaultEmptyHandling));
+		});
+	}
+
+	// =========================================================================
+	// Links
+	// =========================================================================
+
+	private renderLinks(root: HTMLElement): void {
+		new Setting(root).setName('Links between notes').setHeading();
+
+		let refresh = () => {};
+		new Setting(root)
+			.setName('Link style')
+			.setDesc('How a crosswalk to another concept is written into a note.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('simple', 'Simple')
+					.addOption('standard', 'Standard')
+					.addOption('full', 'Full, with a predicate')
+					.addOption('custom', 'Custom')
+					.setValue(this.plugin.settings.linkSyntaxPreset)
+					.onChange(async (value) => {
+						this.plugin.settings.linkSyntaxPreset = value as never;
+						await this.plugin.saveSettings();
+						refresh();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Link property prefix')
+			.setDesc('Used by the full and custom link styles to name the link property.')
+			.addText((text) =>
+				text
+					// eslint-disable-next-line obsidianmd/ui/sentence-case
+					.setPlaceholder('crosswalker')
+					.setValue(this.plugin.settings.customLinkNamespace)
+					.onChange(async (value) => {
+						this.plugin.settings.customLinkNamespace = value;
+						await this.plugin.saveSettings();
+						refresh();
+					}),
+			);
+
+		refresh = this.addPreview(root, 'Sample frontmatter', (el) => {
+			this.renderCode(
+				el,
+				linkSyntaxSample(
+					this.plugin.settings.linkSyntaxPreset,
+					this.plugin.settings.customLinkNamespace,
+				),
+			);
+		});
+	}
+
+	// =========================================================================
+	// Import behavior
+	// =========================================================================
+
+	private renderImportBehavior(root: HTMLElement): void {
+		new Setting(root).setName('Import behavior').setHeading();
+
+		new Setting(root)
+			.setName('Live mapping workbench')
+			.setDesc('Replace the column table in step 2 with a live workbench: a source rail, shape cards, a per-level matrix, and a live vault preview. Turn off to keep the classic column mapping.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableShapeWorkbench)
+					.onChange(async (value) => {
+						this.plugin.settings.enableShapeWorkbench = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Confirm before creating files')
+			.setDesc('Show a confirmation step before any notes are written.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.confirmBeforeGenerate)
+					.onChange(async (value) => {
+						this.plugin.settings.confirmBeforeGenerate = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Show progress notices')
+			.setDesc('Pop a notice while parsing and generating.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showProgressNotices)
+					.onChange(async (value) => {
+						this.plugin.settings.showProgressNotices = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Show column statistics')
+			.setDesc('Show unique value counts and detected types in the wizard.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showColumnStatistics)
+					.onChange(async (value) => {
+						this.plugin.settings.showColumnStatistics = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Show sample values')
+			.setDesc('Show a few real cell values alongside each column in the wizard.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.showSampleValues)
+					.onChange(async (value) => {
+						this.plugin.settings.showSampleValues = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Sample values shown')
+			.setDesc('How many sample values to show per column.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(1, 10, 1)
+					.setValue(this.plugin.settings.sampleValueCount)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.sampleValueCount = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	// =========================================================================
+	// Suggestions — saved config matching
+	// =========================================================================
+
+	private renderSuggestions(root: HTMLElement): void {
+		new Setting(root).setName('Suggestions').setHeading();
+
+		new Setting(root)
+			.setName('Suggest a saved config')
+			.setDesc('When a new file looks like one you have imported before, offer the matching config.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableConfigSuggestions)
+					.onChange(async (value) => {
+						this.plugin.settings.enableConfigSuggestions = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Match confidence')
+			.setDesc('How closely a file must match a saved config before it is suggested.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(0, 100, 5)
+					.setValue(this.plugin.settings.configMatchThreshold)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.configMatchThreshold = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Detect data patterns')
+			.setDesc('Look at value shapes, like control identifiers, for smarter matching.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enablePatternDetection)
+					.onChange(async (value) => {
+						this.plugin.settings.enablePatternDetection = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Offer to save a config')
+			.setDesc('After a successful import, ask whether to save the mapping for next time.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.promptToSaveConfig)
+					.onChange(async (value) => {
+						this.plugin.settings.promptToSaveConfig = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	// =========================================================================
+	// Drafts
+	// =========================================================================
+
+	private renderDrafts(root: HTMLElement): void {
+		new Setting(root).setName('Drafts').setHeading();
+
+		const setting = new Setting(root)
+			.setName('Auto-save import drafts')
+			.setDesc('Save wizard progress every few seconds so you can close the modal and resume later.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableDraftSessions)
+					.onChange(async (value) => {
+						this.plugin.settings.enableDraftSessions = value;
+						await this.plugin.saveSettings();
+						// Refresh so the launchpad "Resume a draft" button follows the toggle.
+						this.display();
+					}),
+			);
+		void setting;
+
+		this.addPreview(root, 'Drafts are stored in', (el) => {
+			this.renderPathChip(el, 'folder', draftPathDisplay());
+		});
+
+		new Setting(root)
+			.setName('Draft expiry')
+			.setDesc('Drafts older than this many days are removed when the wizard opens. Set to 0 to keep them forever.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(0, 90, 1)
+					.setValue(this.plugin.settings.draftExpiryDays)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.draftExpiryDays = value;
+						this.plugin.draftStore.setConfig({
+							draftExpiryDays: value,
+							maxDrafts: this.plugin.settings.maxDrafts,
+						});
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Maximum drafts')
+			.setDesc('When there are more drafts than this, the oldest are removed. Set to 0 for no limit.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(0, 50, 1)
+					.setValue(this.plugin.settings.maxDrafts)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.maxDrafts = value;
+						this.plugin.draftStore.setConfig({
+							draftExpiryDays: this.plugin.settings.draftExpiryDays,
+							maxDrafts: value,
+						});
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	// =========================================================================
+	// Advanced — rarely-touched knobs, collapsed by default
+	// =========================================================================
+
+	private renderAdvanced(root: HTMLElement): void {
+		const details = root.createEl('details', { cls: 'crosswalker-settings-advanced' });
+		const summary = details.createEl('summary', { cls: 'crosswalker-settings-advanced-summary' });
+		const ico = summary.createSpan({ cls: 'crosswalker-settings-advanced-ico' });
+		setIcon(ico, 'chevron-right');
+		summary.createSpan({ text: 'Advanced' });
+
+		new Setting(details)
+			.setName('Custom transforms')
+			.setDesc('Allow custom JavaScript transform functions during import.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableCustomTransforms)
+					.onChange(async (value) => {
+						this.plugin.settings.enableCustomTransforms = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(details)
+			.setName('Streaming threshold')
+			.setDesc('Files larger than this many megabytes are parsed with the streaming reader.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(1, 50, 1)
+					.setValue(this.plugin.settings.streamingThresholdMB)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.streamingThresholdMB = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(details)
+			.setName('Preview row limit')
+			.setDesc('How many rows the wizard preview loads. Lower is faster on large files.')
+			.addSlider((slider) =>
+				slider
+					.setLimits(10, 500, 10)
+					.setValue(this.plugin.settings.maxRowsForPreview)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.maxRowsForPreview = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		// --- Fast query index (Tier 2 sidecar) ---
+		new Setting(details)
+			.setName('Fast query index')
+			.setDesc('Keep a background index so large vaults query quickly. The index rebuilds itself from your notes, so it is always safe to delete.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableTier2Projection)
+					.onChange(async (value) => {
+						this.plugin.settings.enableTier2Projection = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		let refreshSidecar = () => {};
+		new Setting(details)
+			.setName('Query index file')
+			.setDesc('Where the background index is stored, relative to the vault root.')
+			.addText((text) => {
+				text
+					.setPlaceholder('.crosswalker.sqlite')
+					.setValue(this.plugin.settings.tier2SidecarPath)
+					.onChange(async (value) => {
+						this.plugin.settings.tier2SidecarPath = value || '.crosswalker.sqlite';
+						await this.plugin.saveSettings();
+						refreshSidecar();
+					});
+				new FolderSuggest(this.app, text.inputEl, async (value) => {
+					this.plugin.settings.tier2SidecarPath = value || '.crosswalker.sqlite';
+					await this.plugin.saveSettings();
+					refreshSidecar();
+				});
+			});
+		refreshSidecar = this.addPreview(details, 'Index file', (el) => {
+			this.renderPathChip(el, 'database', sidecarPathDisplay(this.plugin.settings.tier2SidecarPath));
+		});
+
+		new Setting(details)
+			.setName('Recipe schema style')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- contains JSON Schema technical terms (pivot, table) whose casing is canonical
+			.setDesc('How the recipe schema describes view shapes (pivot, table, list, hierarchy, timeline). Both styles behave identically. Most people should leave this on style A.')
+			.addDropdown((dropdown) =>
+				dropdown
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
+					.addOption('A', 'Style A (default)')
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
+					.addOption('B', 'Style B (advanced)')
+					.setValue(this.plugin.settings.recipeSchemaStyle)
+					.onChange(async (value) => {
+						this.plugin.settings.recipeSchemaStyle = value as 'A' | 'B';
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	// =========================================================================
+	// Diagnostics — debug log
+	// =========================================================================
+
+	private renderDiagnostics(root: HTMLElement): void {
+		new Setting(root).setName('Diagnostics').setHeading();
+
+		const setting = new Setting(root)
+			.setName('Write a debug log')
+			.setDesc('Record structured events to a log note in your vault root. Helpful when reporting an issue.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.enableDebugLog)
+					.onChange(async (value) => {
+						this.plugin.settings.enableDebugLog = value;
+						this.plugin.debug.setEnabled(value);
+						await this.plugin.saveSettings();
+					}),
+			);
+		void setting;
+
+		this.addPreview(root, 'Log note path', (el) => {
+			this.renderPathChip(el, 'scroll-text', debugLogPathDisplay());
+		});
+
+		new Setting(root)
+			.setName('Verbose logging')
+			.setDesc('Also record trace-level events. This adds a lot of volume, so leave it off unless you are chasing a specific issue.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.verboseLogging)
+					.onChange(async (value) => {
+						this.plugin.settings.verboseLogging = value;
+						this.plugin.debug.setVerbose(value);
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		// Category filters — suppress events from specific subsystems.
+		const catDetails = root.createEl('details', { cls: 'crosswalker-settings-advanced' });
+		const catSummary = catDetails.createEl('summary', { cls: 'crosswalker-settings-advanced-summary' });
+		const catIco = catSummary.createSpan({ cls: 'crosswalker-settings-advanced-ico' });
+		setIcon(catIco, 'chevron-right');
+		catSummary.createSpan({ text: 'Log categories' });
+		catDetails.createDiv({
+			cls: 'crosswalker-settings-advanced-hint',
+			text: 'Every category is recorded by default. Turn one off to silence its events.',
+		});
+
+		const KNOWN_CATEGORIES: { name: string; desc: string }[] = [
+			{ name: 'wizard', desc: 'Import wizard state transitions' },
+			{ name: 'csv-parser', desc: 'CSV and TSV parsing' },
+			{ name: 'generation', desc: 'Note generation pipeline' },
+			{ name: 'sssom-import', desc: 'Mapping file import' },
+			{ name: 'tier2', desc: 'Fast query index lifecycle and queries' },
+			{ name: 'config', desc: 'Saved config save, load, and match' },
+			{ name: 'view', desc: 'Query view rendering' },
+			{ name: 'drafts', desc: 'Wizard draft save, resume, and expiry' },
+			{ name: 'lifecycle', desc: 'Plugin load and unload' },
+		];
+
+		for (const cat of KNOWN_CATEGORIES) {
+			new Setting(catDetails)
+				.setName(cat.name)
+				.setDesc(cat.desc)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.debugLogCategoryFilters[cat.name] !== false)
+						.onChange(async (value) => {
+							// Store opt-out only (false = suppressed); omit the key when
+							// re-enabled to keep settings sparse.
+							if (value) {
+								delete this.plugin.settings.debugLogCategoryFilters[cat.name];
+							} else {
+								this.plugin.settings.debugLogCategoryFilters[cat.name] = false;
+							}
+							this.plugin.debug.setCategoryFilters(this.plugin.settings.debugLogCategoryFilters);
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		new Setting(root)
+			.setName('Log actions')
+			.setDesc('Open, export, or clear the debug log. These are also in the command palette.')
+			.addButton((btn) =>
+				btn.setButtonText('Open').onClick(() => {
+					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:open-debug-log');
+				}),
+			)
+			.addButton((btn) =>
+				btn.setButtonText('Export to clipboard').onClick(() => {
+					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:export-debug-log');
+				}),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText('Clear')
+					.setWarning()
+					.onClick(async () => {
+						await this.plugin.debug.clear();
+					}),
+			);
+	}
+
+	// =========================================================================
+	// Saved configurations
+	// =========================================================================
+
+	private renderSavedConfigs(root: HTMLElement): void {
+		new Setting(root).setName('Saved configurations').setHeading();
+
+		const configCount = this.plugin.settings.savedConfigs.length;
+
+		new Setting(root)
+			.setName('Your saved configs')
+			.setDesc(
+				configCount === 0
+					? 'No saved configurations yet. Save one after your next import.'
+					: `${configCount} saved configuration${configCount === 1 ? '' : 's'}.`,
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText('Open browser')
+					.setCta()
+					.onClick(() => {
+						new ConfigBrowserModal(this.app, this.plugin, 'browse').open();
+					}),
+			)
+			.addButton((btn) =>
+				btn.setButtonText('Import from file').onClick(() => {
+					this.importConfigFromFile();
+				}),
+			);
+
+		if (configCount > 0) {
+			const listContainer = root.createDiv({ cls: 'crosswalker-config-quick-list' });
+			listContainer.createEl('p', {
+				text: 'Saved: ' + this.plugin.settings.savedConfigs.map((c) => c.name).join(', '),
+				cls: 'setting-item-description',
+			});
+		}
+	}
+
+	// =========================================================================
+	// Preview rendering helpers (DOM wiring; the builders are pure)
+	// =========================================================================
+
 	/**
-	 * Export a config to a downloadable JSON file
+	 * Create a preview box below a setting. Returns a `refresh` closure that
+	 * re-renders only this box, so on-change updates are immediate and local.
+	 */
+	private addPreview(parent: HTMLElement, label: string, render: (el: HTMLElement) => void): () => void {
+		const box = parent.createDiv({ cls: 'crosswalker-setting-preview' });
+		box.createDiv({ cls: 'crosswalker-setting-preview-label', text: label });
+		const body = box.createDiv({ cls: 'crosswalker-setting-preview-body' });
+		render(body);
+		return () => {
+			body.empty();
+			render(body);
+		};
+	}
+
+	/** Render a mini folder tree, reusing the wizard preview look. */
+	private renderTree(parent: HTMLElement, nodes: PreviewTreeNode[]): void {
+		const tree = parent.createDiv({ cls: 'crosswalker-wb-tree' });
+		for (const node of nodes) {
+			const row = tree.createDiv({
+				cls: 'crosswalker-wb-tree-row' + (node.isFile ? ' is-file' : ''),
+			});
+			row.style.paddingLeft = `${node.depth * 14}px`;
+			const ico = row.createSpan({ cls: 'crosswalker-wb-tree-ico' });
+			setIcon(ico, node.isFile ? 'file' : 'folder');
+			row.createSpan({ text: node.isFile ? node.label : `${node.label}/` });
+		}
+	}
+
+	/** Render a code sample, reusing the wizard `.crosswalker-wb-mini` block. */
+	private renderCode(parent: HTMLElement, text: string): void {
+		parent.createEl('pre', { cls: 'crosswalker-wb-mini', text });
+	}
+
+	/** Render a path as a single mono chip with a leading icon. */
+	private renderPathChip(parent: HTMLElement, icon: string, path: string): void {
+		const chip = parent.createDiv({ cls: 'crosswalker-wb-chip mono' });
+		const ico = chip.createSpan({ cls: 'crosswalker-wb-ico' });
+		setIcon(ico, icon);
+		chip.createSpan({ text: path });
+	}
+
+	/**
+	 * Export a config to a downloadable JSON file.
 	 */
 	private exportConfigToFile(config: SavedConfig): void {
 		const jsonStr = exportConfigToString(config);
@@ -481,7 +1026,7 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Import a config from a JSON file
+	 * Import a config from a JSON file.
 	 */
 	private importConfigFromFile(): void {
 		const input = document.createElement('input');
