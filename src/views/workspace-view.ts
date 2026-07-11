@@ -284,6 +284,9 @@ export class CrosswalkerWorkspaceView extends ItemView {
 				// screen (not literally close the tab), with fresh counts.
 				void this.renderHome();
 			},
+			// Persistent escape hatch on every step: without it the flow takes
+			// over the tab with no way back to the workspace home.
+			exitLabel: '← Workspace',
 		};
 
 		const flow = new ImportFlow(this.app, this.plugin, host);

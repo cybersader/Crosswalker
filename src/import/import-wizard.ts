@@ -91,6 +91,14 @@ export interface ImportFlowHost {
 	/** Called when the flow reaches a terminal "done" action (generation
 	 *  success, the results screen's Close button). */
 	close: () => void;
+	/**
+	 * When set, every step's nav bar shows a persistent quiet exit button with
+	 * this label that calls close(). The view host needs it: without an exit,
+	 * the flow takes over the tab with no way back to the workspace home
+	 * (found in the owner's first in-tab test). The modal host omits it, since
+	 * the modal already has its own close affordance.
+	 */
+	exitLabel?: string;
 }
 
 /**
@@ -394,13 +402,21 @@ export class ImportFlow {
 		const navRow = header.createEl('div', { cls: 'crosswalker-nav-row' });
 
 		const navLeft = navRow.createEl('div', { cls: 'crosswalker-nav-left' });
+		if (this.host.exitLabel) {
+			const exitBtn = navLeft.createEl('button', {
+				text: this.host.exitLabel,
+				cls: 'crosswalker-exit-btn',
+				attr: { 'aria-label': 'Leave this import and return' },
+			});
+			exitBtn.addEventListener('click', () => this.host.close());
+		}
 		if (this.currentStep > 1) {
 			const backBtn = navLeft.createEl('button', { text: 'Back', cls: 'crosswalker-back-btn' });
 			backBtn.addEventListener('click', () => {
 				this.currentStep--;
 				this.renderStep();
 			});
-		} else {
+		} else if (!this.host.exitLabel) {
 			navLeft.createEl('div', { cls: 'crosswalker-back-placeholder' });
 		}
 

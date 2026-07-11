@@ -77,6 +77,20 @@
 	width: 60px;
 }
 
+.crosswalker-exit-btn {
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 0.25em 0.5em;
+	font-size: 0.9em;
+	margin-right: var(--cw-s2, 8px);
+}
+
+.crosswalker-exit-btn:hover {
+	color: var(--text-normal);
+}
+
 .crosswalker-step-indicator {
 	color: var(--text-muted);
 	font-size: 0.9em;
