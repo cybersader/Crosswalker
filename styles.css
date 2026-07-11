@@ -1990,6 +1990,30 @@
 .crosswalker-wb-addmapping { margin-top: var(--cw-s3); }
 .crosswalker-wb-addmapping select { width: 100%; }
 
+/* -- Connections card (spec §7k, Pass 1.5 batch enrichment controls) -- */
+.crosswalker-wb-connections-sub { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s3); }
+.crosswalker-wb-connection-row { margin-bottom: var(--cw-s3); }
+.crosswalker-wb-connection-row:last-child { margin-bottom: 0; }
+.crosswalker-wb-connection-toggle, .crosswalker-wb-connection-select {
+	display: flex; align-items: center; gap: var(--cw-s2); font-size: var(--cw-fs-body); cursor: pointer;
+}
+.crosswalker-wb-connection-select select { margin-left: auto; }
+.crosswalker-wb-connection-hint { font-size: var(--cw-fs-small); color: var(--text-muted); margin-top: var(--cw-s1); line-height: 1.45; }
+.crosswalker-wb-connection-row-label { font-size: var(--cw-fs-body); font-weight: 600; margin-bottom: var(--cw-s2); }
+.crosswalker-wb-connection-stats { font-size: var(--cw-fs-small); color: var(--text-accent); margin-top: var(--cw-s2); }
+
+.crosswalker-wb-placement { margin-top: var(--cw-s3); padding-top: var(--cw-s3); border-top: 1px solid var(--background-modifier-border); }
+.crosswalker-wb-placement-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--cw-s3); }
+.crosswalker-wb-placement-col {
+	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-md);
+	padding: var(--cw-s2) var(--cw-s3); background: var(--background-secondary);
+}
+.crosswalker-wb-placement-col.is-disabled { opacity: 0.6; }
+.crosswalker-wb-placement-radio { display: flex; align-items: center; gap: var(--cw-s2); font-size: var(--cw-fs-body); font-weight: 600; cursor: pointer; }
+.crosswalker-wb-placement-col.is-disabled .crosswalker-wb-placement-radio { cursor: not-allowed; }
+.crosswalker-wb-placement-reason { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s2); line-height: 1.4; }
+.crosswalker-wb-placement-tree { margin-top: var(--cw-s2); }
+
 /* -- vault preview rail -- */
 /* Tree + rendered note stack by default; on a wide, generous preview rail
    (spec §7n item 2) they sit side by side so both are visible without

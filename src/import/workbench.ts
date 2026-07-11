@@ -52,8 +52,10 @@ import type {
 	LevelSource,
 	LevelNaming,
 	MissingPolicy,
+	Enrichment,
 } from './mapping/types';
 import { toSourceRefs, isConstantRef } from './mapping/types';
+import { deriveFacetMemberships } from './mapping/facets';
 import {
 	SHAPE_CARDS,
 	deriveShapeCards,
@@ -65,8 +67,11 @@ import {
 	isUnmodifiedPreset,
 	deriveProvenance,
 	destKey,
+	facetTagColumns,
+	buildParentPlacementPreview,
 	type ShapeCardId,
 	type Provenance,
+	type PathTreeNode,
 } from './mapping/view-model';
 
 /** Render the provenance badge(s) for a preset/config surface (spec §7j #3). */
@@ -351,6 +356,14 @@ export class MappingWorkbench {
 		this.applyChange(delay);
 	}
 
+	/** Patch the batch-scope enrichment block (Pass 1.5, spec §7k) and commit.
+	 *  Serializes straight to recipe `target.enrichment` (`toRecipeRegions`
+	 *  copies `mapping.enrichment` through unchanged — see `serialize.ts`). */
+	private updateEnrichment(patch: Partial<Enrichment>): void {
+		this.mapping = { ...this.mapping, enrichment: { ...(this.mapping.enrichment ?? {}), ...patch } };
+		this.applyChange();
+	}
+
 	// -------------------------------------------------------------------------
 	// Zone 1 — source rail
 	// -------------------------------------------------------------------------
@@ -545,6 +558,10 @@ export class MappingWorkbench {
 		}
 		this.mapping.mappings.forEach((m, mi) => this.renderMappingCard(canvas, m, mi));
 
+		// Connections — the Pass 1.5 batch-enrichment block gets its own controls
+		// (spec §7k, "generated vaults must be graphs, not filing cabinets").
+		if (this.mapping.mappings.length > 0) this.renderConnections(canvas);
+
 		// Add a mapping by hand.
 		const addRow = canvas.createDiv({ cls: 'crosswalker-wb-addmapping' });
 		const addSel = addRow.createEl('select', { cls: 'dropdown' });
@@ -647,6 +664,165 @@ export class MappingWorkbench {
 		} catch (err) {
 			pre.setText(`(cannot preview: ${err instanceof Error ? err.message : String(err)})`);
 		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Connections — the Pass 1.5 batch enrichment block (spec §7k)
+	// -------------------------------------------------------------------------
+
+	/**
+	 * The Connections card: children-list toggle, facet-hubs control, and (only
+	 * when a ragged/variadic hierarchy is present) the sibling-vs-folder-note
+	 * placement chooser. All three write straight to `ImportMapping.enrichment`
+	 * (`target.enrichment` on serialize — the single coupling point, same law
+	 * every other zone follows).
+	 */
+	private renderConnections(canvas: HTMLElement): void {
+		const card = canvas.createDiv({ cls: 'crosswalker-wb-mapcard crosswalker-wb-connections' });
+		const head = card.createDiv({ cls: 'crosswalker-wb-mapcard-head' });
+		wbIcon(head, 'git-branch');
+		head.createEl('b', { text: 'Connections' });
+		card.createDiv({
+			cls: 'crosswalker-wb-connections-sub',
+			text: 'How the generated notes link to each other, beyond the shapes above.',
+		});
+
+		const enrichment = this.mapping.enrichment ?? {};
+
+		// Children lists — the managed reverse of the parent link.
+		const childrenRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
+		const childrenLabel = childrenRow.createEl('label', { cls: 'crosswalker-wb-connection-toggle' });
+		const childrenCb = childrenLabel.createEl('input', { type: 'checkbox' });
+		childrenCb.checked = enrichment.children_lists === true;
+		childrenLabel.createSpan({ text: 'Link parents and children' });
+		childrenCb.addEventListener('change', () => this.updateEnrichment({ children_lists: childrenCb.checked }));
+		childrenRow.createDiv({
+			cls: 'crosswalker-wb-connection-hint',
+			text: 'Every parent note lists its direct children, alongside the parent link already on each child.',
+		});
+
+		// Facet hubs — one hub note per facet value, or tags only, or off.
+		const facetCols = facetTagColumns(this.mapping);
+		const facetRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
+		const facetLabel = facetRow.createEl('label', { cls: 'crosswalker-wb-connection-select' });
+		facetLabel.createSpan({ text: 'Create hub notes for' });
+		const facetSel = facetLabel.createEl('select', { cls: 'dropdown' });
+		facetSel.createEl('option', { text: 'Off', attr: { value: 'none' } });
+		facetSel.createEl('option', { text: 'Tags only (no hub notes)', attr: { value: 'tags-only' } });
+		const notesOption = facetSel.createEl('option', {
+			text: facetCols.length ? `Hub notes for ${facetCols.join(', ')}` : 'Hub notes (turn on Tags first)',
+			attr: { value: 'notes' },
+		});
+		notesOption.disabled = facetCols.length === 0;
+		facetSel.value = enrichment.facet_notes ?? 'none';
+		facetSel.addEventListener('change', () => {
+			this.updateEnrichment({ facet_notes: facetSel.value as Enrichment['facet_notes'] });
+		});
+		facetRow.createDiv({
+			cls: 'crosswalker-wb-connection-hint',
+			text: facetCols.length
+				? `Groups notes by ${facetCols.join(', ')} and gathers each value under one hub note.`
+				: 'Toggle the Tags shape on a mapping above to unlock hub notes.',
+		});
+
+		// Parent-note placement — only a live question when a ragged/variadic
+		// hierarchy exists (variadic-split design §4).
+		if (this.mapping.mappings.some((m) => !!m.tail)) {
+			this.renderPlacementChooser(card, enrichment);
+		}
+	}
+
+	/**
+	 * Sibling-vs-folder-note placement chooser (variadic-split design §4): a
+	 * side-by-side mini file-tree built from the sample rows' own real render
+	 * output. Both options are live: the batch relocation pass (Pass 1.5)
+	 * moves an eligible parent (one whose children actually nest under its
+	 * own-named folder) from `X.md` to `X/X.md` at generate time
+	 * (spec/recipe.schema.json `$defs/enrichment.parent_note`). The mini-tree
+	 * previews here mirror that same eligibility rule (a leaf whose stem
+	 * matches an existing folder in the sample).
+	 */
+	private renderPlacementChooser(card: HTMLElement, enrichment: Enrichment): void {
+		const wrap = card.createDiv({ cls: 'crosswalker-wb-placement' });
+		wrap.createDiv({
+			cls: 'crosswalker-wb-connection-row-label',
+			text: 'Where should a note that is also a parent live?',
+		});
+		const preview = this.computePreview();
+		const paths = preview ? preview.addresses.map((a) => a.address.primary.path) : [];
+		const trees = buildParentPlacementPreview(paths);
+		const current = enrichment.parent_note ?? 'sibling';
+
+		const options: { id: 'sibling' | 'folder-note'; label: string; nodes: PathTreeNode[]; disabled?: boolean; reason?: string }[] = [
+			{ id: 'sibling', label: 'Sibling (default)', nodes: trees.sibling },
+			{ id: 'folder-note', label: 'Folder note', nodes: trees.folderNote },
+		];
+
+		const grid = wrap.createDiv({ cls: 'crosswalker-wb-placement-grid' });
+		for (const opt of options) {
+			const col = grid.createDiv({ cls: 'crosswalker-wb-placement-col' + (opt.disabled ? ' is-disabled' : '') });
+			const radioLabel = col.createEl('label', { cls: 'crosswalker-wb-placement-radio' });
+			const radio = radioLabel.createEl('input', { type: 'radio', attr: { name: 'crosswalker-parent-note' } });
+			radio.checked = current === opt.id;
+			radio.disabled = !!opt.disabled;
+			radioLabel.createSpan({ text: opt.label });
+			if (!opt.disabled) {
+				radio.addEventListener('change', () => {
+					if (radio.checked) this.updateEnrichment({ parent_note: opt.id });
+				});
+			}
+			if (opt.reason) col.createDiv({ cls: 'crosswalker-wb-placement-reason', text: opt.reason });
+			const treeEl = col.createDiv({ cls: 'crosswalker-wb-placement-tree crosswalker-wb-tree' });
+			if (opt.nodes.length === 0) {
+				treeEl.createDiv({ cls: 'crosswalker-muted', text: '(no sample rows to preview)' });
+			} else {
+				for (const node of opt.nodes.slice(0, 12)) {
+					const row = treeEl.createDiv({ cls: 'crosswalker-wb-tree-row' + (node.isFile ? ' is-file' : '') });
+					row.style.paddingLeft = `${node.depth * 14}px`;
+					wbIcon(row, node.isFile ? 'file' : 'folder', 'crosswalker-wb-tree-ico');
+					row.createSpan({ text: node.isFile ? node.label : `${node.label}/` });
+				}
+			}
+		}
+	}
+
+	/**
+	 * Cheap, sample-scoped connection counts ("edge/hub counts if cheap" — spec).
+	 * Reuses the same `PREVIEW_ROW_LIMIT` sample the rest of the workbench
+	 * previews from; explicitly labeled "(sample)" since it is NOT the true
+	 * batch Pass 1.5 count over the full import (that only exists at generate
+	 * time). Returns null when enrichment is off or there's nothing to count.
+	 */
+	private connectionStats(): string | null {
+		const enrichment = this.mapping.enrichment;
+		if (!enrichment) return null;
+		const parts: string[] = [];
+
+		if (enrichment.children_lists) {
+			const preview = this.computePreview();
+			const parentLinks = preview
+				? preview.addresses.filter((a) => {
+						const parent = a.address.frontmatter['parent'];
+						return typeof parent === 'string' && parent.trim() !== '' && parent !== '[[]]';
+					}).length
+				: 0;
+			if (parentLinks) parts.push(`${parentLinks} parent link${parentLinks === 1 ? '' : 's'}`);
+		}
+
+		if (enrichment.facet_notes && enrichment.facet_notes !== 'none') {
+			const rows = this.opts.parsedData.rows;
+			if (isEagerRows(rows)) {
+				const values = new Set<string>();
+				rows.slice(0, PREVIEW_ROW_LIMIT).forEach((row) => {
+					for (const f of deriveFacetMemberships(this.mapping, row as Record<string, unknown>)) {
+						values.add(`${f.namespace}:${f.value}`);
+					}
+				});
+				if (values.size) parts.push(`${values.size} facet value${values.size === 1 ? '' : 's'}`);
+			}
+		}
+
+		return parts.length ? `In this sample: ${parts.join(' · ')}` : null;
 	}
 
 	// -------------------------------------------------------------------------
@@ -863,6 +1039,11 @@ export class MappingWorkbench {
 			wbIcon(banner, summary.tone === 'clean' ? 'check-circle-2' : 'alert-triangle', 'crosswalker-render-banner-icon');
 			banner.createSpan({ cls: 'crosswalker-render-banner-text', text: summary.message });
 		}
+
+		// Connections stats — cheap, sample-scoped edge/hub counts so an import
+		// that produces zero connections is never silent (spec §7k).
+		const stats = this.connectionStats();
+		if (stats) rail.createDiv({ cls: 'crosswalker-wb-connection-stats', text: stats });
 	}
 
 	/** Run the workbench recipe over a sample of rows. Null for non-eager sources. */

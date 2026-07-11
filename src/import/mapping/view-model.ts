@@ -535,3 +535,109 @@ function mappingColumnsLabel(m: StructureMapping): string {
 	if (m.tail) collect(m.tail.source);
 	return [...cols].slice(0, 3).join(', ') || 'mapping';
 }
+
+// ============================================================================
+// Connections (Pass 1.5 batch enrichment UI helpers, spec §7k + the
+// 2026-07-10 batch-enrichment design). The workbench's "Connections" card
+// reads/writes `ImportMapping.enrichment` directly (a plain field write, same
+// pattern as `updateMapping`); these are the READ helpers it needs to render
+// honest controls: which column(s) are currently tagged (for the facet-hubs
+// label) and the side-by-side sibling/folder-note placement mini-trees from
+// the variadic-split design §4.
+// ============================================================================
+
+/**
+ * Columns currently carrying a `tag` destination anywhere in the mapping — the
+ * facet(s) a "create hub notes for" control would group by. Deterministic
+ * (mapping → level → tail order); a column appears once even if tagged more
+ * than once. Empty when no mapping has a tag destination yet (the facet-hubs
+ * control has nothing to group by until a "Tags" shape card is toggled on).
+ */
+export function facetTagColumns(mapping: ImportMapping): string[] {
+	const cols: string[] = [];
+	const seen = new Set<string>();
+	const collect = (destinations: Destination[], source: LevelSource) => {
+		if (!destinations.some((d) => d.primitive === 'tag')) return;
+		const col = firstColumn(source);
+		if (!seen.has(col)) {
+			seen.add(col);
+			cols.push(col);
+		}
+	};
+	for (const m of mapping.mappings) {
+		for (const l of m.levels) collect(l.destinations, l.source);
+		if (m.tail) collect(m.tail.destinations, m.tail.source);
+	}
+	return cols;
+}
+
+/** One row of a mini vault-tree preview (folder or file, indented by depth). */
+export interface PathTreeNode {
+	depth: number;
+	label: string;
+	isFile: boolean;
+}
+
+/**
+ * Build a deduplicated folder/file tree from a flat list of relative note
+ * paths (first appearance wins for a folder's position — order-preserving, so
+ * the tree matches the sample rows' own order). Pure: no `Address` dependency,
+ * so it renders equally over real preview output or hand-built test fixtures.
+ */
+export function buildPathTree(paths: string[]): PathTreeNode[] {
+	const seen = new Set<string>();
+	const nodes: PathTreeNode[] = [];
+	for (const full of paths) {
+		if (!full) continue;
+		const parts = full.split('/');
+		let prefix = '';
+		parts.forEach((part, depth) => {
+			prefix += (prefix ? '/' : '') + part;
+			const isFile = depth === parts.length - 1;
+			if (!isFile) {
+				if (seen.has(prefix)) return;
+				seen.add(prefix);
+				nodes.push({ depth, label: part, isFile: false });
+			} else {
+				nodes.push({ depth, label: part, isFile: true });
+			}
+		});
+	}
+	return nodes;
+}
+
+/**
+ * Rewrite a flat list of relative note paths as if `parent_note: 'folder-note'`
+ * had relocated every concept that is also a parent (variadic-split + folder-
+ * note design §4): a leaf whose stem exactly matches an existing folder prefix
+ * moves inside that folder (`Techniques/T1055.md` → `Techniques/T1055/T1055.md`).
+ * Childless leaves are untouched. Pure string transform — v0.1's actual
+ * relocation pass isn't implemented yet (schema falls back to 'sibling' at
+ * render time), so this previews the choice the UI offers without depending on
+ * the not-yet-built Pass 1.5 relocation code.
+ */
+export function toFolderNotePaths(paths: string[]): string[] {
+	const folderPaths = new Set<string>();
+	for (const p of paths) {
+		const parts = p.split('/');
+		for (let i = 1; i < parts.length; i++) folderPaths.add(parts.slice(0, i).join('/'));
+	}
+	return paths.map((p) => {
+		const dot = p.lastIndexOf('.');
+		const stem = dot > 0 ? p.slice(0, dot) : p;
+		if (!folderPaths.has(stem)) return p;
+		const name = p.split('/').pop();
+		return `${stem}/${name}`;
+	});
+}
+
+/**
+ * Both parent-note placement previews (sibling + folder-note), built from the
+ * same sample paths — the side-by-side mini-tree chooser (variadic-split
+ * design §4, "the placement choice is a UI moment, not just a config key").
+ */
+export function buildParentPlacementPreview(
+	paths: string[],
+): { sibling: PathTreeNode[]; folderNote: PathTreeNode[] } {
+	return { sibling: buildPathTree(paths), folderNote: buildPathTree(toFolderNotePaths(paths)) };
+}

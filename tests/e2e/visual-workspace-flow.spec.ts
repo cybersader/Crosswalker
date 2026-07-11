@@ -349,11 +349,21 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 			(gen as HTMLButtonElement).click();
 			// Wait for the flow to return to the home screen (host.close fired).
 			const home = await waitFor('.crosswalker-settings-launchpad', 15000);
-			await sleep(500);
+			// The installed-frameworks list renders asynchronously (spec §7m
+			// home-screen polish: producerKind is read via metadataCache, falling
+			// back to a direct frontmatter read when the cache hasn't resolved yet
+			// for the just-created notes) — poll for the text instead of a blind
+			// sleep so this isn't racy against that resolution.
+			const t0 = Date.now();
+			let installedText = document.querySelector('.crosswalker-workspace-ontology-list')?.textContent ?? '';
+			while (!installedText.includes('NIST-CSF-2.0') && Date.now() - t0 < 8000) {
+				await sleep(200);
+				installedText = document.querySelector('.crosswalker-workspace-ontology-list')?.textContent ?? '';
+			}
 			return {
 				ok: !!home,
 				backOnHome: !document.querySelector('.crosswalker-workspace-flow'),
-				installedText: document.querySelector('.crosswalker-workspace-ontology-list')?.textContent ?? '',
+				installedText,
 				hasReimportBtn: !!document.querySelector('.crosswalker-workspace-ontology-reimport'),
 			};
 		});
@@ -406,5 +416,129 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 		await browser.saveScreenshot(path.join(OUT, 'view-09-import-again.png'));
 		expect(reimport.ok).toBe(true);
 		if (reimport.ok) expect(reimport.noModal).toBe(true);
+
+		// -- Stage J: the "Import again" flow re-parses the same CPRT CSV → the
+		//    recognized-source card, this time asserting the curated defaults it
+		//    now leads with (spec §7m consumption round): the destination reads
+		//    the registry's suggestedFolder ("Frameworks/NIST CSF 2.0"), not the
+		//    old generic Frameworks/<file name> fallback. Temporarily clears the
+		//    plugin-wide default output path — an explicit setting always wins
+		//    over the curated suggestedFolder, so this test-vault's own default
+		//    ("Frameworks") would otherwise mask the behavior under test.
+		const savedDefaultOutputPath = await browser.executeObsidian(async ({ app }) => {
+			// @ts-expect-error — internal plugins API
+			const plugin = app.plugins.plugins['crosswalker'];
+			const prev = plugin.settings.defaultOutputPath;
+			plugin.settings.defaultOutputPath = '';
+			await plugin.saveSettings();
+			return prev;
+		});
+		const recognizedDefaults = await browser.executeObsidian(async (_a, csv) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const waitFor = async (sel: string, ms: number) => {
+				const t0 = Date.now();
+				while (Date.now() - t0 < ms) {
+					const el = document.querySelector(sel);
+					if (el) return el;
+					await sleep(100);
+				}
+				return null;
+			};
+			const root = document.querySelector('.crosswalker-workspace-flow');
+			if (!root) return { ok: false as const, reason: 'NO_ROOT' };
+			const input = root.querySelector('input[type=file]') as HTMLInputElement | null;
+			if (!input) return { ok: false as const, reason: 'NO_FILE_INPUT' };
+			const dt = new DataTransfer();
+			dt.items.add(new File([csv as string], 'nist-csf-2-cprt-reimport.csv'));
+			input.files = dt.files;
+			input.dispatchEvent(new Event('change'));
+			await sleep(700);
+			const next = Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
+			if (!next) return { ok: false as const, reason: 'NO_NEXT' };
+			(next as HTMLButtonElement).click();
+			const card = await waitFor('.crosswalker-recognized-card', 8000);
+			if (!card) return { ok: false as const, reason: 'NO_CARD' };
+			return {
+				ok: true as const,
+				summaryText: root.querySelector('.crosswalker-recognized-summary')?.textContent ?? '',
+			};
+		}, CPRT_CSV);
+		console.log('[view] recognized-defaults → ' + JSON.stringify(recognizedDefaults));
+		await browser.saveScreenshot(path.join(OUT, 'view-10-recognized-defaults.png'));
+		expect(recognizedDefaults.ok).toBe(true);
+		if (recognizedDefaults.ok) {
+			// The curated suggestedFolder default (spec §7m), not the old generic
+			// Frameworks/<file name> fallback `deriveDestinationDefault` would emit.
+			expect(recognizedDefaults.summaryText).toContain('lands in Frameworks/NIST CSF 2.0');
+		}
+		// Restore the plugin-wide default before Stage K (Customize commits
+		// this.outputPath from whatever the setting is at click time).
+		await browser.executeObsidian(async ({ app }, prev) => {
+			// @ts-expect-error — internal plugins API
+			const plugin = app.plugins.plugins['crosswalker'];
+			plugin.settings.defaultOutputPath = prev as string;
+			await plugin.saveSettings();
+		}, savedDefaultOutputPath);
+
+		// -- Stage K: "Customize" → the workbench, in-view, screenshotting the new
+		//    Connections card (spec §7k UI): the children-lists toggle and the
+		//    facet-hubs select, plus (only if a ragged/variadic hierarchy is
+		//    present in this sample) the sibling/folder-note placement chooser.
+		//    Exercises the checkbox write round-trip live (not just unit-tested).
+		const connections = await browser.executeObsidian(async () => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const waitFor = async (sel: string, ms: number) => {
+				const t0 = Date.now();
+				while (Date.now() - t0 < ms) {
+					const el = document.querySelector(sel);
+					if (el) return el;
+					await sleep(100);
+				}
+				return null;
+			};
+			const root = document.querySelector('.crosswalker-workspace-flow');
+			if (!root) return { ok: false as const, reason: 'NO_ROOT' };
+			const customize = Array.from(root.querySelectorAll('.crosswalker-recognized-actions button')).find(
+				(b) => b.textContent?.trim() === 'Customize',
+			) as HTMLButtonElement | undefined;
+			if (!customize) return { ok: false as const, reason: 'NO_CUSTOMIZE' };
+			customize.click();
+			const conn = await waitFor('.crosswalker-wb-connections', 8000);
+			if (!conn) return { ok: false as const, reason: 'NO_CONNECTIONS' };
+
+			const childrenCb = conn.querySelector('.crosswalker-wb-connection-toggle input[type=checkbox]') as HTMLInputElement | null;
+			const facetSel = conn.querySelector('.crosswalker-wb-connection-select select') as HTMLSelectElement | null;
+			const before = { childrenChecked: childrenCb?.checked ?? null, facetValue: facetSel?.value ?? null };
+
+			// Exercise the write round-trip: toggle children-lists on and re-read
+			// after the workbench's debounced re-render.
+			childrenCb?.click();
+			await sleep(400);
+			const rootAfter = document.querySelector('.crosswalker-workspace-flow');
+			const childrenCbAfter = rootAfter?.querySelector('.crosswalker-wb-connections .crosswalker-wb-connection-toggle input[type=checkbox]') as HTMLInputElement | null;
+
+			// Scroll the Connections card into view so the screenshot below
+			// actually shows it (the mapping cards above push it past the fold).
+			rootAfter?.querySelector('.crosswalker-wb-connections')?.scrollIntoView({ block: 'center' });
+			await sleep(200);
+
+			return {
+				ok: true as const,
+				hasChildrenToggle: !!childrenCb,
+				hasFacetSelect: !!facetSel,
+				hasPlacementChooser: !!rootAfter?.querySelector('.crosswalker-wb-placement'),
+				before,
+				childrenCheckedAfterToggle: childrenCbAfter?.checked ?? null,
+			};
+		});
+		console.log('[view] connections → ' + JSON.stringify(connections));
+		await browser.saveScreenshot(path.join(OUT, 'view-11-connections.png'));
+		expect(connections.ok).toBe(true);
+		if (connections.ok) {
+			expect(connections.hasChildrenToggle).toBe(true);
+			expect(connections.hasFacetSelect).toBe(true);
+			// The toggle click flipped the model and the re-render reflects it.
+			expect(connections.childrenCheckedAfterToggle).toBe(!connections.before.childrenChecked);
+		}
 	});
 });

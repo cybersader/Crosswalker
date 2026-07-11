@@ -14,6 +14,7 @@ import type { ParsedData } from '../src/types/config';
 import type { ImportMapping } from '../src/import/mapping/types';
 import type { DebugLog } from '../src/utils/debug';
 import { deriveFacetMemberships } from '../src/import/mapping/facets';
+import { facetTagColumns, buildParentPlacementPreview, toFolderNotePaths } from '../src/import/mapping/view-model';
 import { findRecipeForOntologyName } from '../src/views/workspace-view-helpers';
 
 // A no-op DebugLog stub (the workbench only calls .info/.trace).
@@ -330,6 +331,75 @@ describe('MappingWorkbench recognized-recipe seed (spec §7m)', () => {
 		const wb = makeWorkbench(attackRows());
 		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed ?? {};
 		expect(Object.keys(managed)).toContain('name');
+	});
+});
+
+// ============================================================================
+// Connections helpers (mapping/view-model.ts, spec §7k) — the pure logic
+// behind the workbench's Connections card: facetTagColumns (the facet-hubs
+// label) and the sibling/folder-note placement mini-trees.
+// ============================================================================
+
+describe('facetTagColumns (spec §7k)', () => {
+	it('returns the browsable-framework preset facet column for a ragged ATT&CK-shaped mapping', () => {
+		const wb = makeWorkbench(attackRows());
+		expect(facetTagColumns(wb.getMapping())).toEqual(['tactic']);
+	});
+
+	it('returns an empty list when no mapping carries a tag destination', () => {
+		const mapping: ImportMapping = {
+			mappings: [
+				{
+					levels: [
+						{
+							level: 'leaf',
+							source: { column: 'id' },
+							destinations: [{ primitive: 'name' }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+		};
+		expect(facetTagColumns(mapping)).toEqual([]);
+	});
+});
+
+describe('buildParentPlacementPreview / toFolderNotePaths (variadic-split design §4)', () => {
+	it('sibling preview keeps a parent note beside its children folder', () => {
+		const { sibling } = buildParentPlacementPreview(['Techniques/T1055.md', 'Techniques/T1055/T1055.011.md']);
+		expect(sibling).toEqual([
+			{ depth: 0, label: 'Techniques', isFile: false },
+			{ depth: 1, label: 'T1055.md', isFile: true },
+			{ depth: 1, label: 'T1055', isFile: false },
+			{ depth: 2, label: 'T1055.011.md', isFile: true },
+		]);
+	});
+
+	it('toFolderNotePaths relocates a leaf whose stem matches an existing folder', () => {
+		const paths = toFolderNotePaths(['Techniques/T1055.md', 'Techniques/T1055/T1055.011.md', 'Techniques/T1548.md']);
+		expect(paths).toEqual([
+			'Techniques/T1055/T1055.md', // relocated — T1055 has a children folder
+			'Techniques/T1055/T1055.011.md',
+			'Techniques/T1548.md', // childless leaf, untouched
+		]);
+	});
+
+	it('folder-note preview nests the relocated parent note inside its own folder', () => {
+		const { folderNote } = buildParentPlacementPreview(['Techniques/T1055.md', 'Techniques/T1055/T1055.011.md']);
+		expect(folderNote).toEqual([
+			{ depth: 0, label: 'Techniques', isFile: false },
+			{ depth: 1, label: 'T1055', isFile: false },
+			{ depth: 2, label: 'T1055.md', isFile: true },
+			{ depth: 2, label: 'T1055.011.md', isFile: true },
+		]);
+	});
+
+	it('is a no-op when no id in the sample is ragged (nothing to relocate)', () => {
+		const paths = ['A.md', 'B.md', 'C.md'];
+		expect(toFolderNotePaths(paths)).toEqual(paths);
 	});
 });
 

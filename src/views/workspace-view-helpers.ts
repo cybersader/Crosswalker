@@ -16,6 +16,14 @@ export interface MinimalVaultNode {
 	name: string;
 	/** Present (possibly empty) for folders; absent for files. */
 	children?: MinimalVaultNode[];
+	/**
+	 * For files only: the note's `_crosswalker.producer.kind` frontmatter value
+	 * (spec/tier1.schema.json `$defs/provenance_block`), when present. Undefined
+	 * for a file with no `_crosswalker` block at all, or for folders. The
+	 * adapter in `workspace-view.ts` populates this from the real metadata
+	 * cache; this module stays pure and never reads frontmatter itself.
+	 */
+	producerKind?: string;
 }
 
 export interface InstalledOntologySummary {
@@ -24,12 +32,25 @@ export interface InstalledOntologySummary {
 	noteCount: number;
 }
 
+/** The producer kind that marks a note as end-user, plugin-generated output
+ *  (as opposed to `external-cli` fixture/test-corpus generation — spec §7m,
+ *  "home-screen polish", 2026-07-11: the installed list must show what the
+ *  USER imported through Crosswalker, not synthetic or curated test data). */
+const PLUGIN_PRODUCER_KIND = 'plugin-engine';
+
 /**
- * Derive the list of "installed ontologies" from the default output
- * folder: one summary per top-level subfolder, with a recursive count of
- * markdown notes underneath it. Loose files directly under the output
- * root are ignored (not an ontology). Returns an empty array if the
- * output root doesn't exist yet or has no subfolders.
+ * Derive the list of "installed ontologies" from the default output folder:
+ * one summary per top-level subfolder, with a recursive count of markdown
+ * notes underneath it. A folder only counts as an installed ontology when it
+ * actually contains GENERATED content — at least one note whose
+ * `_crosswalker.producer.kind` is `plugin-engine` (real plugin output, not a
+ * curated/fixture corpus like `NIST-mini` or a licensed test corpus, which
+ * carry `_crosswalker` too but with `producer.kind: 'external-cli'`).
+ * Folders whose name starts with `_` (the vault's internal/hidden convention,
+ * e.g. `_licensed`) are skipped outright, before even checking their content.
+ * Loose files directly under the output root are ignored (not an ontology).
+ * Returns an empty array if the output root doesn't exist yet or has no
+ * qualifying subfolders.
  */
 export function deriveInstalledOntologies(
 	outputRoot: MinimalVaultNode | null | undefined,
@@ -39,6 +60,8 @@ export function deriveInstalledOntologies(
 	const summaries: InstalledOntologySummary[] = [];
 	for (const child of outputRoot.children) {
 		if (!child.children) continue; // skip loose files, only folders count as ontologies
+		if (child.name.startsWith('_')) continue; // internal/hidden convention (e.g. `_licensed`)
+		if (!hasGeneratedNote(child)) continue; // curated/fixture corpora and hand-authored folders
 		summaries.push({
 			name: child.name,
 			path: child.path,
@@ -58,6 +81,19 @@ function countMarkdownNotes(node: MinimalVaultNode): number {
 		}
 	}
 	return count;
+}
+
+/** True when this folder (recursively) contains at least one note actually
+ *  produced by the plugin engine — the "GENERATED content" gate. */
+function hasGeneratedNote(node: MinimalVaultNode): boolean {
+	for (const child of node.children ?? []) {
+		if (child.children) {
+			if (hasGeneratedNote(child)) return true;
+		} else if (child.producerKind === PLUGIN_PRODUCER_KIND) {
+			return true;
+		}
+	}
+	return false;
 }
 
 /** A recipe recognized as a likely match for an already-installed ontology folder. */

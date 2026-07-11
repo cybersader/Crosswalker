@@ -14,7 +14,7 @@
  * "actual interface, not mockup" surface (owner direction, 2026-07-11).
  */
 
-import { ItemView, WorkspaceLeaf, TAbstractFile, TFile, TFolder, setIcon } from 'obsidian';
+import { App, ItemView, WorkspaceLeaf, TAbstractFile, TFile, TFolder, setIcon, parseYaml } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import { ImportFlow, type ImportFlowHost } from '../import/import-wizard';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
@@ -26,17 +26,53 @@ import {
 
 export const VIEW_TYPE_CROSSWALKER_WORKSPACE = 'crosswalker-workspace';
 
-/** Adapt a real vault file/folder into the Obsidian-free shape the pure helper consumes. */
-function toMinimalNode(file: TAbstractFile | null): MinimalVaultNode | null {
+/**
+ * `_crosswalker.producer.kind` for one file (spec §7m "home-screen polish"),
+ * preferring the metadata cache and falling back to a direct frontmatter read
+ * when the cache hasn't resolved yet. The fallback matters: right after a bulk
+ * `vault.create()` generation batch, `metadataCache.getFileCache()` can lag
+ * well behind the write (observed empty even several seconds later against
+ * this repo's wdio harness) — `import-wizard.ts`'s `waitForMetadataResolve`
+ * mitigates but does not guarantee the cache is warm by the time the home
+ * screen re-renders. A direct read keeps the filter correct regardless of
+ * cache timing, at the cost of one extra read only for not-yet-indexed files.
+ */
+async function producerKindOf(file: TFile, app: App): Promise<string | undefined> {
+	const cached = app.metadataCache.getFileCache(file)?.frontmatter?._crosswalker as
+		| { producer?: { kind?: unknown } }
+		| undefined;
+	if (typeof cached?.producer?.kind === 'string') return cached.producer.kind;
+
+	try {
+		const content = await app.vault.cachedRead(file);
+		const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+		if (!match) return undefined;
+		const parsed = parseYaml(match[1]) as { _crosswalker?: { producer?: { kind?: unknown } } } | undefined;
+		const kind = parsed?._crosswalker?.producer?.kind;
+		return typeof kind === 'string' ? kind : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Adapt a real vault file/folder into the Obsidian-free shape the pure helper
+ * consumes. Files carry `producerKind` (see `producerKindOf`) — the signal
+ * `deriveInstalledOntologies` uses to tell real plugin-generated output apart
+ * from curated fixtures / licensed test corpora that also carry `_crosswalker`.
+ */
+async function toMinimalNode(file: TAbstractFile | null, app: App): Promise<MinimalVaultNode | null> {
 	if (!file) return null;
 	if (file instanceof TFolder) {
+		const children = await Promise.all(file.children.map((child) => toMinimalNode(child, app)));
 		return {
 			path: file.path,
 			name: file.name,
-			children: file.children
-				.map((child) => toMinimalNode(child))
-				.filter((n): n is MinimalVaultNode => n !== null),
+			children: children.filter((n): n is MinimalVaultNode => n !== null),
 		};
+	}
+	if (file instanceof TFile) {
+		return { path: file.path, name: file.name, producerKind: await producerKindOf(file, app) };
 	}
 	return { path: file.path, name: file.name };
 }
@@ -45,6 +81,9 @@ export class CrosswalkerWorkspaceView extends ItemView {
 	private plugin: CrosswalkerPlugin;
 	/** The flow currently mounted in this view, or null when showing the home screen. */
 	private activeFlow: ImportFlow | null = null;
+	/** Bumped on every `renderHome()` so a stale async installed-list render
+	 *  (see `renderInstalledOntologies`) can detect it's been superseded. */
+	private renderToken = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: CrosswalkerPlugin) {
 		super(leaf);
@@ -64,10 +103,12 @@ export class CrosswalkerWorkspaceView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		this.renderHome();
+		await this.renderHome();
 	}
 
 	async onClose(): Promise<void> {
+		// Invalidate any still-pending home-screen installed-list render.
+		this.renderToken++;
 		// The flow owns its own draft-save-on-close; forward so a tab close mid-import
 		// doesn't silently drop an in-progress draft (mirrors the modal's onClose).
 		this.activeFlow?.onClose();
@@ -79,8 +120,9 @@ export class CrosswalkerWorkspaceView extends ItemView {
 	// Home screen — launchpad + installed ontologies
 	// =========================================================================
 
-	private renderHome(): void {
+	private async renderHome(): Promise<void> {
 		this.activeFlow = null;
+		const token = ++this.renderToken;
 		const root = this.contentEl;
 		root.empty();
 		root.removeClass('is-flow-active');
@@ -88,7 +130,7 @@ export class CrosswalkerWorkspaceView extends ItemView {
 
 		this.renderHeader(root);
 		this.renderLaunchpad(root);
-		this.renderInstalledOntologies(root);
+		await this.renderInstalledOntologies(root, token);
 	}
 
 	private renderHeader(root: HTMLElement): void {
@@ -140,12 +182,20 @@ export class CrosswalkerWorkspaceView extends ItemView {
 		btn.addEventListener('click', onClick);
 	}
 
-	private renderInstalledOntologies(root: HTMLElement): void {
+	/**
+	 * `toMinimalNode` reads frontmatter (async — see its doc comment on the
+	 * metadataCache race), so this whole section renders after that resolves.
+	 * `token` guards against a stale render finishing after a newer
+	 * `renderHome()`/`startFlow()` has already taken the view over.
+	 */
+	private async renderInstalledOntologies(root: HTMLElement, token: number): Promise<void> {
 		const section = root.createDiv({ cls: 'crosswalker-workspace-installed' });
 		section.createDiv({ cls: 'crosswalker-workspace-installed-heading', text: 'Installed frameworks' });
 
 		const outputRoot = this.app.vault.getAbstractFileByPath(this.plugin.settings.defaultOutputPath);
-		const summaries = deriveInstalledOntologies(toMinimalNode(outputRoot));
+		const node = await toMinimalNode(outputRoot, this.app);
+		if (token !== this.renderToken) return; // superseded by a newer render
+		const summaries = deriveInstalledOntologies(node);
 
 		if (summaries.length === 0) {
 			const empty = section.createDiv({ cls: 'crosswalker-workspace-empty' });
@@ -217,6 +267,10 @@ export class CrosswalkerWorkspaceView extends ItemView {
 	 * with a vault file already selected, skipping straight to Step 2.
 	 */
 	private startFlow(opts?: { presetRecipeId?: string; prefillFile?: TFile }): void {
+		// Invalidate any still-pending home-screen installed-list render (its
+		// `root` is about to be repurposed for the flow below) — see the
+		// `renderToken` guard in `renderInstalledOntologies`.
+		this.renderToken++;
 		const root = this.contentEl;
 		root.empty();
 		root.addClass('crosswalker-workspace-view', 'is-flow-active');
@@ -228,7 +282,7 @@ export class CrosswalkerWorkspaceView extends ItemView {
 			close: () => {
 				// The flow reached a terminal "done" action — return to the home
 				// screen (not literally close the tab), with fresh counts.
-				this.renderHome();
+				void this.renderHome();
 			},
 		};
 

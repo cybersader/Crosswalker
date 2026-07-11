@@ -31,7 +31,7 @@ import {
 	type WizardDraft,
 } from './draft-store';
 import { MappingWorkbench, renderProvenanceBadge } from './workbench';
-import type { ImportMapping } from './mapping/types';
+import type { ImportMapping, Enrichment } from './mapping/types';
 import { buildShapeMapRecap, deriveDestinationDefault, type Provenance } from './mapping/view-model';
 import { deriveFacetMemberships } from './mapping/facets';
 import {
@@ -40,7 +40,43 @@ import {
 	summarizeRecipeShapes,
 	RECIPE_REGISTRY,
 	type RecipeMatch,
+	type RecipeRegistryEntry,
 } from './recipe-registry';
+
+/**
+ * Curated destination default for a recognized recipe (spec §7m): an explicit
+ * plugin-wide default output path always wins (the user already told us where
+ * their imports go); otherwise the registry's curated `suggestedFolder`
+ * ("Frameworks/CIS Controls v8", etc.) beats the generic `Frameworks/<file
+ * name>` fallback `deriveDestinationDefault` would otherwise produce.
+ */
+export function recognizedDestination(entry: RecipeRegistryEntry, globalDefault: string): string {
+	const explicit = (globalDefault ?? '').trim();
+	return explicit || entry.suggestedFolder;
+}
+
+/**
+ * Honest, gated application of a recognized recipe's `recommendedEnrichment`
+ * hint (recipe-registry's "CURATED DEFAULTS" doc comment). A hint is only
+ * turned on when the recipe's OWN recipe JSON already emits the mechanism the
+ * hint depends on: children lists need an existing parent wikilink (a `links`
+ * shape), facet hub notes need an existing `also_emit.tags` destination (a
+ * `tags` shape) — reusing `summarizeRecipeShapes`'s shape detection so this
+ * stays in lockstep with what the recipe can actually back up. Never flips on
+ * a Pass 1.5 mechanism the recipe doesn't already feed. Returns undefined when
+ * nothing is live, so an inert recipe's regions stay byte-identical.
+ */
+export function honestEnrichment(entry: RecipeRegistryEntry): Enrichment | undefined {
+	const shapes = summarizeRecipeShapes(entry);
+	const hint = entry.recommendedEnrichment;
+	const childrenLive = hint.childrenLists && shapes.includes('links');
+	const facetLive = hint.facetNotes === 'notes' && shapes.includes('tags');
+	if (!childrenLive && !facetLive) return undefined;
+	const out: Enrichment = {};
+	if (childrenLive) out.children_lists = true;
+	if (facetLive) out.facet_notes = 'notes';
+	return out;
+}
 
 /**
  * A host provides the DOM surface the import flow renders into and decides
@@ -896,15 +932,26 @@ export class ImportFlow {
 		};
 		renderProvenanceBadge(head.createEl('div', { cls: 'crosswalker-recognized-badges' }), prov);
 
-		// What you get — one calm line: rows, the shapes, the destination.
+		// What you get — one calm line: rows, the shapes, the destination, and
+		// (when live — spec §7m curated defaults) what the enrichment hint adds.
 		const rowCount = this.parsedData?.rowCount ?? 0;
 		const shapes = summarizeRecipeShapes(entry);
-		const dest = deriveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null);
+		const dest = recognizedDestination(entry, this.plugin.settings.defaultOutputPath);
+		const enrichment = honestEnrichment(entry);
 		card.createEl('p', { cls: 'crosswalker-recognized-desc', text: entry.description });
 		const summary = card.createEl('div', { cls: 'crosswalker-recognized-summary' });
 		summary.createSpan({ cls: 'crosswalker-recognized-metric', text: `${rowCount.toLocaleString()} rows to ${rowCount.toLocaleString()} notes` });
 		if (shapes.length) summary.createSpan({ cls: 'crosswalker-recognized-metric', text: shapes.join(', ') });
-		summary.createSpan({ cls: 'crosswalker-recognized-metric', text: `into ${dest}` });
+		summary.createSpan({ cls: 'crosswalker-recognized-metric', text: `lands in ${dest}` });
+		if (enrichment?.children_lists) {
+			summary.createSpan({ cls: 'crosswalker-recognized-metric', text: 'parents linked to children' });
+		}
+		if (enrichment?.facet_notes === 'notes') {
+			summary.createSpan({
+				cls: 'crosswalker-recognized-metric',
+				text: `hub notes for ${entry.recommendedEnrichment.facetField ?? 'facets'}`,
+			});
+		}
 
 		// Actions — one confident primary, escape hatches beside it.
 		const actions = card.createEl('div', { cls: 'crosswalker-recognized-actions' });
@@ -936,9 +983,16 @@ export class ImportFlow {
 		this.recognizedFastPath = true;
 		this.appliedConfig = null;
 		this.configMatches = [];
+		// Curated defaults (spec §7m): the registry's suggestedFolder becomes the
+		// destination (unless a plugin-wide default already overrides it), and any
+		// LIVE recommendedEnrichment hint rides along on the seeded mapping.
+		this.outputPath = recognizedDestination(entry, this.plugin.settings.defaultOutputPath);
+		const mapping = recipeMapping(entry);
+		const enrichment = honestEnrichment(entry);
+		if (enrichment) mapping.enrichment = enrichment;
 		// Seed the workbench from the recipe (seedColumnDefaults=false → emit EXACTLY
 		// the vetted recipe). columnsSignature matches, so renderStep2/3 reuse it.
-		this.workbench = this.makeWorkbench(recipeMapping(entry), false);
+		this.workbench = this.makeWorkbench(mapping, false);
 		this.pendingWorkbenchMapping = null;
 		this.currentStep = toStep;
 		this.plugin.debug.info('wizard', 'recognized-recipe-chosen', `Fast path: ${entry.id} → step ${toStep}`, {
@@ -1449,6 +1503,29 @@ export class ImportFlow {
 	 * when the target folder doesn't exist yet; feature-detects the internal
 	 * file-explorer reveal method and falls back to a Notice when it's absent.
 	 */
+	/**
+	 * Wait for Obsidian's metadataCache resolve queue to drain (bounded), so
+	 * frontmatter reads immediately after a bulk `vault.create()` batch (the
+	 * home screen's installed-frameworks filter, `_crosswalker` producer
+	 * frontmatter) see freshly-generated notes instead of racing the async
+	 * indexer. `resolved` fires once per full pass; a generation batch queues
+	 * new work, so it should fire again shortly. Falls back to the timeout so
+	 * a stuck/absent event never hangs the "done" transition.
+	 */
+	private async waitForMetadataResolve(timeoutMs = 4000): Promise<void> {
+		await new Promise<void>((resolve) => {
+			let done = false;
+			const finish = () => {
+				if (done) return;
+				done = true;
+				this.app.metadataCache.offref(ref);
+				resolve();
+			};
+			const ref = this.app.metadataCache.on('resolved', finish);
+			window.setTimeout(finish, timeoutMs);
+		});
+	}
+
 	private revealDestinationInExplorer(): void {
 		const target = this.outputPath.trim();
 		// Walk up to the nearest existing folder (target or an ancestor).
@@ -2794,6 +2871,17 @@ export class ImportFlow {
 					}
 					this.draftId = null;
 				}
+
+				// The workspace-view home screen (spec §7n) reads _crosswalker
+				// producer frontmatter straight off Obsidian's metadataCache to
+				// decide which folders are "installed frameworks" (2026-07-11
+				// home-screen polish). That cache resolves asynchronously after
+				// `vault.create()`, so calling host.close() immediately can render
+				// the home screen BEFORE the just-generated notes are indexed —
+				// the fresh import would silently vanish from its own list. Give
+				// the resolve queue a bounded moment to drain when something was
+				// actually created.
+				if (result.created.length > 0) await this.waitForMetadataResolve();
 
 				// Reached "done" — host decides what that means (close the
 				// modal, or reset the workspace view to its launchpad).
