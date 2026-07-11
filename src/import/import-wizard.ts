@@ -14,6 +14,7 @@ import {
 import { legacyConfigToRecipe } from '../generation/legacy-recipe-shim';
 import { findMatchingConfigs, ConfigMatch } from '../config/config-manager';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
+import { VaultImportFilePicker } from '../ui/vault-file-picker';
 import {
 	generateNotes,
 	buildConfigFromWizardState,
@@ -456,6 +457,33 @@ export class ImportFlow {
 	// Step 1: Select Source File
 	// =========================================================================
 
+	/**
+	 * Select an in-vault file as the import source (the vault picker path —
+	 * same journey as the file-menu prefill: reset, re-parse from the vault,
+	 * land on step 2).
+	 */
+	private async selectVaultFile(file: TFile): Promise<void> {
+		this.appliedConfig = null;
+		this.configMatches = [];
+		this.configWarnings = [];
+		this.recognizedMatch = null;
+		this.recognizedDismissed = false;
+		this.recognizedFastPath = false;
+		this.recognizedEdited = false;
+		this.workbench = null;
+		this.parsedData = null;
+		this.availableSheets = [];
+		this.selectedSheet = null;
+		this.columnConfigs = new Map();
+		this.suggestedColumns = new Set();
+		this.smartDefaultsApplied = false;
+		const name = file.name.toLowerCase();
+		this.sourceType = name.endsWith('.csv') ? 'csv' : name.endsWith('.json') ? 'json' : 'xlsx';
+		const ok = await this.reparseFromVault(file.path, file.name);
+		if (ok) this.currentStep = 2;
+		this.renderStep();
+	}
+
 	renderStep1_SelectFile(container: HTMLElement) {
 		container.createEl('h3', { text: 'Select source file' });
 		container.createEl('p', {
@@ -463,8 +491,31 @@ export class ImportFlow {
 			cls: 'setting-item-description'
 		});
 
-		// File input
+		// Primary: pick from the vault. Obsidian's explorer hides csv/xlsx/json
+		// unless "Detect all file extensions" is on, so the vault picker must
+		// not depend on the explorer at all.
+		const vaultRow = container.createEl('div', { cls: 'crosswalker-vault-pick-row' });
+		const vaultBtn = vaultRow.createEl('button', {
+			text: 'Choose from vault',
+			cls: 'mod-cta',
+		});
+		vaultBtn.addEventListener('click', () => {
+			new VaultImportFilePicker(this.app, (file) => {
+				void this.selectVaultFile(file);
+			}).open();
+		});
+		vaultRow.createEl('span', {
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- CSV/XLSX/JSON are file-format acronyms
+			text: 'Finds CSV, XLSX, and JSON files even when the file explorer hides them.',
+			cls: 'setting-item-description',
+		});
+
+		// Secondary: a file from outside the vault via the OS picker.
 		const fileInputContainer = container.createEl('div', { cls: 'crosswalker-file-input' });
+		fileInputContainer.createEl('div', {
+			text: 'Or pick a file from your computer:',
+			cls: 'setting-item-description',
+		});
 
 		const fileInput = fileInputContainer.createEl('input', {
 			type: 'file',

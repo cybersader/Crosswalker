@@ -2598,3 +2598,12 @@
 	width: 12px;
 	height: 12px;
 }
+
+/* === vault file picker row (step 1) === */
+.crosswalker-vault-pick-row {
+	display: flex;
+	align-items: center;
+	gap: var(--cw-s3, 12px);
+	margin-bottom: var(--cw-s4, 16px);
+	flex-wrap: wrap;
+}
