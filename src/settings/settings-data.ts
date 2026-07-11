@@ -48,8 +48,6 @@ export interface CrosswalkerSettings {
 	// ==========================================================================
 	// Advanced
 	// ==========================================================================
-	enableCustomTransforms: boolean;
-	customTransformsPath: string;
 	maxRowsForPreview: number;                  // Limit rows in preview (performance)
 	streamingThresholdMB: number;               // File size to trigger streaming parser
 
@@ -58,11 +56,6 @@ export interface CrosswalkerSettings {
 	// ==========================================================================
 	enableTier2Projection: boolean;             // Auto-project Tier 1 → Tier 2 on vault load
 	tier2SidecarPath: string;                   // Vault-relative path; default '.crosswalker.sqlite'
-
-	// ==========================================================================
-	// Recipe schema (v0.1.6 — per Ch 31)
-	// ==========================================================================
-	recipeSchemaStyle: RecipeSchemaStyle;       // 'A' (oneOf+const, default) or 'B' (if/then/else); semantically equivalent
 
 	// ==========================================================================
 	// Debug (Phase 3.5 — wide-event NDJSON logger)
@@ -89,7 +82,6 @@ export type ArrayHandling = 'as_array' | 'stringify' | 'first' | 'last' | 'join'
 export type EmptyHandling = 'omit' | 'empty_string' | 'null' | 'default';
 export type FrontmatterStyle = 'flat' | 'dot_to_nest' | 'group_by_prefix';
 export type LinkSyntaxPreset = 'simple' | 'standard' | 'full' | 'custom';
-export type RecipeSchemaStyle = 'A' | 'B';
 
 export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	// General / Output
@@ -121,17 +113,12 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	enableShapeWorkbench: false,
 
 	// Advanced
-	enableCustomTransforms: false,
-	customTransformsPath: '',
 	maxRowsForPreview: 100,
 	streamingThresholdMB: 5,           // Use streaming for files > 5MB
 
 	// Tier 2 sidecar (v0.1.5)
 	enableTier2Projection: true,
 	tier2SidecarPath: '.crosswalker.sqlite',
-
-	// Recipe schema (v0.1.6)
-	recipeSchemaStyle: 'A',
 
 	// Debug (Phase 3.5)
 	enableDebugLog: false,

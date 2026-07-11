@@ -99,9 +99,10 @@ export class RecipePickerModal extends Modal {
 
 	private async loadAndRender(): Promise<void> {
 		try {
+			// `recipeSchemaStyle` setting removed (settings-redesign report, 2026-07-11); style 'A' hardcoded.
 			const result = await loadAllRecipes(
 				this.app,
-				this.plugin.settings.recipeSchemaStyle,
+				'A',
 				this.plugin.debug,
 			);
 			this.recipes = result.recipes;

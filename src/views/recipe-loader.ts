@@ -87,8 +87,9 @@ export interface LoadResult {
  * Load all available recipes (shipped + user) + validate each. Returns
  * structured results so the picker can surface both successes + failures.
  *
- * The `schemaStyle` parameter routes to the right AJV schema per the
- * `recipeSchemaStyle` setting (Phase 1 added both styles A + B).
+ * The `schemaStyle` parameter routes to the right AJV schema (Phase 1 added
+ * both styles A + B). No longer settings-exposed; callers pass 'A'
+ * (settings-redesign report, 2026-07-11).
  */
 export async function loadAllRecipes(
 	app: App,

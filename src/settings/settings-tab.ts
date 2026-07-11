@@ -726,18 +726,6 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 		summary.createSpan({ text: 'Advanced' });
 
 		new Setting(details)
-			.setName('Custom transforms')
-			.setDesc('Allow custom JavaScript transform functions during import.')
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableCustomTransforms)
-					.onChange(async (value) => {
-						this.plugin.settings.enableCustomTransforms = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(details)
 			.setName('Streaming threshold')
 			.setDesc('Files larger than this many megabytes are parsed with the streaming reader.')
 			.addSlider((slider) =>
@@ -800,23 +788,6 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 		refreshSidecar = this.addPreview(details, 'Index file', (el) => {
 			this.renderPathChip(el, 'database', sidecarPathDisplay(this.plugin.settings.tier2SidecarPath));
 		});
-
-		new Setting(details)
-			.setName('Recipe schema style')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- contains JSON Schema technical terms (pivot, table) whose casing is canonical
-			.setDesc('How the recipe schema describes view shapes (pivot, table, list, hierarchy, timeline). Both styles behave identically. Most people should leave this on style A.')
-			.addDropdown((dropdown) =>
-				dropdown
-					// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
-					.addOption('A', 'Style A (default)')
-					// eslint-disable-next-line obsidianmd/ui/sentence-case -- letter identifiers (A, B) are proper-noun-equivalent; canonical casing preserved
-					.addOption('B', 'Style B (advanced)')
-					.setValue(this.plugin.settings.recipeSchemaStyle)
-					.onChange(async (value) => {
-						this.plugin.settings.recipeSchemaStyle = value as 'A' | 'B';
-						await this.plugin.saveSettings();
-					}),
-			);
 	}
 
 	// =========================================================================

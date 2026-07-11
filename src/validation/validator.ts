@@ -35,7 +35,7 @@ export interface ValidationResult {
 	rawErrors?: ErrorObject[];
 }
 
-/** Recipe schema discriminator style (per Ch 31 + v0.1.6 settings.recipeSchemaStyle). */
+/** Recipe schema discriminator style (per Ch 31). No longer settings-exposed — the `recipeSchemaStyle` setting was removed (settings-redesign report, 2026-07-11) since both styles validate identically; callers pass 'A'. */
 export type RecipeSchemaStyle = 'A' | 'B';
 
 let ajv: Ajv2020 | null = null;
@@ -136,7 +136,8 @@ export function validateTier1Frontmatter(fm: unknown): ValidationResult {
  * @param style  - Discriminator style for the optional `query:` block (per Ch 31).
  *                 'A' (default; oneOf+const) or 'B' (if/then/else). Both styles
  *                 produce identical validity verdicts; differ in error-message
- *                 focus + IDE autocomplete behavior. Pass `settings.recipeSchemaStyle`.
+ *                 focus + IDE autocomplete behavior. No longer settings-exposed;
+ *                 all call sites pass 'A' (settings-redesign report, 2026-07-11).
  */
 export function validateRecipe(recipe: unknown, style: RecipeSchemaStyle = 'A'): ValidationResult {
 	if (!validateRecipeStyleA || !validateRecipeStyleB) initValidator();
