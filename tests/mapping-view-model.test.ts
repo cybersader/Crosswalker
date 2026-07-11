@@ -258,3 +258,24 @@ describe('markPlacementRelations: the connector overlay roles', () => {
 		expect(children.map((n: { label: string }) => n.label).sort()).toEqual(['T1078.001.md', 'T1078.002.md']);
 	});
 });
+
+describe('preferredParentNote: adaptive default from installed plugins', () => {
+	const { preferredParentNote } = jest.requireActual('../src/import/mapping/view-model');
+
+	it('folder-note when a folder-notes plugin is enabled', () => {
+		const r = preferredParentNote(new Set(['dataview', 'folder-notes']));
+		expect(r.value).toBe('folder-note');
+		expect(r.reason).toContain('folder notes');
+	});
+
+	it('matches fuzzy folder-note plugin ids', () => {
+		expect(preferredParentNote(['some-folder-note-thing']).value).toBe('folder-note');
+		expect(preferredParentNote(['waypoint']).value).toBe('folder-note');
+	});
+
+	it('sibling when no folder-note plugin is present', () => {
+		const r = preferredParentNote(new Set(['dataview', 'templater-obsidian']));
+		expect(r.value).toBe('sibling');
+		expect(r.reason).toBeUndefined();
+	});
+});

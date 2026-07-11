@@ -637,6 +637,26 @@ export function toFolderNotePaths(paths: string[]): string[] {
 }
 
 /**
+ * Adaptive parent-note default (owner: "if they're using a folder-notes
+ * related plugin, we should probably make it the default"): when the vault
+ * runs a folder-note-style community plugin, the user has already chosen how
+ * parents should live — match them. Pure over the enabled-plugin id set.
+ */
+export function preferredParentNote(enabledPluginIds: Iterable<string>): {
+	value: 'sibling' | 'folder-note';
+	reason?: string;
+} {
+	const KNOWN = new Set(['folder-notes', 'folder-note-plugin', 'folder-note-core', 'aidenlx-folder-note', 'waypoint']);
+	for (const id of enabledPluginIds) {
+		const norm = id.toLowerCase();
+		if (KNOWN.has(norm) || norm.includes('folder-note') || norm.includes('foldernote')) {
+			return { value: 'folder-note', reason: 'Default because this vault uses a folder notes plugin.' };
+		}
+	}
+	return { value: 'sibling' };
+}
+
+/**
  * Mark the parent-child relation on a placement-preview tree so the renderer
  * can draw the connector overlay (owner request: "show some sort of purple
  * line to show the connected pieces"). A file is a PARENT when a folder named

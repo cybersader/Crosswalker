@@ -33,7 +33,7 @@ import {
 } from './draft-store';
 import { MappingWorkbench, renderProvenanceBadge } from './workbench';
 import type { ImportMapping, Enrichment } from './mapping/types';
-import { buildShapeMapRecap, deriveDestinationDefault, type Provenance } from './mapping/view-model';
+import { buildShapeMapRecap, deriveDestinationDefault, preferredParentNote, type Provenance } from './mapping/view-model';
 import { deriveFacetMemberships } from './mapping/facets';
 import {
 	bestRecognizedRecipe,
@@ -1424,6 +1424,11 @@ export class ImportFlow {
 	 * the vetted recipe — no auto-added per-column properties (spec §7m).
 	 */
 	private makeWorkbench(initialMapping?: ImportMapping, seedColumnDefaults = true): MappingWorkbench {
+		// Adaptive placement default: a vault running a folder-notes plugin has
+		// already chosen how parents should live — match it (pure helper over
+		// the enabled community-plugin ids).
+		// @ts-expect-error internal plugins API (enabledPlugins is a Set<string>)
+		const enabled: Set<string> = this.app.plugins?.enabledPlugins ?? new Set();
 		return new MappingWorkbench({
 			parsedData: this.parsedData!,
 			columnInfos: this.columnInfos,
@@ -1432,6 +1437,7 @@ export class ImportFlow {
 			defaultPresetId: 'browsable-framework',
 			initialMapping,
 			seedColumnDefaults,
+			defaultParentNote: preferredParentNote(enabled),
 			onChange: () => {
 				this.plugin.debug.trace('wizard', 'workbench-change', 'Workbench model changed');
 				// A user edit to a recipe-seeded workbench downgrades the fast-path

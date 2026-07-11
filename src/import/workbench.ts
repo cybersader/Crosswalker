@@ -149,6 +149,13 @@ export interface WorkbenchOptions {
 	 */
 	initialMapping?: ImportMapping;
 	/**
+	 * Adaptive parent-note default (owner): folder-note when the vault runs a
+	 * folder-notes plugin, else sibling. Applied only to a FRESH instantiation
+	 * (never overrides a draft's or vetted recipe's explicit choice). The
+	 * reason string renders as a hint under the placement chooser.
+	 */
+	defaultParentNote?: { value: 'sibling' | 'folder-note'; reason?: string };
+	/**
 	 * Seed the demoted "all columns" table with a default destination per column
 	 * (default true). A recognized-recipe fast path (spec §7m) passes `false` so the
 	 * workbench emits EXACTLY the vetted recipe — the recipe's frontmatter already
@@ -194,6 +201,14 @@ export class MappingWorkbench {
 		// Draft resume (spec §7i): rehydrate from the persisted mapping when present,
 		// otherwise instantiate the preset over the fresh detections.
 		this.mapping = opts.initialMapping ?? instantiate(this.currentPreset(), this.activeDetections());
+		// Adaptive default: only on a fresh instantiation, and only when the
+		// preset didn't set an explicit placement of its own.
+		if (!opts.initialMapping && opts.defaultParentNote && this.mapping.enrichment && this.mapping.enrichment.parent_note === undefined) {
+			this.mapping = {
+				...this.mapping,
+				enrichment: { ...this.mapping.enrichment, parent_note: opts.defaultParentNote.value },
+			};
+		}
 		// A recognized-recipe seed (seedColumnDefaults === false) emits exactly the
 		// vetted recipe; only auto-seed per-column defaults otherwise (spec §7m).
 		if (opts.seedColumnDefaults !== false) this.seedColumnDests();
@@ -753,10 +768,14 @@ export class MappingWorkbench {
 		const trees = buildParentPlacementPreview(paths);
 		const current = enrichment.parent_note ?? 'sibling';
 
+		const defaultChoice = this.opts.defaultParentNote?.value ?? 'sibling';
 		const options: { id: 'sibling' | 'folder-note'; label: string; nodes: PathTreeNode[]; disabled?: boolean; reason?: string }[] = [
-			{ id: 'sibling', label: 'Sibling (default)', nodes: trees.sibling },
-			{ id: 'folder-note', label: 'Folder note', nodes: trees.folderNote },
+			{ id: 'sibling', label: defaultChoice === 'sibling' ? 'Sibling (default)' : 'Sibling', nodes: trees.sibling },
+			{ id: 'folder-note', label: defaultChoice === 'folder-note' ? 'Folder note (default)' : 'Folder note', nodes: trees.folderNote },
 		];
+		if (this.opts.defaultParentNote?.reason) {
+			wrap.createDiv({ cls: 'crosswalker-wb-placement-reason', text: this.opts.defaultParentNote.reason });
+		}
 
 		const grid = wrap.createDiv({ cls: 'crosswalker-wb-placement-grid' });
 		for (const opt of options) {
