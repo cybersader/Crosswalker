@@ -93,6 +93,21 @@ export interface RecipeEnrichment {
 	facet_notes?: 'none' | 'tags-only' | 'notes';
 	parent_note?: 'sibling' | 'folder-note';
 	hub_note_folder?: string;
+	/**
+	 * Hierarchy hub / MOC notes (SchemaVer 1.4.0, 2026-07-11 ICSB audit gap #1).
+	 * `'notes'`: every folder level in the generated structure gets an index
+	 * note derived from the model (see src/generation/enrich.ts's step 4.5).
+	 * Default `'none'`.
+	 */
+	level_hubs?: 'none' | 'notes';
+	/**
+	 * Also append the `%% Waypoint %%` trigger comment to every folder-note /
+	 * hub note this import generates (SchemaVer 1.4.0). Opt-in, additive to
+	 * `level_hubs` — Crosswalker's own managed section stays the primary
+	 * mechanism; this lets the Waypoint community plugin additionally track
+	 * notes a user later adds to the folder by hand. Default `false`.
+	 */
+	waypoint_marker?: boolean;
 }
 
 /**

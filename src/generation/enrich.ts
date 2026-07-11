@@ -26,8 +26,32 @@
  *   4. Facet hubs — one synthetic note per facet VALUE (≥2 members), with a
  *                   managed `members` list, `kind: facet`, the facet tag, and an
  *                   H1 body. User prose below the H1 survives re-import.
- *   5. Stats      — edgeCount = parent links + children entries + member entries
- *                   (relocations are not edges — they don't count).
+ *   4.5 Level hubs — (2026-07-11, ICSB audit gap #1) `level_hubs: 'notes'`:
+ *                   every FOLDER level in the generated structure gets an
+ *                   index/MOC note, derived from the batch's own note paths
+ *                   (never a filesystem scan). A folder whose basename already
+ *                   matches an existing note in the batch (that note IS the
+ *                   concept whose children the folder holds — sibling OR
+ *                   folder-note shaped; basenames are the only identity that
+ *                   matters in this basename-only-link codebase) is HOSTED:
+ *                   that note gains a managed body "Contents" section listing
+ *                   the folder's direct children. A folder with no such note
+ *                   (a pure structural grouping folder, or the per-import
+ *                   root) gets a brand-new SYNTHETIC hub note (`kind: 'hub'`)
+ *                   at `<folder>/<folder>.md`. Root hub: when `rootFolder` is
+ *                   given but isn't itself a tracked ancestor folder of any
+ *                   note (the bare golden-vault test harness, which never
+ *                   simulates a destination basePath), a fallback top-level
+ *                   home note links every otherwise-parentless top-level
+ *                   folder/file — in real usage (generation-engine, basePath
+ *                   always set) `rootFolder` IS a tracked ancestor and is
+ *                   handled by the uniform per-folder pass with no special
+ *                   casing. Deterministic, re-import safe (managed body
+ *                   section is stripped-and-reappended by delimiter markers,
+ *                   same discipline as facet hubs' H1 split).
+ *   5. Stats      — edgeCount = parent links + children entries + member
+ *                   entries + level-hub child-link entries (relocations are
+ *                   not edges — they don't count).
  *
  * Links are basename-only in this codebase (`[[T1055]]`, never a full-path
  * form — `Address.wikilinkTarget`'s full-path form isn't consumed by anything
@@ -80,12 +104,24 @@ export interface EnrichNote {
 	renderedPath?: string;
 }
 
-/** A materialized facet hub note (pre-provenance — the caller attaches _crosswalker). */
+/** A materialized facet or level hub note (pre-provenance — the caller attaches _crosswalker). */
 export interface HubNote {
+	/**
+	 * Facet hubs (`result.hubs`): RELATIVE to `hub_note_folder` (basePath-
+	 * relative) — the caller re-prefixes with basePath. Level hubs
+	 * (`result.levelHubs.notes`): a FULL path already, matching `EnrichNote.path`'s
+	 * convention — the caller must NOT re-prefix. See each field's doc.
+	 */
 	path: string;
 	curie: string;
 	frontmatter: Record<string, unknown>;
 	body: string;
+	/**
+	 * Level hubs only: the same sorted wikilink list embedded in `body`'s
+	 * managed section, carried alongside so a re-import merge can rebuild the
+	 * fresh section without re-parsing `body`.
+	 */
+	childrenLinks?: string[];
 }
 
 /** One parent-note relocation the caller must physically apply to the vault. */
@@ -103,7 +139,22 @@ export interface EnrichmentResult {
 	childrenByPath: Map<string, string[]>;
 	/** Materialized facet hub notes (sorted by path). Empty unless facet_notes='notes'. */
 	hubs: HubNote[];
-	/** Graph edge count: parent links + children entries + member entries. */
+	/** Materialized level (hierarchy MOC) hubs. Empty unless level_hubs='notes'. */
+	levelHubs: {
+		/**
+		 * FINAL (post-relocation) path of a note that already exists in the batch
+		 * and hosts a folder's index content → sorted `[[...]]` list of that
+		 * folder's direct children, to append as a managed body section.
+		 */
+		hostedChildrenByPath: Map<string, string[]>;
+		/**
+		 * Brand-new synthetic hub notes for folders with no hosting note (sorted
+		 * by path). `path` is a FULL vault-relative path already — see `HubNote`'s
+		 * doc comment; callers must NOT re-prefix with basePath.
+		 */
+		notes: HubNote[];
+	};
+	/** Graph edge count: parent links + children entries + member entries + level-hub child-link entries. */
 	edgeCount: number;
 	/** Human-readable deviations (e.g. folder-note fallback), deterministic order. */
 	deviations: string[];
@@ -124,6 +175,19 @@ export interface EnrichOptions {
 	 * instead (design §3 step 2 v1 restriction). Default false.
 	 */
 	streamed?: boolean;
+	/**
+	 * The per-import destination folder (matches `GenerationOptions.basePath`),
+	 * a FULL vault-relative path with no trailing slash ('' for the vault
+	 * root). Used only by `level_hubs: 'notes'` to scope which folders are "in
+	 * this import" and to name the root/home hub note. Every `EnrichNote.path`
+	 * is expected to already be prefixed by this value in real usage (the
+	 * generation-engine callers always supply it); omit only in contexts (like
+	 * the bare golden-vault test harness) that never simulate a destination
+	 * folder — level hubs still work, they just fall back to a top-level home
+	 * note when `rootFolder` isn't a tracked ancestor of any note (see the
+	 * module header's step 4.5 note).
+	 */
+	rootFolder?: string;
 }
 
 /** Facet hub notes are materialized only for values with at least this many members. */
@@ -138,6 +202,7 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 	const result: EnrichmentResult = {
 		childrenByPath: new Map(),
 		hubs: [],
+		levelHubs: { hostedChildrenByPath: new Map(), notes: [] },
 		edgeCount: 0,
 		deviations: [],
 		relocations: [],
@@ -231,6 +296,9 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 		// Deterministic hub order.
 		result.hubs.sort((a, b) => cmp(a.path, b.path));
 	}
+
+	// --- 4.5. Level hub notes (hierarchy MOCs). ---
+	computeLevelHubs(notes, finalPath, byBasename, config, opts.ontology, opts.rootFolder, result);
 
 	return result;
 }
@@ -329,6 +397,193 @@ function computeRelocations(
 	}
 
 	return pathOverride;
+}
+
+// ---------------------------------------------------------------------------
+// Level hubs (hierarchy MOCs) — enrichment.level_hubs
+// ---------------------------------------------------------------------------
+
+/** One folder's link identity — how it's referenced when it's a CHILD of another folder. */
+interface FolderIdentity {
+	curie: string;
+	/** Link target (basename, no `.md`) — always `basename(folder)`. */
+	label: string;
+	/** Set when a note already in the batch hosts this folder's content (see step 4.5). */
+	hostedPath?: string;
+}
+
+/**
+ * Compute `result.levelHubs` (and fold its edges into `result.edgeCount`) for
+ * `level_hubs: 'notes'`. No-op otherwise. See the module header's step 4.5 for
+ * the hosted-vs-synthetic rule and the root-hub fallback. Pure; mutates only
+ * `result`.
+ */
+function computeLevelHubs(
+	notes: EnrichNote[],
+	finalPath: (note: EnrichNote) => string,
+	byBasename: Map<string, EnrichNote>,
+	config: RecipeEnrichment,
+	ontology: string,
+	rootFolder: string | undefined,
+	result: EnrichmentResult,
+): void {
+	if (config.level_hubs !== 'notes') return;
+
+	const entries = notes.map((n) => ({ note: n, path: finalPath(n) }));
+	if (entries.length === 0) return;
+
+	const root = rootFolder !== undefined ? stripSlashes(rootFolder) : undefined;
+	// `root` scopes folder collection ONLY when it's a genuine ancestor of at
+	// least one note (the real generation-engine case: every note path is
+	// already basePath-prefixed). When it isn't (the bare golden-vault test
+	// harness, which never simulates a basePath and instead passes a bare
+	// LABEL for the root-hub fallback below), scoping by it would exclude
+	// every real folder — so scoping is a no-op and every ancestor folder is
+	// collected unscoped instead; the fallback branch still fires correctly
+	// off `!folders.has(root)`.
+	const rootIsTrackedAncestor =
+		root !== undefined && root !== '' && entries.some((e) => e.path === root || e.path.startsWith(`${root}/`));
+	const inScope = (folder: string): boolean =>
+		!rootIsTrackedAncestor || folder === root || folder.startsWith(`${root}/`);
+
+	// Every ancestor folder of every note's FINAL path, scoped to the import root.
+	const folders = new Set<string>();
+	for (const e of entries) {
+		let dir = dirOf(e.path);
+		while (dir !== '' && inScope(dir)) {
+			folders.add(dir);
+			dir = dirOf(dir);
+		}
+	}
+	if (folders.size === 0 && (root === undefined || root === '')) return;
+
+	// Direct subfolders, one pass.
+	const subfoldersOf = new Map<string, string[]>();
+	for (const f of folders) {
+		const parent = dirOf(f);
+		if (folders.has(parent)) {
+			const arr = subfoldersOf.get(parent);
+			if (arr) arr.push(f);
+			else subfoldersOf.set(parent, [f]);
+		}
+	}
+	// Direct file children per folder — excludes (a) a folder's own hosting
+	// note (basename equals the folder's own basename; see step 4.5) and (b)
+	// a note that hosts a SIBLING subfolder instead (e.g. `T1078.md` living
+	// directly inside a shared parent folder alongside a `T1078/` subfolder —
+	// the exact production shape: a sibling-placed parent_note sitting beside
+	// its own children folder). Without (b), that note would be counted BOTH
+	// as a plain child file AND — via the subfolder's identity, which
+	// resolves to the very same note — a second time as "the T1078 folder",
+	// producing a duplicate `[[T1078]]` entry in the parent's Contents list.
+	const subfolderLabelsOf = new Map<string, Set<string>>();
+	for (const [parent, subs] of subfoldersOf) {
+		subfolderLabelsOf.set(parent, new Set(subs.map((g) => basename(g))));
+	}
+	const filesOf = new Map<string, typeof entries>();
+	for (const e of entries) {
+		const dir = dirOf(e.path);
+		if (!folders.has(dir)) continue;
+		const lbl = basename(e.path);
+		if (lbl === basename(dir)) continue;
+		if (subfolderLabelsOf.get(dir)?.has(lbl)) continue;
+		const arr = filesOf.get(dir);
+		if (arr) arr.push(e);
+		else filesOf.set(dir, [e]);
+	}
+
+	// Pass A: every folder's link identity — hosted by an existing same-
+	// basename note (wherever it currently lives), or synthetic.
+	const identity = new Map<string, FolderIdentity>();
+	const identityOf = (f: string): FolderIdentity => {
+		const label = basename(f);
+		const cached = identity.get(f);
+		if (cached) return cached;
+		const host = byBasename.get(label);
+		const id: FolderIdentity = host
+			? { curie: host.curie, label, hostedPath: finalPath(host) }
+			: { curie: `${ontology}:hub/${slugPath(f)}`, label };
+		identity.set(f, id);
+		return id;
+	};
+
+	// Pass B: direct children (sorted by curie), materialize.
+	const sortedFolders = [...folders].sort(cmp);
+	for (const f of sortedFolders) {
+		const id = identityOf(f);
+		const childRefs: { curie: string; label: string }[] = [];
+		for (const e of filesOf.get(f) ?? []) childRefs.push({ curie: e.note.curie, label: basename(e.path) });
+		for (const g of subfoldersOf.get(f) ?? []) {
+			const gid = identityOf(g);
+			childRefs.push({ curie: gid.curie, label: gid.label });
+		}
+		childRefs.sort((a, b) => cmp(a.curie, b.curie));
+		const links = childRefs.map((c) => `[[${c.label}]]`);
+		result.edgeCount += links.length;
+
+		if (id.hostedPath) {
+			result.levelHubs.hostedChildrenByPath.set(id.hostedPath, links);
+		} else {
+			result.levelHubs.notes.push({
+				path: joinMd(f, id.label),
+				curie: id.curie,
+				frontmatter: { curie: id.curie, kind: 'hub', children: links },
+				body: `# ${id.label}\n\n${buildManagedChildrenSection('Contents', links)}`,
+				childrenLinks: links,
+			});
+		}
+	}
+
+	// Root/home hub fallback: only when `rootFolder` was given a name but isn't
+	// itself a tracked ancestor folder (no note path is actually prefixed by
+	// it) — the bare golden-vault harness case (module header's step 4.5 note).
+	// In real usage `root` IS a tracked ancestor and was already handled above
+	// by the uniform per-folder pass, so this never double-creates a root hub.
+	if (root !== undefined && root !== '' && !folders.has(root)) {
+		const label = basename(root);
+		const childRefs: { curie: string; label: string }[] = [];
+		// Top-level folders first, so their (possibly hosted) labels are known
+		// before filtering top-level files — a folder's HOST note (e.g. sibling
+		// `T1078.md` beside top-level `T1078/`) must be represented ONCE, via
+		// the folder's own identity, not also as an unrelated top-level file.
+		const topFolders = sortedFolders.filter((f) => !folders.has(dirOf(f)));
+		const topFolderLabels = new Set(topFolders.map((f) => identityOf(f).label));
+		for (const f of topFolders) {
+			const id = identityOf(f);
+			childRefs.push({ curie: id.curie, label: id.label });
+		}
+		for (const e of entries) {
+			if (dirOf(e.path) !== '') continue;
+			const lbl = basename(e.path);
+			if (topFolderLabels.has(lbl)) continue; // already represented via its folder's identity above
+			childRefs.push({ curie: e.note.curie, label: lbl });
+		}
+		if (childRefs.length > 0) {
+			childRefs.sort((a, b) => cmp(a.curie, b.curie));
+			const links = childRefs.map((c) => `[[${c.label}]]`);
+			result.edgeCount += links.length;
+			const host = byBasename.get(label);
+			if (host) {
+				result.levelHubs.hostedChildrenByPath.set(finalPath(host), links);
+			} else {
+				const curie = `${ontology}:hub/${slug(root)}`;
+				result.levelHubs.notes.push({
+					path: `${label}.md`,
+					curie,
+					frontmatter: { curie, kind: 'hub', children: links },
+					body: `# ${label}\n\n${buildManagedChildrenSection('Contents', links)}`,
+					childrenLinks: links,
+				});
+			}
+		}
+	}
+
+	result.levelHubs.notes.sort((a, b) => cmp(a.path, b.path));
+}
+
+/** Slug every segment of a folder path independently, joined the same way (a readable multi-segment curie local part). */
+function slugPath(path: string): string {
+	return path.split('/').map(slug).join('/');
 }
 
 /** Directory a path lives in ('' for a root-level path). */
@@ -478,4 +733,72 @@ export function mergeHubBody(existingBody: string, freshBody: string): string {
 	const userProse = lines.slice(h1Index + 1).join('\n').replace(/^\n+/, '').replace(/\n+$/, '');
 	const freshH1 = freshBody.replace(/\n+$/, '');
 	return userProse ? `${freshH1}\n\n${userProse}\n` : `${freshH1}\n`;
+}
+
+// ---------------------------------------------------------------------------
+// Level-hub managed body sections + the Waypoint marker (re-import safety)
+// ---------------------------------------------------------------------------
+
+const CHILDREN_SECTION_START = '<!-- crosswalker:children:start -->';
+const CHILDREN_SECTION_END = '<!-- crosswalker:children:end -->';
+
+/**
+ * Build a level hub's managed "Contents" section: a heading + a bullet list of
+ * `[[...]]` wikilinks, wrapped in HTML-comment markers (invisible in reading
+ * view) so `mergeManagedChildrenSection` can find-and-replace exactly this
+ * block on re-import without disturbing anything else in the note.
+ */
+export function buildManagedChildrenSection(heading: string, links: string[]): string {
+	const list = links.length > 0 ? links.map((l) => `- ${l}`).join('\n') : '*(nothing yet)*';
+	return `${CHILDREN_SECTION_START}\n## ${heading}\n${list}\n${CHILDREN_SECTION_END}\n`;
+}
+
+/**
+ * Merge a freshly-built managed children section into an existing body,
+ * replacing ONLY the delimited block (identity by markers, not by heading
+ * text — a user renaming "## Contents" doesn't break the next merge). Any
+ * text outside the markers — including a user's own H1/title, prose before or
+ * after the block, or (when Waypoint has expanded it) a `%% Begin Waypoint %%`
+ * block — survives untouched. No existing block → the section is appended
+ * after whatever's already there (first-import shape: `# Title\n\n<section>`
+ * still applies via the caller; this function only handles the block itself).
+ */
+export function mergeManagedChildrenSection(existingBody: string, freshSection: string): string {
+	// Leading blank lines carry no meaning (e.g. `stripFrontmatterBlock` always
+	// leaves one — the blank-line separator `buildNoteContent` puts between the
+	// closing `---` and the body) — strip them so a merge never drifts the
+	// body's leading whitespace across successive re-imports.
+	const normalized = existingBody.replace(/\r\n/g, '\n').replace(/^\n+/, '');
+	const startIdx = normalized.indexOf(CHILDREN_SECTION_START);
+	if (startIdx === -1) {
+		const trimmed = normalized.replace(/\n+$/, '');
+		return trimmed ? `${trimmed}\n\n${freshSection}` : freshSection;
+	}
+	const endIdx = normalized.indexOf(CHILDREN_SECTION_END, startIdx);
+	if (endIdx === -1) {
+		// Malformed (a start marker with no matching end) — treat as no managed
+		// block rather than guess where it should have ended.
+		const trimmed = normalized.replace(/\n+$/, '');
+		return `${trimmed}\n\n${freshSection}`;
+	}
+	const before = normalized.slice(0, startIdx).replace(/\n+$/, '');
+	const after = normalized.slice(endIdx + CHILDREN_SECTION_END.length).replace(/^\n+/, '');
+	const rebuilt = before ? `${before}\n\n${freshSection}` : freshSection;
+	return after ? `${rebuilt}\n${after}` : rebuilt;
+}
+
+/**
+ * Append the `%% Waypoint %%` trigger comment to a hub/folder-note body when
+ * it isn't already present — idempotent across re-imports, and safe once the
+ * Waypoint plugin has itself expanded the trigger into a `%% Begin Waypoint %%
+ * … %% End Waypoint %%` block (that expanded form also matches, so it is never
+ * stripped or duplicated). Additive and opt-in (2026-07-11 ICSB audit §4
+ * verdict): Crosswalker's own managed children section stays the primary,
+ * always-on connectivity mechanism; this only lets Waypoint additionally track
+ * notes a user later adds to the folder by hand.
+ */
+export function ensureWaypointMarker(body: string): string {
+	if (/%%\s*(Begin\s+)?Waypoint\s*%%/i.test(body)) return body;
+	const trimmed = body.replace(/\n+$/, '');
+	return `${trimmed}\n\n%% Waypoint %%\n`;
 }

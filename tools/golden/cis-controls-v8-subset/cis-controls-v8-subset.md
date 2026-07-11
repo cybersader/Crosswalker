@@ -1,23 +1,24 @@
 ---
-curie: "mitre-attack-persistence-subset:T1543"
+curie: "cis-controls-v8-subset:hub/cis-controls-v8-subset"
+kind: hub
 children:
-  - "[[T1543.003]]"
+  - "[[CIS]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:
-    file: mitre-attack-persistence-subset.csv
+    file: cis-controls-v8-subset.csv
   produced_at: "1970-01-01T00:00:00.000Z"
   producer:
     kind: plugin-engine
     name: crosswalker-plugin
     version: golden
   recipe:
-    id: mitre-attack-persistence-subset
+    id: cis-controls-v8-subset
 ---
 
-# mitre-attack-persistence-subset:T1543
+# cis-controls-v8-subset
 
 <!-- crosswalker:children:start -->
 ## Contents
-- [[T1543.003]]
+- [[CIS]]
 <!-- crosswalker:children:end -->

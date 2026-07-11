@@ -1,7 +1,12 @@
 ---
-curie: "mitre-attack-persistence-subset:T1543"
+curie: "mitre-attack-persistence-subset:hub/mitre-attack-persistence-subset"
+kind: hub
 children:
-  - "[[T1543.003]]"
+  - "[[T1078]]"
+  - "[[T1098]]"
+  - "[[T1136]]"
+  - "[[T1505]]"
+  - "[[T1543]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:
@@ -15,9 +20,13 @@ _crosswalker:
     id: mitre-attack-persistence-subset
 ---
 
-# mitre-attack-persistence-subset:T1543
+# mitre-attack-persistence-subset
 
 <!-- crosswalker:children:start -->
 ## Contents
-- [[T1543.003]]
+- [[T1078]]
+- [[T1098]]
+- [[T1136]]
+- [[T1505]]
+- [[T1543]]
 <!-- crosswalker:children:end -->

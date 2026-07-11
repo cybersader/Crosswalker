@@ -163,6 +163,14 @@ export interface WorkbenchOptions {
 	 * the recipe author deliberately omitted.
 	 */
 	seedColumnDefaults?: boolean;
+	/**
+	 * True when the vault has a Waypoint-style community plugin enabled
+	 * (`detectWaypointPlugin`, 2026-07-11 ICSB audit §4 verdict). Gates the
+	 * Connections card's opt-in "also mark folder notes for Waypoint" toggle —
+	 * offered only when it would actually do something. Default false (no
+	 * toggle shown) when omitted.
+	 */
+	waypointDetected?: boolean;
 	/** Notified after any model change (for draft save / state mirroring). */
 	onChange: () => void;
 }
@@ -739,6 +747,35 @@ export class MappingWorkbench {
 				? `Groups notes by ${facetCols.join(', ')} and gathers each value under one hub note.`
 				: 'Toggle the Tags shape on a mapping above to unlock hub notes.',
 		});
+
+		// Folder index notes (level hubs, 2026-07-11 ICSB audit gap #1) — every
+		// folder in the generated structure gets an index note derived from the
+		// model, so browsing the vault or the graph never dead-ends.
+		const hubsRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
+		const hubsLabel = hubsRow.createEl('label', { cls: 'crosswalker-wb-connection-toggle' });
+		const hubsCb = hubsLabel.createEl('input', { type: 'checkbox' });
+		hubsCb.checked = enrichment.level_hubs === 'notes';
+		hubsLabel.createSpan({ text: 'Create folder index notes' });
+		hubsCb.addEventListener('change', () => this.updateEnrichment({ level_hubs: hubsCb.checked ? 'notes' : 'none' }));
+		hubsRow.createDiv({
+			cls: 'crosswalker-wb-connection-hint',
+			text: 'Every folder gets an index note listing what is directly inside it, so browsing the vault or the graph never dead-ends. Folders that already have their own note (a parent living inside its own folder) get the listing added there instead of a new file.',
+		});
+
+		// Waypoint marker — additive, opt-in, offered only when a Waypoint-style
+		// plugin is actually enabled in this vault (2026-07-11 ICSB audit §4).
+		if (this.opts.waypointDetected) {
+			const waypointRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
+			const waypointLabel = waypointRow.createEl('label', { cls: 'crosswalker-wb-connection-toggle' });
+			const waypointCb = waypointLabel.createEl('input', { type: 'checkbox' });
+			waypointCb.checked = enrichment.waypoint_marker === true;
+			waypointLabel.createSpan({ text: 'Also mark folder notes for Waypoint' });
+			waypointCb.addEventListener('change', () => this.updateEnrichment({ waypoint_marker: waypointCb.checked }));
+			waypointRow.createDiv({
+				cls: 'crosswalker-wb-connection-hint',
+				text: 'Crosswalker already generates its own index notes above. This additionally lets Waypoint track notes you add to a folder by hand, later.',
+			});
+		}
 
 		// Parent-note placement — only a live question when a ragged/variadic
 		// hierarchy exists (variadic-split design §4).

@@ -546,10 +546,12 @@ also_emit:
 | `facet_notes` | `none` \| `tags-only` \| `notes` | `none` | `none`: nothing beyond per-note facet tags. `tags-only`: facet tags only, no hub notes. `notes`: one synthetic hub note per facet **value** with a managed `members` list (sorted by curie), `kind: facet`, the facet tag, and an H1 body; user prose below the H1 survives re-import. Hubs materialize only for values with ≥2 members. |
 | `parent_note` | `sibling` \| `folder-note` | `sibling` | Where a concept that is also a parent lives. `sibling`: `X.md` beside `X/`. `folder-note`: `X/X.md` — the batch enrichment pass relocates evidence-based (only parents whose children actually nest under their folder), resolves re-import write targets by curie so no duplicates arise, and relocates back symmetrically when set to `sibling` again. Streamed sources fall back to sibling with a deviation note (eager batch required). |
 | `hub_note_folder` | string | *(output root)* | Optional vault-relative folder for materialized facet hub notes. |
+| `level_hubs` | `none` \| `notes` | `none` | Added SchemaVer 1.4.0 (§4.9). Hierarchy hub/MOC index notes — one per folder level. |
+| `waypoint_marker` | boolean | `false` | Added SchemaVer 1.4.0 (§4.9). Opt-in `%% Waypoint %%` marker on generated folder-note/hub notes. |
 
-**Stats**: `GenerationResult.edgeCount` = parent links + children entries + facet-hub member entries — the review screen's "K graph edges" line (a run shipping 0 edges is a visible warning, not a silent dead graph).
+**Stats**: `GenerationResult.edgeCount` = parent links + children entries + facet-hub member entries + level-hub child-link entries — the review screen's "K graph edges" line (a run shipping 0 edges is a visible warning, not a silent dead graph).
 
-**Preset defaults** (stamped by `instantiate` onto `ImportMapping.enrichment`, then serialized to `target.enrichment`): `browsable-framework` → `children_lists: true`, `facet_notes: "notes"`. The hyperconnected default IS the default.
+**Preset defaults** (stamped by `instantiate` onto `ImportMapping.enrichment`, then serialized to `target.enrichment`): `browsable-framework` → `children_lists: true`, `facet_notes: "notes"`, `level_hubs: "notes"`. The hyperconnected default IS the default.
 
 ```yaml
 target:
@@ -557,9 +559,26 @@ target:
     children_lists: true
     facet_notes: notes
     parent_note: sibling
+    level_hubs: notes
 ```
 
-**Scope**: recipe + preset in this round — the workbench UI knobs for enrichment and the review-screen edge count land in a follow-up UX round. Folder-note relocation (step 2 of the design) is a separate chunk.
+**Scope**: recipe + preset land here; the workbench Connections-card UI knobs and the review-screen edge count are wired (§4.9 for the level-hubs/Waypoint-marker round). Folder-note relocation (step 2 of the design) is implemented in `src/generation/enrich.ts`.
+
+### §4.9 `target.enrichment.level_hubs` + `waypoint_marker` (added 2026-07-11 — SchemaVer 1.4.0; additive)
+
+Closes the [ICSB emitter-controls gap audit](/crosswalker/agent-context/zz-log/)'s #1-priority gap: Crosswalker had facet hub notes (value-grouping) but no hierarchy-*level* index/MOC concept, unlike the ICSB pipeline's `hubs.*` (Home + per-level MOCs, derived from the canonical model).
+
+**`level_hubs: 'notes'`** — every FOLDER level in the generated structure gets an index note, derived from the batch's own rendered note paths (never a filesystem scan):
+
+- **Hosted**: when a folder's own concept note already exists in the batch (sibling `X.md` beside `X/`, or folder-note `X/X.md` — basename is the only identity that matters, since links in this codebase are basename-only), that note gains a managed body **"Contents"** section listing the folder's direct children (subfolders' hub identities + sibling notes, sorted by curie, as `[[wikilinks]]`).
+- **Synthetic**: a folder with no such note (a pure structural grouping folder, or the per-import root) gets a brand-new hub note (`kind: 'hub'`, curie `<ontology>:hub/<folder-path-slug>`) at `<folder>/<folder>.md`.
+- **Root hub**: the per-import root folder (`GenerationOptions.basePath`) gets a hub too, named after the folder — the import's "home" note.
+- Re-import safe: the managed section is delimited by HTML-comment markers and stripped-and-reappended on regeneration (same discipline as `facet_notes`'s H1 split) — user prose elsewhere in the note survives.
+- Default `'notes'` on the `browsable-framework` preset (the connectedness mandate, §7k of the [shape-first wizard spec](/crosswalker/agent-context/zz-log/)).
+
+**`waypoint_marker: true`** — additionally appends the `%% Waypoint %%` trigger comment to every folder-note/hub note this import generates, so the [Waypoint community plugin](https://github.com/IdreesInc/Waypoint) can *also* track notes a user later adds to that folder by hand. Idempotent (never duplicates or strips a `%% Begin Waypoint %%` block Waypoint has already expanded). Additive, not a replacement — Crosswalker's own generated section stays the primary, always-on mechanism (Waypoint's directory-scan approach can't reconstruct the curated, edge-derived grouping Crosswalker's own model produces). Default `false`; the workbench only offers the toggle when a Waypoint-style plugin is detected enabled.
+
+**Backward compatibility**: purely additive (SchemaVer ADDITION). Recipes without these keys validate and render unchanged. Spec URI did NOT bump.
 
 ## §5 Junction note 13-field schema (per evidence-link edge)
 

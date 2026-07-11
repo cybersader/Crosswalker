@@ -641,6 +641,22 @@ export function toFolderNotePaths(paths: string[]): string[] {
 }
 
 /**
+ * Case-insensitive plugin-id match against a known-id set plus substring
+ * fallbacks (a manifest id like `aidenlx-folder-note` or a fork's own naming
+ * still matches on `folder-note` alone). Shared by every enabled-plugin
+ * detection helper in this module — `preferredParentNote` and
+ * `detectWaypointPlugin` both match the same way; only the id set differs.
+ */
+function matchesPluginId(enabledPluginIds: Iterable<string>, knownIds: Set<string>, substrings: string[]): boolean {
+	for (const id of enabledPluginIds) {
+		const norm = id.toLowerCase();
+		if (knownIds.has(norm)) return true;
+		if (substrings.some((s) => norm.includes(s))) return true;
+	}
+	return false;
+}
+
+/**
  * Adaptive parent-note default (owner: "if they're using a folder-notes
  * related plugin, we should probably make it the default"): when the vault
  * runs a folder-note-style community plugin, the user has already chosen how
@@ -654,13 +670,23 @@ export function preferredParentNote(enabledPluginIds: Iterable<string>): {
 	// real, re-import safe, and contained parents read better. Detecting a
 	// folder-notes plugin only sharpens the explanation shown to the user.
 	const KNOWN = new Set(['folder-notes', 'folder-note-plugin', 'folder-note-core', 'aidenlx-folder-note', 'waypoint']);
-	for (const id of enabledPluginIds) {
-		const norm = id.toLowerCase();
-		if (KNOWN.has(norm) || norm.includes('folder-note') || norm.includes('foldernote')) {
-			return { value: 'folder-note', reason: 'Matches the folder notes plugin this vault uses.' };
-		}
+	if (matchesPluginId(enabledPluginIds, KNOWN, ['folder-note', 'foldernote'])) {
+		return { value: 'folder-note', reason: 'Matches the folder notes plugin this vault uses.' };
 	}
 	return { value: 'folder-note' };
+}
+
+/**
+ * Detect a Waypoint-style community plugin (2026-07-11 ICSB audit §4 verdict):
+ * gates the workbench's opt-in "also mark folder notes for Waypoint" toggle.
+ * Narrower and orthogonal to `preferredParentNote`'s folder-note detection —
+ * that treats an enabled Waypoint as evidence for the folder-note PLACEMENT
+ * default; this is specifically about whether to offer the complementary
+ * marker toggle at all (level hubs stay Crosswalker's own primary mechanism
+ * regardless of this result — see the audit's "generate-our-own" verdict).
+ */
+export function detectWaypointPlugin(enabledPluginIds: Iterable<string>): boolean {
+	return matchesPluginId(enabledPluginIds, new Set(['waypoint']), ['waypoint']);
 }
 
 /**

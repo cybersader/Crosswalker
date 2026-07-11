@@ -350,6 +350,16 @@
 	margin-bottom: 1em;
 }
 
+.crosswalker-plan-line {
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	margin: 0.25em 0 1em 0;
+}
+
+.crosswalker-plan-line-note {
+	color: var(--text-muted);
+}
+
 .crosswalker-stat-card {
 	padding: 0.65em 0.75em;
 	background: var(--background-secondary);

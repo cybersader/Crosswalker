@@ -4,7 +4,7 @@
   "title": "Crosswalker Import Recipe",
   "description": "The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.3.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design; 1.3.0 (2026-07-10, v0.1.6) added the optional `target.also_emit.frontmatter.managed_links` (list-valued managed wikilink arrays, for multi-value link columns) and the optional `target.enrichment` block (batch-scope Pass 1.5 enrichment: children lists, facet hub notes, parent-note placement) per the 2026-07-10 batch-enrichment design. All existing recipes without these keys continue to validate.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.4.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design; 1.3.0 (2026-07-10, v0.1.6) added the optional `target.also_emit.frontmatter.managed_links` (list-valued managed wikilink arrays, for multi-value link columns) and the optional `target.enrichment` block (batch-scope Pass 1.5 enrichment: children lists, facet hub notes, parent-note placement) per the 2026-07-10 batch-enrichment design; 1.4.0 (2026-07-11) added the optional `target.enrichment.level_hubs` (hierarchy hub/MOC index notes, one per folder level) and `target.enrichment.waypoint_marker` (opt-in `%% Waypoint %%` marker on generated folder-note/hub notes) per the 2026-07-11 ICSB emitter-controls gap audit. All existing recipes without these keys continue to validate.",
 
   "$defs": {
     "mechanism": {
@@ -191,6 +191,17 @@
         "hub_note_folder": {
           "type": "string",
           "description": "Optional vault-relative folder for materialized facet hub notes. When omitted, hub notes land at the output root beside the imported concepts."
+        },
+        "level_hubs": {
+          "type": "string",
+          "enum": ["none", "notes"],
+          "default": "none",
+          "description": "Hierarchy hub/MOC index notes (additive SchemaVer 1.4.0, 2026-07-11 ICSB emitter-controls gap audit). 'none': no hierarchy index notes. 'notes': every folder level in the generated structure gets an index note derived from the model, never a filesystem scan. A folder whose own concept note already exists in the batch (sibling or folder-note shaped) HOSTS its index: that note gains a managed body 'Contents' section listing the folder's direct children. A folder with no such note (a pure structural grouping folder, or the per-import root) gets a brand-new hub note (`kind: 'hub'`) at `<folder>/<folder>.md`. Deterministic and re-import safe: the managed section is stripped and reappended by delimiter markers, same discipline as `facet_notes`."
+        },
+        "waypoint_marker": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also append the `%% Waypoint %%` trigger comment to every folder-note/hub note this import generates (additive SchemaVer 1.4.0). Opt-in and additive to `level_hubs` — Crosswalker's own managed section stays the primary, always-on connectivity mechanism; this only lets the Waypoint community plugin additionally track notes a user later adds to that folder by hand. Idempotent across re-imports; never strips a `%% Begin Waypoint %%` block Waypoint itself has already expanded."
         }
       }
     },

@@ -296,6 +296,10 @@ export interface Enrichment {
 	parent_note?: 'sibling' | 'folder-note';
 	/** Optional folder for materialized facet hub notes (default: output root). */
 	hub_note_folder?: string;
+	/** Hierarchy hub/MOC notes: 'none' (default) | 'notes' (every folder level gets an index note, 2026-07-11 ICSB audit gap #1). */
+	level_hubs?: 'none' | 'notes';
+	/** Also append the `%% Waypoint %%` trigger comment to every folder-note/hub note (opt-in, default false). */
+	waypoint_marker?: boolean;
 }
 
 /**

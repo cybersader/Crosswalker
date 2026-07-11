@@ -240,10 +240,22 @@ for (const spec of SPECS) {
 describe('golden invariants — MITRE connectivity (no orphan sub-techniques)', () => {
 	let vault: Vault;
 	let edgeCount: number;
+	let hostedLevelHubLinks: number;
 	beforeAll(async () => {
 		const built = await buildVaultDetailed(corpusPath('mitre-attack-persistence-subset.csv'));
 		vault = built.vault;
 		edgeCount = built.enrichment.edgeCount;
+		// Level hubs (2026-07-11 ICSB audit gap #1) intentionally double-count: a
+		// "hosted" family note (T1078.md etc.) gets its children counted once by
+		// children_lists (the managed `children` frontmatter array) AND once more
+		// by the level-hub pass (the same links, restated in a managed BODY
+		// "Contents" section) — two distinct graph-visible artifacts for the same
+		// relation, same sum-not-dedupe convention enrich()'s edgeCount already
+		// uses for parent-link + children-list. Body content isn't frontmatter, so
+		// the test's own frontmatter-only scan below can't see it directly; read
+		// it straight off the enrichment result instead.
+		hostedLevelHubLinks = 0;
+		for (const links of built.enrichment.levelHubs.hostedChildrenByPath.values()) hostedLevelHubLinks += links.length;
 	});
 
 	it('every sub-technique (T*.0*) has a resolvable parent link', () => {
@@ -291,8 +303,11 @@ describe('golden invariants — MITRE connectivity (no orphan sub-techniques)', 
 		expect(notesWithChildren).toBeGreaterThanOrEqual(5);
 		expect(childEdges).toBeGreaterThan(0);
 		// edgeCount = parent links + children entries (+ facet members; MITRE has 0
-		// facet hubs, its `tactic` column is single-valued and not a facet).
-		expect(edgeCount).toBe(parentLinks + childEdges);
+		// facet hubs, its `tactic` column is single-valued and not a facet) + the
+		// level-hub hosted families' restated child links (see beforeAll's note —
+		// intentional double count, a second graph-visible artifact for the same
+		// relation).
+		expect(edgeCount).toBe(parentLinks + childEdges + hostedLevelHubLinks);
 		expect(edgeCount).toBeGreaterThan(parentLinks); // children strictly added edges
 	});
 

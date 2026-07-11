@@ -272,3 +272,124 @@ describe('Pass 1.5 folder-note relocation — re-import identity (design §4, th
 		]);
 	});
 });
+
+// ===========================================================================
+// Level hubs + Waypoint marker — end-to-end (2026-07-11 ICSB audit gaps #1/#3)
+// ===========================================================================
+
+// FOLDER_NOTE_RECIPE's shape (T1078 nests sub-techniques under T1078/) is what
+// exercises a level hub HOSTED by a sibling parent note; level_hubs is
+// independent of parent_note (works whether the parent is sibling or
+// folder-note shaped — see enrich.ts's byBasename-based host detection).
+const LEVEL_HUB_RECIPE: Recipe = {
+	...FOLDER_NOTE_RECIPE,
+	recipe: 'attack-hubs',
+	source: { ontology: 'attack-hubs', levels: ['tail', 'leaf'] },
+	target: {
+		...FOLDER_NOTE_RECIPE.target,
+		enrichment: { children_lists: true, facet_notes: 'none', parent_note: 'sibling', level_hubs: 'notes' },
+	},
+};
+
+function levelHubRecipe(waypointMarker: boolean): Recipe {
+	return {
+		...LEVEL_HUB_RECIPE,
+		target: { ...LEVEL_HUB_RECIPE.target, enrichment: { ...LEVEL_HUB_RECIPE.target.enrichment, waypoint_marker: waypointMarker } },
+	};
+}
+
+describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
+	it('T1078.md (sibling parent) hosts a managed Contents section listing its sub-techniques', async () => {
+		const { app, files } = makeApp();
+		const result = await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+
+		expect(result.edgeCount).toBeGreaterThan(0);
+		const t1078 = files.get('Frameworks/T1078.md')!;
+		expect(t1078).toContain('## Contents');
+		expect(t1078).toContain('- [[T1078.001]]');
+		expect(t1078).toContain('- [[T1078.002]]');
+		expect(t1078).toContain('children:'); // children_lists frontmatter still present too
+	});
+
+	it('a pure structural root folder with no matching concept note gets a synthetic hub note', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+
+		// "Frameworks" is the basePath; nothing in this fixture is named "Frameworks",
+		// so it's synthetic — the import's home note.
+		const home = files.get('Frameworks/Frameworks.md')!;
+		expect(home).toBeDefined();
+		expect(home).toContain('kind: hub');
+		expect(home).toContain('# Frameworks');
+		expect(home).toContain('- [[T1078]]');
+	});
+
+	it('import twice → byte-identical vault (level hubs included)', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		const first = normalize(files);
+		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		const second = normalize(files);
+		expect(second).toEqual(first);
+	});
+
+	it('user prose on the synthetic home note survives re-import; the Contents section regenerates', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+
+		const homePath = 'Frameworks/Frameworks.md';
+		const original = files.get(homePath)!;
+		const edited = original
+			.replace('# Frameworks', '# Frameworks\n\nWelcome to my compliance vault.')
+			.replace('kind: hub', 'kind: hub\nreviewer: alice');
+		files.set(homePath, edited);
+
+		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		const after = files.get(homePath)!;
+
+		expect(after).toContain('Welcome to my compliance vault.'); // prose survived
+		expect(after).toContain('reviewer: alice'); // user frontmatter survived
+		expect(after).toContain('- [[T1078]]'); // managed section regenerated
+		expect(after.match(/crosswalker:children:start/g)?.length).toBe(1); // not duplicated
+	});
+
+	it('waypoint_marker: false (default) never appends the trigger comment', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), levelHubRecipe(false), OPTS);
+		expect(files.get('Frameworks/T1078.md')).not.toContain('%% Waypoint %%');
+		expect(files.get('Frameworks/Frameworks.md')).not.toContain('%% Waypoint %%');
+	});
+
+	it('waypoint_marker: true appends the trigger comment to hosted AND synthetic hub notes, idempotently', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+		expect(files.get('Frameworks/T1078.md')).toContain('%% Waypoint %%');
+		expect(files.get('Frameworks/Frameworks.md')).toContain('%% Waypoint %%');
+
+		// Re-import: still exactly one marker each, never duplicated.
+		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+		const t1078Markers = (files.get('Frameworks/T1078.md')!.match(/%% Waypoint %%/g) ?? []).length;
+		const homeMarkers = (files.get('Frameworks/Frameworks.md')!.match(/%% Waypoint %%/g) ?? []).length;
+		expect(t1078Markers).toBe(1);
+		expect(homeMarkers).toBe(1);
+	});
+
+	it('does not strip a block Waypoint has already expanded on the home note', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+
+		// Simulate Waypoint itself having expanded the marker into its listing.
+		const homePath = 'Frameworks/Frameworks.md';
+		const withExpansion = files.get(homePath)!.replace(
+			'%% Waypoint %%',
+			'%% Begin Waypoint %%\n- [[Some Hand-Added Note]]\n%% End Waypoint %%',
+		);
+		files.set(homePath, withExpansion);
+
+		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+		const after = files.get(homePath)!;
+		expect(after).toContain('%% Begin Waypoint %%');
+		expect(after).toContain('[[Some Hand-Added Note]]');
+		expect(after).not.toContain('%% Waypoint %%\n\n%% Waypoint %%'); // no duplicate re-append
+	});
+});

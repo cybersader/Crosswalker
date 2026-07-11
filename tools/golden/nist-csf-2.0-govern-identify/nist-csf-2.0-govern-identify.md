@@ -1,23 +1,26 @@
 ---
-curie: "mitre-attack-persistence-subset:T1543"
+curie: "nist-csf-2-0-govern-identify:hub/nist-csf-2-0-govern-identify"
+kind: hub
 children:
-  - "[[T1543.003]]"
+  - "[[GV]]"
+  - "[[ID]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:
-    file: mitre-attack-persistence-subset.csv
+    file: nist-csf-2.0-govern-identify.csv
   produced_at: "1970-01-01T00:00:00.000Z"
   producer:
     kind: plugin-engine
     name: crosswalker-plugin
     version: golden
   recipe:
-    id: mitre-attack-persistence-subset
+    id: nist-csf-2.0-govern-identify
 ---
 
-# mitre-attack-persistence-subset:T1543
+# nist-csf-2.0-govern-identify
 
 <!-- crosswalker:children:start -->
 ## Contents
-- [[T1543.003]]
+- [[GV]]
+- [[ID]]
 <!-- crosswalker:children:end -->

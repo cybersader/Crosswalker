@@ -29,7 +29,16 @@ import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
 import { validateTier1Frontmatter } from '../validation/validator';
-import { enrich, mergeHubBody, folderNoteCandidatePath, type EnrichNote, type HubNote } from './enrich';
+import {
+	enrich,
+	mergeHubBody,
+	folderNoteCandidatePath,
+	buildManagedChildrenSection,
+	mergeManagedChildrenSection,
+	ensureWaypointMarker,
+	type EnrichNote,
+	type HubNote,
+} from './enrich';
 import type { FacetMembership } from '../import/mapping/facets';
 
 // ============================================================================
@@ -1825,7 +1834,7 @@ async function applyEnrichment(
 			facets: r.facets,
 			renderedPath: r.renderedPath,
 		})),
-		{ ontology: curiePrefix, config, streamed },
+		{ ontology: curiePrefix, config, streamed, rootFolder: options.basePath },
 	);
 	result.edgeCount = enrichment.edgeCount;
 
@@ -1885,8 +1894,20 @@ async function applyEnrichment(
 		}
 	}
 
-	// 1. Children lists — re-write each parent note with its managed `children` key.
+	// 1. Children lists + level-hub "hosted" Contents sections — combined into
+	//    ONE write per note, since a note can be both a children_lists parent
+	//    AND a level-hub host (the common case: a folder-note-relocated
+	//    concept). `patch.children` → managed `children` frontmatter array
+	//    (children_lists); `patch.hubChildren` → the managed body "Contents"
+	//    section (level_hubs='notes', hosted folders — module doc step 4.5).
+	const patchByPath = new Map<string, { children?: string[]; hubChildren?: string[] }>();
 	for (const [path, children] of enrichment.childrenByPath) {
+		patchByPath.set(path, { ...(patchByPath.get(path) ?? {}), children });
+	}
+	for (const [path, children] of enrichment.levelHubs.hostedChildrenByPath) {
+		patchByPath.set(path, { ...(patchByPath.get(path) ?? {}), hubChildren: children });
+	}
+	for (const [path, patch] of patchByPath) {
 		const record = recordsByPath.get(path);
 		if (!record) continue;
 		const file = app.vault.getAbstractFileByPath(normalizePath(path));
@@ -1897,8 +1918,17 @@ async function applyEnrichment(
 		// order is identical on every re-import (matches the golden shape).
 		const { _crosswalker, children: _stale, ...rest } = record.frontmatter as Record<string, unknown>;
 		void _stale;
-		const frontmatter = { ...rest, children, ...(_crosswalker !== undefined ? { _crosswalker } : {}) };
-		await app.vault.modify(file, buildNoteContent(frontmatter, record.body));
+		const frontmatter = {
+			...rest,
+			...(patch.children ? { children: patch.children } : {}),
+			...(_crosswalker !== undefined ? { _crosswalker } : {}),
+		};
+		let body = record.body;
+		if (patch.hubChildren) {
+			body = mergeManagedChildrenSection(body, buildManagedChildrenSection('Contents', patch.hubChildren));
+			if (config.waypoint_marker) body = ensureWaypointMarker(body);
+		}
+		await app.vault.modify(file, buildNoteContent(frontmatter, body));
 	}
 
 	// 2. Facet hub notes — create or merge, preserving user body prose + user keys.
@@ -1933,6 +1963,52 @@ async function applyEnrichment(
 			}
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
+			const parentPath = getParentPath(fullPath);
+			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
+			await app.vault.create(fullPath, buildNoteContent(frontmatter, body));
+			result.created.push(fullPath);
+		}
+	}
+
+	// 3. Synthetic level-hub notes (level_hubs='notes', pure structural folders
+	//    with no hosting concept note — module doc step 4.5). `hub.path` here is
+	//    ALREADY a full vault-relative path (it was built from `rootFolder`,
+	//    i.e. `options.basePath`) — unlike facet `hub.path` above (relative to
+	//    `hub_note_folder`), this one must NOT be re-prefixed with basePath.
+	for (const hub of enrichment.levelHubs.notes) {
+		const fullPath = normalizePath(hub.path);
+		const frontmatter: Record<string, any> = { ...hub.frontmatter };
+		frontmatter._crosswalker = buildProvenance(
+			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe },
+			PLUGIN_VERSION,
+		);
+		let body = hub.body;
+
+		const existing = app.vault.getAbstractFileByPath(fullPath);
+		if (existing instanceof TFile) {
+			// Re-import: regenerate the managed Contents section, preserve user
+			// frontmatter + any prose outside it (title, notes, etc.).
+			try {
+				const existingFm = await readExistingFrontmatter(app, existing);
+				if (existingFm && Object.keys(existingFm).length > 0) {
+					const managedKeys = computeManagedKeys(frontmatter, userPreserve);
+					const merged = mergeFrontmatter(existingFm, frontmatter, managedKeys);
+					Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
+					Object.assign(frontmatter, merged);
+				}
+				const existingText = await app.vault.read(existing);
+				const freshSection = buildManagedChildrenSection('Contents', hub.childrenLinks ?? []);
+				body = mergeManagedChildrenSection(stripFrontmatterBlock(existingText), freshSection);
+			} catch (mergeErr) {
+				debug?.warn('generation', 'level-hub-merge-failed', `Level hub merge failed at ${fullPath}; using fresh content`, {
+					path: fullPath,
+					error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
+				});
+			}
+			if (config.waypoint_marker) body = ensureWaypointMarker(body);
+			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
+		} else {
+			if (config.waypoint_marker) body = ensureWaypointMarker(body);
 			const parentPath = getParentPath(fullPath);
 			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
 			await app.vault.create(fullPath, buildNoteContent(frontmatter, body));

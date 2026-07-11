@@ -163,10 +163,13 @@ export const BUILT_IN_PRESETS: Record<BuiltInPresetId, Preset> = {
  * against preset.schema.json unchanged. `instantiate` stamps the matching entry
  * onto `ImportMapping.enrichment` (an unknown/custom preset gets no enrichment).
  * Per the 2026-07-10 batch-enrichment design: browsable-framework is the
- * hyperconnected default (children lists + facet hub notes).
+ * hyperconnected default (children lists + facet hub notes). 2026-07-11 (ICSB
+ * audit gap #1): browsable-framework also defaults `level_hubs: 'notes'` —
+ * every folder level gets an index/MOC note, closing the "no Home/MOC
+ * concept" gap.
  */
 export const PRESET_ENRICHMENT_DEFAULTS: Record<BuiltInPresetId, Enrichment> = {
-	'browsable-framework': { children_lists: true, facet_notes: 'notes', parent_note: 'sibling' },
+	'browsable-framework': { children_lists: true, facet_notes: 'notes', parent_note: 'sibling', level_hubs: 'notes' },
 	'deep-everything': { children_lists: true, facet_notes: 'notes', parent_note: 'sibling' },
 	'flat-and-linked': { children_lists: true, facet_notes: 'tags-only', parent_note: 'sibling' },
 	'single-reference-file': { children_lists: false, facet_notes: 'none', parent_note: 'sibling' },

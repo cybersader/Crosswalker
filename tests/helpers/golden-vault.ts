@@ -35,7 +35,14 @@ import {
 	normalizeTagList,
 	normalizeAliasList,
 } from '../../src/generation/generation-engine';
-import { enrich, type EnrichNote, type EnrichmentResult } from '../../src/generation/enrich';
+import {
+	enrich,
+	buildManagedChildrenSection,
+	mergeManagedChildrenSection,
+	ensureWaypointMarker,
+	type EnrichNote,
+	type EnrichmentResult,
+} from '../../src/generation/enrich';
 import { buildProvenance } from '../../src/generation/provenance';
 
 /** Fixed sentinel that replaces the wall-clock `produced_at` so goldens are stable. */
@@ -159,9 +166,17 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 		frontmatter: r.frontmatter,
 		facets: r.facets,
 	}));
+	// `rootFolder: id` — this bare harness never simulates a destination
+	// basePath (real usage always has one via GenerationOptions.basePath), so
+	// `id` is never a literal ancestor of any note path here. `enrich()`'s
+	// level-hub root-fallback then fires (see its module doc step 4.5),
+	// producing a top-level home note that links every otherwise-parentless
+	// top-level folder/file — the same shape a real basePath-scoped import
+	// gets "for free" from the uniform per-folder pass.
 	const enrichment = enrich(enrichNotes, {
 		ontology: prefix,
 		config: recipe.target.enrichment ?? {},
+		rootFolder: id,
 	});
 
 	const vault = new Map<string, string>();
@@ -181,19 +196,37 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 	// rendered sibling path — the only place this differs from
 	// generation-engine's real applyEnrichment (which does an actual
 	// app.vault.rename).
+	const config = recipe.target.enrichment ?? {};
 	const relocationTo = new Map(enrichment.relocations.map((r) => [r.curie, r.to]));
 	for (const r of records) {
 		const finalPath = relocationTo.get(r.curie) ?? r.path;
 		const children = enrichment.childrenByPath.get(finalPath);
 		if (children) r.frontmatter.children = children;
 		attachProvenance(r.frontmatter);
-		vault.set(finalPath, buildNoteContent(r.frontmatter, defaultBody(r.frontmatter)));
+		let body = defaultBody(r.frontmatter);
+		// Level hubs (hosted case): this concept note also hosts its own
+		// folder's index — append the managed "Contents" section (mirrors
+		// generation-engine's applyEnrichment combined patch, step 1).
+		const hubChildren = enrichment.levelHubs.hostedChildrenByPath.get(finalPath);
+		if (hubChildren) {
+			body = mergeManagedChildrenSection(body, buildManagedChildrenSection('Contents', hubChildren));
+			if (config.waypoint_marker) body = ensureWaypointMarker(body);
+		}
+		vault.set(finalPath, buildNoteContent(r.frontmatter, body));
 	}
 
 	// Facet hub notes.
 	for (const hub of enrichment.hubs) {
 		attachProvenance(hub.frontmatter);
 		vault.set(hub.path, buildNoteContent(hub.frontmatter, hub.body));
+	}
+
+	// Level (hierarchy MOC) hub notes — synthetic, path already full (no
+	// basePath prefixing needed in this harness; see enrich()'s HubNote doc).
+	for (const hub of enrichment.levelHubs.notes) {
+		attachProvenance(hub.frontmatter);
+		const body = config.waypoint_marker ? ensureWaypointMarker(hub.body) : hub.body;
+		vault.set(hub.path, buildNoteContent(hub.frontmatter, body));
 	}
 
 	return { vault, enrichment };

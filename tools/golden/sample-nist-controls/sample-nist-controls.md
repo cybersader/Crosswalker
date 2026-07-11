@@ -1,23 +1,28 @@
 ---
-curie: "mitre-attack-persistence-subset:T1543"
+curie: "sample-nist-controls:hub/sample-nist-controls"
+kind: hub
 children:
-  - "[[T1543.003]]"
+  - "[[AC]]"
+  - "[[AU]]"
+  - "[[CM]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:
-    file: mitre-attack-persistence-subset.csv
+    file: sample-nist-controls.csv
   produced_at: "1970-01-01T00:00:00.000Z"
   producer:
     kind: plugin-engine
     name: crosswalker-plugin
     version: golden
   recipe:
-    id: mitre-attack-persistence-subset
+    id: sample-nist-controls
 ---
 
-# mitre-attack-persistence-subset:T1543
+# sample-nist-controls
 
 <!-- crosswalker:children:start -->
 ## Contents
-- [[T1543.003]]
+- [[AC]]
+- [[AU]]
+- [[CM]]
 <!-- crosswalker:children:end -->

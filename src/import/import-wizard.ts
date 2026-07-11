@@ -1,6 +1,6 @@
 import { App, Modal, Setting, Notice, normalizePath, setIcon, TFile, TFolder } from 'obsidian';
 import CrosswalkerPlugin from '../main';
-import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping } from '../types/config';
+import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping, isEagerRows } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
 import { parseXLSXFile, listXLSXSheets } from './parsers/xlsx-parser';
 import { parseJSONFile, suggestIterators, JsonStructure } from './parsers/json-parser';
@@ -33,7 +33,8 @@ import {
 } from './draft-store';
 import { MappingWorkbench, renderProvenanceBadge } from './workbench';
 import type { ImportMapping, Enrichment } from './mapping/types';
-import { buildShapeMapRecap, deriveDestinationDefault, preferredParentNote, type Provenance } from './mapping/view-model';
+import { buildShapeMapRecap, deriveDestinationDefault, preferredParentNote, detectWaypointPlugin, type Provenance } from './mapping/view-model';
+import { computePlan } from './mapping/plan';
 import { deriveFacetMemberships } from './mapping/facets';
 import {
 	bestRecognizedRecipe,
@@ -1438,6 +1439,7 @@ export class ImportFlow {
 			initialMapping,
 			seedColumnDefaults,
 			defaultParentNote: preferredParentNote(enabled),
+			waypointDetected: detectWaypointPlugin(enabled),
 			onChange: () => {
 				this.plugin.debug.trace('wizard', 'workbench-change', 'Workbench model changed');
 				// A user edit to a recipe-seeded workbench downgrades the fast-path
@@ -1482,6 +1484,11 @@ export class ImportFlow {
 			tr.createEl('td', { text: r.count });
 		}
 
+		// (b½) The numeric plan — "what will be created" from the FULL parse, not
+		// just the preview sample (2026-07-11 ICSB audit gap #2, `emit.py plan`
+		// parity). Cheap: computePlan() never calls render().
+		this.renderPlanLine(container);
+
 		// (c) Headline stat chips.
 		const preview = this.workbench.computePreview();
 		const statRow = container.createEl('div', { cls: 'crosswalker-stats-grid crosswalker-preview-stats' });
@@ -1516,6 +1523,35 @@ export class ImportFlow {
 
 		// (e) Provenance line — WHY TRUST.
 		this.renderProvenanceLine(container);
+	}
+
+	/**
+	 * The numeric plan line (spec: "what will be created", 2026-07-11 ICSB
+	 * audit gap #2). Unlike the sample-scoped stat cards above (explicitly
+	 * labeled "in sample"), this reads the FULL parsed source — cheaply,
+	 * without calling render() per row (see mapping/plan.ts). Estimated
+	 * figures get a leading `~` so nothing here claims false precision.
+	 */
+	private renderPlanLine(container: HTMLElement): void {
+		if (!this.workbench || !this.parsedData) return;
+		const rows = isEagerRows(this.parsedData.rows) ? (this.parsedData.rows as Record<string, unknown>[]) : [];
+		const plan = computePlan(this.workbench.getMapping(), rows, this.parsedData.rowCount);
+		const fmt = (p: { count: number; exact: boolean }, label: string): string =>
+			`${p.exact ? '' : '~'}${p.count.toLocaleString()} ${label}`;
+		const parts = [
+			fmt(plan.notes, 'notes'),
+			fmt(plan.folders, 'folders'),
+			fmt(plan.facetHubs, 'facet hubs'),
+			fmt(plan.folderIndexNotes, 'index notes'),
+			fmt(plan.links, 'links'),
+		];
+		const line = container.createEl('p', { cls: 'crosswalker-plan-line' });
+		line.createSpan({ text: 'What will be created: ' });
+		line.createSpan({ text: parts.join(' · ') });
+		line.createEl('span', {
+			cls: 'crosswalker-plan-line-note',
+			text: rows.length > 0 ? ' (figures marked ~ are estimates from the full file)' : ' (streamed source; only the note count is known before generating)',
+		});
 	}
 
 	/**

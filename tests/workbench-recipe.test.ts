@@ -248,6 +248,7 @@ describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
 			children_lists: true,
 			facet_notes: 'notes',
 			parent_note: 'sibling',
+			level_hubs: 'notes',
 		});
 	});
 
@@ -279,6 +280,7 @@ describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
 			children_lists: true,
 			facet_notes: 'notes',
 			parent_note: 'sibling',
+			level_hubs: 'notes',
 		});
 	});
 });

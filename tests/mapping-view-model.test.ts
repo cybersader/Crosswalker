@@ -279,3 +279,20 @@ describe('preferredParentNote: adaptive default from installed plugins', () => {
 		expect(r.reason).toBeUndefined();
 	});
 });
+
+describe('detectWaypointPlugin: gates the Waypoint-marker toggle (2026-07-11 ICSB audit §4)', () => {
+	const { detectWaypointPlugin } = jest.requireActual('../src/import/mapping/view-model');
+
+	it('true when Waypoint is enabled', () => {
+		expect(detectWaypointPlugin(new Set(['dataview', 'waypoint']))).toBe(true);
+	});
+
+	it('true on a fuzzy Waypoint fork id, case-insensitive', () => {
+		expect(detectWaypointPlugin(['My-Waypoint-Fork'])).toBe(true);
+	});
+
+	it('false when no Waypoint-style plugin is enabled — including other folder-note plugins', () => {
+		expect(detectWaypointPlugin(new Set(['dataview', 'folder-notes']))).toBe(false);
+		expect(detectWaypointPlugin([])).toBe(false);
+	});
+});

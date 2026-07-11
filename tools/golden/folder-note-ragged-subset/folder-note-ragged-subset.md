@@ -1,23 +1,28 @@
 ---
-curie: "mitre-attack-persistence-subset:T1543"
+curie: "folder-note-ragged-subset:hub/folder-note-ragged-subset"
+kind: hub
 children:
-  - "[[T1543.003]]"
+  - "[[X1000]]"
+  - "[[X2000]]"
+  - "[[X3000]]"
 _crosswalker:
   spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
   source_ref:
-    file: mitre-attack-persistence-subset.csv
+    file: folder-note-ragged-subset.csv
   produced_at: "1970-01-01T00:00:00.000Z"
   producer:
     kind: plugin-engine
     name: crosswalker-plugin
     version: golden
   recipe:
-    id: mitre-attack-persistence-subset
+    id: folder-note-ragged-subset
 ---
 
-# mitre-attack-persistence-subset:T1543
+# folder-note-ragged-subset
 
 <!-- crosswalker:children:start -->
 ## Contents
-- [[T1543.003]]
+- [[X1000]]
+- [[X2000]]
+- [[X3000]]
 <!-- crosswalker:children:end -->

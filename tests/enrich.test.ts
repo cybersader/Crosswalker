@@ -14,7 +14,16 @@
  */
 
 import { render, splitLinkValues, type Recipe } from '../src/render';
-import { enrich, mergeHubBody, extractWikilinkTargets, HUB_MIN_MEMBERS, type EnrichNote } from '../src/generation/enrich';
+import {
+	enrich,
+	mergeHubBody,
+	extractWikilinkTargets,
+	HUB_MIN_MEMBERS,
+	buildManagedChildrenSection,
+	mergeManagedChildrenSection,
+	ensureWaypointMarker,
+	type EnrichNote,
+} from '../src/generation/enrich';
 import { mergeFrontmatter, computeManagedKeys } from '../src/generation/frontmatter-merge';
 
 // ---------------------------------------------------------------------------
@@ -424,3 +433,177 @@ function serialize(r: ReturnType<typeof enrich>): unknown {
 		relocations: r.relocations,
 	};
 }
+
+// ===========================================================================
+// Level hubs (hierarchy MOCs) — 2026-07-11 ICSB emitter-controls gap audit #1
+// ===========================================================================
+
+const LEVEL_HUB_CONFIG = { ...CONFIG, level_hubs: 'notes' as const };
+
+describe('enrich — level hubs off by default (no config change)', () => {
+	it('level_hubs omitted → no hosted patches, no synthetic notes, edgeCount unchanged', () => {
+		const withoutHubs = enrich(attackBatch(), { ontology: 'attack', config: CONFIG });
+		const withHubsOff = enrich(attackBatch(), { ontology: 'attack', config: { ...CONFIG, level_hubs: 'none' } });
+		expect(withoutHubs.levelHubs.hostedChildrenByPath.size).toBe(0);
+		expect(withoutHubs.levelHubs.notes).toEqual([]);
+		expect(withHubsOff.levelHubs.hostedChildrenByPath.size).toBe(0);
+		expect(withHubsOff.edgeCount).toBe(withoutHubs.edgeCount);
+	});
+});
+
+describe('enrich — level hubs, hosted case (a sibling/folder-note IS the folder)', () => {
+	it('T1078.md (sibling, folder T1078/ holds its children) hosts the folder\'s Contents list', () => {
+		const result = enrich(attackBatch(), { ontology: 'attack', config: LEVEL_HUB_CONFIG });
+		expect(result.levelHubs.hostedChildrenByPath.get('T1078.md')).toEqual([
+			'[[T1078.001]]',
+			'[[T1078.002]]',
+			'[[T1078.003]]',
+			'[[T1078.004]]',
+		]);
+		expect(result.levelHubs.notes).toEqual([]); // no pure-structural folder in this fixture
+	});
+
+	it('the same relation also works when the concept is folder-note shaped (T1078/T1078.md)', () => {
+		const folderNoteBatch: EnrichNote[] = [
+			{ path: 'T1078/T1078.md', curie: 'attack:T1078', frontmatter: { curie: 'attack:T1078' }, facets: [] },
+			{ path: 'T1078/T1078.001.md', curie: 'attack:T1078.001', frontmatter: { parent: '[[T1078]]', curie: 'attack:T1078.001' }, facets: [] },
+			{ path: 'T1078/T1078.002.md', curie: 'attack:T1078.002', frontmatter: { parent: '[[T1078]]', curie: 'attack:T1078.002' }, facets: [] },
+		];
+		const result = enrich(folderNoteBatch, { ontology: 'attack', config: { level_hubs: 'notes' } });
+		expect(result.levelHubs.hostedChildrenByPath.get('T1078/T1078.md')).toEqual(['[[T1078.001]]', '[[T1078.002]]']);
+		expect(result.levelHubs.notes).toEqual([]);
+	});
+
+	it('edgeCount includes hosted level-hub child links (sum-not-dedupe, same convention as children_lists)', () => {
+		const without = enrich(attackBatch(), { ontology: 'attack', config: CONFIG });
+		const withHubs = enrich(attackBatch(), { ontology: 'attack', config: LEVEL_HUB_CONFIG });
+		// 4 hosted children counted again, on top of children_lists' own 4.
+		expect(withHubs.edgeCount).toBe(without.edgeCount + 4);
+	});
+});
+
+describe('enrich — level hubs, synthetic case (pure structural folder, no matching concept note)', () => {
+	function familyBatch(): EnrichNote[] {
+		return [
+			{ path: 'Persistence/T1078.md', curie: 'attack:T1078', frontmatter: {}, facets: [] },
+			{ path: 'Persistence/T1098.md', curie: 'attack:T1098', frontmatter: {}, facets: [] },
+		];
+	}
+
+	it('creates a synthetic hub note at <folder>/<folder>.md with kind: hub and a managed Contents section', () => {
+		const result = enrich(familyBatch(), { ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'Persistence' });
+		expect(result.levelHubs.hostedChildrenByPath.size).toBe(0);
+		expect(result.levelHubs.notes).toHaveLength(1);
+		const hub = result.levelHubs.notes[0];
+		expect(hub.path).toBe('Persistence/Persistence.md');
+		expect(hub.curie).toBe('attack:hub/persistence');
+		expect(hub.frontmatter.kind).toBe('hub');
+		expect(hub.frontmatter.children).toEqual(['[[T1078]]', '[[T1098]]']);
+		expect(hub.childrenLinks).toEqual(['[[T1078]]', '[[T1098]]']);
+		expect(hub.body).toContain('# Persistence');
+		expect(hub.body).toContain('- [[T1078]]');
+		expect(hub.body).toContain('- [[T1098]]');
+	});
+
+	it('hub notes are sorted by path, deterministic across input order', () => {
+		const shuffled = [familyBatch()[1], familyBatch()[0]];
+		const result = enrich(shuffled, { ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'Persistence' });
+		expect(result.levelHubs.notes[0].frontmatter.children).toEqual(['[[T1078]]', '[[T1098]]']);
+	});
+});
+
+describe('enrich — level hubs, root/home hub (design step 4.5 root fallback)', () => {
+	it('rootFolder that IS a tracked ancestor (real basePath usage) gets its hub via the uniform per-folder pass, no double-create', () => {
+		// Every path already prefixed by the basePath, exactly like generation-engine.
+		const batch: EnrichNote[] = [
+			{ path: 'Frameworks/MITRE/T1078.md', curie: 'attack:T1078', frontmatter: {}, facets: [] },
+			{ path: 'Frameworks/MITRE/T1078/T1078.001.md', curie: 'attack:T1078.001', frontmatter: { parent: '[[T1078]]' }, facets: [] },
+		];
+		const result = enrich(batch, { ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'Frameworks/MITRE' });
+		// One hub for the root (hosted by nothing → synthetic at Frameworks/MITRE/MITRE.md)
+		// and the T1078 folder is hosted by the sibling note. No duplicate root note.
+		const rootHubs = result.levelHubs.notes.filter((h) => h.path === 'Frameworks/MITRE/MITRE.md');
+		expect(rootHubs).toHaveLength(1);
+		expect(rootHubs[0].frontmatter.children).toEqual(['[[T1078]]']);
+		expect(result.levelHubs.hostedChildrenByPath.get('Frameworks/MITRE/T1078.md')).toEqual(['[[T1078.001]]']);
+	});
+
+	it('rootFolder that is NOT a tracked ancestor (bare golden-vault harness) falls back to a top-level home note with no duplicate entries', () => {
+		// attackBatch()'s paths are never prefixed by "attack-corpus" — the exact
+		// shape tests/helpers/golden-vault.ts hits (rootFolder: corpusId).
+		const result = enrich(attackBatch(), { ontology: 'attack', config: LEVEL_HUB_CONFIG, rootFolder: 'attack-corpus' });
+		const home = result.levelHubs.notes.find((h) => h.path === 'attack-corpus.md');
+		expect(home).toBeDefined();
+		// T1078.md is BOTH a top-level sibling file AND the host of the T1078/
+		// folder — it must appear exactly once, not duplicated (the bug this
+		// fixture pins: naive "top files" ∪ "top folders" double-counts a
+		// sibling-shaped parent).
+		expect(home!.frontmatter.children).toEqual(['[[T1078]]']);
+	});
+
+	it('a fully flat batch (no folders at all) still gets a home note linking every note', () => {
+		const flat: EnrichNote[] = [
+			{ path: 'A.md', curie: 'attack:A', frontmatter: {}, facets: [] },
+			{ path: 'B.md', curie: 'attack:B', frontmatter: {}, facets: [] },
+		];
+		const result = enrich(flat, { ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'flat-corpus' });
+		const home = result.levelHubs.notes.find((h) => h.path === 'flat-corpus.md');
+		expect(home!.frontmatter.children).toEqual(['[[A]]', '[[B]]']);
+	});
+});
+
+describe('managed children section — re-import safety (strip-and-reappend, same discipline as facet hubs)', () => {
+	it('buildManagedChildrenSection wraps a heading + bullet list in delimiter markers', () => {
+		const section = buildManagedChildrenSection('Contents', ['[[A]]', '[[B]]']);
+		expect(section).toContain('## Contents');
+		expect(section).toContain('- [[A]]');
+		expect(section).toContain('- [[B]]');
+		expect(section).toMatch(/crosswalker:children:start/);
+		expect(section).toMatch(/crosswalker:children:end/);
+	});
+
+	it('appends the section when no managed block exists yet', () => {
+		const existing = '# T1078\n\nSome user prose about this technique.\n';
+		const fresh = buildManagedChildrenSection('Contents', ['[[T1078.001]]']);
+		const merged = mergeManagedChildrenSection(existing, fresh);
+		expect(merged).toContain('Some user prose about this technique.');
+		expect(merged).toContain('- [[T1078.001]]');
+	});
+
+	it('regenerates ONLY the managed block on re-import — user prose before, between, and after survives', () => {
+		const previousSection = buildManagedChildrenSection('Contents', ['[[T1078.001]]']);
+		const existing = `# T1078\n\nIntro prose.\n\n${previousSection}\nOutro prose.\n`;
+		const freshSection = buildManagedChildrenSection('Contents', ['[[T1078.001]]', '[[T1078.002]]']);
+		const merged = mergeManagedChildrenSection(existing, freshSection);
+		expect(merged).toContain('Intro prose.');
+		expect(merged).toContain('Outro prose.');
+		expect(merged).toContain('- [[T1078.002]]'); // regenerated
+		// Exactly one managed block survives (not duplicated).
+		expect(merged.match(/crosswalker:children:start/g)?.length).toBe(1);
+	});
+
+	it('is idempotent — merging the same fresh section twice is stable', () => {
+		const fresh = buildManagedChildrenSection('Contents', ['[[A]]']);
+		const once = mergeManagedChildrenSection('# Title\n', fresh);
+		const twice = mergeManagedChildrenSection(once, fresh);
+		expect(twice).toBe(once);
+	});
+});
+
+describe('ensureWaypointMarker — opt-in, additive, idempotent (2026-07-11 ICSB audit §4 verdict)', () => {
+	it('appends the trigger comment when absent', () => {
+		const body = ensureWaypointMarker('# T1078\n\nSome content.\n');
+		expect(body).toContain('%% Waypoint %%');
+	});
+
+	it('does not duplicate the marker on a second call', () => {
+		const once = ensureWaypointMarker('# T1078\n');
+		const twice = ensureWaypointMarker(once);
+		expect(twice).toBe(once);
+	});
+
+	it('never strips or duplicates a block Waypoint has already expanded', () => {
+		const expanded = '# T1078\n\n%% Begin Waypoint %%\n- [[Some Note]]\n%% End Waypoint %%\n';
+		expect(ensureWaypointMarker(expanded)).toBe(expanded);
+	});
+});
