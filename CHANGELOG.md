@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Frameworks arrive furnished (2026-07-11, third batch)
+
+- **Every import gets a home.** Each import nests under its own folder and its root becomes the framework's home note; every folder level can get an index note listing its contents (on by default), parents carry a Contents section in the note body, and your own writing on any of these survives re-import. Generated navigation comes from the data itself, not a folder scan.
+- **Folder notes are the default.** A note that is also a parent now lives inside its folder (T1078/T1078); the sibling arrangement remains one click away, and the placement preview highlights the connected file-and-folder pair in purple.
+- **Know before you generate**: the review screen states what will be created from the whole file (exact note and hub counts, honest estimates for folders and links).
+- **Plays well with Waypoint**: vaults using the Waypoint plugin can opt to mark generated folder notes so Waypoint also tracks notes added by hand later.
+- **Pick files from the vault**: import now leads with a fuzzy search across the vault's CSV/XLSX/JSON files, working even when Obsidian's file explorer hides them; layout no longer produces horizontal scrollbars at any pane width (split screens included).
+
 ### The workspace tab, everywhere entry points, and one vocabulary (2026-07-11, second batch)
 
 - **Crosswalker has a home now.** A dedicated workspace tab (ribbon icon, or click the status bar) hosts the entire import experience full width: launchpad, installed frameworks with live note and link counts plus an "Import again" action, and the whole mapping flow with a collapsible source rail and side-by-side preview on wide screens. The modal remains for quick command-palette use.
