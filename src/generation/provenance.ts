@@ -7,6 +7,14 @@
  *
  * Pure function. Same inputs (excluding `produced_at` which is always
  * `new Date().toISOString()` at call time) → same output.
+ *
+ * `recipeHash` / `conceptCid` are pass-through only — this module never
+ * computes them. Computation lives in ./hash.ts (`computeRecipeHash`,
+ * `computeConceptCid`); call sites in generation-engine.ts and
+ * tests/helpers/golden-vault.ts compute them and pass the results in here.
+ * See hash.ts's doc comments for the exact, load-bearing field-set
+ * definitions (Ch 43 deliverable §2, `.workspace/2026-07-11-challenge-43-
+ * version-migration-deliverable.md`).
  */
 
 const SPEC_VERSION = 'https://crosswalker.dev/spec/tier1.schema.json';

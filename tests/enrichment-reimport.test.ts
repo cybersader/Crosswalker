@@ -393,3 +393,132 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 		expect(after).not.toContain('%% Waypoint %%\n\n%% Waypoint %%'); // no duplicate re-append
 	});
 });
+
+// ===========================================================================
+// concept_cid + recipe.hash — Ch 43 deliverable §2 wiring
+// (.workspace/2026-07-11-challenge-43-version-migration-deliverable.md)
+// ===========================================================================
+
+/** Pull `_crosswalker.{concept_cid, recipe.hash}` out of a rendered note's frontmatter. */
+function crosswalkerBlock(text: string): { conceptCid?: string; recipeHash?: string } {
+	const m = /^---\n([\s\S]*?)\n---/.exec(text);
+	const fm = (yaml.load(m![1]) as Record<string, unknown>) ?? {};
+	const cw = (fm._crosswalker as Record<string, unknown>) ?? {};
+	const recipe = (cw.recipe as Record<string, unknown>) ?? {};
+	return { conceptCid: cw.concept_cid as string | undefined, recipeHash: recipe.hash as string | undefined };
+}
+
+/** `RECIPE`, but wrapped under an extra literal folder level — same also_emit/enrichment, different layout/path. */
+const RECIPE_WRAPPED_FOLDER: Recipe = {
+	...RECIPE,
+	recipe: 'attack-wrapped',
+	target: {
+		...RECIPE.target,
+		layout: [
+			{ level: 'wrapper', mechanism: 'folder', template: 'Wrapped' },
+			...RECIPE.target.layout,
+		],
+	},
+};
+
+describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
+	it('every generated note carries a well-formed concept_cid and recipe.hash', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		const t1078 = crosswalkerBlock(files.get('Frameworks/T1078.md')!);
+		expect(t1078.conceptCid).toMatch(/^sha256-[a-f0-9]{64}$/);
+		expect(t1078.recipeHash).toMatch(/^sha256-[a-f0-9]{64}$/);
+	});
+
+	it('concept_cid is identical across DIFFERENT concepts\' notes only when their (curie, row) differ — sanity: distinct rows get distinct cids', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		const cid1078 = crosswalkerBlock(files.get('Frameworks/T1078.md')!).conceptCid;
+		const cid1078001 = crosswalkerBlock(files.get('Frameworks/T1078.001.md')!).conceptCid;
+		expect(cid1078).toBeDefined();
+		expect(cid1078001).toBeDefined();
+		expect(cid1078).not.toBe(cid1078001);
+	});
+
+	it('concept_cid is stable under a PLACEMENT-only change: same (curie, row) rendered by two different recipes → same cid, different path', async () => {
+		const { app: appA, files: filesA } = makeApp();
+		await generateFromRecipe(appA, parsed(), RECIPE, OPTS);
+		const { app: appB, files: filesB } = makeApp();
+		await generateFromRecipe(appB, parsed(), RECIPE_WRAPPED_FOLDER, OPTS);
+
+		// Different recipe → different path (placement changed).
+		expect(filesA.has('Frameworks/T1078.md')).toBe(true);
+		expect(filesB.has('Frameworks/Wrapped/T1078.md')).toBe(true);
+
+		// Same source row → same concept_cid despite the different vault layout
+		// (per spec/tier1.schema.json's sha256_cid description: "stable across
+		// vault layouts because the recipe's render() output is NOT included").
+		const cidA = crosswalkerBlock(filesA.get('Frameworks/T1078.md')!).conceptCid;
+		const cidB = crosswalkerBlock(filesB.get('Frameworks/Wrapped/T1078.md')!).conceptCid;
+		expect(cidA).toBe(cidB);
+
+		// But recipe.hash DOES differ — the two recipes have different layouts.
+		const hashA = crosswalkerBlock(filesA.get('Frameworks/T1078.md')!).recipeHash;
+		const hashB = crosswalkerBlock(filesB.get('Frameworks/Wrapped/T1078.md')!).recipeHash;
+		expect(hashA).not.toBe(hashB);
+	});
+
+	it('concept_cid changes when the row content changes, same recipe (source-version drift)', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		const before = crosswalkerBlock(files.get('Frameworks/T1078.md')!).conceptCid;
+
+		const editedRows = ROWS.map((r) => (r.id === 'T1078' ? { ...r, tactic: 'Defense Evasion' } : r));
+		const editedParsed: ParsedData = { columns: ['id', 'parent', 'tactic'], rows: editedRows, rowCount: editedRows.length };
+		await generateFromRecipe(app, editedParsed, RECIPE, OPTS);
+		const after = crosswalkerBlock(files.get('Frameworks/T1078.md')!).conceptCid;
+
+		expect(after).not.toBe(before);
+	});
+
+	it('recipe.hash is STABLE across a re-import where only row content changed (recipe target untouched)', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		const before = crosswalkerBlock(files.get('Frameworks/T1078.md')!).recipeHash;
+
+		const editedRows = ROWS.map((r) => (r.id === 'T1078' ? { ...r, tactic: 'Defense Evasion' } : r));
+		const editedParsed: ParsedData = { columns: ['id', 'parent', 'tactic'], rows: editedRows, rowCount: editedRows.length };
+		await generateFromRecipe(app, editedParsed, RECIPE, OPTS);
+		const after = crosswalkerBlock(files.get('Frameworks/T1078.md')!).recipeHash;
+
+		expect(after).toBe(before);
+	});
+
+	it('recipe.hash CHANGES when the recipe target changes (layout, also_emit, or enrichment)', async () => {
+		const { app: appLayout, files: filesLayout } = makeApp();
+		await generateFromRecipe(appLayout, parsed(), RECIPE, OPTS);
+		await generateFromRecipe(appLayout, parsed(), RECIPE_WRAPPED_FOLDER, { ...OPTS, basePath: 'Frameworks2' });
+		const baseHash = crosswalkerBlock(filesLayout.get('Frameworks/T1078.md')!).recipeHash;
+		const layoutHash = crosswalkerBlock(filesLayout.get('Frameworks2/Wrapped/T1078.md')!).recipeHash;
+		expect(layoutHash).not.toBe(baseHash);
+
+		const alsoEmitChanged: Recipe = { ...RECIPE, target: { ...RECIPE.target, also_emit: { ...RECIPE.target.also_emit, tags: ['different-tag'] } } };
+		const { app: appAlso, files: filesAlso } = makeApp();
+		await generateFromRecipe(appAlso, parsed(), alsoEmitChanged, OPTS);
+		const alsoEmitHash = crosswalkerBlock(filesAlso.get('Frameworks/T1078.md')!).recipeHash;
+		expect(alsoEmitHash).not.toBe(baseHash);
+
+		const enrichmentChanged: Recipe = { ...RECIPE, target: { ...RECIPE.target, enrichment: { ...RECIPE.target.enrichment, children_lists: false } } };
+		const { app: appEnrich, files: filesEnrich } = makeApp();
+		await generateFromRecipe(appEnrich, parsed(), enrichmentChanged, OPTS);
+		const enrichmentHash = crosswalkerBlock(filesEnrich.get('Frameworks/T1078.md')!).recipeHash;
+		expect(enrichmentHash).not.toBe(baseHash);
+	});
+
+	it('determinism double-run: re-running the identical import produces byte-identical concept_cid and recipe.hash', async () => {
+		const { app, files } = makeApp();
+		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		const first = crosswalkerBlock(files.get('Frameworks/T1078.md')!);
+
+		await generateFromRecipe(app, parsed(), RECIPE, OPTS); // re-import, unchanged source + recipe
+		const second = crosswalkerBlock(files.get('Frameworks/T1078.md')!);
+
+		expect(second.conceptCid).toBe(first.conceptCid);
+		expect(second.recipeHash).toBe(first.recipeHash);
+	});
+});

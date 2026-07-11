@@ -16,6 +16,7 @@ _crosswalker:
     version: golden
   recipe:
     id: folder-note-ragged-subset
+    hash: sha256-36c16a3d1ee823ac610dfba927742bc924618827e2e76431971735e9ba991463
 ---
 
 # folder-note-ragged-subset

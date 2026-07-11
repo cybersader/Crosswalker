@@ -14,6 +14,8 @@ _crosswalker:
     version: golden
   recipe:
     id: cis-controls-v8-subset
+    hash: sha256-0188f38750a3d99f16a33f9f6a7f39a96f62406f8b94c60af3e28966d3991723
+  concept_cid: sha256-885b828f5701ea8b303d173e3a8925fc90bbf56950e1d29780e76bfc892b241b
 ---
 
 # cis-controls-v8-subset:CIS-1

@@ -18,6 +18,8 @@ _crosswalker:
     version: golden
   recipe:
     id: sample-nist-controls
+    hash: sha256-357e551a9538a527f6003c86f96e1180ee9c3a805753bf4712dd3d5766d4394d
+  concept_cid: sha256-08e34175dd15445a6ba94074af78f333d7b92b6a28a9122d1505b728cff90dd7
 ---
 
 # sample-nist-controls:row-4

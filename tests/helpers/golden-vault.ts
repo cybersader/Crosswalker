@@ -44,6 +44,7 @@ import {
 	type EnrichmentResult,
 } from '../../src/generation/enrich';
 import { buildProvenance } from '../../src/generation/provenance';
+import { computeConceptCid, computeRecipeHash } from '../../src/generation/hash';
 
 /** Fixed sentinel that replaces the wall-clock `produced_at` so goldens are stable. */
 export const PRODUCED_AT_SENTINEL = '1970-01-01T00:00:00.000Z';
@@ -128,12 +129,19 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 
 	const prefix = slugForCurie(id);
 
+	// _crosswalker.recipe.hash: computed ONCE for the whole corpus run (mirrors
+	// generation-engine.ts's generateNotes/generateFromRecipe/applyEnrichment,
+	// which each compute it once per generation run) — see
+	// src/generation/hash.ts's doc comments for the exact field-set definition.
+	const recipeHash = computeRecipeHash(recipe.target);
+
 	// Pass 1 — render each row into a note record (frontmatter minus provenance).
 	interface Record0 {
 		path: string;
 		curie: string;
 		frontmatter: Record<string, unknown>;
 		facets: FacetMembership[];
+		conceptCid: string;
 	}
 	const records: Record0[] = [];
 	parsed.rows.forEach((row, i) => {
@@ -156,7 +164,10 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 			const aliases = normalizeAliasList(address.aliases);
 			if (aliases.length > 0) frontmatter.aliases = aliases;
 		}
-		records.push({ path, curie, frontmatter, facets: deriveFacetMemberships(mapping, row) });
+		// concept_cid hashes (curie, row) — the PRE-render identity, never the
+		// Address render() produced from it (see computeConceptCid's doc comment).
+		const conceptCid = computeConceptCid({ curie, scope: row as Record<string, unknown> });
+		records.push({ path, curie, frontmatter, facets: deriveFacetMemberships(mapping, row), conceptCid });
 	});
 
 	// Pass 1.5 — batch enrichment (children lists + facet hubs + edge count).
@@ -180,9 +191,12 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 	});
 
 	const vault = new Map<string, string>();
-	const attachProvenance = (fm: Record<string, unknown>): void => {
+	// conceptCid is omitted for synthetic hub/facet notes (no source row → no
+	// concept identity to hash) — mirrors applyEnrichment's two buildProvenance
+	// call sites in generation-engine.ts, which pass recipeHash but not conceptCid.
+	const attachProvenance = (fm: Record<string, unknown>, conceptCid?: string): void => {
 		const prov = buildProvenance(
-			{ sourceFile: basename(csvPath), recipeId: recipe.recipe },
+			{ sourceFile: basename(csvPath), recipeId: recipe.recipe, recipeHash, conceptCid },
 			'golden',
 		) as Record<string, unknown>;
 		prov.produced_at = PRODUCED_AT_SENTINEL; // normalize the one wall-clock field
@@ -202,7 +216,7 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 		const finalPath = relocationTo.get(r.curie) ?? r.path;
 		const children = enrichment.childrenByPath.get(finalPath);
 		if (children) r.frontmatter.children = children;
-		attachProvenance(r.frontmatter);
+		attachProvenance(r.frontmatter, r.conceptCid);
 		let body = defaultBody(r.frontmatter);
 		// Level hubs (hosted case): this concept note also hosts its own
 		// folder's index — append the managed "Contents" section (mirrors

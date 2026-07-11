@@ -18,6 +18,7 @@ _crosswalker:
     version: golden
   recipe:
     id: mitre-attack-persistence-subset
+    hash: sha256-0f31ce78ed6d95970854a321baf7efb24ce9eb0cba48f17bbd20d37c69bd0c56
 ---
 
 # mitre-attack-persistence-subset

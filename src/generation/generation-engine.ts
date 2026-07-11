@@ -28,6 +28,7 @@ import { render, RenderError, renderTemplate, type Recipe, type RenderReport } f
 import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
+import { computeConceptCid, computeRecipeHash } from './hash';
 import { validateTier1Frontmatter } from '../validation/validator';
 import {
 	enrich,
@@ -296,6 +297,11 @@ export async function generateNotes(
 		// full mechanism set survives; otherwise the legacy shim translates.
 		const recipe = options.recipeOverride ?? legacyConfigToRecipe(config as ImportRecipe);
 
+		// _crosswalker.recipe.hash: computed ONCE per generation run (the
+		// recipe's target doesn't change per-row) and threaded through every
+		// buildProvenance call this run makes — see src/generation/hash.ts.
+		const recipeHash = computeRecipeHash(recipe.target);
+
 		// Track paths emitted in THIS generation pass to detect collisions
 		// (two source rows rendering to the same vault path).
 		const emittedPaths = new Set<string>();
@@ -345,6 +351,7 @@ export async function generateNotes(
 						recipe,
 						ontologyId,
 						renderReport,
+						recipeHash,
 					);
 					if (renderReport.notes.length > 0) {
 						result.warnings ??= [];
@@ -603,6 +610,7 @@ function buildNoteDataViaRender(
 	recipe: ReturnType<typeof legacyConfigToRecipe>,
 	ontologyId: string,
 	report?: RenderReport,
+	recipeHash?: string,
 ): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[] } {
 	// 1. Build a CURIE for this row. Strategy: ontology + filename stem.
 	//    The filename is whatever the recipe's leaf file template resolves to.
@@ -666,12 +674,18 @@ function buildNoteDataViaRender(
 
 	// 6. Always write a fresh _crosswalker provenance block per
 	//    spec/tier1.schema.json. Captures the source ref + producer +
-	//    recipe-id at this generation time.
+	//    recipe-id at this generation time, plus the two hashes that let a
+	//    future re-import distinguish source-content drift from recipe drift
+	//    (concept_cid: pre-render identity hash of (curie, row); recipe.hash:
+	//    hash of the effective recipe target — see src/generation/hash.ts's
+	//    doc comments for the exact, load-bearing field-set definitions).
 	frontmatter._crosswalker = buildProvenance(
 		{
 			sourceFile: options.sourceFileName,
 			sourceVersion: options.frameworkVersion,
 			recipeId: options.configId ?? recipe.recipe,
+			recipeHash,
+			conceptCid: computeConceptCid({ curie, scope: row as Record<string, unknown> }),
 		},
 		PLUGIN_VERSION,
 	);
@@ -1559,6 +1573,10 @@ export async function generateFromRecipe(
 	const ontologyId = recipe.source?.ontology ?? recipe.recipe;
 	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
 
+	// _crosswalker.recipe.hash: computed ONCE per generation run — see
+	// src/generation/hash.ts's doc comments for the exact field-set definition.
+	const recipeHash = computeRecipeHash(recipe.target);
+
 	debug?.info('generation', 'recipe-start', `generateFromRecipe: starting (${recipe.recipe})`, {
 		recipe: recipe.recipe,
 		rowCount: parsedData.rowCount,
@@ -1662,6 +1680,8 @@ export async function generateFromRecipe(
 					sourceFile: options.sourceFileName,
 					sourceVersion: options.sourceVersion,
 					recipeId: recipe.recipe,
+					recipeHash,
+					conceptCid: computeConceptCid({ curie, scope: row as Record<string, unknown> }),
 				},
 				PLUGIN_VERSION,
 			);
@@ -1826,6 +1846,10 @@ async function applyEnrichment(
 	debug?: DebugLog,
 ): Promise<void> {
 	const config = recipe.target.enrichment ?? {};
+	// Hub/facet notes are synthetic (no source row → no concept identity), so
+	// they carry recipe.hash but never concept_cid — see the two buildProvenance
+	// calls below. Computed once per applyEnrichment call (one per generation run).
+	const recipeHash = computeRecipeHash(recipe.target);
 	const enrichment = enrich(
 		records.map((r) => ({
 			path: r.path,
@@ -1937,7 +1961,7 @@ async function applyEnrichment(
 		const fullPath = options.basePath ? normalizePath(`${options.basePath}/${hub.path}`) : normalizePath(hub.path);
 		const frontmatter: Record<string, any> = { ...hub.frontmatter };
 		frontmatter._crosswalker = buildProvenance(
-			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe },
+			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe, recipeHash },
 			PLUGIN_VERSION,
 		);
 		let body = hub.body;
@@ -1979,7 +2003,7 @@ async function applyEnrichment(
 		const fullPath = normalizePath(hub.path);
 		const frontmatter: Record<string, any> = { ...hub.frontmatter };
 		frontmatter._crosswalker = buildProvenance(
-			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe },
+			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe, recipeHash },
 			PLUGIN_VERSION,
 		);
 		let body = hub.body;
