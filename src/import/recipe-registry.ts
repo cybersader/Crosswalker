@@ -25,6 +25,53 @@
  * as its REQUIRED columns. A source that carries a recipe's required + most of its
  * signature columns almost certainly IS that export. See `matchScore`.
  *
+ * THRESHOLD TUNING (2026-07-11, against the real-world corpus)
+ * --------------------------------------------------------------
+ * `CONFIDENT_MATCH_THRESHOLD` was raised from 75 to 90 after running the matcher
+ * headlessly against every parseable file under the (gitignored, local-only)
+ * `Frameworks/` corpus — 300+ real CIS/SCF/NIST/CRI/ATT&CK exports and workbook
+ * sheets — plus the tracked `tools/fixtures/realistic/` set. At 75, three CIS
+ * Controls v8 "Change Log" sheets (metadata about what changed between versions,
+ * NOT a safeguard catalog) scored exactly 75 against `cis-controls-v8-flat` (6 of
+ * its 8 signature columns present — the sheets rename `Asset Class` /
+ * `Security Function` to `Asset Class v8.1` / `Security Function v8.1`, so those
+ * two miss) and would have been confidently MIS-recognized as a full safeguard
+ * import. The one true full-catalog export in the corpus scored 100. A companion
+ * SCF sheet ("Data Privacy Mgmt Principles" — a real but narrower SCF subset
+ * missing the `SCF Domain` column) also scored 75 against `scf-2026-flat`.
+ * Across every recipe's signature size (2–11 columns), missing even a single
+ * column caps the score at 50–87.5%, so a threshold of 90 requires essentially
+ * complete signature coverage: every real full export found in the corpus landed
+ * at exactly 100; anything short of that is still surfaced as a (non-auto-
+ * selected) candidate via `findRecognizedRecipes` — it's just never auto-picked
+ * by `bestRecognizedRecipe`. `CANDIDATE_FLOOR` (40) was left unchanged — it only
+ * gates the informational candidate list, and the corpus showed no noise problem
+ * there (the handful of sub-75 candidates were legitimately related-but-different
+ * shapes, e.g. an 800-53 assessment-procedures export scoring 50 against the
+ * control-catalog recipe on `identifier` alone — a fair "maybe" for a human to
+ * glance at and dismiss, not a false positive).
+ *
+ * ROUTING KIND
+ * ------------
+ * A recipe's LEAF layout entry may declare `kind` (spec §7's
+ * `concept | junction-note | crosswalk-edge`) — the Tier 1 shape it produces.
+ * `routingKind` reads that straight off the bundled JSON so the wizard can label
+ * a crosswalk/mapping source distinctly ("This looks like a crosswalk/mapping
+ * file") instead of presenting it as an ordinary concept import.
+ *
+ * CURATED DEFAULTS
+ * -----------------
+ * `suggestedFolder` and `recommendedEnrichment` are curated, registry-only
+ * metadata (see the `DEFAULTS` map below) — NOT written into the bundled recipe
+ * JSON. `recommendedEnrichment` in particular is advisory: it names the Pass 1.5
+ * enrichment (`target.enrichment` — children lists / facet hub notes, see
+ * `src/generation/enrich.ts`) that WOULD suit each source's shape, without
+ * flipping it on in the shipped recipe. None of the ten bundled recipes emit the
+ * `parent` frontmatter link or `also_emit.tags` facet destination that pass
+ * depends on today, so turning it on live would be the first real exercise of
+ * that (2026-07-10, brand-new) code path against production recipes — out of
+ * this pass's surface. The hint documents the target state for whoever wires it.
+ *
  * Pure module: NO Obsidian imports, NO settings — the wizard composes the UI copy.
  */
 
@@ -41,15 +88,51 @@ import cisControlsV8Flat from '../../recipes/import/cis-controls-v8.json';
 import scf2026Flat from '../../recipes/import/scf-2026-flat.json';
 import nist80053Flat from '../../recipes/import/nist-800-53-flat.json';
 import criProfileV22 from '../../recipes/import/cri-profile-v2-2.json';
+import crosswalkEdge from '../../recipes/import/crosswalk-edge.json';
+
+/** The Tier 1 shape a recipe's leaf layout entry produces (spec §7's `layout_entry.kind`). */
+export type RegistryRoutingKind = 'concept' | 'junction-note' | 'crosswalk-edge';
 
 /**
  * A raw import recipe (structural subset). `fromRecipe` reads `target`; the extra
- * `recipe`/`source` fields carry the id + declared level names.
+ * `recipe`/`source` fields carry the id + declared level names. Layout entries may
+ * carry an optional `kind` (spec §7) the trimmed `RecipeLike['target']` shape
+ * doesn't type — read via `layoutEntryKind` below rather than widening it here.
  */
 interface RawRecipe {
 	recipe: string;
 	source?: { ontology?: string; levels?: string[] };
 	target: RecipeLike['target'];
+}
+
+/** Read a layout entry's optional `kind` field without widening `RecipeLike`'s type. */
+function layoutEntryKind(entry: unknown): RegistryRoutingKind {
+	const kind = (entry as { kind?: string } | undefined)?.kind;
+	return kind === 'crosswalk-edge' || kind === 'junction-note' ? kind : 'concept';
+}
+
+/** A recipe's routing kind — its LEAF layout entry's `kind` (the level that names notes). */
+function deriveRoutingKind(raw: RawRecipe): RegistryRoutingKind {
+	const layout = raw.target.layout ?? [];
+	return layoutEntryKind(layout[layout.length - 1]);
+}
+
+/**
+ * Advisory Pass 1.5 enrichment recommendation for a source shape. Field names
+ * mirror `target.enrichment` (`src/import/mapping/types.ts` `Enrichment`) so the
+ * hint can be dropped straight in once a recipe is enhanced to carry the
+ * `parent` link / facet tag the corresponding pass depends on. NOT applied to
+ * the bundled recipe automatically — see the module doc comment.
+ */
+export interface RecipeEnrichmentHint {
+	/** Would a managed `children` wikilink array on parent notes suit this shape? */
+	childrenLists: boolean;
+	/** Facet hub note recommendation ('none' | 'tags-only' | 'notes'). */
+	facetNotes: 'none' | 'tags-only' | 'notes';
+	/** The frontmatter/tag field the facet hub would group by, when facetNotes !== 'none'. */
+	facetField?: string;
+	/** One line of reasoning — why this recommendation (or why 'none'). */
+	rationale: string;
 }
 
 /** One recognized source: a bundled recipe plus its derived match signature + label. */
@@ -58,12 +141,18 @@ export interface RecipeRegistryEntry {
 	id: string;
 	/** Human, GRC-first label shown on the card ("NIST CSF 2.0 (CPRT export)"). */
 	label: string;
-	/** One-line description of what the recipe produces. */
+	/** One-line, plain-language description of what the recipe produces (sentence case, no em dashes). */
 	description: string;
 	/** Source ontology id (`nist-csf-2`, `cis-v8`, …). */
 	ontology: string;
 	/** Declared source level names. */
 	levels: string[];
+	/** Tier 1 shape this recipe's leaf entry produces — lets the UI route crosswalk/junction sources distinctly. */
+	routingKind: RegistryRoutingKind;
+	/** Curated default destination folder offered by the wizard. */
+	suggestedFolder: string;
+	/** Curated, advisory Pass 1.5 enrichment recommendation for this shape (see module doc comment). */
+	recommendedEnrichment: RecipeEnrichmentHint;
 	/** Every `{column}` token the recipe references (normalized-compared at match). */
 	signatureColumns: string[];
 	/** Columns used by STRUCTURAL layout entries — a hard gate for a confident match. */
@@ -83,10 +172,14 @@ export interface RecipeMatch {
 
 /**
  * Confident-match threshold. A recipe references exactly the columns it needs, so
- * a source presenting its required column(s) plus >= 75% of its full signature is
- * almost certainly that export. Below this we stay quiet and run ordinary detection.
+ * a source presenting its required column(s) plus almost the whole of its
+ * signature is almost certainly that export. Tuned to 90 against the real-world
+ * corpus (see the module doc comment "THRESHOLD TUNING") — every genuine full
+ * export found scored 100; two near-miss real-world sheets (a CIS "Change Log"
+ * export and a narrower SCF subset) scored 75 and must NOT confidently match.
+ * Below this we stay quiet and run ordinary detection.
  */
-export const CONFIDENT_MATCH_THRESHOLD = 75;
+export const CONFIDENT_MATCH_THRESHOLD = 90;
 
 /** Floor for `findRecognizedRecipes` to surface a partial (non-confident) candidate. */
 const CANDIDATE_FLOOR = 40;
@@ -145,43 +238,129 @@ function deriveSignature(raw: RawRecipe): { signature: string[]; required: strin
 // Registry assembly
 // ============================================================================
 
-/** Curated GRC-first labels + descriptions keyed by recipe id (falls back to id). */
-const LABELS: Record<string, { label: string; description: string }> = {
+/** No-op enrichment hint — the default for shapes with no facet-worthy column. */
+const NO_ENRICHMENT: RecipeEnrichmentHint = {
+	childrenLists: false,
+	facetNotes: 'none',
+	rationale: 'No column in this shape groups rows into a small, meaningful set of facet values.',
+};
+
+/**
+ * Curated per-recipe defaults keyed by recipe id (falls back to a generic default).
+ * `label`/`description` feed the recognized-source card; `suggestedFolder` seeds
+ * the wizard's destination field; `recommendedEnrichment` is advisory only (see
+ * the module doc comment "CURATED DEFAULTS" — not applied to the recipe JSON).
+ * All copy is plain language, sentence case, no em dashes (per UI-copy convention).
+ */
+const DEFAULTS: Record<
+	string,
+	{ label: string; description: string; suggestedFolder: string; recommendedEnrichment: RecipeEnrichmentHint }
+> = {
 	'nist-csf-2-cprt-hierarchical': {
 		label: 'NIST CSF 2.0 (CPRT export, nested)',
 		description: 'Functions and categories become folders; subcategories become notes.',
+		suggestedFolder: 'Frameworks/NIST CSF 2.0',
+		recommendedEnrichment: {
+			childrenLists: false,
+			facetNotes: 'notes',
+			facetField: 'function',
+			rationale:
+				'Six functions (GV/ID/PR/DE/RS/RC) is a clean, small facet: a hub note per function would gather every subcategory beneath it. Not turned on: the recipe emits `function` as plain frontmatter, not an also_emit.tags destination, so the facet pass has nothing to group by yet.',
+		},
 	},
 	'nist-csf-2-cprt': {
 		label: 'NIST CSF 2.0 (CPRT export)',
 		description: 'Each CSF element becomes a note with its id, level, and description.',
+		suggestedFolder: 'Frameworks/NIST CSF 2.0',
+		recommendedEnrichment: {
+			childrenLists: false,
+			facetNotes: 'notes',
+			facetField: 'element_type',
+			rationale:
+				'This recipe emits function, category, and subcategory rows all at one level via `element_type`: a facet hub per level would let a reader jump to "all subcategories". Not turned on: `element_type` is plain frontmatter, not a tag destination.',
+		},
 	},
 	'nist-csf-2-flat': {
 		label: 'NIST CSF 2.0 (subcategories)',
 		description: 'Each subcategory becomes a note.',
+		suggestedFolder: 'Frameworks/NIST CSF 2.0',
+		recommendedEnrichment: NO_ENRICHMENT,
 	},
 	'mitre-attack-technique-flat': {
 		label: 'MITRE ATT&CK techniques',
 		description: 'Each technique becomes a note keyed by its technique id.',
+		suggestedFolder: 'Frameworks/MITRE ATT&CK',
+		recommendedEnrichment: {
+			childrenLists: false,
+			facetNotes: 'notes',
+			facetField: 'tactic',
+			rationale:
+				'Grouping techniques by tactic (kill-chain phase) is the single most useful ATT&CK facet. Not turned on: the bundled recipe does not yet capture a tactic column (STIX `kill_chain_phases.0.phase_name`), and a technique can carry more than one tactic while the closed template grammar can only take the first. Children lists are also NOT recommended: sub-technique ids (T1055.011) share a prefix with their parent (T1055), but the closed filter set has no "only if a delimiter is present" conditional, so a naive split would give every top-level technique a self-referential parent link.',
+		},
 	},
 	'cis-controls-v8-controls': {
 		label: 'CIS Controls v8 (controls)',
 		description: 'Each CIS control becomes a note with its title and description.',
+		suggestedFolder: 'Frameworks/CIS Controls v8',
+		recommendedEnrichment: NO_ENRICHMENT,
 	},
 	'cis-controls-v8-flat': {
 		label: 'CIS Controls v8 (safeguards)',
 		description: 'Each safeguard becomes a note with its control and implementation groups.',
+		suggestedFolder: 'Frameworks/CIS Controls v8',
+		recommendedEnrichment: {
+			childrenLists: false,
+			facetNotes: 'notes',
+			facetField: 'security_function',
+			rationale:
+				'Security Function (Govern/Identify/Protect/Detect/Respond/Recover) already rides along as plain frontmatter on every safeguard and is a clean, small facet. Not turned on: it is not yet an also_emit.tags destination.',
+		},
 	},
 	'scf-2026-flat': {
 		label: 'Secure Controls Framework (2026)',
 		description: 'Each SCF control becomes a note with its domain and description.',
+		suggestedFolder: 'Frameworks/Secure Controls Framework',
+		recommendedEnrichment: {
+			childrenLists: false,
+			facetNotes: 'notes',
+			facetField: 'domain',
+			rationale:
+				'SCF Domain groups the (very long) control list into a manageable set of hub notes. Not turned on: `domain` is not yet an also_emit.tags destination.',
+		},
 	},
 	'nist-800-53-r5-flat': {
 		label: 'NIST 800-53 Rev 5',
 		description: 'Each control becomes a note keyed by its identifier.',
+		suggestedFolder: 'Frameworks/NIST 800-53',
+		recommendedEnrichment: {
+			childrenLists: false,
+			facetNotes: 'notes',
+			facetField: 'family',
+			rationale:
+				'800-53 identifiers are family-prefixed (AC-2, AU-3, …); a facet hub per family (derivable via a split filter on `identifier`) would mirror the catalog\'s own structure. Not turned on: this recipe does not yet emit a `family` field at all, only `identifier` and `name`.',
+		},
 	},
 	'cri-profile-v2-2-flat': {
 		label: 'CRI Profile v2.2',
 		description: 'Each CRI Profile statement becomes a note.',
+		suggestedFolder: 'Frameworks/CRI Profile',
+		recommendedEnrichment: {
+			childrenLists: false,
+			facetNotes: 'notes',
+			facetField: 'level',
+			rationale:
+				'`level` (Function/Category/Diagnostic Statement) already rides along as plain frontmatter and is a clean, small facet. Not turned on: it is not yet an also_emit.tags destination.',
+		},
+	},
+	'olir-crosswalk-edge': {
+		label: 'Crosswalk / mapping edges (OLIR-style)',
+		description: 'Each mapping row becomes a linked edge between two framework elements.',
+		suggestedFolder: '_crosswalker/mappings',
+		recommendedEnrichment: {
+			...NO_ENRICHMENT,
+			rationale:
+				'Crosswalk edges are meant to be browsed through the query/pivot layer (crosswalkerPivot Bases view), not through facet hub notes.',
+		},
 	},
 };
 
@@ -189,7 +368,12 @@ const LABELS: Record<string, { label: string; description: string }> = {
 function toEntry(raw: unknown): RecipeRegistryEntry {
 	const r = raw as RawRecipe;
 	const { signature, required } = deriveSignature(r);
-	const meta = LABELS[r.recipe] ?? { label: r.recipe, description: 'Bundled import recipe.' };
+	const meta = DEFAULTS[r.recipe] ?? {
+		label: r.recipe,
+		description: 'Bundled import recipe.',
+		suggestedFolder: 'Frameworks',
+		recommendedEnrichment: NO_ENRICHMENT,
+	};
 	const structuralDepth = (r.target.layout ?? []).filter(
 		(e) => e.mechanism === 'folder' || e.mechanism === 'heading',
 	).length;
@@ -199,6 +383,9 @@ function toEntry(raw: unknown): RecipeRegistryEntry {
 		description: meta.description,
 		ontology: r.source?.ontology ?? 'unknown',
 		levels: r.source?.levels ?? [],
+		routingKind: deriveRoutingKind(r),
+		suggestedFolder: meta.suggestedFolder,
+		recommendedEnrichment: meta.recommendedEnrichment,
 		signatureColumns: signature,
 		requiredColumns: required,
 		structuralDepth,
@@ -221,6 +408,7 @@ export const RECIPE_REGISTRY: RecipeRegistryEntry[] = [
 	toEntry(scf2026Flat),
 	toEntry(nist80053Flat),
 	toEntry(criProfileV22),
+	toEntry(crosswalkEdge),
 ];
 
 // ============================================================================

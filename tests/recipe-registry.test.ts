@@ -27,7 +27,8 @@ function entry(id: string): RecipeRegistryEntry {
 
 describe('recipe-registry — loading + signatures', () => {
 	it('loads the bundled import recipes with ids, labels, and signatures', () => {
-		expect(RECIPE_REGISTRY.length).toBeGreaterThanOrEqual(8);
+		// 9 concept recipes + the olir-crosswalk-edge recipe.
+		expect(RECIPE_REGISTRY.length).toBeGreaterThanOrEqual(10);
 		for (const e of RECIPE_REGISTRY) {
 			expect(e.id).toBeTruthy();
 			expect(e.label).toBeTruthy();
@@ -145,5 +146,174 @@ describe('recipe-registry — recipe → mapping + shapes', () => {
 		);
 		// A flat recipe produces properties but no folders.
 		expect(summarizeRecipeShapes(entry('cis-controls-v8-controls'))).not.toContain('folders');
+	});
+});
+
+describe('recipe-registry — routing kind (crosswalk vs concept)', () => {
+	it('registers the crosswalk-edge recipe', () => {
+		const e = entry('olir-crosswalk-edge');
+		expect(e.label).toContain('Crosswalk');
+		expect(e.description).toBeTruthy();
+	});
+
+	it('routes ordinary concept recipes as "concept"', () => {
+		expect(entry('nist-csf-2-cprt-hierarchical').routingKind).toBe('concept');
+		expect(entry('cis-controls-v8-controls').routingKind).toBe('concept');
+		expect(entry('mitre-attack-technique-flat').routingKind).toBe('concept');
+	});
+
+	it('routes the crosswalk recipe distinctly, read off the leaf layout entry\'s declared kind', () => {
+		expect(entry('olir-crosswalk-edge').routingKind).toBe('crosswalk-edge');
+	});
+
+	it('confidently recognizes an OLIR-style crosswalk export (the crosswalk-from-olir.ts output shape)', () => {
+		// tools/crosswalk-from-olir.ts emits exactly these columns per row.
+		const cols = [
+			'subject_id',
+			'object_id',
+			'subject_group',
+			'object_group',
+			'source_framework',
+			'target_framework',
+			'strm_predicate',
+			'sssom_predicate',
+			'mapping_justification',
+			'mapping_provider',
+			'match_confidence',
+		];
+		const best = bestRecognizedRecipe(cols);
+		expect(best).not.toBeNull();
+		expect(best!.entry.id).toBe('olir-crosswalk-edge');
+		expect(best!.entry.routingKind).toBe('crosswalk-edge');
+		expect(best!.score).toBe(100);
+	});
+
+	it('does NOT confidently match a raw SSSOM TSV export (a different, incompatible column shape)', () => {
+		// Raw SSSOM (tools/fixtures/realistic/*.sssom.tsv, recipes/import/crosswalks/*.sssom.tsv)
+		// uses predicate_id/confidence, not the crosswalk-edge recipe's strm_predicate/
+		// match_confidence/subject_group/object_group/source_framework/target_framework —
+		// it is pre-crosswalk-from-olir.ts input, not that tool's output. This is a known,
+		// deliberate no-match: raw SSSOM has its own dedicated importer (sssom-importer.ts),
+		// not the generic recognized-source fast path.
+		const cols = ['subject_id', 'predicate_id', 'object_id', 'match_type', 'mapping_justification', 'mapping_provider'];
+		const best = bestRecognizedRecipe(cols);
+		expect(best).toBeNull();
+	});
+});
+
+describe('recipe-registry — curated defaults (suggestedFolder + recommendedEnrichment)', () => {
+	it('gives every entry a non-empty suggested destination folder', () => {
+		for (const e of RECIPE_REGISTRY) {
+			expect(e.suggestedFolder).toBeTruthy();
+			expect(e.suggestedFolder.length).toBeGreaterThan(0);
+		}
+	});
+
+	it('gives every entry a well-shaped enrichment hint with a rationale', () => {
+		for (const e of RECIPE_REGISTRY) {
+			expect(['none', 'tags-only', 'notes']).toContain(e.recommendedEnrichment.facetNotes);
+			expect(typeof e.recommendedEnrichment.childrenLists).toBe('boolean');
+			expect(e.recommendedEnrichment.rationale).toBeTruthy();
+			if (e.recommendedEnrichment.facetNotes !== 'none') {
+				expect(e.recommendedEnrichment.facetField).toBeTruthy();
+			}
+		}
+	});
+
+	it('recommends a tactic facet for MITRE ATT&CK (the clearest single facet in the corpus)', () => {
+		const e = entry('mitre-attack-technique-flat');
+		expect(e.recommendedEnrichment.facetNotes).toBe('notes');
+		expect(e.recommendedEnrichment.facetField).toBe('tactic');
+	});
+
+	it('recommends no facet for single-column identity-only shapes', () => {
+		expect(entry('nist-csf-2-flat').recommendedEnrichment.facetNotes).toBe('none');
+		expect(entry('cis-controls-v8-controls').recommendedEnrichment.facetNotes).toBe('none');
+	});
+
+	it('does not recommend a facet hub for crosswalk edges (they route through the query layer)', () => {
+		expect(entry('olir-crosswalk-edge').recommendedEnrichment.facetNotes).toBe('none');
+	});
+
+	it('curated copy avoids em dashes (UI-copy convention)', () => {
+		for (const e of RECIPE_REGISTRY) {
+			expect(e.label).not.toMatch(/—/);
+			expect(e.description).not.toMatch(/—/);
+			expect(e.recommendedEnrichment.rationale).not.toMatch(/—/);
+		}
+	});
+});
+
+describe('recipe-registry — real-world corpus confusion table (pinned regressions)', () => {
+	// Column sets below are transcribed headers from real exports found in the
+	// (gitignored, local-only) Frameworks/ corpus during the 2026-07-11 threshold
+	// tuning pass — no framework content, just column names.
+
+	it('confidently matches a full CIS Controls v8.1.2 export (true positive, 100)', () => {
+		const cols = ['CIS Control', 'CIS Safeguard', 'Asset Class', 'Security Function', 'Title', 'Description', 'IG1', 'IG2', 'IG3'];
+		const best = bestRecognizedRecipe(cols);
+		expect(best?.entry.id).toBe('cis-controls-v8-flat');
+		expect(best?.score).toBe(100);
+	});
+
+	it('does NOT confidently match a CIS "Change Log" sheet (real near-miss that used to false-positive at threshold 75)', () => {
+		// Real shape: the Change Log workbook renames Asset Class/Security Function to
+		// "... v8.1", so 6 of 8 signature columns match (75) — a genuine full-catalog
+		// column rename, not the actual safeguard catalog.
+		const cols = [
+			'CIS Control',
+			'CIS Safeguard',
+			'Asset Class v8.1',
+			'Security Function v8.1',
+			'Title',
+			'Description v8.1',
+			'IG1',
+			'IG2',
+			'IG3',
+		];
+		const ranked = findRecognizedRecipes(cols);
+		expect(ranked[0]?.entry.id).toBe('cis-controls-v8-flat');
+		expect(ranked[0]?.score).toBe(75);
+		expect(bestRecognizedRecipe(cols)).toBeNull();
+	});
+
+	it('confidently matches the real NIST_SP-800-53_rev5_catalog_load.csv column shape (true positive, 100)', () => {
+		const cols = ['identifier', 'name', 'control_text', 'discussion', 'related'];
+		const best = bestRecognizedRecipe(cols);
+		expect(best?.entry.id).toBe('nist-800-53-r5-flat');
+		expect(best?.score).toBe(100);
+	});
+
+	it('surfaces (but does not confidently match) the real sp800-53ar5-assessment-procedures.csv shape', () => {
+		// A genuinely different NIST export (assessment procedures, not the control
+		// catalog) that shares only `identifier` with the 800-53 recipe's signature.
+		const cols = ['family', 'identifier', 'sort-as', 'control-name', 'assessment-objective', 'EXAMINE', 'INTERVIEW', 'TEST'];
+		expect(bestRecognizedRecipe(cols)).toBeNull();
+		const ranked = findRecognizedRecipes(cols);
+		expect(ranked[0]?.entry.id).toBe('nist-800-53-r5-flat');
+		expect(ranked[0]?.score).toBe(50);
+	});
+
+	it('confidently matches a full SCF 2026 export (true positive, 100)', () => {
+		const cols = [
+			'SCF Domain',
+			'SCF Control',
+			'SCF #',
+			'Secure Controls Framework (SCF) Control Description',
+			'NIST 800-53 R5',
+		];
+		const best = bestRecognizedRecipe(cols);
+		expect(best?.entry.id).toBe('scf-2026-flat');
+		expect(best?.score).toBe(100);
+	});
+
+	it('does NOT confidently match a narrower SCF subset sheet missing the Domain column (real near-miss)', () => {
+		// Real shape: the "Data Privacy Mgmt Principles" sheet carries Control/#/
+		// Description but not Domain — 3 of 4 signature columns (75).
+		const cols = ['SCF Control', 'SCF #', 'Secure Controls Framework (SCF) Control Description', 'NIST CSF 2.0'];
+		const ranked = findRecognizedRecipes(cols);
+		expect(ranked[0]?.entry.id).toBe('scf-2026-flat');
+		expect(ranked[0]?.score).toBe(75);
+		expect(bestRecognizedRecipe(cols)).toBeNull();
 	});
 });
