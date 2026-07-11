@@ -1740,19 +1740,25 @@
 }
 
 /* Wide canvas (spec §7n item 2): once the PANE has real width to spend, give
-   each zone a comfortable fixed/flexible/generous proportion. */
-@container cw-flow (min-width: 1050px) {
+   each zone a comfortable fixed/flexible/generous proportion. THE BREAKPOINT
+   MUST EXCEED THE GRID'S OWN MINIMUM (300+520+380+2 gaps = 1232px) — enabling
+   wide below that guarantees overflow; a 1050px threshold clipped the preview
+   rail at ~1190px panes (owner screenshot). Rule: breakpoint >= sum of column
+   minimums + gaps, with margin. */
+@container cw-flow (min-width: 1280px) {
 	.crosswalker-workbench {
 		grid-template-columns: 300px minmax(520px, 2fr) minmax(380px, 1.1fr);
 		gap: var(--cw-s4);
 	}
 }
 
-/* Collapsible source rail (spec §7n item 2): reclaim its width for the canvas. */
+/* Collapsible source rail (spec §7n item 2): reclaim its width for the canvas.
+   Collapsed-wide minimum is 56+560+380+2 gaps = 1028px, so collapsing the rail
+   earns the wide canvas earlier than the full three columns do. */
 .crosswalker-workbench.is-source-collapsed {
 	grid-template-columns: 56px minmax(320px, 1.8fr) minmax(220px, 1.2fr);
 }
-@container cw-flow (min-width: 1050px) {
+@container cw-flow (min-width: 1080px) {
 	.crosswalker-workbench.is-source-collapsed {
 		grid-template-columns: 56px minmax(560px, 2fr) minmax(380px, 1.1fr);
 	}
