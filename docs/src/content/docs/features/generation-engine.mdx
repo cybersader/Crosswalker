@@ -4,7 +4,7 @@ description: How Crosswalker creates folders and notes from your data.
 tags: [import, architecture]
 ---
 
-The generation engine converts parsed and configured data into Obsidian vault structure.
+The generation engine converts the decisions you made in the [import wizard](/crosswalker/features/import-wizard/) into real vault structure: folders, notes, frontmatter, links, and (where the shapes call for it) parent-child links and hub notes.
 
 ## Folder creation
 
@@ -47,6 +47,15 @@ Body-mapped columns are inserted as markdown text below the frontmatter.
 ### Links
 Link-mapped columns generate WikiLinks. Multiple values (comma-separated) create multiple links.
 
+## Connected output
+
+Beyond the note-by-note conversion above, an import built through the [live mapping workbench](/crosswalker/features/import-wizard/#map-the-shapes) or a [built-in configuration](/crosswalker/agent-context/ui-lexicon/) can also come out already connected:
+
+- **Children lists** — when your data has a clear parent/child id relationship, a parent note gets a managed `children` property listing its child notes. Re-importing keeps this list current without touching anything else you've written on the note.
+- **Hub notes** — a column with a handful of shared values (a category, a tactic, a domain) gets its own note per value, listing every note that carries it. Content you write below the hub note's heading survives a re-import; only the list itself is managed.
+
+This is currently limited to the live mapping workbench and built-in-configuration paths — the classic Step 2 column table doesn't produce children lists or hub notes yet. The [review screen](/crosswalker/features/import-wizard/#review-and-confirm) shows a link count before you generate, so a disconnected import is visible up front either way.
+
 ## Key naming
 
 Frontmatter keys are transformed based on your naming style setting:
@@ -65,3 +74,9 @@ Every generated note includes `_crosswalker` metadata so you can:
 - Identify which import created the note
 - Re-import without duplicating
 - Track import history
+
+## Related
+
+- [Import wizard](/crosswalker/features/import-wizard/) — the mapping decisions that drive everything on this page, including the shape workbench that unlocks connected output
+- [Config system](/crosswalker/features/config-system/) — saving and reapplying the mappings that feed generation
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the underlying vault shapes (folders, headings, tags, links, properties) generation writes into

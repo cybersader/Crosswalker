@@ -1,21 +1,21 @@
 ---
 title: Config system
-description: Save, load, and match import configurations.
+description: Save, load, match, and share your import configurations.
 tags: [import-config, architecture]
 ---
 
-Crosswalker remembers your import configurations so you don't have to reconfigure columns every time.
+Crosswalker remembers your [saved configurations](/crosswalker/agent-context/ui-lexicon/) so you don't have to reconfigure columns every time you import a similar file. A saved configuration is a snapshot of the decisions you made in the [import wizard](/crosswalker/features/import-wizard/): which column is what, where notes land, and how they're named.
 
-## Saving configs
+## Saving a configuration
 
-After a successful import, you're prompted to save the configuration. Saved configs include:
+Save the current configuration from the config browser (see below) any time during or after mapping a source. Each saved configuration stores:
 - Column-to-role mappings
 - Output path and naming settings
-- A [fingerprint](/crosswalker/design/config-selection/) of the source data structure
+- A fingerprint of the source data structure, used for [matching](#config-matching) against future files
 
 ## Config matching
 
-When you import a new file, Crosswalker generates a fingerprint and scores it against saved configs. If a match is found above the threshold (default: 50%), it suggests applying that config.
+When you select a new file, Crosswalker generates a fingerprint and scores it against your saved configurations. If a match is found above the threshold (default: 50%), the wizard suggests applying it.
 
 Matching considers:
 - Column name overlap
@@ -24,18 +24,24 @@ Matching considers:
 
 ## Config browser
 
-Access saved configs from the settings tab. You can:
-- Browse all saved configs
-- Preview column mappings
-- Delete outdated configs
-- (Planned) Export/import configs as JSON for sharing
+Open it from the workspace tab's launchpad ("Manage saved configs"), the settings hub, or the wizard's suggestion banner. You can:
+- Browse all saved configurations, with search and sort
+- Expand a card to preview its column mappings, fingerprint, output path, and last-used date
+- **Duplicate** a configuration (a starting point for a close variant)
+- **Delete** outdated configurations
+- **Export** any configuration to a downloadable JSON file, and **Import** one from a JSON file — the shareable unit for handing a teammate "here's how to import this framework's spreadsheet," or carrying a configuration between vaults
 
 ## Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Enable config suggestions | On | Show "Use saved config?" prompts |
+| Enable config suggestions | On | Show "Use this config" prompts |
 | Match threshold | 50 | Minimum score (0-100) to suggest a config |
 | Pattern detection | On | Detect data patterns for smarter matching |
-| Prompt to save | On | Ask to save config after import |
 | Auto-apply exact match | Off | Skip confirmation on 100% match |
+
+## Related
+
+- [Import wizard](/crosswalker/features/import-wizard/) — where configurations are applied and the recognized-source fast path that sits alongside them
+- [Generation engine](/crosswalker/features/generation-engine/) — what a configuration ultimately produces
+- [UI lexicon](/crosswalker/agent-context/ui-lexicon/) — why this page says "saved configuration" rather than "recipe"

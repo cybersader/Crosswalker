@@ -30,9 +30,9 @@ Import structured ontologies — compliance frameworks, taxonomies, any hierarch
   │   structured — NIST, ISO, CIS, MITRE, your own.       │
   │                                                       │
   │     ▼                                                 │
-  │   Import wizard: pick a recipe — which columns        │
-  │   become folders / headings / tags / wikilinks /      │
-  │   frontmatter. Save the recipe; rerun on updates.     │
+  │   Import wizard: pick a configuration — which         │
+  │   columns become folders / headings / tags /          │
+  │   wikilinks / frontmatter. Save it; rerun on updates. │
   └────────────────────────┬──────────────────────────────┘
                            ▼
   ┌─ 2. VAULT ────────────────────────────────────────────┐
@@ -67,8 +67,8 @@ The same source can land as a deep folder tree, a single document with nested he
 
 | | Feature | Details |
 |---|---|---|
-| :zap: | **Import wizard** | 4-step modal: select file, configure columns, preview tree, generate |
-| :bar_chart: | **Smart parsing** | CSV streaming (PapaParse) for files over 5 MB, column type auto-detection |
+| :zap: | **Import workspace** | A dedicated workspace tab walks you from file to review screen; recognized sources (NIST CSF, MITRE ATT&CK, CIS Controls, and more) get a one-click fast path, everything else goes through guided column mapping or a live shape-mapping workbench (beta) |
+| :bar_chart: | **Smart parsing** | CSV, XLSX, and JSON sources — CSV streaming for files over 5 MB, column type auto-detection |
 | :file_folder: | **Flexible layouts** | Compose folders, headings, tags, and wikilinks in one recipe — the same source can produce a deep folder tree, a flat tag-indexed pile, or a hybrid |
 | :link: | **Typed links** | WikiLinks with metadata for crosswalk relationships and evidence links — capture not just "AC-2 maps to ISO A.9.2.1" but how, by whom, and how complete |
 | :gear: | **Config system** | Save, load, and auto-match configurations via fingerprinting |
@@ -86,10 +86,10 @@ The same source can land as a deep folder tree, a single document with nested he
 
 ### Import a framework
 
-1. `Ctrl/Cmd + P` > **Crosswalker: Import structured data**
-2. Select your CSV (XLSX support coming in v0.2)
+1. Open the **Crosswalker workspace tab** (ribbon icon, status bar, or `Ctrl/Cmd + P` > **Crosswalker: Import structured data**)
+2. Select your CSV, XLSX, or JSON file — recognized sources offer a one-click fast path
 3. Map columns: hierarchy levels, frontmatter properties, links, body
-4. Preview the folder tree and sample notes
+4. Review the destination, shape map, and stats
 5. Generate
 
 ### What you get
@@ -119,8 +119,8 @@ Architecture decisions come first, features are built on that foundation. Full r
 
 | Phase | Focus | Status |
 |---|---|---|
-| **v0.1** | Import wizard, config system, generation engine, fast embedded-SQLite query cache, docs site | 🚧 In progress |
-| **v0.2** | XLSX and JSON parsers, additional starter recipes, tag-based and wikilink-based layouts | Planned |
+| **v0.1** | Import wizard (CSV/XLSX/JSON), config system, generation engine, fast embedded-SQLite query cache, docs site | 🚧 In progress |
+| **v0.2** | Additional starter configurations, tag-based and wikilink-based layouts | Planned |
 | **v0.5** | Optional external Python helper for messy spreadsheets and large datasets (desktop only) | Planned |
 | **v1.0** | Shareable framework registry, OSCAL export, crosswalk dashboards, framework version tracking | Planned |
 

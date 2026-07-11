@@ -1,40 +1,95 @@
 ---
 title: Import wizard
-description: Step-by-step guide to the 4-step import workflow.
-tags: [import, import-parsers, getting-started]
+description: How Crosswalker turns a spreadsheet or export into vault structure — the workspace tab, the recognized-source fast path, mapping your data's shape, and the review screen before you generate.
+tags: [import, workspace, getting-started]
 ---
 
-The import wizard walks you through converting structured data files into Obsidian notes.
+Crosswalker's import experience lives in the **Crosswalker workspace tab** — a dedicated pane you keep open, not a modal you reopen every time. The classic "Import structured data" modal (command palette, or the [settings hub](/crosswalker/reference/settings/)) still works and runs the exact same flow; the workspace tab is just the wider, primary way to use it.
 
-## Step 1: Select file
+## The workspace tab
 
-Choose a source file from your filesystem. Supported formats:
-- **CSV** — Fully supported with PapaParse streaming for large files (>5MB)
-- **XLSX** — Planned (package installed, integration in progress)
-- **JSON** — Planned
+Open it from the network-shaped **ribbon icon**, the **status bar** count, the **"Open workspace"** command, or by right-clicking a CSV, XLSX, or JSON file in the file explorer and choosing **"Import into vault with Crosswalker"** (the file arrives pre-selected, so you skip straight to configuring it). A one-time notice after you enable the plugin points at the tab too.
 
-## Step 2: Configure columns
+The tab opens on a home screen:
+- A **launchpad**: "Import structured data," "Manage saved configs," and, when [draft auto-save](#pause-and-resume) is on, "Resume a draft."
+- An **installed frameworks** list — every subfolder under your output path, each with a live note and link count and, for sources Crosswalker recognizes, an **"Import again"** button that reruns the same [built-in configuration](/crosswalker/agent-context/ui-lexicon/) without re-detecting anything.
 
-After parsing, the wizard displays all detected columns with type analysis. For each column, assign a role:
+{/* FIGURE: test-screenshots/view-01-home.png — Workspace tab home screen: launchpad + installed frameworks list with live counts */}
 
-| Role | What it does |
-|------|-------------|
-| **Hierarchy** | Creates folder levels (ordered top to bottom) |
-| **Frontmatter** | Becomes a YAML property in the note |
-| **Link** | Generates WikiLinks to other notes |
-| **Body** | Inserted as the note's markdown body |
-| **Ignore** | Skipped during generation |
+Click **"Import structured data"** and the flow below takes over the tab, wide, with your source and destination visible side by side.
 
-Column analysis shows unique value counts, detected types, and sample values to help you decide.
+## Selecting a source
 
-## Step 3: Preview
+Pick a **CSV, XLSX, or JSON** file. Crosswalker reads each differently:
+- **CSV** — every row becomes a note; large files parse through a streaming reader so multi-megabyte exports don't stall.
+- **XLSX** — pick the worksheet, then the header row (raise it to skip banner rows sitting above the real headers).
+- **JSON** — Crosswalker finds the lists of records nested inside the file and shows them as selectable cards (list name, path, record count, field names); pick the one to import. An advanced path/filter field is there if you need it, but you rarely will.
 
-See the folder tree that will be generated, plus a sample note with frontmatter. Adjust column assignments if the preview doesn't look right.
+Any drafts you left mid-import from a previous session are listed here too, with **Resume** and **Delete** — see [pause and resume](#pause-and-resume).
 
-## Step 4: Generate
+## Recognized sources: the fast path
 
-Creates all folders and notes in your vault under the configured output path. Each note includes:
-- YAML frontmatter from mapped columns
-- Body content from body columns
-- WikiLinks from link columns
-- `_crosswalker` metadata tracking the import source and timestamp
+When a file's columns closely match one of Crosswalker's **[built-in configurations](/crosswalker/agent-context/ui-lexicon/)**, the wizard leads with a calm "Recognized source" card instead of asking you to configure anything. Today that covers NIST CSF 2.0, MITRE ATT&CK, CIS Controls v8, the Secure Controls Framework, NIST 800-53, CRI Profile, and crosswalk/mapping files — matched against the file's actual columns, not its filename.
+
+The card shows what it recognized, how many rows become how many notes, which shapes it produces (folders, tags, links, properties), and where it would land. Three choices:
+- **"Import with this configuration"** — jumps straight to the [review screen](#review-and-confirm).
+- **"Customize"** — opens the same configuration in [map the shapes](#map-the-shapes) so you can adjust anything before generating.
+- **"Start from scratch"** — dismisses the card for this file and falls back to ordinary detection.
+
+An unedited recognized source is labeled **Built-in**; the moment you change something after Customize, it honestly relabels as **Custom (based on the source)**.
+
+{/* FIGURE: test-screenshots/wb-08-recognized.png — Recognized-source card: badge-check icon, Built-in + Recommended badges, row/shape/destination summary, three actions */}
+
+## Map the shapes
+
+When there's no confident match, or you chose Customize, you land on the mapping screen. Two modes exist today:
+
+- **The classic column table** (the default): every column listed with its detected type, sample values, and a "Use as" role — frontmatter property, hierarchy level, folder tree from an id, note title, a crosswalk link, body content, or skip — plus a live "in the vault" preview per row. A filter box and a collapsible tail keep very wide sources manageable.
+- **Live mapping workbench** (beta — turn it on under **Settings → Import behavior**): one screen, three zones, updating together as you work.
+  - **What we found** (left) — your columns with detection badges (a hierarchy packed into one id, a chain of level columns, a shared-value facet, a parent-id link, long text that reads like a document body, or a file that's really a set of relationships between two other sources) and an evidence card explaining why each one fired.
+  - **How it lands** (center) — a preset picker, then one card per detected shape with six toggles for the ways your data can live in the vault ([folders, file names, tags, headings, links, properties](/crosswalker/concepts/hierarchy-primitives/)) and a combined "your mix on one row" preview. An "Arrange levels" panel lets you merge or split levels, choose how each is named, and decide what happens when a level is missing.
+  - **Live preview** (right) — a real folder tree and one fully rendered note, both recomputed as you change anything, plus a banner stating plainly whether every row fits the pattern you've built.
+
+{/* FIGURE: test-screenshots/view-04-workbench-wide.png — Live mapping workbench: source rail (what we found), mapping canvas (how it lands), and live vault preview side by side */}
+
+## Review and confirm
+
+Before you generate, the review screen answers where it lands, what gets made, and why you should trust it:
+- **Destination** — an editable breadcrumb path, with a button to reveal the target folder in the file explorer without leaving the tab.
+- **Your shape map** — a table recapping "from your file → becomes → count" for every mapping.
+- **Headline counts** — notes, folders, and links (in the sampled rows), so a link-dead import is visible before you commit to it.
+- **A deviation notice** — the same conversion Crosswalker will actually run at generate time, checked against your rows in advance. A clean run says so in one line; when some rows don't fit the pattern you've built, it lists which ones and why, in plain language, before you generate rather than after.
+- **Provenance** — one line naming what you're using: **Built-in** (an unedited built-in configuration), **Yours** (a [saved configuration](/crosswalker/features/config-system/) you applied), or **Custom** (edited from either).
+
+{/* FIGURE: test-screenshots/view-06-review.png — Review screen: destination block, shape-map recap, headline stat cards, deviation banner, provenance line */}
+
+## What generation produces
+
+Clicking Generate writes real files:
+- **Folders**, one per hierarchy level you mapped.
+- **Notes**, one per row, with YAML frontmatter for every column you kept, WikiLinks for anything mapped as a link, and body content for anything mapped as body text.
+- **Parent-child links and hub notes** — when your import has a clear parent/child id relationship, parent notes automatically get a managed list of their children; any column with a handful of shared values (like a category) gets its own hub note listing every note that carries that value, and your own writing under that note's heading survives a re-import. This currently happens when you go through the live mapping workbench or a built-in configuration — the classic column table doesn't produce children lists or hub notes yet.
+- A small `_crosswalker` metadata block on every note recording where it came from, so a re-import updates rather than duplicates.
+
+See the [generation engine](/crosswalker/features/generation-engine/) page for the full detail on what lands in each note.
+
+## Pause and resume
+
+If you close the tab mid-import, Crosswalker auto-saves a **draft** (toggle in settings) about half a second after your last edit. Drafts show up on the workspace home screen and at the top of source selection, with the file re-read from your vault automatically when possible, so you resume exactly where you left off, mapping decisions included. One current gap: XLSX sheet choices and JSON record-list selections don't yet persist across a resume — CSV imports are fully covered.
+
+## Escape hatches
+
+- **[Saved configurations](/crosswalker/features/config-system/)** — after you've mapped a source once, save it. The config browser lets you browse, preview mappings, duplicate, delete, and export or import configurations as JSON files to share with a teammate or another vault.
+- **Customize** on any recognized-source card, whenever you don't want the built-in default.
+- **The classic column table**, whenever you'd rather not turn on the beta workbench.
+
+{/* FIGURE: test-screenshots/settings-01-overview.png — Settings hub: Import behavior card, where the live mapping workbench toggle lives */}
+
+## Related
+
+- [Config system](/crosswalker/features/config-system/) — saving, matching, and sharing configurations
+- [Generation engine](/crosswalker/features/generation-engine/) — what happens after you click Generate
+- [UI lexicon](/crosswalker/agent-context/ui-lexicon/) — the plain-language names used throughout this page, and what they map to internally
+- [Terminology](/crosswalker/concepts/terminology/) — full glossary
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the five ways data can live in a vault, that the mapping workbench's shape toggles are built on
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — why imports are built this way

@@ -60,14 +60,16 @@ bun run serve:share      # Option 6 — docs + Tailscale
 
 ### Windows double-click launchers
 
-Two `.bat` files at the repo root, for when you'd rather double-click than open a terminal:
+Four `.bat` files at the repo root, for when you'd rather double-click than open a terminal:
 
 | File | Runs | Use |
 |---|---|---|
 | `serve.bat` | `bun run serve` | Interactive menu (docs / plugin / both / tunnel / tests) |
 | `serve-docs.bat` | `bun run serve:docs` | Docs dev server only → http://localhost:4321/crosswalker/ |
+| `dev.bat` | `bun run serve:plugin` | Plugin watch build only, skipping the menu |
+| `reset.bat` | `node scripts/reset-test-vault.mjs` | Clears ad-hoc test imports from `test-vault/` — previews what would be deleted, then waits for a keypress to confirm |
 
-Both `cd` to the repo root first, so they work from anywhere, and pause on exit so the window stays open if something errors.
+All four `cd` to the repo root first (so they work from anywhere) and pause on exit so the window stays open if something errors. `serve.bat` and `serve-docs.bat` run through Windows `bun` directly; `dev.bat` and `reset.bat` shell out to WSL (matching how the underlying watch build and reset script are normally run).
 
 ## Plugin development workflow
 
