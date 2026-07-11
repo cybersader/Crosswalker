@@ -110,6 +110,16 @@ export interface GenerationOptions {
 	 * used for legacy body content only.
 	 */
 	recipeOverride?: import('../render').Recipe;
+
+	/**
+	 * Mapping-driven facet memberships for a row (spec §7k) — used by the Pass 1.5
+	 * enrichment pass to materialize facet hub notes with their ORIGINAL-case display
+	 * names. When omitted, memberships are derived from the rendered (tagsafe) facet
+	 * tags, which lose original casing. The workbench supplies this from its live
+	 * mapping via `deriveFacetMemberships(mapping, row)`. Consumed on the enrichment
+	 * path (when the recipe declares `target.enrichment`).
+	 */
+	facetsForRow?: (row: Record<string, unknown>, rowNum: number) => import('../import/mapping/facets').FacetMembership[];
 }
 
 interface GeneratedNoteData {

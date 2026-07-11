@@ -13,6 +13,7 @@ import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import type { ParsedData } from '../src/types/config';
 import type { ImportMapping } from '../src/import/mapping/types';
 import type { DebugLog } from '../src/utils/debug';
+import { deriveFacetMemberships } from '../src/import/mapping/facets';
 
 // A no-op DebugLog stub (the workbench only calls .info/.trace).
 const debug = {
@@ -162,5 +163,90 @@ describe('MappingWorkbench draft rehydration (spec §7i)', () => {
 		// The fresh instantiation is not the minimal name-only seed — it detects the
 		// packed hierarchy and facet, so the mapping is richer.
 		expect(wb.getMapping()).not.toEqual(seededMapping());
+	});
+});
+
+describe('MappingWorkbench facet display names (spec §7k, item 3)', () => {
+	// Original-case (not tagsafe) facet values, so we can assert casing survives.
+	function attackRowsOriginalCase(): Record<string, unknown>[] {
+		const ids = ['T1055', 'T1059', 'T1003', 'T1071', 'T1027', 'T1005', 'T1055.011', 'T1059.001', 'T1003.001', 'T1071.004'];
+		const tactics = ['Defense Evasion', 'Execution', 'Discovery'];
+		return ids.map((id, i) => ({
+			technique_id: id,
+			name: `Technique ${i}`,
+			tactic: tactics[i % 3],
+			description: `A longer description of the technique for row ${i}, long enough to read as a body candidate rather than a title.`,
+		}));
+	}
+
+	it('deriveFacetMemberships over the workbench mapping keeps ORIGINAL-case names', () => {
+		const rows = attackRowsOriginalCase();
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		const wb = new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			onChange: () => {},
+		});
+		// The tactic column is a facet (low cardinality) → a tag destination.
+		const memberships = deriveFacetMemberships(wb.getMapping(), { tactic: 'Defense Evasion' });
+		const tacticFacet = memberships.find((m) => m.namespace === 'tactic');
+		expect(tacticFacet).toBeDefined();
+		// The hub display name must be the raw value, NOT the tagsafe "defense-evasion".
+		expect(tacticFacet!.value).toBe('Defense Evasion');
+	});
+});
+
+describe('MappingWorkbench recognized-recipe seed (spec §7m)', () => {
+	// A recipe-seeded workbench (seedColumnDefaults: false) must emit EXACTLY the
+	// recipe — no auto-added per-column properties. Here the seed maps only
+	// technique_id → file name; `name`/`tactic`/`description` must NOT appear.
+	function nameOnlyMapping(): ImportMapping {
+		return {
+			mappings: [
+				{
+					levels: [
+						{
+							level: 'leaf',
+							source: { column: 'technique_id' },
+							destinations: [{ primitive: 'name' }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+		};
+	}
+
+	it('emits exactly the seeded recipe when seedColumnDefaults is false', () => {
+		const rows = attackRows();
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		const wb = new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			initialMapping: nameOnlyMapping(),
+			seedColumnDefaults: false,
+			onChange: () => {},
+		});
+		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed ?? {};
+		// No incidental per-column properties were injected.
+		expect(Object.keys(managed)).not.toContain('name');
+		expect(Object.keys(managed)).not.toContain('tactic');
+		expect(Object.keys(managed)).not.toContain('description');
+	});
+
+	it('still auto-seeds per-column properties by default (seedColumnDefaults omitted)', () => {
+		const wb = makeWorkbench(attackRows());
+		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed ?? {};
+		expect(Object.keys(managed)).toContain('name');
 	});
 });

@@ -143,6 +143,14 @@ export interface WorkbenchOptions {
 	 * and the preset-drift chip); only the mapping is taken from here.
 	 */
 	initialMapping?: ImportMapping;
+	/**
+	 * Seed the demoted "all columns" table with a default destination per column
+	 * (default true). A recognized-recipe fast path (spec §7m) passes `false` so the
+	 * workbench emits EXACTLY the vetted recipe — the recipe's frontmatter already
+	 * flows from `initialMapping`; auto-seeding would add extra per-column properties
+	 * the recipe author deliberately omitted.
+	 */
+	seedColumnDefaults?: boolean;
 	/** Notified after any model change (for draft save / state mirroring). */
 	onChange: () => void;
 }
@@ -179,7 +187,9 @@ export class MappingWorkbench {
 		// Draft resume (spec §7i): rehydrate from the persisted mapping when present,
 		// otherwise instantiate the preset over the fresh detections.
 		this.mapping = opts.initialMapping ?? instantiate(this.currentPreset(), this.activeDetections());
-		this.seedColumnDests();
+		// A recognized-recipe seed (seedColumnDefaults === false) emits exactly the
+		// vetted recipe; only auto-seed per-column defaults otherwise (spec §7m).
+		if (opts.seedColumnDefaults !== false) this.seedColumnDests();
 		opts.debug.info('wizard', 'workbench-init', 'Shape workbench initialized', {
 			detections: this.detections.length,
 			mappings: this.mapping.mappings.length,

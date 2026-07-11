@@ -8,7 +8,9 @@
    default modal is narrow; the wizard has a column-config table that needs
    real horizontal room. */
 .crosswalker-wizard-modal {
-	width: min(92vw, 1100px);
+	/* Interim widening (spec §7n) — the three-zone workbench wants more room until
+	   the dedicated Crosswalker workspace view lands. */
+	width: min(96vw, 1280px);
 	height: min(92vh, 900px);
 }
 
@@ -2257,4 +2259,105 @@
 	color: var(--text-muted);
 	margin: 0 0 var(--cw-s2);
 	line-height: 1.4;
+}
+
+/* === recognized-source fast path === */
+/* The calmest, most confident element in the wizard (spec §7m): a source that
+   matches a vetted bundled recipe. Accent-tinted, one clear primary action, the
+   escape hatches sitting quietly beside it. Reuses the shared design tokens. */
+.crosswalker-recognized-card {
+	margin: var(--cw-s3) 0;
+	padding: var(--cw-s4);
+	border: 1px solid var(--interactive-accent);
+	border-left-width: 3px;
+	border-radius: var(--cw-radius-md);
+	background: var(--background-secondary);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.crosswalker-recognized-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--cw-s3);
+}
+.crosswalker-recognized-titlewrap {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--cw-s2);
+	min-width: 0;
+}
+.crosswalker-recognized-ico {
+	display: inline-flex;
+	align-items: center;
+	color: var(--interactive-accent);
+	flex: 0 0 auto;
+	margin-top: 2px;
+}
+.crosswalker-recognized-ico .svg-icon {
+	width: calc(var(--cw-icon) * 1.4);
+	height: calc(var(--cw-icon) * 1.4);
+}
+.crosswalker-recognized-eyebrow {
+	font-size: var(--cw-fs-eyebrow);
+	letter-spacing: var(--cw-track-eyebrow, 0.06em);
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+.crosswalker-recognized-title {
+	font-size: var(--cw-fs-title);
+	font-weight: 700;
+	color: var(--text-normal);
+	line-height: 1.25;
+}
+.crosswalker-recognized-badges {
+	display: flex;
+	align-items: center;
+	gap: var(--cw-s1);
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+.crosswalker-recognized-desc {
+	margin: var(--cw-s2) 0 0;
+	color: var(--text-muted);
+	font-size: var(--cw-fs-body);
+	line-height: 1.45;
+}
+.crosswalker-recognized-summary {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--cw-s1) var(--cw-s3);
+	margin-top: var(--cw-s2);
+}
+.crosswalker-recognized-metric {
+	font-size: var(--cw-fs-small);
+	color: var(--text-normal);
+	position: relative;
+}
+.crosswalker-recognized-metric:not(:last-child)::after {
+	content: "·";
+	position: absolute;
+	right: calc(var(--cw-s3) / -2 - 1px);
+	color: var(--text-faint);
+}
+.crosswalker-recognized-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--cw-s2);
+	margin-top: var(--cw-s4);
+}
+.crosswalker-recognized-actions .mod-cta {
+	font-weight: 600;
+}
+.crosswalker-recognized-quiet {
+	margin-left: auto;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+}
+.crosswalker-recognized-quiet:hover {
+	color: var(--text-normal);
+	background: var(--background-modifier-hover);
 }

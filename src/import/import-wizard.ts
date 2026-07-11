@@ -32,7 +32,14 @@ import {
 } from './draft-store';
 import { MappingWorkbench, renderProvenanceBadge } from './workbench';
 import type { ImportMapping } from './mapping/types';
-import { buildShapeMapRecap, deriveDestinationDefault } from './mapping/view-model';
+import { buildShapeMapRecap, deriveDestinationDefault, type Provenance } from './mapping/view-model';
+import { deriveFacetMemberships } from './mapping/facets';
+import {
+	bestRecognizedRecipe,
+	recipeMapping,
+	summarizeRecipeShapes,
+	type RecipeMatch,
+} from './recipe-registry';
 
 /**
  * Import Wizard Modal
@@ -80,6 +87,19 @@ export class ImportWizardModal extends Modal {
 	 *  workbench (draft resume, spec §7i). Consumed once by renderStep2_Workbench,
 	 *  then cleared so later rebuilds re-instantiate from detections. */
 	private pendingWorkbenchMapping: ImportMapping | null = null;
+
+	/** A confidently-recognized bundled recipe for this source (spec §7m), or null. */
+	private recognizedMatch: RecipeMatch | null = null;
+	/** The user chose "Start from scratch" over the recognized-source card this session. */
+	private recognizedDismissed: boolean = false;
+	/**
+	 * A recognized recipe was chosen (Import / Customize), so the workbench drives
+	 * generation even when the beta workbench setting is off — the vetted recipe IS
+	 * the same recipe/render pipeline, just fronted by trust (spec §7m).
+	 */
+	private recognizedFastPath: boolean = false;
+	/** The recipe-seeded workbench mapping was edited after the recognized seed. */
+	private recognizedEdited: boolean = false;
 
 	/** Step-3 destination breadcrumb is in inline-edit mode (spec §7j #2). */
 	private destEditing: boolean = false;
@@ -366,6 +386,11 @@ export class ImportWizardModal extends Modal {
 				this.appliedConfig = null;
 				this.configMatches = [];
 				this.configWarnings = [];
+				this.recognizedMatch = null;
+				this.recognizedDismissed = false;
+				this.recognizedFastPath = false;
+				this.recognizedEdited = false;
+				this.workbench = null;
 				this.parsedData = null;
 				this.availableSheets = [];
 				this.selectedSheet = null;
@@ -479,9 +504,12 @@ export class ImportWizardModal extends Modal {
 			errorContainer.createEl('p', { text: `Error: ${this.parseError}` });
 		}
 
-		// After parsing, show config suggestions (if any)
+		// After parsing, lead with the recognized-source card (spec §7m) when a
+		// vetted bundled recipe matches; otherwise fall back to saved-config
+		// suggestions. The two never stack — the recognized card stays calm.
 		if (this.parsedData && !this.isParsing) {
-			this.renderConfigSuggestions(container);
+			const shownRecognized = this.renderRecognizedSourceCard(container);
+			if (!shownRecognized) this.renderConfigSuggestions(container);
 		}
 
 		// Drafts section — always visible (with empty state) so the feature is
@@ -759,6 +787,110 @@ export class ImportWizardModal extends Modal {
 		modal.open();
 	}
 
+	// =========================================================================
+	// Recognized-source fast path (spec §7m)
+	// =========================================================================
+
+	/**
+	 * Fingerprint the parsed source against the bundled recipe registry. A confident
+	 * match (see recipe-registry `CONFIDENT_MATCH_THRESHOLD`) arms the trust-forward
+	 * recognized-source card; no match leaves the ordinary detection flow untouched.
+	 */
+	private computeRecognizedMatch(): void {
+		if (!this.parsedData) {
+			this.recognizedMatch = null;
+			return;
+		}
+		this.recognizedMatch = bestRecognizedRecipe(this.parsedData.columns);
+		if (this.recognizedMatch) {
+			this.plugin.debug.info('wizard', 'recognized-source', `Recognized "${this.recognizedMatch.entry.id}" (${this.recognizedMatch.score}% match)`, {
+				recipeId: this.recognizedMatch.entry.id,
+				score: this.recognizedMatch.score,
+			});
+		}
+	}
+
+	/**
+	 * Render the recognized-source card (spec §7m): a calm, trust-forward lead when
+	 * a source matches a vetted bundled recipe. One confident primary action, with
+	 * the escape hatches right beside it. Returns true when a card was rendered (the
+	 * caller then suppresses the ordinary saved-config suggestion for calm).
+	 */
+	private renderRecognizedSourceCard(container: HTMLElement): boolean {
+		if (!this.recognizedMatch || this.recognizedDismissed || this.appliedConfig) return false;
+		const { entry } = this.recognizedMatch;
+
+		const card = container.createEl('div', { cls: 'crosswalker-recognized-card' });
+
+		// Head — recognized name + provenance badge (Built-in vetted).
+		const head = card.createEl('div', { cls: 'crosswalker-recognized-head' });
+		const titleWrap = head.createEl('div', { cls: 'crosswalker-recognized-titlewrap' });
+		const icon = titleWrap.createSpan({ cls: 'crosswalker-recognized-ico' });
+		setIcon(icon, 'badge-check');
+		const titleText = titleWrap.createEl('div', { cls: 'crosswalker-recognized-titletext' });
+		titleText.createEl('div', { cls: 'crosswalker-recognized-eyebrow', text: 'Recognized source' });
+		titleText.createEl('div', { cls: 'crosswalker-recognized-title', text: entry.label });
+		const prov: Provenance = {
+			origin: 'built-in',
+			badge: 'Built-in',
+			recommended: true,
+			line: `${entry.label} · vetted recipe · Built-in`,
+		};
+		renderProvenanceBadge(head.createEl('div', { cls: 'crosswalker-recognized-badges' }), prov);
+
+		// What you get — one calm line: rows, the shapes, the destination.
+		const rowCount = this.parsedData?.rowCount ?? 0;
+		const shapes = summarizeRecipeShapes(entry);
+		const dest = deriveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null);
+		card.createEl('p', { cls: 'crosswalker-recognized-desc', text: entry.description });
+		const summary = card.createEl('div', { cls: 'crosswalker-recognized-summary' });
+		summary.createSpan({ cls: 'crosswalker-recognized-metric', text: `${rowCount.toLocaleString()} rows to ${rowCount.toLocaleString()} notes` });
+		if (shapes.length) summary.createSpan({ cls: 'crosswalker-recognized-metric', text: shapes.join(', ') });
+		summary.createSpan({ cls: 'crosswalker-recognized-metric', text: `into ${dest}` });
+
+		// Actions — one confident primary, escape hatches beside it.
+		const actions = card.createEl('div', { cls: 'crosswalker-recognized-actions' });
+		const importBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Import with this recipe' });
+		importBtn.addEventListener('click', () => this.startRecognizedRecipe(3));
+		const customizeBtn = actions.createEl('button', { text: 'Customize' });
+		customizeBtn.addEventListener('click', () => this.startRecognizedRecipe(2));
+		const scratchBtn = actions.createEl('button', { cls: 'crosswalker-recognized-quiet', text: 'Start from scratch' });
+		scratchBtn.addEventListener('click', () => {
+			this.recognizedDismissed = true;
+			this.plugin.debug.info('wizard', 'recognized-dismissed', 'User chose to start from scratch over the recognized recipe', {
+				recipeId: entry.id,
+			});
+			this.renderStep();
+		});
+
+		return true;
+	}
+
+	/**
+	 * Enter the recognized-recipe fast path: load the vetted recipe into a workbench
+	 * via `fromRecipe` (the round-trip law — NOT a fresh detection pass) and jump to
+	 * the review screen (`toStep` 3) or the workbench (`toStep` 2, "Customize"). The
+	 * SAME recipe/render pipeline drives generation; the card just fronts it with trust.
+	 */
+	private startRecognizedRecipe(toStep: number): void {
+		if (!this.recognizedMatch || !this.parsedData) return;
+		const { entry } = this.recognizedMatch;
+		this.recognizedFastPath = true;
+		this.appliedConfig = null;
+		this.configMatches = [];
+		// Seed the workbench from the recipe (seedColumnDefaults=false → emit EXACTLY
+		// the vetted recipe). columnsSignature matches, so renderStep2/3 reuse it.
+		this.workbench = this.makeWorkbench(recipeMapping(entry), false);
+		this.pendingWorkbenchMapping = null;
+		this.currentStep = toStep;
+		this.plugin.debug.info('wizard', 'recognized-recipe-chosen', `Fast path: ${entry.id} → step ${toStep}`, {
+			recipeId: entry.id,
+			toStep,
+		});
+		this.scheduleDraftSave();
+		this.renderStep();
+	}
+
 	detectFileType() {
 		if (!this.sourceFile) return;
 
@@ -778,7 +910,7 @@ export class ImportWizardModal extends Modal {
 
 	/** Whether the beta shape workbench should drive step 2 (and feed 3/4). */
 	private isWorkbenchMode(): boolean {
-		return this.plugin.settings.enableShapeWorkbench && !!this.parsedData;
+		return (this.plugin.settings.enableShapeWorkbench || this.recognizedFastPath) && !!this.parsedData;
 	}
 
 	renderStep2_ConfigureColumns(container: HTMLElement) {
@@ -1101,20 +1233,34 @@ export class ImportWizardModal extends Modal {
 			// clear it so a later column-signature change re-instantiates fresh.
 			const initialMapping = this.pendingWorkbenchMapping ?? undefined;
 			this.pendingWorkbenchMapping = null;
-			this.workbench = new MappingWorkbench({
-				parsedData: this.parsedData,
-				columnInfos: this.columnInfos,
-				outputPath: this.outputPath || this.plugin.settings.defaultOutputPath,
-				debug: this.plugin.debug,
-				defaultPresetId: 'browsable-framework',
-				initialMapping,
-				onChange: () => {
-					this.plugin.debug.trace('wizard', 'workbench-change', 'Workbench model changed');
-					this.scheduleDraftSave();
-				},
-			});
+			this.workbench = this.makeWorkbench(initialMapping);
 		}
 		this.workbench.render(container.createDiv());
+	}
+
+	/**
+	 * Construct a workbench over the current parsed source. `initialMapping` seeds
+	 * the model directly (draft resume, or a recognized recipe via `fromRecipe`);
+	 * `seedColumnDefaults: false` keeps a recipe-seeded workbench emitting EXACTLY
+	 * the vetted recipe — no auto-added per-column properties (spec §7m).
+	 */
+	private makeWorkbench(initialMapping?: ImportMapping, seedColumnDefaults = true): MappingWorkbench {
+		return new MappingWorkbench({
+			parsedData: this.parsedData!,
+			columnInfos: this.columnInfos,
+			outputPath: this.outputPath || this.plugin.settings.defaultOutputPath,
+			debug: this.plugin.debug,
+			defaultPresetId: 'browsable-framework',
+			initialMapping,
+			seedColumnDefaults,
+			onChange: () => {
+				this.plugin.debug.trace('wizard', 'workbench-change', 'Workbench model changed');
+				// A user edit to a recipe-seeded workbench downgrades the fast-path
+				// provenance from "Built-in vetted" to "Custom (based on <recipe>)".
+				if (this.recognizedFastPath) this.recognizedEdited = true;
+				this.scheduleDraftSave();
+			},
+		});
 	}
 
 	/**
@@ -1275,11 +1421,37 @@ export class ImportWizardModal extends Modal {
 	/** The step-3 provenance line + badge (spec §7j #3). */
 	private renderProvenanceLine(container: HTMLElement): void {
 		if (!this.workbench) return;
-		const prov = this.workbench.provenance(this.appliedConfig?.name ?? null);
+		const prov = this.recognizedProvenance() ?? this.workbench.provenance(this.appliedConfig?.name ?? null);
 		const line = container.createEl('div', { cls: 'crosswalker-provenance' });
 		line.createEl('span', { cls: 'crosswalker-provenance-lead', text: 'Using: ' });
 		line.createEl('span', { cls: 'crosswalker-provenance-text', text: prov.line });
 		renderProvenanceBadge(line, prov);
+	}
+
+	/**
+	 * Provenance for the recognized-recipe fast path (spec §7m): an untouched vetted
+	 * recipe reads "Built-in", and stays trust-forward on the review screen instead
+	 * of the workbench's preset-drift derivation (which would read "Custom"). A user
+	 * edit after "Customize" downgrades it to "Custom (based on <recipe>)". Returns
+	 * null when not on the fast path (the caller uses the workbench derivation).
+	 */
+	private recognizedProvenance(): Provenance | null {
+		if (!this.recognizedFastPath || !this.recognizedMatch) return null;
+		const label = this.recognizedMatch.entry.label;
+		if (this.recognizedEdited) {
+			return {
+				origin: 'custom',
+				badge: `Custom (based on ${label})`,
+				recommended: false,
+				line: `${label} · custom · edited`,
+			};
+		}
+		return {
+			origin: 'built-in',
+			badge: 'Built-in',
+			recommended: true,
+			line: `${label} · vetted recipe · Built-in`,
+		};
 	}
 
 	/**
@@ -2295,6 +2467,15 @@ export class ImportWizardModal extends Modal {
 				if (!this.parsedData) {
 					const parseSuccess = await this.parseSourceFile();
 					if (parseSuccess) {
+						// Recognized-source fast path (spec §7m): a confident vetted-recipe
+						// match holds on Step 1 to present the trust card as the lead.
+						if (!this.recognizedDismissed) {
+							this.computeRecognizedMatch();
+							if (this.recognizedMatch) {
+								this.renderStep();
+								return false;
+							}
+						}
 						// After successful parse, check for matching configs
 						// If we have matches and suggestions are enabled, stay on Step 1 to show them
 						if (this.plugin.settings.enableConfigSuggestions && !this.appliedConfig) {
@@ -2458,7 +2639,17 @@ export class ImportWizardModal extends Modal {
 			frameworkId: this.frameworkId || undefined,
 			configId: this.appliedConfig?.id,
 			sourceFileName: this.sourceFile?.name,
-			...(workbenchMode && this.workbench ? { recipeOverride: this.workbench.buildRecipe() } : {}),
+			...(workbenchMode && this.workbench
+				? {
+					recipeOverride: this.workbench.buildRecipe(),
+					// Mapping-driven facet memberships so Pass 1.5 enrichment materializes
+					// facet hub notes with ORIGINAL-case names ("Access Control", not the
+					// tagsafe "access-control"). Reads straight off the workbench mapping —
+					// the same source the tag templates come from (spec §7k / facets.ts).
+					facetsForRow: (row: Record<string, unknown>) =>
+						deriveFacetMemberships(this.workbench!.getMapping(), row),
+				}
+				: {}),
 			onProgress: (current, total, message) => {
 				this.generationProgress = { current, total, message };
 				// Update the progress card in place (no full re-render) when its

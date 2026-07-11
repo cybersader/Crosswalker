@@ -80,6 +80,134 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		});
 	});
 
+	it('recognizes a bundled-recipe source and leads with the trust card (spec §7m)', async () => {
+		// A NIST CSF 2.0 CPRT-shaped CSV — its columns match the bundled
+		// nist-csf-2-cprt-hierarchical recipe, so the wizard should hold on Step 1
+		// and lead with the recognized-source card.
+		const CPRT_CSV = [
+			'element_identifier,title,element_type,text',
+			'GV,Govern,function,"The organizations cybersecurity risk management strategy, expectations, and policy are established, communicated, and monitored."',
+			'GV.OC,Organizational Context,category,"The circumstances that surround the organizations cybersecurity risk management decisions are understood."',
+			'GV.OC-01,,subcategory,"The organizational mission is understood and informs cybersecurity risk management."',
+			'ID,Identify,function,"The organizations current cybersecurity risks are understood."',
+			'ID.AM,Asset Management,category,"Assets are identified and managed consistent with their relative importance."',
+			'ID.AM-01,,subcategory,"Inventories of hardware managed by the organization are maintained."',
+			'PR,Protect,function,"Safeguards to manage the organizations cybersecurity risks are used."',
+			'PR.AA,Identity Management,category,"Access to physical and logical assets is limited to authorized users."',
+		].join('\n');
+
+		const info = await browser.executeObsidian(async ({ app }, csv) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const waitFor = async (sel: string, ms: number) => {
+				const t0 = Date.now();
+				while (Date.now() - t0 < ms) {
+					const el = document.querySelector(sel);
+					if (el) return el;
+					await sleep(100);
+				}
+				return null;
+			};
+			// Close any leftover modal first.
+			document.querySelector<HTMLElement>('.modal-close-button')?.click();
+			await sleep(300);
+
+			// @ts-expect-error — commands API is untyped
+			app.commands.executeCommandById('crosswalker:import-structured-data');
+			const modal = await waitFor('.modal', 8000);
+			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
+			const input = (await waitFor('.modal input[type=file]', 8000)) as HTMLInputElement | null;
+			if (!input) return { ok: false as const, reason: 'NO_FILE_INPUT' };
+			const dt = new DataTransfer();
+			dt.items.add(new File([csv], 'nist-csf-2-cprt.csv'));
+			input.files = dt.files;
+			input.dispatchEvent(new Event('change'));
+			await sleep(700);
+
+			// Click Next → parse → the wizard should HOLD on Step 1 with the card.
+			const next = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
+			if (!next) return { ok: false as const, reason: 'NO_NEXT' };
+			(next as HTMLButtonElement).click();
+
+			const card = await waitFor('.crosswalker-recognized-card', 8000);
+			const primary = Array.from(modal.querySelectorAll('.crosswalker-recognized-actions button')).find(
+				(b) => b.textContent?.includes('Import with this recipe'),
+			);
+			return {
+				ok: !!card,
+				reason: card ? 'OK' : 'NO_CARD',
+				title: modal.querySelector('.crosswalker-recognized-title')?.textContent ?? '',
+				badge: modal.querySelector('.crosswalker-recognized-card .crosswalker-prov-badge')?.textContent ?? '',
+				hasPrimary: !!primary,
+				hasCustomize: Array.from(modal.querySelectorAll('.crosswalker-recognized-actions button')).some(
+					(b) => b.textContent?.trim() === 'Customize',
+				),
+				hasScratch: Array.from(modal.querySelectorAll('.crosswalker-recognized-actions button')).some(
+					(b) => b.textContent?.includes('Start from scratch'),
+				),
+				summary: modal.querySelector('.crosswalker-recognized-summary')?.textContent ?? '',
+			};
+		}, CPRT_CSV);
+		console.log('[recognized] card → ' + JSON.stringify(info));
+		await browser.saveScreenshot(path.join(OUT, 'wb-08-recognized.png'));
+		expect(info.ok).toBe(true);
+		if (info.ok) {
+			expect(info.title).toContain('NIST CSF');
+			expect(info.badge).toContain('Built-in');
+			expect(info.hasPrimary).toBe(true);
+			expect(info.hasCustomize).toBe(true);
+			expect(info.hasScratch).toBe(true);
+		}
+
+		// "Import with this recipe" jumps STRAIGHT to the review screen (spec §7m),
+		// loaded via fromRecipe (round-trip law). The review provenance must read as
+		// VETTED "Built-in" — NOT the workbench's preset-drift "Custom".
+		const review = await browser.executeObsidian(async () => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const modal = document.querySelector('.modal');
+			if (!modal) return { ok: false as const };
+			const primary = Array.from(modal.querySelectorAll('.crosswalker-recognized-actions button')).find(
+				(b) => b.textContent?.includes('Import with this recipe'),
+			) as HTMLButtonElement | undefined;
+			if (!primary) return { ok: false as const, reason: 'NO_PRIMARY' };
+			primary.click();
+			const dest = await (async () => {
+				const t0 = Date.now();
+				while (Date.now() - t0 < 8000) {
+					const el = document.querySelector('.crosswalker-dest-block');
+					if (el) return el;
+					await sleep(100);
+				}
+				return null;
+			})();
+			const prov = modal.querySelector('.crosswalker-provenance');
+			return {
+				ok: !!dest,
+				h3: modal.querySelector('h3')?.textContent ?? '',
+				provText: prov?.textContent ?? '',
+				badge: prov?.querySelector('.crosswalker-prov-badge')?.textContent ?? '',
+				hasRecap: !!modal.querySelector('.crosswalker-shape-map'),
+				// The review screen must NOT re-render the live workbench (spec §7j #1).
+				workbenchPresent: !!modal.querySelector('.crosswalker-workbench'),
+			};
+		});
+		console.log('[recognized] review → ' + JSON.stringify(review));
+		await browser.saveScreenshot(path.join(OUT, 'wb-09-recognized-review.png'));
+		expect(review.ok).toBe(true);
+		if (review.ok) {
+			expect(review.h3).toContain('Review');
+			expect(review.hasRecap).toBe(true);
+			expect(review.badge).toContain('Built-in');
+			expect(review.provText.toLowerCase()).toContain('vetted');
+			expect(review.workbenchPresent).toBe(false);
+		}
+
+		// Close the modal so the next spec opens a clean wizard.
+		await browser.executeObsidian(async () => {
+			document.querySelector<HTMLElement>('.modal-close-button')?.click();
+		});
+		await browser.pause(400);
+	});
+
 	it('drives the CSV to the workbench Step 2 and screenshots the three zones', async () => {
 		// -- Stage A: open wizard → inject CSV → advance to the workbench.
 		const openInfo = await browser.executeObsidian(async ({ app }, csv) => {
