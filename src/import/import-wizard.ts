@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, normalizePath, TFile, TFolder } from 'obsidian';
+import { App, Modal, Setting, Notice, normalizePath, setIcon, TFile, TFolder } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
@@ -1090,7 +1090,8 @@ export class ImportWizardModal extends Modal {
 				cls: 'crosswalker-wb-hint-text',
 				text: 'Accept the defaults for a good vault, or open a mapping to fine-tune. The preview on the right updates live.',
 			});
-			const x = hint.createEl('button', { cls: 'crosswalker-wb-hint-x', text: '✕', attr: { 'aria-label': 'Dismiss hint' } });
+			const x = hint.createEl('button', { cls: 'crosswalker-wb-hint-x', attr: { 'aria-label': 'Dismiss hint' } });
+			setIcon(x, 'x');
 			x.addEventListener('click', () => { this.workbenchHintDismissed = true; this.renderStep(); });
 		}
 
@@ -1155,7 +1156,10 @@ export class ImportWizardModal extends Modal {
 		const statRow = container.createEl('div', { cls: 'crosswalker-stats-grid crosswalker-preview-stats' });
 		const stat = (icon: string, value: number, label: string) => {
 			const card = statRow.createEl('div', { cls: 'crosswalker-stat-card' });
-			card.createEl('div', { text: `${icon} ${value.toLocaleString()}`, cls: 'crosswalker-stat-value' });
+			const valueRow = card.createEl('div', { cls: 'crosswalker-stat-value' });
+			const ico = valueRow.createSpan({ cls: 'crosswalker-wb-ico crosswalker-stat-ico' });
+			setIcon(ico, icon);
+			valueRow.createSpan({ text: value.toLocaleString() });
 			card.createEl('div', { text: label, cls: 'crosswalker-stat-label' });
 		};
 		const noteCount = this.parsedData?.rowCount ?? 0;
@@ -1170,9 +1174,9 @@ export class ImportWizardModal extends Modal {
 			}
 			folders = folderSet.size;
 		}
-		stat('📄', noteCount, 'notes');
-		stat('📁', folders, 'folders (in sample)');
-		stat('🔗', links, 'links (in sample)');
+		stat('file-text', noteCount, 'notes');
+		stat('folder', folders, 'folders (in sample)');
+		stat('link', links, 'links (in sample)');
 
 		// (d) Deviation banner.
 		if (preview && preview.perRow.length) {
@@ -1231,7 +1235,7 @@ export class ImportWizardModal extends Modal {
 				crumb.createEl('span', { cls: 'crosswalker-dest-seg', text: seg });
 			});
 		}
-		crumb.createEl('span', { cls: 'crosswalker-dest-editicon', text: '✎' });
+		setIcon(crumb.createEl('span', { cls: 'crosswalker-dest-editicon' }), 'pencil');
 		crumb.addEventListener('click', () => { this.destEditing = true; this.renderStep(); });
 	}
 
@@ -1535,12 +1539,15 @@ export class ImportWizardModal extends Modal {
 		const statRow = container.createEl('div', { cls: 'crosswalker-stats-grid crosswalker-preview-stats' });
 		const stat = (icon: string, value: number, label: string) => {
 			const card = statRow.createEl('div', { cls: 'crosswalker-stat-card' });
-			card.createEl('div', { text: `${icon} ${value.toLocaleString()}`, cls: 'crosswalker-stat-value' });
+			const valueRow = card.createEl('div', { cls: 'crosswalker-stat-value' });
+			const ico = valueRow.createSpan({ cls: 'crosswalker-wb-ico crosswalker-stat-ico' });
+			setIcon(ico, icon);
+			valueRow.createSpan({ text: value.toLocaleString() });
 			card.createEl('div', { text: label, cls: 'crosswalker-stat-label' });
 		};
-		stat('📄', estimate.noteCount, 'notes');
-		stat('📁', estimate.folderCount, 'folders');
-		stat('🔗', estimate.linkCount, 'links');
+		stat('file-text', estimate.noteCount, 'notes');
+		stat('folder', estimate.folderCount, 'folders');
+		stat('link', estimate.linkCount, 'links');
 
 		// Render-report banner — per-row deviation summary (v0.1.6). Runs the
 		// same render() the generation engine uses, so "match the recipe
@@ -1623,10 +1630,10 @@ export class ImportWizardModal extends Modal {
 		const summary = summarizeRenderNotes(perRow, totalSourceRows);
 
 		const banner = container.createEl('div', { cls: `crosswalker-render-banner is-${summary.tone}` });
-		banner.createEl('span', {
-			text: summary.tone === 'clean' ? '✅' : '⚠️',
-			cls: 'crosswalker-render-banner-icon'
-		});
+		setIcon(
+			banner.createSpan({ cls: 'crosswalker-wb-ico crosswalker-render-banner-icon' }),
+			summary.tone === 'clean' ? 'check-circle-2' : 'alert-triangle',
+		);
 		banner.createEl('span', { text: summary.message, cls: 'crosswalker-render-banner-text' });
 
 		if (summary.tone === 'warning') {

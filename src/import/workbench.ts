@@ -21,6 +21,7 @@
  * which is what §3a½ is about).
  */
 
+import { setIcon } from 'obsidian';
 import type { ParsedData, ColumnInfo } from '../types/config';
 import { isEagerRows } from '../types/config';
 import type { Detection } from './detection';
@@ -76,6 +77,13 @@ export function renderProvenanceBadge(parent: HTMLElement, prov: Provenance): vo
 	}
 }
 
+/** Append a Lucide icon glyph (theme-aware, uniform sizing via `.crosswalker-wb-ico`). */
+function wbIcon(parent: HTMLElement, name: string, extraCls = ''): HTMLElement {
+	const span = parent.createSpan({ cls: 'crosswalker-wb-ico' + (extraCls ? ' ' + extraCls : '') });
+	setIcon(span, name);
+	return span;
+}
+
 /** Per-column destination in the demoted "all columns" table (spec §3b). */
 type ColumnDest = 'property' | 'tag' | 'body' | 'title' | 'alias' | 'link' | 'skip';
 
@@ -109,12 +117,12 @@ const ADD_MENU_GROUPS: { group: string; items: { primitive: DestinationPrimitive
 
 /** Affordance + whisper copy for the six shape cards (mockup M2, sentence case). */
 const SHAPE_CARD_COPY: Record<ShapeCardId, { icon: string; afford: string; whisper: string }> = {
-	folder: { icon: '📁', afford: 'Browse down into it in the file explorer.', whisper: 'pre-coordinated hierarchy' },
-	name: { icon: '📛', afford: 'Keep it flat. The id reads at a glance.', whisper: 'packed notation' },
-	tag: { icon: '🏷', afford: 'Filter any combination in search and Bases.', whisper: 'faceted classification' },
-	heading: { icon: '📄', afford: 'Read top to bottom, one portable outline.', whisper: 'document order' },
-	link: { icon: '🔗', afford: 'Hop the graph. A note can sit under many parents.', whisper: 'polyhierarchy' },
-	property: { icon: '🧩', afford: 'Group, sort, and filter by level in Bases.', whisper: 'faceted metadata' },
+	folder: { icon: 'folder', afford: 'Browse down into it in the file explorer.', whisper: 'pre-coordinated hierarchy' },
+	name: { icon: 'file', afford: 'Keep it flat. The id reads at a glance.', whisper: 'packed notation' },
+	tag: { icon: 'tag', afford: 'Filter any combination in search and Bases.', whisper: 'faceted classification' },
+	heading: { icon: 'file-text', afford: 'Read top to bottom, one portable outline.', whisper: 'document order' },
+	link: { icon: 'link', afford: 'Hop the graph. A note can sit under many parents.', whisper: 'polyhierarchy' },
+	property: { icon: 'table', afford: 'Group, sort, and filter by level in Bases.', whisper: 'faceted metadata' },
 };
 
 const PREVIEW_ROW_LIMIT = 20;
@@ -359,7 +367,7 @@ export class MappingWorkbench {
 						+ (active ? ' is-active' : ''),
 					attr: { title: this.badgeTitle(d), 'aria-label': this.badgeTitle(d) },
 				});
-				badge.createSpan({ cls: 'crosswalker-wb-badge-icon', text: this.badgeIcon(d) });
+				wbIcon(badge, this.badgeIcon(d), 'crosswalker-wb-badge-icon');
 				badge.createSpan({ cls: 'crosswalker-wb-badge-label', text: this.badgeLabel(d) });
 				badge.addEventListener('click', () => {
 					this.openEvidence = this.openEvidence === key ? null : key;
@@ -519,13 +527,13 @@ export class MappingWorkbench {
 		for (const { id, label } of SHAPE_CARDS) {
 			const state = summary[id];
 			if (state === 'off') continue;
-			chips.createSpan({
-				cls: 'crosswalker-wb-chip' + (state === 'mixed' ? ' is-mixed' : ''),
-				text: `${SHAPE_CARD_COPY[id].icon} ${label}${state === 'mixed' ? ' (some)' : ''}`,
-			});
+			const chip = chips.createSpan({ cls: 'crosswalker-wb-chip' + (state === 'mixed' ? ' is-mixed' : '') });
+			wbIcon(chip, SHAPE_CARD_COPY[id].icon);
+			chip.createSpan({ text: label + (state === 'mixed' ? ' (some)' : '') });
 		}
 		// Remove-mapping button.
-		const rm = head.createEl('button', { cls: 'crosswalker-wb-mapcard-rm', text: '✕', attr: { title: 'Remove this mapping' } });
+		const rm = head.createEl('button', { cls: 'crosswalker-wb-mapcard-rm', attr: { title: 'Remove this mapping', 'aria-label': 'Remove this mapping' } });
+		setIcon(rm, 'x');
 		rm.addEventListener('click', () => this.removeMapping(mi));
 
 		if (!expanded) return;
@@ -563,7 +571,15 @@ export class MappingWorkbench {
 			cb.addEventListener('change', () => {
 				this.updateMapping(mi, toggleDestinationAcrossMapping(m, primitive, cb.checked));
 			});
-			top.createEl('span', { cls: 'crosswalker-wb-shape-title', text: `${copy.icon} ${label}` });
+			// The whole card is a valid toggle target (bigger hit area than the box).
+			// A tri-state click moves toward "on" (off→on, mixed→on, on→off).
+			shape.addEventListener('click', (e) => {
+				if (e.target === cb) return;
+				this.updateMapping(mi, toggleDestinationAcrossMapping(m, primitive, state !== 'on'));
+			});
+			const title = top.createEl('span', { cls: 'crosswalker-wb-shape-title' });
+			wbIcon(title, copy.icon);
+			title.createSpan({ text: label });
 			shape.createDiv({ cls: 'crosswalker-wb-shape-afford', text: copy.afford });
 			shape.createDiv({ cls: 'crosswalker-wb-whisper', text: `${copy.whisper} →` });
 		}
@@ -665,7 +681,7 @@ export class MappingWorkbench {
 		lvl.createDiv({ cls: 'crosswalker-wb-tail-note', text: 'the tail rule' });
 		tr.createEl('td', { cls: 'mono crosswalker-muted', text: '-' });
 		const lands = tr.createEl('td');
-		for (const d of tail.destinations) lands.createSpan({ cls: 'crosswalker-wb-chip', text: this.destChipText(d) });
+		for (const d of tail.destinations) this.destChip(lands, d);
 		tr.createEl('td', { cls: 'mono', text: tail.naming });
 		const miss = tr.createEl('td');
 		miss.createSpan({ text: `report · max ${tail.max_depth ?? 6}` });
@@ -673,11 +689,13 @@ export class MappingWorkbench {
 
 	private renderDestinationChips(cell: HTMLElement, m: StructureMapping, mi: number, li: number, destinations: Destination[]): void {
 		for (const d of destinations) {
-			const chip = cell.createSpan({ cls: 'crosswalker-wb-chip crosswalker-wb-chip-dest', text: this.destChipText(d) });
-			const x = chip.createEl('button', { cls: 'crosswalker-wb-chip-x', text: '✕' });
+			const chip = this.destChip(cell, d, 'crosswalker-wb-chip-dest');
+			const x = chip.createEl('button', { cls: 'crosswalker-wb-chip-x', attr: { 'aria-label': 'Remove' } });
+			setIcon(x, 'x');
 			x.addEventListener('click', () => this.updateMapping(mi, removeDestination(m, li, d.primitive, destKey(d))));
 		}
-		const add = cell.createEl('button', { cls: 'crosswalker-wb-chip crosswalker-wb-chip-add', text: '⊕' });
+		const add = cell.createEl('button', { cls: 'crosswalker-wb-chip crosswalker-wb-chip-add', attr: { 'aria-label': 'Also send this level somewhere' } });
+		setIcon(add, 'plus');
 		add.addEventListener('click', () => {
 			const open = this.addMenu && this.addMenu.mi === mi && this.addMenu.li === li;
 			this.addMenu = open ? null : { mi, li };
@@ -766,7 +784,8 @@ export class MappingWorkbench {
 					+ (node.isFile && node.addrIndex === this.selectedNoteRow ? ' is-selected' : ''),
 			});
 			row.style.paddingLeft = `${node.depth * 14}px`;
-			row.createSpan({ text: node.isFile ? node.label : `📁 ${node.label}/` });
+			wbIcon(row, node.isFile ? 'file' : 'folder', 'crosswalker-wb-tree-ico');
+			row.createSpan({ text: node.isFile ? node.label : `${node.label}/` });
 			if (node.isFile) {
 				const idx = node.addrIndex;
 				row.addEventListener('click', () => { this.selectedNoteRow = idx; this.scheduleRerender(); });
@@ -776,7 +795,9 @@ export class MappingWorkbench {
 
 		if (addrs.length) {
 			const note = rail.createDiv({ cls: 'crosswalker-wb-note' });
-			note.createDiv({ cls: 'crosswalker-wb-note-title', text: `📄 ${this.basename(addrs[this.selectedNoteRow].address.primary.path)}` });
+			const noteTitle = note.createDiv({ cls: 'crosswalker-wb-note-title' });
+			wbIcon(noteTitle, 'file-text');
+			noteTitle.createSpan({ text: this.basename(addrs[this.selectedNoteRow].address.primary.path) });
 			note.createEl('pre', { cls: 'crosswalker-wb-mini', text: this.describeFrontmatter(addrs[this.selectedNoteRow].address) });
 		}
 
@@ -784,7 +805,7 @@ export class MappingWorkbench {
 		if (preview.perRow.length) {
 			const summary = summarizeRenderNotes(preview.perRow, preview.total);
 			const banner = rail.createDiv({ cls: `crosswalker-render-banner is-${summary.tone}` });
-			banner.createSpan({ cls: 'crosswalker-render-banner-icon', text: summary.tone === 'clean' ? '✅' : '⚠️' });
+			wbIcon(banner, summary.tone === 'clean' ? 'check-circle-2' : 'alert-triangle', 'crosswalker-render-banner-icon');
 			banner.createSpan({ cls: 'crosswalker-render-banner-text', text: summary.message });
 		}
 	}
@@ -953,17 +974,18 @@ export class MappingWorkbench {
 		return `${d.kind}:${this.detectionColumns(d).join(',')}`;
 	}
 
+	/** Lucide icon id per detection kind (rendered via setIcon — theme-aware). */
 	private badgeIcon(d: Detection): string {
 		switch (d.kind) {
-			case 'packed-hierarchy': return '⛰';
-			case 'level-column-chain': return '⛰';
-			case 'facet-candidate': return '🏷';
+			case 'packed-hierarchy': return 'layers';
+			case 'level-column-chain': return 'layers';
+			case 'facet-candidate': return 'tag';
 			case 'parent-column':
-			case 'multi-value-link': return '🔗';
-			case 'title-candidate': return 'T';
-			case 'body-candidate': return '¶';
-			case 'edge-file': return '↔';
-			case 'row-type-discriminator': return '≡';
+			case 'multi-value-link': return 'link';
+			case 'title-candidate': return 'type';
+			case 'body-candidate': return 'pilcrow';
+			case 'edge-file': return 'arrow-left-right';
+			case 'row-type-discriminator': return 'list';
 		}
 	}
 
@@ -1027,18 +1049,42 @@ export class MappingWorkbench {
 		return `${[...cols].slice(0, 2).join(', ') || 'mapping'}`;
 	}
 
-	private destChipText(d: Destination): string {
+	/** Lucide icon id for a destination chip (rendered via setIcon). */
+	private destChipIcon(d: Destination): string {
 		switch (d.primitive) {
-			case 'folder': return '📁 folder';
-			case 'name': return '📛 file name';
-			case 'note': return '📝 own note';
-			case 'heading': return `# heading ${d.depth}`;
-			case 'property': return `🧩 ${d.key}`;
-			case 'tag': return `🏷 ${d.namespace ?? 'tag'}`;
-			case 'link': return `🔗 ${d.key}`;
-			case 'alias': return '💬 alias';
-			case 'body': return `¶ body`;
+			case 'folder': return 'folder';
+			case 'name': return 'file';
+			case 'note': return 'file-plus';
+			case 'heading': return 'hash';
+			case 'property': return 'table';
+			case 'tag': return 'tag';
+			case 'link': return 'link';
+			case 'alias': return 'quote';
+			case 'body': return 'pilcrow';
 		}
+	}
+
+	/** Short text label for a destination chip. */
+	private destChipLabel(d: Destination): string {
+		switch (d.primitive) {
+			case 'folder': return 'folder';
+			case 'name': return 'file name';
+			case 'note': return 'own note';
+			case 'heading': return `heading ${d.depth}`;
+			case 'property': return d.key;
+			case 'tag': return d.namespace ?? 'tag';
+			case 'link': return d.key;
+			case 'alias': return 'alias';
+			case 'body': return 'body';
+		}
+	}
+
+	/** Build a destination chip (icon + label) into `parent`; returns the chip element. */
+	private destChip(parent: HTMLElement, d: Destination, extraCls = ''): HTMLElement {
+		const chip = parent.createSpan({ cls: 'crosswalker-wb-chip' + (extraCls ? ' ' + extraCls : '') });
+		wbIcon(chip, this.destChipIcon(d));
+		chip.createSpan({ text: this.destChipLabel(d) });
+		return chip;
 	}
 
 	private namingValue(naming: LevelNaming): string {

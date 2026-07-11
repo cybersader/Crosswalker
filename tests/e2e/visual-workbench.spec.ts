@@ -162,6 +162,24 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			expect(overview.mapCards).toBeGreaterThanOrEqual(1);
 		}
 
+		// -- Stage B2: force dark theme + screenshot the same overview, then
+		//    restore. Confirms the design reads deliberately in BOTH color schemes
+		//    (all workbench colors resolve to Obsidian theme vars).
+		const prevTheme = await browser.executeObsidian(() => {
+			const b = document.body;
+			const wasDark = b.classList.contains('theme-dark');
+			b.classList.remove('theme-light');
+			b.classList.add('theme-dark');
+			return wasDark ? 'dark' : 'light';
+		});
+		await browser.pause(300);
+		await browser.saveScreenshot(path.join(OUT, 'wb-01-dark.png'));
+		await browser.executeObsidian((_a, wasDark: unknown) => {
+			const b = document.body;
+			if (wasDark === 'light') { b.classList.remove('theme-dark'); b.classList.add('theme-light'); }
+		}, prevTheme);
+		await browser.pause(200);
+
 		// -- Stage C: click the technique_id detection badge → evidence card.
 		const evidence = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -285,5 +303,86 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			expect(review.hasBadge).toBe(true);
 			expect(review.workbenchPresent).toBe(false);
 		}
+
+		// -- Stage G (L4): generate, then screenshot the localized GRAPH VIEW and
+		//    one generated note in READING VIEW. The wizard closes on success.
+		const destPath = review.ok ? (review.destPath || '').trim() : '';
+
+		const genInfo = await browser.executeObsidian(async ({ app }) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const modal = document.querySelector('.modal');
+			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
+			// Step 3 → Step 4 (Generate screen).
+			const next = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
+			if (next) { (next as HTMLButtonElement).click(); await sleep(600); }
+			// Click Generate.
+			const gen = Array.from(document.querySelectorAll('.modal button')).find((b) => b.textContent?.trim() === 'Generate');
+			if (!gen) return { ok: false as const, reason: 'NO_GENERATE' };
+			(gen as HTMLButtonElement).click();
+			// Wait for generation to finish (modal closes on success).
+			const t0 = Date.now();
+			while (Date.now() - t0 < 20000) {
+				if (!document.querySelector('.crosswalker-wizard-modal')) break;
+				await sleep(200);
+			}
+			await sleep(800);
+			// @ts-expect-error — internal API
+			const created = app.vault.getMarkdownFiles().filter((f: { path: string }) => f.path.startsWith('Frameworks/')).length;
+			return { ok: true as const, modalClosed: !document.querySelector('.crosswalker-wizard-modal'), created };
+		});
+		console.log('[workbench] generate → ' + JSON.stringify(genInfo));
+		expect(genInfo.ok).toBe(true);
+
+		// -- Stage H: open one generated note in READING (preview) view.
+		const noteInfo = await browser.executeObsidian(async ({ app }, dest: unknown) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const prefix = (typeof dest === 'string' && dest.length ? dest : 'Frameworks').split('/')[0];
+			// @ts-expect-error — internal API
+			const files = app.vault.getMarkdownFiles().filter((f: { path: string }) => f.path.startsWith(prefix + '/'));
+			if (!files.length) return { ok: false as const, reason: 'NO_FILES', prefix };
+			files.sort((a: { stat: { mtime: number } }, b: { stat: { mtime: number } }) => b.stat.mtime - a.stat.mtime);
+			// Prefer a leaf technique note (has body + frontmatter) over a folder note.
+			const file = files.find((f: { path: string }) => /T\d{4}(\.\d{3})?\.md$/.test(f.path)) ?? files[0];
+			// @ts-expect-error — internal API
+			const leaf = app.workspace.getLeaf(true);
+			await leaf.openFile(file, { state: { mode: 'preview' } });
+			await sleep(1200);
+			return { ok: true as const, path: file.path };
+		}, destPath);
+		console.log('[workbench] note → ' + JSON.stringify(noteInfo));
+		await browser.saveScreenshot(path.join(OUT, 'wb-07-note.png'));
+
+		// -- Stage I: open GRAPH VIEW and localize it to the output folder. Graph
+		//    automation is best-effort; the screenshot is captured regardless so a
+		//    partial result is still inspectable.
+		const graphInfo = await browser.executeObsidian(async ({ app }, dest: unknown) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const prefix = (typeof dest === 'string' && dest.length ? dest : 'Frameworks').split('/')[0];
+			// @ts-expect-error — commands API is untyped
+			app.commands.executeCommandById('graph:open');
+			let graphLeaf: HTMLElement | null = null;
+			const t0 = Date.now();
+			while (Date.now() - t0 < 8000) {
+				graphLeaf = document.querySelector('.workspace-leaf-content[data-type="graph"]');
+				if (graphLeaf) break;
+				await sleep(150);
+			}
+			if (!graphLeaf) return { ok: false as const, reason: 'NO_GRAPH_LEAF' };
+			// Type a path filter into the graph search box so only the import shows.
+			const search = graphLeaf.querySelector('input[type="search"], .search-input-container input') as HTMLInputElement | null;
+			let filtered = false;
+			if (search) {
+				search.focus();
+				search.value = `path:"${prefix}"`;
+				search.dispatchEvent(new Event('input', { bubbles: true }));
+				filtered = true;
+				await sleep(2500); // let the force layout settle
+			} else {
+				await sleep(2000);
+			}
+			return { ok: true as const, filtered, query: `path:"${prefix}"` };
+		}, destPath);
+		console.log('[workbench] graph → ' + JSON.stringify(graphInfo));
+		await browser.saveScreenshot(path.join(OUT, 'wb-06-graph.png'));
 	});
 });

@@ -26,14 +26,17 @@
    passing beneath the bar. */
 .crosswalker-wizard-header {
 	flex: 0 0 auto;
-	margin: 0 0 1em 0;
-	padding: 0.1em 0 0.8em 0;
+	margin: 0 0 var(--cw-s4, 16px) 0;
+	padding: 0 0 var(--cw-s3, 12px) 0;
 	border-bottom: 1px solid var(--background-modifier-border);
 	background: var(--background-primary);
+	/* Soft elevation so scrolled content reads as passing beneath the chrome. */
+	box-shadow: 0 6px 8px -8px rgba(0, 0, 0, 0.35);
+	z-index: 1;
 }
 
 .crosswalker-wizard-header h2 {
-	margin: 0.6em 0 0 0;
+	margin: var(--cw-s3, 12px) 0 0 0;
 }
 
 .crosswalker-nav-row {
@@ -92,9 +95,12 @@
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	padding-top: 1em;
+	padding-top: var(--cw-s3, 12px);
 	border-top: 1px solid var(--background-modifier-border);
 	background: var(--background-primary);
+	/* Mirror the header elevation on the top edge. */
+	box-shadow: 0 -6px 8px -8px rgba(0, 0, 0, 0.35);
+	z-index: 1;
 }
 
 .crosswalker-footer-spacer {
@@ -221,27 +227,6 @@
 }
 
 /* ============================================================================
-   Preview Sections
-   ============================================================================ */
-
-.crosswalker-tree-preview,
-.crosswalker-note-preview {
-	margin: 1em 0;
-	padding: 1em;
-	background: var(--background-secondary);
-	border-radius: 8px;
-	overflow-x: auto;
-}
-
-.crosswalker-tree-preview pre,
-.crosswalker-note-preview pre {
-	margin: 0;
-	font-family: var(--font-monospace);
-	font-size: 0.85em;
-	white-space: pre-wrap;
-}
-
-/* ============================================================================
    Generate Summary
    ============================================================================ */
 
@@ -259,56 +244,6 @@
 
 .crosswalker-generate-summary li {
 	margin: 0.25em 0;
-}
-
-/* ============================================================================
-   Advanced Options Modal
-   ============================================================================ */
-
-.crosswalker-advanced-modal {
-	max-width: 600px;
-}
-
-.crosswalker-sample-values {
-	margin: 1em 0;
-	padding: 0.75em;
-	background: var(--background-secondary);
-	border-radius: 4px;
-	font-size: 0.9em;
-}
-
-.crosswalker-sample-values code {
-	display: block;
-	margin: 0.25em 0;
-	color: var(--text-muted);
-}
-
-.crosswalker-transform-list {
-	margin: 1em 0;
-}
-
-.crosswalker-transform-item {
-	display: flex;
-	align-items: center;
-	gap: 0.5em;
-	margin: 0.5em 0;
-	padding: 0.5em;
-	background: var(--background-secondary);
-	border-radius: 4px;
-}
-
-.crosswalker-transform-item select {
-	flex: 1;
-}
-
-.crosswalker-preview-box {
-	margin-top: 1em;
-	padding: 0.75em;
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	font-family: var(--font-monospace);
-	font-size: 0.85em;
 }
 
 /* ============================================================================
@@ -383,13 +318,6 @@
 	font-size: 0.85em;
 }
 
-/* Legacy single-box stats — replaced by .crosswalker-stats-grid below */
-.crosswalker-stats {
-	padding: 0.5em;
-	background: var(--background-secondary);
-	border-radius: 8px;
-}
-
 .crosswalker-stats-heading {
 	margin: 1.5em 0 0.25em 0;
 }
@@ -432,11 +360,23 @@
 }
 
 .crosswalker-stat-value {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 	font-size: 1.5em;
 	font-weight: 600;
 	color: var(--text-normal);
 	font-variant-numeric: tabular-nums;
 	line-height: 1.1;
+}
+
+/* The Lucide glyph beside a headline stat number — sized up, quietly muted.
+   Selector carries both classes so it wins over the shared .crosswalker-wb-ico
+   sizing defined later in the file. */
+.crosswalker-stat-ico { color: var(--text-muted); }
+.crosswalker-wb-ico.crosswalker-stat-ico .svg-icon {
+	width: 1.05em;
+	height: 1.05em;
 }
 
 .crosswalker-stat-meta {
@@ -1720,13 +1660,46 @@
 }
 
 /* ========================================================================== */
-/* Shape workbench (beta) — 3-zone mapping screen (spec 2026-07-05)            */
+/* Shape workbench — 3-zone mapping screen (spec 2026-07-05)                   */
+/* -------------------------------------------------------------------------- */
+/* Design system: one spacing scale, one type scale, one radius set, one       */
+/* accent. Tokens are scoped to the wizard modal so both the chrome and the    */
+/* workbench read as a single, deliberate surface. Type sizes lean on          */
+/* Obsidian's own --font-ui-* vars so they scale with the user's UI zoom.      */
 /* ========================================================================== */
+
+.crosswalker-wizard-modal {
+	/* Spacing scale (4px base). */
+	--cw-s1: 4px;
+	--cw-s2: 8px;
+	--cw-s3: 12px;
+	--cw-s4: 16px;
+	--cw-s5: 24px;
+
+	/* Radii. */
+	--cw-radius-sm: 6px;   /* inputs, small buttons */
+	--cw-radius-md: 8px;   /* cards, panels, rails */
+	--cw-radius-pill: 999px;
+
+	/* Type scale (Obsidian-native — scales with UI zoom). */
+	--cw-fs-eyebrow: var(--font-ui-smaller);
+	--cw-fs-chip: var(--font-ui-smaller);
+	--cw-fs-small: var(--font-ui-smaller);
+	--cw-fs-body: var(--font-ui-small);
+	--cw-fs-title: var(--font-ui-small);
+	--cw-track-eyebrow: 0.09em;
+
+	/* Chip / badge geometry — one shared shape everywhere. */
+	--cw-chip-pad-y: 2px;
+	--cw-chip-pad-x: 8px;
+	--cw-chip-gap: 4px;
+	--cw-icon: 14px;
+}
 
 .crosswalker-workbench {
 	display: grid;
 	grid-template-columns: minmax(190px, 1fr) minmax(320px, 1.6fr) minmax(220px, 1.2fr);
-	gap: 0.8em;
+	gap: var(--cw-s3);
 	align-items: start;
 }
 
@@ -1734,41 +1707,42 @@
 @media (max-width: 700px) {
 	.crosswalker-workbench {
 		grid-template-columns: 1fr;
+		gap: var(--cw-s2);
 	}
 }
 
 .crosswalker-wb-rail,
 .crosswalker-wb-canvas {
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	padding: 0.7em 0.75em;
+	border-radius: var(--cw-radius-md);
+	padding: var(--cw-s3);
 	background: var(--background-secondary);
 	min-width: 0;
 }
 
+/* Consistent zone eyebrow — the three zones read instantly as a set. */
 .crosswalker-wb-eyebrow {
-	font-size: 0.66em;
-	letter-spacing: 0.12em;
+	font-size: var(--cw-fs-eyebrow);
+	font-weight: 600;
+	letter-spacing: var(--cw-track-eyebrow);
 	text-transform: uppercase;
-	color: var(--text-muted);
-	margin-bottom: 0.5em;
+	color: var(--text-faint);
+	margin-bottom: var(--cw-s3);
+	padding-bottom: var(--cw-s2);
+	border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.crosswalker-wb-chip {
+/* Lucide glyph wrapper — uniform, theme-aware (inherits currentColor). */
+.crosswalker-wb-ico {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.3em;
-	font-size: 0.76em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 99px;
-	padding: 0.1em 0.6em;
-	color: var(--text-muted);
-	background: var(--background-primary);
-	margin: 0.1em 0.2em 0.1em 0;
+	justify-content: center;
+	flex-shrink: 0;
+	color: inherit;
 }
-.crosswalker-wb-chip.is-mixed {
-	border-color: var(--text-warning);
-	color: var(--text-warning);
+.crosswalker-wb-ico .svg-icon {
+	width: var(--cw-icon);
+	height: var(--cw-icon);
 }
 
 .mono,
@@ -1777,134 +1751,229 @@
 	font-family: var(--font-monospace);
 }
 
+/* ---- Shared chip / badge shape (uniform height + padding everywhere) ----- */
+.crosswalker-wb-chip,
+.crosswalker-wb-badge,
+.crosswalker-prov-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--cw-chip-gap);
+	padding: var(--cw-chip-pad-y) var(--cw-chip-pad-x);
+	font-size: var(--cw-fs-chip);
+	line-height: 1.4;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--cw-radius-pill);
+	background: var(--background-primary);
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+.crosswalker-wb-chip .svg-icon,
+.crosswalker-wb-badge .svg-icon,
+.crosswalker-prov-badge .svg-icon {
+	width: 13px;
+	height: 13px;
+}
+
+.crosswalker-wb-chip { margin: 2px 4px 2px 0; }
+.crosswalker-wb-chip.is-mixed {
+	border-color: var(--text-warning);
+	color: var(--text-warning);
+}
+
 /* -- source rail -- */
-.crosswalker-wb-source-file { font-size: 0.85em; margin-bottom: 0.4em; }
-.crosswalker-wb-collist { margin: 0.5em 0; display: flex; flex-direction: column; gap: 0.1em; }
+.crosswalker-wb-source-file { font-size: var(--cw-fs-body); margin-bottom: var(--cw-s2); }
+/* The "table · N rows × M columns" caption chip wraps instead of clipping the rail. */
+.crosswalker-wb-source > .crosswalker-wb-chip { white-space: normal; max-width: 100%; }
+.crosswalker-wb-collist { margin: var(--cw-s3) 0 var(--cw-s2); display: flex; flex-direction: column; gap: var(--cw-s1); }
+/* Row wraps so detection badges drop below the column name when space is tight —
+   the name keeps priority and never collapses to "des…". */
 .crosswalker-wb-colrow {
 	display: flex; justify-content: space-between; align-items: center;
-	gap: 0.4em; font-size: 0.78em; padding: 0.1em 0;
+	gap: var(--cw-s1) var(--cw-s2); font-size: var(--cw-fs-body); padding: var(--cw-s1) 0;
+	flex-wrap: wrap;
 }
-.crosswalker-wb-colname { color: var(--text-normal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crosswalker-wb-collist-hint { font-size: 0.72em; color: var(--text-muted); margin: 0.1em 0 0.35em; }
-.crosswalker-wb-badges { display: flex; gap: 0.25em; flex: none; flex-wrap: wrap; justify-content: flex-end; }
-/* Uniform labeled chips (icon + short word), consistent height + hover (spec §7h #2). */
-.crosswalker-wb-badge {
-	display: inline-flex; align-items: center; gap: 0.2em;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	border-radius: 99px; padding: 0.05em 0.5em; font-size: 0.72em; line-height: 1.5;
-	cursor: pointer; color: var(--text-muted);
-}
+.crosswalker-wb-colname { color: var(--text-normal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 5em; }
+.crosswalker-wb-collist-hint { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s2); line-height: 1.4; }
+.crosswalker-wb-badges { display: flex; gap: var(--cw-s1); flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+/* Labeled detection chips — interactive (button), so they get hover + focus. */
+.crosswalker-wb-badge { cursor: pointer; }
 .crosswalker-wb-badge:hover { border-color: var(--interactive-accent); color: var(--text-normal); }
-.crosswalker-wb-badge.is-active { border-color: var(--interactive-accent); color: var(--text-accent); background: var(--background-secondary); }
-.crosswalker-wb-badge-icon { font-size: 0.9em; }
-.crosswalker-wb-badge-label { text-transform: lowercase; letter-spacing: 0.02em; }
-.crosswalker-wb-badge.is-dismissed { opacity: 0.4; text-decoration: line-through; }
-
-.crosswalker-wb-evidence {
-	border: 1px solid var(--interactive-accent);
-	border-radius: 7px; padding: 0.6em; margin: 0.5em 0;
-	background: var(--background-primary);
-	display: flex; flex-direction: column; gap: 0.5em;
+.crosswalker-wb-badge:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
 }
-.crosswalker-wb-evidence-title { font-weight: 600; font-size: 0.82em; }
-.crosswalker-wb-samples { font-size: 0.76em; color: var(--text-muted); line-height: 1.6; }
-.crosswalker-wb-evidence-cov { font-size: 0.76em; color: var(--text-muted); }
-.crosswalker-wb-hist { display: flex; gap: 0.6em; align-items: flex-end; }
-.crosswalker-wb-hcol { display: flex; flex-direction: column; align-items: center; gap: 0.15em; font-size: 0.68em; color: var(--text-muted); }
+.crosswalker-wb-badge.is-active {
+	border-color: var(--interactive-accent);
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+}
+.crosswalker-wb-badge-label { letter-spacing: 0.01em; }
+.crosswalker-wb-badge.is-dismissed { opacity: 0.45; text-decoration: line-through; }
+
+/* Evidence card — a quiet inspect panel: subtle accent, not a loud full border. */
+.crosswalker-wb-evidence {
+	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: var(--cw-radius-sm);
+	padding: var(--cw-s3); margin: var(--cw-s2) 0;
+	background: var(--background-primary);
+	display: flex; flex-direction: column; gap: var(--cw-s2);
+}
+.crosswalker-wb-evidence-title { font-weight: 600; font-size: var(--cw-fs-body); line-height: 1.35; }
+.crosswalker-wb-samples { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.6; }
+.crosswalker-wb-evidence-cov { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.45; }
+.crosswalker-wb-hist { display: flex; gap: var(--cw-s2); align-items: flex-end; }
+.crosswalker-wb-hcol { display: flex; flex-direction: column; align-items: center; gap: var(--cw-s1); font-size: var(--cw-fs-small); color: var(--text-muted); }
 .crosswalker-wb-hbar { width: 24px; border-radius: 3px 3px 0 0; background: var(--interactive-accent); opacity: 0.85; }
-.crosswalker-wb-evidence-btns { display: flex; gap: 0.4em; }
-.crosswalker-wb-confirm { border: 1px solid var(--interactive-accent); color: var(--interactive-accent); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; cursor: pointer; }
-.crosswalker-wb-confirm:disabled { cursor: default; opacity: 0.55; }
-.crosswalker-wb-dismiss { border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: none; border-radius: 5px; padding: 0.15em 0.6em; font-size: 0.76em; cursor: pointer; }
-.crosswalker-wb-dismiss:disabled { cursor: default; opacity: 0.55; }
+.crosswalker-wb-evidence-btns { display: flex; gap: var(--cw-s2); }
+/* Confirm = the one accent action; dismiss = quiet neutral. */
+.crosswalker-wb-confirm { border: 1px solid var(--interactive-accent); color: var(--text-on-accent); background: var(--interactive-accent); border-radius: var(--cw-radius-sm); padding: var(--cw-s1) var(--cw-s3); font-size: var(--cw-fs-small); cursor: pointer; }
+.crosswalker-wb-confirm:hover:not(:disabled) { background: var(--interactive-accent-hover); }
+.crosswalker-wb-confirm:disabled { cursor: default; opacity: 0.5; background: none; color: var(--text-muted); border-color: var(--background-modifier-border); }
+.crosswalker-wb-dismiss { border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: var(--background-primary); border-radius: var(--cw-radius-sm); padding: var(--cw-s1) var(--cw-s3); font-size: var(--cw-fs-small); cursor: pointer; }
+.crosswalker-wb-dismiss:disabled { cursor: default; opacity: 0.5; }
 .crosswalker-wb-dismiss:hover:not(:disabled) { color: var(--text-normal); border-color: var(--text-muted); }
 
-.crosswalker-wb-allcols { margin-top: 0.6em; font-size: 0.8em; }
-.crosswalker-wb-allcols summary { cursor: pointer; color: var(--text-muted); }
-.crosswalker-wb-allcol-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5em; padding: 0.15em 0; }
+.crosswalker-wb-allcols { margin-top: var(--cw-s3); font-size: var(--cw-fs-body); }
+.crosswalker-wb-allcols summary { cursor: pointer; color: var(--text-muted); padding: var(--cw-s1) 0; }
+.crosswalker-wb-allcols summary:hover { color: var(--text-normal); }
+.crosswalker-wb-allcol-row { display: flex; justify-content: space-between; align-items: center; gap: var(--cw-s2); padding: var(--cw-s1) 0; }
 .crosswalker-wb-allcol-row select { max-width: 45%; }
 
 /* -- mapping canvas -- */
-.crosswalker-wb-presetbar { display: flex; align-items: center; gap: 0.5em; flex-wrap: wrap; margin-bottom: 0.7em; font-size: 0.85em; }
-.crosswalker-wb-preset-label { color: var(--text-accent); font-size: 0.8em; }
-.crosswalker-wb-empty, .crosswalker-wb-preview-empty { font-size: 0.82em; color: var(--text-muted); padding: 0.6em 0; }
+.crosswalker-wb-presetbar { display: flex; align-items: center; gap: var(--cw-s2); flex-wrap: wrap; margin-bottom: var(--cw-s3); font-size: var(--cw-fs-body); }
+.crosswalker-wb-empty, .crosswalker-wb-preview-empty { font-size: var(--cw-fs-body); color: var(--text-muted); padding: var(--cw-s3) 0; line-height: 1.5; }
 
 .crosswalker-wb-mapcard {
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px; padding: 0.55em 0.65em; margin-bottom: 0.5em;
+	border-radius: var(--cw-radius-md); padding: var(--cw-s3); margin-bottom: var(--cw-s2);
 	background: var(--background-primary);
 }
-.crosswalker-wb-mapcard-head { display: flex; align-items: center; gap: 0.45em; flex-wrap: wrap; }
-.crosswalker-wb-mapcard-toggle, .crosswalker-wb-mapcard-rm { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.9em; }
+.crosswalker-wb-mapcard-head { display: flex; align-items: center; gap: var(--cw-s2); flex-wrap: wrap; }
+.crosswalker-wb-mapcard-head > b { font-size: var(--cw-fs-title); }
+/* Icon-only chrome buttons — look interactive, sit on a hover chip. */
+.crosswalker-wb-mapcard-toggle, .crosswalker-wb-mapcard-rm {
+	display: inline-flex; align-items: center; justify-content: center;
+	border: none; background: none; color: var(--text-muted); cursor: pointer;
+	border-radius: var(--cw-radius-sm); padding: 2px 4px; font-size: 0.9em;
+}
+.crosswalker-wb-mapcard-toggle:hover, .crosswalker-wb-mapcard-rm:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 .crosswalker-wb-mapcard-rm { margin-left: auto; }
-.crosswalker-wb-summary-chips { display: flex; gap: 0.25em; flex-wrap: wrap; }
+.crosswalker-wb-mapcard-rm .svg-icon { width: var(--cw-icon); height: var(--cw-icon); }
+.crosswalker-wb-summary-chips { display: flex; gap: var(--cw-s1); flex-wrap: wrap; }
 
+/* Shape cards — the toggle grid. Selected = one accent ring, no double shadow. */
 .crosswalker-wb-shapes {
 	display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-	gap: 0.5em; margin: 0.6em 0;
+	gap: var(--cw-s2); margin: var(--cw-s3) 0;
 }
 .crosswalker-wb-shape {
-	border: 1.5px solid var(--background-modifier-border);
-	border-radius: 8px; padding: 0.5em 0.55em; background: var(--background-secondary);
-	display: flex; flex-direction: column; gap: 0.35em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--cw-radius-md); padding: var(--cw-s3); background: var(--background-secondary);
+	display: flex; flex-direction: column; gap: var(--cw-s2);
+	cursor: pointer; transition: border-color 0.1s ease, background 0.1s ease;
 }
-.crosswalker-wb-shape.is-on { border-color: var(--interactive-accent); box-shadow: 0 0 0 2px var(--background-modifier-border-hover); }
+.crosswalker-wb-shape:hover { border-color: var(--background-modifier-border-hover); }
+.crosswalker-wb-shape.is-on {
+	border-color: var(--interactive-accent);
+	background: var(--background-primary);
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
 .crosswalker-wb-shape.is-mixed { border-color: var(--text-warning); }
-.crosswalker-wb-shape-top { display: flex; align-items: center; gap: 0.4em; }
-.crosswalker-wb-shape-title { font-size: 0.8em; font-weight: 600; }
-.crosswalker-wb-shape-afford { font-size: 0.72em; color: var(--text-muted); }
-.crosswalker-wb-whisper { font-size: 0.68em; color: var(--text-accent); }
+.crosswalker-wb-shape-top { display: flex; align-items: center; gap: var(--cw-s2); }
+.crosswalker-wb-shape-title { font-size: var(--cw-fs-body); font-weight: 600; display: inline-flex; align-items: center; gap: var(--cw-chip-gap); }
+.crosswalker-wb-shape-afford { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.45; }
+.crosswalker-wb-whisper { font-size: var(--cw-fs-small); color: var(--text-accent); }
 
-.crosswalker-wb-combined { margin: 0.5em 0; }
-.crosswalker-wb-combined-label { font-size: 0.78em; color: var(--text-muted); margin-bottom: 0.25em; }
+.crosswalker-wb-combined { margin: var(--cw-s3) 0; }
+.crosswalker-wb-combined-label { font-size: var(--cw-fs-small); color: var(--text-muted); margin-bottom: var(--cw-s1); }
 .crosswalker-wb-mini {
-	font-size: 0.74em; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+	font-size: var(--cw-fs-small); line-height: 1.6; white-space: pre-wrap; word-break: break-word;
 	background: var(--background-secondary); border: 1px solid var(--background-modifier-border);
-	border-radius: 6px; padding: 0.45em 0.55em; margin: 0; overflow-x: auto;
+	border-radius: var(--cw-radius-sm); padding: var(--cw-s2) var(--cw-s3); margin: 0; overflow-x: auto;
 }
 
-.crosswalker-wb-arrange { border: none; background: none; color: var(--text-accent); cursor: pointer; font-size: 0.8em; padding: 0.2em 0; }
+.crosswalker-wb-arrange {
+	display: inline-flex; align-items: center; gap: var(--cw-chip-gap);
+	border: none; background: none; color: var(--text-accent); cursor: pointer;
+	font-size: var(--cw-fs-body); padding: var(--cw-s1) 0;
+}
+.crosswalker-wb-arrange:hover { text-decoration: underline; }
 
-.crosswalker-wb-matrix-wrap { overflow-x: auto; margin-top: 0.4em; }
-.crosswalker-wb-matrix { width: 100%; border-collapse: collapse; font-size: 0.76em; }
-.crosswalker-wb-matrix th { text-align: left; font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 1px solid var(--background-modifier-border); padding: 0.3em 0.4em; }
-.crosswalker-wb-matrix td { padding: 0.35em 0.4em; border-bottom: 1px solid var(--background-modifier-border); vertical-align: top; }
-.crosswalker-wb-gestures { display: flex; gap: 0.25em; margin-top: 0.2em; }
-.crosswalker-wb-gestures button { font-size: 0.68em; border: 1px solid var(--background-modifier-border); background: var(--background-secondary); border-radius: 4px; padding: 0 0.35em; cursor: pointer; }
-.crosswalker-wb-tail-note { font-size: 0.68em; color: var(--text-accent); }
+.crosswalker-wb-matrix-wrap { overflow-x: auto; margin-top: var(--cw-s2); }
+.crosswalker-wb-matrix { width: 100%; border-collapse: collapse; font-size: var(--cw-fs-small); }
+.crosswalker-wb-matrix th { text-align: left; font-size: var(--cw-fs-eyebrow); text-transform: uppercase; letter-spacing: var(--cw-track-eyebrow); color: var(--text-faint); border-bottom: 1px solid var(--background-modifier-border); padding: var(--cw-s2) var(--cw-s2); }
+.crosswalker-wb-matrix td { padding: var(--cw-s2); border-bottom: 1px solid var(--background-modifier-border); vertical-align: top; }
+.crosswalker-wb-matrix tr:last-child td { border-bottom: none; }
+.crosswalker-wb-gestures { display: flex; gap: var(--cw-s1); margin-top: var(--cw-s1); }
+.crosswalker-wb-gestures button {
+	font-size: var(--cw-fs-small); border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary); border-radius: var(--cw-radius-sm);
+	padding: 1px 6px; cursor: pointer; color: var(--text-muted);
+}
+.crosswalker-wb-gestures button:hover { border-color: var(--interactive-accent); color: var(--text-normal); }
+.crosswalker-wb-tail-note { font-size: var(--cw-fs-small); color: var(--text-accent); }
 .crosswalker-wb-chip-dest { position: relative; }
-.crosswalker-wb-chip-x { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.85em; padding: 0 0 0 0.2em; }
-.crosswalker-wb-chip-add { border-style: dashed; color: var(--text-accent); cursor: pointer; }
+/* The remove-x inside a destination chip — an icon button, quiet until hover. */
+.crosswalker-wb-chip-x {
+	display: inline-flex; align-items: center; justify-content: center;
+	border: none; background: none; color: var(--text-faint); cursor: pointer;
+	padding: 0; margin-left: 2px; border-radius: var(--cw-radius-pill);
+}
+.crosswalker-wb-chip-x .svg-icon { width: 11px; height: 11px; }
+.crosswalker-wb-chip-x:hover { color: var(--text-error); }
+/* The add-destination chip — a dashed pill that reads as "add". */
+.crosswalker-wb-chip-add { border-style: dashed; color: var(--text-accent); cursor: pointer; padding: var(--cw-chip-pad-y) var(--cw-chip-pad-x); }
+.crosswalker-wb-chip-add:hover { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
+.crosswalker-wb-chip-add .svg-icon { width: var(--cw-icon); height: var(--cw-icon); }
 
 .crosswalker-wb-addmenu {
-	border: 1px solid var(--interactive-accent); border-radius: 7px; padding: 0.5em;
-	margin-top: 0.4em; background: var(--background-primary); display: flex; flex-direction: column; gap: 0.2em;
+	border: 1px solid var(--background-modifier-border); border-left: 3px solid var(--interactive-accent);
+	border-radius: var(--cw-radius-sm); padding: var(--cw-s3);
+	margin-top: var(--cw-s2); background: var(--background-primary); display: flex; flex-direction: column; gap: var(--cw-s1);
 }
-.crosswalker-wb-addmenu-title { font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-accent); }
-.crosswalker-wb-addmenu-group { font-size: 0.66em; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-top: 0.3em; }
-.crosswalker-wb-addmenu-item { border: none; background: none; text-align: left; color: var(--text-normal); cursor: pointer; font-size: 0.8em; padding: 0.1em 0.2em; }
-.crosswalker-wb-addmenu-item:hover { color: var(--text-accent); }
-.crosswalker-wb-addmenu-field { display: flex; justify-content: space-between; align-items: center; gap: 0.5em; font-size: 0.76em; padding: 0.15em 0; }
+.crosswalker-wb-addmenu-title { font-size: var(--cw-fs-eyebrow); text-transform: uppercase; letter-spacing: var(--cw-track-eyebrow); color: var(--text-accent); font-weight: 600; }
+.crosswalker-wb-addmenu-group { font-size: var(--cw-fs-eyebrow); text-transform: uppercase; letter-spacing: var(--cw-track-eyebrow); color: var(--text-faint); margin-top: var(--cw-s2); }
+.crosswalker-wb-addmenu-item {
+	border: none; background: none; text-align: left; color: var(--text-normal); cursor: pointer;
+	font-size: var(--cw-fs-body); padding: var(--cw-s1) var(--cw-s1); border-radius: var(--cw-radius-sm);
+}
+.crosswalker-wb-addmenu-item:hover { color: var(--text-accent); background: var(--background-modifier-hover); }
+.crosswalker-wb-addmenu-field { display: flex; justify-content: space-between; align-items: center; gap: var(--cw-s2); font-size: var(--cw-fs-body); padding: var(--cw-s1) 0; }
 .crosswalker-wb-addmenu-field input { max-width: 55%; }
-.crosswalker-wb-addmenu-btns { display: flex; gap: 0.4em; margin-top: 0.4em; }
+.crosswalker-wb-addmenu-btns { display: flex; gap: var(--cw-s2); margin-top: var(--cw-s2); }
 
-.crosswalker-wb-addmapping { margin-top: 0.5em; }
+.crosswalker-wb-addmapping { margin-top: var(--cw-s3); }
 .crosswalker-wb-addmapping select { width: 100%; }
 
 /* -- vault preview rail -- */
-.crosswalker-wb-tree { font-size: 0.74em; line-height: 1.55; margin: 0 0 0.6em; }
+.crosswalker-wb-tree { font-size: var(--cw-fs-small); line-height: 1.6; margin: 0 0 var(--cw-s3); }
 /* Clickable file rows select the previewed note (spec §7j #4) — folders inert. */
-.crosswalker-wb-tree-row { padding: 0.05em 0.25em; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crosswalker-wb-tree-row {
+	display: flex; align-items: center; gap: var(--cw-chip-gap);
+	padding: 2px var(--cw-s1); border-radius: var(--cw-radius-sm);
+	white-space: nowrap; overflow: hidden;
+}
+.crosswalker-wb-tree-row > span { overflow: hidden; text-overflow: ellipsis; }
+.crosswalker-wb-tree-ico { color: var(--text-faint); }
+.crosswalker-wb-tree-ico .svg-icon { width: 13px; height: 13px; }
 .crosswalker-wb-tree-row.is-file { cursor: pointer; }
 .crosswalker-wb-tree-row.is-file:hover { background: var(--background-modifier-hover); }
-.crosswalker-wb-tree-row.is-selected { background: var(--background-modifier-active-hover, var(--background-modifier-hover)); color: var(--text-accent); font-weight: 600; }
-.crosswalker-wb-note { margin: 0.4em 0; }
-.crosswalker-wb-note-title { font-size: 0.8em; font-weight: 600; margin-bottom: 0.25em; }
+.crosswalker-wb-tree-row.is-selected {
+	background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+	color: var(--text-accent); font-weight: 600;
+}
+.crosswalker-wb-tree-row.is-selected .crosswalker-wb-tree-ico { color: var(--text-accent); }
+.crosswalker-wb-note { margin: var(--cw-s2) 0; }
+.crosswalker-wb-note-title {
+	display: flex; align-items: center; gap: var(--cw-chip-gap);
+	font-size: var(--cw-fs-body); font-weight: 600; margin-bottom: var(--cw-s2);
+}
+.crosswalker-wb-note-title .crosswalker-wb-ico { color: var(--text-muted); }
 
-.crosswalker-shape-map { width: 100%; border-collapse: collapse; font-size: 0.85em; margin: 0.5em 0; }
-.crosswalker-shape-map th { text-align: left; font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 1px solid var(--background-modifier-border); padding: 0.35em 0.5em; }
-.crosswalker-shape-map td { padding: 0.4em 0.5em; border-bottom: 1px solid var(--background-modifier-border); }
+.crosswalker-shape-map { width: 100%; border-collapse: collapse; font-size: var(--cw-fs-body); margin: var(--cw-s2) 0; }
+.crosswalker-shape-map th { text-align: left; font-size: var(--cw-fs-eyebrow); text-transform: uppercase; letter-spacing: var(--cw-track-eyebrow); color: var(--text-faint); border-bottom: 1px solid var(--background-modifier-border); padding: var(--cw-s2); }
+.crosswalker-shape-map td { padding: var(--cw-s2); border-bottom: 1px solid var(--background-modifier-border); }
 
 /* ============================================================================
    Step-2 header hint + step-3 review screen (spec §7j)
@@ -1912,60 +1981,62 @@
 
 /* Consistent vertical rhythm: subtitle sits tight under the h3, the dismissible
    hint is a single de-emphasized line (spec §7j #5). */
-.crosswalker-wb-subtitle { margin: 0.2em 0 0.6em; }
+.crosswalker-wb-subtitle { margin: var(--cw-s1) 0 var(--cw-s3); }
 .crosswalker-wb-hint {
-	display: flex; align-items: center; gap: 0.5em;
-	font-size: 0.82em; color: var(--text-muted);
+	display: flex; align-items: center; gap: var(--cw-s2);
+	font-size: var(--cw-fs-body); color: var(--text-muted);
 	background: var(--background-secondary); border: 1px solid var(--background-modifier-border);
-	border-radius: 6px; padding: 0.35em 0.6em; margin: 0 0 0.9em;
+	border-radius: var(--cw-radius-sm); padding: var(--cw-s2) var(--cw-s3); margin: 0 0 var(--cw-s4);
 }
-.crosswalker-wb-hint-text { flex: 1; }
-.crosswalker-wb-hint-x { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 0.85em; padding: 0 0.2em; }
-.crosswalker-wb-hint-x:hover { color: var(--text-normal); }
+.crosswalker-wb-hint-text { flex: 1; line-height: 1.45; }
+.crosswalker-wb-hint-x {
+	display: inline-flex; align-items: center; justify-content: center;
+	border: none; background: none; color: var(--text-muted); cursor: pointer;
+	padding: 2px; border-radius: var(--cw-radius-sm);
+}
+.crosswalker-wb-hint-x .svg-icon { width: 13px; height: 13px; }
+.crosswalker-wb-hint-x:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
 
 /* Destination block (spec §7j #2) — prominent, breadcrumb path + reveal button. */
 .crosswalker-dest-block {
-	border: 1px solid var(--background-modifier-border); border-radius: 8px;
-	padding: 0.7em 0.8em; margin: 0.4em 0 1em; background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-md);
+	padding: var(--cw-s3) var(--cw-s4); margin: var(--cw-s2) 0 var(--cw-s4); background: var(--background-secondary);
 }
-.crosswalker-dest-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6em; margin-bottom: 0.45em; }
-.crosswalker-dest-label { font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+.crosswalker-dest-head { display: flex; align-items: center; justify-content: space-between; gap: var(--cw-s3); margin-bottom: var(--cw-s2); }
+.crosswalker-dest-label { font-size: var(--cw-fs-eyebrow); font-weight: 600; text-transform: uppercase; letter-spacing: var(--cw-track-eyebrow); color: var(--text-faint); }
 .crosswalker-dest-reveal {
 	border: 1px solid var(--background-modifier-border); background: var(--background-primary);
-	color: var(--text-muted); border-radius: 5px; padding: 0.2em 0.7em; font-size: 0.78em; cursor: pointer;
+	color: var(--text-muted); border-radius: var(--cw-radius-sm); padding: var(--cw-s1) var(--cw-s3); font-size: var(--cw-fs-small); cursor: pointer;
 }
 .crosswalker-dest-reveal:hover { color: var(--text-normal); border-color: var(--interactive-accent); }
 .crosswalker-dest-pathwrap { display: flex; }
 .crosswalker-dest-crumb {
-	display: inline-flex; align-items: center; gap: 0.15em; flex-wrap: wrap;
+	display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap;
 	border: 1px solid transparent; background: var(--background-primary);
-	border-radius: 6px; padding: 0.35em 0.6em; cursor: pointer;
-	font-family: var(--font-monospace); font-size: 0.95em; color: var(--text-normal);
+	border-radius: var(--cw-radius-sm); padding: var(--cw-s2) var(--cw-s3); cursor: pointer;
+	font-family: var(--font-monospace); font-size: var(--cw-fs-body); color: var(--text-normal);
 	text-align: left;
 }
-.crosswalker-dest-crumb:hover { border-color: var(--background-modifier-border); }
+.crosswalker-dest-crumb:hover { border-color: var(--background-modifier-border-hover); }
 .crosswalker-dest-seg { color: var(--text-normal); }
-.crosswalker-dest-sep { color: var(--text-faint); margin: 0 0.05em; }
-.crosswalker-dest-editicon { color: var(--text-faint); margin-left: 0.4em; font-size: 0.85em; }
+.crosswalker-dest-sep { color: var(--text-faint); margin: 0 2px; }
+.crosswalker-dest-editicon { display: inline-flex; align-items: center; color: var(--text-faint); margin-left: var(--cw-s2); }
+.crosswalker-dest-editicon .svg-icon { width: 12px; height: 12px; }
 .crosswalker-dest-input {
-	width: 100%; font-family: var(--font-monospace); font-size: 0.95em;
-	padding: 0.35em 0.6em; border-radius: 6px;
+	width: 100%; font-family: var(--font-monospace); font-size: var(--cw-fs-body);
+	padding: var(--cw-s2) var(--cw-s3); border-radius: var(--cw-radius-sm);
 }
 
 /* Provenance line + badges (spec §7j #3). */
-.crosswalker-provenance { display: flex; align-items: center; flex-wrap: wrap; gap: 0.35em; font-size: 0.85em; color: var(--text-muted); margin: 0.8em 0 0.2em; }
+.crosswalker-provenance { display: flex; align-items: center; flex-wrap: wrap; gap: var(--cw-s1); font-size: var(--cw-fs-body); color: var(--text-muted); margin: var(--cw-s4) 0 var(--cw-s1); }
 .crosswalker-provenance-lead { color: var(--text-muted); }
 .crosswalker-provenance-text { color: var(--text-normal); }
-.crosswalker-prov-badge {
-	display: inline-flex; align-items: center; font-size: 0.72em; font-weight: 600;
-	border-radius: 99px; padding: 0.1em 0.55em; letter-spacing: 0.02em;
-	border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: var(--background-primary);
-}
+.crosswalker-prov-badge { font-weight: 600; letter-spacing: 0.01em; }
 .crosswalker-prov-badge.is-built-in { border-color: var(--interactive-accent); color: var(--text-accent); }
 .crosswalker-prov-badge.is-yours { border-color: var(--color-green, var(--interactive-accent)); color: var(--color-green, var(--text-accent)); }
 .crosswalker-prov-badge.is-custom { border-color: var(--text-warning); color: var(--text-warning); }
 .crosswalker-prov-badge.is-recommended { border-color: var(--interactive-accent); color: var(--text-on-accent); background: var(--interactive-accent); }
 
 /* Step-4 read-only destination confirm (workbench mode). */
-.crosswalker-gen-confirm { font-size: 0.9em; margin: 0.4em 0 0.9em; color: var(--text-muted); }
+.crosswalker-gen-confirm { font-size: var(--cw-fs-body); margin: var(--cw-s2) 0 var(--cw-s4); color: var(--text-muted); }
 .crosswalker-gen-confirm-lead { color: var(--text-muted); }
