@@ -11,6 +11,7 @@ import {
 	type CrosswalkerBasesViewOption,
 } from './views/bases-api';
 import { writeReferenceBaseFiles } from './views/reference-base-files';
+import { CrosswalkerWorkspaceView, VIEW_TYPE_CROSSWALKER_WORKSPACE } from './views/workspace-view';
 import { DebugLog } from './utils/debug';
 import { DraftStore } from './import/draft-store';
 import { RecipePickerModal } from './views/recipe-picker-modal';
@@ -55,10 +56,10 @@ export default class CrosswalkerPlugin extends Plugin {
 	// via the plugin reference. Underlying implementations are pure module
 	// exports.
 	//
-	// validateRecipe wraps the module export with the active recipeSchemaStyle
-	// from settings (per Ch 31 v0.1.6) — callers don't need to know which
-	// discriminator style is active.
-	validateRecipe = (recipe: unknown) => validateRecipeFn(recipe, this.settings.recipeSchemaStyle);
+	// validateRecipe wraps the module export. The `recipeSchemaStyle` setting
+	// was removed (settings-redesign report, 2026-07-11) — both discriminator
+	// styles validated identically, so style 'A' is now hardcoded.
+	validateRecipe = (recipe: unknown) => validateRecipeFn(recipe, 'A');
 	validateTier1Frontmatter = validateTier1Frontmatter;
 	render = render;
 	legacyConfigToRecipe = legacyConfigToRecipe;
@@ -270,8 +271,8 @@ export default class CrosswalkerPlugin extends Plugin {
 				await this.debug.withTrace(traceId, async () => {
 					const { migrateQueriesToFolderLayout } = await import('./views/migrate-query-layout');
 					const { loadAllRecipes } = await import('./views/recipe-loader');
-					const schemaStyle = (this.settings.recipeSchemaStyle ?? 'A') as 'A' | 'B';
-					const loadResult = await loadAllRecipes(this.app, schemaStyle, this.debug);
+					// `recipeSchemaStyle` setting removed (settings-redesign report, 2026-07-11); style 'A' hardcoded.
+					const loadResult = await loadAllRecipes(this.app, 'A', this.debug);
 					const result = await migrateQueriesToFolderLayout({
 						app: this.app,
 						debug: this.debug,
@@ -702,6 +703,23 @@ export default class CrosswalkerPlugin extends Plugin {
 		// Register settings tab
 		this.addSettingTab(new CrosswalkerSettingTab(this.app, this));
 
+		// Shape-first wizard spec §7n: dedicated workspace tab hosting the
+		// import experience outside the modal (Kanban/Excalidraw/Bases precedent).
+		this.registerView(
+			VIEW_TYPE_CROSSWALKER_WORKSPACE,
+			(leaf) => new CrosswalkerWorkspaceView(leaf, this),
+		);
+		this.addRibbonIcon('network', 'Open workspace', () => {
+			void this.activateWorkspaceView();
+		});
+		this.addCommand({
+			id: 'open-crosswalker-workspace',
+			name: 'Open workspace',
+			callback: () => {
+				void this.activateWorkspaceView();
+			},
+		});
+
 		// v0.1.6 Phase 3: register the crosswalkerPivot custom Bases view
 		// (per Settled #2 + Ch 30). Public API path; Obsidian 1.10.0+ required.
 		// Bases-disabled fallback Notice surfaces if the user has the Bases
@@ -775,6 +793,22 @@ export default class CrosswalkerPlugin extends Plugin {
 				);
 			}
 		});
+	}
+
+	/**
+	 * Open the Crosswalker workspace tab, reusing an existing leaf if one is
+	 * already open (per the shape-first wizard spec §7n).
+	 */
+	private async activateWorkspaceView(): Promise<void> {
+		const { workspace } = this.app;
+		const existing = workspace.getLeavesOfType(VIEW_TYPE_CROSSWALKER_WORKSPACE);
+		if (existing.length > 0) {
+			workspace.revealLeaf(existing[0]);
+			return;
+		}
+		const leaf = workspace.getLeaf('tab');
+		await leaf.setViewState({ type: VIEW_TYPE_CROSSWALKER_WORKSPACE, active: true });
+		workspace.revealLeaf(leaf);
 	}
 
 	onunload() {

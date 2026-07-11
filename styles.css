@@ -1671,7 +1671,8 @@
 /* ========================================================================== */
 
 .crosswalker-wizard-modal,
-.crosswalker-settings {
+.crosswalker-settings,
+.crosswalker-workspace-view {
 	/* Spacing scale (4px base). */
 	--cw-s1: 4px;
 	--cw-s2: 8px;
@@ -2360,4 +2361,102 @@
 .crosswalker-recognized-quiet:hover {
 	color: var(--text-normal);
 	background: var(--background-modifier-hover);
+}
+
+/* === workspace view === */
+/* Crosswalker workspace tab (spec 2026-07-05 §7n). Token scope is added to
+   the shared `.crosswalker-wizard-modal, .crosswalker-settings` selector
+   list above so this container inherits the same --cw-* spacing/type/radius
+   tokens as the wizard modal and settings hub. */
+
+.crosswalker-workspace-view {
+	padding: var(--cw-s5) var(--cw-s5) var(--cw-s5);
+	max-width: 720px;
+	margin: 0 auto;
+}
+
+.crosswalker-workspace-header {
+	margin-bottom: var(--cw-s5);
+}
+
+.crosswalker-workspace-title {
+	font-size: var(--font-ui-large);
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.crosswalker-workspace-subtitle {
+	margin-top: var(--cw-s1);
+	font-size: var(--cw-fs-body);
+	color: var(--text-muted);
+}
+
+.crosswalker-workspace-installed {
+	margin-top: var(--cw-s5);
+}
+
+.crosswalker-workspace-installed-heading {
+	font-size: var(--cw-fs-eyebrow);
+	letter-spacing: var(--cw-track-eyebrow);
+	text-transform: uppercase;
+	color: var(--text-muted);
+	margin-bottom: var(--cw-s3);
+}
+
+.crosswalker-workspace-empty {
+	display: flex;
+	align-items: center;
+	gap: var(--cw-s3);
+	padding: var(--cw-s4);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--cw-radius-md);
+	color: var(--text-muted);
+}
+
+.crosswalker-workspace-empty-ico .svg-icon {
+	width: 18px;
+	height: 18px;
+}
+
+.crosswalker-workspace-empty-text {
+	font-size: var(--cw-fs-body);
+}
+
+.crosswalker-workspace-ontology-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--cw-s2);
+}
+
+.crosswalker-workspace-ontology-item {
+	display: flex;
+	align-items: center;
+	gap: var(--cw-s3);
+	padding: var(--cw-s3);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--cw-radius-md);
+	background: var(--background-secondary);
+}
+
+.crosswalker-workspace-ontology-ico .svg-icon {
+	width: var(--cw-icon);
+	height: var(--cw-icon);
+	color: var(--text-muted);
+}
+
+.crosswalker-workspace-ontology-body {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.crosswalker-workspace-ontology-name {
+	font-size: var(--cw-fs-body);
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.crosswalker-workspace-ontology-count {
+	font-size: var(--cw-fs-small);
+	color: var(--text-muted);
 }
