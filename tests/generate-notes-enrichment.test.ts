@@ -17,6 +17,7 @@
 
 import { TFile, TFolder } from 'obsidian';
 import { generateNotes } from '../src/generation/generation-engine';
+import { legacyConfigToRecipe } from '../src/generation/legacy-recipe-shim';
 import type { Recipe } from '../src/render';
 import type { GenerationOptions } from '../src/generation/generation-engine';
 import type { ImportRecipe, ParsedData } from '../src/types/config';
@@ -197,5 +198,70 @@ describe('Pass 1.5 enrichment — generateNotes (wizard/workbench path)', () => 
 		expect(t1078).toBeDefined();
 		expect(t1078).not.toContain('children:');
 		expect(files.has('Frameworks/Persistence.md')).toBe(false);
+	});
+});
+
+/**
+ * Classic (non-workbench) wizard path — generateNotes with NO recipeOverride,
+ * so the recipe comes from legacyConfigToRecipe (src/generation/legacy-recipe-shim.ts)
+ * instead of the workbench. Regression for the uniformity gap found alongside
+ * spec §7o: legacyConfigToRecipe never set target.enrichment, so
+ * `enrichmentEnabled` was always false for classic-mode imports — children
+ * lists / facet hub notes / edgeCount silently never ran, even though the
+ * CHANGELOG claims both generation entry points behave identically (see
+ * generate-notes-enrichment.test.ts's own file header). Fixed by giving the
+ * shim the same enrichment defaults as the browsable-framework preset
+ * (children_lists: true, facet_notes: 'notes', parent_note: 'sibling').
+ *
+ * facet_notes stays a no-op here on purpose: the classic MappingConfig has no
+ * tag role yet (see LEGACY_DEFAULT_ENRICHMENT's comment), so this only proves
+ * children_lists — the mechanism classic mode already had wiring for via
+ * mapping.links.
+ */
+describe('Pass 1.5 enrichment — generateNotes (classic/legacy-shim path)', () => {
+	const CLASSIC_CONFIG: Partial<ImportRecipe> = {
+		name: 'attack-classic',
+		mapping: {
+			hierarchy: [],
+			frontmatter: [],
+			links: [{ column: 'parent', type: 'wikilink', location: 'frontmatter', frontmatterKey: 'parent' }],
+			body: [],
+			filename: { template: '{id}.md', sanitize: true },
+		},
+	};
+
+	function classicOptions(): GenerationOptions {
+		// No recipeOverride, no facetsForRow — exactly what the classic (non-
+		// workbench) wizard step 4 passes (import-wizard.ts's doGenerate only
+		// sets these inside `workbenchMode && this.workbench`).
+		return { basePath: 'Frameworks', overwriteMode: 'replace', createFolders: true };
+	}
+
+	it('legacyConfigToRecipe now carries default enrichment (was undefined)', () => {
+		const recipe = legacyConfigToRecipe(CLASSIC_CONFIG as ImportRecipe);
+		expect(recipe.target.enrichment).toEqual({
+			children_lists: true,
+			facet_notes: 'notes',
+			parent_note: 'sibling',
+		});
+	});
+
+	it('children lists materialize via the existing mapping.links → parent wiring', async () => {
+		const { app, files } = makeApp();
+		const result = await generateNotes(app, parsed(), CLASSIC_CONFIG, classicOptions());
+
+		expect(result.errors).toEqual([]);
+		// Previously undefined (applyEnrichment never ran for classic mode).
+		expect(result.edgeCount).toBeGreaterThan(0);
+
+		const t1078 = files.get('Frameworks/T1078.md')!;
+		expect(t1078).toContain('children:');
+		expect(t1078).toContain('[[T1078.001]]');
+		expect(t1078).toContain('[[T1078.002]]');
+
+		// facet_notes: 'notes' is a documented no-op today — classic mode has no
+		// tag role, so no facet memberships are ever collected and no hub notes
+		// materialize. Nothing beyond the 3 source rows should be created.
+		expect(result.created.length).toBe(3);
 	});
 });

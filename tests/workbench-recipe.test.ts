@@ -14,6 +14,7 @@ import type { ParsedData } from '../src/types/config';
 import type { ImportMapping } from '../src/import/mapping/types';
 import type { DebugLog } from '../src/utils/debug';
 import { deriveFacetMemberships } from '../src/import/mapping/facets';
+import { findRecipeForOntologyName } from '../src/views/workspace-view-helpers';
 
 // A no-op DebugLog stub (the workbench only calls .info/.trace).
 const debug = {
@@ -200,6 +201,94 @@ describe('MappingWorkbench facet display names (spec §7k, item 3)', () => {
 	});
 });
 
+describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
+	// Repro shape mirrors tests/e2e/visual-graph.spec.ts: 12 rows, dotted (ragged)
+	// ids so a packed-hierarchy structural mapping is elected, `;`-joined
+	// multi-value tactic cells so the facet caps stay satisfied (7 atoms < the
+	// cardinality cap), driven with ZERO workbench interaction (defaultPresetId
+	// only — no columnDests overrides).
+	function attackRepro12(): Record<string, unknown>[] {
+		const rows: { technique_id: string; name: string; tactic: string }[] = [
+			{ technique_id: 'T1055', name: 'Process Injection', tactic: 'Defense Evasion; Privilege Escalation' },
+			{ technique_id: 'T1055.001', name: 'DLL Injection', tactic: 'Defense Evasion; Privilege Escalation' },
+			{ technique_id: 'T1055.011', name: 'EWM Injection', tactic: 'Defense Evasion; Privilege Escalation' },
+			{ technique_id: 'T1059', name: 'Command and Scripting Interpreter', tactic: 'Execution' },
+			{ technique_id: 'T1059.001', name: 'PowerShell', tactic: 'Execution' },
+			{ technique_id: 'T1059.003', name: 'Windows Command Shell', tactic: 'Execution' },
+			{ technique_id: 'T1071', name: 'Application Layer Protocol', tactic: 'Command and Control' },
+			{ technique_id: 'T1071.001', name: 'Web Protocols', tactic: 'Command and Control' },
+			{ technique_id: 'T1547', name: 'Boot or Logon Autostart Execution', tactic: 'Persistence; Privilege Escalation' },
+			{ technique_id: 'T1547.001', name: 'Registry Run Keys / Startup Folder', tactic: 'Persistence; Privilege Escalation' },
+			{ technique_id: 'T1003', name: 'OS Credential Dumping', tactic: 'Credential Access' },
+			{ technique_id: 'T1486', name: 'Data Encrypted for Impact', tactic: 'Impact' },
+		];
+		// `description` gives every row a body-candidate column, matching the real
+		// fixture's shape (avoids `name` being misread as the body column).
+		return rows.map((r) => ({ ...r, description: 'x'.repeat(80) }));
+	}
+
+	function reproWorkbench(): MappingWorkbench {
+		const rows = attackRepro12();
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		return new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'GraphTest-e2e',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			onChange: () => {},
+		});
+	}
+
+	it('sanity: instantiate() DOES stamp enrichment onto the mapping (not the bug)', () => {
+		const wb = reproWorkbench();
+		expect(wb.getMapping().enrichment).toEqual({
+			children_lists: true,
+			facet_notes: 'notes',
+			parent_note: 'sibling',
+		});
+	});
+
+	// eslint-disable-next-line jest/no-disabled-tests
+	it.skip('BUG: buildRecipe() must carry target.enrichment through (currently dropped)', () => {
+		// Root cause (found 2026-07-11, generation-engine.ts/generation surface
+		// investigation of spec §7o): MappingWorkbench.buildFinalRegions() in
+		// src/import/workbench.ts computes `const base = toRecipeRegions(this.mapping)`
+		// (which DOES carry `base.enrichment`, per the sanity test above and
+		// serialize.ts's toRecipeRegions), but its final `return` reconstructs a
+		// brand-new RecipeRegions literal — `{ layout, also_emit }` or `{ layout }`
+		// — that never copies `base.enrichment` across. `enrichmentEnabled` in
+		// generateNotes (`!!recipe.target.enrichment`) is therefore always false
+		// on the wizard/workbench path, so Pass 1.5 (children lists + facet hub
+		// notes + edgeCount) never runs — regardless of whether facetsForRow is
+		// wired correctly (it is; see the facet-display-names describe block
+		// above and generate-notes-enrichment.test.ts).
+		//
+		// ONE-LINE FIX for the workbench.ts owner, in buildFinalRegions()'s
+		// return statement (~line 267):
+		//
+		//   const regions: RecipeRegions = tags.length || aliases.length || Object.keys(managed).length
+		//     ? { layout, also_emit: alsoEmit }
+		//     : { layout };
+		//   if (base.enrichment) regions.enrichment = base.enrichment;
+		//   return regions;
+		//
+		// Verified end-to-end (headless, outside this file) with that one-line
+		// patch applied: generateNotes on this exact 12-row fixture produces 17
+		// created files (12 leaf + 5 facet hubs meeting HUB_MIN_MEMBERS=2:
+		// Defense Evasion, Privilege Escalation, Execution, Command and Control,
+		// Persistence) and edgeCount 15. Un-skip this test once the fix lands.
+		const wb = reproWorkbench();
+		const recipe = wb.buildRecipe();
+		expect(recipe.target.enrichment).toEqual({
+			children_lists: true,
+			facet_notes: 'notes',
+			parent_note: 'sibling',
+		});
+	});
+});
+
 describe('MappingWorkbench recognized-recipe seed (spec §7m)', () => {
 	// A recipe-seeded workbench (seedColumnDefaults: false) must emit EXACTLY the
 	// recipe — no auto-added per-column properties. Here the seed maps only
@@ -248,5 +337,45 @@ describe('MappingWorkbench recognized-recipe seed (spec §7m)', () => {
 		const wb = makeWorkbench(attackRows());
 		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed ?? {};
 		expect(Object.keys(managed)).toContain('name');
+	});
+});
+
+// ============================================================================
+// findRecipeForOntologyName — the "Import again" heuristic (workspace-view-helpers.ts,
+// spec §7n item 3). Installed-ontology folder name -> bundled recipe, best-effort.
+// ============================================================================
+
+describe('findRecipeForOntologyName', () => {
+	const registry = [
+		{ id: 'nist-csf-2-cprt-hierarchical', label: 'NIST CSF 2.0 (CPRT export, nested)', ontology: 'nist-csf-2' },
+		{ id: 'mitre-attack-technique-flat', label: 'MITRE ATT&CK techniques', ontology: 'mitre-attack' },
+		{ id: 'cis-controls-v8-controls', label: 'CIS Controls v8 (controls)', ontology: 'cis-v8' },
+	];
+
+	it('matches a punctuated folder name against a normalized ontology id', () => {
+		const match = findRecipeForOntologyName('NIST-CSF-2.0', registry);
+		expect(match?.id).toBe('nist-csf-2-cprt-hierarchical');
+	});
+
+	it('matches regardless of extra folder-name words', () => {
+		const match = findRecipeForOntologyName('MITRE ATT&CK (Techniques)', registry);
+		expect(match?.id).toBe('mitre-attack-technique-flat');
+	});
+
+	it('returns null for an unrecognizable folder name', () => {
+		expect(findRecipeForOntologyName('My custom notes', registry)).toBeNull();
+	});
+
+	it('returns null for an empty folder name', () => {
+		expect(findRecipeForOntologyName('', registry)).toBeNull();
+	});
+
+	it('prefers the more specific (longer) ontology id on ambiguous ties', () => {
+		const ambiguous = [
+			{ id: 'a', label: 'A', ontology: 'cis' },
+			{ id: 'b', label: 'B', ontology: 'cis-v8' },
+		];
+		const match = findRecipeForOntologyName('CIS-v8', ambiguous);
+		expect(match?.id).toBe('b');
 	});
 });

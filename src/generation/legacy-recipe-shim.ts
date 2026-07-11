@@ -30,6 +30,26 @@ import type { Recipe } from '../render';
  *     (key → `{<column>}` template; transforms still happen via the engine's
  *     formatValue helper since render's filter set is closed)
  */
+/**
+ * Pass 1.5 batch enrichment defaults for the classic (non-workbench) wizard
+ * path. Mirrors `PRESET_ENRICHMENT_DEFAULTS['browsable-framework']` in
+ * `src/import/mapping/presets.ts` — the uniformity promise (CHANGELOG
+ * "children lists, facet hub notes, edgeCount" ships on BOTH generation entry
+ * points) otherwise silently breaks for classic-mode imports, since
+ * `generateNotes` only runs `applyEnrichment` when `recipe.target.enrichment`
+ * is present (see generation-engine.ts `enrichmentEnabled`). `facet_notes:
+ * 'notes'` is a harmless no-op today (the classic `MappingConfig` has no tag
+ * role yet, so `facetMembershipsFromTags` never has tags to split — see
+ * generation-engine.ts's `facetsForRow` fallback), but `children_lists` is
+ * live wherever a classic config maps a `parent` link column, and future tag
+ * support inherits the wiring for free.
+ */
+const LEGACY_DEFAULT_ENRICHMENT: NonNullable<Recipe['target']['enrichment']> = {
+	children_lists: true,
+	facet_notes: 'notes',
+	parent_note: 'sibling',
+};
+
 export function legacyConfigToRecipe(config: LegacyImportRecipe): Recipe {
 	const layout: Recipe['target']['layout'] = [];
 
@@ -76,6 +96,7 @@ export function legacyConfigToRecipe(config: LegacyImportRecipe): Recipe {
 			also_emit: Object.keys(managed).length > 0
 				? { frontmatter: { managed } }
 				: undefined,
+			enrichment: LEGACY_DEFAULT_ENRICHMENT,
 		},
 	};
 }
