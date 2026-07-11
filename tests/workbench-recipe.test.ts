@@ -370,11 +370,13 @@ describe('facetTagColumns (spec §7k)', () => {
 describe('buildParentPlacementPreview / toFolderNotePaths (variadic-split design §4)', () => {
 	it('sibling preview keeps a parent note beside its children folder', () => {
 		const { sibling } = buildParentPlacementPreview(['Techniques/T1055.md', 'Techniques/T1055/T1055.011.md']);
-		expect(sibling).toEqual([
+		// The connected PAIR (parent note + its matching folder) carries the
+		// accent relation for the highlight overlay; the child is marked too.
+		expect(sibling).toMatchObject([
 			{ depth: 0, label: 'Techniques', isFile: false },
-			{ depth: 1, label: 'T1055.md', isFile: true },
-			{ depth: 1, label: 'T1055', isFile: false },
-			{ depth: 2, label: 'T1055.011.md', isFile: true },
+			{ depth: 1, label: 'T1055.md', isFile: true, relation: 'parent' },
+			{ depth: 1, label: 'T1055', isFile: false, relation: 'parent' },
+			{ depth: 2, label: 'T1055.011.md', isFile: true, relation: 'child' },
 		]);
 	});
 
@@ -389,11 +391,11 @@ describe('buildParentPlacementPreview / toFolderNotePaths (variadic-split design
 
 	it('folder-note preview nests the relocated parent note inside its own folder', () => {
 		const { folderNote } = buildParentPlacementPreview(['Techniques/T1055.md', 'Techniques/T1055/T1055.011.md']);
-		expect(folderNote).toEqual([
+		expect(folderNote).toMatchObject([
 			{ depth: 0, label: 'Techniques', isFile: false },
-			{ depth: 1, label: 'T1055', isFile: false },
-			{ depth: 2, label: 'T1055.md', isFile: true },
-			{ depth: 2, label: 'T1055.011.md', isFile: true },
+			{ depth: 1, label: 'T1055', isFile: false, relation: 'parent' },
+			{ depth: 2, label: 'T1055.md', isFile: true, relation: 'parent' },
+			{ depth: 2, label: 'T1055.011.md', isFile: true, relation: 'child' },
 		]);
 	});
 

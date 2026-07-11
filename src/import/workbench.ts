@@ -776,49 +776,17 @@ export class MappingWorkbench {
 			if (opt.nodes.length === 0) {
 				treeEl.createDiv({ cls: 'crosswalker-muted', text: '(no sample rows to preview)' });
 			} else {
-				// Connector overlay (owner request): an accent rail per parent
-				// group, from the parent note down through its children. In
-				// sibling mode the rail visibly CROSSES the folder boundary; in
-				// folder-note mode it stays contained — that contrast is the
-				// wordless explanation of the choice.
-				const shown = opt.nodes.slice(0, 12);
-				const lastShownChild = new Map<number, number>();
-				shown.forEach((n, si) => {
-					if (n.relation === 'child' && n.relationParentIndex !== undefined) {
-						lastShownChild.set(n.relationParentIndex, si);
-					}
-				});
-				shown.forEach((n, si) => {
-					const row = treeEl.createDiv({ cls: 'crosswalker-wb-tree-row' + (n.isFile ? ' is-file' : '') });
-					row.style.paddingLeft = `${n.depth * 14}px`;
-					let railParent: number | undefined;
-					if (n.relation === 'parent') {
-						row.addClass('cw-rel-parent');
-						const fullIdx = opt.nodes.indexOf(n);
-						if (lastShownChild.has(fullIdx)) {
-							railParent = fullIdx;
-							row.addClass('cw-rel-rail-start');
-						}
-					} else if (n.relation === 'child' && n.relationParentIndex !== undefined) {
-						railParent = n.relationParentIndex;
-						row.addClass('cw-rel-child');
-						row.addClass(lastShownChild.get(railParent) === si ? 'cw-rel-rail-end' : 'cw-rel-rail');
-					} else if (!n.isFile) {
-						// A folder row sandwiched between a parent and its children
-						// carries the rail through — the visible boundary crossing.
-						const prev = shown[si - 1];
-						const next = shown[si + 1];
-						if (prev?.relation === 'parent' && next?.relation === 'child' && next.relationParentIndex !== undefined) {
-							railParent = next.relationParentIndex;
-							row.addClass('cw-rel-rail');
-						}
-					}
-					if (railParent !== undefined) {
-						row.style.setProperty('--cw-rail-x', `${opt.nodes[railParent].depth * 14 + 6}px`);
-					}
-					wbIcon(row, n.isFile ? 'file' : 'folder', 'crosswalker-wb-tree-ico');
-					row.createSpan({ text: n.isFile ? n.label : `${n.label}/` });
-				});
+				// Highlight the connected pair (owner): the parent NOTE and its
+				// matching FOLDER both render accent so you can see which two
+				// pieces belong together in each placement.
+				for (const node of opt.nodes.slice(0, 12)) {
+					let cls = 'crosswalker-wb-tree-row' + (node.isFile ? ' is-file' : '');
+					if (node.relation === 'parent') cls += ' cw-rel-parent';
+					const row = treeEl.createDiv({ cls });
+					row.style.paddingLeft = `${node.depth * 14}px`;
+					wbIcon(row, node.isFile ? 'file' : 'folder', 'crosswalker-wb-tree-ico');
+					row.createSpan({ text: node.isFile ? node.label : `${node.label}/` });
+				}
 			}
 		}
 	}

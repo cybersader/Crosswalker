@@ -672,12 +672,17 @@ export function markPlacementRelations(nodes: PathTreeNode[]): PathTreeNode[] {
 		const stem = stemOf(full);
 		const dir = full.slice(0, Math.max(0, full.lastIndexOf('/')));
 		if (folderPaths.has(stem)) {
-			// sibling shape: T1078.md beside a T1078/ folder
+			// sibling shape: T1078.md beside a T1078/ folder — highlight BOTH
+			// pieces so the connection is visible (owner: "show in purple the
+			// sibling file and the sibling folder").
 			n.relation = 'parent';
+			nodes[folderPaths.get(stem)!].relation = 'parent';
 			parentFolderByPath.set(stem, i);
 		} else if (dir && dir.split('/').pop() === stemOf(n.label)) {
-			// folder-note shape: T1078/T1078.md — folder named after the stem
+			// folder-note shape: T1078/T1078.md — file and its containing folder
 			n.relation = 'parent';
+			const folderIdx = folderPaths.get(dir);
+			if (folderIdx !== undefined) nodes[folderIdx].relation = 'parent';
 			parentFolderByPath.set(dir, i);
 		}
 	});

@@ -754,7 +754,10 @@ export default class CrosswalkerPlugin extends Plugin {
 			VIEW_TYPE_CROSSWALKER_WORKSPACE,
 			(leaf) => new CrosswalkerWorkspaceView(leaf, this),
 		);
-		this.addRibbonIcon('network', 'Open workspace', () => {
+		// Ribbon tooltips carry no plugin context (unlike palette commands,
+		// which Obsidian prefixes with the plugin name), so this one names it.
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- Crosswalker is the plugin's proper name
+		this.addRibbonIcon('network', 'Open Crosswalker workspace', () => {
 			void this.activateWorkspaceView();
 		});
 		this.addCommand({
