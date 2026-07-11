@@ -1715,6 +1715,18 @@
 	--cw-icon: 14px;
 }
 
+/* The workbench sizes itself by its PANE, not the window: it lives in a
+   workspace leaf that can be split, so viewport @media lies about available
+   width (a half-screen window reported a 1280px viewport while the pane was
+   ~930px, activating the wide layout and forcing a horizontal scrollbar —
+   found in the owner's split-screen test). Both flow hosts are inline-size
+   containers; every layout breakpoint below queries the container. */
+.crosswalker-workspace-flow,
+.crosswalker-wizard-content {
+	container-type: inline-size;
+	container-name: cw-flow;
+}
+
 .crosswalker-workbench {
 	display: grid;
 	grid-template-columns: minmax(190px, 1fr) minmax(320px, 1.6fr) minmax(220px, 1.2fr);
@@ -1722,12 +1734,9 @@
 	align-items: start;
 }
 
-/* Wide canvas (spec §7n item 2 — "actual interface, not mockup"): once there's
-   real tab width to spend, give each zone a comfortable fixed/flexible/generous
-   proportion instead of the modal's compressed fractions. Applies wherever the
-   surface is wide enough — the workspace view's flow pane, or a maximized
-   modal — not gated to a container class, so both hosts benefit identically. */
-@media (min-width: 1100px) {
+/* Wide canvas (spec §7n item 2): once the PANE has real width to spend, give
+   each zone a comfortable fixed/flexible/generous proportion. */
+@container cw-flow (min-width: 1050px) {
 	.crosswalker-workbench {
 		grid-template-columns: 300px minmax(520px, 2fr) minmax(380px, 1.1fr);
 		gap: var(--cw-s4);
@@ -1738,14 +1747,15 @@
 .crosswalker-workbench.is-source-collapsed {
 	grid-template-columns: 56px minmax(320px, 1.8fr) minmax(220px, 1.2fr);
 }
-@media (min-width: 1100px) {
+@container cw-flow (min-width: 1050px) {
 	.crosswalker-workbench.is-source-collapsed {
 		grid-template-columns: 56px minmax(560px, 2fr) minmax(380px, 1.1fr);
 	}
 }
 
-/* Stack the zones vertically below a comfortable three-column width. */
-@media (max-width: 900px) {
+/* Stack the zones vertically below the three-column minimum (190+320+220 +
+   gaps is roughly 760px of pane). A stacked pane never scrolls horizontally. */
+@container cw-flow (max-width: 760px) {
 	.crosswalker-workbench {
 		grid-template-columns: 1fr;
 		gap: var(--cw-s2);
@@ -2033,12 +2043,12 @@
    (spec §7n item 2) they sit side by side so both are visible without
    scrolling past one another. */
 .crosswalker-wb-treenote { display: flex; flex-direction: column; gap: var(--cw-s3); }
-@media (min-width: 1400px) {
+@container cw-flow (min-width: 1350px) {
 	.crosswalker-wb-treenote { flex-direction: row; align-items: flex-start; }
 	.crosswalker-wb-treenote .crosswalker-wb-tree { flex: 1 1 45%; min-width: 0; }
 	.crosswalker-wb-treenote .crosswalker-wb-note { flex: 1 1 55%; min-width: 0; margin: 0; }
 }
-.crosswalker-wb-tree { font-size: var(--cw-fs-small); line-height: 1.6; margin: 0 0 var(--cw-s3); }
+.crosswalker-wb-tree { font-size: var(--cw-fs-small); line-height: 1.6; margin: 0 0 var(--cw-s3); overflow-x: auto; }
 /* Clickable file rows select the previewed note (spec §7j #4) — folders inert. */
 .crosswalker-wb-tree-row {
 	display: flex; align-items: center; gap: var(--cw-chip-gap);
