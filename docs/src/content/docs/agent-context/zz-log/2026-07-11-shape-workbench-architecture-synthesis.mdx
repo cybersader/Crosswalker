@@ -1,0 +1,149 @@
+---
+title: "Shape-first workbench architecture — synthesis (one live screen, one StructureMapping, connected-by-default output)"
+description: "The synthesis of the shape-first workbench era (07-05 → 07-11): the import wizard becomes a single live mapping workbench plus a review screen, driven by one StructureMapping model with three progressive views (preset → shape cards → matrix) under the view-coherence law. Adds the connectedness mandate (generated vaults must be graphs, not filing cabinets) with the four-cause autopsy of the disconnected-import incident, and the consumer's-view testing doctrine whose golden-vault invariants caught the interleave bug pre-human. Refines Ch 42 (variadic shipped), the parent-note placement resolution (user choice), and the wizard-parity direction."
+tags: [log, design, wizard, workbench, shape-first, data-morphology, connectedness, testing-doctrine, ch-42-refinement, ready-for-implementation]
+date: 2026-07-11
+sidebar:
+  label: "07-11 · Shape workbench synthesis"
+  order: -20260711
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="What this is">
+Not a single-challenge resolution — a **synthesis of a build era**. Between 2026-07-05 and 2026-07-11 the project owner and the architect session settled the import wizard's shape, mandated connected output, and rewrote the testing doctrine. The decisions are **implemented and committed on `feat/render-report`**; the working drafts lived in gitignored `.workspace/`. This log makes them public per the [log-all-decisions](/crosswalker/agent-context/zz-log/) convention so every later choice can be checked against them. It sits directly under the [retrieval + finite shapes essence](/crosswalker/agent-context/zz-log/2026-07-05-retrieval-and-the-finite-shapes-essence/), which named *why* the wizard must speak shapes.
+</Aside>
+
+## 1. The verdict
+
+The import wizard stops being a 4-step form and becomes a **mapping workbench**: one live screen where you shape a source into vault primitives and watch the vault render back, plus a **review screen** that answers where/what/why before Generate. Underneath sits **one model** — `StructureMapping` — read and written by three progressive views. Output is **connected by default**: every relation the source encodes must exist as a graph-visible artifact. And tests now assert **the consumer's view** of the generated vault, not each module's own boundary.
+
+| Decision | Verdict | Shipped |
+|---|---|---|
+| Step wizard → **one live workbench + one review screen** | Adopted | `649c721a`, `9822e72e` |
+| **One `StructureMapping` model, three views** (preset → cards → matrix), view-coherence law | Adopted | `52796e32` |
+| **Level-count-agnostic presets** with quantifier semantics (`every_level` · `leaf` · `tail`) | Adopted | `52796e32` |
+| **Six-primitive destination palette** (folder · file name · tag · heading · link · property) | Adopted | `52796e32`, `b612918e` |
+| **Single-structural constraint** + unique-leaf eligibility gate | Adopted | `5957c159`, `e10bb8e3` |
+| **Connectedness mandate** — vaults must be graphs | Adopted (mandate); enrichment pass pending | `7118faba`, `b612918e` |
+| **Consumer's-view testing doctrine** (L2–L5) | Adopted | `26fec0ac` |
+| Global shape chips (M0 first draft) | **Rejected** — tri-state incoherence over a per-level matrix (§7a) | — |
+| Pass 1.5 batch enrichment, materialize/own-note, folder-note relocation | **Deferred** — designed, not yet built | — |
+
+## 2. The mapping workbench architecture
+
+### 2a. One live screen + one review screen
+
+"You should be able to do all of this from one or two screens, with limitless capability." (project owner, mockup review 5). The old step sequence survives only as **zones of a single live screen**:
+
+| Screen | Zones | Absorbs |
+|---|---|---|
+| **1 — mapping workbench** | source rail (file + shape chips, column list with detection badges, sample rows) · mapping canvas (preset bar → shape cards → matrix) · vault preview rail (live folder tree + one rendered note + deviation banner) | old Steps 1–3 |
+| **2 — review + generate** | destination block (where) → shape-map recap (what) → stat chips → deviation banner → provenance line (why trust); Generate is confirm + progress + result only | old Step 4 |
+
+Edit anywhere, see everywhere: the preview rail re-runs the real [`render()`](/crosswalker/concepts/terminology/#render) over the sample on every change (debounced). **Limitless capability = the matrix; simplicity = the preset fills it and most users only touch the cards.** Review screen is a *true review*, not the workbench pushed down with counts appended (§7j reversal).
+
+### 2b. One model, three progressive views (the view-coherence law)
+
+Everything the translation engine does is one pipeline: **split** the source structure into ordered levels → **regroup** (merge adjacent, drop some, leave the rest packed) → **assign** each group to Obsidian primitives → **set policies** (ragged, placement, depth). The [folder-tag-sync transfer primitives](/crosswalker/concepts/hierarchy-primitives/) are the theory anchor for the regroup gestures (merge = aggregation, drop = truncation, remainder-in-name = flattening-to-leaf, re-root = promotion).
+
+The model is a per-level rule table (`StructureMapping = { levels: LevelRule[]; tail?: TailRule }`), where a `LevelRule` carries plural `destinations` (a level can land as folder AND property AND tag at once), a `naming` mode, and a per-level `missing` policy; the `TailRule` IS the variadic block ("however many levels remain").
+
+| View | Who it serves | What it does to the model |
+|---|---|---|
+| **1. Preset picker** | everyone, zero config | fills the entire matrix (detection × preset); **the matrix is never empty** |
+| **2. Shape cards** | most users | coarse toggles — ticking "Tags" adds/removes a tag destination across structural rows; cards are a *summary render* of the matrix |
+| **3. The matrix** | power users, complex sources | full per-level control: grouping + join text, multi-destination, naming incl. `lookup`, per-level missing policy, tail rule |
+
+**The law:** every view reads and writes the **same** `StructureMapping` — opening a deeper view always shows exactly what the shallower one wrote. No hidden state, no separate "simple mode" codepath. A simple import never opens the matrix; a hard import never needs raw JSON (which stays the escape hatch). This is the [UI-first, config-as-escape-hatch](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) mandate applied to one screen.
+
+### 2c. Level-count-agnostic presets (quantifier semantics)
+
+A **preset is a policy document that never names columns or level counts** — it speaks in quantifiers: `every_level` · `leaf` · `tail` (+ `facets`, `links` sections). That is what lets one preset serve any ontology, and what makes it a code-level escape hatch (a schema-validated `presets/*.json`, writable without the UI, shareable). The instantiation pipeline is the intentional relationship between the chooser and the matrix:
+
+1. **Preset** = generic quantified rules.
+2. **Detection** supplies the actual levels/facets of *this* source.
+3. **Instantiation** stamps preset rules onto concrete matrix rows: `preset × detection → StructureMapping`.
+4. **The matrix IS the instantiated preset, made editable.** Any edit beyond the preset flips its chip to `Custom (based on X)`.
+5. **Save-as** offers two distinct artifacts: save as **preset** (re-generalizes to quantifiers) or as **saved mapping** (fingerprint-bound to this source). Never conflated in UI copy.
+
+No-preset-selected is impossible by construction: a built-in default always instantiates. Provenance badges — `Built-in` · `Yours` · `Custom (based on X)` — carry through the preset dropdown and the review-screen line; the detection default is explicitly tagged **Recommended**, not silently preselected.
+
+### 2d. The six-primitive destination palette
+
+The palette is not four shapes — it is **all six Obsidian structuring primitives**, each an already-wired recipe region, each rendering the user's own first rows through the real pipeline:
+
+| Card | Affordance | Recipe region | Info-sci role |
+|---|---|---|---|
+| **Folders** — nest inside each other | browse down in the file explorer | layout folder entries / `variadic` | pre-coordinated hierarchy |
+| **File names** — structure stays in the name | keep it flat; the id reads at a glance | file template (id keeps packed form) | packed notation |
+| **Tags** — nested labels, many per note | filter any combination in search/Bases | `also_emit.tags` (`#technique/T1055`) | faceted classification |
+| **One file** — outline of headings | read top-to-bottom; one portable doc | heading entries + `level_depth` | document order |
+| **Links** — each note points at its parent | hop between notes; local graph shows the family | managed frontmatter wikilink (`parent: "[[T1055]]"`) | polyhierarchy |
+| **Properties** — levels as structured fields | group/sort/filter by level in Bases | managed frontmatter plain values | faceted metadata |
+
+Cards are **toggles, not radios** — the recommended default is a *mix* (folders + facet tags + a parent link is the expected common trio). Every chooser arrives with the recommended option ticked, and accept-all-defaults must produce a good vault (the magic path); every tick is changeable (the control path). The UI speaks affordances; the info-sci lineage appears only as an optional whisper linking the KB (progressive disclosure). This grounds the wizard in the same [data-morphology](/crosswalker/concepts/terminology/#data-morphology) vocabulary the query layer already speaks.
+
+### 2e. The single-structural constraint + unique-leaf gate
+
+One [recipe](/crosswalker/concepts/terminology/#recipe) = one primary address per row, so **exactly one mapping may carry structural destinations** (folder/file/heading); all others must be metadata-only. Two structural mappings concatenate into one layout and compose garbage paths (`T1055/T1055.011.md/defense/defense-evasion.md`). Enforcement is layered: detection's distinctness guard keeps facets from reading as packed ids (the eligibility gate), the view-model disables structural options on other mappings while one owns the path (disabled-with-reason), and `toRecipeRegions` rejects a second structural mapping loudly. This is the model-level statement of the interleave bug fixed in `5957c159` / `e10bb8e3`.
+
+## 3. The connectedness mandate — vaults must be graphs, not filing cabinets
+
+**The trigger** (project owner, 2026-07-10): imported the MITRE subset, filtered the graph to `Frameworks`, and got **zero interconnection**. Verdict — "the import process is way more limited than what I'm expecting." The bar is the owner's ICSB pipeline: edges as a first-class artifact, rich documents (real body prose, headings, aliases). Crosswalker's output must be a **hyperconnected knowledge base** — simple out front via defaults, deeply extendable underneath (the preset philosophy applied to *output richness*).
+
+**Autopsy — the four causes:**
+
+| # | Cause | Severity | Resolution |
+|---|---|---|---|
+| 1 | **Unquoted YAML wikilinks** — `parent: [[T1078]]` parses as a nested array; Obsidian indexes NO link. Every parent edge silently dead | critical bug | ✅ `7118faba` — quote YAML-structural leads; regression-pinned |
+| 2 | **Empty bodies** — description crammed into a property; body destinations never flowed to generation | high | ✅ `b612918e` — body columns become documents |
+| 3 | **Dropped tags/aliases** — `render()` emitted them, the note writer dropped them | high | ✅ `b612918e` — engine now emits tags + aliases |
+| 4 | **Link poverty by design** — only child→parent; no children lists, facets are dead text, no hub notes | architectural | → Pass 1.5 enrichment (deferred, §5) |
+
+**The principle:** *every relation the source encodes must exist as a graph-visible artifact — folders alone are invisible to the graph.* The enforcement is a **link-count guardrail**: the review screen shows a connectedness stat (`N notes · M folders · K graph edges`) so shipping **0 edges is impossible to do silently** (a run with 0 renders the stat in warning color). Causes 1–3 are fixed; cause 4 is the [Pass 1.5 batch-enrichment design](#5-still-open) — children lists on parents, materialized facet/hub notes, folder-note placement — one deterministic batch pass that wires the schema-reserved `graph_edges` region without breaking `render()` purity or the [closed 5-mechanism grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/).
+
+## 4. The testing doctrine — assert the consumer's view
+
+**The trigger** (project owner): "How is this not caught in testing?" The YAML-quoting bug shipped through 745 green tests and screenshot-verified E2E, and the generated vault had zero graph edges. **Root cause: module-boundary assertions, never consumer-boundary assertions.** The real consumers — a YAML parser, Obsidian's link indexer, the vault graph, a human reading a note — had no voice in CI. Screenshots verified the wizard, never the output vault.
+
+| Layer | Asserts | Status |
+|---|---|---|
+| L1 Unit | each module's own contract | ✅ healthy (745) |
+| **L2 Consumer contracts** | generated text as **parsed by the consumer** — every note's frontmatter round-trips through a real YAML parser and deep-equals the intended object; link values parse back as `[[...]]` strings (the quoting bug fails here instantly) | ✅ `26fec0ac` |
+| **L3 Golden vaults + invariants** | the full headless pipeline over real corpus subsets → committed golden snapshot + corpus-independent invariant suite | ✅ `26fec0ac` |
+| L4 Output screenshots | screenshot the **generated vault** — graph filtered to output (a dead graph is visually unmissable) + one note in reading view (empty bodies obvious) | partial — extend after UX agent lands |
+| L5 Product guardrail | review screen shows "K graph edges" before generate; 0 renders as a warning | specced (§3) |
+
+**L3 invariants** (the vault-level truths): every note's YAML parses; every emitted wikilink resolves to a generated path; connectivity — no unexpected orphans (MITRE parent column → orphan count 0, edge count over 0); no `.md/` inside any path; determinism (run twice → byte-identical); golden drift is a review gate. **These invariants caught the interleaved-path bug on the real corpora before a human saw it** — the composition-seam bug that every module's own green tests were blind to. Process rules now: every corpus in `test-vault/Crosswalker Test Data/` gets a golden test; a manual-testing bug becomes a failing test *first*, then a fix; a new emission surface ships its L2 contract in the same PR.
+
+## 5. What this supersedes / refines
+
+| Prior decision | How this refines it |
+|---|---|
+| **[Ch 42](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) — the variable-depth question** ([open-question log](/crosswalker/agent-context/zz-log/2026-06-14-variable-depth-hierarchy-open-question/)) | **Answered for §1–3**: variadic folder expansion + the tail rule shipped (`9ffd5fd3`). Ragged ids (the case the old 80% uniform threshold silently flattened — why ATT&CK imported flat) now nest via the `TailRule`. Ch 42's deeper materialize/own-note surface stays open (§5 table below) |
+| **Parent-note placement** (variadic design §4) | **Resolved as a user choice** — sibling vs folder-note, default sibling, shown as side-by-side mini file-trees built from the user's own ids. Folder-note relocation gated on Pass 1.5 (batch knowledge required) |
+| **Wizard-parity direction** ([UI-parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/), [essence log](/crosswalker/agent-context/zz-log/2026-07-05-retrieval-and-the-finite-shapes-essence/)) | **Concretized**: the wizard now speaks the shape vocabulary the query layer already spoke; every UI state serializes to a recipe region 1:1 (the parity contract); `useAs` values became *derived* serialization, not user-facing primitives |
+| **Global shape chips** (M0 first mockup) | **Superseded** — a global "tags ✓" toggle is indeterminate the moment matrix rows diverge (§7a tri-state incoherence). The mapping zone is a *list of per-detection mappings*, each with its own scoped cards; matrix = truth, cards = per-mapping summary |
+
+## Still open
+
+| Item | Shape | Pointer |
+|---|---|---|
+| **Pass 1.5 folder-note relocation** | `X.md → X/X.md` + inbound-link rewrite; the risky re-import curie-lookup integration point | Pass 1.5 design §3–4; waits on the engine round |
+| **materialize / own-note serialization** | `materialize: boolean` per level — does a category/parent become a *real concept note*? The biggest new design surface; interacts with curie-per-intermediate-level and re-import identity | spec §7b; spike alongside Pass 1.5 |
+| **Per-level missing policy surface** | `missing: skip \| fallback \| error` per level needs a recipe surface (today global-ish) | spec §3 serialization gaps |
+| **Lookup naming** | `naming.lookup` — a level's label drawn from a sibling column (`GV — Govern`); needs the level's sibling columns in scope | spec §3a½ |
+| **R6 positioning question** | general-ontology engine vs GRC-first framing — where the shape-first workbench lands the product story | [what makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/); decision-spine Related |
+
+## Related
+
+- [Retrieval + finite shapes — Crosswalker's essence](/crosswalker/agent-context/zz-log/2026-07-05-retrieval-and-the-finite-shapes-essence/) — *why* the wizard must speak shapes; this log is its product realization
+- [Data morphology — the finite shapes and the operations between them](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) — the shape vocabulary both screens use
+- [UI-parity audit — every lifecycle stage gets a face](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) — the mandate this workbench satisfies for import
+- [Target-structure synthesis (Ch 22)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — the closed 5-mechanism grammar + managed/user_preserve split the palette serializes into
+- [Variable-depth hierarchy — open question](/crosswalker/agent-context/zz-log/2026-06-14-variable-depth-hierarchy-open-question/) · [Ch 42 brief](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) — the variadic case this partly closes
+- Concepts: [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [view shapes](/crosswalker/concepts/view-shapes/) · [system model](/crosswalker/concepts/system-model/) · [the problem](/crosswalker/concepts/problem/) · [what makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
+- Terminology: [render()](/crosswalker/concepts/terminology/#render) · [Recipe](/crosswalker/concepts/terminology/#recipe) · [CURIE](/crosswalker/concepts/terminology/#curie) · [ConceptIdentity](/crosswalker/concepts/terminology/#conceptidentity) · [managed / user_preserve](/crosswalker/concepts/terminology/#managed-user-preserve)
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the build target the parity contract serializes to
+- [v0.1 implementation milestones](/crosswalker/reference/roadmap/milestones/) · [v0.1.6 — Bases query layer + recipe UX](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — where this work lands
