@@ -34,6 +34,10 @@ describe('DEFAULT_SETTINGS', () => {
     expect(DEFAULT_SETTINGS.verboseLogging).toBe(false);
   });
 
+  it('has a standard (info) debug log level by default', () => {
+    expect(DEFAULT_SETTINGS.debugLogLevel).toBe('info');
+  });
+
   it('has config match threshold in valid range', () => {
     expect(DEFAULT_SETTINGS.configMatchThreshold).toBeGreaterThanOrEqual(0);
     expect(DEFAULT_SETTINGS.configMatchThreshold).toBeLessThanOrEqual(100);

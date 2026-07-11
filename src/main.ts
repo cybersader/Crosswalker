@@ -1,4 +1,4 @@
-import { Plugin, Notice, TFile, TFolder, MarkdownView } from 'obsidian';
+import { Plugin, Notice, TFile, TFolder, MarkdownView, Platform, apiVersion, type WorkspaceLeaf } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
 import {
 	isImportableExtension,
@@ -42,6 +42,19 @@ import {
 	type MappingRow,
 	type ClosureEntry,
 } from './tier2/queries';
+
+/** Short platform label for the diagnostics bundle (no device-identifying detail). */
+function diagnosticsPlatformLabel(): string {
+	if (Platform.isMobileApp) {
+		if (Platform.isIosApp) return 'mobile-ios';
+		if (Platform.isAndroidApp) return 'mobile-android';
+		return 'mobile';
+	}
+	if (Platform.isMacOS) return 'desktop-mac';
+	if (Platform.isWin) return 'desktop-win';
+	if (Platform.isLinux) return 'desktop-linux';
+	return 'desktop';
+}
 
 /**
  * Crosswalker - Import structured ontologies into Obsidian
@@ -182,6 +195,7 @@ export default class CrosswalkerPlugin extends Plugin {
 			this.settings.enableDebugLog,
 			this.settings.verboseLogging,
 			this.settings.debugLogCategoryFilters,
+			this.settings.debugLogLevel,
 		);
 
 		// Initialize draft store (Phase 3.6 — wizard auto-save / resume).
@@ -674,6 +688,26 @@ export default class CrosswalkerPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'copy-diagnostics',
+			name: 'Copy diagnostics to clipboard',
+			callback: async () => {
+				const bundle = this.debug.assembleDiagnostics({
+					pluginVersion: this.manifest.version,
+					obsidianVersion: apiVersion,
+					platform: diagnosticsPlatformLabel(),
+					settings: this.settings as unknown as Record<string, unknown>,
+				});
+				try {
+					await navigator.clipboard.writeText(bundle);
+					new Notice(`Copied diagnostics (${Math.round(bundle.length / 1024)} KB) to clipboard. Redacted: no vault paths, file names, or cell values.`);
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					new Notice(`Clipboard write failed: ${msg}`);
+				}
+			},
+		});
+
+		this.addCommand({
 			id: 'clear-debug-log',
 			name: 'Clear debug log',
 			callback: async () => {
@@ -746,12 +780,18 @@ export default class CrosswalkerPlugin extends Plugin {
 						.setTitle('Import into vault with Crosswalker')
 						.setIcon('import')
 						.onClick(() => {
-							// ImportWizardModal's constructor doesn't yet accept a
-							// prefill file — opens the standard wizard for now
-							// (source still needs re-selecting in Step 1). See the
-							// coordinator diff for the prefill param this entry
-							// point is designed to hand off to.
-							new ImportWizardModal(this.app, this).open();
+							// Prefer the workspace view (the primary import surface,
+							// spec §7n) with the clicked file already selected;
+							// fall back to the modal if the view isn't available.
+							void (async () => {
+								const leaf = await this.activateWorkspaceView();
+								const view = leaf.view;
+								if (view instanceof CrosswalkerWorkspaceView) {
+									view.startImportWithFile(file);
+								} else {
+									new ImportWizardModal(this.app, this, { prefillFile: file }).open();
+								}
+							})();
 						});
 				});
 			}),
@@ -925,18 +965,20 @@ export default class CrosswalkerPlugin extends Plugin {
 
 	/**
 	 * Open the Crosswalker workspace tab, reusing an existing leaf if one is
-	 * already open (per the shape-first wizard spec §7n).
+	 * already open (per the shape-first wizard spec §7n). Returns the leaf so
+	 * callers (e.g. the file-menu entry point) can reach the mounted view.
 	 */
-	private async activateWorkspaceView(): Promise<void> {
+	private async activateWorkspaceView(): Promise<WorkspaceLeaf> {
 		const { workspace } = this.app;
 		const existing = workspace.getLeavesOfType(VIEW_TYPE_CROSSWALKER_WORKSPACE);
 		if (existing.length > 0) {
 			workspace.revealLeaf(existing[0]);
-			return;
+			return existing[0];
 		}
 		const leaf = workspace.getLeaf('tab');
 		await leaf.setViewState({ type: VIEW_TYPE_CROSSWALKER_WORKSPACE, active: true });
 		workspace.revealLeaf(leaf);
+		return leaf;
 	}
 
 	onunload() {

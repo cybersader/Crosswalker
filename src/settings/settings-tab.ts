@@ -7,6 +7,7 @@ import {
 	TFolder,
 	setIcon,
 } from 'obsidian';
+import type { DebugLevel } from '../utils/debug';
 import { exportConfigToString, importConfig } from '../config/config-manager';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
 import { ImportWizardModal } from '../import/import-wizard';
@@ -56,6 +57,12 @@ const LINK_LABEL: Record<string, string> = {
 	standard: 'Standard',
 	full: 'Full',
 	custom: 'Custom',
+};
+const LOG_LEVEL_LABEL: Record<DebugLevel, string> = {
+	error: 'Errors only',
+	warn: 'Warnings and errors',
+	info: 'Standard',
+	trace: 'Verbose',
 };
 
 /**
@@ -230,7 +237,7 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 				title: 'Diagnostics',
 				icon: 'stethoscope',
 				summary: () =>
-					s.enableDebugLog ? (s.verboseLogging ? 'Verbose log on' : 'Debug log on') : 'Debug log off',
+					s.enableDebugLog ? `Log on, ${LOG_LEVEL_LABEL[s.debugLogLevel].toLowerCase()}` : 'Log off',
 				render: (root) => this.renderDiagnostics(root),
 			},
 			{
@@ -797,9 +804,21 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 	private renderDiagnostics(root: HTMLElement): void {
 		new Setting(root).setName('Diagnostics').setHeading();
 
+		new Setting(root)
+			.setName('Copy diagnostics')
+			.setDesc('Copy a redacted bug-report bundle to your clipboard: plugin and Obsidian versions, platform, a settings snapshot, and the last events. Counts and shapes only, never vault paths, file names, or cell values. Works even with the debug log off.')
+			.addButton((btn) =>
+				btn
+					.setButtonText('Copy diagnostics')
+					.setCta()
+					.onClick(async () => {
+						(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:copy-diagnostics');
+					}),
+			);
+
 		const setting = new Setting(root)
 			.setName('Write a debug log')
-			.setDesc('Record structured events to a log note in your vault root. Helpful when reporting an issue.')
+			.setDesc('Record structured events to a log note in your vault root. Helpful when reporting an issue. The last events stay in memory for the copy-diagnostics button above regardless of this setting.')
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.enableDebugLog)
@@ -807,6 +826,7 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 						this.plugin.settings.enableDebugLog = value;
 						this.plugin.debug.setEnabled(value);
 						await this.plugin.saveSettings();
+						this.display();
 					}),
 			);
 		void setting;
@@ -816,14 +836,23 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 		});
 
 		new Setting(root)
-			.setName('Verbose logging')
-			.setDesc('Also record trace-level events. This adds a lot of volume, so leave it off unless you are chasing a specific issue.')
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.verboseLogging)
+			.setName('Log level')
+			.setDesc('Minimum severity written to the log file. Standard is right for most bug reports; verbose adds a lot of volume, so leave it off unless you are chasing a specific issue. Only affects the file — the copy-diagnostics button above always has the recent events on hand regardless of level.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('error', LOG_LEVEL_LABEL.error)
+					.addOption('warn', LOG_LEVEL_LABEL.warn)
+					.addOption('info', LOG_LEVEL_LABEL.info)
+					.addOption('trace', LOG_LEVEL_LABEL.trace)
+					.setValue(this.plugin.settings.debugLogLevel)
 					.onChange(async (value) => {
-						this.plugin.settings.verboseLogging = value;
-						this.plugin.debug.setVerbose(value);
+						const level = value as DebugLevel;
+						this.plugin.settings.debugLogLevel = level;
+						// Kept in sync for back-compat with the older verbose flag; the
+						// underlying engine's trace gate still checks verbose directly.
+						this.plugin.settings.verboseLogging = level === 'trace';
+						this.plugin.debug.setMinLevel(level);
+						this.plugin.debug.setVerbose(level === 'trace');
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -839,32 +868,37 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 			text: 'Every category is recorded by default. Turn one off to silence its events.',
 		});
 
-		const KNOWN_CATEGORIES: { name: string; desc: string }[] = [
-			{ name: 'wizard', desc: 'Import wizard state transitions' },
-			{ name: 'csv-parser', desc: 'CSV and TSV parsing' },
-			{ name: 'generation', desc: 'Note generation pipeline' },
-			{ name: 'sssom-import', desc: 'Mapping file import' },
-			{ name: 'tier2', desc: 'Fast query index lifecycle and queries' },
-			{ name: 'config', desc: 'Saved config save, load, and match' },
-			{ name: 'view', desc: 'Query view rendering' },
-			{ name: 'drafts', desc: 'Wizard draft save, resume, and expiry' },
-			{ name: 'lifecycle', desc: 'Plugin load and unload' },
+		// `id` is the literal category string call sites pass to debug.info/warn/
+		// error (must match exactly — it's the storage key + filter match). `label`
+		// is what the toggle displays, following the UI lexicon (docs/src/content/
+		// docs/agent-context/ui-lexicon.mdx) so this section never shows raw
+		// internal identifiers like "sssom-import" or "tier2".
+		const KNOWN_CATEGORIES: { id: string; label: string; desc: string }[] = [
+			{ id: 'wizard', label: 'Import wizard', desc: 'Import wizard state transitions' },
+			{ id: 'csv-parser', label: 'File parsing', desc: 'CSV, XLSX, and JSON parsing' },
+			{ id: 'generation', label: 'Note generation', desc: 'Note generation pipeline' },
+			{ id: 'sssom-import', label: 'Crosswalk mapping import', desc: 'Crosswalk mapping file import' },
+			{ id: 'tier2', label: 'Fast query index', desc: 'Fast query index lifecycle and queries' },
+			{ id: 'config', label: 'Saved configurations', desc: 'Saved configuration save, load, and match' },
+			{ id: 'view', label: 'Query rendering', desc: 'Query view rendering' },
+			{ id: 'drafts', label: 'Drafts', desc: 'Wizard draft save, resume, and expiry' },
+			{ id: 'lifecycle', label: 'Plugin startup and shutdown', desc: 'Plugin load and unload' },
 		];
 
 		for (const cat of KNOWN_CATEGORIES) {
 			new Setting(catDetails)
-				.setName(cat.name)
+				.setName(cat.label)
 				.setDesc(cat.desc)
 				.addToggle((toggle) =>
 					toggle
-						.setValue(this.plugin.settings.debugLogCategoryFilters[cat.name] !== false)
+						.setValue(this.plugin.settings.debugLogCategoryFilters[cat.id] !== false)
 						.onChange(async (value) => {
 							// Store opt-out only (false = suppressed); omit the key when
 							// re-enabled to keep settings sparse.
 							if (value) {
-								delete this.plugin.settings.debugLogCategoryFilters[cat.name];
+								delete this.plugin.settings.debugLogCategoryFilters[cat.id];
 							} else {
-								this.plugin.settings.debugLogCategoryFilters[cat.name] = false;
+								this.plugin.settings.debugLogCategoryFilters[cat.id] = false;
 							}
 							this.plugin.debug.setCategoryFilters(this.plugin.settings.debugLogCategoryFilters);
 							await this.plugin.saveSettings();
@@ -872,16 +906,19 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 				);
 		}
 
-		new Setting(root)
+		const logActions = new Setting(root)
 			.setName('Log actions')
-			.setDesc('Open, export, or clear the debug log. These are also in the command palette.')
-			.addButton((btn) =>
-				btn.setButtonText('Open').onClick(() => {
+			.setDesc('View, export, or clear the debug log file. These are also in the command palette.');
+		if (this.plugin.settings.enableDebugLog) {
+			logActions.addButton((btn) =>
+				btn.setButtonText('View log file').onClick(() => {
 					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:open-debug-log');
 				}),
-			)
+			);
+		}
+		logActions
 			.addButton((btn) =>
-				btn.setButtonText('Export to clipboard').onClick(() => {
+				btn.setButtonText('Export log to clipboard').onClick(() => {
 					(this.plugin.app as unknown as { commands: { executeCommandById: (id: string) => void } }).commands.executeCommandById('crosswalker:export-debug-log');
 				}),
 			)

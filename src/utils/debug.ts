@@ -37,6 +37,9 @@ import { App, TFile } from 'obsidian';
 
 export type DebugLevel = 'error' | 'warn' | 'info' | 'trace';
 
+/** Severity ranking, most severe first. Used for minLevel filtering. */
+const LEVEL_RANK: Record<DebugLevel, number> = { error: 3, warn: 2, info: 1, trace: 0 };
+
 export interface DebugEvent {
 	ts: string;
 	level: DebugLevel;
@@ -60,8 +63,23 @@ export interface SpanContext {
 // Rotation tuning
 // ---------------------------------------------------------------------------
 
+// Size-based rotation: crosswalker-debug.log is checked before every append
+// (maybeRotate, cheap TFile.stat read). Once it crosses MAX_LOG_BYTES, the
+// chain shifts down (.log→.1, .1→.2, .2→.3) and the oldest rotation
+// (.MAX_ROTATIONS) is deleted (see rotate()). Total on-disk cap is
+// MAX_LOG_BYTES * (MAX_ROTATIONS + 1) — 20 MB at current settings — bounded
+// regardless of how long debug logging stays on.
 const MAX_LOG_BYTES = 5 * 1024 * 1024; // 5 MB per file
 const MAX_ROTATIONS = 3;                // .log + .1 + .2 + .3 = 20 MB max
+
+// ---------------------------------------------------------------------------
+// In-memory ring buffer
+// ---------------------------------------------------------------------------
+
+// Kept regardless of whether file logging (`enabled`) is on, so a diagnostics
+// bundle can always be assembled — even for users who never opted into the
+// log file. Bounded so long sessions don't grow memory unbounded.
+const RING_BUFFER_CAP = 500;
 
 // ---------------------------------------------------------------------------
 // Secret redaction
@@ -84,6 +102,22 @@ function redactSecrets(s: string): string {
 // Hex ID generation
 // ---------------------------------------------------------------------------
 
+/** Drop undefined-valued keys so NDJSON lines (and ring-buffer copies) stay tight. */
+function stripUndefined(event: DebugEvent): DebugEvent {
+	const cleaned: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(event)) {
+		if (v !== undefined) cleaned[k] = v;
+	}
+	return cleaned as DebugEvent;
+}
+
+/** Monotonic-ish clock for perf timers; falls back to Date.now() if unavailable. */
+function now(): number {
+	return typeof performance !== 'undefined' && typeof performance.now === 'function'
+		? performance.now()
+		: Date.now();
+}
+
 function randHex(bytes: number): string {
 	// 4 bytes → 8 hex chars; collision-resistant enough for trace/span IDs
 	// within one plugin session.
@@ -103,7 +137,17 @@ export class DebugLog {
 	private enabled: boolean;
 	private verbose: boolean;
 	private categoryFilters: Record<string, boolean>;
+	private minLevel: DebugLevel;
 	private logPath = 'crosswalker-debug.log';
+
+	// One id per plugin load, so every event in a session (file-logged or
+	// ring-buffer-only) can be correlated back to a single Obsidian session
+	// when a user attaches a diagnostics bundle to a bug report.
+	private readonly sessionId: string;
+
+	// Last RING_BUFFER_CAP events, newest last. Populated unconditionally
+	// (independent of `enabled`) — see RING_BUFFER_CAP comment above.
+	private ringBuffer: DebugEvent[] = [];
 
 	// Trace + span context (stack-based; safe for sequential async; not
 	// concurrent-safe, but Crosswalker has no concurrent top-level imports).
@@ -114,11 +158,19 @@ export class DebugLog {
 	// events fire in quick succession.
 	private writeQueue: Promise<void> = Promise.resolve();
 
-	constructor(app: App, enabled = false, verbose = false, categoryFilters: Record<string, boolean> = {}) {
+	constructor(
+		app: App,
+		enabled = false,
+		verbose = false,
+		categoryFilters: Record<string, boolean> = {},
+		minLevel: DebugLevel = 'trace',
+	) {
 		this.app = app;
 		this.enabled = enabled;
 		this.verbose = verbose;
 		this.categoryFilters = categoryFilters;
+		this.minLevel = minLevel;
+		this.sessionId = randHex(4);
 	}
 
 	// -----------------------------------------------------------------------
@@ -135,6 +187,63 @@ export class DebugLog {
 
 	setCategoryFilters(filters: Record<string, boolean>): void {
 		this.categoryFilters = filters;
+	}
+
+	/**
+	 * Minimum severity written to the log file. Independent of `verbose`
+	 * (which specifically gates 'trace') — e.g. minLevel='warn' silences
+	 * 'info' events too, for a quieter file while still catching problems.
+	 * Does not affect the in-memory ring buffer or console mirror, which
+	 * always capture every level.
+	 */
+	setMinLevel(level: DebugLevel): void {
+		this.minLevel = level;
+	}
+
+	/**
+	 * One id generated at construction time (one per plugin load). Included
+	 * on every event (file-logged or ring-buffer-only) so a bug report can
+	 * be correlated to a single session.
+	 */
+	getSessionId(): string {
+		return this.sessionId;
+	}
+
+	/**
+	 * Last `maxEntries` events (default: everything currently buffered, up to
+	 * RING_BUFFER_CAP). Populated regardless of file logging being enabled —
+	 * this is what powers "Copy diagnostics" for users who never turned on
+	 * the log file.
+	 */
+	getRingBuffer(maxEntries?: number): DebugEvent[] {
+		if (maxEntries === undefined || maxEntries >= this.ringBuffer.length) {
+			return [...this.ringBuffer];
+		}
+		return this.ringBuffer.slice(this.ringBuffer.length - maxEntries);
+	}
+
+	// -----------------------------------------------------------------------
+	// Performance timers
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Start a timer for a heavy operation. Call `.end()` when it finishes to
+	 * emit an 'info' event with `duration_ms`. Wrapper-compatible: callers
+	 * that never call `.end()` simply never emit (no timers/intervals held).
+	 *
+	 *   const t = debug.time('generation', 'render-all-rows');
+	 *   ...
+	 *   t.end({ rowCount });
+	 */
+	time(category: string, label: string, data?: Record<string, unknown>): { end: (extra?: Record<string, unknown>) => number } {
+		const start = now();
+		return {
+			end: (extra?: Record<string, unknown>): number => {
+				const duration_ms = Math.round(now() - start);
+				this.info(category, label, `${label} took ${duration_ms}ms`, { duration_ms, ...data, ...extra });
+				return duration_ms;
+			},
+		};
 	}
 
 	// -----------------------------------------------------------------------
@@ -185,7 +294,7 @@ export class DebugLog {
 		const parent_span_id = this.currentSpan;
 		const startTs = Date.now();
 
-		this.write({
+		this.recordAndMaybeWrite({
 			ts: new Date().toISOString(),
 			level: 'info',
 			category,
@@ -204,7 +313,7 @@ export class DebugLog {
 				span_id,
 				trace_id: this.currentTrace,
 				event: (childOp, childMsg, childData) => {
-					this.write({
+					this.recordAndMaybeWrite({
 						ts: new Date().toISOString(),
 						level: 'info',
 						category,
@@ -217,7 +326,7 @@ export class DebugLog {
 				},
 			};
 			const result = await fn(ctx);
-			this.write({
+			this.recordAndMaybeWrite({
 				ts: new Date().toISOString(),
 				level: 'info',
 				category,
@@ -230,7 +339,7 @@ export class DebugLog {
 			});
 			return result;
 		} catch (err) {
-			this.write({
+			this.recordAndMaybeWrite({
 				ts: new Date().toISOString(),
 				level: 'error',
 				category,
@@ -333,23 +442,7 @@ export class DebugLog {
 		msg: string,
 		data?: Record<string, unknown>,
 	): void {
-		// Mirror to console always (helps when log file is disabled)
-		const consoleArgs: unknown[] = [`[Crosswalker:${level}] ${category}/${op}: ${msg}`];
-		if (data) consoleArgs.push(data);
-		if (level === 'error') {
-			console.error(...consoleArgs);
-		} else if (level === 'warn') {
-			console.warn(...consoleArgs);
-		} else {
-			console.log(...consoleArgs);
-		}
-
-		// File output gated on: enabled + (trace ⇒ verbose) + category filter
-		if (!this.enabled) return;
-		if (level === 'trace' && !this.verbose) return;
-		if (!this.shouldEmitCategory(category)) return;
-
-		this.write({
+		this.recordAndMaybeWrite({
 			ts: new Date().toISOString(),
 			level,
 			category,
@@ -366,12 +459,50 @@ export class DebugLog {
 		return this.categoryFilters[category] !== false;
 	}
 
-	private write(event: DebugEvent): void {
-		// Strip undefined fields (NDJSON should be tight)
-		const cleaned: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(event)) {
-			if (v !== undefined) cleaned[k] = v;
+	/**
+	 * Single choke point for every event, whether it came from a severity
+	 * method (info/warn/error/trace) or a span. Order matters:
+	 *   1. Tag with session_id.
+	 *   2. Push to the in-memory ring buffer — unconditional, so diagnostics
+	 *      work even with file logging off.
+	 *   3. Mirror to console — unconditional, matches the pre-ring-buffer
+	 *      behavior (helps when the log file is disabled).
+	 *   4. Write to the log file — gated on enabled + minLevel + (trace ⇒
+	 *      verbose) + category filter.
+	 */
+	private recordAndMaybeWrite(event: DebugEvent): void {
+		const full: DebugEvent = { ...event, session_id: this.sessionId };
+
+		const cleaned = stripUndefined(full);
+		this.ringBuffer.push(cleaned);
+		if (this.ringBuffer.length > RING_BUFFER_CAP) {
+			this.ringBuffer.shift();
 		}
+
+		const { ts: _ts, level: _level, category: _category, op: _op, msg: _msg, session_id: _sid, ...rest } = cleaned;
+		void _ts; void _level; void _category; void _op; void _msg; void _sid;
+		const consoleArgs: unknown[] = [`[Crosswalker:${cleaned.level}] ${cleaned.category}/${cleaned.op}: ${cleaned.msg}`];
+		if (Object.keys(rest).length > 0) consoleArgs.push(rest);
+		if (cleaned.level === 'error') {
+			console.error(...consoleArgs);
+		} else if (cleaned.level === 'warn') {
+			console.warn(...consoleArgs);
+		} else {
+			console.log(...consoleArgs);
+		}
+
+		if (!this.enabled) return;
+		if (cleaned.level === 'trace' && !this.verbose) return;
+		if (LEVEL_RANK[cleaned.level] < LEVEL_RANK[this.minLevel]) return;
+		if (!this.shouldEmitCategory(cleaned.category)) return;
+
+		this.write(cleaned);
+	}
+
+	private write(event: DebugEvent): void {
+		// Already stripped of undefined fields by recordAndMaybeWrite; stripping
+		// again here is a cheap no-op safeguard for any future direct caller.
+		const cleaned = stripUndefined(event);
 		const line = JSON.stringify(cleaned) + '\n';
 
 		// Serialize via promise chain — fire-and-forget but ordered
@@ -419,4 +550,149 @@ export class DebugLog {
 			await this.app.vault.rename(current, `${this.logPath}.1`);
 		}
 	}
+
+	// -----------------------------------------------------------------------
+	// Diagnostics bundle ("Copy diagnostics" in Settings → Diagnostics)
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Assemble a redacted, shareable diagnostics bundle for bug reports.
+	 * Pulls from the in-memory ring buffer (works even with file logging
+	 * off) plus environment info and a redacted settings snapshot supplied
+	 * by the caller (settings-tab.ts owns reading plugin/app version info —
+	 * this class only knows about its own events).
+	 */
+	assembleDiagnostics(input: {
+		pluginVersion: string;
+		obsidianVersion: string;
+		platform: string;
+		settings: Record<string, unknown>;
+		maxRecentEvents?: number;
+	}): string {
+		return buildDiagnosticsBundle({
+			...input,
+			sessionId: this.sessionId,
+			ringBuffer: this.ringBuffer,
+		});
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics bundle redaction
+// ---------------------------------------------------------------------------
+//
+// Rule: the bundle never includes vault paths, file names from the user's
+// vault, or cell values — counts and shapes only. Two layers:
+//   1. Key-based: any key that looks like it holds a path/file/folder is
+//      replaced outright.
+//   2. Value-based: every remaining string (including free-text `msg`
+//      fields, which sometimes interpolate a file name inline) is scrubbed
+//      of path- and filename-shaped substrings as defense in depth.
+
+const WINPATH_RE = /[A-Za-z]:\\(?:[^\s"'<>|*?]+\\)*[^\s"'<>|*?]*/g;
+const UNIXPATH_RE = /(?:\/[^\s"'<>]+){2,}/g;
+const FILENAME_RE = /\b[\w][\w\-. ]{0,80}\.(csv|xlsx|xls|json|md|markdown|txt|sqlite|db|log|yaml|yml)\b/gi;
+const REDACT_KEY_RE = /(path|file|folder|dir)/i;
+const MAX_REDACT_DEPTH = 3;
+const MAX_ARRAY_ITEMS = 20;
+
+/** Scrub filesystem/vault paths and bare filenames out of a free-text string. */
+export function redactPathsAndFilenames(input: string): string {
+	return input
+		.replace(WINPATH_RE, '[path]')
+		.replace(UNIXPATH_RE, '[path]')
+		.replace(FILENAME_RE, '[file]');
+}
+
+function redactValue(key: string, value: unknown, depth: number): unknown {
+	if (value === null || value === undefined) return value;
+	if (typeof value === 'string') {
+		return REDACT_KEY_RE.test(key) ? '[redacted]' : redactPathsAndFilenames(value);
+	}
+	if (typeof value === 'number' || typeof value === 'boolean') return value;
+	if (Array.isArray(value)) {
+		if (depth >= MAX_REDACT_DEPTH) return `[array:${value.length}]`;
+		const items = value.slice(0, MAX_ARRAY_ITEMS).map((v) => redactValue(key, v, depth + 1));
+		return value.length > MAX_ARRAY_ITEMS ? [...items, `…${value.length - MAX_ARRAY_ITEMS} more`] : items;
+	}
+	if (typeof value === 'object') {
+		if (depth >= MAX_REDACT_DEPTH) return '[nested]';
+		return redactObject(value as Record<string, unknown>, depth + 1);
+	}
+	return '[unsupported]';
+}
+
+function redactObject(obj: Record<string, unknown>, depth: number): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(obj)) {
+		out[k] = redactValue(k, v, depth);
+	}
+	return out;
+}
+
+/** Redact one debug event for inclusion in a shareable diagnostics bundle. */
+export function redactEvent(event: DebugEvent): DebugEvent {
+	return redactObject(event as unknown as Record<string, unknown>, 0) as unknown as DebugEvent;
+}
+
+// Settings fields that are user-chosen paths or free text rather than
+// counts/enums/flags; collapsed to a customized/default flag instead of
+// their literal value.
+const SETTINGS_PATH_KEYS = new Set(['defaultOutputPath', 'tier2SidecarPath', 'customLinkNamespace']);
+
+/**
+ * Redact a settings object for inclusion in a shareable diagnostics bundle.
+ * Counts and flags only — no vault paths or other user-chosen free text.
+ */
+export function redactSettingsSnapshot(settings: Record<string, unknown>): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(settings)) {
+		if (k === 'savedConfigs' && Array.isArray(v)) {
+			out.savedConfigsCount = v.length;
+			continue;
+		}
+		if (SETTINGS_PATH_KEYS.has(k)) {
+			out[k] = typeof v === 'string' && v.trim().length > 0 ? '[custom]' : '[default]';
+			continue;
+		}
+		out[k] = redactValue(k, v, 0);
+	}
+	return out;
+}
+
+/** Find the most recent event matching category+op (e.g. "last import summary"). */
+export function findLastEvent(events: DebugEvent[], category: string, op: string): DebugEvent | undefined {
+	for (let i = events.length - 1; i >= 0; i--) {
+		if (events[i].category === category && events[i].op === op) return events[i];
+	}
+	return undefined;
+}
+
+export interface DiagnosticsBundleInput {
+	pluginVersion: string;
+	obsidianVersion: string;
+	platform: string;
+	sessionId: string;
+	settings: Record<string, unknown>;
+	ringBuffer: DebugEvent[];
+	maxRecentEvents?: number;
+}
+
+/** Assemble a redacted, shareable diagnostics bundle for bug reports. */
+export function buildDiagnosticsBundle(input: DiagnosticsBundleInput): string {
+	const maxRecent = input.maxRecentEvents ?? 100;
+	const recentEvents = input.ringBuffer.slice(-maxRecent).map(redactEvent);
+	const lastImportSummary = findLastEvent(input.ringBuffer, 'wizard', 'generate-complete');
+
+	const bundle = {
+		generated_at: new Date().toISOString(),
+		session_id: input.sessionId,
+		plugin_version: input.pluginVersion,
+		obsidian_version: input.obsidianVersion,
+		platform: input.platform,
+		settings: redactSettingsSnapshot(input.settings),
+		last_import_summary: lastImportSummary ? redactEvent(lastImportSummary) : null,
+		recent_events: recentEvents,
+	};
+	return JSON.stringify(bundle, null, 2);
 }

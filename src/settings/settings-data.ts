@@ -5,6 +5,7 @@
  */
 
 import { SavedConfig } from '../types/config';
+import type { DebugLevel } from '../utils/debug';
 
 export interface CrosswalkerSettings {
 	// ==========================================================================
@@ -61,8 +62,9 @@ export interface CrosswalkerSettings {
 	// Debug (Phase 3.5 — wide-event NDJSON logger)
 	// ==========================================================================
 	enableDebugLog: boolean;                    // Master toggle; writes NDJSON events to crosswalker-debug.log
-	verboseLogging: boolean;                    // When true, trace-level events are emitted; otherwise only error/warn/info
+	verboseLogging: boolean;                    // When true, trace-level events are emitted; otherwise only error/warn/info. Kept for back-compat; debugLogLevel is the preferred control.
 	debugLogCategoryFilters: Record<string, boolean>;  // Per-category opt-out. Key = category name (e.g. "generation", "wizard"); value=false suppresses. Default empty (all categories emit).
+	debugLogLevel: DebugLevel;                  // Minimum severity written to the log file when enabled (file-write filter only; the in-memory ring buffer always keeps every level for diagnostics).
 
 	// ==========================================================================
 	// Draft sessions (Phase 3.6 — wizard auto-save / resume)
@@ -124,6 +126,7 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	enableDebugLog: false,
 	verboseLogging: false,
 	debugLogCategoryFilters: {},
+	debugLogLevel: 'info',
 
 	// Draft sessions (Phase 3.6)
 	enableDraftSessions: true,
