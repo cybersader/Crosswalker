@@ -51,7 +51,7 @@ The v0.1 implementation phase breaks into 10 sequenced milestones. Each has its 
 | [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | Junction notes + crosswalk edges | 2–3 days | ✅ Done (2026-05-05) |
 | [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) | Streaming refactor (engine accepts row iterator) | 1–2 days | ✅ Done (2026-05-05) |
 | [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Tier 2 sqlite-wasm sidecar projector | 5–8 days | ✅ Done (2026-05-06) |
-| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer + SSSOM import + recipe UX | 3–5 days | 🚧 In progress — Phases 1–6.4 ✅ + the 2026-07-05→11 shape-workbench/connected-output/settings-hub side-arc (Phase 7) |
+| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer + SSSOM import + recipe UX | 3–5 days | 🚧 In progress — Phases 1–6.4 ✅ + Phase 7 (shape-workbench side-arc) ✅ 2026-07-11; v0.1.7 next. See `CHANGELOG.md` `[Unreleased]` for delivery detail |
 | [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Exporters (STRM TSV / OSCAL JSON) | 2–3 days | 📋 Planning |
 | [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) | Audit trail T1 default | 1–2 days | 📋 Planning |
 | [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) | Bundle, polish, ship | 2–3 days | 📋 Planning |
@@ -149,8 +149,9 @@ Built on the Foundation spec. The wizard UI is redesigned around FrameworkConfig
 - [ ] **Complete [import wizard](/crosswalker/features/import-wizard/) UI** — steps 2-4 redesigned around the new config schema
 - [ ] **Complete settings tab** — all 8 sections reflecting new schema
 - [ ] **Complete [config browser](/crosswalker/features/config-system/) modal** — search, select, delete, import/export
-- [ ] **XLSX parser** — integrate xlsx package into wizard with sheet selector
-- [ ] **JSON/JSONL parser** — structured data import
+- [x] **XLSX parser** — sheet picker + header-row offset, shipped 2026-06-12
+- [x] **JSON parser** — iterator path + row filter + record picker, shipped 2026-06-12
+- [ ] **JSONL (newline-delimited JSON) parser** — not yet supported
 - [ ] **[Transform system](/crosswalker/design/transformation/)** — implement 20+ transform types defined in schema (string, array, type conversion, conditional). [Current types](/crosswalker/design/transformation/)
 - [ ] **Improved preview** — expandable folder tree, full note preview in Step 3
 - [ ] **E2E test suite** — full import wizard workflow tests, [built from spec](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-3-e2e-testing-with-wdio-obsidian)

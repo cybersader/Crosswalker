@@ -1,0 +1,51 @@
+---
+title: "Docs re-sync + the anti-duplication convention (CHANGELOG is the single source for delivery detail)"
+description: "Third stale-docs incident in days traced to one root cause: milestone/roadmap prose duplicating CHANGELOG content instead of linking to it. Re-synced the v0.1.6 milestone page, roadmap, ROADMAP.md, TEST_HANDS_ON_TOUR.md, and the schema spec's dangling zz-log links through the 2026-07-11 batches, then wrote the convention down: milestone pages keep status/structure/acceptance-criteria only, delivery detail lives ONLY in CHANGELOG [Unreleased]."
+tags: [log, docs, process, changelog, convention, anti-duplication]
+date: 2026-07-11
+sidebar:
+  label: "07-11 · Docs anti-duplication convention"
+  order: -20260711.1
+---
+
+## 1. The incident
+
+Milestone/roadmap pages went stale for the third time within days. Each time the cause was the same: a batch of shipped work landed, `CHANGELOG.md` `[Unreleased]` got a habit-maintained entry (per the [existing reminder](https://github.com/cybersader/crosswalker/blob/main/CLAUDE.md)), but the [v0.1.6 milestone page](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)'s Phase 7 row, the [milestone hub](/crosswalker/reference/roadmap/milestones/) status line, [`ROADMAP.md`](https://github.com/cybersader/crosswalker/blob/main/ROADMAP.md), and [`TEST_HANDS_ON_TOUR.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_HANDS_ON_TOUR.md) were only synced occasionally — restating the same delivery detail as prose that immediately started drifting again.
+
+**Root cause**: content duplication, not missing process. The CHANGELOG reminder already existed and was being followed; the milestone/roadmap pages were *also* restating the same facts in a second, less-maintained place.
+
+## 2. The fix — single-source rule
+
+Milestone pages keep **only**: status (🚧/✅/📋), phase structure (the table's Phase/What-ships/Build/Manual-test columns), and acceptance criteria. **In-progress delivery detail becomes a link, not a restatement**: "see `CHANGELOG.md` `[Unreleased]` for the running delivery log" replaces multi-paragraph phase-row prose. Same rule for `ROADMAP.md`'s status section.
+
+Applied immediately to the [v0.1.6 milestone page](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)'s Phase 7 row — a dense paragraph covering the shape workbench, render report, variadic folders, connectedness mandate, recognized-source fast path, settings hub, and workspace tab was replaced with a two-sentence summary + a link to CHANGELOG `[Unreleased]`.
+
+## 3. Written down where it will be obeyed
+
+Added to the [Documentation update reminders § Path-keyed reminders](https://github.com/cybersader/crosswalker/blob/main/CLAUDE.md#path-keyed-reminders) table in the repo-root `CLAUDE.md` (the table an agent actually consults before committing):
+
+> **Landing a batch of shipped work inside an in-progress milestone** (mid-milestone commits, not a full milestone close) → milestone-status flips edit the milestone page; delivery detail lives ONLY in `CHANGELOG.md` `[Unreleased]`; batch landings update CHANGELOG + flip status cells, nothing else.
+
+This is a peer to the existing "Any commit... adds a CHANGELOG `[Unreleased]` entry" reminder — that row establishes CHANGELOG as canonical; this row forbids the second copy from re-forming on milestone/roadmap pages.
+
+## 4. What else was re-synced in the same pass (2026-07-11, through today's batches)
+
+Read `CHANGELOG.md`'s three most-recent `[Unreleased]` sections ("Frameworks arrive furnished", "The workspace tab, everywhere entry points, and one vocabulary", "Settings hub, recognized sources, and enrichment everywhere") as the source of truth and brought the following current instead of restating them:
+
+- [v0.1.6 milestone page](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Phase 7 row compressed per §2 above; status line updated
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/) status snapshot line
+- [Roadmap index](/crosswalker/reference/roadmap/) status table + the stale "XLSX parser" / "JSON/JSONL parser" planned-v0.2 checkboxes (both shipped 2026-06-12; only JSONL remains genuinely open)
+- [`ROADMAP.md`](https://github.com/cybersader/crosswalker/blob/main/ROADMAP.md) — mirrored the same status + Formats-section fix (the dual-source convention)
+- [`TEST_HANDS_ON_TOUR.md`](https://github.com/cybersader/crosswalker/blob/main/TEST_HANDS_ON_TOUR.md) — added manual-test coverage for the vault file picker, per-import home/hub notes + Contents sections + Waypoint opt-in, the review screen's exact-count "numeric plan", and the folder-note-as-default placement flip
+- [v0.1 schema spec §4.9](/crosswalker/agent-context/v0-1-schema-spec/#49-targetenrichmentlevel_hubs-waypoint_marker-added-2026-07-11-schemaver-140-additive) — the two generic `zz-log/` index links tightened to point at this section's sibling, the [shape-workbench synthesis §3](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/#3-the-connectedness-mandate--vaults-must-be-graphs-not-filing-cabinets), and the CHANGELOG anchor for the furnished-frameworks batch
+
+No content was lost — everything removed from milestone/roadmap prose exists, in more detail, in the CHANGELOG entries these pages now link to.
+
+## Related
+
+- [Shape-workbench architecture synthesis (2026-07-11)](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) — the era this batch of docs work is syncing against
+- [UI-parity audit (2026-06-12, + 2026-07-11 addendum)](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) — the other doc that tracks shipped-vs-documented drift, at the code-surface level rather than the doc-content level
+- [v0.1.6 milestone page](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)
+- [Roadmap index](/crosswalker/reference/roadmap/)
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/)
+- `CHANGELOG.md` `[Unreleased]` — the canonical delivery log this convention protects

@@ -44,7 +44,7 @@ Mirrors the docs [milestone status snapshot](https://cybersader.github.io/crossw
 - [x] v0.1.4 — Junction notes + crosswalk edges (2026-05-05)
 - [x] v0.1.4.5 — Streaming refactor (2026-05-05)
 - [x] v0.1.5 — Tier 2 sqlite-wasm sidecar projector (2026-05-06)
-- [ ] **v0.1.6 — Bases query layer + SSSOM import + recipe UX** — 🚧 in progress. Phases 1–6.4 (Bases pivot view, SSSOM import, primitives, ingestion-corpus sprint) shipped through 2026-06-12. A concurrent **shape-workbench side-arc** (2026-07-05 → 2026-07-11) then landed inside this milestone's window: the import wizard rebuilt as a live shape-mapping workbench (beta, opt-in), a connected-output mandate (children lists, facet hubs, edge-count guardrail via Pass 1.5 batch enrichment — wired for the workbench and native-recipe/harness paths; the classic column-table wizard path doesn't yet set an enrichment block, a named gap), a recognized-source fast path for the six bundled vetted recipes, a settings tab rebuilt as a navigable hub with live previews, and a `Crosswalker` workspace tab hosting the full import flow in-tab (launchpad + live installed-ontologies list), with the settings modal now a thin back-compat host of the same flow. Full record: [shape-workbench synthesis log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/). v0.1.7 is next.
+- [ ] **v0.1.6 — Bases query layer + SSSOM import + recipe UX** — 🚧 in progress. Phases 1–6.4 (Bases pivot view, SSSOM import, primitives, ingestion-corpus sprint) shipped through 2026-06-12. A concurrent **shape-workbench side-arc** (2026-07-05 → 2026-07-11, tracked as Phase 7) then landed inside this milestone's window. Full architectural record: [shape-workbench synthesis log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/). Delivery detail for both Phase 6.4 and Phase 7 lives in `CHANGELOG.md` `[Unreleased]`, not restated here (per the [docs anti-duplication convention](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-docs-sync-and-anti-duplication-convention/)). v0.1.7 is next.
 - [ ] v0.1.7 — Exporters (STRM TSV / OSCAL JSON) — planning
 - [ ] v0.1.8 — Audit trail T1 default — planning
 - [ ] v0.1-RC — Bundle, polish, ship — planning
@@ -113,7 +113,8 @@ Concrete, shippable. ~1.2 MB plugin total. Tier 1 + Tier 2 sqlite-wasm sidecar b
 ## Formats — "Import anything, transform it properly" (v0.2)
 
 - [ ] Complete import wizard UI (redesigned around recipe schema)
-- [ ] XLSX parser (SheetJS tree-shaken read-only) + JSON/JSONL parser
+- [x] XLSX parser (sheet picker + header-row offset, shipped 2026-06-12) + JSON parser (iterator path + row filter + record picker, shipped 2026-06-12)
+- [ ] JSONL (newline-delimited JSON) parser — not yet supported
 - [ ] `mechanism: tag` and `mechanism: wikilink` layout-levels wired (schema-reserved at v0.1)
 - [ ] `graph_edges` wired (schema-reserved at v0.1)
 - [ ] Transform system implementation (~40 primitives across 9 categories)

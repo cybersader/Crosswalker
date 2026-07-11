@@ -6,7 +6,7 @@ surface you care about. Automated coverage is noted per section so you know
 what's already machine-verified (800+ unit tests + 25+ visual/E2E specs) vs
 what only your hands can judge.
 
-**2026-07-11 additions** (the [shape-workbench side-arc](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/), tracked as [v0.1.6 Phase 7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)): §0.5 workspace tab, §1a recognized-source fast path, §1.7 shape workbench + review screen, §1.9 draft resume, §6.5 connected-output checks (children lists, facet hubs, edge stats — includes the known §7o gap). §8 settings tour rewritten for the new settings hub.
+**2026-07-11 additions** (the [shape-workbench side-arc](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/), tracked as [v0.1.6 Phase 7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — full delivery detail in `CHANGELOG.md` `[Unreleased]`): §0.5 workspace tab, §1 vault file picker, §1a recognized-source fast path, §1.7 shape workbench + review screen (Connections card, the numeric plan) + §1.7 folder-note-as-default placement, §1.9 draft resume, §6.5 connected-output checks (children lists, facet hubs, edge stats, per-import home/hub notes, Waypoint opt-in — includes the known §7o gap). §8 settings tour rewritten for the new settings hub.
 
 > **Older per-feature guides** (deeper steps for one surface):
 > `TEST_CROSSWALK_PIVOT.md` (corpus regen + pivot), `TEST_PHASE_4_5.md` (query
@@ -36,6 +36,8 @@ is a thin back-compat host of the identical flow.
 - [ ] Command palette → **Crosswalker: Open workspace** does the same; re-running it re-uses the existing leaf instead of opening a duplicate
 - [ ] **Home screen**: a launchpad (Import structured data · Manage saved configs · Resume a draft, the last only when draft auto-save is on) above an **Installed ontologies** list derived from your output folder's subfolders
 - [ ] Empty vault: the installed-ontologies section shows "Nothing imported yet. Run 'Import structured data' to bring in your first framework."
+- [ ] **Generated-only list** (2026-07-11): the list only shows folders Crosswalker actually generated (producer-frontmatter gated) — hand-created folders under the output path never appear as a false "installed" row, and a just-finished import appears immediately without a metadata-cache race
+- [ ] With **per-import root folders** (§6.5), each row corresponds to one import's own root, not one row per top-level technique/category folder inside it
 - [ ] Click **Import structured data** — the flow (file select → recognized card or detection → workbench/classic Step 2 → review screen → generate) renders **in the tab itself**, wide, not in a modal
 - [ ] After generating, the flow calls "done" and the tab returns to the home screen with **fresh counts** — no manual refresh needed
 - [ ] Each installed-ontology row shows a live `N notes · N links` count and, when the folder name matches a bundled recipe, an **"Import again"** button (title: "Import again using the [recipe] recipe") that jumps straight into the flow preset to that recipe — skips fingerprint detection entirely
@@ -47,7 +49,9 @@ is a thin back-compat host of the identical flow.
 magical? Reload the plugin first (toggle off/on) to pick up the 2026-06-12 UX.*
 
 - [ ] Command palette → **Crosswalker: Import structured data**
-- [ ] Pick `tools/fixtures/synthetic/nist-mini.csv`. **All file paths in this guide are repo-relative, not vault-relative** — the wizard opens your OS file dialog, so browse up out of `test-vault/` into the repo folder; Obsidian's sidebar will never show `tools/` or `Frameworks/`
+- [ ] **Step 1 leads with a fuzzy vault picker** (NEW 2026-07-11) — a search box lists every importable CSV/XLSX/JSON file already in the vault, even ones Obsidian's file explorer hides (no "detect all file extensions" setting required); an OS file dialog remains available for files outside the vault
+- [ ] Pick `tools/fixtures/synthetic/nist-mini.csv` via the OS file dialog (it's outside `test-vault/`, so it won't appear in the vault picker). **All file paths in this guide are repo-relative, not vault-relative** — browse up out of `test-vault/` into the repo folder; Obsidian's sidebar will never show `tools/` or `Frameworks/`
+- [ ] To exercise the vault picker itself, copy any of `test-vault/Crosswalker Test Data/*.csv` into the vault first, then start a new import and confirm it appears in the fuzzy search results
 - [ ] **Step 2 arrives pre-configured (smart defaults)** — you should see ✨ badges: `name` → **Note title**, `family` → **Hierarchy level**, `description` → **Body content**; everything else stays frontmatter. You configure *nothing* for the happy path — just review
 - [ ] The intro line answers the standard questions up front: all columns imported as frontmatter by default, nothing dropped unless Skip
 - [ ] The **"In the vault" column** live-previews each role (`📁 AC/`, `📄 Policy and Procedures.md`, `key: value`, `[[link]]`) — change a dropdown and watch the preview update in place
@@ -79,7 +83,8 @@ the classic flow.
 
 *Automated: +72 unit tests (detection, mapping, view-model, workbench recipe
 assembly) + `tests/e2e/visual-workbench.spec.ts` (four-zone screenshots, dark
-theme). Manual value: does editing feel live, and does the review screen
+theme, a no-horizontal-overflow invariant across seven pane widths — NEW
+2026-07-11). Manual value: does editing feel live, and does the review screen
 actually earn trust before Generate?*
 
 Off by default — **Settings → Import behavior → Live mapping workbench**
@@ -92,9 +97,13 @@ one live three-zone screen for every source (CSV/XLSX/JSON alike).
 - [ ] **Live vault preview rail** (right): a real folder tree, one fully-rendered sample note, and a **deviation banner** — all three re-render on every change (debounced), driven by the actual `render()` pipeline, not a mock
 - [ ] Open the matrix directly (skip the cards) — confirm it shows **exactly** what the preset + cards already wrote (the view-coherence law: every view reads/writes the same `StructureMapping`, no hidden state)
 - [ ] Pick a source with a ragged id (e.g. a mix of parent and child ids at different depths) — confirm the matrix's **tail rule** / variadic option nests rows to their own natural depth instead of flattening them all to one level
-- [ ] Proceed to the **review screen** (old Step 4, now a true review not a pushed-down workbench): destination block (breadcrumb path, inline edit, **"Show in file explorer"** without closing the modal/tab), the shape-map recap (e.g. `technique_id → folders · 823 notes`), stat chips including a **link-count guardrail** (a link-dead import announces itself before you can generate), the deviation banner, and the provenance line
+- [ ] **Connections card** (NEW 2026-07-11): a dedicated card in the mapping canvas surfaces the enrichment block directly — a **link parents and children** toggle, a **hub notes** control (with an honest "unlock" hint when a prerequisite mapping is missing), and a **sibling vs. folder-note placement chooser** showing side-by-side mini folder-trees for each option
+- [ ] **Folder-note is the default placement** (NEW 2026-07-11, flipped from sibling) — a fresh import with no saved config or draft defaults the placement chooser to **folder-note** (`X/X.md`, the parent lives inside its own folder) rather than sibling (`X.md` beside `X/`); if the vault has a folder-notes-style plugin enabled (folder-notes, Waypoint, fuzzy folder note IDs), the reason line under the chooser names it — but folder-note is now the default either way, plugin or not
+- [ ] Click into the placement chooser and switch options — confirm the **connected pair highlights together** in purple (the file and its folder, so it's obvious which mini-tree you're choosing) rather than only the clicked control
+- [ ] Proceed to the **review screen** (old Step 4, now a true review not a pushed-down workbench): destination block (breadcrumb path, inline edit, **"Show in file explorer"** without closing the modal/tab), the shape-map recap (e.g. `technique_id → folders · 823 notes`), **the numeric plan** (NEW 2026-07-11 — exact note and hub counts computed from the whole file, plus honest estimates for folders and links, not guesses), stat chips including a **link-count guardrail** (a link-dead import announces itself before you can generate), the deviation banner, and the provenance line
 - [ ] Generate → confirm output matches the preview exactly (byte-for-byte on re-run with the same mapping)
 - [ ] Toggle the setting back off, reload — confirm §1's classic column table still works unchanged (legacy path untouched)
+- [ ] **Layout invariant** (NEW 2026-07-11): open the workbench in a split pane / narrow sidebar and resize across several widths — confirm no horizontal scrollbar appears at any width (the workbench sizes itself by its own pane, not the window)
 
 ## 1.9 Draft resume (workbench-aware) (NEW 2026-07-11)
 
@@ -202,7 +211,7 @@ Open each, in `GRC analysis/`:
 - [ ] Both index notes (`Control lens.md`, `Framework adoption.md`) render embedded views inline in reading mode
 - [ ] **Pivot interactivity**: in any heatmap, switch the view dropdown to the table view and back; resize the pane; close/reopen the tab — no errors, state survives
 
-## 6.5 Connected-output checks — children lists, facet hubs, edge stats (NEW 2026-07-11)
+## 6.5 Connected-output checks — children lists, facet hubs, hub/home notes, edge stats (NEW 2026-07-11)
 
 *Automated: `tests/enrich.test.ts` + `tests/enrichment-reimport.test.ts` (Pass
 1.5 unit coverage) + `tests/e2e/visual-graph.spec.ts` (the "connectedness
@@ -228,6 +237,11 @@ claims; verify it yourself rather than trusting that line.
 - [ ] Open a note with a **multi-value facet column** (e.g. a technique with 2 tactics) — confirm a **facet hub note** exists for each tactic value with ≥2 members: `kind: facet` frontmatter, a managed **`members`** list, and an H1 body
 - [ ] Add prose below the H1 in a facet hub note, then re-import the same source — confirm your prose **survives** (only the H1 + members list are managed) and `children`/`members` union-merge rather than clobber
 - [ ] Check `GenerationResult.edgeCount` (workbench review screen's stat chips, §1.7, or the debug log's `generation` category) — should be > 0 and roughly `parent links + children entries + member entries`
+- [ ] **Every import gets a home** (NEW 2026-07-11): the import's own root folder gets a hub note named after the folder — open it and confirm it reads as the framework's "home" note (managed **Contents** section listing the folder's direct children as wikilinks, sorted by curie)
+- [ ] **Per-import root folders** (NEW 2026-07-11): re-run the import against a different source and confirm each import nests under its own root folder inside the output path (e.g. `Frameworks/<source>/...`) instead of flattening into a shared root — the workspace tab's Installed ontologies list (§0.5) should show one row per import, not one row per top-level technique folder
+- [ ] **Hierarchy hub notes at every level** (NEW 2026-07-11, default on): open a mid-tree folder note (not the root, not a leaf) — confirm it also carries a managed **Contents** section listing its direct children; for a folder with no concept note of its own (a pure structural grouping folder), confirm a synthetic hub note (`kind: hub`) was generated at `<folder>/<folder>.md`
+- [ ] Add prose below a hub note's Contents section, then re-import the same source — confirm your prose **survives** (only the Contents section is managed) and the section itself regenerates instead of duplicating
+- [ ] **Waypoint opt-in** (NEW 2026-07-11, only visible with a Waypoint-style plugin enabled): with Waypoint installed and enabled, toggle the Waypoint marker option in the Connections card (§1.7), generate, and confirm generated folder-note/hub notes carry a `%% Waypoint %%` trigger comment — re-import and confirm it's never duplicated or stripped
 - [ ] **Confirm the classic-path gap above**: with **Live mapping workbench OFF**, run the same source through §1's happy path → confirm parent notes get **no** `children` field and **no** facet hub notes materialize, regardless of preset. If you see enrichment fire on the classic path, that's a change worth logging (it would mean the shim gained enrichment wiring)
 - [ ] **Known open gap (§7o, filed 2026-07-11, unresolved as of this writing):** separately from the classic-path gap above, `tests/e2e/visual-graph.spec.ts` found a run where facet hub notes did **not** materialize (`hubCount: 0`) even **on the workbench path** with the default preset and no manual customization — the spec logs this as a non-fatal "FINDING" (not a hard test failure) so the graph screenshot still captures whatever state resulted. If you hit `hubCount: 0` **with the workbench on**, that's this bug — report exactly what you touched (or didn't) before Generate, since the repro conditions aren't fully pinned down yet
 

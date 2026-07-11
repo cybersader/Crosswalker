@@ -566,7 +566,7 @@ target:
 
 ### §4.9 `target.enrichment.level_hubs` + `waypoint_marker` (added 2026-07-11 — SchemaVer 1.4.0; additive)
 
-Closes the [ICSB emitter-controls gap audit](/crosswalker/agent-context/zz-log/)'s #1-priority gap: Crosswalker had facet hub notes (value-grouping) but no hierarchy-*level* index/MOC concept, unlike the ICSB pipeline's `hubs.*` (Home + per-level MOCs, derived from the canonical model).
+Closes the [ICSB emitter-controls gap audit](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/#3-the-connectedness-mandate--vaults-must-be-graphs-not-filing-cabinets)'s #1-priority gap: Crosswalker had facet hub notes (value-grouping) but no hierarchy-*level* index/MOC concept, unlike the ICSB pipeline's `hubs.*` (Home + per-level MOCs, derived from the canonical model). Delivery detail (folder-note-as-default, per-import root folders, the review screen's exact-count plan) is in [`CHANGELOG.md` "Frameworks arrive furnished"](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md#frameworks-arrive-furnished-2026-07-11-third-batch), not restated here.
 
 **`level_hubs: 'notes'`** — every FOLDER level in the generated structure gets an index note, derived from the batch's own rendered note paths (never a filesystem scan):
 
@@ -574,7 +574,7 @@ Closes the [ICSB emitter-controls gap audit](/crosswalker/agent-context/zz-log/)
 - **Synthetic**: a folder with no such note (a pure structural grouping folder, or the per-import root) gets a brand-new hub note (`kind: 'hub'`, curie `<ontology>:hub/<folder-path-slug>`) at `<folder>/<folder>.md`.
 - **Root hub**: the per-import root folder (`GenerationOptions.basePath`) gets a hub too, named after the folder — the import's "home" note.
 - Re-import safe: the managed section is delimited by HTML-comment markers and stripped-and-reappended on regeneration (same discipline as `facet_notes`'s H1 split) — user prose elsewhere in the note survives.
-- Default `'notes'` on the `browsable-framework` preset (the connectedness mandate, §7k of the [shape-first wizard spec](/crosswalker/agent-context/zz-log/)).
+- Default `'notes'` on the `browsable-framework` preset (the connectedness mandate — [shape-workbench synthesis §3](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/#3-the-connectedness-mandate--vaults-must-be-graphs-not-filing-cabinets)).
 
 **`waypoint_marker: true`** — additionally appends the `%% Waypoint %%` trigger comment to every folder-note/hub note this import generates, so the [Waypoint community plugin](https://github.com/IdreesInc/Waypoint) can *also* track notes a user later adds to that folder by hand. Idempotent (never duplicates or strips a `%% Begin Waypoint %%` block Waypoint has already expanded). Additive, not a replacement — Crosswalker's own generated section stays the primary, always-on mechanism (Waypoint's directory-scan approach can't reconstruct the curated, edge-derived grouping Crosswalker's own model produces). Default `false`; the workbench only offers the toggle when a Waypoint-style plugin is detected enabled.
 
