@@ -25,6 +25,13 @@ import {
 	draftPathDisplay,
 	type PreviewTreeNode,
 } from './setting-previews';
+import type { Enrichment } from '../import/mapping/types';
+import {
+	buildParentPlacementPreview,
+	preferredParentNote,
+	detectWaypointPlugin,
+	type PathTreeNode,
+} from '../import/mapping/view-model';
 
 // Human labels for card summaries (a glimpse of each section's current values).
 const KEY_STYLE_LABEL: Record<string, string> = {
@@ -64,6 +71,14 @@ const LOG_LEVEL_LABEL: Record<DebugLevel, string> = {
 	info: 'Standard',
 	trace: 'Verbose',
 };
+
+/**
+ * Canned two-level sample for the vault-default parent-placement preview
+ * (settings § Connections). There is no import in progress on this page, so
+ * `buildParentPlacementPreview` runs over a fixed stand-in pair (a parent
+ * with one child) instead of live sample rows the workbench would use.
+ */
+const PLACEMENT_PREVIEW_SAMPLE = ['Category/Parent.md', 'Category/Parent/Child.md'];
 
 /**
  * Folder autocomplete for path-taking text fields. Suggests vault folders
@@ -199,6 +214,13 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 				icon: 'link',
 				summary: () => `${LINK_LABEL[s.linkSyntaxPreset]} links`,
 				render: (root) => this.renderLinks(root),
+			},
+			{
+				id: 'connections',
+				title: 'Connections',
+				icon: 'git-branch',
+				summary: () => this.connectionsSummary(),
+				render: (root) => this.renderConnections(root),
 			},
 			{
 				id: 'import',
@@ -519,6 +541,176 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 	}
 
 	// =========================================================================
+	// Connections — vault-wide defaults for the enrichment knobs
+	//
+	// Precedence (highest to lowest, mirrored in `WorkbenchOptions.
+	// vaultDefaults` and `CrosswalkerSettings.defaultEnrichment`): a
+	// recognized built-in configuration > the user's resumed draft or saved
+	// mapping > these vault defaults > the chosen preset's own defaults >
+	// adaptive detection (folder-notes-style plugin presence). A setting left
+	// untouched here stays unset, so it defers to whatever comes next in the
+	// chain — only settings you actually change become vault-wide overrides.
+	// =========================================================================
+
+	/** One-line card summary: which vault defaults are actually set. */
+	private connectionsSummary(): string {
+		const d = this.plugin.settings.defaultEnrichment;
+		const parts: string[] = [];
+		if (d.children_lists) parts.push('children linked');
+		if (d.facet_notes && d.facet_notes !== 'none') parts.push('hub notes');
+		if (d.level_hubs === 'notes') parts.push('folder indexes');
+		if (d.parent_note) parts.push(d.parent_note === 'folder-note' ? 'folder-note placement' : 'sibling placement');
+		return parts.length ? parts.join(', ') : 'Preset defaults';
+	}
+
+	private renderConnections(root: HTMLElement): void {
+		new Setting(root).setName('Connections').setHeading();
+		root.createDiv({
+			cls: 'crosswalker-wb-connections-sub',
+			text: 'Vault-wide defaults for how generated notes link to each other. Every import can still change these in the wizard\'s Connections card.',
+		});
+		root.createDiv({
+			cls: 'crosswalker-settings-advanced-hint',
+			text: 'Order of precedence: a recognized built-in configuration, then your saved mapping or an in-progress draft, then these vault defaults, then the chosen preset\'s own defaults, then automatic detection. Leave a setting untouched to defer to whatever comes next.',
+		});
+
+		const defaults = this.plugin.settings.defaultEnrichment;
+
+		new Setting(root)
+			.setName('Link parents and children')
+			.setDesc('Every parent note lists its direct children, alongside the parent link already on each child.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(defaults.children_lists === true)
+					.onChange(async (value) => {
+						this.plugin.settings.defaultEnrichment.children_lists = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Hub notes for shared values')
+			.setDesc('When a column becomes a tag, gather every note that shares a value under one hub note.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('none', 'Off')
+					.addOption('tags-only', 'Tags only, no hub notes')
+					.addOption('notes', 'Hub notes for shared values')
+					.setValue(defaults.facet_notes ?? 'none')
+					.onChange(async (value) => {
+						this.plugin.settings.defaultEnrichment.facet_notes = value as Enrichment['facet_notes'];
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Folder index notes')
+			.setDesc('Every folder gets an index note listing what is directly inside it, so browsing the vault or the graph never dead-ends.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(defaults.level_hubs === 'notes')
+					.onChange(async (value) => {
+						this.plugin.settings.defaultEnrichment.level_hubs = value ? 'notes' : 'none';
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		// Waypoint marker — only offered when a Waypoint-style community plugin
+		// is actually enabled (same detection the workbench's Connections card
+		// gates on; an unconditional toggle would do nothing for most vaults).
+		// @ts-expect-error internal plugins API (enabledPlugins is a Set<string>)
+		const enabled: Set<string> = this.app.plugins?.enabledPlugins ?? new Set();
+		if (detectWaypointPlugin(enabled)) {
+			new Setting(root)
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Waypoint" is the plugin's proper name
+				.setName('Also mark folder notes for Waypoint')
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Waypoint" is the plugin's proper name
+				.setDesc('Crosswalker already generates its own index notes above. This additionally lets Waypoint track notes you add to a folder by hand, later.')
+				.addToggle((toggle) =>
+					toggle
+						.setValue(defaults.waypoint_marker === true)
+						.onChange(async (value) => {
+							this.plugin.settings.defaultEnrichment.waypoint_marker = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		this.renderParentPlacementDefault(root, enabled);
+	}
+
+	/**
+	 * Vault default for where a note that is also a parent should live. Reuses
+	 * `buildParentPlacementPreview` (the same helper behind the workbench's
+	 * Connections card) over a canned two-level sample, since this page has no
+	 * import in progress to preview against.
+	 */
+	private renderParentPlacementDefault(root: HTMLElement, enabled: Set<string>): void {
+		const wrap = root.createDiv({ cls: 'crosswalker-wb-placement' });
+		wrap.createDiv({
+			cls: 'crosswalker-wb-connection-row-label',
+			text: 'Where should a note that is also a parent live?',
+		});
+
+		const defaults = this.plugin.settings.defaultEnrichment;
+		const current = defaults.parent_note;
+		const adaptive = preferredParentNote(enabled);
+		const adaptiveLabel = adaptive.value === 'folder-note' ? 'folder note' : 'sibling';
+		wrap.createDiv({
+			cls: 'crosswalker-wb-placement-reason',
+			text: current
+				? 'This vault default overrides whatever the preset would otherwise choose.'
+				: `Not set — imports use the preset's own placement (currently ${adaptiveLabel} by default).`,
+		});
+
+		const trees = buildParentPlacementPreview(PLACEMENT_PREVIEW_SAMPLE);
+		const options: { id: 'sibling' | 'folder-note'; label: string; nodes: PathTreeNode[] }[] = [
+			{ id: 'sibling', label: 'Sibling', nodes: trees.sibling },
+			{ id: 'folder-note', label: 'Folder note', nodes: trees.folderNote },
+		];
+
+		const grid = wrap.createDiv({ cls: 'crosswalker-wb-placement-grid' });
+		for (const opt of options) {
+			const col = grid.createDiv({ cls: 'crosswalker-wb-placement-col' });
+			const radioLabel = col.createEl('label', { cls: 'crosswalker-wb-placement-radio' });
+			const radio = radioLabel.createEl('input', { type: 'radio', attr: { name: 'crosswalker-settings-parent-note' } });
+			// Neither radio is pre-checked when unset — an honest "no vault
+			// default chosen yet" rather than implying a value that isn't saved.
+			radio.checked = current === opt.id;
+			radioLabel.createSpan({ text: opt.label });
+			radio.addEventListener('change', () => {
+				if (!radio.checked) return;
+				this.plugin.settings.defaultEnrichment.parent_note = opt.id;
+				void this.plugin.saveSettings();
+				this.display();
+			});
+			const treeEl = col.createDiv({ cls: 'crosswalker-wb-placement-tree crosswalker-wb-tree' });
+			for (const node of opt.nodes) {
+				let cls = 'crosswalker-wb-tree-row' + (node.isFile ? ' is-file' : '');
+				if (node.relation === 'parent') cls += ' cw-rel-parent';
+				const row = treeEl.createDiv({ cls });
+				row.style.paddingLeft = `${node.depth * 14}px`;
+				const ico = row.createSpan({ cls: 'crosswalker-wb-tree-ico' });
+				setIcon(ico, node.isFile ? 'file' : 'folder');
+				row.createSpan({ text: node.isFile ? node.label : `${node.label}/` });
+			}
+		}
+
+		if (current) {
+			new Setting(root)
+				.setName('Reset placement default')
+				.setDesc('Remove the vault default above and defer to the preset again.')
+				.addButton((btn) =>
+					btn.setButtonText('Use the preset\'s placement instead').onClick(async () => {
+						delete this.plugin.settings.defaultEnrichment.parent_note;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+				);
+		}
+	}
+
+	// =========================================================================
 	// Import behavior
 	// =========================================================================
 
@@ -653,6 +845,18 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.promptToSaveConfig)
 					.onChange(async (value) => {
 						this.plugin.settings.promptToSaveConfig = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(root)
+			.setName('Skip the recognized-source card on exact matches')
+			.setDesc('When your file exactly matches a built-in configuration, skip straight to the review screen with it applied. Review still happens before anything is created; a close but not exact match always shows the card.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.autoApplyExactMatch)
+					.onChange(async (value) => {
+						this.plugin.settings.autoApplyExactMatch = value;
 						await this.plugin.saveSettings();
 					}),
 			);

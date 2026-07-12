@@ -7,7 +7,7 @@
  * they're unit-testable without mounting the wizard's DOM.
  */
 
-import { recognizedDestination, honestEnrichment } from '../src/import/import-wizard';
+import { recognizedDestination, honestEnrichment, shouldAutoApplyRecognizedMatch } from '../src/import/import-wizard';
 import { RECIPE_REGISTRY, type RecipeRegistryEntry } from '../src/import/recipe-registry';
 
 function entry(id: string): RecipeRegistryEntry {
@@ -106,5 +106,23 @@ describe('honestEnrichment (spec §7m curated defaults — honest handling)', ()
 		expect(
 			honestEnrichment(fakeEntry({ childrenLists: true, hasParentLink: true, facetNotes: 'notes', hasTagEmit: true })),
 		).toEqual({ children_lists: true, facet_notes: 'notes' });
+	});
+});
+
+describe('shouldAutoApplyRecognizedMatch (settings § Suggestions, "Skip the recognized-source card on exact matches")', () => {
+	it('a 100% match auto-advances when the setting is on', () => {
+		expect(shouldAutoApplyRecognizedMatch(true, 100)).toBe(true);
+	});
+
+	it('a 95% match never auto-advances, even with the setting on', () => {
+		expect(shouldAutoApplyRecognizedMatch(true, 95)).toBe(false);
+	});
+
+	it('a 100% match never auto-advances when the setting is off (the default)', () => {
+		expect(shouldAutoApplyRecognizedMatch(false, 100)).toBe(false);
+	});
+
+	it('a 95% match never auto-advances when the setting is off', () => {
+		expect(shouldAutoApplyRecognizedMatch(false, 95)).toBe(false);
 	});
 });

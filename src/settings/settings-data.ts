@@ -6,6 +6,7 @@
 
 import { SavedConfig } from '../types/config';
 import type { DebugLevel } from '../utils/debug';
+import type { Enrichment } from '../import/mapping/types';
 
 export interface CrosswalkerSettings {
 	// ==========================================================================
@@ -28,13 +29,34 @@ export interface CrosswalkerSettings {
 	customLinkNamespace: string;
 
 	// ==========================================================================
+	// Connections — vault-wide defaults for the six enrichment knobs
+	// (spec/recipe.schema.json target.enrichment). A settings section (§
+	// Connections) so every import doesn't start over from a preset's
+	// hardcoded values or the adaptive parent_note detection alone.
+	//
+	// Precedence (highest to lowest): a recognized built-in configuration >
+	// the user's resumed draft or saved mapping > these vault defaults > the
+	// active preset's own defaults > adaptive detection (folder-notes-style
+	// plugin presence). Only keys actually SET here participate — an empty
+	// `{}` (the default) means "defer entirely to the preset."
+	// ==========================================================================
+	defaultEnrichment: Enrichment;
+
+	// ==========================================================================
 	// Config Matching & Suggestions
 	// ==========================================================================
 	enableConfigSuggestions: boolean;           // Show "Use saved config?" prompts
 	configMatchThreshold: number;               // Minimum score (0-100) to suggest a config
 	enablePatternDetection: boolean;            // Detect data patterns for smarter matching
 	promptToSaveConfig: boolean;                // Ask to save config after successful import
-	autoApplyExactMatch: boolean;               // Auto-apply config if 100% column match
+	/**
+	 * Skip the recognized-source card straight to the review screen when a
+	 * bundled recipe scores a 100% (exact) match (settings § Suggestions).
+	 * Review stays mandatory either way — this only removes the extra click
+	 * past the trust card, never a jump straight to generate. Below 100 the
+	 * card always shows regardless of this setting.
+	 */
+	autoApplyExactMatch: boolean;
 
 	// ==========================================================================
 	// Wizard Behavior
@@ -98,6 +120,9 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	// Link syntax
 	linkSyntaxPreset: 'standard',
 	customLinkNamespace: 'crosswalker',
+
+	// Connections — empty means "defer entirely to the active preset."
+	defaultEnrichment: {},
 
 	// Config Matching & Suggestions
 	enableConfigSuggestions: true,

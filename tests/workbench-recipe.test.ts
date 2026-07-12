@@ -9,7 +9,7 @@
  */
 
 import { TFile, TFolder } from 'obsidian';
-import { MappingWorkbench } from '../src/import/workbench';
+import { MappingWorkbench, type WorkbenchOptions } from '../src/import/workbench';
 import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import type { ParsedData, ImportRecipe } from '../src/types/config';
 import type { ImportMapping } from '../src/import/mapping/types';
@@ -167,6 +167,125 @@ describe('MappingWorkbench draft rehydration (spec §7i)', () => {
 		// The fresh instantiation is not the minimal name-only seed — it detects the
 		// packed hierarchy and facet, so the mapping is richer.
 		expect(wb.getMapping()).not.toEqual(seededMapping());
+	});
+});
+
+// ============================================================================
+// Vault-level Connections defaults (settings § Connections,
+// `CrosswalkerSettings.defaultEnrichment`). Precedence chain (highest to
+// lowest): recognized built-in configuration / a resumed draft or saved
+// mapping (both arrive as `initialMapping`) > vault defaults > the preset's
+// own defaults > adaptive `parent_note` detection. `applyDefaultsOverlay` is
+// private, so these exercise it through the constructor (and, for the reuse
+// claim, note that `reinstantiate()` — the preset-switch path — calls the
+// exact same private method).
+// ============================================================================
+describe('MappingWorkbench vault-default Connections overlay (precedence chain)', () => {
+	function browsableWorkbench(overrides: Partial<WorkbenchOptions> = {}): MappingWorkbench {
+		const rows = attackRows();
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		return new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			onChange: () => {},
+			...overrides,
+		});
+	}
+
+	it('with no vault defaults, the preset\'s own enrichment defaults apply unchanged', () => {
+		const wb = browsableWorkbench();
+		expect(wb.getMapping().enrichment).toEqual({
+			children_lists: true,
+			facet_notes: 'notes',
+			parent_note: 'sibling',
+			level_hubs: 'notes',
+		});
+	});
+
+	it('an empty vaultDefaults object changes nothing (same as omitting it)', () => {
+		const wb = browsableWorkbench({ vaultDefaults: {} });
+		expect(wb.getMapping().enrichment).toEqual({
+			children_lists: true,
+			facet_notes: 'notes',
+			parent_note: 'sibling',
+			level_hubs: 'notes',
+		});
+	});
+
+	it('vault defaults overlay (override) the preset\'s own defaults', () => {
+		const wb = browsableWorkbench({
+			vaultDefaults: { children_lists: false, parent_note: 'folder-note' },
+		});
+		expect(wb.getMapping().enrichment).toEqual({
+			children_lists: false,   // vault default wins over the preset's `true`
+			facet_notes: 'notes',    // untouched key: preset value stands
+			parent_note: 'folder-note', // vault default wins over the preset's 'sibling'
+			level_hubs: 'notes',
+		});
+	});
+
+	it('a partial vault default only overrides the keys it sets', () => {
+		const wb = browsableWorkbench({ vaultDefaults: { level_hubs: 'none' } });
+		expect(wb.getMapping().enrichment).toEqual({
+			children_lists: true,
+			facet_notes: 'notes',
+			parent_note: 'sibling',
+			level_hubs: 'none', // the only overridden key
+		});
+	});
+
+	it('vault defaults never apply when initialMapping is supplied (a resumed draft or recognized recipe outranks vault defaults)', () => {
+		const initialMapping: ImportMapping = {
+			mappings: [],
+			enrichment: { children_lists: true, parent_note: 'sibling' },
+		};
+		const wb = browsableWorkbench({
+			initialMapping,
+			vaultDefaults: { children_lists: false, parent_note: 'folder-note', level_hubs: 'notes' },
+		});
+		// Byte-identical to the seeded mapping — the vault default overlay never ran.
+		expect(wb.getMapping()).toEqual(initialMapping);
+	});
+
+	it('adaptive parent_note detection only fires when NEITHER a vault default nor the preset supplied one', () => {
+		// An empty-detection source (no columns) instantiates to `{ mappings: [] }`
+		// with no enrichment attached at all (instantiate.ts: enrichment only
+		// stamps on when the matrix is non-empty) — the one reachable case where
+		// the preset genuinely leaves parent_note unset, so the adaptive fallback
+		// is exercised for real rather than shadowed by a preset default.
+		const parsedData: ParsedData = { columns: [], rows: [], rowCount: 0 };
+		const wb = new MappingWorkbench({
+			parsedData,
+			columnInfos: [],
+			outputPath: '',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			// Sets an enrichment object without touching parent_note, so the
+			// adaptive step below has something non-empty to attach onto.
+			vaultDefaults: { children_lists: true },
+			defaultParentNote: { value: 'folder-note', reason: 'test adaptive default' },
+			onChange: () => {},
+		});
+		expect(wb.getMapping().enrichment).toEqual({ children_lists: true, parent_note: 'folder-note' });
+	});
+
+	it('adaptive parent_note detection is skipped when a vault default already set it', () => {
+		const parsedData: ParsedData = { columns: [], rows: [], rowCount: 0 };
+		const wb = new MappingWorkbench({
+			parsedData,
+			columnInfos: [],
+			outputPath: '',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			vaultDefaults: { parent_note: 'sibling' },
+			defaultParentNote: { value: 'folder-note', reason: 'test adaptive default' },
+			onChange: () => {},
+		});
+		expect(wb.getMapping().enrichment).toEqual({ parent_note: 'sibling' });
 	});
 });
 

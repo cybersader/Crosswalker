@@ -58,6 +58,19 @@ export function recognizedDestination(entry: RecipeRegistryEntry, globalDefault:
 }
 
 /**
+ * The `autoApplyExactMatch` gate (settings § Suggestions, "Skip the
+ * recognized-source card on exact matches"): true only when the setting is on
+ * AND the match is a perfect (100%) score. Anything below 100 always shows
+ * the trust card regardless of the setting — this only decides whether the
+ * card itself is skipped straight to the review screen; review stays
+ * mandatory either way (never straight to generate). Pure so the gate is
+ * unit-testable without mounting the wizard.
+ */
+export function shouldAutoApplyRecognizedMatch(autoApplyExactMatch: boolean, score: number): boolean {
+	return autoApplyExactMatch && score === 100;
+}
+
+/**
  * Honest, gated application of a recognized recipe's `recommendedEnrichment`
  * hint (recipe-registry's "CURATED DEFAULTS" doc comment). A hint is only
  * turned on when the recipe's OWN recipe JSON already emits the mechanism the
@@ -1440,6 +1453,10 @@ export class ImportFlow {
 			seedColumnDefaults,
 			defaultParentNote: preferredParentNote(enabled),
 			waypointDetected: detectWaypointPlugin(enabled),
+			// Vault-level Connections defaults (settings § Connections). Ignored by
+			// the workbench whenever `initialMapping` is set (recognized recipe /
+			// draft resume both outrank vault defaults in the precedence chain).
+			vaultDefaults: this.plugin.settings.defaultEnrichment,
 			onChange: () => {
 				this.plugin.debug.trace('wizard', 'workbench-change', 'Workbench model changed');
 				// A user edit to a recipe-seeded workbench downgrades the fast-path
@@ -2725,6 +2742,19 @@ export class ImportFlow {
 						if (!this.recognizedDismissed) {
 							this.computeRecognizedMatch();
 							if (this.recognizedMatch) {
+								// Auto-apply gate (settings § Suggestions, "Skip the recognized
+								// source card on exact matches"): a 100% match skips the card
+								// and lands straight on the review screen with the built-in
+								// configuration applied. Review stays mandatory either way —
+								// this never jumps straight to generate. Anything below 100
+								// always shows the card, regardless of this setting.
+								if (shouldAutoApplyRecognizedMatch(this.plugin.settings.autoApplyExactMatch, this.recognizedMatch.score)) {
+									this.plugin.debug.info('wizard', 'recognized-auto-applied', `Auto-applied "${this.recognizedMatch.entry.id}" (100% match, card skipped)`, {
+										recipeId: this.recognizedMatch.entry.id,
+									});
+									this.startRecognizedRecipe(3);
+									return false;
+								}
 								this.renderStep();
 								return false;
 							}

@@ -14,11 +14,21 @@ describe('DEFAULT_SETTINGS', () => {
       'configMatchThreshold',
       'enableDebugLog',
       'savedConfigs',
+      'defaultEnrichment',
+      'autoApplyExactMatch',
     ];
 
     for (const key of requiredKeys) {
       expect(DEFAULT_SETTINGS).toHaveProperty(key);
     }
+  });
+
+  it('starts with no vault-wide Connections defaults set (defers entirely to the preset)', () => {
+    expect(DEFAULT_SETTINGS.defaultEnrichment).toEqual({});
+  });
+
+  it('does not auto-apply exact-match recognized recipes by default (the card always shows)', () => {
+    expect(DEFAULT_SETTINGS.autoApplyExactMatch).toBe(false);
   });
 
   it('has sensible default output path', () => {

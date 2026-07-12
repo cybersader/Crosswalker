@@ -171,6 +171,17 @@ export interface WorkbenchOptions {
 	 * toggle shown) when omitted.
 	 */
 	waypointDetected?: boolean;
+	/**
+	 * Vault-level Connections defaults (settings § Connections,
+	 * `CrosswalkerSettings.defaultEnrichment`). Overlaid onto a FRESH
+	 * instantiation's preset enrichment — only the keys actually set here
+	 * participate, so an empty/omitted object changes nothing. Precedence
+	 * (highest to lowest): a recognized built-in configuration or a resumed
+	 * draft/saved mapping both arrive as `initialMapping` and bypass this
+	 * entirely; vault defaults > the active preset's own defaults > adaptive
+	 * `defaultParentNote` detection (below).
+	 */
+	vaultDefaults?: Enrichment;
 	/** Notified after any model change (for draft save / state mirroring). */
 	onChange: () => void;
 }
@@ -209,14 +220,10 @@ export class MappingWorkbench {
 		// Draft resume (spec §7i): rehydrate from the persisted mapping when present,
 		// otherwise instantiate the preset over the fresh detections.
 		this.mapping = opts.initialMapping ?? instantiate(this.currentPreset(), this.activeDetections());
-		// Adaptive default: only on a fresh instantiation, and only when the
-		// preset didn't set an explicit placement of its own.
-		if (!opts.initialMapping && opts.defaultParentNote && this.mapping.enrichment && this.mapping.enrichment.parent_note === undefined) {
-			this.mapping = {
-				...this.mapping,
-				enrichment: { ...this.mapping.enrichment, parent_note: opts.defaultParentNote.value },
-			};
-		}
+		// Vault defaults + adaptive parent_note only apply to a FRESH instantiation
+		// (never override a draft's or a vetted recipe's explicit choice, both of
+		// which arrive as `initialMapping`).
+		if (!opts.initialMapping) this.applyDefaultsOverlay();
 		// A recognized-recipe seed (seedColumnDefaults === false) emits exactly the
 		// vetted recipe; only auto-seed per-column defaults otherwise (spec §7m).
 		if (opts.seedColumnDefaults !== false) this.seedColumnDests();
@@ -1147,10 +1154,38 @@ export class MappingWorkbench {
 
 	private reinstantiate(): void {
 		this.mapping = instantiate(this.currentPreset(), this.activeDetections());
+		// Same fresh-instantiation rules as the constructor: a preset switch (or
+		// an evidence dismiss/use) re-derives the mapping from scratch, so vault
+		// defaults + the adaptive parent_note fallback re-apply here too.
+		this.applyDefaultsOverlay();
 		this.expanded.clear();
 		this.matrixOpen.clear();
 		this.addMenu = null;
 		this.applyChange();
+	}
+
+	/**
+	 * Overlay vault-level Connections defaults (`opts.vaultDefaults`) onto
+	 * `this.mapping.enrichment`, then fall back to the adaptive folder-notes
+	 * detection (`opts.defaultParentNote`) for `parent_note` only when it is
+	 * STILL unset after that overlay. Only called on a fresh instantiation —
+	 * the precedence chain this implements (documented on `WorkbenchOptions.
+	 * vaultDefaults`): recognized built-in configuration > resumed draft/saved
+	 * mapping > vault defaults > preset defaults > adaptive detection.
+	 */
+	private applyDefaultsOverlay(): void {
+		if (this.opts.vaultDefaults && Object.keys(this.opts.vaultDefaults).length > 0) {
+			this.mapping = {
+				...this.mapping,
+				enrichment: { ...(this.mapping.enrichment ?? {}), ...this.opts.vaultDefaults },
+			};
+		}
+		if (this.opts.defaultParentNote && this.mapping.enrichment && this.mapping.enrichment.parent_note === undefined) {
+			this.mapping = {
+				...this.mapping,
+				enrichment: { ...this.mapping.enrichment, parent_note: this.opts.defaultParentNote.value },
+			};
+		}
 	}
 
 	private seedColumnDests(): void {
