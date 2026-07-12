@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04. Implementation phase began the same day. As of 2026-05-18, milestones v0.1.1 / v0.1.2 / v0.1.3 / v0.1.4 / v0.1.4.5 / v0.1.5 are ✅ shipped; v0.1.6 (Bases query layer + SSSOM import + recipe UX) is mid-milestone (Phases 1 + 1.5 + 2 + 3 + 3.5a + 3.5b + 3.5c + 3.6 + 4 + 4.5 + 4.6 + 4.7 + 5 + **6** ✅ done; v0.1.7 next).
 
+### Adversarial pre-merge review: every blocker fixed (2026-07-12)
+
+An independent senior review of the whole branch (~75 commits) reproduced its findings with live probes before reporting. Verdict: the core generation engine is sound; every confirmed defect sat in the new UI-orchestration layer. All 7 blockers were fixed the same day, each with a pinning regression test:
+
+- **Your choices now stick.** Dismissing a suggestion card or switching presets used to silently reset the parent-note placement you'd picked and drop any mappings you'd added by hand. Both now survive every workbench action.
+- **No more silent dead ends.** It was possible to configure a mapping that could never generate, with a clean-looking preview and a Generate button that did nothing. Now the conflicting option isn't offered in the first place, the preview shows a blocking error banner if the state is ever reached, and Generate reports the reason instead of going quiet.
+- **Drafts resume faithfully.** Resuming a draft through the standard flow restores the full mapping workbench, including per-column routing decisions and dismissed suggestions (previously all lost — the resumed screen quietly fell back to a stale configuration).
+- **Protected properties stay protected.** Frontmatter keys marked as yours-to-edit now survive both the mapping round-trip and re-import through the wizard path (previously the protection list was silently dropped, so re-import could overwrite your edits).
+- **Every import path validates before writing.** The wizard path now runs the same pre-write schema validation the recipe path always had — no more unvalidated output from the primary UI flow.
+- **Shareable logs are actually scrubbed.** The older "Export debug log to clipboard" button now removes file names and vault paths, same as the newer Copy diagnostics command, so a pasted bug report can't leak sensitive framework or document names.
+- **Folder-note default is real now.** Built-in presets no longer hardcode the sibling arrangement, so the documented folder-note default (and the new vault-level setting) actually applies.
+- Remaining review findings (performance of the workspace home screen on very large vaults, concurrent import flows, and 11 minor notes) are explicitly triaged as post-merge follow-ups rather than silently dropped.
+
+### Vault-wide connection defaults + export lands (2026-07-12)
+
+- **Set your connection defaults once.** A new Connections settings section holds vault-wide defaults for the enrichment features (children lists, hub notes for shared values, folder index notes, Waypoint marking, parent-note placement) with the same live placement preview the workbench uses. Per-import choices and recognized built-in configurations still win; the precedence is documented right in the section.
+- **Exact matches skip a click.** With the existing auto-apply setting on, a file that matches a built-in configuration 100% goes straight to the review screen instead of pausing on the recognition card. Review is still mandatory — nothing ever jumps straight to generate.
+- **Export is here (first slice of v0.1.7).** Two new commands: "Export folder as crosswalk mapping file" writes a standards-shaped TSV of a generated crosswalk (verified by an import→export→import round-trip test — nothing lost), and "Export folder as CSV" turns any generated framework folder back into a spreadsheet. Files are written next to the folder, never outside the vault. (A STRM-shaped TSV exporter is built and tested awaiting its command; OSCAL export is scaffolded with its limits documented rather than faked.)
+- **Provenance hashes wired.** Every generated note now carries a stable concept identity hash and the recipe hash that produced it — the groundwork for telling "the source changed" apart from "my import settings changed" when framework version updates arrive.
+
 ### Frameworks arrive furnished (2026-07-11, third batch)
 
 - **Every import gets a home.** Each import nests under its own folder and its root becomes the framework's home note; every folder level can get an index note listing its contents (on by default), parents carry a Contents section in the note body, and your own writing on any of these survives re-import. Generated navigation comes from the data itself, not a folder scan.
