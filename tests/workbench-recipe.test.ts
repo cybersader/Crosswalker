@@ -8,14 +8,16 @@
  * methods touch no Obsidian DOM.
  */
 
+import { TFile, TFolder } from 'obsidian';
 import { MappingWorkbench } from '../src/import/workbench';
 import { analyzeColumns } from '../src/import/parsers/csv-parser';
-import type { ParsedData } from '../src/types/config';
+import type { ParsedData, ImportRecipe } from '../src/types/config';
 import type { ImportMapping } from '../src/import/mapping/types';
 import type { DebugLog } from '../src/utils/debug';
 import { deriveFacetMemberships } from '../src/import/mapping/facets';
 import { facetTagColumns, buildParentPlacementPreview, toFolderNotePaths } from '../src/import/mapping/view-model';
 import { findRecipeForOntologyName } from '../src/views/workspace-view-helpers';
+import { generateNotes, type GenerationOptions } from '../src/generation/generation-engine';
 
 // A no-op DebugLog stub (the workbench only calls .info/.trace).
 const debug = {
@@ -282,6 +284,121 @@ describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
 			parent_note: 'sibling',
 			level_hubs: 'notes',
 		});
+	});
+
+	// -------------------------------------------------------------------------
+	// Folder-note placement — the 2026-07-11 repro (visual-report-and-graph.spec.ts):
+	// explicitly selecting "Folder note" in the Connections card's placement
+	// chooser did not relocate a ragged parent (T1078.md stayed a sibling of
+	// T1078/, no error, no deviation). Driven end-to-end through the REAL
+	// wizard path — MappingWorkbench + the private `updateEnrichment` the
+	// radio's `change` handler calls + `buildRecipe()` + `generateNotes` over a
+	// stateful in-memory vault — per the testing lesson pinned above: never
+	// hand-supply what the UI derives (the mapping, the preset enrichment
+	// defaults, the rendered paths all come from real instantiate()/render()).
+	//
+	// Root cause turned out to be TWO independent bugs, both fixed:
+	//   1. src/generation/enrich.ts's computeRelocations gated folder-note
+	//      eligibility on `childrenByParentCurie` (parent WIKILINK edges). A
+	//      plain packed/ragged hierarchy with no separate parent-id column —
+	//      attackRepro12 above is exactly this shape; ATT&CK sub-technique ids
+	//      self-encode the hierarchy via the dot delimiter — never produces a
+	//      `parent` link, so the candidate set was always empty and relocation
+	//      silently never fired. Fixed: eligibility is now PATH-STRUCTURAL
+	//      (mirrors the workbench preview's own `toFolderNotePaths`, exercised
+	//      above), independent of link edges.
+	//   2. src/import/mapping/serialize.ts's toRecipeRegions let a tail's own
+	//      (possibly stale) `placement` out-vote an explicit top-level
+	//      `mapping.enrichment.parent_note` — see mapping.test.ts's "STALE
+	//      tail.placement" test for that fix in isolation. Not the trigger for
+	//      THIS repro (a fresh instantiate() never stamps tail.placement — see
+	//      the "sanity" test above), but a real latent bug on any round-tripped
+	//      mapping (draft resume, the recognized-recipe fast path).
+	function makeStatefulVault() {
+		const files = new Map<string, string>();
+		const folders = new Set<string>(['']);
+		const getAbstractFileByPath = (path: string) => {
+			if (files.has(path)) return new TFile(path);
+			if (folders.has(path)) return new TFolder(path);
+			return null;
+		};
+		const app = {
+			vault: {
+				getAbstractFileByPath,
+				create: async (path: string, content: string) => { files.set(path, content); return new TFile(path); },
+				modify: async (file: { path: string }, content: string) => { files.set(file.path, content); },
+				read: async (file: { path: string }) => files.get(file.path) ?? '',
+				createFolder: async (path: string) => { folders.add(path); },
+				rename: async (file: { path: string }, newPath: string) => {
+					const content = files.get(file.path);
+					if (content !== undefined) { files.delete(file.path); files.set(newPath, content); }
+				},
+				delete: async (file: { path: string }) => { files.delete(file.path); },
+			},
+			metadataCache: {
+				getFileCache: () => ({ frontmatter: {} }),
+			},
+		};
+		return { app: app as unknown as import('obsidian').App, files };
+	}
+
+	/** Drive generateNotes exactly as import-wizard.ts's doGenerate() does for the workbench path. */
+	async function generateViaWorkbench(wb: MappingWorkbench, basePath: string) {
+		const { app, files } = makeStatefulVault();
+		const parsedData: ParsedData = { columns: Object.keys(attackRepro12()[0]), rows: attackRepro12(), rowCount: attackRepro12().length };
+		const config: Partial<ImportRecipe> = {
+			name: 'shape-workbench',
+			mapping: { hierarchy: [], frontmatter: [], links: [], body: wb.getLegacyBodyMappings() },
+		};
+		const options: GenerationOptions = {
+			basePath,
+			overwriteMode: 'replace',
+			createFolders: true,
+			recipeOverride: wb.buildRecipe(),
+			facetsForRow: (row: Record<string, unknown>) => deriveFacetMemberships(wb.getMapping(), row),
+		};
+		const result = await generateNotes(app, parsedData, config, options, debug);
+		return { files, result };
+	}
+
+	it('explicit "Folder note" placement relocates every ragged parent: no stray siblings remain', async () => {
+		const wb = reproWorkbench();
+		// The private `updateEnrichment` is the exact function the placement
+		// chooser's radio `change` handler calls (workbench.ts) — this IS the
+		// production code path, not a hand-supplied substitute for it.
+		(wb as unknown as { updateEnrichment: (p: { parent_note: string }) => void }).updateEnrichment({ parent_note: 'folder-note' });
+		expect(wb.buildRecipe().target.enrichment?.parent_note).toBe('folder-note');
+
+		const { files, result } = await generateViaWorkbench(wb, 'GraphTest-e2e');
+		expect(result.errors).toEqual([]);
+
+		// Every ragged parent (>=1 child nested under its own basename folder)
+		// relocates; every childless leaf (T1547 has one child, T1003/T1486 have
+		// none) follows the same rule.
+		for (const parentId of ['T1055', 'T1059', 'T1071', 'T1547']) {
+			expect(files.has(`GraphTest-e2e/${parentId}/${parentId}.md`)).toBe(true);
+			expect(files.has(`GraphTest-e2e/${parentId}.md`)).toBe(false);
+		}
+		// Childless leaves stay siblings (nothing to nest under).
+		expect(files.has('GraphTest-e2e/T1003.md')).toBe(true);
+		expect(files.has('GraphTest-e2e/T1486.md')).toBe(true);
+	});
+
+	it('explicit "Sibling" placement is honored: no relocation even though colliding folders exist', async () => {
+		const wb = reproWorkbench();
+		// browsable-framework's preset default is already 'sibling' (see the
+		// sanity test above), but click it explicitly — mirrors a user who
+		// changes their mind back after trying "Folder note".
+		(wb as unknown as { updateEnrichment: (p: { parent_note: string }) => void }).updateEnrichment({ parent_note: 'sibling' });
+		expect(wb.buildRecipe().target.enrichment?.parent_note).toBe('sibling');
+
+		const { files, result } = await generateViaWorkbench(wb, 'GraphTest-e2e');
+		expect(result.errors).toEqual([]);
+
+		for (const parentId of ['T1055', 'T1059', 'T1071', 'T1547']) {
+			expect(files.has(`GraphTest-e2e/${parentId}.md`)).toBe(true);
+			expect(files.has(`GraphTest-e2e/${parentId}/${parentId}.md`)).toBe(false);
+		}
 	});
 });
 

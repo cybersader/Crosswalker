@@ -122,6 +122,15 @@ export interface HubNote {
 	 * fresh section without re-parsing `body`.
 	 */
 	childrenLinks?: string[];
+	/**
+	 * The ROOT level hub only (2026-07-11): this batch's facet hub notes
+	 * (`result.hubs`, already sorted by path), as a separate "Facets" sub-list
+	 * under Contents — see `buildManagedChildrenSection`'s `extraGroups`.
+	 * Carried alongside `body` for the same re-import-merge reason as
+	 * `childrenLinks`: the merge path rebuilds the managed section from these
+	 * fields directly, never by re-parsing `body`.
+	 */
+	facetLinks?: string[];
 }
 
 /** One parent-note relocation the caller must physically apply to the vault. */
@@ -238,7 +247,7 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 
 	// --- 2. Folder-note relocation (parent_note). Computes a curie→newPath
 	//     override; children lists + downstream consumers use the FINAL path. ---
-	const pathOverride = computeRelocations(notes, childrenByParentCurie, byCurie, config, opts.streamed ?? false, result);
+	const pathOverride = computeRelocations(notes, config, opts.streamed ?? false, result);
 	const finalPath = (note: EnrichNote): string => pathOverride.get(note.curie) ?? note.path;
 
 	// --- 3. Children lists. ---
@@ -313,15 +322,32 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
  * `result`. Two directions, both idempotent and processed in sorted-curie
  * order for determinism:
  *
- *   - `parent_note: 'folder-note'` — every parent with >=1 batch child AND an
- *     already-colliding same-named folder (a child's path nests under it)
- *     relocates `X.md → X/X.md`. A note already in that shape (a prior import
- *     already relocated it) is left alone — this is what makes re-import safe
- *     without needing a separate curie-lookup pass here: by the time this
- *     runs, the caller (generation-engine) has already resolved each row's
- *     write path to wherever the concept CURRENTLY lives (see
+ *   - `parent_note: 'folder-note'` — every note with an already-colliding
+ *     same-named folder (>=1 OTHER batch note's path nests under it) relocates
+ *     `X.md → X/X.md`. PATH-STRUCTURAL eligibility, deliberately independent
+ *     of `parent` link edges (mirrors the workbench preview's
+ *     `toFolderNotePaths`, mapping/view-model.ts — the promise shown to the
+ *     user in the placement chooser). A note already in that shape (a prior
+ *     import already relocated it) is left alone — this is what makes
+ *     re-import safe without needing a separate curie-lookup pass here: by
+ *     the time this runs, the caller (generation-engine) has already resolved
+ *     each row's write path to wherever the concept CURRENTLY lives (see
  *     `folderNoteCandidatePath` + generation-engine's `resolveWriteTarget`),
  *     so an already-relocated parent shows up here already folder-note-shaped.
+ *
+ *     Found 2026-07-11 (visual-report-and-graph.spec.ts repro): this branch
+ *     used to derive its candidate set from `childrenByParentCurie` (built
+ *     from `parent` wikilink edges, the same index `children_lists` uses). A
+ *     packed/ragged hierarchy with no separate parent-id column — the COMMON
+ *     case; ATT&CK sub-technique ids like `T1078.001` self-encode the
+ *     hierarchy via the dot delimiter, no `parent_id` column needed — never
+ *     produces a `parent` link, so `childrenByParentCurie` stayed empty and
+ *     folder-note placement silently never fired: no error, no deviation,
+ *     `T1078.md` stayed a sibling of `T1078/` even with "Folder note"
+ *     explicitly selected. Switching to path-structural eligibility (which
+ *     the UI preview already used) fixes it without touching
+ *     `children_lists`, which legitimately stays link-based (see
+ *     `recipe-registry.ts`'s note on self-referential prefix links).
  *   - otherwise (`'sibling'`, the default) — the symmetric flip-back: any note
  *     CURRENTLY folder-note-shaped (from a PRIOR import that used
  *     `'folder-note'`) relocates back to sibling form. Least-surprising per
@@ -333,8 +359,6 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
  */
 function computeRelocations(
 	notes: EnrichNote[],
-	childrenByParentCurie: Map<string, EnrichNote[]>,
-	byCurie: Map<string, EnrichNote>,
 	config: RecipeEnrichment,
 	streamed: boolean,
 	result: EnrichmentResult,
@@ -369,16 +393,19 @@ function computeRelocations(
 			);
 			return pathOverride;
 		}
-		const candidateCuries = [...childrenByParentCurie.keys()].sort(cmp);
-		for (const curie of candidateCuries) {
-			const parent = byCurie.get(curie);
-			if (!parent) continue;
-			const shape = pathShape(parent.path);
+		// Every directory implied by any batch note's path (mirrors
+		// toFolderNotePaths' `folderPaths` set exactly) — the collision test.
+		const folderPaths = new Set<string>();
+		for (const n of notes) {
+			const parts = n.path.split('/');
+			for (let i = 1; i < parts.length; i++) folderPaths.add(parts.slice(0, i).join('/'));
+		}
+		const sortedNotes = [...notes].sort((a, b) => cmp(a.curie, b.curie));
+		for (const note of sortedNotes) {
+			const shape = pathShape(note.path);
 			if (shape.isFolderNoteShaped) continue; // already relocated — idempotent no-op.
-			const kids = childrenByParentCurie.get(curie)!;
-			const hasFolderCollision = kids.some((k) => k.path.startsWith(`${shape.folderDir}/`));
-			if (!hasFolderCollision) continue; // no colliding folder — stays a sibling.
-			relocate(curie, parent.path, joinMd(shape.folderDir, shape.base), 'folder-note');
+			if (!folderPaths.has(shape.folderDir)) continue; // no colliding folder — stays a sibling.
+			relocate(note.curie, note.path, joinMd(shape.folderDir, shape.base), 'folder-note');
 		}
 	} else {
 		const sortedNotes = [...notes].sort((a, b) => cmp(a.curie, b.curie));
@@ -507,6 +534,18 @@ function computeLevelHubs(
 		return id;
 	};
 
+	// This batch's facet hub notes (step 4 already ran; `result.hubs` is
+	// populated and sorted by path), as the ROOT hub's "Facets" sub-list —
+	// they materialize in the SAME Pass 1.5 run as level hubs but wouldn't
+	// otherwise be visible to each other (found 2026-07-11: the root home
+	// note's Contents omitted facet hubs even though both land in the same
+	// folder). Root-only: an ordinary (non-root) level hub lists its own
+	// folder's direct children only, same as before. Deliberately NOT added to
+	// `result.edgeCount`: step 4 already counted each hub's own MEMBER edges
+	// when it built `result.hubs`; this is a display grouping on the root
+	// note, not a new graph relationship being introduced.
+	const rootFacetLinks = result.hubs.map((h) => `[[${basename(h.path)}]]`);
+
 	// Pass B: direct children (sorted by curie), materialize.
 	const sortedFolders = [...folders].sort(cmp);
 	for (const f of sortedFolders) {
@@ -520,16 +559,28 @@ function computeLevelHubs(
 		childRefs.sort((a, b) => cmp(a.curie, b.curie));
 		const links = childRefs.map((c) => `[[${c.label}]]`);
 		result.edgeCount += links.length;
+		const isRoot = rootIsTrackedAncestor && f === root;
+		const facetGroup = isRoot && rootFacetLinks.length > 0 ? [{ label: 'Facets', links: rootFacetLinks }] : [];
 
 		if (id.hostedPath) {
+			// A note already hosts this folder (e.g. a concept row whose id
+			// equals the root folder's own name). `hostedChildrenByPath`'s value
+			// is a plain wikilink array (shared with every non-root hosted
+			// folder, and asserted as such by existing tests) — extending it to
+			// carry a facets group too would ripple into every hosted-folder
+			// consumer for a case that's vanishingly rare in real usage (the
+			// per-import basePath colliding with an actual row's id). Known,
+			// deliberately out of scope here; the synthetic branch below is
+			// what real generation-engine imports produce for the root.
 			result.levelHubs.hostedChildrenByPath.set(id.hostedPath, links);
 		} else {
 			result.levelHubs.notes.push({
 				path: joinMd(f, id.label),
 				curie: id.curie,
 				frontmatter: { curie: id.curie, kind: 'hub', children: links },
-				body: `# ${id.label}\n\n${buildManagedChildrenSection('Contents', links)}`,
+				body: `# ${id.label}\n\n${buildManagedChildrenSection('Contents', links, facetGroup)}`,
 				childrenLinks: links,
+				...(facetGroup.length > 0 ? { facetLinks: rootFacetLinks } : {}),
 			});
 		}
 	}
@@ -562,8 +613,11 @@ function computeLevelHubs(
 			childRefs.sort((a, b) => cmp(a.curie, b.curie));
 			const links = childRefs.map((c) => `[[${c.label}]]`);
 			result.edgeCount += links.length;
+			const facetGroup = rootFacetLinks.length > 0 ? [{ label: 'Facets', links: rootFacetLinks }] : [];
 			const host = byBasename.get(label);
 			if (host) {
+				// See the matching comment in Pass B: hosted-root facets are a
+				// deliberately out-of-scope rare edge case.
 				result.levelHubs.hostedChildrenByPath.set(finalPath(host), links);
 			} else {
 				const curie = `${ontology}:hub/${slug(root)}`;
@@ -571,8 +625,9 @@ function computeLevelHubs(
 					path: `${label}.md`,
 					curie,
 					frontmatter: { curie, kind: 'hub', children: links },
-					body: `# ${label}\n\n${buildManagedChildrenSection('Contents', links)}`,
+					body: `# ${label}\n\n${buildManagedChildrenSection('Contents', links, facetGroup)}`,
 					childrenLinks: links,
+					...(facetGroup.length > 0 ? { facetLinks: rootFacetLinks } : {}),
 				});
 			}
 		}
@@ -747,10 +802,29 @@ const CHILDREN_SECTION_END = '<!-- crosswalker:children:end -->';
  * `[[...]]` wikilinks, wrapped in HTML-comment markers (invisible in reading
  * view) so `mergeManagedChildrenSection` can find-and-replace exactly this
  * block on re-import without disturbing anything else in the note.
+ *
+ * `extraGroups` (2026-07-11, the root-hub facets fix): additional labeled
+ * sub-lists appended after the main `links` list, INSIDE the same managed
+ * block — one bold label line + its own bullet list per group. Currently used
+ * for the ROOT hub only, to list this batch's facet hub notes (materialized
+ * in the same Pass 1.5 run, step 4, before level hubs — step 4.5 — so they'd
+ * otherwise never appear in the root's own Contents even though both land in
+ * the same folder). A group with zero links is omitted entirely (no empty
+ * "Facets:" label with nothing under it).
  */
-export function buildManagedChildrenSection(heading: string, links: string[]): string {
+export function buildManagedChildrenSection(
+	heading: string,
+	links: string[],
+	extraGroups: { label: string; links: string[] }[] = [],
+): string {
 	const list = links.length > 0 ? links.map((l) => `- ${l}`).join('\n') : '*(nothing yet)*';
-	return `${CHILDREN_SECTION_START}\n## ${heading}\n${list}\n${CHILDREN_SECTION_END}\n`;
+	let out = `${CHILDREN_SECTION_START}\n## ${heading}\n${list}\n`;
+	for (const g of extraGroups) {
+		if (g.links.length === 0) continue;
+		out += `\n**${g.label}:**\n${g.links.map((l) => `- ${l}`).join('\n')}\n`;
+	}
+	out += `${CHILDREN_SECTION_END}\n`;
+	return out;
 }
 
 /**

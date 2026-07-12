@@ -550,6 +550,76 @@ describe('enrich — level hubs, root/home hub (design step 4.5 root fallback)',
 		const home = result.levelHubs.notes.find((h) => h.path === 'flat-corpus.md');
 		expect(home!.frontmatter.children).toEqual(['[[A]]', '[[B]]']);
 	});
+
+	// 2026-07-11: facet hub notes (step 4) and level hubs (step 4.5) both
+	// materialize in the SAME Pass 1.5 run but couldn't see each other — the
+	// root/home hub's Contents omitted facet hubs even though both land in the
+	// same folder (found via the e2e "furnished vault" spec's view-13 note).
+	// The ROOT hub only gets a separate "Facets" sub-list; `frontmatter.children`
+	// (the structural children) is untouched — facets are a body-only addition.
+	describe('root hub Facets sub-list (facet hubs + level hubs, same batch)', () => {
+		it('bare-harness root home note gains a Facets group alongside its structural Contents', () => {
+			// attackBatch(): 5 notes, all facet tactic=Persistence → 1 facet hub
+			// (>= HUB_MIN_MEMBERS). LEVEL_HUB_CONFIG turns on both facet_notes and
+			// level_hubs, exactly like browsable-framework's preset defaults.
+			const result = enrich(attackBatch(), { ontology: 'attack', config: LEVEL_HUB_CONFIG, rootFolder: 'attack-corpus' });
+			expect(result.hubs.map((h) => h.path)).toEqual(['Persistence.md']); // step 4 already ran
+			const home = result.levelHubs.notes.find((h) => h.path === 'attack-corpus.md')!;
+			expect(home.frontmatter.children).toEqual(['[[T1078]]']); // structural children unaffected
+			expect(home.facetLinks).toEqual(['[[Persistence]]']);
+			expect(home.body).toContain('**Facets:**');
+			expect(home.body).toContain('- [[Persistence]]');
+			// The Facets group comes AFTER the Contents bullet list, both still
+			// inside the single managed block (one start/end marker pair).
+			const start = home.body.indexOf('## Contents');
+			const facetsIdx = home.body.indexOf('**Facets:**');
+			expect(facetsIdx).toBeGreaterThan(start);
+			expect((home.body.match(/crosswalker:children:start/g) ?? []).length).toBe(1);
+			expect((home.body.match(/crosswalker:children:end/g) ?? []).length).toBe(1);
+		});
+
+		it('a tracked-ancestor root (real generation-engine basePath usage) also gains the Facets group', () => {
+			const batch: EnrichNote[] = [
+				{ path: 'Frameworks/T1078.md', curie: 'attack:T1078', frontmatter: {}, facets: [{ namespace: 'tactic', value: 'Persistence' }] },
+				{ path: 'Frameworks/T1078/T1078.001.md', curie: 'attack:T1078.001', frontmatter: { parent: '[[T1078]]' }, facets: [{ namespace: 'tactic', value: 'Persistence' }] },
+			];
+			const result = enrich(batch, { ontology: 'attack', config: LEVEL_HUB_CONFIG, rootFolder: 'Frameworks' });
+			const root = result.levelHubs.notes.find((h) => h.path === 'Frameworks/Frameworks.md')!;
+			expect(root.facetLinks).toEqual(['[[Persistence]]']);
+			expect(root.body).toContain('**Facets:**\n- [[Persistence]]');
+		});
+
+		it('no facet hubs materialized (below HUB_MIN_MEMBERS) → no Facets group, no empty label', () => {
+			const singleton: EnrichNote[] = [
+				{ path: 'A.md', curie: 'attack:A', frontmatter: {}, facets: [{ namespace: 'tactic', value: 'Impact' }] },
+				{ path: 'B.md', curie: 'attack:B', frontmatter: {}, facets: [{ namespace: 'tactic', value: 'Impact' }] },
+				{ path: 'C.md', curie: 'attack:C', frontmatter: {}, facets: [] },
+			];
+			// Only 2 members hit HUB_MIN_MEMBERS exactly, so flip facet_notes off
+			// to isolate "no facet hubs exist at all" from the min-members guard.
+			const result = enrich(singleton, { ontology: 'attack', config: { ...LEVEL_HUB_CONFIG, facet_notes: 'none' }, rootFolder: 'flat' });
+			const home = result.levelHubs.notes.find((h) => h.path === 'flat.md')!;
+			expect(home.facetLinks).toBeUndefined();
+			expect(home.body).not.toContain('**Facets:**');
+		});
+
+		it('re-import merge rebuilds the Facets group from hub.facetLinks (does not depend on re-parsing body)', () => {
+			// Mirrors generation-engine.ts's re-import path: buildManagedChildrenSection
+			// is called fresh with childrenLinks + a facetGroup derived from facetLinks,
+			// then merged over whatever body the vault currently holds.
+			const result = enrich(attackBatch(), { ontology: 'attack', config: LEVEL_HUB_CONFIG, rootFolder: 'attack-corpus' });
+			const home = result.levelHubs.notes.find((h) => h.path === 'attack-corpus.md')!;
+			const facetGroup = home.facetLinks ? [{ label: 'Facets', links: home.facetLinks }] : [];
+			const fresh = buildManagedChildrenSection('Contents', home.childrenLinks ?? [], facetGroup);
+			const existingBody = '# attack-corpus\n\nMy own notes about this import.\n';
+			const merged = mergeManagedChildrenSection(existingBody, fresh);
+			expect(merged).toContain('My own notes about this import.');
+			expect(merged).toContain('- [[T1078]]');
+			expect(merged).toContain('**Facets:**\n- [[Persistence]]');
+			// Idempotent: merging the same fresh section again is stable.
+			expect(mergeManagedChildrenSection(merged, fresh)).toBe(merged);
+		});
+	});
 });
 
 describe('managed children section — re-import safety (strip-and-reappend, same discipline as facet hubs)', () => {
@@ -560,6 +630,20 @@ describe('managed children section — re-import safety (strip-and-reappend, sam
 		expect(section).toContain('- [[B]]');
 		expect(section).toMatch(/crosswalker:children:start/);
 		expect(section).toMatch(/crosswalker:children:end/);
+	});
+
+	it('extraGroups appends an additional labeled sub-list inside the SAME managed block', () => {
+		const section = buildManagedChildrenSection('Contents', ['[[T1078]]'], [{ label: 'Facets', links: ['[[Persistence]]', '[[Defense Evasion]]'] }]);
+		expect(section).toContain('## Contents\n- [[T1078]]');
+		expect(section).toContain('**Facets:**\n- [[Persistence]]\n- [[Defense Evasion]]');
+		// Still exactly one marker pair — one managed block, not two.
+		expect(section.match(/crosswalker:children:start/g)?.length).toBe(1);
+		expect(section.match(/crosswalker:children:end/g)?.length).toBe(1);
+	});
+
+	it('an extraGroup with zero links is omitted entirely (no empty label)', () => {
+		const section = buildManagedChildrenSection('Contents', ['[[T1078]]'], [{ label: 'Facets', links: [] }]);
+		expect(section).not.toContain('Facets');
 	});
 
 	it('appends the section when no managed block exists yet', () => {

@@ -138,11 +138,22 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 	const managed: Record<string, string> = {};
 	const managedLinks: Record<string, ManagedLinkSpec> = {};
 
-	// A tail's `placement` is the more specific (per-hierarchy, wizard-facing)
-	// knob; the recipe only has ONE global `target.enrichment.parent_note`
-	// scope, so the last tail that sets `placement` wins over any explicit
-	// top-level `mapping.enrichment.parent_note` (see the module note + the
-	// `TailRule.placement` doc comment in types.ts — this closes that gap).
+	// Precedence (2026-07-11, the Connections placement-chooser repro):
+	// `mapping.enrichment.parent_note` is the knob the workbench UI writes
+	// (`updateEnrichment`, the placement-chooser radio) and it ALWAYS wins when
+	// set. A tail's own `placement` is a recipe-authoring escape hatch (hand-
+	// written recipes, presets) that only fills the gap when the enrichment
+	// block doesn't specify one — see the `TailRule.placement` doc comment in
+	// types.ts. This used to be inverted (tail wins), which was harmless on a
+	// fresh instantiation (no preset stamps `tail.placement`) but silently
+	// discarded an explicit UI choice on any mapping that had been round-
+	// tripped through `fromRegions` first (draft resume, the recognized-recipe
+	// fast path via `recipeMapping`/`fromRecipe`): `fromRegions` stamps
+	// `tail.placement` from the recipe's `enrichment.parent_note` (the reverse
+	// promotion below) so a later `updateEnrichment({parent_note: ...})` call —
+	// which only patches `mapping.enrichment`, by design (see the doc comment
+	// on `updateEnrichment` in workbench.ts) — left a stale `tail.placement`
+	// that then out-voted the user's fresh choice here.
 	let tailPlacement: 'sibling' | 'folder-note' | undefined;
 
 	for (const structure of mapping.mappings) {
@@ -168,7 +179,9 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 
 	const also_emit = buildAlsoEmit(tags, aliases, managed, managedLinks);
 	const regions: RecipeRegions = also_emit ? { layout, also_emit } : { layout };
-	const parentNote = tailPlacement ?? mapping.enrichment?.parent_note;
+	// Enrichment-level wins when set (see the precedence note above); the tail's
+	// placement only fills in when the enrichment block leaves it unspecified.
+	const parentNote = mapping.enrichment?.parent_note ?? tailPlacement;
 	if (mapping.enrichment || parentNote !== undefined) {
 		regions.enrichment = { ...mapping.enrichment, ...(parentNote !== undefined ? { parent_note: parentNote } : {}) };
 	}

@@ -2021,7 +2021,12 @@ async function applyEnrichment(
 					Object.assign(frontmatter, merged);
 				}
 				const existingText = await app.vault.read(existing);
-				const freshSection = buildManagedChildrenSection('Contents', hub.childrenLinks ?? []);
+				// hub.facetLinks: the ROOT hub only (enrich.ts's computeLevelHubs) —
+				// re-derive the same "Facets" extraGroup a fresh import would build,
+				// so a re-import doesn't silently drop it (the merge rebuilds the
+				// managed section from these fields, never by re-parsing `body`).
+				const facetGroup = hub.facetLinks ? [{ label: 'Facets', links: hub.facetLinks }] : [];
+				const freshSection = buildManagedChildrenSection('Contents', hub.childrenLinks ?? [], facetGroup);
 				body = mergeManagedChildrenSection(stripFrontmatterBlock(existingText), freshSection);
 			} catch (mergeErr) {
 				debug?.warn('generation', 'level-hub-merge-failed', `Level hub merge failed at ${fullPath}; using fresh content`, {

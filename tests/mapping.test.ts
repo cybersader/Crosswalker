@@ -616,6 +616,57 @@ describe('tail.placement promotes to the recipe global enrichment.parent_note', 
 		const back = fromRegions(regions);
 		expect(back.mappings[0].tail!.placement).toBe('folder-note');
 	});
+
+	// Precedence (2026-07-11 fix): when a tail carries a STALE placement that
+	// disagrees with the mapping's top-level enrichment.parent_note, the
+	// top-level value — the knob the workbench UI's placement chooser writes
+	// via `updateEnrichment` — always wins. This is exactly the shape a
+	// round-tripped mapping can end up in: `fromRegions` stamps `tail.placement`
+	// from whatever `enrichment.parent_note` a PRIOR serialization carried (the
+	// promotion tested above, in reverse), and a later UI click only patches
+	// `mapping.enrichment` (by design — see `updateEnrichment` in workbench.ts),
+	// leaving the tail's own placement stale. Before this fix, the stale tail
+	// value silently out-voted the user's fresh top-level choice on every
+	// `toRecipeRegions` call — found via the 2026-07-11 folder-note placement
+	// repro (visual-report-and-graph.spec.ts), though the ROOT cause of that
+	// specific repro turned out to be a separate defect in
+	// generation/enrich.ts's relocation eligibility (path-structural now,
+	// previously gated on parent-link edges that a plain packed hierarchy never
+	// produces). This precedence fix is a second, independently real bug this
+	// investigation surfaced: it only bites a round-tripped mapping, not a
+	// fresh instantiation (no built-in preset stamps `tail.placement`).
+	it('a STALE tail.placement never overrides an explicit top-level enrichment.parent_note', () => {
+		const m: ImportMapping = {
+			mappings: [
+				{
+					levels: [{ level: 'leaf', source: { column: 'tid' }, destinations: [{ primitive: 'name' }], naming: 'part', missing: 'skip', materialize: false }],
+					// Stale: a prior round trip stamped this from an earlier 'sibling' config.
+					tail: { source: { column: 'tid' }, delimiter: '.', destinations: [{ primitive: 'folder' }], naming: 'prefix', placement: 'sibling' },
+				},
+			],
+			// Fresh: the user just clicked "Folder note" in the placement chooser.
+			enrichment: { parent_note: 'folder-note' },
+		};
+		const regions = toRecipeRegions(m);
+		expect(regions.enrichment?.parent_note).toBe('folder-note');
+	});
+
+	// Symmetric case: a tail's placement still fills the gap when the
+	// top-level enrichment block doesn't specify parent_note at all (the
+	// escape-hatch role — see the promotion test above).
+	it('tail.placement still fills in when enrichment.parent_note is unspecified (escape hatch preserved)', () => {
+		const m: ImportMapping = {
+			mappings: [
+				{
+					levels: [{ level: 'leaf', source: { column: 'tid' }, destinations: [{ primitive: 'name' }], naming: 'part', missing: 'skip', materialize: false }],
+					tail: { source: { column: 'tid' }, delimiter: '.', destinations: [{ primitive: 'folder' }], naming: 'prefix', placement: 'folder-note' },
+				},
+			],
+			enrichment: { children_lists: true }, // present, but no parent_note opinion
+		};
+		const regions = toRecipeRegions(m);
+		expect(regions.enrichment?.parent_note).toBe('folder-note');
+	});
 });
 
 // ===========================================================================

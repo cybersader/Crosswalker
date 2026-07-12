@@ -26,4 +26,10 @@ _crosswalker:
 - [[AC]]
 - [[AU]]
 - [[CM]]
+
+**Facets:**
+- [[Access Control]]
+- [[Audit]]
+- [[Configuration Management]]
+- [[Policy and Procedures]]
 <!-- crosswalker:children:end -->
