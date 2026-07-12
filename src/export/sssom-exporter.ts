@@ -1,0 +1,224 @@
+/**
+ * sssom-exporter.ts — v0.1.7 exporters: crosswalk-edge notes → SSSOM TSV.
+ *
+ * The write half of the round-trip whose read half is src/import/
+ * sssom-importer.ts + src/import/sssom-parser.ts. Column set and header-block
+ * shape mirror what `parseSssomTsv` consumes (required subject_id/predicate_id/
+ * object_id; optional subject_label/object_label/mapping_justification/
+ * confidence) and what `detectOntologyPair` reads back out of the header
+ * (`subject_source`/`object_source`) — see tools/fixtures/realistic/*.sssom.tsv
+ * for the canonical shape this mirrors.
+ *
+ * User-facing surfaces call this the "crosswalk mapping file" (ui-lexicon
+ * convention, .claude/CLAUDE.md operational rules) — "SSSOM" is internal
+ * vocabulary and must not leak into command names or notices.
+ *
+ * Known lossy fields (round-trip is NOT byte-identical — documented per the
+ * v0.1.7 milestone's "document any legitimately-lossy fields loudly" note):
+ *
+ *   - `mapping_date`: importSssom's synthetic recipe (src/import/
+ *     sssom-importer.ts's buildSyntheticRecipe) never writes mapping_date
+ *     into the note's managed frontmatter, even though it flows through the
+ *     row scope as a set-level default. A folder populated by an SSSOM
+ *     import therefore has NO mapping_date to read back — this exporter
+ *     omits the `# mapping_date:` header line unless the caller supplies one
+ *     explicitly via `options.mappingDate`. tools/crosswalk-from-olir.ts's
+ *     notes don't carry it either. Fixing this is an importer change, not an
+ *     exporter one — flagged here rather than silently fabricating a date.
+ *
+ *   - `match_type` (the legacy exact/close/broad/narrow/related qualifier
+ *     column): also never written to note frontmatter by importSssom's
+ *     synthetic recipe (the template has no `match_type` field), so it is
+ *     unrecoverable from the vault. `vault-reader.ts`'s `CrosswalkEdgeRow`
+ *     surfaces `match_type` when a note DOES carry it (Tier 1 schema allows
+ *     it via `additionalProperties`), but nothing in the current import path
+ *     ever populates it.
+ *
+ *   - `predicate_id` (SSSOM/SKOS): the note's own `predicate_id` field is
+ *     STRM, not SSSOM (see spec/tier1.schema.json's `crosswalk_edge_
+ *     frontmatter.predicate_id` enum + sssom-importer.ts's SKOS_TO_STRM
+ *     normalization). This exporter prefers the note's `sssom_predicate`
+ *     field (both importSssom's synthetic recipe AND tools/crosswalk-
+ *     from-olir.ts write it — the one field name both producers agree on)
+ *     to recover the exact original predicate. When a note has no
+ *     `sssom_predicate` (e.g. a hand-authored crosswalk-edge note), the STRM
+ *     value is reverse-mapped via STRM_TO_SKOS — LOSSY for `is_approximate_to`
+ *     and `no_relationship`, which have no exact SKOS/STRM round-trip
+ *     partner (see the map's comment).
+ *
+ *   - `mapping_provider` / `mapping_set_id`: these ARE written per-row (the
+ *     synthetic recipe's `also_emit.frontmatter.managed` includes both), but
+ *     SSSOM models them as mapping-SET-level metadata (header lines, not
+ *     columns). This exporter promotes the most common (mode) value across
+ *     the exported rows into the header. A folder that mixes multiple
+ *     providers/set-ids on individual edges loses that per-edge variation —
+ *     acceptable for the common case (one crosswalk file per folder) but
+ *     worth knowing if you've hand-edited individual edges.
+ */
+
+import Papa from 'papaparse';
+import type { App } from 'obsidian';
+import { readVaultTree, type CrosswalkEdgeRow, type SkippedNote } from './vault-reader';
+
+/**
+ * STRM predicate_id → SSSOM/SKOS predicate. Reverse of SKOS_TO_STRM in
+ * src/import/sssom-importer.ts. Used only as a fallback when a note has no
+ * `sssom_predicate` field to read directly (see module doc comment).
+ * `is_approximate_to` has no exact SKOS/STRM round-trip partner (both
+ * closeMatch and (rarely) relatedMatch can normalize to it) — closeMatch is
+ * the more common source, so that's the fallback choice, documented lossy.
+ * `no_relationship` has no SKOS equivalent at all; relatedMatch is the
+ * closest "some relationship, unspecified" fallback.
+ */
+const STRM_TO_SKOS: Record<string, string> = {
+	is_equivalent_to: 'skos:exactMatch',
+	is_approximate_to: 'skos:closeMatch',
+	is_narrower_than: 'skos:broadMatch',
+	is_broader_than: 'skos:narrowMatch',
+	intersects_with: 'skos:relatedMatch',
+	no_relationship: 'skos:relatedMatch',
+};
+
+const SSSOM_COLUMNS = [
+	'subject_id',
+	'predicate_id',
+	'object_id',
+	'mapping_justification',
+	'confidence',
+	'subject_label',
+	'object_label',
+] as const;
+
+export interface SssomExportOptions {
+	/** Override the header's `mapping_provider` (default: mode across exported rows). */
+	mappingProvider?: string;
+	/** Override the header's `mapping_set_id` (default: mode across exported rows). */
+	mappingSetId?: string;
+	/** Header's `mapping_date` — omitted entirely unless supplied (see module doc comment; not recoverable from the vault). */
+	mappingDate?: string;
+	/** Override the header's `subject_source` (default: mode of `source_framework` frontmatter field, else the subject CURIE prefix). */
+	subjectSource?: string;
+	/** Override the header's `object_source` (default: mode of `target_framework` frontmatter field, else the object CURIE prefix). */
+	objectSource?: string;
+}
+
+export interface SssomExportResult {
+	tsv: string;
+	rowCount: number;
+	skipped: SkippedNote[];
+}
+
+function asOptionalString(v: unknown): string | undefined {
+	return typeof v === 'string' && v.length > 0 ? v : undefined;
+}
+
+function curiePrefix(curie: string): string {
+	const idx = curie.indexOf(':');
+	return idx === -1 ? curie : curie.slice(0, idx);
+}
+
+function resolveConfidence(fm: Record<string, unknown>, matchConfidence: number | undefined): number | undefined {
+	if (typeof matchConfidence === 'number') return matchConfidence;
+	// sssom-importer's synthetic recipe stores confidence as `sssom_confidence`,
+	// and (per its own doc comment) as a STRING — Tier 1's typed match_confidence
+	// requires a number and the recipe template only emits raw strings. Parse it
+	// here rather than fixing it upstream (out of this milestone's surface).
+	const raw = fm.sssom_confidence ?? fm.confidence;
+	if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+	if (typeof raw === 'string' && raw.trim() !== '') {
+		const n = Number.parseFloat(raw);
+		if (Number.isFinite(n)) return n;
+	}
+	return undefined;
+}
+
+/** Most frequent non-empty value across a multiset; undefined if none. Ties break on first-seen (stable, deterministic given sorted input). */
+function mode(counts: Map<string, number>): string | undefined {
+	let best: string | undefined;
+	let bestCount = 0;
+	for (const [value, count] of counts) {
+		if (count > bestCount) {
+			best = value;
+			bestCount = count;
+		}
+	}
+	return best;
+}
+
+function tally(counts: Map<string, number>, value: string | undefined): void {
+	if (!value) return;
+	counts.set(value, (counts.get(value) ?? 0) + 1);
+}
+
+/**
+ * Serialize a set of crosswalk-edge rows (already read from the vault, or
+ * hand-assembled for a test) into an SSSOM TSV string. Pure — no vault I/O.
+ * Rows are re-sorted by path first so output is deterministic regardless of
+ * caller-supplied order.
+ */
+export function crosswalkEdgesToSssomTsv(
+	edges: CrosswalkEdgeRow[],
+	options: SssomExportOptions = {},
+): SssomExportResult {
+	const skipped: SkippedNote[] = [];
+	const rows: Record<string, string>[] = [];
+	const providerCounts = new Map<string, number>();
+	const setIdCounts = new Map<string, number>();
+	const subjectSourceCounts = new Map<string, number>();
+	const objectSourceCounts = new Map<string, number>();
+
+	const sorted = [...edges].sort((a, b) => a.path.localeCompare(b.path));
+	for (const edge of sorted) {
+		if (!edge.subject_id || !edge.object_id) {
+			skipped.push({ path: edge.path, reason: 'missing subject_id/object_id' });
+			continue;
+		}
+		const fm = edge.frontmatter;
+		const sssomPredicate = asOptionalString(fm.sssom_predicate) ?? STRM_TO_SKOS[edge.predicate_id] ?? 'skos:relatedMatch';
+		const confidence = resolveConfidence(fm, edge.match_confidence);
+
+		rows.push({
+			subject_id: edge.subject_id,
+			predicate_id: sssomPredicate,
+			object_id: edge.object_id,
+			mapping_justification: edge.mapping_justification ?? '',
+			confidence: confidence !== undefined ? String(confidence) : '',
+			subject_label: asOptionalString(fm.subject_label) ?? '',
+			object_label: asOptionalString(fm.object_label) ?? '',
+		});
+
+		tally(providerCounts, edge.mapping_provider);
+		tally(setIdCounts, asOptionalString(fm.mapping_set_id));
+		tally(subjectSourceCounts, asOptionalString(fm.source_framework) ?? curiePrefix(edge.subject_id));
+		tally(objectSourceCounts, asOptionalString(fm.target_framework) ?? curiePrefix(edge.object_id));
+	}
+
+	const subjectSource = options.subjectSource ?? mode(subjectSourceCounts);
+	const objectSource = options.objectSource ?? mode(objectSourceCounts);
+	const mappingProvider = options.mappingProvider ?? mode(providerCounts);
+	const mappingSetId = options.mappingSetId ?? mode(setIdCounts);
+
+	const headerLines: string[] = [];
+	if (subjectSource) headerLines.push(`# subject_source: "${subjectSource}"`);
+	if (objectSource) headerLines.push(`# object_source: "${objectSource}"`);
+	if (mappingSetId) headerLines.push(`# mapping_set_id: "${mappingSetId}"`);
+	if (mappingProvider) headerLines.push(`# mapping_provider: "${mappingProvider}"`);
+	if (options.mappingDate) headerLines.push(`# mapping_date: "${options.mappingDate}"`);
+
+	const body = Papa.unparse(rows, { columns: [...SSSOM_COLUMNS], delimiter: '\t', newline: '\n' });
+	const tsv = headerLines.length > 0 ? `${headerLines.join('\n')}\n${body}\n` : `${body}\n`;
+
+	return { tsv, rowCount: rows.length, skipped };
+}
+
+/** Walk `rootPath` and export every crosswalk-edge note found under it as an SSSOM TSV. */
+export async function exportFolderAsSssomTsv(
+	app: App,
+	rootPath: string,
+	options: SssomExportOptions = {},
+): Promise<SssomExportResult> {
+	const tree = await readVaultTree(app, rootPath);
+	const result = crosswalkEdgesToSssomTsv(tree.crosswalkEdges, options);
+	result.skipped.push(...tree.skipped);
+	return result;
+}

@@ -125,6 +125,117 @@ export function normalizePath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
+// parseYaml — minimal block-YAML parser covering exactly the dialect this
+// repo's own two frontmatter serializers emit: generation-engine.ts's
+// buildNoteContent/formatYamlLine (2-space indent, block-style nested
+// objects/arrays, double-quoted strings with `\"` escaping) AND
+// tools/lib/crosswalk-shared.ts's frontmatterToYaml (same nesting, but
+// inline `key: [a, b]` arrays instead of block lists). Added for
+// src/export/vault-reader.ts's cachedRead+parseYaml fallback path (mirrors
+// src/views/workspace-view.ts's `producerKindOf`, which needed no test mock
+// because nothing unit-tests that file directly — vault-reader.ts's read
+// path IS unit tested, so the mock needs a working parseYaml). Not a general
+// YAML parser: no anchors/multi-doc/flow-maps/literal block scalars — those
+// never appear in Crosswalker-produced frontmatter.
+export function parseYaml(text: string): unknown {
+  const lines = text.split('\n');
+  let idx = 0;
+
+  const leadingSpaces = (s: string): number => {
+    const m = s.match(/^ */);
+    return m ? m[0].length : 0;
+  };
+
+  const parseScalar = (raw: string): unknown => {
+    const t = raw.trim();
+    if (t.startsWith('"') && t.endsWith('"') && t.length >= 2) {
+      return t.slice(1, -1).replace(/\\"/g, '"');
+    }
+    if (t === 'true') return true;
+    if (t === 'false') return false;
+    if (t === 'null' || t === '') return null;
+    if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+    return t;
+  };
+
+  const parseScalarOrInlineArray = (raw: string): unknown => {
+    const t = raw.trim();
+    if (t.startsWith('[') && t.endsWith(']')) {
+      const inner = t.slice(1, -1).trim();
+      if (inner === '') return [];
+      return inner.split(',').map((x) => parseScalar(x.trim()));
+    }
+    return parseScalar(t);
+  };
+
+  const isListLine = (content: string): boolean => /^-(\s|$)/.test(content);
+
+  const parseMap = (indent: number): Record<string, unknown> => {
+    const obj: Record<string, unknown> = {};
+    while (idx < lines.length) {
+      const line = lines[idx];
+      if (line.trim() === '') {
+        idx++;
+        continue;
+      }
+      const lineIndent = leadingSpaces(line);
+      if (lineIndent < indent) break;
+      if (lineIndent > indent) break; // caller mis-dispatched; stop rather than misparse
+      const content = line.slice(indent);
+      const m = content.match(/^([^:]+):\s?(.*)$/);
+      if (!m) {
+        idx++;
+        continue;
+      }
+      const key = m[1].trim();
+      const rest = m[2];
+      idx++;
+      if (rest === '') {
+        const next = lines[idx];
+        if (idx < lines.length && next !== undefined && next.trim() !== '' && leadingSpaces(next) > indent) {
+          const nestedIndent = leadingSpaces(next);
+          obj[key] = isListLine(next.slice(nestedIndent)) ? parseList(nestedIndent) : parseMap(nestedIndent);
+        } else {
+          obj[key] = null;
+        }
+      } else {
+        obj[key] = parseScalarOrInlineArray(rest);
+      }
+    }
+    return obj;
+  };
+
+  const parseList = (indent: number): unknown[] => {
+    const arr: unknown[] = [];
+    while (idx < lines.length) {
+      const line = lines[idx];
+      if (line.trim() === '') {
+        idx++;
+        continue;
+      }
+      const lineIndent = leadingSpaces(line);
+      if (lineIndent !== indent) break;
+      const content = line.slice(indent);
+      if (!isListLine(content)) break;
+      const rest = content.slice(1).trim();
+      idx++;
+      if (rest === '') {
+        const next = lines[idx];
+        if (idx < lines.length && next !== undefined && leadingSpaces(next) > indent) {
+          arr.push(parseMap(leadingSpaces(next)));
+        } else {
+          arr.push(null);
+        }
+      } else {
+        arr.push(parseScalarOrInlineArray(rest));
+      }
+    }
+    return arr;
+  };
+
+  return parseMap(0);
+}
+
 // Platform — Phase 4a Obsidian-mock addition. Tests can set
 // Platform.isMobile via `(Platform as any).isMobile = true` to exercise
 // mobile-gated code paths.

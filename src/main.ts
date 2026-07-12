@@ -10,6 +10,13 @@ import {
 import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
 import { SssomImportModal } from './import/sssom-import-modal';
+import {
+	ExportFolderPickerModal,
+	exportFolderAsSssomTsv,
+	exportFolderAsCsv,
+	exportSiblingPath,
+	writeExportFile,
+} from './export';
 import { ConfigBrowserModal } from './config/config-browser-modal';
 import { buildCrosswalkerPivotViewFactory } from './views/crosswalker-pivot-view';
 import {
@@ -742,6 +749,62 @@ export default class CrosswalkerPlugin extends Plugin {
 			callback: async () => {
 				const count = await this.draftStore.purgeExpired();
 				new Notice(`Purged ${count} expired draft import${count === 1 ? '' : 's'}.`);
+			},
+		});
+
+		// v0.1.7 Phase 1: crosswalk mapping file export (SSSOM-flavored TSV
+		// under the hood — "crosswalk mapping file" is the ui-lexicon term;
+		// no SSSOM/STRM/OSCAL vocabulary in user-facing strings). Interim
+		// door: command palette only, no settings-UI destination picker yet
+		// (parity gap per the UI-parity convention — flag for a follow-up
+		// round, same as the SSSOM importer's own Phase 2 entry point).
+		this.addCommand({
+			id: 'export-folder-as-crosswalk-mapping-file',
+			name: 'Export folder as crosswalk mapping file',
+			callback: () => {
+				new ExportFolderPickerModal(this.app, (folder) => {
+					void (async () => {
+						const result = await exportFolderAsSssomTsv(this.app, folder.path);
+						if (result.rowCount === 0) {
+							new Notice(`No crosswalk mappings found under "${folder.path}". Nothing exported.`, 6000);
+							return;
+						}
+						const destPath = exportSiblingPath(folder, 'tsv');
+						await writeExportFile(this.app, destPath, result.tsv);
+						new Notice(
+							`Exported ${result.rowCount} mapping${result.rowCount === 1 ? '' : 's'} to ${destPath}` +
+								(result.skipped.length > 0
+									? ` (${result.skipped.length} note${result.skipped.length === 1 ? '' : 's'} skipped)`
+									: ''),
+							6000,
+						);
+					})();
+				}).open();
+			},
+		});
+
+		this.addCommand({
+			id: 'export-folder-as-csv',
+			name: 'Export folder as CSV',
+			callback: () => {
+				new ExportFolderPickerModal(this.app, (folder) => {
+					void (async () => {
+						const result = await exportFolderAsCsv(this.app, folder.path);
+						if (result.rowCount === 0) {
+							new Notice(`No notes found under "${folder.path}". Nothing exported.`, 6000);
+							return;
+						}
+						const destPath = exportSiblingPath(folder, 'csv');
+						await writeExportFile(this.app, destPath, result.csv);
+						new Notice(
+							`Exported ${result.rowCount} note${result.rowCount === 1 ? '' : 's'} to ${destPath}` +
+								(result.skipped.length > 0
+									? ` (${result.skipped.length} note${result.skipped.length === 1 ? '' : 's'} skipped)`
+									: ''),
+							6000,
+						);
+					})();
+				}).open();
 			},
 		});
 
