@@ -282,6 +282,59 @@ describe('DebugLog — export to clipboard', () => {
 		expect(out).toContain('[REDACTED]');
 		expect(out).not.toContain('sk-abcdefghijklmnopqrstuvwxyz');
 	});
+
+	// B4 (2026-07-12 pre-merge review): readForExport() previously ONLY ran
+	// redactSecrets() (API-key/JWT patterns) — vault-relative paths and file
+	// names (which can carry sensitive compliance-framework/document names)
+	// leaked straight into the clipboard export. This pins that the same
+	// redactPathsAndFilenames/redactEvent machinery "Copy diagnostics" uses is
+	// now wired into readForExport() too.
+	it('readForExport() redacts a path-shaped key value', async () => {
+		const state: MockVaultState = { lines: [], files: new Map() };
+		const d = new DebugLog(createMockApp(state), true);
+		d.info('generation', 'file-created', 'Created new file', {
+			path: 'Frameworks/NIST-800-53/AC-2 Account Management.md',
+		});
+		await flushQueue(d);
+		const out = await d.readForExport();
+		expect(out).not.toContain('Frameworks/NIST-800-53');
+		expect(out).not.toContain('Account Management.md');
+		expect(out).toContain('[redacted]');
+	});
+
+	it('readForExport() redacts a vault path embedded in free-text msg', async () => {
+		const state: MockVaultState = { lines: [], files: new Map() };
+		const d = new DebugLog(createMockApp(state), true);
+		d.info('generation', 'file-replaced', 'Replaced existing file Frameworks/CIS-Controls/1.1 Inventory.md');
+		await flushQueue(d);
+		const out = await d.readForExport();
+		expect(out).not.toContain('Frameworks/CIS-Controls');
+		expect(out).not.toContain('Inventory.md');
+	});
+
+	it('readForExport() redacts a bare source file name', async () => {
+		const state: MockVaultState = { lines: [], files: new Map() };
+		const d = new DebugLog(createMockApp(state), true);
+		d.info('wizard', 'file-selected', 'Selected source file', {
+			sourceFileName: 'nist-csf-2.0-govern-identify.csv',
+		});
+		await flushQueue(d);
+		const out = await d.readForExport();
+		expect(out).not.toContain('nist-csf-2.0-govern-identify.csv');
+	});
+
+	it('readForExport() still redacts secrets AND paths in the same event', async () => {
+		const state: MockVaultState = { lines: [], files: new Map() };
+		const d = new DebugLog(createMockApp(state), true);
+		d.error('tier2', 'sync-failed', 'Sync failed for Frameworks/MITRE-ATTACK/T1078.md', {
+			path: 'Frameworks/MITRE-ATTACK/T1078.md',
+			token: 'sk-abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKL',
+		});
+		await flushQueue(d);
+		const out = await d.readForExport();
+		expect(out).not.toContain('Frameworks/MITRE-ATTACK');
+		expect(out).toContain('[REDACTED]');
+	});
 });
 
 describe('DebugLog — getLogPath', () => {

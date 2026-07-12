@@ -130,6 +130,17 @@ export interface GenerationOptions {
 	 * path (when the recipe declares `target.enrichment`).
 	 */
 	facetsForRow?: (row: Record<string, unknown>, rowNum: number) => import('../import/mapping/facets').FacetMembership[];
+
+	/**
+	 * If true, abort on the first row whose rendered frontmatter fails Tier 1
+	 * schema validation. Mirrors `RecipeImportOptions.strictValidation`
+	 * (`generateFromRecipe`) — see M1, 2026-07-12 pre-merge review:
+	 * `generateNotes` (the wizard/workbench entry point) never ran Tier 1
+	 * validation at all before this option was added. Default: true, matching
+	 * `generateFromRecipe` exactly so both entry points enforce the
+	 * architectural commitment "schema-as-primitive" identically.
+	 */
+	strictValidation?: boolean;
 }
 
 interface GeneratedNoteData {
@@ -271,6 +282,9 @@ export async function generateNotes(
 	};
 
 	const importId = generateImportId();
+	// M1 (2026-07-12 pre-merge review): mirrors generateFromRecipe's `strict`
+	// default exactly (RecipeImportOptions.strictValidation ?? true).
+	const strict = options.strictValidation ?? true;
 
 	debug?.info('generation', 'start', `Starting generation of ${parsedData.rowCount} rows`, {
 		rowCount: parsedData.rowCount,
@@ -381,6 +395,27 @@ export async function generateNotes(
 					}
 					emittedPaths.add(noteData.path);
 
+					// M1 (2026-07-12 pre-merge review): validate against Tier 1 schema
+					// BEFORE writing — mirrors generateFromRecipe's step 6 (~line 1692)
+					// exactly. Previously this entry point (the wizard/workbench's ONLY
+					// generation path) never validated at all, contradicting
+					// architectural commitment #1 ("schema-as-primitive... the
+					// load-bearing contract").
+					{
+						const validation = validateTier1Frontmatter(noteData.frontmatter);
+						if (!validation.valid) {
+							const errMsg = `Tier 1 validation failed for row ${rowNum} (${noteData.path}): ${
+								validation.errors.length > 0 ? validation.errors.join('; ') : 'unknown'
+							}`;
+							if (strict) {
+								result.errors.push({ row: rowNum, message: errMsg });
+								return;
+							} else {
+								debug?.warn('generation', 'validation-warning', `Validation warning at ${noteData.path} (non-strict mode)`, { path: noteData.path, error: errMsg });
+							}
+						}
+					}
+
 					// Check if file exists. Consults BOTH the sibling path AND (when
 					// enrichment is on) the folder-note-relocated path by curie — see
 					// resolveWriteTarget's docstring (re-import identity, design §4).
@@ -408,7 +443,12 @@ export async function generateNotes(
 						try {
 							const existingFm = await readExistingFrontmatter(app, existingFile);
 							if (existingFm && Object.keys(existingFm).length > 0) {
-								const managedKeys = computeManagedKeys(noteData.frontmatter, []);
+								// M2 (2026-07-12 pre-merge review): mirror generateFromRecipe's
+								// user_preserve read (~line 1724) — this call previously
+								// hardcoded `[]`, so a recipe-declared user_preserve key was
+								// silently overwritten on re-import through the wizard path.
+								const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
+								const managedKeys = computeManagedKeys(noteData.frontmatter, userPreserve);
 								noteData.frontmatter = mergeFrontmatter(
 									existingFm,
 									noteData.frontmatter,

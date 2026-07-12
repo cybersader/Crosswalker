@@ -53,6 +53,14 @@
  * set it — v0.1's single-structural-mapping constraint makes that vacuous in
  * practice), and reconstructs onto every tail from that same global value on
  * the way back. See serialize.ts's `toRecipeRegions`/`fromRegions`.
+ *
+ * `ImportMapping.userPreserve` (the recipe's `target.also_emit.frontmatter.
+ * user_preserve` list) is WIRED as of the 2026-07-12 pre-merge review (B7):
+ * `toRecipeRegions` re-emits it verbatim into `also_emit.frontmatter.
+ * user_preserve` and `fromRegions` reads it back. It lives at the top level
+ * (not per-LevelRule) because it is an also_emit-level concern in the recipe
+ * schema, not tied to any one structural level. See serialize.ts's
+ * `buildAlsoEmit`/`fromRegions`.
  */
 
 // ============================================================================
@@ -312,6 +320,14 @@ export interface ImportMapping {
 	filters?: RowFilter[];
 	/** Batch-scope enrichment (Pass 1.5). Serializes to recipe `target.enrichment`. */
 	enrichment?: Enrichment;
+	/**
+	 * Frontmatter keys/glob patterns the re-import merge must never overwrite
+	 * (recipe `target.also_emit.frontmatter.user_preserve` — spec §7b, the
+	 * managed/user_preserve split `frontmatter-merge.ts` calls "load-bearing").
+	 * also_emit-scoped, not per-level (see the module note). Round-trips via
+	 * `toRecipeRegions`/`fromRegions` in serialize.ts.
+	 */
+	userPreserve?: string[];
 }
 
 // ============================================================================

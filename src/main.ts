@@ -1048,6 +1048,9 @@ export default class CrosswalkerPlugin extends Plugin {
 	}
 
 	onunload() {
+		// Deliberately does NOT detachLeavesOfType(VIEW_TYPE_CROSSWALKER_WORKSPACE):
+		// the official plugin guidelines say "Don't detach leaves in onunload" —
+		// Obsidian reinitializes open leaves in place on plugin update/reload.
 		this.tier2Handle?.close();
 		this.debug?.info('lifecycle', 'unloaded', 'Crosswalker plugin unloaded');
 	}

@@ -413,8 +413,19 @@ export class DebugLog {
 	}
 
 	/**
-	 * Read up to `maxBytes` (tail) of the current log file, redact obvious
-	 * secrets, and return the string. For the export-to-clipboard command.
+	 * Read up to `maxBytes` (tail) of the current log file, redact secrets AND
+	 * vault paths/file names, and return the string. For the "Export debug log
+	 * to clipboard" command (Settings → Diagnostics).
+	 *
+	 * B4 (2026-07-12 pre-merge review): this is the older, more prominently
+	 * surfaced export path — most users find it before "Copy diagnostics" —
+	 * and it previously only ran `redactSecrets` (API-key/JWT patterns),
+	 * leaking raw vault-relative paths and file names (which can carry
+	 * sensitive compliance-framework/document names) into a bundle a user
+	 * pastes into a public bug report. Now routes through the SAME
+	 * `redactEvent`/`redactPathsAndFilenames` machinery the newer "Copy
+	 * diagnostics" command uses, so both commands make the same "no vault
+	 * paths or file names" promise.
 	 */
 	async readForExport(maxBytes = 1024 * 1024): Promise<string> {
 		try {
@@ -424,7 +435,7 @@ export class DebugLog {
 			const tail = content.length > maxBytes
 				? content.slice(content.length - maxBytes)
 				: content;
-			return redactSecrets(tail);
+			return redactExportedLog(tail);
 		} catch (err) {
 			console.error('[Crosswalker] Failed to read debug log:', err);
 			return '';
@@ -633,6 +644,31 @@ function redactObject(obj: Record<string, unknown>, depth: number): Record<strin
 /** Redact one debug event for inclusion in a shareable diagnostics bundle. */
 export function redactEvent(event: DebugEvent): DebugEvent {
 	return redactObject(event as unknown as Record<string, unknown>, 0) as unknown as DebugEvent;
+}
+
+/**
+ * Redact a raw NDJSON log tail (the shape `readForExport` reads off disk) for
+ * the "Export debug log to clipboard" command — B4 fix, 2026-07-12 pre-merge
+ * review. Each line is parsed as one JSON event and run through `redactEvent`
+ * (the same structured, key + value aware redaction "Copy diagnostics" uses),
+ * then re-serialized. A line that fails to parse — e.g. a partial line cut
+ * off by the `maxBytes` tail truncation, or stray non-JSON content — falls
+ * back to the raw regex-based `redactPathsAndFilenames` pass so nothing
+ * slips through unredacted just because it didn't parse cleanly. A final
+ * `redactSecrets` pass over the whole result catches API-key/JWT-shaped
+ * tokens that `redactEvent`'s path/filename patterns don't target.
+ */
+export function redactExportedLog(raw: string): string {
+	const lines = raw.split('\n').map((line) => {
+		if (line.trim() === '') return line;
+		try {
+			const parsed = JSON.parse(line) as DebugEvent;
+			return JSON.stringify(redactEvent(parsed));
+		} catch {
+			return redactPathsAndFilenames(line);
+		}
+	});
+	return redactSecrets(lines.join('\n'));
 }
 
 // Settings fields that are user-chosen paths or free text rather than

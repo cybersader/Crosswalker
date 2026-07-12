@@ -547,6 +547,48 @@ describe('round-trip law: mapping → regions → mapping', () => {
 			],
 		});
 	});
+
+	// B7 (2026-07-12 pre-merge review): `AlsoEmit.frontmatter.user_preserve`
+	// was declared on the recipe-regions shape but `toRecipeRegions`/
+	// `fromRegions` never wrote/read it -- a round-tripped mapping silently
+	// lost the field. `ImportMapping.userPreserve` is also_emit-scoped (not
+	// per-level), so it round-trips independently of the structural shape.
+	it('userPreserve round-trips (also_emit.frontmatter.user_preserve)', () => {
+		assertRoundTrip({
+			mappings: [
+				{
+					levels: [
+						{ level: 'leaf', source: { column: 'id' }, destinations: [{ primitive: 'name' }], naming: 'part', missing: 'skip', materialize: false },
+					],
+				},
+			],
+			userPreserve: ['reviewer', '*notes*'],
+		});
+	});
+
+	it('userPreserve round-trips alongside managed frontmatter + tags', () => {
+		assertRoundTrip({
+			mappings: [
+				{
+					levels: [
+						{
+							level: 'leaf',
+							source: { column: 'id' },
+							destinations: [
+								{ primitive: 'name' },
+								{ primitive: 'property', key: 'status' },
+								{ primitive: 'tag', namespace: 'status' },
+							],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+			userPreserve: ['review_status', 'creator_id'],
+		});
+	});
 });
 
 // ===========================================================================
@@ -722,6 +764,37 @@ describe('corpus — real recipes reconstruct + re-serialize equivalently', () =
 		const originalManaged = recipe.target.also_emit!.frontmatter!.managed!;
 		const roundManaged = regions.also_emit!.frontmatter!.managed!;
 		expect(roundManaged).toEqual(originalManaged);
+	});
+});
+
+// ===========================================================================
+// 5b. B7 (2026-07-12 pre-merge review) — fromRecipe → toRecipeRegions
+//     round-trip for a hand-authored recipe carrying user_preserve. The
+//     original probe: fromRecipe({...user_preserve: ['reviewer','*notes*']})
+//     → toRecipeRegions(...) produced also_emit.frontmatter.user_preserve
+//     === undefined.
+// ===========================================================================
+
+describe('user_preserve survives fromRecipe → toRecipeRegions (B7)', () => {
+	it('a hand-authored recipe carrying user_preserve re-emits it verbatim', () => {
+		const recipe = {
+			target: {
+				layout: [
+					{ level: 'leaf', mechanism: 'file' as const, template: '{id}.md' },
+				],
+				also_emit: {
+					frontmatter: {
+						managed: { status: '{status}' },
+						user_preserve: ['reviewer', '*notes*'],
+					},
+				},
+			},
+		};
+		const mapping = fromRecipe(recipe);
+		expect(mapping.userPreserve).toEqual(['reviewer', '*notes*']);
+
+		const regions = toRecipeRegions(mapping);
+		expect(regions.also_emit?.frontmatter?.user_preserve).toEqual(['reviewer', '*notes*']);
 	});
 });
 

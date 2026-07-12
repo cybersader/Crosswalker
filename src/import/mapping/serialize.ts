@@ -177,7 +177,7 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 		layout.push(...structLayout);
 	}
 
-	const also_emit = buildAlsoEmit(tags, aliases, managed, managedLinks);
+	const also_emit = buildAlsoEmit(tags, aliases, managed, managedLinks, mapping.userPreserve);
 	const regions: RecipeRegions = also_emit ? { layout, also_emit } : { layout };
 	// Enrichment-level wins when set (see the precedence note above); the tail's
 	// placement only fills in when the enrichment block leaves it unspecified.
@@ -267,18 +267,24 @@ function buildAlsoEmit(
 	aliases: string[],
 	managed: Record<string, string>,
 	managedLinks: Record<string, ManagedLinkSpec>,
+	userPreserve?: string[],
 ): AlsoEmit | undefined {
 	const out: AlsoEmit = {};
 	if (tags.length) out.tags = tags;
 	if (aliases.length) out.aliases = aliases;
 	const hasManaged = Object.keys(managed).length > 0;
 	const hasManagedLinks = Object.keys(managedLinks).length > 0;
-	if (hasManaged || hasManagedLinks) {
+	const hasUserPreserve = !!userPreserve && userPreserve.length > 0;
+	if (hasManaged || hasManagedLinks || hasUserPreserve) {
 		out.frontmatter = {};
 		if (hasManaged) out.frontmatter.managed = managed;
 		if (hasManagedLinks) out.frontmatter.managed_links = managedLinks;
+		// B7 (2026-07-12 pre-merge review): user_preserve was declared on
+		// AlsoEmit.frontmatter but never written here — re-imports silently
+		// lost the field, defeating the merge's own re-import-safety mechanism.
+		if (hasUserPreserve) out.frontmatter.user_preserve = userPreserve;
 	}
-	return tags.length || aliases.length || hasManaged || hasManagedLinks ? out : undefined;
+	return tags.length || aliases.length || hasManaged || hasManagedLinks || hasUserPreserve ? out : undefined;
 }
 
 // ============================================================================
@@ -442,7 +448,13 @@ export function fromRegions(regions: RecipeRegions): ImportMapping {
 		mappings.push({ levels: [rule] });
 	}
 
-	return regions.enrichment ? { mappings, enrichment: regions.enrichment } : { mappings };
+	const result: ImportMapping = { mappings };
+	if (regions.enrichment) result.enrichment = regions.enrichment;
+	// B7 (2026-07-12 pre-merge review): read user_preserve back so the
+	// round-trip law holds — see buildAlsoEmit's write side above.
+	const userPreserve = regions.also_emit?.frontmatter?.user_preserve;
+	if (userPreserve && userPreserve.length > 0) result.userPreserve = userPreserve;
+	return result;
 }
 
 /** Turn a parsed source + destinations into a LevelRule with default policies. */
