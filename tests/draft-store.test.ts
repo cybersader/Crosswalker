@@ -400,6 +400,73 @@ describe('DraftStore — workbench mapping round-trip', () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// B5 + M8 (2026-07-12) — recognizedFastPath / columnDests / dismissed
+// persistence. Schema-level: the round-trip through the store, and the
+// backward-compatibility contract that a pre-B5/M8 draft (missing these
+// optional fields) still loads without throwing.
+// ---------------------------------------------------------------------------
+
+describe('DraftStore — recognizedFastPath persistence (B5)', () => {
+	it('persists recognizedFastPath and restores it deep-equal after save→list', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const draft = buildDraft({ recognizedFastPath: true, workbenchMapping: sampleWorkbenchMapping() });
+		await store.save(draft);
+		const list = await store.list();
+		expect(list[0].recognizedFastPath).toBe(true);
+	});
+
+	it('omitting recognizedFastPath stays undefined (pre-B5 drafts hydrate safely, not throw)', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const draft = buildDraft();
+		await store.save(draft);
+		const list = await store.list();
+		expect(list[0].recognizedFastPath).toBeUndefined();
+	});
+});
+
+describe('DraftStore — workbenchColumnDests / workbenchDismissed persistence (M8)', () => {
+	it('persists a columnDests snapshot and dismissed keys, restored deep-equal after save→list', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const workbenchColumnDests = { severity: 'property' as const, notes: 'body' as const, internal_id: 'skip' as const };
+		const workbenchDismissed = ['facet-candidate:severity', 'title-candidate:name'];
+		const draft = buildDraft({
+			workbenchMapping: sampleWorkbenchMapping(),
+			workbenchColumnDests,
+			workbenchDismissed,
+		});
+		await store.save(draft);
+		const list = await store.list();
+		expect(list[0].workbenchColumnDests).toEqual(workbenchColumnDests);
+		expect(list[0].workbenchDismissed).toEqual(workbenchDismissed);
+	});
+
+	it('restores workbenchColumnDests / workbenchDismissed deep-equal after load(id)', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const workbenchColumnDests = { owner: 'alias' as const };
+		const workbenchDismissed = ['body-candidate:description'];
+		const draft = buildDraft({ workbenchColumnDests, workbenchDismissed });
+		await store.save(draft);
+		const loaded = await store.load(draft.id);
+		expect(loaded!.workbenchColumnDests).toEqual(workbenchColumnDests);
+		expect(loaded!.workbenchDismissed).toEqual(workbenchDismissed);
+	});
+
+	it('omitting workbenchColumnDests / workbenchDismissed stays undefined (pre-M8 drafts hydrate safely)', async () => {
+		const { app } = createMockApp();
+		const store = new DraftStore(app, mockDebug, { draftExpiryDays: 30, maxDrafts: 20 });
+		const draft = buildDraft();
+		await store.save(draft);
+		const list = await store.list();
+		expect(list[0].workbenchColumnDests).toBeUndefined();
+		expect(list[0].workbenchDismissed).toBeUndefined();
+	});
+});
+
 describe('resolveDraftSource — resume without re-selection (spec §7i)', () => {
 	it('re-parses automatically when vaultPath is set and the file exists', () => {
 		const draft = buildDraft({ sourceFile: { name: 'atlas.csv', vaultPath: 'Sources/atlas.csv' } });

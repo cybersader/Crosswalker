@@ -12,7 +12,7 @@ _crosswalker:
     version: golden
   recipe:
     id: nist-csf-2.0-govern-identify
-    hash: sha256-63d1d3037d1db937782b4f34aeb87f6a53bfb5933673f9cb29194ff772d6ad94
+    hash: sha256-606333f6cdda3c55635edddd41018edf88499145ebb22963d6b67f65062f7f2d
   concept_cid: sha256-197ff8382cb1c359af7aab58dfbb4ee797d1b962a73089e70d70fd05588283d8
 ---
 

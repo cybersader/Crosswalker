@@ -67,6 +67,7 @@ import {
 	isUnmodifiedPreset,
 	deriveProvenance,
 	destKey,
+	structuralEqual,
 	facetTagColumns,
 	buildParentPlacementPreview,
 	type ShapeCardId,
@@ -89,8 +90,9 @@ function wbIcon(parent: HTMLElement, name: string, extraCls = ''): HTMLElement {
 	return span;
 }
 
-/** Per-column destination in the demoted "all columns" table (spec §3b). */
-type ColumnDest = 'property' | 'tag' | 'body' | 'title' | 'alias' | 'link' | 'skip';
+/** Per-column destination in the demoted "all columns" table (spec §3b).
+ *  Exported so callers can persist a snapshot of it (draft resume, M8). */
+export type ColumnDest = 'property' | 'tag' | 'body' | 'title' | 'alias' | 'link' | 'skip';
 
 /** The subset of primitives the two-stage ⊕ menu offers, grouped by role (spec §3d). */
 const ADD_MENU_GROUPS: { group: string; items: { primitive: DestinationPrimitive; label: string }[] }[] = [
@@ -164,6 +166,22 @@ export interface WorkbenchOptions {
 	 */
 	seedColumnDefaults?: boolean;
 	/**
+	 * Restore the demoted "all columns" destination table from a persisted draft
+	 * (draft resume, M8). When present, this IS the seed — `seedColumnDests()`
+	 * is skipped entirely so a manual "route this column to…" choice from a
+	 * prior session survives resume instead of being silently re-derived from
+	 * the detection heuristic.
+	 */
+	initialColumnDests?: Record<string, ColumnDest>;
+	/**
+	 * Restore dismissed evidence-card keys from a persisted draft (draft resume,
+	 * M8). Applied BEFORE the mapping is instantiated (constructor order) so a
+	 * dismissal from a prior session keeps suppressing its detection — not just
+	 * cosmetically re-marking the badge — when `initialMapping` is absent and a
+	 * fresh `instantiate()` runs over `activeDetections()`.
+	 */
+	initialDismissed?: string[];
+	/**
 	 * True when the vault has a Waypoint-style community plugin enabled
 	 * (`detectWaypointPlugin`, 2026-07-11 ICSB audit §4 verdict). Gates the
 	 * Connections card's opt-in "also mark folder notes for Waypoint" toggle —
@@ -197,6 +215,22 @@ export class MappingWorkbench {
 	private presetId: string;
 	private columnDests = new Map<string, ColumnDest>();
 	private readonly columnSig: string;
+	/**
+	 * Hand-added mappings (`addManualMapping`), tracked by object reference so
+	 * `reinstantiate()` (B3) can carry them forward: a fresh `instantiate()`
+	 * only re-derives structure from detections, so anything the user typed in
+	 * by hand would otherwise be silently discarded on every preset switch or
+	 * evidence dismiss/use. `updateMapping`/`removeMapping` keep the reference
+	 * current as the mapping is edited in place.
+	 */
+	private manualMappings: StructureMapping[] = [];
+	/**
+	 * Set when `buildRecipe()` throws inside `computePreview()` (B2) — most
+	 * commonly the single-structural-mapping guard (`assertSingleStructural`,
+	 * serialize.ts). The preview rail and the step-3 review both surface this
+	 * as a blocking error instead of a silent "0 deviations" state.
+	 */
+	private previewError: string | null = null;
 
 	// Transient view state (persists across re-renders).
 	private expanded = new Set<number>();
@@ -214,6 +248,11 @@ export class MappingWorkbench {
 	private rerenderTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(private opts: WorkbenchOptions) {
+		// M8: restore dismissed evidence keys BEFORE anything detection-derived
+		// runs (activeDetections()/instantiate() below both read this.dismissed),
+		// so a prior-session dismissal keeps suppressing its detection on resume
+		// rather than only cosmetically re-marking the badge.
+		this.dismissed = new Set(opts.initialDismissed ?? []);
 		this.columnSig = opts.parsedData.columns.join('|');
 		this.detections = detectStructure(opts.parsedData, opts.columnInfos);
 		this.presetId = getBuiltInPreset(opts.defaultPresetId) ? opts.defaultPresetId : 'browsable-framework';
@@ -224,9 +263,17 @@ export class MappingWorkbench {
 		// (never override a draft's or a vetted recipe's explicit choice, both of
 		// which arrive as `initialMapping`).
 		if (!opts.initialMapping) this.applyDefaultsOverlay();
-		// A recognized-recipe seed (seedColumnDefaults === false) emits exactly the
-		// vetted recipe; only auto-seed per-column defaults otherwise (spec §7m).
-		if (opts.seedColumnDefaults !== false) this.seedColumnDests();
+		// M8: a restored columnDests snapshot IS the seed — never re-run the
+		// detection-derived default seeding over it (that would silently reset
+		// every manual "route this column to…" choice back to the heuristic
+		// default). Otherwise, a recognized-recipe seed (seedColumnDefaults ===
+		// false) emits exactly the vetted recipe; only auto-seed per-column
+		// defaults in the remaining case (spec §7m).
+		if (opts.initialColumnDests) {
+			this.columnDests = new Map(Object.entries(opts.initialColumnDests));
+		} else if (opts.seedColumnDefaults !== false) {
+			this.seedColumnDests();
+		}
 		opts.debug.info('wizard', 'workbench-init', 'Shape workbench initialized', {
 			detections: this.detections.length,
 			mappings: this.mapping.mappings.length,
@@ -243,6 +290,26 @@ export class MappingWorkbench {
 	/** The shape mappings (the single coherent model). */
 	getMapping(): ImportMapping {
 		return this.mapping;
+	}
+
+	/** Snapshot of the demoted "all columns" destinations (draft persistence, M8). */
+	getColumnDests(): Record<string, ColumnDest> {
+		return Object.fromEntries(this.columnDests);
+	}
+
+	/** Snapshot of dismissed evidence-card keys (draft persistence, M8). */
+	getDismissed(): string[] {
+		return [...this.dismissed];
+	}
+
+	/**
+	 * The reason `computePreview()` returned null due to `buildRecipe()`
+	 * throwing (B2) — most commonly the single-structural-mapping guard. Null
+	 * when there is no error (a clean preview, or simply a non-eager source
+	 * with nothing to build yet).
+	 */
+	getPreviewError(): string | null {
+		return this.previewError;
 	}
 
 	/**
@@ -379,11 +446,44 @@ export class MappingWorkbench {
 		this.scheduleRerender(delay);
 	}
 
-	/** Replace one shape mapping and commit. */
-	private updateMapping(mi: number, next: StructureMapping, delay = 0): void {
+	/**
+	 * Replace mapping[mi] with `next`, keeping `manualMappings`' tracked
+	 * references coherent (B3: `updateMapping` swaps in a brand-new object on
+	 * every edit, so a hand-added mapping's tracked reference must move with
+	 * it or `reinstantiate()`'s carry-forward would stop recognizing it after
+	 * its first edit). Does not commit — callers call `applyChange()`.
+	 */
+	private replaceMappingAt(mi: number, next: StructureMapping): void {
+		const old = this.mapping.mappings[mi];
 		const mappings = this.mapping.mappings.map((m, i) => (i === mi ? next : m));
 		this.mapping = { ...this.mapping, mappings };
+		const manualIdx = this.manualMappings.indexOf(old);
+		if (manualIdx !== -1) this.manualMappings[manualIdx] = next;
+	}
+
+	/** Replace one shape mapping and commit. */
+	private updateMapping(mi: number, next: StructureMapping, delay = 0): void {
+		this.replaceMappingAt(mi, next);
 		this.applyChange(delay);
+	}
+
+	/**
+	 * Shape-card toggle (M2's on/off/mixed cards). Also reconciles
+	 * `enrichment.facet_notes` (M9): if this toggle just turned off the last
+	 * tag-emitting destination anywhere in the mapping, "Create hub notes for"
+	 * has nothing left to group by — clear it back to `'none'` so the
+	 * Connections card doesn't keep rendering a stale selection with zero
+	 * facet columns behind it.
+	 */
+	private toggleShapeCard(mi: number, m: StructureMapping, primitive: DestinationPrimitive, on: boolean): void {
+		this.replaceMappingAt(mi, toggleDestinationAcrossMapping(m, primitive, on));
+		if (primitive === 'tag' && !on) {
+			const enrichment = this.mapping.enrichment;
+			if (enrichment?.facet_notes && enrichment.facet_notes !== 'none' && facetTagColumns(this.mapping).length === 0) {
+				this.mapping = { ...this.mapping, enrichment: { ...enrichment, facet_notes: 'none' } };
+			}
+		}
+		this.applyChange();
 	}
 
 	/** Patch the batch-scope enrichment block (Pass 1.5, spec §7k) and commit.
@@ -662,13 +762,13 @@ export class MappingWorkbench {
 			cb.checked = state === 'on';
 			cb.indeterminate = state === 'mixed';
 			cb.addEventListener('change', () => {
-				this.updateMapping(mi, toggleDestinationAcrossMapping(m, primitive, cb.checked));
+				this.toggleShapeCard(mi, m, primitive, cb.checked);
 			});
 			// The whole card is a valid toggle target (bigger hit area than the box).
 			// A tri-state click moves toward "on" (off→on, mixed→on, on→off).
 			shape.addEventListener('click', (e) => {
 				if (e.target === cb) return;
-				this.updateMapping(mi, toggleDestinationAcrossMapping(m, primitive, state !== 'on'));
+				this.toggleShapeCard(mi, m, primitive, state !== 'on');
 			});
 			const title = top.createEl('span', { cls: 'crosswalker-wb-shape-title' });
 			wbIcon(title, copy.icon);
@@ -1060,6 +1160,15 @@ export class MappingWorkbench {
 		rail.createDiv({ cls: 'crosswalker-wb-eyebrow', text: 'Vault preview · live' });
 		const preview = this.computePreview();
 		if (!preview) {
+			if (this.previewError) {
+				// B2: a thrown guard (the single-structural-mapping assertion, most
+				// commonly) surfaces as a visible blocking error — never a silent
+				// "nothing to preview" state that a user could mistake for "all clear".
+				const banner = rail.createDiv({ cls: 'crosswalker-render-banner is-warning' });
+				wbIcon(banner, 'alert-triangle', 'crosswalker-render-banner-icon');
+				banner.createSpan({ cls: 'crosswalker-render-banner-text', text: `Can't generate: ${this.previewError}` });
+				return;
+			}
 			rail.createDiv({ cls: 'crosswalker-wb-preview-empty', text: 'Preview is available for in-memory sources. Streamed sources render at generate time.' });
 			return;
 		}
@@ -1114,16 +1223,27 @@ export class MappingWorkbench {
 		if (stats) rail.createDiv({ cls: 'crosswalker-wb-connection-stats', text: stats });
 	}
 
-	/** Run the workbench recipe over a sample of rows. Null for non-eager sources. */
+	/**
+	 * Run the workbench recipe over a sample of rows. Null for non-eager
+	 * sources, OR when `buildRecipe()` throws (B2) — check `getPreviewError()`
+	 * to tell the two apart; a thrown guard (e.g. the single-structural-mapping
+	 * assertion) must surface as a visible blocking error, never a silent
+	 * "nothing to preview" state that reads as zero deviations.
+	 */
 	computePreview(): { addresses: { row: number; address: Address }[]; perRow: PreviewRowNotes[]; total: number } | null {
 		const rows = this.opts.parsedData.rows;
-		if (!isEagerRows(rows) || rows.length === 0) return null;
+		if (!isEagerRows(rows) || rows.length === 0) {
+			this.previewError = null;
+			return null;
+		}
 		let recipe: Recipe;
 		try {
 			recipe = this.buildRecipe();
-		} catch {
+		} catch (err) {
+			this.previewError = err instanceof Error ? err.message : String(err);
 			return null;
 		}
+		this.previewError = null;
 		const addresses: { row: number; address: Address }[] = [];
 		const perRow: PreviewRowNotes[] = [];
 		rows.slice(0, PREVIEW_ROW_LIMIT).forEach((row, i) => {
@@ -1152,12 +1272,50 @@ export class MappingWorkbench {
 		return this.detections.filter((d) => !this.dismissed.has(this.detectionKey(d)));
 	}
 
+	/**
+	 * Re-derive the mapping from the (possibly changed) preset/active
+	 * detections — fired by a preset switch or an evidence dismiss/use.
+	 *
+	 * B3: `instantiate()` has no "previous mapping" input, so a bare
+	 * re-instantiation silently discards the user's live in-session choices —
+	 * most visibly `enrichment.parent_note` (the placement chooser) and any
+	 * hand-added mapping (`addManualMapping`). Both are explicit decisions
+	 * already made in THIS session, so they outrank vault defaults and preset
+	 * defaults on re-instantiation. Precedence inside this method: user's
+	 * prior in-session enrichment > vault defaults > preset defaults >
+	 * adaptive `defaultParentNote`.
+	 *
+	 * Deliberately NOT carried: anything the fresh `instantiate()` already
+	 * re-derives from detections (a dismissed detection's structural mapping,
+	 * for instance) — only `manualMappings` (hand-added, tracked by
+	 * reference) are re-appended, so dismissing evidence still removes the
+	 * structure it produced.
+	 */
 	private reinstantiate(): void {
+		const previousEnrichment = this.mapping.enrichment;
 		this.mapping = instantiate(this.currentPreset(), this.activeDetections());
 		// Same fresh-instantiation rules as the constructor: a preset switch (or
 		// an evidence dismiss/use) re-derives the mapping from scratch, so vault
 		// defaults + the adaptive parent_note fallback re-apply here too.
 		this.applyDefaultsOverlay();
+		// The user's own prior in-session enrichment choices outrank whatever
+		// applyDefaultsOverlay() just stamped (B3).
+		if (previousEnrichment) {
+			this.mapping = {
+				...this.mapping,
+				enrichment: { ...(this.mapping.enrichment ?? {}), ...previousEnrichment },
+			};
+		}
+		// Carry forward hand-added mappings the fresh instantiation didn't
+		// already re-derive (B3). Structural (not referential) equality: a
+		// manual mapping edited via the matrix is a new object each time, but
+		// `replaceMappingAt` keeps `manualMappings`' reference current.
+		const carried = this.manualMappings.filter(
+			(pm) => !this.mapping.mappings.some((m) => structuralEqual(m, pm)),
+		);
+		if (carried.length > 0) {
+			this.mapping = { ...this.mapping, mappings: [...this.mapping.mappings, ...carried] };
+		}
 		this.expanded.clear();
 		this.matrixOpen.clear();
 		this.addMenu = null;
@@ -1213,13 +1371,41 @@ export class MappingWorkbench {
 		return cols;
 	}
 
+	/**
+	 * True when a structural destination (folder/name/heading) already exists
+	 * anywhere in the mapping — mirrors `serialize.ts`'s `assertSingleStructural`
+	 * guard's own check (kept independent so this module stays free of a
+	 * serialize.ts import for one boolean).
+	 */
+	private hasStructuralMapping(): boolean {
+		const isStructural = (d: Destination): boolean =>
+			d.primitive === 'folder' || d.primitive === 'name' || d.primitive === 'heading';
+		return this.mapping.mappings.some(
+			(m) => m.levels.some((l) => l.destinations.some(isStructural))
+				|| (m.tail !== undefined && m.tail.destinations.some(isStructural)),
+		);
+	}
+
+	/**
+	 * Add a mapping by hand from the "Add mapping from a column…" dropdown
+	 * (B6). A recipe supports exactly one structural mapping (folder/name/
+	 * heading) — `serialize.ts`'s `assertSingleStructural` throws the moment a
+	 * second one exists, and this control had zero guard against creating that
+	 * second one. Only seed a structural `{primitive:'name'}` destination when
+	 * NO structural mapping exists yet; otherwise the natural "route this
+	 * column" action is a frontmatter property, same as the demoted "all
+	 * columns" table's own default.
+	 */
 	private addManualMapping(column: string): void {
+		const structuralExists = this.hasStructuralMapping();
 		const next: StructureMapping = {
 			levels: [
 				{
 					level: column,
 					source: { column },
-					destinations: [{ primitive: 'name' }],
+					destinations: [
+						structuralExists ? { primitive: 'property', key: this.keyOf(column) } : { primitive: 'name' },
+					],
 					naming: 'part',
 					missing: 'skip',
 					materialize: false,
@@ -1227,12 +1413,16 @@ export class MappingWorkbench {
 			],
 		};
 		this.mapping = { ...this.mapping, mappings: [...this.mapping.mappings, next] };
+		this.manualMappings.push(next);
 		this.expanded.add(this.mapping.mappings.length - 1);
 		this.applyChange();
 	}
 
 	private removeMapping(mi: number): void {
+		const old = this.mapping.mappings[mi];
 		this.mapping = { ...this.mapping, mappings: this.mapping.mappings.filter((_, i) => i !== mi) };
+		const manualIdx = this.manualMappings.indexOf(old);
+		if (manualIdx !== -1) this.manualMappings.splice(manualIdx, 1);
 		this.expanded.delete(mi);
 		this.matrixOpen.delete(mi);
 		this.applyChange();

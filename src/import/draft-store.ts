@@ -18,6 +18,7 @@
 import { App, TFile, TFolder } from 'obsidian';
 import type { ColumnInfo, ImportRecipe } from '../types/config';
 import type { ImportMapping } from './mapping/types';
+import type { ColumnDest } from './workbench';
 import type { DebugLog } from '../utils/debug';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,34 @@ export interface WizardDraft {
 	// draft was saved in workbench (beta) mode; on resume the workbench is
 	// rehydrated from it instead of re-detecting from scratch.
 	workbenchMapping?: ImportMapping;
+
+	/**
+	 * B5: which workbench-entry path produced this draft's mapping — the
+	 * recognized-recipe fast path (spec §7m), as opposed to the plain
+	 * `enableShapeWorkbench` setting. Optional/absent on pre-B5 drafts hydrates
+	 * safely as `false` (the classic column-mapping mode default); resume mode
+	 * additionally treats a present `workbenchMapping` as authoritative on its
+	 * own (`isWorkbenchMode()` in import-wizard.ts), so a missing/stale value
+	 * here never strands a resumed workbench mapping in the classic branch.
+	 */
+	recognizedFastPath?: boolean;
+
+	/**
+	 * M8: a snapshot of the demoted "all columns" destination table
+	 * (`MappingWorkbench.getColumnDests()`), so a manual "route this column
+	 * to…" choice survives a draft resume instead of being silently re-seeded
+	 * from the detection heuristic. Absent on pre-M8 drafts — the workbench
+	 * falls back to its normal `seedColumnDests()` seeding in that case.
+	 */
+	workbenchColumnDests?: Record<string, ColumnDest>;
+
+	/**
+	 * M8: dismissed evidence-card keys (`MappingWorkbench.getDismissed()`), so
+	 * a dismissed detection stays suppressed after resume instead of
+	 * reappearing — and re-adding the structure the user explicitly turned
+	 * off. Absent on pre-M8 drafts hydrates safely as no dismissals.
+	 */
+	workbenchDismissed?: string[];
 
 	// Applied saved-config reference (ID only; re-lookup at resume time)
 	appliedConfigId: string | null;

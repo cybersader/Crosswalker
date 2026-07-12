@@ -12,10 +12,12 @@ import { TFile, TFolder } from 'obsidian';
 import { MappingWorkbench, type WorkbenchOptions } from '../src/import/workbench';
 import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import type { ParsedData, ImportRecipe } from '../src/types/config';
-import type { ImportMapping } from '../src/import/mapping/types';
+import type { ImportMapping, StructureMapping } from '../src/import/mapping/types';
+import { toSourceRefs, isConstantRef } from '../src/import/mapping/types';
 import type { DebugLog } from '../src/utils/debug';
 import { deriveFacetMemberships } from '../src/import/mapping/facets';
 import { facetTagColumns, buildParentPlacementPreview, toFolderNotePaths } from '../src/import/mapping/view-model';
+import { BUILT_IN_PRESETS } from '../src/import/mapping/presets';
 import { findRecipeForOntologyName } from '../src/views/workspace-view-helpers';
 import { generateNotes, type GenerationOptions } from '../src/generation/generation-engine';
 
@@ -121,6 +123,92 @@ describe('MappingWorkbench recipe assembly', () => {
 	});
 });
 
+// ============================================================================
+// B6 + B2 (2026-07-12): the single-structural-mapping guard
+// (`assertSingleStructural`, serialize.ts) is real and correctly loud, but
+// nothing prevented the UI from reaching the state it guards against, and
+// `computePreview()` swallowed the throw into a misleading "no preview"
+// state. B6 fixes the SOURCE (`addManualMapping` no longer seeds a second
+// structural destination); B2 fixes the fallback (a forced/hand-authored
+// two-structural mapping now surfaces as `previewError` instead of a silent
+// null). `addManualMapping`/the model field are private — reached the same
+// way the rest of this file drives private write paths: a narrow cast.
+// ============================================================================
+describe('B6 + B2: the single-structural-mapping guard (source fix + error surfacing)', () => {
+	it('addManualMapping onto a workbench with an existing structural mapping produces a frontmatter-destination mapping; buildRecipe() does not throw', () => {
+		const wb = makeWorkbench(attackRows());
+		const before = wb.getMapping().mappings.length;
+		expect(before).toBeGreaterThan(0); // the technique_id hierarchy is already structural
+
+		(wb as unknown as { addManualMapping: (c: string) => void }).addManualMapping('name');
+
+		const mapping = wb.getMapping();
+		expect(mapping.mappings.length).toBe(before + 1);
+		const added = mapping.mappings[mapping.mappings.length - 1];
+		expect(added.levels).toHaveLength(1);
+		// A frontmatter property, NOT a second {primitive:'name'} structural
+		// destination — the natural "route this column" action when structure
+		// is already spoken for.
+		expect(added.levels[0].destinations).toEqual([{ primitive: 'property', key: 'name' }]);
+		expect(() => wb.buildRecipe()).not.toThrow();
+	});
+
+	it('addManualMapping still seeds a structural {primitive:"name"} destination when NO structural mapping exists yet', () => {
+		// Zero columns → detectStructure finds nothing → instantiate() leaves the
+		// matrix empty (the "defaults law" fallback only fires when at least one
+		// detection exists — see instantiate.ts), so there is nothing structural
+		// to collide with.
+		const parsedData: ParsedData = { columns: [], rows: [], rowCount: 0 };
+		const wb = new MappingWorkbench({
+			parsedData,
+			columnInfos: [],
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			onChange: () => {},
+		});
+		expect(wb.getMapping().mappings).toEqual([]);
+
+		(wb as unknown as { addManualMapping: (c: string) => void }).addManualMapping('note');
+
+		const added = wb.getMapping().mappings[0];
+		expect(added.levels[0].destinations).toEqual([{ primitive: 'name' }]);
+	});
+
+	it('computePreview() surfaces a forced two-structural-mapping state as previewError instead of a silent null (B2)', () => {
+		const wb = makeWorkbench(attackRows());
+		const mapping = wb.getMapping();
+		expect(mapping.mappings.length).toBeGreaterThan(0);
+
+		// Force the state the UI can no longer reach on its own after the B6 fix
+		// (a hand-authored or mis-merged mapping could still slip past it) —
+		// direct model manipulation, per the review's own reproduction method.
+		const forced: ImportMapping = {
+			...mapping,
+			mappings: [
+				...mapping.mappings,
+				{
+					levels: [
+						{
+							level: 'name2',
+							source: { column: 'name' },
+							destinations: [{ primitive: 'name' }],
+							naming: 'part',
+							missing: 'skip',
+							materialize: false,
+						},
+					],
+				},
+			],
+		};
+		(wb as unknown as { mapping: ImportMapping }).mapping = forced;
+
+		expect(wb.getPreviewError()).toBeNull(); // nothing has attempted a build yet
+		expect(wb.computePreview()).toBeNull();
+		expect(wb.getPreviewError()).toMatch(/one recipe supports exactly one structural mapping/);
+	});
+});
+
 describe('MappingWorkbench draft rehydration (spec §7i)', () => {
 	// A deliberately minimal mapping, distinct from what browsable-framework would
 	// instantiate over attackRows (which adds folder/tag/link destinations). If the
@@ -171,6 +259,108 @@ describe('MappingWorkbench draft rehydration (spec §7i)', () => {
 });
 
 // ============================================================================
+// B3 (2026-07-12): reinstantiate() must not discard the user's live
+// in-session enrichment choices or hand-added mappings. `reinstantiate()` is
+// private (fired internally by an evidence dismiss/use or a preset switch) —
+// these tests reach it the same way the existing "Folder note" placement test
+// above reaches `updateEnrichment`: a narrow private-method cast, matching
+// this file's established convention for driving production write paths
+// without mounting the DOM.
+// ============================================================================
+describe('MappingWorkbench reinstantiate() carries the user\'s live choices forward (B3)', () => {
+	type PrivateWorkbench = {
+		updateEnrichment: (p: { parent_note?: 'sibling' | 'folder-note' }) => void;
+		dismissed: Set<string>;
+		presetId: string;
+		reinstantiate: () => void;
+		addManualMapping: (column: string) => void;
+	};
+
+	function attackWorkbench(overrides: Partial<WorkbenchOptions> = {}): MappingWorkbench {
+		const rows = attackRows();
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		return new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			onChange: () => {},
+			...overrides,
+		});
+	}
+
+	it('parent_note survives an evidence dismiss (the "In use"/"Dismiss" evidence-card buttons call reinstantiate())', () => {
+		const wb = attackWorkbench();
+		const priv = wb as unknown as PrivateWorkbench;
+		priv.updateEnrichment({ parent_note: 'folder-note' });
+		expect(wb.getMapping().enrichment?.parent_note).toBe('folder-note');
+
+		// Dismissing the tactic facet-candidate is exactly what clicking
+		// "Dismiss" on that evidence card does (workbench.ts's dismiss button
+		// handler: `this.dismissed.add(key); this.reinstantiate();`).
+		priv.dismissed.add('facet-candidate:tactic');
+		priv.reinstantiate();
+
+		expect(wb.getMapping().enrichment?.parent_note).toBe('folder-note');
+	});
+
+	it('parent_note survives a preset switch (the preset dropdown\'s change handler calls reinstantiate())', () => {
+		const wb = attackWorkbench();
+		const priv = wb as unknown as PrivateWorkbench;
+		priv.updateEnrichment({ parent_note: 'folder-note' });
+		expect(wb.getMapping().enrichment?.parent_note).toBe('folder-note');
+
+		priv.presetId = 'deep-everything';
+		priv.reinstantiate();
+
+		expect(wb.getMapping().enrichment?.parent_note).toBe('folder-note');
+	});
+
+	it('the user\'s in-session enrichment choice outranks a vault default on reinstantiate', () => {
+		const wb = attackWorkbench({ vaultDefaults: { parent_note: 'sibling' } });
+		// The vault default applied on the fresh instantiation.
+		expect(wb.getMapping().enrichment?.parent_note).toBe('sibling');
+
+		const priv = wb as unknown as PrivateWorkbench;
+		priv.updateEnrichment({ parent_note: 'folder-note' });
+		expect(wb.getMapping().enrichment?.parent_note).toBe('folder-note');
+
+		// A preset switch re-applies the vault-defaults overlay first, then the
+		// user's own prior choice on top — the user's live choice must win.
+		priv.presetId = 'flat-and-linked';
+		priv.reinstantiate();
+
+		expect(wb.getMapping().enrichment?.parent_note).toBe('folder-note');
+	});
+
+	it('a hand-added mapping (addManualMapping) survives reinstantiate(), unlike an auto-detected one', () => {
+		const wb = attackWorkbench();
+		const priv = wb as unknown as PrivateWorkbench;
+		const before = wb.getMapping().mappings.length;
+
+		// "description" is already a body-candidate column, not a fresh manual
+		// add target, so use a column that isn't already structurally mapped —
+		// any column works since addManualMapping never inspects existing
+		// destinations before appending.
+		priv.addManualMapping('name');
+		expect(wb.getMapping().mappings.length).toBe(before + 1);
+
+		priv.presetId = 'deep-everything';
+		priv.reinstantiate();
+
+		// The hand-added "name" mapping is still present (carried forward);
+		// deep-everything's own instantiation over detections doesn't produce
+		// an equivalent single-level name-only mapping for "name" on its own.
+		const stillPresent = wb.getMapping().mappings.some(
+			(m) => m.levels.length === 1 && m.levels[0].level === 'name' && m.levels[0].source && 'column' in m.levels[0].source && (m.levels[0].source as { column: string }).column === 'name',
+		);
+		expect(stillPresent).toBe(true);
+	});
+});
+
+// ============================================================================
 // Vault-level Connections defaults (settings § Connections,
 // `CrosswalkerSettings.defaultEnrichment`). Precedence chain (highest to
 // lowest): recognized built-in configuration / a resumed draft or saved
@@ -196,14 +386,20 @@ describe('MappingWorkbench vault-default Connections overlay (precedence chain)'
 		});
 	}
 
-	it('with no vault defaults, the preset\'s own enrichment defaults apply unchanged', () => {
+	it('with no vault defaults, the preset\'s own enrichment defaults apply unchanged (M3: parent_note is NOT one of them)', () => {
+		// M3 (2026-07-12): PRESET_ENRICHMENT_DEFAULTS no longer hardcodes
+		// parent_note: 'sibling' — the field stays unset here so the adaptive
+		// folder-note default (preferredParentNote()) actually gets a say when
+		// a defaultParentNote is supplied (see the adaptive-detection tests
+		// below). No defaultParentNote is passed in this helper, so parent_note
+		// stays absent entirely.
 		const wb = browsableWorkbench();
 		expect(wb.getMapping().enrichment).toEqual({
 			children_lists: true,
 			facet_notes: 'notes',
-			parent_note: 'sibling',
 			level_hubs: 'notes',
 		});
+		expect(wb.getMapping().enrichment?.parent_note).toBeUndefined();
 	});
 
 	it('an empty vaultDefaults object changes nothing (same as omitting it)', () => {
@@ -211,7 +407,6 @@ describe('MappingWorkbench vault-default Connections overlay (precedence chain)'
 		expect(wb.getMapping().enrichment).toEqual({
 			children_lists: true,
 			facet_notes: 'notes',
-			parent_note: 'sibling',
 			level_hubs: 'notes',
 		});
 	});
@@ -233,9 +428,12 @@ describe('MappingWorkbench vault-default Connections overlay (precedence chain)'
 		expect(wb.getMapping().enrichment).toEqual({
 			children_lists: true,
 			facet_notes: 'notes',
-			parent_note: 'sibling',
 			level_hubs: 'none', // the only overridden key
 		});
+		// M3: neither the preset nor this vault default sets parent_note, and no
+		// defaultParentNote is supplied — it stays absent (no adaptive fallback
+		// to run without one).
+		expect(wb.getMapping().enrichment?.parent_note).toBeUndefined();
 	});
 
 	it('vault defaults never apply when initialMapping is supplied (a resumed draft or recognized recipe outranks vault defaults)', () => {
@@ -286,6 +484,55 @@ describe('MappingWorkbench vault-default Connections overlay (precedence chain)'
 			onChange: () => {},
 		});
 		expect(wb.getMapping().enrichment).toEqual({ parent_note: 'sibling' });
+	});
+});
+
+// ============================================================================
+// M3 (2026-07-12): PRESET_ENRICHMENT_DEFAULTS no longer hardcodes
+// parent_note: 'sibling' on every built-in preset — that out-voted the
+// documented "folder-note is the default outright" decision
+// (`preferredParentNote()`, view-model.ts) on every fresh import, since
+// `applyDefaultsOverlay()` only falls back to the adaptive default when the
+// preset left `parent_note` unset. These pin the fixed precedence chain:
+// preset defaults no longer carry an opinion > vault default (when set) >
+// adaptive folder-note detection (when a vault default did NOT set it).
+// ============================================================================
+describe('M3: preset enrichment defaults no longer hardcode parent_note', () => {
+	function workbenchWithPreset(presetId: string, overrides: Partial<WorkbenchOptions> = {}): MappingWorkbench {
+		const rows = attackRows();
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		return new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: presetId,
+			onChange: () => {},
+			...overrides,
+		});
+	}
+
+	it('every built-in preset leaves parent_note unset on a fresh instantiation (the dead-code guard now actually fires)', () => {
+		for (const presetId of Object.keys(BUILT_IN_PRESETS)) {
+			const wb = workbenchWithPreset(presetId);
+			expect(wb.getMapping().enrichment?.parent_note).toBeUndefined();
+		}
+	});
+
+	it('a fresh workbench with no vault default resolves parent_note via the adaptive folder-note path', () => {
+		const wb = workbenchWithPreset('browsable-framework', {
+			defaultParentNote: { value: 'folder-note', reason: 'test adaptive default' },
+		});
+		expect(wb.getMapping().enrichment?.parent_note).toBe('folder-note');
+	});
+
+	it('a fresh workbench with an explicit vault default of sibling resolves parent_note to sibling', () => {
+		const wb = workbenchWithPreset('browsable-framework', {
+			vaultDefaults: { parent_note: 'sibling' },
+			defaultParentNote: { value: 'folder-note', reason: 'should be out-voted by the vault default' },
+		});
+		expect(wb.getMapping().enrichment?.parent_note).toBe('sibling');
 	});
 });
 
@@ -365,10 +612,11 @@ describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
 
 	it('sanity: instantiate() DOES stamp enrichment onto the mapping (not the bug)', () => {
 		const wb = reproWorkbench();
+		// M3 (2026-07-12): parent_note is no longer one of browsable-framework's
+		// hardcoded enrichment defaults — see the M3 describe block below.
 		expect(wb.getMapping().enrichment).toEqual({
 			children_lists: true,
 			facet_notes: 'notes',
-			parent_note: 'sibling',
 			level_hubs: 'notes',
 		});
 	});
@@ -400,7 +648,6 @@ describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
 		expect(recipe.target.enrichment).toEqual({
 			children_lists: true,
 			facet_notes: 'notes',
-			parent_note: 'sibling',
 			level_hubs: 'notes',
 		});
 	});
@@ -569,6 +816,68 @@ describe('MappingWorkbench recognized-recipe seed (spec §7m)', () => {
 		const wb = makeWorkbench(attackRows());
 		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed ?? {};
 		expect(Object.keys(managed)).toContain('name');
+	});
+});
+
+// ============================================================================
+// M9 (2026-07-12): toggling the Tags shape card off didn't reconcile
+// `enrichment.facet_notes` — turning off the last tag-emitting destination
+// left the Connections card's "Create hub notes for" select showing a stale
+// value with nothing left to group by. `toggleShapeCard` is the private
+// method both the checkbox and the whole-card click handler call.
+// ============================================================================
+describe('M9: the Tags shape-card toggle reconciles enrichment.facet_notes', () => {
+	/** Locates the facet mapping by its SOURCE column (stable across a toggle
+	 *  off — the mapping stays in place with an empty destinations array,
+	 *  unlike locating it by "currently has a tag destination", which breaks
+	 *  the moment the card is off). */
+	function toggleTagCard(wb: MappingWorkbench, column: string, on: boolean): void {
+		const mapping = wb.getMapping();
+		const mi = mapping.mappings.findIndex((m) =>
+			m.levels.some((l) => {
+				const ref = toSourceRefs(l.source)[0];
+				return !isConstantRef(ref) && ref.column === column;
+			}),
+		);
+		expect(mi).toBeGreaterThanOrEqual(0);
+		(wb as unknown as {
+			toggleShapeCard: (mi: number, m: StructureMapping, primitive: 'tag', on: boolean) => void;
+		}).toggleShapeCard(mi, mapping.mappings[mi], 'tag', on);
+	}
+
+	it('turning off the last tag-emitting destination clears an orphaned "hub notes" selection', () => {
+		const wb = makeWorkbench(attackRows());
+		// browsable-framework already turns Tags on for the tactic facet and
+		// defaults facet_notes to 'notes' (M3 tests above pin this baseline).
+		expect(wb.getMapping().enrichment?.facet_notes).toBe('notes');
+		expect(facetTagColumns(wb.getMapping())).toEqual(['tactic']);
+
+		toggleTagCard(wb, 'tactic', false);
+
+		expect(facetTagColumns(wb.getMapping())).toEqual([]);
+		expect(wb.getMapping().enrichment?.facet_notes).toBe('none');
+	});
+
+	it('leaves facet_notes untouched when it was already "none" (nothing orphaned to reconcile)', () => {
+		const wb = makeWorkbench(attackRows());
+		(wb as unknown as { updateEnrichment: (p: { facet_notes: string }) => void })
+			.updateEnrichment({ facet_notes: 'none' });
+		expect(wb.getMapping().enrichment?.facet_notes).toBe('none');
+
+		toggleTagCard(wb, 'tactic', false);
+
+		expect(wb.getMapping().enrichment?.facet_notes).toBe('none');
+	});
+
+	it('turning Tags back on does not itself restore facet_notes (only the toggle-off reconciles; re-enabling is a separate user choice)', () => {
+		const wb = makeWorkbench(attackRows());
+		toggleTagCard(wb, 'tactic', false);
+		expect(wb.getMapping().enrichment?.facet_notes).toBe('none');
+
+		toggleTagCard(wb, 'tactic', true);
+
+		expect(facetTagColumns(wb.getMapping())).toEqual(['tactic']);
+		expect(wb.getMapping().enrichment?.facet_notes).toBe('none');
 	});
 });
 

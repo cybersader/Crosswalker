@@ -167,12 +167,20 @@ export const BUILT_IN_PRESETS: Record<BuiltInPresetId, Preset> = {
  * audit gap #1): browsable-framework also defaults `level_hubs: 'notes'` —
  * every folder level gets an index/MOC note, closing the "no Home/MOC
  * concept" gap.
+ *
+ * `parent_note` deliberately has NO entry here (M3, 2026-07-12): a hardcoded
+ * `'sibling'` on every built-in preset out-voted the documented "folder-note
+ * is the default outright" decision (`preferredParentNote()`, view-model.ts)
+ * on every fresh import, since `MappingWorkbench.applyDefaultsOverlay()` only
+ * falls back to the adaptive default when the preset left `parent_note`
+ * unset. Leaving it out here lets the real precedence chain (vault default >
+ * the preset's own defaults > adaptive folder-note detection) actually run.
  */
 export const PRESET_ENRICHMENT_DEFAULTS: Record<BuiltInPresetId, Enrichment> = {
-	'browsable-framework': { children_lists: true, facet_notes: 'notes', parent_note: 'sibling', level_hubs: 'notes' },
-	'deep-everything': { children_lists: true, facet_notes: 'notes', parent_note: 'sibling' },
-	'flat-and-linked': { children_lists: true, facet_notes: 'tags-only', parent_note: 'sibling' },
-	'single-reference-file': { children_lists: false, facet_notes: 'none', parent_note: 'sibling' },
+	'browsable-framework': { children_lists: true, facet_notes: 'notes', level_hubs: 'notes' },
+	'deep-everything': { children_lists: true, facet_notes: 'notes' },
+	'flat-and-linked': { children_lists: true, facet_notes: 'tags-only' },
+	'single-reference-file': { children_lists: false, facet_notes: 'none' },
 };
 
 /** Enrichment defaults for a preset id (undefined for an unknown/custom preset). */

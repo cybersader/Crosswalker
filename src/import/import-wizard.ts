@@ -31,7 +31,7 @@ import {
 	resolveDraftSource,
 	type WizardDraft,
 } from './draft-store';
-import { MappingWorkbench, renderProvenanceBadge } from './workbench';
+import { MappingWorkbench, renderProvenanceBadge, type ColumnDest } from './workbench';
 import type { ImportMapping, Enrichment } from './mapping/types';
 import { buildShapeMapRecap, deriveDestinationDefault, preferredParentNote, detectWaypointPlugin, type Provenance } from './mapping/view-model';
 import { computePlan } from './mapping/plan';
@@ -177,6 +177,13 @@ export class ImportFlow {
 	 *  workbench (draft resume, spec §7i). Consumed once by renderStep2_Workbench,
 	 *  then cleared so later rebuilds re-instantiate from detections. */
 	private pendingWorkbenchMapping: ImportMapping | null = null;
+	/** M8: persisted "all columns" destination table awaiting rehydration,
+	 *  alongside `pendingWorkbenchMapping` — consumed together, once, by
+	 *  `renderStep2_Workbench`. */
+	private pendingColumnDests: Record<string, ColumnDest> | null = null;
+	/** M8: persisted dismissed evidence-card keys awaiting rehydration,
+	 *  alongside `pendingWorkbenchMapping`. */
+	private pendingDismissed: string[] | null = null;
 
 	/** A confidently-recognized bundled recipe for this source (spec §7m), or null. */
 	private recognizedMatch: RecipeMatch | null = null;
@@ -282,7 +289,16 @@ export class ImportFlow {
 	 * file is gone do we fall back to bumping the user to Step 1 to re-select it.
 	 *
 	 * The workbench shape mapping (beta) is rehydrated from `draft.workbenchMapping`
-	 * so shape decisions survive the round-trip instead of re-detecting from scratch.
+	 * so shape decisions survive the round-trip instead of re-detecting from scratch
+	 * — along with the demoted "all columns" table and dismissed-evidence keys
+	 * (M8, `draft.workbenchColumnDests`/`workbenchDismissed`).
+	 *
+	 * B5: also restores `recognizedFastPath`, so a draft saved from the
+	 * recognized-recipe fast path resumes back into workbench mode even when
+	 * `enableShapeWorkbench` is off (the setting's default) — see
+	 * `isWorkbenchMode()`, which additionally treats a restored
+	 * `pendingWorkbenchMapping` as authoritative on its own, so this stays
+	 * correct even for a pre-B5 draft that never persisted the flag.
 	 */
 	private async hydrateFromDraft(draft: WizardDraft): Promise<void> {
 		this.draftId = draft.id;
@@ -300,8 +316,14 @@ export class ImportFlow {
 		// Restored column decisions are authoritative — don't let a re-parse
 		// re-run the heuristic smart-defaults over them.
 		this.smartDefaultsApplied = true;
-		// Stash the persisted shape mapping for renderStep2_Workbench to consume.
+		// B5: restore which entry path produced this draft's mapping. Absent on
+		// a pre-B5 draft hydrates safely as false.
+		this.recognizedFastPath = draft.recognizedFastPath ?? false;
+		// Stash the persisted shape mapping (+ M8's columnDests/dismissed) for
+		// renderStep2_Workbench to consume.
 		this.pendingWorkbenchMapping = draft.workbenchMapping ?? null;
+		this.pendingColumnDests = draft.workbenchColumnDests ?? null;
+		this.pendingDismissed = draft.workbenchDismissed ?? null;
 		this.workbench = null;
 
 		// Re-attach applied config from settings if still present.
@@ -325,12 +347,16 @@ export class ImportFlow {
 					new Notice('Could not re-read the source file from the vault. Please re-select it to resume.', 8000);
 					this.currentStep = 1;
 					this.pendingWorkbenchMapping = null;
+					this.pendingColumnDests = null;
+					this.pendingDismissed = null;
 				}
 			} else {
 				// External OS-picker file (no vault path) or the file is gone.
 				new Notice('Source file needs to be re-selected to resume this draft. Your column configuration has been preserved.', 8000);
 				this.currentStep = 1;
 				this.pendingWorkbenchMapping = null;
+				this.pendingColumnDests = null;
+				this.pendingDismissed = null;
 			}
 		}
 
@@ -1101,9 +1127,25 @@ export class ImportFlow {
 	// Step 2: Configure Columns
 	// =========================================================================
 
-	/** Whether the beta shape workbench should drive step 2 (and feed 3/4). */
+	/**
+	 * Whether the beta shape workbench should drive step 2 (and feed 3/4).
+	 *
+	 * B5: also true once a workbench mapping is either constructed
+	 * (`this.workbench`) or awaiting construction from a resumed draft
+	 * (`this.pendingWorkbenchMapping`) — a draft carrying a workbench mapping
+	 * must reconstruct the workbench regardless of how `recognizedFastPath`
+	 * was (or wasn't) restored, since `enableShapeWorkbench` defaults false
+	 * and is the only OTHER way most users reach this mode. Once `this.
+	 * workbench` exists, mode stays sticky for the rest of the flow even
+	 * after `pendingWorkbenchMapping` is consumed and cleared.
+	 */
 	private isWorkbenchMode(): boolean {
-		return (this.plugin.settings.enableShapeWorkbench || this.recognizedFastPath) && !!this.parsedData;
+		return (
+			this.plugin.settings.enableShapeWorkbench
+			|| this.recognizedFastPath
+			|| this.pendingWorkbenchMapping !== null
+			|| !!this.workbench
+		) && !!this.parsedData;
 	}
 
 	renderStep2_ConfigureColumns(container: HTMLElement) {
@@ -1422,11 +1464,16 @@ export class ImportFlow {
 
 		const sig = this.parsedData.columns.join('|');
 		if (!this.workbench || this.workbench.columnsSignature() !== sig) {
-			// Draft resume (spec §7i): seed from the persisted mapping once, then
-			// clear it so a later column-signature change re-instantiates fresh.
+			// Draft resume (spec §7i, M8): seed from the persisted mapping +
+			// columnDests/dismissed once, then clear them so a later column-
+			// signature change re-instantiates fresh.
 			const initialMapping = this.pendingWorkbenchMapping ?? undefined;
+			const initialColumnDests = this.pendingColumnDests ?? undefined;
+			const initialDismissed = this.pendingDismissed ?? undefined;
 			this.pendingWorkbenchMapping = null;
-			this.workbench = this.makeWorkbench(initialMapping);
+			this.pendingColumnDests = null;
+			this.pendingDismissed = null;
+			this.workbench = this.makeWorkbench(initialMapping, true, initialColumnDests, initialDismissed);
 		}
 		this.workbench.render(container.createDiv());
 	}
@@ -1436,8 +1483,16 @@ export class ImportFlow {
 	 * the model directly (draft resume, or a recognized recipe via `fromRecipe`);
 	 * `seedColumnDefaults: false` keeps a recipe-seeded workbench emitting EXACTLY
 	 * the vetted recipe — no auto-added per-column properties (spec §7m).
+	 * `initialColumnDests`/`initialDismissed` restore the M8 draft-resume state
+	 * (the demoted "all columns" table + dismissed evidence keys); both are
+	 * `undefined` outside a draft resume.
 	 */
-	private makeWorkbench(initialMapping?: ImportMapping, seedColumnDefaults = true): MappingWorkbench {
+	private makeWorkbench(
+		initialMapping?: ImportMapping,
+		seedColumnDefaults = true,
+		initialColumnDests?: Record<string, ColumnDest>,
+		initialDismissed?: string[],
+	): MappingWorkbench {
 		// Adaptive placement default: a vault running a folder-notes plugin has
 		// already chosen how parents should live — match it (pure helper over
 		// the enabled community-plugin ids).
@@ -1451,6 +1506,8 @@ export class ImportFlow {
 			defaultPresetId: 'browsable-framework',
 			initialMapping,
 			seedColumnDefaults,
+			initialColumnDests,
+			initialDismissed,
 			defaultParentNote: preferredParentNote(enabled),
 			waypointDetected: detectWaypointPlugin(enabled),
 			// Vault-level Connections defaults (settings § Connections). Ignored by
@@ -1533,8 +1590,14 @@ export class ImportFlow {
 		stat('folder', folders, 'folders (in sample)');
 		stat('link', links, 'links (in sample)');
 
-		// (d) Deviation banner.
-		if (preview && preview.perRow.length) {
+		// (d) Deviation banner — or a BLOCKING preview-build error (B2). Step 3 is
+		// the trust checkpoint; a mapping that can't actually generate (most
+		// commonly the single-structural-mapping guard tripping) must never read
+		// as a clean 0-deviation state here.
+		const previewError = this.workbench.getPreviewError();
+		if (previewError) {
+			this.renderPreviewErrorBanner(container, previewError);
+		} else if (preview && preview.perRow.length) {
 			this.renderDeviationBanner(container, preview.perRow, preview.total);
 		}
 
@@ -1937,9 +2000,20 @@ export class ImportFlow {
 			outputPath: this.outputPath,
 			overwriteMode: this.overwriteMode,
 			frameworkId: this.frameworkId,
+			// B5: which entry path produced this draft's mapping (see
+			// hydrateFromDraft's / isWorkbenchMode's doc comments).
+			recognizedFastPath: this.recognizedFastPath,
 			// Persist the shape mapping when the workbench is active so resume can
-			// rehydrate the shape decisions instead of re-detecting (spec §7i).
-			...(this.workbench ? { workbenchMapping: this.workbench.getMapping() } : {}),
+			// rehydrate the shape decisions instead of re-detecting (spec §7i) —
+			// along with the demoted "all columns" table + dismissed evidence keys
+			// (M8), so a manual column routing / a dismissal both survive resume.
+			...(this.workbench
+				? {
+					workbenchMapping: this.workbench.getMapping(),
+					workbenchColumnDests: this.workbench.getColumnDests(),
+					workbenchDismissed: this.workbench.getDismissed(),
+				}
+				: {}),
 			appliedConfigId: this.appliedConfig?.id ?? null,
 		};
 	}
@@ -2064,6 +2138,20 @@ export class ImportFlow {
 		});
 
 		return { perRow, totalSourceRows: this.parsedData.rowCount ?? rows.length };
+	}
+
+	/**
+	 * Blocking preview-build error (B2): `MappingWorkbench.computePreview()`
+	 * caught a throw from `buildRecipe()` — most commonly the single-
+	 * structural-mapping guard (`assertSingleStructural`, serialize.ts).
+	 * Generate will fail with this same message until the mapping is fixed, so
+	 * step 3 surfaces it as a visible, unmissable banner rather than the
+	 * silent "0 deviations" a swallowed null would otherwise read as.
+	 */
+	private renderPreviewErrorBanner(container: HTMLElement, message: string): void {
+		const banner = container.createEl('div', { cls: 'crosswalker-render-banner is-warning' });
+		setIcon(banner.createSpan({ cls: 'crosswalker-wb-ico crosswalker-render-banner-icon' }), 'alert-triangle');
+		banner.createEl('span', { text: `Can't generate: ${message}`, cls: 'crosswalker-render-banner-text' });
 	}
 
 	/** Summary banner + expandable per-row details for render() deviations. */
@@ -2922,9 +3010,16 @@ export class ImportFlow {
 			frameworkId: this.frameworkId || undefined,
 			configId: this.appliedConfig?.id,
 			sourceFileName: this.sourceFile?.name,
+			// `recipeOverride` is NOT built here (B2): `this.workbench.buildRecipe()`
+			// can throw (the single-structural-mapping guard, serialize.ts's
+			// `assertSingleStructural`) — building it as part of this object
+			// literal ran it OUTSIDE the try block below, so the throw became an
+			// unhandled rejection and Generate silently did nothing. It's set just
+			// before the `generateNotes` call, inside the try, so the existing
+			// catch block's Notice + isGenerating reset handles it like any other
+			// generation failure.
 			...(workbenchMode && this.workbench
 				? {
-					recipeOverride: this.workbench.buildRecipe(),
 					// Mapping-driven facet memberships so Pass 1.5 enrichment materializes
 					// facet hub notes with ORIGINAL-case names ("Access Control", not the
 					// tagsafe "access-control"). Reads straight off the workbench mapping —
@@ -2961,6 +3056,14 @@ export class ImportFlow {
 		this.renderStep();
 
 		try {
+			// B2: build the workbench recipe here, inside the try, so the
+			// single-structural-mapping guard's throw (already a user-quality
+			// message) is caught by the catch block below like any other
+			// generation failure, instead of surfacing as a silent no-op.
+			if (workbenchMode && this.workbench) {
+				options.recipeOverride = this.workbench.buildRecipe();
+			}
+
 			// Run generation
 			const result = await generateNotes(
 				this.app,
