@@ -660,7 +660,7 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 			cls: 'crosswalker-wb-placement-reason',
 			text: current
 				? 'This vault default overrides whatever the preset would otherwise choose.'
-				: `Not set — imports use the preset's own placement (currently ${adaptiveLabel} by default).`,
+				: `Not set. Imports use the preset's own placement (currently ${adaptiveLabel} by default).`,
 		});
 
 		const trees = buildParentPlacementPreview(PLACEMENT_PREVIEW_SAMPLE);

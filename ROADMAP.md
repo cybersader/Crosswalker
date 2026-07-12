@@ -45,7 +45,7 @@ Mirrors the docs [milestone status snapshot](https://cybersader.github.io/crossw
 - [x] v0.1.4.5 — Streaming refactor (2026-05-05)
 - [x] v0.1.5 — Tier 2 sqlite-wasm sidecar projector (2026-05-06)
 - [ ] **v0.1.6 — Bases query layer + SSSOM import + recipe UX** — 🚧 in progress. Phases 1–6.4 (Bases pivot view, SSSOM import, primitives, ingestion-corpus sprint) shipped through 2026-06-12. A concurrent **shape-workbench side-arc** (2026-07-05 → 2026-07-11, tracked as Phase 7) then landed inside this milestone's window. Full architectural record: [shape-workbench synthesis log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/). Delivery detail for both Phase 6.4 and Phase 7 lives in `CHANGELOG.md` `[Unreleased]`, not restated here (per the [docs anti-duplication convention](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-docs-sync-and-anti-duplication-convention/)). v0.1.7 is next.
-- [ ] v0.1.7 — Exporters (STRM TSV / OSCAL JSON) — planning
+- [ ] v0.1.7 — Exporters (STRM TSV / OSCAL JSON) — 🚧 in progress (first slice landed 2026-07-12: exporter engine + SSSOM round-trip + two palette commands; detail in `CHANGELOG.md` `[Unreleased]`)
 - [ ] v0.1.8 — Audit trail T1 default — planning
 - [ ] v0.1-RC — Bundle, polish, ship — planning
 

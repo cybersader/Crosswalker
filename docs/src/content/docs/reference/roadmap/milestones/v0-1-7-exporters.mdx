@@ -15,7 +15,7 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 
 ## Status
 
-📋 Planning
+🚧 In progress (started 2026-07-12) — first slice landed: exporter engine + two palette commands. Delivery detail lives in `CHANGELOG.md` `[Unreleased]` ("Vault-wide connection defaults + export lands").
 
 ## Dependencies
 
@@ -27,6 +27,7 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 - STRM-shaped TSV exporter — produces NIST IR 8278A r1 OLIR template format; Excel-friendly
 - OSCAL JSON profile exporter — emits the `Control Mapping Model` shape; isomorphic to junction notes per [Ch 07 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)
 - SSSOM-flavored TSV (optional, opt-in) — for users who want to share crosswalks with the SSSOM academic ecosystem
+- CSV exporter — any generated framework folder back to a spreadsheet (scope addition, delivered 2026-07-12 ahead of plan)
 - Command palette entries: "Crosswalker: Export STRM TSV", "Export OSCAL profile", "Export SSSOM TSV"
 - Roundtrip test: STRM TSV → import → STRM TSV produces identical bytes (deterministic)
 
@@ -37,11 +38,11 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 
 ## Concrete tasks
 
-- [ ] STRM TSV exporter — `src/export/strm-tsv.ts`; reads from sidecar `mappings` table; emits NIST IR 8278A r1 OLIR template
-- [ ] OSCAL JSON profile exporter — `src/export/oscal-profile.ts`; emits `import` references + `merge` rules + crosswalk edges as `mapping` entries
-- [ ] SSSOM TSV exporter — `src/export/sssom-tsv.ts`; SSSOM mapping format with mandatory metadata header
-- [ ] Command-palette + settings UI — three commands; settings toggle for SSSOM (off by default since "zero GRC adoption" per [Ch 19](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/))
-- [ ] Round-trip tests — export → import → export; assert byte-identical
+- [x] SSSOM TSV exporter — shipped 2026-07-12 as `src/export/sssom-exporter.ts`, reading Tier 1 directly via `src/export/vault-reader.ts` (implementation delta from the sidecar-read plan above; vault is canonical, sidecar not required for export)
+- [x] Round-trip test (SSSOM) — import → export → import, edge sets deep-equal order-independent; the STRM byte-identical round-trip remains open
+- [ ] STRM TSV exporter — engine shipped + tested (`src/export/strm-tsv-exporter.ts`); command wiring pending
+- [ ] OSCAL JSON profile exporter — skeleton shipped (`imports` shell real); the stable OSCAL 1.1.x Profile schema has no mapping construct, so crosswalk-edge emission is explicitly not-implemented pending a target-shape decision (see the module's TODO table)
+- [ ] Command-palette + settings UI — two commands live ("Export folder as crosswalk mapping file", "Export folder as CSV"); STRM command + settings toggle for SSSOM pending (off by default since "zero GRC adoption" per [Ch 19](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/))
 - [ ] Validation — exports against published STRM / OSCAL / SSSOM JSON Schemas (not all are formal but where they exist)
 
 ## Success criteria

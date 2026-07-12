@@ -86,7 +86,7 @@ The canonical project KB is the docs site. For an agent new to the project:
 | [v0.1.4.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — Streaming refactor | ✅ Done (2026-05-05) |
 | [v0.1.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — Tier 2 sqlite-wasm sidecar | ✅ Done (2026-05-06) |
 | **[v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer + SSSOM + recipe UX** | 🚧 Phases 1–6.4 ✅ (incl. 2026-06-12 ingestion-corpus sprint + wizard XLSX/JSON parity); v0.1.7 next |
-| [v0.1.7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — Exporters (STRM/OSCAL/SSSOM) | 📋 Planning |
+| [v0.1.7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — Exporters (STRM/OSCAL/SSSOM) | 🚧 First slice landed 2026-07-12 (engine + SSSOM round-trip + 2 commands) |
 | [v0.1.8](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — Audit trail T1 default | 📋 Planning |
 | [v0.1-RC](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — Ship | 📋 Planning |
 
