@@ -1,0 +1,15 @@
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings/nist-csf-to-800-53")
+views:
+  - type: table
+    name: Mappings per CSF function
+    groupBy:
+      property: subject_group
+      direction: ASC
+    order:
+      - subject_id
+      - object_group
+      - object_id
+    summaries:
+      object_id: values.length

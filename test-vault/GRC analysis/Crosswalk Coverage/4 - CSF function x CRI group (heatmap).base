@@ -1,0 +1,29 @@
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings/nist-csf-to-cri")
+    - file.ext == "md"
+properties:
+  subject_id:
+    displayName: CSF concept
+  object_id:
+    displayName: CRI obligation
+  predicate_id:
+    displayName: STRM relation
+views:
+  - type: crosswalker-pivot
+    name: CSF function × CRI group
+    rowsBy: subject_group
+    colsBy: object_group
+    cellOp: count
+    empty: gap
+    heatmap: true
+    rowSort: asc
+    colSort: asc
+  - type: table
+    name: Edges (detail, with click-through)
+    order:
+      - subject_note
+      - predicate_id
+      - object_note
+      - subject_id
+      - object_id

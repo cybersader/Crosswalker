@@ -1,0 +1,11 @@
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings/nist-csf-to-800-53")
+    - subject_id == "nist-csf-2:ID.IM-02"
+views:
+  - type: table
+    name: ID.IM-02 → 800-53 controls (40)
+    order:
+      - object_id
+      - predicate_id
+      - match_confidence

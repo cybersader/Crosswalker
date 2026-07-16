@@ -1,0 +1,24 @@
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings/cri-to-800-53")
+    - file.ext == "md"
+    - predicate_id == "is_equivalent_to"
+properties:
+  subject_id:
+    displayName: 800-53 control
+  object_id:
+    displayName: CRI obligation
+  match_confidence:
+    displayName: Confidence
+views:
+  - type: table
+    name: Exact 1:1 crosswalks (is_equivalent_to)
+    groupBy:
+      property: subject_group
+      direction: ASC
+    order:
+      - subject_id
+      - object_id
+      - match_confidence
+    summaries:
+      object_id: values.length

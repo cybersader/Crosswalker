@@ -1,0 +1,64 @@
+filters:
+  and:
+    - file.inFolder("Frameworks/_licensed/CIS-v8")
+    - file.ext == "md"
+properties:
+  safeguard_id:
+    displayName: Safeguard
+  title:
+    displayName: Title
+  asset_class:
+    displayName: Asset class
+  security_function:
+    displayName: Function
+views:
+  - type: table
+    name: IG1 — essential cyber hygiene (56)
+    filters:
+      and:
+        - ig1 == "x"
+    groupBy:
+      property: control
+      direction: ASC
+    order:
+      - safeguard_id
+      - title
+      - asset_class
+      - security_function
+  - type: table
+    name: IG2 additions — beyond IG1 (74)
+    filters:
+      and:
+        - ig1 != "x"
+        - ig2 == "x"
+    groupBy:
+      property: control
+      direction: ASC
+    order:
+      - safeguard_id
+      - title
+      - asset_class
+      - security_function
+  - type: table
+    name: IG3-only — mature program (23)
+    filters:
+      and:
+        - ig2 != "x"
+        - ig3 == "x"
+    groupBy:
+      property: control
+      direction: ASC
+    order:
+      - safeguard_id
+      - title
+      - asset_class
+      - security_function
+  - type: table
+    name: All safeguards by NIST function
+    groupBy:
+      property: security_function
+      direction: ASC
+    order:
+      - safeguard_id
+      - title
+      - asset_class

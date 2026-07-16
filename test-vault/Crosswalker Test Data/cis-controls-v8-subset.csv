@@ -1,0 +1,13 @@
+id,title,family,parent,description
+CIS-1,Inventory and Control of Enterprise Assets,Basic,,Actively manage (inventory; track; correct) all enterprise assets connected to the infrastructure physically; virtually; remotely; and those within cloud environments
+CIS-1.1,Establish and Maintain Detailed Enterprise Asset Inventory,Basic,CIS-1,Establish and maintain an accurate; detailed; and up-to-date inventory of all enterprise assets with the potential to store or process data
+CIS-1.2,Address Unauthorized Assets,Basic,CIS-1,Ensure that a process exists to address unauthorized assets on a weekly basis
+CIS-2,Inventory and Control of Software Assets,Basic,,Actively manage (inventory; track; correct) all software (operating systems and applications) on the network
+CIS-2.1,Establish and Maintain a Software Inventory,Basic,CIS-2,Establish and maintain a detailed inventory of all licensed software installed on enterprise assets
+CIS-3,Data Protection,Basic,,Develop processes and technical controls to identify; classify; securely handle; retain; and dispose of data
+CIS-3.1,Establish and Maintain a Data Management Process,Basic,CIS-3,Establish and maintain a data management process — purpose; data classification; data handling; retention limits; disposal
+CIS-4,Secure Configuration of Enterprise Assets and Software,Basic,,Establish and maintain the secure configuration of enterprise assets and software
+CIS-4.1,Establish and Maintain a Secure Configuration Process,Basic,CIS-4,Establish and maintain a secure configuration process for enterprise assets and software
+CIS-5,Account Management,Basic,,Use processes and tools to assign and manage authorization to credentials for user accounts; including administrator accounts; as well as service accounts; to enterprise assets and software
+CIS-5.1,Establish and Maintain an Inventory of Accounts,Basic,CIS-5,Establish and maintain an inventory of all accounts managed in the enterprise — including both user and administrator accounts
+CIS-6,Access Control Management,Basic,,Use processes and tools to create; assign; manage; and revoke access credentials and privileges for user; administrator; and service accounts for enterprise assets and software

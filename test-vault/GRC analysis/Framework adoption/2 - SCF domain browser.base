@@ -1,0 +1,29 @@
+filters:
+  and:
+    - file.inFolder("Frameworks/_licensed/SCF")
+    - file.ext == "md"
+properties:
+  scf_id:
+    displayName: SCF control
+  title:
+    displayName: Control name
+  domain:
+    displayName: Domain
+views:
+  - type: table
+    name: All 1,468 controls by domain
+    groupBy:
+      property: domain
+      direction: ASC
+    order:
+      - scf_id
+      - title
+  - type: table
+    name: Identity & access slice
+    filters:
+      and:
+        - domain == "Identification & Authentication"
+    order:
+      - scf_id
+      - title
+      - description

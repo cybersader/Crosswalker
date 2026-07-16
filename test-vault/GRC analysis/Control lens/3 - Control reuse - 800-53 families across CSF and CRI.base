@@ -1,0 +1,38 @@
+summaries:
+  Filled: values.filter(!value.isType("null")).length
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings")
+    - file.ext == "md"
+formulas:
+  control_family: if(source_framework == "nist-csf-2", object_group, subject_group)
+  control_id: if(source_framework == "nist-csf-2", object_id, subject_id)
+  mapped_from: if(source_framework == "nist-csf-2", source_framework, target_framework)
+properties:
+  formula.control_family:
+    displayName: 800-53 family
+  formula.control_id:
+    displayName: 800-53 control
+  formula.mapped_from:
+    displayName: Mapped from
+  predicate_id:
+    displayName: STRM relation
+views:
+  - type: table
+    name: Reuse by 800-53 family
+    groupBy:
+      property: formula.control_family
+      direction: ASC
+    order:
+      - formula.control_id
+      - formula.mapped_from
+      - predicate_id
+    summaries:
+      formula.control_id: values.length
+  - type: table
+    name: All edges (normalized, ungrouped)
+    order:
+      - formula.control_family
+      - formula.control_id
+      - formula.mapped_from
+      - predicate_id

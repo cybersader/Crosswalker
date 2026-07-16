@@ -1,0 +1,26 @@
+id,title,function,category,parent,description
+GV,Govern,GOVERN,,,"The organization's cybersecurity risk management strategy, expectations, and policy are established, communicated, and monitored"
+GV.OC,Organizational Context,GOVERN,GV,GV,The circumstances surrounding the organization's cybersecurity risk management decisions are understood
+GV.OC-01,Organizational mission understood,GOVERN,GV.OC,GV.OC,The organizational mission is understood and informs cybersecurity risk management
+GV.OC-02,Internal and external stakeholders understood,GOVERN,GV.OC,GV.OC,"Internal and external stakeholders, and their needs and expectations regarding cybersecurity, are understood"
+GV.OC-03,Legal and regulatory requirements understood,GOVERN,GV.OC,GV.OC,"Legal, regulatory, and contractual requirements regarding cybersecurity are understood and managed"
+GV.OC-04,"Critical objectives, capabilities, and services understood",GOVERN,GV.OC,GV.OC,"Critical objectives, capabilities, and services that external stakeholders depend on or expect from the organization are understood"
+GV.OC-05,"Outcomes, capabilities, and services that the organization depends on understood",GOVERN,GV.OC,GV.OC,"Outcomes, capabilities, and services that the organization depends on are understood and communicated"
+GV.RM,Risk Management Strategy,GOVERN,GV,GV,"The organization's priorities, constraints, risk tolerance, and assumptions are established, communicated, and used to support operational risk decisions"
+GV.RM-01,Risk management objectives established,GOVERN,GV.RM,GV.RM,Risk management objectives are established and agreed to by organizational stakeholders
+GV.RM-02,Risk appetite and risk tolerance established,GOVERN,GV.RM,GV.RM,"Risk appetite and risk tolerance statements are established, communicated, and maintained"
+GV.RM-03,Cybersecurity risk management activities integrated,GOVERN,GV.RM,GV.RM,Cybersecurity risk management activities and outcomes are included in enterprise risk management processes
+GV.SC,Cybersecurity Supply Chain Risk Management,GOVERN,GV,GV,"Cyber supply chain risk management processes are identified, established, managed, monitored, and improved"
+GV.SC-01,Supply chain risk management program established,GOVERN,GV.SC,GV.SC,A cybersecurity supply chain risk management program is established by stakeholders
+GV.SC-02,Cybersecurity roles and responsibilities for suppliers established,GOVERN,GV.SC,GV.SC,Cybersecurity roles and responsibilities for suppliers and customers are established
+ID,Identify,IDENTIFY,,,The organization's current cybersecurity risks are understood
+ID.AM,Asset Management,IDENTIFY,ID,ID,"Assets — hardware, software, systems, facilities, services, people — that enable the organization to achieve business purposes are identified and managed"
+ID.AM-01,Hardware inventory maintained,IDENTIFY,ID.AM,ID.AM,Inventories of hardware managed by the organization are maintained
+ID.AM-02,Software inventory maintained,IDENTIFY,ID.AM,ID.AM,"Inventories of software, services, and systems managed by the organization are maintained"
+ID.AM-03,Network communication and data flows mapped,IDENTIFY,ID.AM,ID.AM,Representations of organizational authorized network communication and internal/external network data flows are maintained
+ID.AM-05,Asset prioritization,IDENTIFY,ID.AM,ID.AM,"Assets are prioritized based on classification, criticality, resources, and impact on the mission"
+ID.AM-07,Inventories of data and metadata,IDENTIFY,ID.AM,ID.AM,Inventories of data and corresponding metadata for designated data types are maintained
+ID.AM-08,Systems prioritization,IDENTIFY,ID.AM,ID.AM,"Systems are prioritized based on classification, criticality, resources, and impact on the mission"
+ID.RA,Risk Assessment,IDENTIFY,ID,ID,"The cybersecurity risk to the organization, assets, and individuals is understood by the organization"
+ID.RA-01,Vulnerabilities identified,IDENTIFY,ID.RA,ID.RA,"Vulnerabilities in assets are identified, validated, and recorded"
+ID.RA-02,Cyber threat intelligence received,IDENTIFY,ID.RA,ID.RA,Cyber threat intelligence is received from information sharing forums and sources

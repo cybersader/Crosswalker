@@ -1,0 +1,31 @@
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings")
+    - file.ext == "md"
+    - source_framework == "scf"
+properties:
+  subject_id:
+    displayName: SCF control
+  object_id:
+    displayName: Framework requirement
+  target_framework:
+    displayName: Framework
+views:
+  - type: crosswalker-pivot
+    name: SCF family × framework (the hub matrix)
+    rowsBy: subject_group
+    colsBy: target_framework
+    cellOp: count
+    empty: gap
+    heatmap: true
+    rowSort: asc
+    colSort: asc
+  - type: table
+    name: All hub edges (click through)
+    groupBy:
+      property: target_framework
+      direction: ASC
+    order:
+      - subject_note
+      - object_note
+      - object_id

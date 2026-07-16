@@ -1,0 +1,27 @@
+filters:
+  and:
+    - file.inFolder("_crosswalker/mappings")
+    - file.ext == "md"
+    - or:
+        - subject_id == "nist-800-53:AC-2"
+        - object_id == "nist-800-53:AC-2"
+properties:
+  subject_note:
+    displayName: From
+  object_note:
+    displayName: To
+  predicate_id:
+    displayName: STRM relation
+  source_framework:
+    displayName: Mapping set (subject)
+views:
+  - type: table
+    name: AC-2 — every requirement it touches, all crosswalks
+    groupBy:
+      property: source_framework
+      direction: ASC
+    order:
+      - subject_note
+      - predicate_id
+      - object_note
+      - match_confidence
