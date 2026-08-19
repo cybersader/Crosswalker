@@ -22,6 +22,13 @@ jobs:
         with:
           bun-version: latest
 
+      # Only check:frontmatter needs dependencies: it deliberately loads the same
+      # js-yaml that Astro uses, so it catches the strict-YAML errors check:mdx
+      # misses. The other checks are dependency-free.
+      - name: Install docs dependencies
+        working-directory: docs
+        run: bun install --frozen-lockfile
+
       - name: Personal data (paths, emails, denylist)
         run: bun run check:personal-data
 
