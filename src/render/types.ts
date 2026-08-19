@@ -105,6 +105,17 @@ export interface RenderReport {
  *
  * Per Ch 22 §3.1.
  */
+export interface RenderedBodyRegion {
+	/** Append emits content directly; section emits a heading before content. */
+	position: 'append' | 'section';
+	/** Fully rendered and formatted Markdown content. Generation never re-evaluates its template. */
+	content: string;
+	/** Literal section heading, present only for section regions. */
+	heading?: string;
+	/** Markdown heading depth, present only for section regions. */
+	headingDepth?: 1 | 2 | 3 | 4 | 5 | 6;
+}
+
 export interface Address {
 	/** Primary location — vault-relative path + optional heading anchor. */
 	primary: {
@@ -121,6 +132,8 @@ export interface Address {
 	tags: string[];
 	/** Aliases emitted into the note's `aliases` frontmatter array. */
 	aliases: string[];
+	/** Ordered, fully rendered recipe-managed body regions. */
+	body: RenderedBodyRegion[];
 	/**
 	 * Recipe-managed frontmatter — keys + interpolated values.
 	 * User-preserve frontmatter is merged in at write time, NOT here.

@@ -7,13 +7,20 @@
 /**
  * One entry of the recipe.target.layout array. Specifies how a single source level lands in the target vault. The layout array is ordered: outer source levels appear first, leaf-bearing entry appears last (typically mechanism: 'file' or 'heading' for the leaf-as-document case). Per Ch 22, the leaf entry MAY declare a `kind` to produce non-concept Tier 1 shapes (junction notes for evidence links, crosswalk edges for ontology mappings); intermediate entries treat `kind` as ignored. Default `kind` is 'concept'.
  */
-export type LayoutEntry = {
-	[k: string]: unknown;
-};
+export type LayoutEntry =
+	FolderLayoutEntry | FileLayoutEntry | HeadingLayoutEntry | TagLayoutEntry | WikilinkLayoutEntry;
 /**
  * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.
  */
 export type Template = string;
+/**
+ * Markdown heading depth (1-6, equivalent to # through ######). Required when mechanism is 'heading'. Ignored otherwise.
+ */
+export type LevelDepth = number;
+/**
+ * One ordered, recipe-managed body projection. Body is cross-cutting output, not a sixth layout mechanism. `table-row` and legacy transforms are intentionally excluded until a portable table/transform grammar exists.
+ */
+export type BodyProjectionEntry = AppendBodyProjection | SectionBodyProjection;
 /**
  * Optional declarative query block (additive in SchemaVer 1.1.0; per Ch 31 + Ch 36). Recipes WITHOUT `query:` continue to validate; recipes WITH `query:` declare what to query (axes, edges, aggregation) using the 8-verb Layer A primitive vocabulary (per Ch 29). The engine compiles the query+primitives to SQL recursive CTEs against the Tier 2 sqlite-wasm cache. Engine-neutral schema; runtime-portable to Cozo/Oxigraph/etc. JSONata is the only allowed string-expression language inside this block. See `$defs.query_block` for the full schema.
  */
@@ -107,8 +114,7 @@ export type GroupBy = FieldSelector | [FieldSelector, ...FieldSelector[]];
  * Built-in aggregation operators. Custom ops registered by Tier 2 helpers MUST start with 'x_'.
  */
 export type AggregationOp =
-	| ('count' | 'count_distinct' | 'sum' | 'avg' | 'min' | 'max' | 'density' | 'first' | 'last')
-	| string;
+	('count' | 'count_distinct' | 'sum' | 'avg' | 'min' | 'max' | 'density' | 'first' | 'last') | string;
 /**
  * A CURIE for a concept node (e.g. 'csf:GV.OC-01') OR a wildcard '*'.
  */
@@ -134,6 +140,7 @@ export interface CrosswalkerImportRecipe {
 	 * Recipe identifier. Stable across re-runs. Used in _crosswalker.recipe.id provenance. Examples: 'nist-80053r5-allfolders', 'iso27001-mostly-headings', 'mitre-attack-tag-driven'.
 	 */
 	recipe: string;
+	metadata?: RecipeDisplayMetadata;
 	/**
 	 * URI of the recipe spec this recipe conforms to. Optional in the recipe file (defaults to current spec); required when serializing a recipe for portability across producer ecosystems.
 	 */
@@ -143,6 +150,37 @@ export interface CrosswalkerImportRecipe {
 	query?: QueryBlock;
 }
 /**
+ * Optional artifact display metadata and structured ancestry. Application/session origin is intentionally not serialized here. This block is excluded from the effective target hash.
+ */
+export interface RecipeDisplayMetadata {
+	/**
+	 * Human-readable artifact title.
+	 */
+	title?: string;
+	/**
+	 * Human-readable artifact description.
+	 */
+	description?: string;
+	based_on?: RecipeAncestryReference;
+}
+/**
+ * Structured reference to the recipe this artifact was customized from. Unrelated to inferred or derived crosswalk mappings.
+ */
+export interface RecipeAncestryReference {
+	/**
+	 * Stable identifier of the ancestor recipe.
+	 */
+	recipe: string;
+	/**
+	 * Optional effective-target hash receipt for the ancestor recipe.
+	 */
+	hash?: string;
+	/**
+	 * Optional recipe-spec URI receipt for the ancestor recipe.
+	 */
+	spec_version?: 'https://crosswalker.dev/spec/recipe.schema.json';
+}
+/**
  * What ontology this recipe imports. Out-of-scope: where the source bytes come from (file path, URL) — that's the producer's input, not the recipe's concern.
  */
 export interface SourceDeclaration {
@@ -150,6 +188,10 @@ export interface SourceDeclaration {
 	 * Source ontology identifier. Convention: lowercase ASCII slug. Examples: 'nist-800-53-r5', 'iso27001', 'mitre-attack', 'cri-profile-2.0'.
 	 */
 	ontology: string;
+	/**
+	 * Compatibility declaration for the source ontology version. This is not proof of the selected source bytes. Verified run metadata remains authoritative; this declaration may be used only as an explicit fallback when no verified version is known. Excluded from the effective target hash.
+	 */
+	version?: string;
 	/**
 	 * Ordered sequence of source-level identifiers, outer to inner. The recipe.target.layout array must declare a layout_entry for each level (or fewer, if some levels are flattened by the layout). Examples for NIST 800-53 r5: ['catalog', 'family', 'control', 'enhancement']. For a biology taxonomy: ['domain', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species'].
 	 *
@@ -176,6 +218,98 @@ export interface TargetStructure {
 	 * Wikilink rendering style. 'absolute': always emit full-path form 'Folder/Sub/AC-2'; deterministic; hashable; what the canonical-state hash is computed against. 'shortest': downgrade to bare basename when unambiguous in the target vault; requires Pass 2 of render() with a VaultIndex; non-deterministic across users; deferred to v0.3.
 	 */
 	linkStyle?: 'absolute' | 'shortest';
+	enrichment?: BatchEnrichmentPass15;
+}
+export interface FolderLayoutEntry {
+	/**
+	 * Source-level identifier. Must match an entry in recipe.source.levels. Examples: 'catalog', 'family', 'control', 'enhancement', 'taxon'.
+	 */
+	level: string;
+	mechanism: 'folder';
+	template: Template;
+	level_depth?: LevelDepth;
+	/**
+	 * Tier 1 shape produced by this layout entry. 'concept' (default): standard concept-note (control/term/taxon/etc.); produces concept_note_frontmatter per spec/tier1.schema.json. 'junction-note': evidence-link triple (subject_concept, predicate, evidence_doc); 13-field schema. 'crosswalk-edge': between-ontology mapping; STRM predicate vocabulary + SSSOM-shaped envelope. Recipe authors typically declare `kind` on the leaf layout entry only — intermediate folder/heading entries leave it default.
+	 */
+	kind?: 'concept' | 'junction-note' | 'crosswalk-edge';
+	variadic?: VariadicFolderExpansion;
+}
+/**
+ * Variable-depth folder expansion for a folder layout entry. A fixed layout lists its folder levels ahead of time (one entry per level); ragged ids (e.g. ATT&CK 'T1055' vs 'T1055.011') carry a different number of pieces per row, so no fixed list fits every row. `variadic` explodes the entry's rendered scalar AFTER templating (templates stay scalar) into a variable number of folder levels. Valid ONLY on mechanism 'folder' (enforced by the layout_entry allOf if/then). Additive in SchemaVer 1.2.0; recipes without `variadic` continue to validate. Deterministic: segments derive only from the row's own value. Per the 2026-07-05 variadic-split design.
+ */
+export interface VariadicFolderExpansion {
+	/**
+	 * Delimiter the rendered scalar is split on. Example: '.' for ATT&CK technique ids ('T1055.011').
+	 */
+	delimiter: string;
+	/**
+	 * Folder-name shape per segment. 'prefix' (default): cumulative prefixes joined by the delimiter ('X.Y.Z' → 'X', 'X.Y') — globally-unique names, matches the CSF recipe convention. 'part': raw pieces ('X.Y.Z' → 'X', 'Y').
+	 */
+	segment?: 'prefix' | 'part';
+	/**
+	 * Drop the final piece before building folders (default true) — the leaf belongs to the file entry, which names it with the full id anyway.
+	 */
+	drop_last?: boolean;
+	/**
+	 * Safety cap on the number of folder levels produced.
+	 */
+	max_depth?: number;
+	/**
+	 * What to do when the split produces more than max_depth segments. 'truncate' (default): keep the first max_depth, record a deviation note (no data loss — the full id is in the filename). 'error': fail the render.
+	 */
+	on_overflow?: 'truncate' | 'error';
+}
+export interface FileLayoutEntry {
+	/**
+	 * Source-level identifier. Must match an entry in recipe.source.levels. Examples: 'catalog', 'family', 'control', 'enhancement', 'taxon'.
+	 */
+	level: string;
+	mechanism: 'file';
+	template: Template;
+	level_depth?: LevelDepth;
+	/**
+	 * Tier 1 shape produced by this layout entry. 'concept' (default): standard concept-note (control/term/taxon/etc.); produces concept_note_frontmatter per spec/tier1.schema.json. 'junction-note': evidence-link triple (subject_concept, predicate, evidence_doc); 13-field schema. 'crosswalk-edge': between-ontology mapping; STRM predicate vocabulary + SSSOM-shaped envelope. Recipe authors typically declare `kind` on the leaf layout entry only — intermediate folder/heading entries leave it default.
+	 */
+	kind?: 'concept' | 'junction-note' | 'crosswalk-edge';
+}
+export interface HeadingLayoutEntry {
+	/**
+	 * Source-level identifier. Must match an entry in recipe.source.levels. Examples: 'catalog', 'family', 'control', 'enhancement', 'taxon'.
+	 */
+	level: string;
+	mechanism: 'heading';
+	template: Template;
+	level_depth: LevelDepth;
+	/**
+	 * Tier 1 shape produced by this layout entry. 'concept' (default): standard concept-note (control/term/taxon/etc.); produces concept_note_frontmatter per spec/tier1.schema.json. 'junction-note': evidence-link triple (subject_concept, predicate, evidence_doc); 13-field schema. 'crosswalk-edge': between-ontology mapping; STRM predicate vocabulary + SSSOM-shaped envelope. Recipe authors typically declare `kind` on the leaf layout entry only — intermediate folder/heading entries leave it default.
+	 */
+	kind?: 'concept' | 'junction-note' | 'crosswalk-edge';
+}
+export interface TagLayoutEntry {
+	/**
+	 * Source-level identifier. Must match an entry in recipe.source.levels. Examples: 'catalog', 'family', 'control', 'enhancement', 'taxon'.
+	 */
+	level: string;
+	mechanism: 'tag';
+	template: Template;
+	level_depth?: LevelDepth;
+	/**
+	 * Tier 1 shape produced by this layout entry. 'concept' (default): standard concept-note (control/term/taxon/etc.); produces concept_note_frontmatter per spec/tier1.schema.json. 'junction-note': evidence-link triple (subject_concept, predicate, evidence_doc); 13-field schema. 'crosswalk-edge': between-ontology mapping; STRM predicate vocabulary + SSSOM-shaped envelope. Recipe authors typically declare `kind` on the leaf layout entry only — intermediate folder/heading entries leave it default.
+	 */
+	kind?: 'concept' | 'junction-note' | 'crosswalk-edge';
+}
+export interface WikilinkLayoutEntry {
+	/**
+	 * Source-level identifier. Must match an entry in recipe.source.levels. Examples: 'catalog', 'family', 'control', 'enhancement', 'taxon'.
+	 */
+	level: string;
+	mechanism: 'wikilink';
+	template: Template;
+	level_depth?: LevelDepth;
+	/**
+	 * Tier 1 shape produced by this layout entry. 'concept' (default): standard concept-note (control/term/taxon/etc.); produces concept_note_frontmatter per spec/tier1.schema.json. 'junction-note': evidence-link triple (subject_concept, predicate, evidence_doc); 13-field schema. 'crosswalk-edge': between-ontology mapping; STRM predicate vocabulary + SSSOM-shaped envelope. Recipe authors typically declare `kind` on the leaf layout entry only — intermediate folder/heading entries leave it default.
+	 */
+	kind?: 'concept' | 'junction-note' | 'crosswalk-edge';
 }
 /**
  * Repeated for every output note: tags, aliases, frontmatter the recipe writes alongside the layout. Default behavior: dual-emit (folder layout + parallel tags) per the SEACOW pattern + Ranganathan faceted-classification rationale (Ch 22 §4 + §9).
@@ -190,6 +324,12 @@ export interface CrossCuttingEmissionsParallelToLayout {
 	 */
 	aliases?: Template[];
 	frontmatter?: FrontmatterProjectionRules;
+	/**
+	 * Ordered recipe-managed body projections. Entries are evaluated by pure render() against row scope. Only append and section positions are portable in this schema version; workbench table-row output and legacy transforms are rejected rather than silently coerced or dropped.
+	 *
+	 * @minItems 1
+	 */
+	body?: [BodyProjectionEntry, ...BodyProjectionEntry[]];
 }
 /**
  * What frontmatter the recipe writes onto each output note, plus which keys it preserves on re-render. The managed/user_preserve split is load-bearing: managed keys are recipe-owned (overwritten on every re-render because they are projections of canonical source state); user_preserve keys are user-owned (never overwritten because they are user annotations introduced after the import).
@@ -202,9 +342,47 @@ export interface FrontmatterProjectionRules {
 		[k: string]: Template;
 	};
 	/**
+	 * Recipe-owned, list-valued managed wikilink arrays (additive SchemaVer 1.3.0). Each key maps to a template plus optional split delimiters; the rendered value is split on those delimiters, each non-empty piece is wrapped in [[...]], and the key is emitted as a YAML array of wikilink strings. Used for multi-value link columns (e.g. a 'Related Controls' cell 'AC-2, AC-3, PM-9' → related: ['[[AC-2]]', '[[AC-3]]', '[[PM-9]]']). Single-value links stay in `managed` as scalar '[[...]]' strings. Re-render regenerates the array wholesale (managed, not unioned). Recipes without this key validate unchanged.
+	 */
+	managed_links?: {
+		[k: string]: {
+			template: Template;
+			/**
+			 * Delimiters the rendered value is split on before wikilinking each piece. Default when omitted: comma and semicolon.
+			 */
+			split?: string[];
+		};
+	};
+	/**
 	 * User-owned frontmatter key patterns. Re-render preserves these untouched. Glob patterns ('*notes*') or exact keys ('reviewer', 'status', 'evidence_links'). Default if omitted: empty (no preservation).
 	 */
 	user_preserve?: string[];
+}
+export interface AppendBodyProjection {
+	template: Template;
+	/**
+	 * Append formatted content without a section heading. Omitted position defaults to append.
+	 */
+	position?: 'append';
+	format?: 'text' | 'code' | 'quote' | 'list';
+	/**
+	 * When true (default), omit the region if the rendered template is empty.
+	 */
+	omit_if_empty?: boolean;
+}
+export interface SectionBodyProjection {
+	template: Template;
+	position: 'section';
+	/**
+	 * Literal section heading text. Templated headings are not admitted in this schema version.
+	 */
+	heading: string;
+	heading_depth?: number;
+	format?: 'text' | 'code' | 'quote' | 'list';
+	/**
+	 * When false, an empty section still emits its heading.
+	 */
+	omit_if_empty?: boolean;
 }
 /**
  * One frontmatter-encoded relationship between two concepts. Used to express hierarchy or named relations as data (parent, enhances, partOf, instanceOf, crosswalksTo) rather than as folder structure. Semantically aligned with SKOS broader/narrower and ISO 25964 BTG/BTP/BTI. Schema-reserved in v0.1; wired in v0.2.
@@ -222,6 +400,35 @@ export interface GraphEdge {
 	 * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.
 	 */
 	to: string;
+}
+/**
+ * Optional batch-scope enrichment applied after every row renders (additive SchemaVer 1.3.0). render() stays pure and per-row; enrichment derives cross-row artifacts (children lists on parents, materialized facet hub notes) that no single row can know. Deterministic: same rows in → same vault out, with every derived list sorted by curie so input order never leaks. Recipes without this block emit no enrichment and validate unchanged. Per the 2026-07-10 batch-enrichment design.
+ */
+export interface BatchEnrichmentPass15 {
+	/**
+	 * When true, every parent note gains a managed `children` array of wikilinks to its direct children (derived from the same parent relation the parent link uses), sorted by child curie. Regenerated wholesale on re-import (fully managed, not unioned).
+	 */
+	children_lists?: boolean;
+	/**
+	 * How facet values materialize. 'none': nothing beyond the per-note facet tags. 'tags-only': facet tags only, no hub notes. 'notes': one synthetic hub note per facet value with a managed `members` list of its member notes (sorted by curie), a `kind: facet` discriminator, the facet tag, and an H1 body; user prose below the H1 survives re-import. Hub notes are emitted only for facet values with two or more members.
+	 */
+	facet_notes?: 'none' | 'tags-only' | 'notes';
+	/**
+	 * Where a concept that is also a parent of other concepts lives. 'sibling': the concept note sits beside its children's folder (X.md next to X/). 'folder-note': the concept note moves inside its own folder as X/X.md via the batch enrichment pass. Relocation is evidence-based (applies only to parents whose children actually nest under their own-named folder), re-import write targets resolve by curie so relocated parents never duplicate, and flipping back to 'sibling' relocates symmetrically. Streamed sources fall back to 'sibling' with a deviation note (relocation requires the eager batch).
+	 */
+	parent_note?: 'sibling' | 'folder-note';
+	/**
+	 * Optional vault-relative folder for materialized facet hub notes. When omitted, hub notes land at the output root beside the imported concepts.
+	 */
+	hub_note_folder?: string;
+	/**
+	 * Hierarchy hub/MOC index notes (additive SchemaVer 1.4.0, 2026-07-11 ICSB emitter-controls gap audit). 'none': no hierarchy index notes. 'notes': every folder level in the generated structure gets an index note derived from the model, never a filesystem scan. A folder whose own concept note already exists in the batch (sibling or folder-note shaped) HOSTS its index: that note gains a managed body 'Contents' section listing the folder's direct children. A folder with no such note (a pure structural grouping folder, or the per-import root) gets a brand-new hub note (`kind: 'hub'`) at `<folder>/<folder>.md`. Deterministic and re-import safe: the managed section is stripped and reappended by delimiter markers, same discipline as `facet_notes`.
+	 */
+	level_hubs?: 'none' | 'notes';
+	/**
+	 * Also append the `%% Waypoint %%` trigger comment to every folder-note/hub note this import generates (additive SchemaVer 1.4.0). Opt-in and additive to `level_hubs` — Crosswalker's own managed section stays the primary, always-on connectivity mechanism; this only lets the Waypoint community plugin additionally track notes a user later adds to that folder by hand. Idempotent across re-imports; never strips a `%% Begin Waypoint %%` block Waypoint itself has already expanded.
+	 */
+	waypoint_marker?: boolean;
 }
 export interface TablePrimitives {
 	from: OntologyRef;
@@ -241,7 +448,10 @@ export interface Join {
 	 * Join predicate, typically an edge type or shared field.
 	 */
 	on: string;
-	kind?: 'inner' | 'left' | 'right' | 'outer';
+	/**
+	 * Join semantics. 'inner' (default): only rows where both sides match. 'left'/'right': preserve all rows from one side; null-pad the other on no match. 'outer': preserve all rows from both sides (full-outer). 'anti': Layer A primitive #5 — LEFT rows with NO match in 'with' ('X without Y' / gap analysis). See join-primitives.ts runtime.
+	 */
+	kind?: 'inner' | 'left' | 'right' | 'outer' | 'anti';
 }
 export interface Projection {
 	field: FieldSelector;

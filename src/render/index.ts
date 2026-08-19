@@ -15,7 +15,8 @@
  */
 
 import type { ConceptIdentity, Address, RenderReport, VariadicConfig } from './types';
-import { renderTemplate, RenderError } from './template';
+import { renderTemplate, renderTemplateValue, RenderError } from './template';
+import { renderBodyProjection, type BodyProjection } from './body';
 import { applyFolder, applyVariadicFolder } from './mechanisms/folder';
 import { applyFile } from './mechanisms/file';
 import { applyHeading } from './mechanisms/heading';
@@ -27,12 +28,14 @@ export type {
 	ConceptIdentity,
 	SourceScope,
 	RenderNote,
+	RenderedBodyRegion,
 	RenderNoteCode,
 	RenderReport,
 	VariadicConfig,
 } from './types';
 export { RenderError } from './template';
-export { renderTemplate } from './template';
+export { renderTemplate, renderTemplateValue } from './template';
+export { formatBodyValue, renderBodyProjection, type BodyFormat, type BodyProjection } from './body';
 export {
 	summarizeRenderNotes,
 	DEFAULT_MAX_RENDER_NOTE_DETAILS,
@@ -50,7 +53,12 @@ export type Tier1Kind = 'concept' | 'junction-note' | 'crosswalk-edge';
 
 export interface Recipe {
 	recipe: string;
-	source?: { ontology?: string; levels?: string[] };
+	metadata?: {
+		title?: string;
+		description?: string;
+		based_on?: { recipe: string; hash?: string; spec_version?: string };
+	};
+	source?: { ontology?: string; version?: string; levels?: string[] };
 	target: {
 		layout: Array<{
 			level: string;
@@ -76,6 +84,8 @@ export interface Recipe {
 				managed_links?: Record<string, { template: string; split?: string[] }>;
 				user_preserve?: string[];
 			};
+			/** Ordered canonical body projections evaluated by pure render(). */
+			body?: BodyProjection[];
 		};
 		graph_edges?: Array<{ from: string; via: string; to: string }>;
 		linkStyle?: 'absolute' | 'shortest';
@@ -129,6 +139,7 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 		wikilinkTarget: '',
 		tags: [],
 		aliases: [],
+		body: [],
 		frontmatter: {},
 	};
 
@@ -190,7 +201,7 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 		}
 		if (alsoEmit.frontmatter?.managed) {
 			for (const [k, t] of Object.entries(alsoEmit.frontmatter.managed)) {
-				const v = renderTemplate(t, identity.scope, report);
+				const v = renderTemplateValue(t, identity.scope, report);
 				// Omit keys that render empty or as an empty wikilink target: a
 				// root concept has no parent, and emitting parent: "[[]]" puts a
 				// literal broken link on every root note (13 across the goldens
@@ -207,6 +218,12 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 				// Omit the key entirely when the cell is empty — an empty managed
 				// array would still overwrite a user's value on re-import.
 				if (links.length > 0) address.frontmatter[k] = links;
+			}
+		}
+		if (alsoEmit.body) {
+			for (const projection of alsoEmit.body) {
+				const region = renderBodyProjection(projection, identity.scope, report);
+				if (region) address.body.push(region);
 			}
 		}
 	}

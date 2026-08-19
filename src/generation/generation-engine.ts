@@ -24,7 +24,14 @@ import {
 	LinkMapping
 } from '../types/config';
 import { DebugLog } from '../utils/debug';
-import { render, RenderError, renderTemplate, type Recipe, type RenderReport } from '../render';
+import {
+	render,
+	RenderError,
+	renderTemplate,
+	type Recipe,
+	type RenderedBodyRegion,
+	type RenderReport,
+} from '../render';
 import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
@@ -522,7 +529,11 @@ export async function generateNotes(
 				await applyEnrichment(
 					app,
 					recipe,
-					{ basePath: options.basePath, sourceFileName: options.sourceFileName, sourceVersion: options.frameworkVersion },
+					{
+						basePath: options.basePath,
+						sourceFileName: options.sourceFileName,
+						sourceVersion: options.frameworkVersion ?? recipe.source?.version,
+					},
 					curiePrefix,
 					enrichRecords,
 					result,
@@ -692,10 +703,12 @@ function buildNoteDataViaRender(
 		if (aliases.length > 0) frontmatter.aliases = aliases;
 	}
 
-	// 5. Layer in link content + body content from the legacy column-role
-	//    logic. We delegate to buildNoteData but only use its frontmatter
-	//    additions (links → frontmatter location) and body string.
-	const legacy = buildNoteData(row, rowNum, mapping, options, '', []);
+	// 5. Layer in link content plus the legacy MappingConfig.body fallback.
+	// Canonical body declarations are evaluated only by render(); their presence
+	// suppresses legacy body-column projection rather than double-emitting it.
+	// Body-located link sections remain independent, preserving existing behavior.
+	const hasCanonicalBody = (recipe.target.also_emit?.body?.length ?? 0) > 0;
+	const legacy = buildNoteData(row, rowNum, mapping, options, '', [], !hasCanonicalBody);
 	for (const [k, v] of Object.entries(legacy.frontmatter)) {
 		// Skip _crosswalker — we'll write a fresh provenance block below.
 		// Skip keys already set by render's also_emit (managed wins).
@@ -710,7 +723,9 @@ function buildNoteDataViaRender(
 	//     text is the raw (unsanitized) leaf template value so an H1 reads
 	//     `# AC-2: Account management` even though the file is `AC-2- ....md`.
 	const titleText = mapping.filename?.template ? deriveTitleText(row, mapping, filenameStem) : '';
-	const body = composeDocumentBody(titleText, legacy.body);
+	const managedBody = renderedBodyRegionsToMarkdown(address.body);
+	const bodyContent = [managedBody, legacy.body].filter((part) => part.trim() !== '').join('\n\n');
+	const body = composeDocumentBody(titleText, bodyContent);
 
 	// 6. Always write a fresh _crosswalker provenance block per
 	//    spec/tier1.schema.json. Captures the source ref + producer +
@@ -722,8 +737,8 @@ function buildNoteDataViaRender(
 	frontmatter._crosswalker = buildProvenance(
 		{
 			sourceFile: options.sourceFileName,
-			sourceVersion: options.frameworkVersion,
-			recipeId: options.configId ?? recipe.recipe,
+			sourceVersion: options.frameworkVersion ?? recipe.source?.version,
+			recipeId: options.recipeOverride ? recipe.recipe : (options.configId ?? recipe.recipe),
 			recipeHash,
 			conceptCid: computeConceptCid({ curie, scope: row as Record<string, unknown> }),
 		},
@@ -799,6 +814,17 @@ function deriveTitleText(
 		}
 	}
 	return fallbackStem;
+}
+
+/** Convert pure render() body regions to Markdown without evaluating templates. */
+export function renderedBodyRegionsToMarkdown(regions: RenderedBodyRegion[]): string {
+	return regions
+		.map((region) => {
+			if (region.position === 'append') return region.content;
+			const heading = `${'#'.repeat(region.headingDepth ?? 2)} ${region.heading ?? ''}`;
+			return region.content === '' ? heading : `${heading}\n\n${region.content}`;
+		})
+		.join('\n\n');
 }
 
 /**
@@ -877,7 +903,8 @@ export function buildNoteData(
 	mapping: MappingConfig,
 	options: GenerationOptions,
 	importId: string,
-	allColumns: string[]
+	allColumns: string[],
+	includeBodyMappings = true,
 ): GeneratedNoteData {
 	const frontmatter: Record<string, any> = {};
 	const importedProperties: string[] = [];
@@ -972,8 +999,9 @@ export function buildNoteData(
 		}
 	}
 
-	// 5. Process body columns
-	if (mapping.body) {
+	// 5. Process legacy body columns only when no canonical also_emit.body block
+	// owns body output. Link sections above remain independent and still emit.
+	if (includeBodyMappings && mapping.body) {
 		for (const body of mapping.body) {
 			const value = row[body.column];
 			if (value !== undefined && value !== null && value !== '') {
@@ -1718,7 +1746,7 @@ export async function generateFromRecipe(
 			frontmatter._crosswalker = buildProvenance(
 				{
 					sourceFile: options.sourceFileName,
-					sourceVersion: options.sourceVersion,
+					sourceVersion: options.sourceVersion ?? recipe.source?.version,
 					recipeId: recipe.recipe,
 					recipeHash,
 					conceptCid: computeConceptCid({ curie, scope: row as Record<string, unknown> }),
@@ -1781,8 +1809,8 @@ export async function generateFromRecipe(
 				await ensureFolderOnce(parentPath);
 			}
 
-			// 9. Body — minimal default. Recipes can extend this in a future
-			//    milestone via `also_emit.body` or similar.
+			// 9. Body — deterministic H1 plus the canonical regions already
+			// evaluated by pure render(). Generation only assembles Markdown.
 			const body = buildDefaultBody(frontmatter, address);
 
 			// 10. Write
@@ -1820,7 +1848,16 @@ export async function generateFromRecipe(
 	// the same managed-merge path so re-imports stay idempotent + user-safe.
 	if (enrichmentEnabled && enrichRecords.length > 0) {
 		try {
-			await applyEnrichment(app, recipe, options, curiePrefix, enrichRecords, result, isStreamed, debug);
+			await applyEnrichment(
+				app,
+				recipe,
+				{ ...options, sourceVersion: options.sourceVersion ?? recipe.source?.version },
+				curiePrefix,
+				enrichRecords,
+				result,
+				isStreamed,
+				debug,
+			);
 		} catch (enrichErr) {
 			const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
 			result.warnings ??= [];
@@ -2096,17 +2133,14 @@ function stripFrontmatterBlock(text: string): string {
 	return afterFence === -1 ? '' : normalized.slice(afterFence + 1);
 }
 
-/**
- * Default body for native-recipe-rendered notes. Just a heading from title or
- * curie. Future: recipe authors will be able to declare a body template via
- * `also_emit.body`.
- */
+/** Default body for native-recipe-rendered notes: H1 plus rendered regions. */
 function buildDefaultBody(
 	frontmatter: Record<string, any>,
-	_address: ReturnType<typeof render>,
+	address: ReturnType<typeof render>,
 ): string {
 	const title = frontmatter.title ?? frontmatter.curie ?? 'Untitled';
-	return `# ${title}\n`;
+	const managedBody = renderedBodyRegionsToMarkdown(address.body);
+	return managedBody === '' ? `# ${title}\n` : `# ${title}\n\n${managedBody}\n`;
 }
 
 /**

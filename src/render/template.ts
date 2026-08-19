@@ -5,7 +5,7 @@
  * a `Function` primitive (Ch 20) which v0.1 doesn't ship.
  *
  * Closed filter set:
- *   lower, upper, title, slug, tagsafe, fs-safe, truncate(N)
+ *   lower, upper, title, slug, tagsafe, fs-safe, truncate(N), number
  *
  * Variable resolution: dotted path through `SourceScope`. `{control.id}` →
  * `scope.control.id`. Deep paths (`{a.b.c.d}`) work; missing intermediates
@@ -41,16 +41,30 @@ export class RenderError extends Error {
  */
 export function renderTemplate(template: string, scope: SourceScope, report?: RenderReport): string {
 	return template.replace(/\{([^{}]+)\}/g, (_match, expr) => {
-		return interpolate(expr, scope, template, report);
+		return String(evaluateExpression(expr, scope, template, report));
 	});
 }
 
-function interpolate(
+/**
+ * Render a managed scalar while preserving an explicitly requested primitive
+ * type. Mixed literal/interpolation templates remain strings; a template that
+ * is exactly one interpolation can return the raw result of its filter chain.
+ */
+export function renderTemplateValue(
+	template: string,
+	scope: SourceScope,
+	report?: RenderReport,
+): unknown {
+	const exact = /^\{([^{}]+)\}$/.exec(template);
+	return exact ? evaluateExpression(exact[1], scope, template, report) : renderTemplate(template, scope, report);
+}
+
+function evaluateExpression(
 	expr: string,
 	scope: SourceScope,
 	originalTemplate: string,
 	report?: RenderReport,
-): string {
+): unknown {
 	// Split into variable-path and filter pipeline: `var.path|filter1|filter2`
 	const parts = expr.split('|').map((s) => s.trim());
 	const varPath = parts[0];
@@ -63,7 +77,7 @@ function interpolate(
 		value = applyFilter(filterExpr, value, ctx);
 	}
 
-	return String(value);
+	return value;
 }
 
 function resolvePath(path: string, scope: SourceScope, originalTemplate: string): unknown {
@@ -131,6 +145,13 @@ const FILTERS: Record<string, (v: unknown, arg?: string, ctx?: FilterCtx) => unk
 		return s.length > n ? s.slice(0, n) : s;
 	},
 	trim: (v) => String(v).trim(),
+	number: (v) => {
+		const value = typeof v === 'number' ? v : Number(String(v).trim());
+		if (!Number.isFinite(value)) {
+			throw new RenderError(`number filter requires a finite numeric value; got "${String(v)}".`);
+		}
+		return value;
+	},
 	split: (v, arg, ctx) => {
 		// {var|split(<delim>,<index>)} — split on <delim>, return the n-th (0-based)
 		// segment, trimmed. For values that pack a code + name into one cell, e.g.

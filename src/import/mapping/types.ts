@@ -155,6 +155,8 @@ export type Destination =
 			namespace?: string;
 			/** Optional sibling-ordering hint within a polyhierarchy of tags. */
 			order?: number;
+			/** Internal canonical array position retained across workbench projection. */
+			canonicalOrder?: number;
 	  }
 	/** An intra-file heading. */
 	| {
@@ -179,6 +181,8 @@ export type Destination =
 			 * Undefined/false → a single-value scalar `[[…]]` in `managed`.
 			 */
 			list?: boolean;
+			/** Delimiters preserved from a canonical managed_links declaration. */
+			split?: string[];
 	  }
 	/** A plain queryable frontmatter field. */
 	| {
@@ -189,9 +193,20 @@ export type Destination =
 			list?: boolean;
 	  }
 	/** A note alias (`also_emit.aliases`). */
-	| { primitive: 'alias' }
-	/** Note body content. */
-	| { primitive: 'body'; position: BodyPosition };
+	| { primitive: 'alias'; canonicalOrder?: number }
+	/** Note body content. Canonical append/section details round-trip through recipe documents. */
+	| {
+			primitive: 'body';
+			position: BodyPosition;
+			heading?: string;
+			headingDepth?: 1 | 2 | 3 | 4 | 5 | 6;
+			format?: 'text' | 'code' | 'quote' | 'list';
+			omitIfEmpty?: boolean;
+			/** Legacy transforms have no portable recipe surface and block patching. */
+			transform?: string;
+			/** Internal canonical array position retained across workbench projection. */
+			canonicalOrder?: number;
+	  };
 
 /** Discriminant union of every destination primitive. */
 export type DestinationPrimitive = Destination['primitive'];
@@ -239,6 +254,8 @@ export interface LevelRule {
  * `delimiter` (see the module note).
  */
 export interface TailRule {
+	/** Canonical source-level id carried by the variadic layout entry. */
+	level?: string;
 	/** Source column(s) the variable-depth folders explode from. */
 	source: LevelSource;
 	/** Delimiter the rendered value is split on. */

@@ -20,7 +20,7 @@
           "object_group": "{object_group}",
           "source_framework": "{source_framework}",
           "target_framework": "{target_framework}",
-          "match_confidence": "{match_confidence}",
+          "match_confidence": "{match_confidence|number}",
           "mapping_justification": "{mapping_justification}",
           "mapping_provider": "{mapping_provider}",
           "sssom_predicate": "{sssom_predicate}"

@@ -75,7 +75,8 @@
  * Pure module: NO Obsidian imports, NO settings — the wizard composes the UI copy.
  */
 
-import { fromRecipe, type RecipeLike } from './mapping/serialize';
+import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
+import { canonicalToMapping } from './recipe-document';
 import type { ImportMapping } from './mapping/types';
 
 // Bundled import recipes — esbuild inlines these JSON modules into main.js.
@@ -93,19 +94,10 @@ import crosswalkEdge from '../../recipes/import/crosswalk-edge.json';
 /** The Tier 1 shape a recipe's leaf layout entry produces (spec §7's `layout_entry.kind`). */
 export type RegistryRoutingKind = 'concept' | 'junction-note' | 'crosswalk-edge';
 
-/**
- * A raw import recipe (structural subset). `fromRecipe` reads `target`; the extra
- * `recipe`/`source` fields carry the id + declared level names. Layout entries may
- * carry an optional `kind` (spec §7) the trimmed `RecipeLike['target']` shape
- * doesn't type — read via `layoutEntryKind` below rather than widening it here.
- */
-interface RawRecipe {
-	recipe: string;
-	source?: { ontology?: string; levels?: string[] };
-	target: RecipeLike['target'];
-}
+/** Complete canonical bundled recipe. The registry never trims deferred fields. */
+type RawRecipe = CrosswalkerImportRecipe;
 
-/** Read a layout entry's optional `kind` field without widening `RecipeLike`'s type. */
+/** Read a layout entry's optional routing kind. */
 function layoutEntryKind(entry: unknown): RegistryRoutingKind {
 	const kind = (entry as { kind?: string } | undefined)?.kind;
 	return kind === 'crosswalk-edge' || kind === 'junction-note' ? kind : 'concept';
@@ -159,8 +151,8 @@ export interface RecipeRegistryEntry {
 	requiredColumns: string[];
 	/** Count of folder/heading layout entries — the recipe's nesting depth (tiebreak). */
 	structuralDepth: number;
-	/** The recipe itself (accepted by `fromRecipe`). */
-	recipe: RecipeLike;
+	/** The complete canonical recipe. Never trim this to workbench-only regions. */
+	recipe: CrosswalkerImportRecipe;
 }
 
 /** Result of scoring one entry against a source. */
@@ -389,7 +381,7 @@ function toEntry(raw: unknown): RecipeRegistryEntry {
 		signatureColumns: signature,
 		requiredColumns: required,
 		structuralDepth,
-		recipe: raw as RecipeLike,
+		recipe: raw as CrosswalkerImportRecipe,
 	};
 }
 
@@ -493,7 +485,7 @@ export function bestRecognizedRecipe(
 
 /** Reconstruct the workbench mapping for a recognized recipe (round-trip law). */
 export function recipeMapping(entry: RecipeRegistryEntry): ImportMapping {
-	return fromRecipe(entry.recipe);
+	return canonicalToMapping(entry.recipe);
 }
 
 /**

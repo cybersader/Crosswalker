@@ -25,6 +25,7 @@ import addFormats from 'ajv-formats';
 
 import tier1Schema from '../../spec/tier1.schema.json';
 import recipeSchema from '../../spec/recipe.schema.json';
+import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
 
 /** Validation result returned to call sites. */
 export interface ValidationResult {
@@ -40,8 +41,8 @@ export type RecipeSchemaStyle = 'A' | 'B';
 
 let ajv: Ajv2020 | null = null;
 let validateTier1Inner: ValidateFunction | null = null;
-let validateRecipeStyleA: ValidateFunction | null = null;
-let validateRecipeStyleB: ValidateFunction | null = null;
+let validateRecipeStyleA: ValidateFunction<CrosswalkerImportRecipe> | null = null;
+let validateRecipeStyleB: ValidateFunction<CrosswalkerImportRecipe> | null = null;
 
 /**
  * Build a style-B variant of the recipe schema by patching the in-memory
@@ -99,14 +100,14 @@ export function initValidator(): void {
 
 	// Compile style A: schema as-shipped (default discriminator).
 	try {
-		validateRecipeStyleA = ajv.compile(recipeSchema);
+		validateRecipeStyleA = ajv.compile<CrosswalkerImportRecipe>(recipeSchema);
 	} catch (err) {
 		throw new Error(`spec/recipe.schema.json (style A) is malformed: ${(err as Error).message}`);
 	}
 
 	// Compile style B: same schema, ShapeDispatchA → ShapeDispatchB swap.
 	try {
-		validateRecipeStyleB = ajv.compile(buildStyleBSchema(recipeSchema));
+		validateRecipeStyleB = ajv.compile<CrosswalkerImportRecipe>(buildStyleBSchema(recipeSchema));
 	} catch (err) {
 		throw new Error(`spec/recipe.schema.json (style B variant) is malformed: ${(err as Error).message}`);
 	}
@@ -140,10 +141,25 @@ export function validateTier1Frontmatter(fm: unknown): ValidationResult {
  *                 all call sites pass 'A' (settings-redesign report, 2026-07-11).
  */
 export function validateRecipe(recipe: unknown, style: RecipeSchemaStyle = 'A'): ValidationResult {
-	if (!validateRecipeStyleA || !validateRecipeStyleB) initValidator();
-	const validator = style === 'B' ? validateRecipeStyleB! : validateRecipeStyleA!;
+	const validator = getRecipeValidator(style);
 	const valid = !!validator(recipe);
 	return formatResult(valid, validator.errors);
+}
+
+/**
+ * AJV-backed type guard for JSON load/save boundaries. A true result narrows
+ * unknown input to the schema-generated root recipe type.
+ */
+export function isValidRecipe(
+	recipe: unknown,
+	style: RecipeSchemaStyle = 'A',
+): recipe is CrosswalkerImportRecipe {
+	return !!getRecipeValidator(style)(recipe);
+}
+
+function getRecipeValidator(style: RecipeSchemaStyle): ValidateFunction<CrosswalkerImportRecipe> {
+	if (!validateRecipeStyleA || !validateRecipeStyleB) initValidator();
+	return style === 'B' ? validateRecipeStyleB! : validateRecipeStyleA!;
 }
 
 function formatResult(valid: boolean, rawErrors: ErrorObject[] | null | undefined): ValidationResult {

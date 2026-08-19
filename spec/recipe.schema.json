@@ -4,7 +4,7 @@
   "title": "Crosswalker Import Recipe",
   "description": "The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.4.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design; 1.3.0 (2026-07-10, v0.1.6) added the optional `target.also_emit.frontmatter.managed_links` (list-valued managed wikilink arrays, for multi-value link columns) and the optional `target.enrichment` block (batch-scope Pass 1.5 enrichment: children lists, facet hub notes, parent-note placement) per the 2026-07-10 batch-enrichment design; 1.4.0 (2026-07-11) added the optional `target.enrichment.level_hubs` (hierarchy hub/MOC index notes, one per folder level) and `target.enrichment.waypoint_marker` (opt-in `%% Waypoint %%` marker on generated folder-note/hub notes) per the 2026-07-11 ICSB emitter-controls gap audit. All existing recipes without these keys continue to validate.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.5.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design; 1.3.0 (2026-07-10, v0.1.6) added the optional `target.also_emit.frontmatter.managed_links` (list-valued managed wikilink arrays, for multi-value link columns) and the optional `target.enrichment` block (batch-scope Pass 1.5 enrichment: children lists, facet hub notes, parent-note placement) per the 2026-07-10 batch-enrichment design; 1.4.0 (2026-07-11) added the optional `target.enrichment.level_hubs` (hierarchy hub/MOC index notes, one per folder level) and `target.enrichment.waypoint_marker` (opt-in `%% Waypoint %%` marker on generated folder-note/hub notes) per the 2026-07-11 ICSB emitter-controls gap audit; 1.5.0 (2026-07-21) added optional display metadata with structured `based_on` ancestry, optional source compatibility version, and ordered `target.also_emit.body` projections. All existing recipes without these keys continue to validate.",
 
   "$defs": {
     "mechanism": {
@@ -31,6 +31,113 @@
       "minimum": 1,
       "maximum": 6,
       "description": "Markdown heading depth (1-6, equivalent to # through ######). Required when mechanism is 'heading'. Ignored otherwise."
+    },
+
+    "recipe_metadata": {
+      "type": "object",
+      "title": "Recipe display metadata",
+      "description": "Optional artifact display metadata and structured ancestry. Application/session origin is intentionally not serialized here. This block is excluded from the effective target hash.",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Human-readable artifact title."
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable artifact description."
+        },
+        "based_on": {
+          "type": "object",
+          "title": "Recipe ancestry reference",
+          "description": "Structured reference to the recipe this artifact was customized from. Unrelated to inferred or derived crosswalk mappings.",
+          "required": ["recipe"],
+          "additionalProperties": false,
+          "properties": {
+            "recipe": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Stable identifier of the ancestor recipe."
+            },
+            "hash": {
+              "type": "string",
+              "pattern": "^sha256-[a-f0-9]{64}$",
+              "description": "Optional effective-target hash receipt for the ancestor recipe."
+            },
+            "spec_version": {
+              "type": "string",
+              "const": "https://crosswalker.dev/spec/recipe.schema.json",
+              "description": "Optional recipe-spec URI receipt for the ancestor recipe."
+            }
+          }
+        }
+      }
+    },
+
+    "body_entry": {
+      "title": "Body projection entry",
+      "description": "One ordered, recipe-managed body projection. Body is cross-cutting output, not a sixth layout mechanism. `table-row` and legacy transforms are intentionally excluded until a portable table/transform grammar exists.",
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "Append body projection",
+          "required": ["template"],
+          "additionalProperties": false,
+          "properties": {
+            "template": { "$ref": "#/$defs/template" },
+            "position": {
+              "type": "string",
+              "const": "append",
+              "default": "append",
+              "description": "Append formatted content without a section heading. Omitted position defaults to append."
+            },
+            "format": {
+              "type": "string",
+              "enum": ["text", "code", "quote", "list"],
+              "default": "text"
+            },
+            "omit_if_empty": {
+              "type": "boolean",
+              "default": true,
+              "description": "When true (default), omit the region if the rendered template is empty."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "title": "Section body projection",
+          "required": ["template", "position", "heading"],
+          "additionalProperties": false,
+          "properties": {
+            "template": { "$ref": "#/$defs/template" },
+            "position": {
+              "type": "string",
+              "const": "section"
+            },
+            "heading": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Literal section heading text. Templated headings are not admitted in this schema version."
+            },
+            "heading_depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 6,
+              "default": 2
+            },
+            "format": {
+              "type": "string",
+              "enum": ["text", "code", "quote", "list"],
+              "default": "text"
+            },
+            "omit_if_empty": {
+              "type": "boolean",
+              "default": true,
+              "description": "When false, an empty section still emits its heading."
+            }
+          }
+        }
+      ]
     },
 
     "variadic": {
@@ -615,6 +722,8 @@
       "description": "Recipe identifier. Stable across re-runs. Used in _crosswalker.recipe.id provenance. Examples: 'nist-80053r5-allfolders', 'iso27001-mostly-headings', 'mitre-attack-tag-driven'."
     },
 
+    "metadata": { "$ref": "#/$defs/recipe_metadata" },
+
     "spec_version": {
       "type": "string",
       "const": "https://crosswalker.dev/spec/recipe.schema.json",
@@ -632,6 +741,10 @@
           "type": "string",
           "minLength": 1,
           "description": "Source ontology identifier. Convention: lowercase ASCII slug. Examples: 'nist-800-53-r5', 'iso27001', 'mitre-attack', 'cri-profile-2.0'."
+        },
+        "version": {
+          "type": "string",
+          "description": "Compatibility declaration for the source ontology version. This is not proof of the selected source bytes. Verified run metadata remains authoritative; this declaration may be used only as an explicit fallback when no verified version is known. Excluded from the effective target hash."
         },
         "levels": {
           "type": "array",
@@ -671,7 +784,13 @@
               "items": { "$ref": "#/$defs/template" },
               "description": "Alias templates emitted into every note's aliases array. Used by Obsidian alias resolution; helps wikilinks like [[AC-2]] resolve to the correct file even if the file is named differently. Example: ['{control.id}', '{control.title}']."
             },
-            "frontmatter": { "$ref": "#/$defs/frontmatter_block" }
+            "frontmatter": { "$ref": "#/$defs/frontmatter_block" },
+            "body": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/body_entry" },
+              "description": "Ordered recipe-managed body projections. Entries are evaluated by pure render() against row scope. Only append and section positions are portable in this schema version; workbench table-row output and legacy transforms are rejected rather than silently coerced or dropped."
+            }
           }
         },
         "graph_edges": {

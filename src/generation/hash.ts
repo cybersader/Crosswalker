@@ -251,8 +251,9 @@ export interface EffectiveRecipeTarget {
  *
  *   - `layout`     — folder/file/heading mechanisms + templates (what
  *                    produces the Address path)
- *   - `also_emit`  — tags/aliases/managed frontmatter/managed_links (what
- *                    produces the Address frontmatter)
+ *   - `also_emit`  — tags/aliases/managed frontmatter/managed_links plus
+ *                    canonical body declarations (what produces Address
+ *                    metadata and rendered body regions)
  *   - `enrichment` — Pass 1.5 children-lists/facet-hubs/level-hubs config
  *                    (post-render batch shape)
  *

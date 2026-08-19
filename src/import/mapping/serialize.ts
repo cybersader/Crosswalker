@@ -11,10 +11,10 @@
  *
  * The ROUND-TRIP LAW (spec §3a½): `fromRegions(toRecipeRegions(m))` deep-equals
  * `m` for every mapping expressible in recipe regions. Fields with no recipe
- * surface (per-level `missing`, `materialize`, `naming.lookup`, tail `placement`,
- * row filters, the `note`/`body` destinations) are LOSSY: serialization drops
- * them and reconstruction restores defaults. Those gaps are pinned by dedicated
- * tests so they stay visible until the architect wires a recipe surface.
+ * surface (per-level `missing`, `materialize`, `naming.lookup`, row filters, and
+ * the `note` destination) remain outside this serializer. RecipeDocument blocks
+ * those states explicitly rather than allowing a lossy portable patch. Body
+ * append/section destinations and tail placement are wired.
  *
  * Assumptions that keep the mapping ⇄ layout correspondence tractable:
  *   - A level carries AT MOST ONE structural destination (folder XOR name XOR
@@ -52,6 +52,7 @@ export interface LayoutEntry {
 	mechanism: 'folder' | 'file' | 'heading';
 	template: string;
 	level_depth?: number;
+	kind?: 'concept' | 'junction-note' | 'crosswalk-edge';
 	variadic?: VariadicConfig;
 }
 
@@ -60,6 +61,23 @@ export interface ManagedLinkSpec {
 	template: string;
 	split?: string[];
 }
+
+/** One canonical body projection represented by a workbench body destination. */
+export type BodyProjectionSpec =
+	| {
+			template: string;
+			position?: 'append';
+			format?: 'text' | 'code' | 'quote' | 'list';
+			omit_if_empty?: boolean;
+	  }
+	| {
+			template: string;
+			position: 'section';
+			heading: string;
+			heading_depth?: 1 | 2 | 3 | 4 | 5 | 6;
+			format?: 'text' | 'code' | 'quote' | 'list';
+			omit_if_empty?: boolean;
+	  };
 
 /** The cross-cutting also_emit region. */
 export interface AlsoEmit {
@@ -70,6 +88,7 @@ export interface AlsoEmit {
 		managed_links?: Record<string, ManagedLinkSpec>;
 		user_preserve?: string[];
 	};
+	body?: BodyProjectionSpec[];
 }
 
 /** The regions `toRecipeRegions` produces / `fromRegions` consumes. */
@@ -126,17 +145,24 @@ function assertSingleStructural(mapping: ImportMapping): void {
 
 /**
  * Project an ImportMapping onto recipe regions. Structural destinations become
- * layout entries; metadata destinations become also_emit; a tail becomes a
- * variadic folder entry. Lossy fields (see the module note) are silently
- * dropped.
+ * layout entries; metadata/body destinations become also_emit; a tail becomes a
+ * variadic folder entry. Callers that need a portable artifact must run the
+ * RecipeDocument editable-model diagnostics before using these regions.
  */
+interface OrderedEmission<T> {
+	value: T;
+	canonicalOrder?: number;
+	sequence: number;
+}
+
 export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 	assertSingleStructural(mapping);
 	const layout: LayoutEntry[] = [];
-	const tags: string[] = [];
-	const aliases: string[] = [];
+	const tags: OrderedEmission<string>[] = [];
+	const aliases: OrderedEmission<string>[] = [];
 	const managed: Record<string, string> = {};
 	const managedLinks: Record<string, ManagedLinkSpec> = {};
+	const body: OrderedEmission<BodyProjectionSpec>[] = [];
 
 	// Precedence (2026-07-11, the Connections placement-chooser repro):
 	// `mapping.enrichment.parent_note` is the knob the workbench UI writes
@@ -159,7 +185,7 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 	for (const structure of mapping.mappings) {
 		const structLayout: LayoutEntry[] = [];
 		for (const rule of structure.levels) {
-			emitLevel(rule, structLayout, tags, aliases, managed, managedLinks);
+			emitLevel(rule, structLayout, tags, aliases, managed, managedLinks, body);
 		}
 		if (structure.tail) {
 			// render() walks layout in order, so the variadic tail (parent
@@ -177,7 +203,7 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 		layout.push(...structLayout);
 	}
 
-	const also_emit = buildAlsoEmit(tags, aliases, managed, managedLinks, mapping.userPreserve);
+	const also_emit = buildAlsoEmit(tags, aliases, managed, managedLinks, body, mapping.userPreserve);
 	const regions: RecipeRegions = also_emit ? { layout, also_emit } : { layout };
 	// Enrichment-level wins when set (see the precedence note above); the tail's
 	// placement only fills in when the enrichment block leaves it unspecified.
@@ -192,10 +218,11 @@ export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 function emitLevel(
 	rule: LevelRule,
 	layout: LayoutEntry[],
-	tags: string[],
-	aliases: string[],
+	tags: OrderedEmission<string>[],
+	aliases: OrderedEmission<string>[],
 	managed: Record<string, string>,
 	managedLinks: Record<string, ManagedLinkSpec>,
+	body: OrderedEmission<BodyProjectionSpec>[],
 ): void {
 	const name = buildName(rule.source, rule.delimiter, rule.join, rule.filters);
 	for (const dest of rule.destinations) {
@@ -217,7 +244,7 @@ function emitLevel(
 			case 'tag': {
 				const ns = dest.namespace ?? slug(firstColumn(rule.source));
 				const tagValue = buildName(rule.source, rule.delimiter, rule.join, appendFilter(rule.filters, 'tagsafe'));
-				tags.push(`${ns}/${tagValue}`);
+				pushOrdered(tags, `${ns}/${tagValue}`, dest.canonicalOrder);
 				break;
 			}
 			case 'property':
@@ -227,17 +254,38 @@ function emitLevel(
 				if (dest.list) {
 					// Multi-value link → a list-valued managed wikilink array. The
 					// template is the bare column value; render() splits + wikilinks it.
-					managedLinks[dest.key] = { template: name };
+					managedLinks[dest.key] = {
+						template: name,
+						...(dest.split && dest.split.length > 0 ? { split: [...dest.split] } : {}),
+					};
 				} else {
 					managed[dest.key] = `[[${name}]]`;
 				}
 				break;
 			case 'alias':
-				aliases.push(name);
+				pushOrdered(aliases, name, dest.canonicalOrder);
+				break;
+			case 'body':
+				if (dest.position === 'append') {
+					pushOrdered(body, {
+						template: name,
+						position: 'append',
+						...(dest.format ? { format: dest.format } : {}),
+						...(dest.omitIfEmpty !== undefined ? { omit_if_empty: dest.omitIfEmpty } : {}),
+					}, dest.canonicalOrder);
+				} else if (dest.position === 'section') {
+					pushOrdered(body, {
+						template: name,
+						position: 'section',
+						heading: dest.heading ?? rule.level,
+						...(dest.headingDepth ? { heading_depth: dest.headingDepth } : {}),
+						...(dest.format ? { format: dest.format } : {}),
+						...(dest.omitIfEmpty !== undefined ? { omit_if_empty: dest.omitIfEmpty } : {}),
+					}, dest.canonicalOrder);
+				}
 				break;
 			case 'note':
-			case 'body':
-				// Not serializable yet — no recipe surface. Lossy on purpose (see module note).
+				// `note` has no canonical recipe surface. RecipeDocument diagnostics block it.
 				break;
 		}
 	}
@@ -254,7 +302,7 @@ function tailToEntry(tail: TailRule): LayoutEntry {
 	// placement field) — it serializes to the recipe's global
 	// target.enrichment.parent_note instead, in toRecipeRegions (the caller).
 	return {
-		level: TAIL_LEVEL_ID,
+		level: tail.level ?? TAIL_LEVEL_ID,
 		mechanism: 'folder',
 		template: buildName(tail.source, tail.delimiter, undefined, undefined),
 		variadic,
@@ -263,15 +311,16 @@ function tailToEntry(tail: TailRule): LayoutEntry {
 
 /** Assemble the also_emit region, omitting empty sub-blocks (matches recipe shape). */
 function buildAlsoEmit(
-	tags: string[],
-	aliases: string[],
+	tags: OrderedEmission<string>[],
+	aliases: OrderedEmission<string>[],
 	managed: Record<string, string>,
 	managedLinks: Record<string, ManagedLinkSpec>,
+	body: OrderedEmission<BodyProjectionSpec>[],
 	userPreserve?: string[],
 ): AlsoEmit | undefined {
 	const out: AlsoEmit = {};
-	if (tags.length) out.tags = tags;
-	if (aliases.length) out.aliases = aliases;
+	if (tags.length) out.tags = orderedValues(tags);
+	if (aliases.length) out.aliases = orderedValues(aliases);
 	const hasManaged = Object.keys(managed).length > 0;
 	const hasManagedLinks = Object.keys(managedLinks).length > 0;
 	const hasUserPreserve = !!userPreserve && userPreserve.length > 0;
@@ -284,7 +333,31 @@ function buildAlsoEmit(
 		// lost the field, defeating the merge's own re-import-safety mechanism.
 		if (hasUserPreserve) out.frontmatter.user_preserve = userPreserve;
 	}
-	return tags.length || aliases.length || hasManaged || hasManagedLinks || hasUserPreserve ? out : undefined;
+	if (body.length > 0) out.body = orderedValues(body);
+	return tags.length || aliases.length || hasManaged || hasManagedLinks || hasUserPreserve || body.length > 0
+		? out
+		: undefined;
+}
+
+function pushOrdered<T>(
+	items: OrderedEmission<T>[],
+	value: T,
+	canonicalOrder?: number,
+): void {
+	items.push({ value, canonicalOrder, sequence: items.length });
+}
+
+function orderedValues<T>(items: OrderedEmission<T>[]): T[] {
+	return [...items]
+		.sort((left, right) => {
+			if (left.canonicalOrder !== undefined && right.canonicalOrder !== undefined) {
+				return left.canonicalOrder - right.canonicalOrder;
+			}
+			if (left.canonicalOrder !== undefined) return -1;
+			if (right.canonicalOrder !== undefined) return 1;
+			return left.sequence - right.sequence;
+		})
+		.map((item) => item.value);
 }
 
 // ============================================================================
@@ -344,9 +417,14 @@ function appendFilter(filters: string[] | undefined, filter: string): string[] {
 // Deserialization: recipe regions → mapping
 // ============================================================================
 
+export interface FromRegionsOptions {
+	/** Retain canonical array positions for RecipeDocument's lossless patcher. */
+	preserveCanonicalOrder?: boolean;
+}
+
 /** Reconstruct an ImportMapping from a full recipe. */
-export function fromRecipe(recipe: RecipeLike): ImportMapping {
-	return fromRegions(recipe.target);
+export function fromRecipe(recipe: RecipeLike, options: FromRegionsOptions = {}): ImportMapping {
+	return fromRegions(recipe.target, options);
 }
 
 /**
@@ -358,7 +436,7 @@ export function fromRecipe(recipe: RecipeLike): ImportMapping {
  * structural match form their own single-level StructureMappings, in encounter
  * order (tags → aliases → managed).
  */
-export function fromRegions(regions: RecipeRegions): ImportMapping {
+export function fromRegions(regions: RecipeRegions, options: FromRegionsOptions = {}): ImportMapping {
 	const structuralLevels: LevelRule[] = [];
 	let tail: TailRule | undefined;
 	// Signature → the structural level that owns that source (for metadata re-grouping).
@@ -407,12 +485,19 @@ export function fromRegions(regions: RecipeRegions): ImportMapping {
 
 	const emit = regions.also_emit;
 	if (emit) {
-		for (const tag of emit.tags ?? []) {
+		for (const [canonicalOrder, tag] of (emit.tags ?? []).entries()) {
 			const { namespace, parsed } = parseTagTemplate(tag);
-			attach(parsed, { primitive: 'tag', namespace });
+			attach(parsed, {
+				primitive: 'tag',
+				namespace,
+				...(options.preserveCanonicalOrder ? { canonicalOrder } : {}),
+			});
 		}
-		for (const alias of emit.aliases ?? []) {
-			attach(parseStructuralTemplate(alias), { primitive: 'alias' });
+		for (const [canonicalOrder, alias] of (emit.aliases ?? []).entries()) {
+			attach(parseStructuralTemplate(alias), {
+				primitive: 'alias',
+				...(options.preserveCanonicalOrder ? { canonicalOrder } : {}),
+			});
 		}
 		const managed = emit.frontmatter?.managed ?? {};
 		for (const [key, template] of Object.entries(managed)) {
@@ -432,7 +517,30 @@ export function fromRegions(regions: RecipeRegions): ImportMapping {
 				key,
 				direction: 'parent-on-child',
 				list: true,
+				...(spec.split && spec.split.length > 0 ? { split: [...spec.split] } : {}),
 			});
+		}
+		for (const [canonicalOrder, projection] of (emit.body ?? []).entries()) {
+			const parsed = parseStructuralTemplate(projection.template);
+			if (projection.position === 'section') {
+				attach(parsed, {
+					primitive: 'body',
+					position: 'section',
+					heading: projection.heading,
+					...(projection.heading_depth ? { headingDepth: projection.heading_depth } : {}),
+					...(projection.format ? { format: projection.format } : {}),
+					...(projection.omit_if_empty !== undefined ? { omitIfEmpty: projection.omit_if_empty } : {}),
+					...(options.preserveCanonicalOrder ? { canonicalOrder } : {}),
+				});
+			} else {
+				attach(parsed, {
+					primitive: 'body',
+					position: 'append',
+					...(projection.format ? { format: projection.format } : {}),
+					...(projection.omit_if_empty !== undefined ? { omitIfEmpty: projection.omit_if_empty } : {}),
+					...(options.preserveCanonicalOrder ? { canonicalOrder } : {}),
+				});
+			}
 		}
 	}
 
@@ -488,6 +596,7 @@ function variadicToTail(entry: LayoutEntry): TailRule {
 		destinations: [{ primitive: 'folder' }],
 		naming: v.segment === 'part' ? 'part' : 'prefix',
 	};
+	if (entry.level !== TAIL_LEVEL_ID) tail.level = entry.level;
 	if (v.drop_last !== undefined) tail.drop_last = v.drop_last;
 	if (v.max_depth !== undefined) tail.max_depth = v.max_depth;
 	if (v.on_overflow !== undefined) tail.on_overflow = v.on_overflow;
@@ -537,13 +646,20 @@ export function parseStructuralTemplate(template: string): ParsedSource {
 	const parsedInterps = interps.map((s) => parseInterp(s.body));
 	const sep = separators.length > 0 ? separators[separators.length - 1] : undefined;
 
-	// Single interpolation → single part or whole column.
+	// Single interpolation → single part or whole column. Preserve any literal
+	// prefix/suffix as ConstantRefs so `cw-{edge_id|slug}` round-trips exactly.
 	if (parsedInterps.length === 1) {
 		const p = parsedInterps[0];
 		const ref: PartRef = p.part === undefined ? { column: p.column } : { column: p.column, part: p.part };
+		const source = segments.length === 1
+			? ref
+			: segments.map((segment) => segment.kind === 'lit'
+				? { constant: segment.text }
+				: ref);
 		return {
-			source: ref,
+			source,
 			delimiter: p.delimiter,
+			...(segments.length > 1 ? { join: '' } : {}),
 			filters: p.filters,
 		};
 	}
@@ -569,11 +685,22 @@ export function parseStructuralTemplate(template: string): ParsedSource {
 		};
 	}
 
-	// Cross-column merge.
-	const refs: PartRef[] = parsedInterps.map((p) =>
-		p.part === undefined ? { column: p.column } : { column: p.column, part: p.part },
-	);
-	return { source: refs, delimiter, join: sep, filters: [] };
+	// General multi-interpolation template. Preserve literal prefixes, infixes,
+	// and suffixes as ConstantRefs, and retain a shared filter chain. This is what
+	// keeps templates such as `cw-{subject_id|slug}--{object_id|slug}` exact.
+	const sharedFilters = parsedInterps.every(
+		(parsed) => JSON.stringify(parsed.filters) === JSON.stringify(parsedInterps[0].filters),
+	)
+		? parsedInterps[0].filters
+		: [];
+	const source: LevelSource = segments.map((segment) => {
+		if (segment.kind === 'lit') return { constant: segment.text };
+		const parsed = parseInterp(segment.body);
+		return parsed.part === undefined
+			? { column: parsed.column }
+			: { column: parsed.column, part: parsed.part };
+	});
+	return { source, delimiter, join: '', filters: sharedFilters };
 }
 
 /** Split a template into ordered literal + interpolation segments. */
