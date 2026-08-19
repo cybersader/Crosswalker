@@ -32,7 +32,7 @@ Every agent that works on a project accumulates context bias — it starts agree
 
 | Bucket | Count | Where the briefs live | Sidebar group |
 |---|---|---|---|
-| **Open** | 21 | this folder (`zz-challenges/`) | listed under **Challenges** in ascending Ch order |
+| **Open** | 22 | this folder (`zz-challenges/`) | listed under **Challenges** in ascending Ch order |
 | **Resolved and archived** | 21 | [`zz-challenges/archive/`](/crosswalker/agent-context/zz-challenges/archive/) | the **Archived** group at the bottom |
 
 A challenge is **open** while its brief sits in this folder — regardless of whether a deliverable has already landed. It becomes **archived** only when a dated [`zz-log/`](/crosswalker/agent-context/zz-log/) synthesis entry records the verdict and the brief is moved to `archive/` with a resolution callout. Folder membership is the source of truth; this page mirrors it.
@@ -41,7 +41,7 @@ Every open brief carries a `Status: OPEN` callout at the top saying whether a re
 
 **Numbering note**: Ch 17 was never filed. It was floated in the [2026-05-02 research-wave log](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) (reactive/incremental computation; LinkML scope) and parked pending user signal, so the sequence skips from 16 to 18.
 
-## Open (21)
+## Open (22)
 
 | Ch | Challenge | Filed | Research status |
 |---|---|---|---|
@@ -66,6 +66,7 @@ Every open brief carries a `Status: OPEN` callout at the top saying whether a re
 | 41 | [Is internal audit a spine element or a lens?](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) | 2026-06-01 | Not run — depends on Ch 39/40 |
 | 42 | [Variable-depth hierarchy generation](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) | 2026-06-14 | Not run — follow-on to Ch 22 |
 | 43 | [Version migration — the semantic-diff loop](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) | 2026-07-11 | Not run — Act 2 of the lifecycle arc |
+| 44 | [E2E testing strategy](/crosswalker/agent-context/zz-challenges/44-e2e-testing-strategy/) | 2026-08-19 | Not run — filed from the re-entry sprint |
 
 ### Why these batches were filed
 
@@ -82,6 +83,8 @@ Every open brief carries a `Status: OPEN` callout at the top saying whether a re
 **2026-06-01 (Ch 39-41)** — pre-ingestion gate for the unified model. The full [security & GRC framework corpus](/crosswalker/reference/framework-corpus/) is assembled, and the unified-model assumptions (most pointedly "is CRI the spine?") were inherited rather than tested. Run roughly in order 39 → 40 → 41.
 
 **2026-06-14 (Ch 42)** — surfaced while making the [system model](/crosswalker/concepts/system-model/)'s `render()` diagram honest: `layout` assumes **known depth**, so variable / ragged-depth hierarchy is not first-class. Current state in the [open-question log](/crosswalker/agent-context/zz-log/2026-06-14-variable-depth-hierarchy-open-question/).
+
+**2026-08-19 (Ch 44)** — filed from the re-entry sprint that landed the July work. Two gaps found while running the gates: plugin E2E never runs in CI, and no screenshot anywhere is diffed against a baseline. Framed deliberately as coverage/detection/cost rather than as a framework comparison.
 
 **2026-07-11 (Ch 43)** — Act 2 of the five-act lifecycle arc ("your ontology updates and your world survives"). The match-pass / impact-pass / review / apply sketch is architect-drafted, not stress-tested against how NIST, MITRE, and CIS actually ship version deltas.
 

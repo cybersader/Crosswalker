@@ -1,0 +1,112 @@
+---
+title: "Challenge 44: E2E testing strategy — CI coverage, visual regression, and the two-framework split"
+description: "The project runs two E2E frameworks: WebdriverIO for the Obsidian plugin and Playwright for the docs site. Plugin E2E never runs in CI, and no screenshot anywhere is diffed against a baseline. Stress-test what belongs in CI at what cost, whether agent-read screenshots substitute for or complement real image diffing, and only then whether the framework split still holds."
+tags: [research, testing, e2e, ci, visual-regression, webdriverio, playwright, obsidian, ch-44]
+date: 2026-08-19
+sidebar:
+  label: "Ch 44 · E2E testing strategy"
+  order: 44
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — no research pass has run yet]
+This brief is unresolved and awaiting a fresh-agent research pass. Findings land as a deliverable in [`zz-research/`](/crosswalker/agent-context/zz-research/) plus a dated synthesis entry in [`zz-log/`](/crosswalker/agent-context/zz-log/); the brief then moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/).
+:::
+
+:::caution[This is NOT "Playwright vs WebdriverIO"]
+The question that surfaced this was "is there something better than Playwright for our use cases, like WebDriver?" — fair to ask, but a preliminary look suggests **framework choice is the least interesting variable here**, and a deliverable that spends its length on a feature matrix will have missed the assignment.
+
+The two frameworks are currently matched to two genuinely different targets: an Electron desktop app and a static HTTP site. The load-bearing questions are about **coverage** (what never runs automatically), **detection** (what a passing suite fails to notice), and **cost** (wall-clock and maintenance per unit of confidence). Only after answering those does "should either surface change frameworks?" become answerable. If the conclusion is a framework swap, justify it in those terms, not in terms of API ergonomics.
+:::
+
+## Why this exists
+
+Surfaced 2026-08-19 during the re-entry sprint that landed the July work. Two things were discovered incidentally while running the gates, neither previously known:
+
+1. The docs Playwright suite **false-failed every single spec** on `page.goto` timeout. It read like a total site regression. The actual cause was the default local worker count saturating the single-threaded `astro preview` server on an 8-core machine. Fixed by capping workers, but that failure mode — a plausible-looking config producing a catastrophic-looking red — is exactly what a testing-strategy review should be designed to surface.
+2. **No E2E of either kind ran in CI**, and **no screenshot anywhere is compared against a baseline.**
+
+The second item is the real subject. The project's stated discipline is that a milestone is not done until E2E passes, and agents are explicitly instructed to [visually verify rendering by screenshotting real Obsidian](/crosswalker/development/testing/) rather than asking the owner to eyeball. Both are honored **locally, by whoever remembers**. Neither was enforced.
+
+## Verified current state (measured 2026-08-19)
+
+<Aside type="tip" title="These are measurements, not estimates">
+Counts were taken from the repo on 2026-08-19 and will drift. Re-measure before relying on them; the shape matters more than the exact numbers.
+</Aside>
+
+| Surface | Framework | Size | Runs in CI? | Baseline diffing? |
+|---|---|---|---|---|
+| Obsidian plugin E2E | WebdriverIO + [`wdio-obsidian-service`](https://github.com/jesse-r-s-hines/wdio-obsidian-service) | 30 spec files, ~148 test declarations | **No** | **No** |
+| Docs site | Playwright | 4 spec files, 36 tests | **Yes, as of 2026-08-19** | **No** |
+
+Additional facts a deliverable should not spend effort re-deriving:
+
+- `wdio.conf.mts` sets `maxInstances: 1` — the ~148 plugin E2E tests run **fully serially**. Whether that is an Obsidian/Electron necessity or an untested default is open.
+- Obsidian (1.12.7) and a matching chromedriver are cached in a repo-local `.obsidian-cache/`, so runs do not re-download.
+- E2E drives a real Obsidian window on `DISPLAY=:0` (native X11/Xwayland since the dev machine moved to native Linux on 2026-08-19; formerly WSLg).
+- Roughly 13 plugin specs are named `visual-*.spec.ts`. They write PNGs into `test-screenshots/`, which **agents read as images** to verify rendering. Nothing compares those PNGs to a stored baseline, so a purely visual regression that breaks no selector passes silently.
+- CI workflows today: `unit-tests.yml` (build + unit tests, path-filtered to `src/**` and `tests/**`), `deploy-docs.yml`, `release.yml`, and `static-checks.yml` (added 2026-08-19: personal-data, MDX, frontmatter, not-content, log-labels).
+
+## What to investigate
+
+### 1. The CI coverage gap — what should run, when, and at what cost
+
+Running a real Electron app in CI is not free, and "run everything on every push" is not automatically right.
+
+- What does it actually cost to run Obsidian E2E on GitHub Actions (xvfb or equivalent, Obsidian download and caching, wall-clock, billed minutes)? Does `wdio-obsidian-service` ship a CI template, and what do comparable Obsidian plugins with real E2E suites actually do?
+- What is the right **trigger model** — every push, PR-only, nightly, pre-release, or a fast subset per PR plus a full nightly? Justify against how this project actually works: a solo maintainer with agent sessions doing batched work, where a 40-minute PR gate may be worse than a nightly.
+- Is there a meaningful **smoke subset** that catches most breakage at a fraction of the cost, and what principle selects it?
+- Version matrix: `wdio-obsidian-service` can test across Obsidian versions and `manifest.json` declares a `minAppVersion`. Is testing more than one version worth it here, and which?
+
+### 2. Visual regression — substitute for, or complement to, agent-read screenshots?
+
+This project has a property a generic recommendation will miss: **the screenshots are consumed by agents, not only humans.** An agent reading a PNG catches things image diffing cannot (a layout that is wrong-looking but pixel-stable, copy that reads badly) and misses things it can (a 3px shift, a color regression, a font fallback).
+
+- Where is the actual boundary? Which failures does each catch that the other does not? Answer with concrete examples from this repo's UI surfaces, not in the abstract.
+- If baseline diffing is worth adding, what is the maintenance burden in practice — flaky-diff rates, baseline churn on intentional UI changes, cross-platform rendering differences (a baseline captured on native Linux vs CI vs a contributor on macOS)? This is the classic reason visual suites get abandoned; assess honestly whether it survives contact with this project.
+- Tooling: `@wdio/visual-service` for the plugin side, Playwright `toHaveScreenshot()` for docs, or an external service. Note the docs site is **theme-aware** (light/dark, with a [soft light palette](/crosswalker/agent-context/zz-log/) that is a stated design commitment) — baselines must cover both themes or deliberately pick one.
+- Is there a cheaper intermediate — DOM/computed-style assertions or structural snapshots — that captures most of the value without pixel baselines?
+
+### 3. The two-framework split — does it still hold?
+
+Only after 1 and 2. Evaluate honestly rather than defending the status quo:
+
+- Playwright **can** drive Electron (`_electron.launch()`). What specifically would be lost by moving the plugin suite to it, and what does `wdio-obsidian-service` provide (version download and caching, vault reset between tests, plugin install, CI templates) that would have to be rebuilt?
+- Conversely, what is the real cost of maintaining two frameworks — two configs, two mental models, two sets of helpers, two CI setups, contributor onboarding?
+- Is there a third option the framing has excluded?
+
+### 4. Serial execution
+
+`maxInstances: 1` means ~148 tests run one at a time. Is parallel Obsidian E2E feasible (separate vaults, profiles, displays), or genuinely blocked by Electron/Obsidian single-instance behavior? If feasible, what is the wall-clock win, and does it change the answer in §1?
+
+## Anti-patterns for this challenge
+
+| Do not | Why |
+|---|---|
+| Produce a Playwright-vs-WebdriverIO feature matrix as the deliverable | The framing explicitly rejects this as the primary question. Feature comparison is at most an appendix supporting a coverage or cost conclusion |
+| Recommend "add visual regression" without a maintenance-cost assessment | Abandoned visual suites are the norm. A recommendation that does not confront baseline churn and cross-platform rendering is not actionable |
+| Recommend "run everything in CI on every push" | Real Electron E2E is expensive. Any recommendation needs a cost estimate and a trigger model |
+| Treat the agent-read-screenshot workflow as a deficiency to replace | It is a deliberate, load-bearing practice here. The question is what it does and does not cover, not whether to delete it |
+| Treat the docs suite and the plugin suite as one problem | They differ in target, cost, failure modes, and value. Conclusions should be per-surface |
+| Re-derive the measured facts above | They were measured. Spend the effort on what is unknown |
+
+## Success criteria
+
+A deliverable succeeds if it produces:
+
+1. A **per-surface CI recommendation** with a trigger model (what runs on push / PR / nightly / release) and a defensible cost estimate for the Electron side.
+2. A **clear verdict on visual regression** — adopt, adopt narrowly, or decline — with maintenance cost made explicit and a stated boundary between what image diffing catches and what agent-read screenshots catch.
+3. A **verdict on the two-framework split**, argued in coverage and cost terms, naming the migration cost if a change is recommended.
+4. An answer on **serial vs parallel** plugin E2E.
+5. A **ranked, sequenced list** of concrete changes — because the likely outcome is that some of this is worth doing now and some is not worth doing at all, and saying which is which is most of the value.
+
+A deliverable fails if it concludes "both frameworks are fine, carry on" without pricing the CI gap or the detection gap. Those are real holes; a null result is only credible if it engages with them.
+
+## Related
+
+- [Development: testing](/crosswalker/development/testing/) — the current documented testing workflow
+- [Development: setup](/crosswalker/development/setup/) — the `bun run` command reference
+- [Contributing](/crosswalker/development/contributing/) — contributor-facing expectations
+- [Challenge index](/crosswalker/agent-context/zz-challenges/) — all open and archived briefs
+- Repo-root `CHANGELOG.md` `[Unreleased]` — the 2026-08-19 infrastructure entry recording the CI and gate changes that surfaced this
