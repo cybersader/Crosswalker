@@ -5,7 +5,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Capped deliberately. `astro preview` is a single static file server, and
+  // Playwright's local default (half the cores) saturates it on an 8-core box:
+  // every spec then fails on page.goto timeout, which reads like a site
+  // regression rather than a load problem. Two workers run the suite in ~50s.
+  workers: process.env.CI ? 1 : 2,
   reporter: 'html',
 
   use: {
