@@ -98,6 +98,7 @@ The canonical project KB is the docs site. For an agent new to the project:
 | Rule | Source / why |
 |---|---|
 | **Brevity + Ctrl+F-able format** — terse tables/bullets over prose; long artifacts OK but summarize briefly in chat | Memory: `feedback_brevity_and_format.md` |
+| **Formal term + plain gloss** — every defined term carries a plain-language gloss on first use (`Projection (the mapping from notes into the query database)`); prefer names that are formal *and* self-describing (`layout mechanism`, `query verb`) over bare ones (`primitive`). Two audiences are served by grouping within one page, never by splitting into competing glossaries | Memory: `feedback_formal_plus_intuitive_terminology.md`; [2026-08-19 primitives review](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-08-19-primitives-vocabulary-adversarial-review/) |
 | **Link everything** — every term/concept/decision in KB pages should link to its definition; every log/concept page has a `## Related` section | Memory: `feedback_link_everything.md` |
 | **Log all decisions** — significant decisions get dated `zz-log/` entries; capture user's perspective and intent | Memory: `feedback_log_decisions.md` |
 | **General-ontology vocabulary in docs/KB; compliance-first in user-facing surfaces** — internal vocabulary uses ontology/concept; README + settings stay GRC-first | Memories: `feedback_general_ontology_positioning.md`, `feedback_readme_user_facing_surfaces.md` |
