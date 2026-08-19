@@ -1,42 +1,89 @@
 ---
 title: Quick start
-description: Import your first framework in under 5 minutes.
+description: Import your first framework into Obsidian in a few minutes — open the Crosswalker workspace tab, pick your spreadsheet, confirm the mapping, and generate real notes.
 tags: [getting-started, import]
 ---
 
+You need Crosswalker [installed and enabled](/crosswalker/getting-started/installation/) and a framework file to import: a CSV, XLSX, or JSON export of controls, requirements, or techniques.
+
 ## Import your first framework
 
-1. **Open the [import wizard](/crosswalker/features/import-wizard/)**: Command palette (`Ctrl/Cmd + P`) > "Crosswalker: Import structured data"
+1. **Open the Crosswalker workspace tab.** Click the network-shaped ribbon icon, click the status bar count, or run **Crosswalker: Import structured data** from the command palette (`Ctrl/Cmd + P`). You can also right-click a CSV, XLSX, or JSON file in the file explorer and choose **Import into vault with Crosswalker**, which skips straight to configuring it.
 
-2. **Select a file**: Choose a CSV or XLSX file containing your framework data. For example, a NIST 800-53 controls spreadsheet.
+2. **Pick your file.** For example, a NIST 800-53 controls export. Large CSVs stream in, so multi-megabyte files are fine. For XLSX you also pick the worksheet and header row; for JSON you pick which list of records to import.
 
-3. **Configure columns**:
-   - Mark hierarchy columns (these become folders): e.g., `Control Family`, `Control ID`
-   - Mark frontmatter columns (these become note properties): e.g., `Description`, `Discussion`
-   - Mark link columns (these become WikiLinks): e.g., `Related Controls`
+3. **Take the fast path if it's offered.** When your file's columns match a framework Crosswalker already knows (NIST CSF 2.0, NIST 800-53, MITRE ATT&CK, CIS Controls v8, the Secure Controls Framework, CRI Profile, and crosswalk files), a **Recognized source** card appears with a summary of what it found. Choose **Import with this configuration** to accept it, or **Customize** to adjust it first.
 
-4. **Preview**: Review the folder tree and sample note output. Adjust if needed.
+4. **Otherwise, map your columns.** Tell Crosswalker what each column is for: which ones become folders, which become note titles, which become note properties, which become links to other notes, and which become body text. A live preview on the right shows a real folder tree and one fully rendered note, updating as you change things.
 
-5. **Generate**: Click generate to create the folder structure and notes in your vault.
+5. **Review and confirm.** The review screen shows the destination folder, a recap of every mapping, how many notes, folders, and links you'll get, and a plain-language warning if some rows don't fit the pattern you built.
+
+6. **Generate.** Crosswalker writes the folders and notes into your vault.
+
+Full detail on every screen is on the [import wizard](/crosswalker/features/import-wizard/) page.
 
 ## What you get
 
+Folders and one note per row, under your output folder (`Ontologies` by default):
+
 ```
 Ontologies/
-├── NIST-800-53/
-│   ├── AC - Access Control/
-│   │   ├── AC-1.md
-│   │   ├── AC-2.md
-│   │   └── ...
-│   ├── AU - Audit/
-│   │   └── ...
-│   └── ...
+└── NIST-800-53/
+    ├── AC-1.md
+    ├── AC-2.md
+    ├── AC-2(1).md
+    └── AU-1.md
 ```
 
-Each note includes YAML frontmatter with your mapped properties and `_crosswalker` metadata tracking the import source.
+Each note carries your mapped columns as Obsidian properties, links to related notes, and a small record of where it came from:
+
+```yaml
+---
+curie: "nist-mini:AC-2(1)"
+title: Automated System Account Management
+aliases:
+  - AC-2(1)
+tags:
+  - framework/nist-mini/ac
+family: AC
+family_name: Access Control
+control_id: AC-2(1)
+parent: "[[AC-2]]"
+_crosswalker:
+  spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
+  source_ref:
+    file: nist-mini.csv
+    source_hash: sha256-380a762cd51be31c9f5d71ef8725a7863d3d07055a54e22dc5be3776088eac8a
+  produced_at: "2026-05-04T00:00:00.000Z"
+  producer:
+    kind: plugin-engine
+    name: crosswalker-plugin
+    version: 0.1.0
+---
+
+# Automated System Account Management
+
+## Description
+
+Support the management of system accounts using automated mechanisms.
+```
+
+The `_crosswalker` block is what makes a re-import safe: Crosswalker updates the notes it made rather than duplicating them, and anything you wrote yourself stays put. See the [generation engine](/crosswalker/features/generation-engine/) for exactly what lands in each note.
+
+## Where the settings are
+
+Everything configurable lives in **Settings > Crosswalker**: the output folder, how property names are cased, how multi-value cells become lists, link style, how eagerly saved configurations are suggested, and the toggle for the live mapping workbench under **Import behavior**. See the [settings reference](/crosswalker/reference/settings/).
 
 ## Next steps
 
-- Browse [features](/crosswalker/features/import-wizard/) for detailed wizard documentation
-- Read about [the problem](/crosswalker/concepts/problem/) Crosswalker solves
-- Check [settings reference](/crosswalker/reference/settings/) for customization options
+- [For GRC teams](/crosswalker/getting-started/grc-teams/) — mapping your policies and audit evidence to the controls you just imported
+- [Import wizard](/crosswalker/features/import-wizard/) — every screen, the recognized-source fast path, and pausing mid-import
+- [Config system](/crosswalker/features/config-system/) — save a mapping once, reuse or share it
+- [The problem](/crosswalker/concepts/problem/) — why Crosswalker works the way it does
+
+## Related
+
+- [Installation](/crosswalker/getting-started/installation/)
+- [Settings reference](/crosswalker/reference/settings/)
+- [Generation engine](/crosswalker/features/generation-engine/)
+- [Terminology](/crosswalker/concepts/terminology/)

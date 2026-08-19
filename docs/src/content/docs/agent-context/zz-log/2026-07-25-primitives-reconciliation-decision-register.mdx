@@ -1,0 +1,281 @@
+---
+title: "Primitives reconciliation — open decision register (verified findings, corpus-grounded options)"
+description: "Three adversarial Opus audits (essence completeness, KR-formalism comparison, minimality) plus an independent verification pass and a first-party corpus investigation. The engine primitives survive; the register captures the field-level completions, subtractions, and language decisions needed before the replay slice locks its hash taxonomy."
+tags: [log, architecture, primitives, tier1, schema, decision-register, terminology]
+date: 2026-07-25
+sidebar:
+  label: "07-25 · Primitives decisions"
+  order: -20260725.2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="This is a decision register, not a decision">
+A **decision register** is a working log of open choices — what was found, what the options are, what each one costs. Nothing in it is policy until the owner ratifies it. This particular register (the log tracking proposed upgrades to the core building blocks every imported note is made of) went through an independent verification pass (every claim re-derived from the repo; two were corrected before landing here) and a corpus investigation against the actual first-party sources (NIST CPRT, SP 800-53/53A, CSF 2.0, CRI Profile 2.2, SCF 2026.1, CTID/D3FEND packs). Decisions are grouped into three gates: **Gate 1 — schema fields**, **Gate 2 — cleanup**, **Gate 3 — language**. Nothing here is settled until each decision is ratified.
+
+For an executive-readable version of every decision below — plain-English title, tradeoffs, and a recommendation — see the [owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) (the single checklist of everything awaiting the project owner's ratification). This page is the evidence; that page is the decidable surface.
+</Aside>
+
+## Verdict in one line
+
+The engine-level primitives survive adversarial audit — two are genuinely novel — but the essence claim ("encoding meaning, not importing tables") currently fails at a handful of missing **fields** in Tier 1 (the canonical Markdown-plus-frontmatter form every imported note takes, and the layer that has to be trustworthy for audit), the closed-grammar commitment has drifted into five contradictory counts, and the complexity worth removing lives in the vocabulary layer, not the code.
+
+## What was validated (do not relitigate)
+
+| Validated strength | Why it held |
+|---|---|
+| **Junction notes are reified statements, done better** | A junction note is one relationship ("control X maps to control Y") stored as its own file. Independent reinvention of the RDF-reification / Wikidata-qualifier move — but as addressable, git-diffable, human-reviewable files. No established formalism has that combination. |
+| **Identity-before-render hashing** | `concept_cid` (the fingerprint that says "this is the same concept regardless of where it sits in a folder tree") hashes `{curie, scope}` before layout. Two vaults with different folder trees are provably the same knowledge. |
+| **Mandatory provenance on every node** | Every note records where it came from. Stronger than RDF (optional) and SSSOM (mappings only). |
+| **Explicit closure with recorded depth** | `closure_cache.shortest_depth` records how many relationship hops a derived fact took — beats opaque OWL entailment for audit. |
+| **`managed` / `user_preserve` split** | The declaration of which parts of a note the tool owns and which belong to the user. The entire re-import safety property. 18 of 19 shipped recipes declare it. |
+| **Two edge models (crosswalk-edge vs junction-note)** | A crosswalk edge is a compact row-shaped mapping; a junction note is the same relationship as a reviewable file. The complexity is in the standards they feed (STRM/SSSOM vs OSCAL), not in Crosswalker. |
+| **The two existing digests stay orthogonal** | `concept_cid` (same concept?) × `effective_target_hash` (did output-affecting behavior change?) produce the 2×2 that makes drift diagnosable. Merging them collapses it to one bit. |
+| **AJV as the pre-write gate** | The schema validator that runs before anything is written to the vault. The reason an external producer or agent is first-class without a code change. The actual moat. |
+
+<style>{`
+.pr-fig {
+  margin: 1.5rem 0 2rem;
+  padding: 1rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 14px;
+  background: var(--sl-color-bg);
+  overflow-x: auto;
+}
+.pr-cap {
+  margin-top: .75rem;
+  color: var(--sl-color-gray-3);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.pr-drift { display: grid; grid-template-columns: minmax(280px,1.1fr) 28px minmax(300px,1.4fr); align-items: center; gap: .6rem; min-width: 660px; }
+.pr-stack { display: flex; flex-direction: column; gap: .35rem; }
+.pr-page { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .6rem; padding: .4rem .6rem; border: 1px solid var(--sl-color-hairline); border-radius: 7px; background: var(--sl-color-bg-nav); font-size: .7rem; color: var(--sl-color-gray-2); }
+.pr-page b { color: var(--pr-c, var(--sl-color-text)); font-size: .85rem; }
+.pr-arrow { color: var(--sl-color-gray-3); text-align: center; font-size: 1.1rem; }
+.pr-palette { padding: .75rem; border: 1px solid #60a5fa; border-radius: 10px; background: rgba(96,165,250,.08); }
+.pr-palette h5 { margin: 0 0 .5rem; color: var(--sl-color-text); font-size: .78rem; }
+.pr-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.pr-chip { padding: .22rem .5rem; border: 1px solid var(--pr-c); border-radius: 999px; background: var(--sl-color-bg); color: var(--sl-color-text); font-size: .68rem; white-space: nowrap; }
+.pr-chip small { color: var(--pr-c); font-size: .58rem; text-transform: uppercase; letter-spacing: .04em; }
+.pr-wired { --pr-c: #34d399; }
+.pr-partial { --pr-c: #e0a458; }
+.pr-reserved { --pr-c: #8b929c; }
+.pr-ord { display: grid; grid-template-columns: repeat(3, minmax(180px,1fr)) 28px minmax(180px,.9fr); align-items: center; gap: .55rem; min-width: 760px; }
+.pr-src { padding: .6rem .7rem; border: 1px solid var(--sl-color-hairline); border-top: 3px solid #e0a458; border-radius: 9px; background: var(--sl-color-bg-nav); }
+.pr-src b { display: block; color: var(--sl-color-text); font-size: .74rem; }
+.pr-src code { display: block; margin-top: .3rem; color: var(--sl-color-gray-1); font-size: .66rem; }
+.pr-src span { color: var(--sl-color-gray-2); font-size: .64rem; }
+.pr-conv { padding: .65rem .75rem; border: 1px solid #34d399; border-radius: 9px; background: rgba(52,211,153,.09); color: var(--sl-color-text); font-size: .72rem; }
+.pr-fam { display: grid; grid-template-columns: repeat(3, minmax(180px,1fr)); gap: .6rem; min-width: 620px; }
+.pr-f { padding: .75rem; border: 1px solid var(--pr-c); border-radius: 10px; background: var(--pr-bg); }
+.pr-f h4 { margin: 0; color: var(--sl-color-text); font-size: .82rem; }
+.pr-f em { display: block; margin: .1rem 0 .45rem; color: var(--pr-c); font-size: .62rem; font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+.pr-f p { margin: 0; color: var(--sl-color-gray-2); font-size: .7rem; line-height: 1.5; }
+.pr-extra { display: flex; gap: .6rem; margin-top: .6rem; min-width: 620px; }
+.pr-x { flex: 1; padding: .5rem .7rem; border: 1px dashed var(--sl-color-hairline); border-radius: 9px; color: var(--sl-color-gray-2); font-size: .7rem; background: var(--sl-color-bg-nav); }
+.pr-x b { color: var(--sl-color-text); }
+.pr-gates { display: grid; grid-template-columns: repeat(3, minmax(200px,1fr)); gap: .6rem; min-width: 660px; }
+.pr-gate { padding: .75rem; border: 1px solid var(--pr-c); border-radius: 10px; background: var(--pr-bg); }
+.pr-gate h4 { margin: 0 0 .15rem; color: var(--sl-color-text); font-size: .82rem; }
+.pr-gate em { display: block; margin-bottom: .5rem; color: var(--pr-c); font-size: .62rem; font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+.pr-g { display: block; margin-bottom: .3rem; padding: .3rem .45rem; border-radius: 6px; background: var(--sl-color-bg); color: var(--sl-color-text); font-size: .7rem; }
+.pr-a { --pr-c: #f87171; --pr-bg: rgba(248,113,113,.09); }
+.pr-b { --pr-c: #e0a458; --pr-bg: rgba(224,164,88,.09); }
+.pr-cx { --pr-c: #a78bfa; --pr-bg: rgba(167,139,250,.09); }
+`}</style>
+
+## Illustration 1 — the count drift, and the honest palette
+
+Five different counts of "the Obsidian primitives" are live in the KB and code simultaneously. None cross-references the others.
+
+<div class="not-content pr-fig" role="img" aria-label="Six pages and files each claim a different count of Obsidian primitives: three, four, five, six, and nine. They converge on one canonical palette of nine destination primitives, each marked wired, partial, or reserved.">
+  <div class="pr-drift">
+    <div class="pr-stack">
+      <div class="pr-page"><span>knowledge-organization.mdx</span><b style="--pr-c:#f87171">3</b></div>
+      <div class="pr-page"><span>hierarchy-primitives.mdx "the four primitives"</span><b style="--pr-c:#f87171">4</b></div>
+      <div class="pr-page"><span>recipe.schema.json mechanism enum</span><b style="--pr-c:#e0a458">5</b></div>
+      <div class="pr-page"><span>import-wizard.mdx toggles · types.ts comment</span><b style="--pr-c:#e0a458">6</b></div>
+      <div class="pr-page"><span>preset.schema.json · Destination union</span><b style="--pr-c:#34d399">9</b></div>
+    </div>
+    <div class="pr-arrow">→</div>
+    <div class="pr-palette">
+      <h5>One canonical palette: 9 destination primitives</h5>
+      <div class="pr-chips">
+        <span class="pr-chip pr-wired">folder <small>wired</small></span>
+        <span class="pr-chip pr-wired">name <small>wired</small></span>
+        <span class="pr-chip pr-wired">heading <small>wired</small></span>
+        <span class="pr-chip pr-wired">property <small>wired</small></span>
+        <span class="pr-chip pr-wired">alias <small>wired</small></span>
+        <span class="pr-chip pr-wired">body <small>wired</small></span>
+        <span class="pr-chip pr-partial">link <small>partial</small></span>
+        <span class="pr-chip pr-partial">tag <small>partial</small></span>
+        <span class="pr-chip pr-reserved">note <small>design open</small></span>
+      </div>
+    </div>
+  </div>
+  <div class="pr-cap">five layout mechanisms are roles some primitives can play in ordered layout, not a separate set</div>
+</div>
+
+## Verified findings
+
+Every claim below survived an independent refutation attempt. Corrections applied during verification are marked.
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | The mechanism enum says 5; the workbench palette says 6; the preset schema and `Destination` union say 9; one code comment says "six" directly above the nine-variant union | Confirmed |
+| 2 | No ordinal field exists anywhere in Tier 1; enrichment re-sorts every **derived** list by curie (per-row generation still walks source order, but has nowhere to record it) | Confirmed, scope tightened |
+| 3 | `facet` and `hub` notes have no schema branch — and they **bypass validation entirely at write time**; the vault reader knows kinds the contract does not | Confirmed, stronger than claimed |
+| 4 | Junction-note endpoints are wikilink **addresses**; crosswalk-edge endpoints are CURIE **identities**; the docs claim identity for both; address-shaped parents do not resolve back to identity in Tier 2 | Confirmed |
+| 5 | The `NOT` predicate modifier exists in the spec prose and DDL block of the schema-spec page, and nowhere in the machine schema — a `_NOT` value would be **rejected** by the closed enum | Confirmed |
+| 6 | Tier 2 concepts key on (curie-prefix, curie) with `INSERT OR REPLACE`, so two versions of one framework silently collide. `mapping_set_id` **does** ride in Tier 1 files as an unmodeled passthrough and round-trips through the SSSOM exporter — it is absent only from the schema contract and the Tier 2 projection | Corrected during verification |
+| 7 | Five artifact-role nouns (`KnowledgeSet`, `SchemaContract`, `ExecutionRecord`, `PackageManifest`, `RecipeBinding`) have zero occurrences in `src/`; `MappingSet` appears only as the SSSOM wire field; `Carrier` once in a comment | Corrected during verification |
+| 8 | `ShapeDispatchB`: both call sites hardcode style A; a second AJV validator still compiles at every startup; tests run the matrix twice | Confirmed |
+| 9 | The Layer A query-primitive files are production-reachable only via the benchmark command — and `query-composer.ts` has **zero** production importers at all | Confirmed, stronger than claimed |
+| 10 | The query DSL occupies lines 316–718 of the recipe schema (403 of 886 lines, 45.5%) and shares zero `$defs` with the import side; a shipped recipe carries a triply-nested empty `and` | Confirmed, numbers corrected |
+| 11 | `graph_edges` / `linkStyle: shortest` are unexecuted and excluded from the effective-target hash — but they are **non-blocking warnings**, not blockers, and `graph_edges` is read for column collection | Corrected during verification |
+| 12 | The `mappings` and `junction_notes` tables have no foreign keys to `concepts`; dangling endpoints insert silently | Confirmed |
+| 13 | Note bodies are outside the validation surface and are not exported — the densest meaning in the corpus is un-governed and lost on round-trip | Confirmed |
+| 14 | `computeRecipeHash` hashes only `{layout, also_emit, enrichment}`; `metadata.based_on.hash` stores that same effective-target hash | Confirmed |
+
+## Illustration 2 — the corpus publishes order; Crosswalker drops it
+
+Three first-party sources independently ship an explicit ordinal column, converging on the same shape.
+
+<div class="not-content pr-fig" role="img" aria-label="Three sources ship ordinal columns: NIST CPRT sort elements like 00001.00001.00003, SP 800-53A sort-as values like AC-01-00-01, and CRI Profile Outline Ids like 003.001. They converge on one shape: a zero-padded dotted ordinal path within parent, stored as a string.">
+  <div class="pr-ord">
+    <div class="pr-src"><b>NIST CPRT (CSF 2.0)</b><code>sort: 00001.00001.00003</code><span>225 sort elements — one per concept</span></div>
+    <div class="pr-src"><b>SP 800-53A</b><code>sort-as: AC-01-00-01</code><span>5,384 assessment rows</span></div>
+    <div class="pr-src"><b>CRI Profile 2.2</b><code>Outline Id: 003.001</code><span>480 structure rows</span></div>
+    <div class="pr-arrow">→</div>
+    <div class="pr-conv"><b>Convergent shape:</b> zero-padded, dot-delimited <b>ordinal path within parent</b>, sorted as a plain string. Not a flat integer.</div>
+  </div>
+  <div class="pr-cap">visible damage today: the generated CSF 2.0 vault renders DETECT before GOVERN — canonical order is GV · ID · PR · DE · RS · RC</div>
+</div>
+
+## Illustration 3 — what "primitive" should mean
+
+Twelve senses of the word are live in the KB. The proposed resolution: three families keep the word; everything else loses it.
+
+<div class="not-content pr-fig" role="img" aria-label="Three primitive families: destination primitives (nine ways a level lands in the vault), query primitives (eight mechanism-neutral verbs), and change primitives (nine atomic graph edits). Plus one stance, schema-as-primitive, and one adjective use, irreducible. Nine other senses lose the word.">
+  <div class="pr-fam">
+    <div class="pr-f" style="--pr-c:#60a5fa;--pr-bg:rgba(96,165,250,.08)">
+      <h4>Destination primitives</h4><em>9 · where meaning lands</em>
+      <p>folder · name · note · heading · tag · link · property · alias · body. Five can serve as layout mechanisms in a recipe's ordered layout.</p>
+    </div>
+    <div class="pr-f" style="--pr-c:#a78bfa;--pr-bg:rgba(167,139,250,.08)">
+      <h4>Query primitives</h4><em>8 · how questions decompose</em>
+      <p>filter · traverse · bind · project · aggregate · anti-join · set-op · diff. Mechanism-neutral verbs.</p>
+    </div>
+    <div class="pr-f" style="--pr-c:#34d399;--pr-bg:rgba(52,211,153,.08)">
+      <h4>Change primitives</h4><em>9 · how ontologies evolve</em>
+      <p>The atomic graph edits any version delta decomposes into (plus 4 recognized composites).</p>
+    </div>
+  </div>
+  <div class="pr-extra">
+    <div class="pr-x"><b>One stance:</b> "schema-as-primitive" — the contract is load-bearing, engines are convenience. A position, not a set.</div>
+    <div class="pr-x"><b>One adjective:</b> "pluggable, not primitive" — elsewhere say <b>irreducible</b>. Nine of twelve current senses lose the word (transforms, view parameters, algebra ops, boundary ops, the 13-item retired set, "import primitive" as engine…).</div>
+  </div>
+</div>
+
+## Illustration 4 — the decision gates
+
+<div class="not-content pr-fig" role="img" aria-label="Three gates in this register. Gate 1, schema fields: six Tier 1 field completions, which must land before the replay register's hash-taxonomy lock. Gate 2, cleanup: five subtractions. Gate 3, language: three language and grammar decisions.">
+  <div class="pr-gates">
+    <div class="pr-gate pr-a">
+      <h4>Gate 1 — schema fields</h4><em>Field completions · before replay D1</em>
+      <span class="pr-g">P1 · Ordinal field</span>
+      <span class="pr-g">P2 · Identity-typed edge endpoints</span>
+      <span class="pr-g">P3 · mapping_set_id + NOT modifier + version</span>
+      <span class="pr-g">P4 · Legalize facet/hub</span>
+      <span class="pr-g">P5 · group_id + multi-equal guard</span>
+      <span class="pr-g">P6 · Predicate characteristics registry</span>
+    </div>
+    <div class="pr-gate pr-b">
+      <h4>Gate 2 — cleanup</h4><em>Subtractions</em>
+      <span class="pr-g">P7 · Role nouns 16 → 7</span>
+      <span class="pr-g">P8 · Split recipe schema (import / query)</span>
+      <span class="pr-g">P9 · Delete ShapeDispatchB</span>
+      <span class="pr-g">P10 · Recipe models 5 → 2</span>
+      <span class="pr-g">P11 · Consolidate reserved surface</span>
+    </div>
+    <div class="pr-gate pr-cx">
+      <h4>Gate 3 — language</h4><em>Language and grammar</em>
+      <span class="pr-g">P12 · Re-base the grammar commitment</span>
+      <span class="pr-g">P13 · "Primitive" = 3 families + stance + adjective</span>
+      <span class="pr-g">P14 · Terminology page restructure</span>
+    </div>
+  </div>
+  <div class="pr-cap">this register's gate 1 changes tier 1 fields — it must land before or with the replay register's hash-taxonomy decision D1</div>
+</div>
+
+## Gate 1 — schema fields (Tier 1 field completions)
+
+All additive, all optional, none opens the closed layout grammar or adds an artifact noun. Each decision appears as an executive decision card — plain title, tradeoffs, recommendation — in the [owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) (the single checklist of everything awaiting the owner's ratification) § 1a.
+
+| # | Decision | Corpus evidence | Options | Connects to |
+|---|---|---|---|---|
+| **P1** | **Ordinal field.** An optional string encoding position-within-parent (dotted, zero-padded path). Sub-decision: does it join `concept_cid` (the fingerprint that identifies a concept independently of where it lands in a folder tree)? | First-party: CPRT ships a dedicated `sort` element per concept; 800-53A ships `sort-as`; CRI ships `Outline Id`. Generated CSF vault currently renders DETECT before GOVERN | (a) adopt, excluded from `concept_cid`; (b) adopt, included; (c) defer | [Target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) (commits to lexical-sort canonicalization — must be amended); [View shapes](/crosswalker/concepts/view-shapes/) (deferred timeline shape); `spec/tier1.schema.json` |
+| **P2** | **Identity-typed edge endpoints.** Optional `subject_curie` / `object_curie` on junction notes (each junction note stores one relationship as its own reviewable file); `parent_curie` as the schema-blessed hierarchy carrier. Wikilinks remain the rendered affordance | Address-shaped parents currently return null in Tier 2 identity resolution | (a) add optional identity fields (makes the docs' own invariant true); (b) keep address-only and fix the docs claim | [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) ("identity, not address"); `spec/tier1.schema.json`; `src/tier2/projector.ts` |
+| **P3** | **Mapping-set identity + negation + version.** Promote `mapping_set_id` (which published crosswalk release an assertion came from, e.g. NIST's 800-53 Rev 4 to Rev 5 mapping) from unmodeled passthrough into the contract and Tier 2 (the rebuildable SQLite projection used for querying); add `predicate_modifier: NOT` (an explicit "these two are **not** equivalent" assertion); populate ontology version | The SSSOM path already writes and round-trips `mapping_set_id`; the NOT modifier was the stated reason SKOS was rejected; r4/r5 silently collide today | (a) all three now; (b) `mapping_set_id` + version now, NOT with the MappingSet envelope | [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) (declares the modifier the schema lacks); [SKOS registry page](/crosswalker/reference/registry/skos/) (gap #4); [v0.1.7 milestone](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) |
+| **P4** | **Legalize facet/hub.** Schema branches for the two note kinds the code already emits (a **facet** note is a slice of the graph, e.g. every control carrying one theme; a **hub** note is an index page for a level), plus write-time validation on hub paths | Hub/facet notes currently bypass `validateTier1Frontmatter` entirely | (a) add branches + validate; (b) constrain `kind` to a closed enum on the concept branch too | [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) (the anti-noun rule these kinds currently violate); `src/generation/enrich.ts` |
+| **P5** | **Edge groups.** Optional `group_id` marking the members of one joint-coverage conjunction ("A is covered jointly by B, C and D"), plus an importer guard on multi-target `equal` | CRI "Full Summarily": 1,478 rows where conjunction is a published predicate (3:1 majority in three mapping sets); CRI FCS is group-scoped by definition; **10 multi-target `equal` groups are already materialized as logically false pairwise equivalences in the test vault** | (a) `group_id` + guard now; (b) guard only, `group_id` with the MappingSet envelope; (c) nothing — ships a known correctness bug | [STRM registry page](/crosswalker/reference/registry/strm/); [Terminology](/crosswalker/concepts/terminology/); `src/import/sssom-importer.ts` |
+| **P6** | **Predicate characteristics registry.** A small vocabulary table declaring `inverse_of` / `symmetric` / `transitive` per predicate | Gives closure a principled stopping rule; ends per-query "check both directions" conventions | (a) now, for the STRM six; (b) with `graph_edges` in v0.2 | [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/); `src/tier2/` closure |
+
+**Resolved by corpus evidence (no longer open):** `graph_edges` stays **reserved for v0.2**. The corpus holds roughly 20,000 non-STRM edges (`mitigates`, D3FEND's 20-plus object properties, CTID impact types, CPRT lifecycle relations), but the vocabulary is open-ended and entangled with unresolved version-lineage design — wiring it now would freeze a vocabulary before the design exists. v0.1's honest carriers are named managed frontmatter conventions (800-53 `Related Controls`, `mitigates`) plus junction-note predicate strings, stated plainly in the schema spec.
+
+## Gate 2 — cleanup (subtractions)
+
+Nothing here blocks the replay slice. Executive cards for these live in the [owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) § 1b.
+
+| # | Decision | Verified facts | Options | Connects to |
+|---|---|---|---|---|
+| **P7** | **Role nouns 16 → 7.** Role nouns are the names the project gives to the kinds of thing it manages (Knowledge Set, Schema Contract, Execution Record, and so on). Keep `schema`, `recipe`, `binding`, `MappingSet`, `live view`, `snapshot`, `projection` (+ tiers). Demote the rest | Five nouns have zero code referent; `MappingSet` exists only as the SSSOM wire field; the anti-proliferation page itself introduced ~16 nouns while rejecting 1. The vocabulary layer is still uncommitted — cheapest pruning moment there will ever be | (a) prune to 7 now, keep Execution Record / Package Manifest as a 3-line planned-envelopes note; (b) keep the full taxonomy | [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/); [artifact-role synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/); [Terminology](/crosswalker/concepts/terminology/) |
+| **P8** | **Split the recipe schema.** `spec/recipe.schema.json` is the machine contract for a Recipe (the saved specification of how a source becomes notes). Import contract and query contract share zero `$defs` across an 886-line file (45.5% is the query DSL); query recipes must fake import-side fields to validate | A shipped recipe carries `"where": {"and":[{"and":[{"and":[]}]}]}` | (a) two schema files, additive `$id` bump; (b) keep one file, make `source`/`target` conditional | `spec/recipe.schema.json`; [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/); [Query primitives](/crosswalker/concepts/query-primitives/) |
+| **P9** | **Delete ShapeDispatchB.** ShapeDispatch is the validator's two interchangeable ways of expressing the same rule set, documented as producing identical verdicts. Both callers hardcode style A; a second AJV validator compiles at every startup; ~350 doubled test lines | Styles documented as producing identical verdicts | (a) delete; (b) keep | `src/validation/validator.ts`; `spec/recipe.schema.json`; `tests/recipe-query-block.test.ts` |
+| **P10** | **Recipe models 5 → 2.** Five in-code representations of one Recipe, with translation glue between each pair — every boundary a place a saved recipe can silently lose a field. `render/index.ts`'s hand-typed `Recipe` becomes an alias of the generated type; legacy `config.ts` models retire behind the shim with a date; close the `table-row` leak at the workbench UI instead of blocking at save | ~2,470 LOC of translation glue between five representations; the enrichment block is declared four times | (a) collapse now; (b) collapse during the replay slice | `src/render/index.ts`; `src/types/config.ts`; `src/import/mapping/types.ts`; [Recipe fidelity synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) |
+| **P11** | **Consolidate reserved surface + dead code.** One `reference/reserved-for-v0.2` page for `graph_edges`, `linkStyle: shortest`, tag/wikilink mechanisms, Graph/Timeline parameter blocks; delete `query-composer.ts` (zero importers); "wire it or drop it" RC gate for the 1,558-LOC query-primitive island | `query-composer.ts` is fully dead, not benchmark-only | (a) consolidate + delete dead code + RC gate; (b) leave scattered | `spec/recipe.schema.json`; `src/views/`; [v0.1-RC milestone](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) |
+
+## Gate 3 — language
+
+Naming and grammar only; no runtime behavior changes. Executive cards for these live in the [owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) § 1b.
+
+| # | Decision | Options | Connects to |
+|---|---|---|---|
+| **P12** | **Re-base the grammar commitment.** Commitment #2 is kept verbally while the real palette grew to 9 under three names. Restate it honestly: 9 destination primitives; 5 usable as layout mechanisms; wired/partial/reserved status per primitive; new-primitive review triggers on the palette, not the enum | (a) restate on the true palette; (b) defend the number 5 and rename the additions | [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/); `.claude/CLAUDE.md` commitment #2; [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) |
+| **P13** | **"Primitive" disambiguation.** Three families + one stance + one adjective (Illustration 3). Rename sweep: transformation primitives → **transforms** (`spec/primitives/` → `spec/transforms/`); `TablePrimitives` and siblings → `TableParams` (schema `$id` bump); ontology diff primitives → **change primitives**; retire the 13-item structural set (superseded note); "import primitive" → "import engine" | (a) full sweep; (b) families only, defer renames | [Terminology](/crosswalker/concepts/terminology/); [Query primitives](/crosswalker/concepts/query-primitives/); [ETL and import](/crosswalker/concepts/etl-and-import/); `spec/preset.schema.json` |
+| **P14** | **Terminology restructure.** Split into a reader glossary (~180 lines: the 12 words that matter → overloaded-words collision table → three families → domain vocabulary → alias index) and an internals reference under agent-context; delete ~15 orphaned rows and the rejected-engine glossary | (a) split as proposed; (b) trim in place | [Terminology](/crosswalker/concepts/terminology/); [UI lexicon](/crosswalker/agent-context/ui-lexicon/) |
+
+## Interaction with the replay register
+
+Gate 1 (schema fields) edits `spec/tier1.schema.json` — the machine-checked contract defining what a valid imported note looks like, and the same contract that the [save-and-exact-replay register](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) (the log tracking how a saved import re-runs later and produces the same result) locks a fingerprint scheme over in its own Gate 1, decision D1. **Sequencing rule: this register's Gate 1 lands before or together with replay D1.** Changing Tier 1 fields after digests are locked would invalidate stored hashes. Gates 2 (cleanup) and 3 (language) are independent of the replay slice and can proceed in parallel.
+
+## KB alignment — already moving
+
+The reader-journey audit split its findings into SAFE (decision-independent) and GATED items. The SAFE set is executing now, in parallel with this register:
+
+| Item | Status |
+|---|---|
+| Sidebar orders for all concept pages (8 duplicates, 6 missing — terminology was sinking to the bottom of a collapsed list) | Executing |
+| Stale 7-verb query tables in terminology + system-architecture replaced with pointers to the canonical 8-verb page | Executing |
+| Dataview purge from the GRC landing page (commitment #6 violation, including a worked query) | Executing |
+| Quick-start rewritten against the shipped workspace tab (it documented a dead UI) | Executing |
+| New external-producer page: emit valid notes from your own tools | Executing |
+| Wrong file paths and the false `_crosswalker.type` claim in architecture pages | Executing |
+| Everything touching the word "primitive", the noun set, or terminology structure | **Gated on P7, P12–P14** |
+
+## Related
+
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) — the single checklist of everything awaiting the owner's ratification; every decision here restated as an executive decision card
+- [Save and exact replay — decision register](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) — the sibling log tracking how a saved import re-runs later and produces the same result; this register's Gate 1 (schema fields) sequences before its D1
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — the concept page defining which artifact is allowed to assert what; the model P7 prunes and P4 enforces
+- [Target-structure synthesis (Ch 22)](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — the closed grammar P12 re-bases
+- [Import primitive formal foundation (Ch 20)](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/) — the algebra vocabulary P13 scopes to research
+- [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — becomes the destination-primitives page under P12/P13
+- [Query primitives](/crosswalker/concepts/query-primitives/) — the canonical 8-verb set the SAFE fixes point to
+- [Terminology](/crosswalker/concepts/terminology/) — the page P14 restructures
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive, the stance that keeps the word
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — change primitives' home; CPRT lifecycle relations wait here
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — carries the promises P3 makes true or retracts
+- [v0.1.7 milestone](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — where Gate 1 (schema fields) lands in the roadmap

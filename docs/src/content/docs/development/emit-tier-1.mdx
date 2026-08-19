@@ -1,0 +1,117 @@
+---
+title: Emit valid notes from your own tools
+description: Produce Crosswalker-conformant Markdown from Python, Node, a notebook, or an agent — the frontmatter contract, a complete worked example, and how to validate it with AJV.
+tags: [development, spec, integration]
+sidebar:
+  label: Emit valid notes
+date: 2026-07-25
+---
+
+Crosswalker's contract is a **JSON Schema over note frontmatter**, not an API and not a plugin extension point. If your script writes Markdown files whose YAML frontmatter validates against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), you have produced a valid Crosswalker vault. Nothing downstream (the query layer, re-import safety, provenance tooling) cares which program wrote the files.
+
+The bundled [import wizard](/crosswalker/features/import-wizard/) is therefore one producer among several, not a privileged one. When the wizard is the wrong tool — a source that needs real cleanup, a scraper, a Polars/pandas pipeline, a notebook, an MCP server, an agent doing extraction — emit conformant notes directly and skip the plugin entirely. This is a supported path, not a workaround; see [the two producer modes](/crosswalker/concepts/etl-and-import/) for why the project is built this way.
+
+## A complete valid concept note
+
+Everything below validates. Only `curie` and `_crosswalker` are required at the top level; inside `_crosswalker`, only `spec_version`, `source_ref`, and `produced_at` are required.
+
+```markdown
+---
+curie: "nist:AC-2"
+title: Account Management
+aliases:
+  - AC-2
+tags:
+  - framework/nist-800-53-r5/ac
+parent: "[[Frameworks/NIST 800-53 r5/AC/AC]]"
+control_id: AC-2
+control_family: Access Control
+_crosswalker:
+  spec_version: "https://crosswalker.dev/spec/tier1.schema.json"
+  source_ref:
+    file: NIST_SP-800-53_rev5_catalog.csv
+    version: "rev 5"
+    source_hash: sha256-3a2c7e8b9d4f1c0e6b8a5d3f7c1e9b4a8d6f2c5e7b1a4d8f3c0e6b9a5d2f7c1e
+  produced_at: "2026-07-27T14:02:11Z"
+  producer:
+    kind: external-cli
+    name: frameworks_to_obsidian.py
+    version: 0.4.2
+  recipe:
+    id: nist-80053r5-allfolders
+---
+
+# Account Management
+
+Body prose is entirely yours. Headings, callouts, embeds, tables — none of it is
+validated, because the schema's surface is frontmatter only.
+```
+
+Field notes that will save you a debugging round:
+
+| Field | Constraint |
+|---|---|
+| `curie` | `prefix:local`. Prefix must be lowercase ASCII (`[a-z][a-z0-9_-]*`); local part allows letters, digits, `. _ - ( ) /`. So `nist:AC-2(1)` is fine, `NIST:AC-2` is not. |
+| `_crosswalker.spec_version` | A `const`. It must be exactly `https://crosswalker.dev/spec/tier1.schema.json`. |
+| `_crosswalker.source_ref` | Needs at least one of `file`, `url`, `curie`, `version`, `source_hash`. `url` must be a real URI. |
+| `_crosswalker.produced_at` | ISO 8601 with `format: date-time`, so validation only enforces it if you load `ajv-formats`. |
+| `_crosswalker.producer.kind` | One of `plugin-engine`, `external-cli`, `agent`, `manual`, `other`. |
+| `_crosswalker.concept_cid` | If you set it, it must match `^sha256-[a-f0-9]{64}$` exactly. `source_hash` and `recipe.hash` are plain strings by comparison — the `sha256-` convention is recommended, not enforced. |
+| `tags` | Slash-delimited, ASCII alphanumeric plus `_` and `-`. No spaces, no parens, no leading slash. |
+| `parent` / `children` | Wikilink targets, string or array. Only length-checked, so both `"[[AC-2]]"` and the bare path form validate; the plugin writes the bracketed form so Obsidian renders the property as a link. |
+| domain columns | Anything else at the top level (`control_id`, `baseline`, `taxon_id`, …) is allowed. The concept-note shape is `additionalProperties: true` on purpose. |
+
+Two other note shapes exist, selected by a `kind` discriminator: `kind: junction-note` (an evidence link between a concept and a document) and `kind: crosswalk-edge` (a mapping between concepts in two different ontologies), each with their own required fields. **Omit `kind` entirely** and your note is validated as a concept note. See the [schema spec walkthrough](/crosswalker/agent-context/v0-1-schema-spec/) for those two shapes.
+
+## Where the schema lives
+
+- **In the repo**: [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — JSON Schema 2020-12.
+- **Stable `$id`**: `https://crosswalker.dev/spec/tier1.schema.json`. The URI is stable; a breaking change bumps to a new major path rather than mutating this one, so pinning against it is safe.
+- **Recipe shape** (optional, only if you also want to describe *how* the notes were produced): [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json).
+
+Vendor the file, or fetch and cache it — don't fetch it per note.
+
+## Validate before you write
+
+This is the same setup the plugin uses internally, so behavior matches. Install `ajv` and `ajv-formats`, plus any YAML frontmatter reader:
+
+```js
+import { readFileSync } from 'node:fs';
+import Ajv2020 from 'ajv/dist/2020';
+import addFormats from 'ajv-formats';
+import matter from 'gray-matter';
+
+const schema = JSON.parse(readFileSync('spec/tier1.schema.json', 'utf8'));
+
+// Ajv2020, not the default Ajv export: the spec declares the 2020-12 metaschema,
+// which the Draft-07 default constructor rejects.
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv); // required for `produced_at`'s date-time format
+const validate = ajv.compile(schema);
+
+const { data: frontmatter } = matter(readFileSync('Ontologies/NIST-800-53/AC-2.md', 'utf8'));
+
+if (!validate(frontmatter)) {
+  console.error(validate.errors);
+  process.exitCode = 1;
+}
+```
+
+`strict: false` matters: strict mode complains about the schema's `if`/`then` discrimination branches. From Python, the equivalent is any 2020-12-capable validator (`jsonschema` with `Draft202012Validator`, plus a format checker) run over the parsed frontmatter dict.
+
+## What not to do
+
+- **Don't invent keys inside `_crosswalker`.** The provenance block is `additionalProperties: false`, as are `source_ref`, `producer`, and `recipe` inside it. A stray `import_id` or `run_number` fails validation. Put your own metadata at the top level of the frontmatter instead, where extra keys are allowed.
+- **Don't hand-roll `spec_version`.** It is a `const`, not a version you increment.
+- **Don't let your YAML writer coerce the timestamps.** Unquoted `2026-07-27T14:02:11Z` is parsed as a date object by most YAML readers, and then it is no longer a string when it reaches the validator. Quote it on write, and expect to re-serialize it on read.
+- **Don't try to validate the body.** Prose, headings, and layout are free-form and deliberately out of scope. Folder layout is likewise not validated — where a note sits on disk is a presentation choice, while `curie` is the identity that survives it.
+- **Don't set `kind` on ordinary concept notes.** It selects a different, stricter shape.
+
+## Related
+
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the full field-by-field walkthrough, including junction notes and crosswalk edges
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — the two producer modes and why external producers are first-class
+- [Development setup](/crosswalker/development/setup/) — cloning the repo to get the schema and run the validator locally
+- [Generation engine](/crosswalker/features/generation-engine/) — what the bundled producer writes, if you want to match its output
+- [Import wizard](/crosswalker/features/import-wizard/) — the in-plugin path, for comparison
+- [Terminology](/crosswalker/concepts/terminology/) — CURIE, provenance, concept note, crosswalk edge
