@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Infrastructure: mechanical personal-data gate + static checks in CI (2026-08-19)
+
+- **New `bun run check:personal-data` gate.** A regex scanner (no AI in the loop) that fails on machine-specific absolute paths, email addresses, and an optional local denylist of names/identifiers. Runs over the whole tracked tree by default, or `--staged` / `--range <gitrange>` for pre-commit and pre-merge use. Legitimate discussions of these patterns (PII-scrubbing decision logs, redaction tests, the reviewer agent's own detection rules) are allowlisted by path with a stated reason; well-known bot identities are allowlisted by address.
+- **Static checks now actually run in CI.** None of the existing workflows executed any `check:*` script, so the gates only ever ran when someone remembered to. A new `Static Checks` workflow runs personal-data, MDX, frontmatter, not-content, and log-label checks on every push and PR, unfiltered by path — a leaked path can land in any file, not just the ones a change touches.
+- **Retired the WSL-era workarounds.** The docs dev server dropped its polling file-watcher (it existed because inotify events were silently dropped on a Windows drive mounted into WSL) and the docs dependency tree was reinstalled clean, shedding stale win32 binaries. Agent instructions record the current environment and no longer prescribe the obsolete jest invocation.
+
 ### Positioning: dual domain-neutral/GRC-first statement on the front doors (2026-07-29)
 
 - **The homepage, GRC-teams page, differentiators page, and README now state the settled dual positioning explicitly**: the note contract and engine are domain-neutral; the first-class part is the bundled one-click recognized-source recipes, which today are all compliance (NIST CSF 2.0, NIST SP 800-53 Rev 5, CIS Controls v8, MITRE ATT&CK, CRI Profile 2.2, SCF 2026, OLIR-style crosswalks). "What is privileged is the fast path, never the model."

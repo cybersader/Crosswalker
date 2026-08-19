@@ -296,6 +296,7 @@ Before committing, run the matching commands:
 
 | Files changed | Command |
 |---|---|
+| Any files | `bun run check:personal-data` |
 | `src/**` | `bun run lint` + `bun run test` |
 | `docs/**` (any `.mdx`) | `cd docs && bun run build` |
 | `tools/fixtures/synthetic/**` (CSV changes) | `bun run fixtures` |

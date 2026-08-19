@@ -59,6 +59,9 @@ npm-debug.log*
 .env
 .env.local
 
+# Local personal identifiers used by the personal-data gate
+.personal-data-denylist
+
 # Claude Code local settings (contains user-specific paths)
 .claude/settings.local.json
 .claude/plans/

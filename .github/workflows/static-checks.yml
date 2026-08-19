@@ -1,0 +1,38 @@
+name: Static Checks
+
+# These gates are cheap, repo-wide, and independent of the plugin build, so they
+# run on every push and PR without path filters. `check:personal-data` in
+# particular must see the whole tree: a leaked absolute path or email can land in
+# any file, not just the ones a given change happens to touch.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Personal data (paths, emails, denylist)
+        run: bun run check:personal-data
+
+      - name: MDX syntax
+        run: bun run check:mdx
+
+      - name: Frontmatter
+        run: bun run check:frontmatter
+
+      - name: not-content guard
+        run: bun run check:not-content
+
+      - name: Log labels
+        run: bun run check:log-labels
