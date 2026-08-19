@@ -48,6 +48,8 @@ That is **five**, and it is a closed list on purpose. It is what makes "given a 
 
 That is **nine**. The workbench shows nine because nine is the honest answer to *question 2*.
 
+**These are not competing counts of one list — they are different axes.** The architecture already says so, in the commitment itself: the grammar is *five layout mechanisms **x** ordered layout **x** also_emit **x** graph_edges*. That is a product of dimensions, not a flat inventory. Asking "so how many primitives are there?" is like asking how many cells a spreadsheet has without saying whether you mean rows or columns. The honest answer names the axis first.
+
 ### What was proposed
 
 That the public claim of "five" is false because nine exist, and the docs should be restated on a nine-primitive palette.
@@ -106,72 +108,93 @@ The proposal bundled both halves and assumed they could ride one schema version 
 
 Also worth knowing: the proposal is titled "give it exactly one meaning," but what it actually delivers is *qualified names* — several meanings, each clearly labelled. That is the correct fix. The title oversells it.
 
+### The risk that turned out not to exist
+
+The "breaks saved recipes" concern assumed there are saved recipes in the wild. **There are not.** The project is pre-alpha, unannounced, and has no external users, which the owner confirmed on 2026-08-19. Nothing outside this repository consumes the schema URI or the field names.
+
+That collapses the entire compatibility argument. What is left to update is inside the repo and mechanical:
+
+| What changes | Scope |
+|---|---|
+| Prose in the docs | A sweep |
+| `query.primitives` field name and the `$defs` names in the recipe schema | 33 files across `src/`, `spec/`, `tests/`, `recipes/` reference the term |
+| Bundled recipes | 10 import recipes plus 7 query recipes; regenerated, not hand-edited |
+| Fixtures | `bun run fixtures` regenerates them |
+
 ### What each option costs
 
 | Option | Cost | Risk | What you get |
 |---|---|---|---|
-| **Fix the words now, defer the file renames** | A docs sweep | None | The reading problem goes away immediately; nothing breaks |
-| **Do both now as one migration** | The bundled migration does not exist as described; would need re-planning | Breaks saved recipes | — |
+| **Full sweep now: words and field names** | One coordinated pass over 33 files plus a fixtures regen | Low — no external consumers exist, and the fixture-drift gate catches misses | The names finally match what the things actually are, with no migration debt carried forward |
+| **Words only, defer field names** | A docs sweep | None | Docs read correctly while the file format keeps the misleading names |
 | **Defer everything** | Free | The word stays ambiguous | Nothing |
 
 ### The call
 
-Do the words now — this is the "I like intuitive" half, and it is free. Hold the file-format renames until the schema split (P8) and the recipe-model decision (P10) settle, so they happen once, deliberately, with a migration.
+**Do the full sweep now, field names included.** The window where renaming is free closes the moment someone saves a recipe outside this repo. Renaming now costs one coordinated pass; renaming later costs a versioned migration and a compatibility shim forever.
 
 ---
 
 ## P7 — cutting the internal vocabulary from 16 names to 7
 
-### What this is actually about
+### What "pruning" actually means in practice
 
-The project has named the kinds of thing it manages. The question is which of those names are *real things* and which are just descriptions that got capitalized.
+This is the question that was never answered, and without it the decision is undecidable. Pruning a noun does **not** delete anything from the product, and changes no code. It changes one thing only:
 
-The project already has a test for this: **does it have its own identity, its own lifecycle, its own authority, and its own consumers?**
-
-### What was proposed
-
-Cut from 16 names to 7.
-
-### What the review found
-
-**The proposed seven cut the wrong ones.** It removes names that carry real authority and keeps ones the project's own page calls derivative.
-
-Most importantly, two of the names slated for removal are **the primary artifacts of the very next milestone**:
-
-| Name | What it actually is | Why cutting it is wrong |
-|---|---|---|
-| **Execution Record** | The record of one import run: what ran, against what source, when, and what came out | v0.1.8 calls this "the primary artifact." Cutting it means re-adding it one milestone later, across docs, schemas, types, UI labels, and tests |
-| **Package Manifest** | The signed list of what is actually inside a release | v0.1.8 signs and verifies *this*, specifically so that signing is not just "signing a folder name" |
-| **Knowledge Set** | Who asserted the content — "NIST says this" — as distinct from whether the file is valid | Without it, "passes validation" quietly starts to read as "is authoritative." Those are different claims |
-
-Meanwhile the proposed keep-list retains **projection**, which the project's own authority page says "does not gain independent semantic authority."
-
-The card's supporting evidence is also weaker than it looks: "five of them appear nowhere in the code" is literally true but measures **roadmap order**, not whether the thing is real. Three of those five are simply not built yet because they belong to the next two milestones.
-
-### What is genuinely safe to cut
-
-These fail the test — they are descriptions, not things:
-
-| Cut | Why |
+| A **kept** noun | A **cut** noun |
 |---|---|
-| recipe specification | It is just the Recipe in canonical form |
-| recipe execution | It is an event; the durable facts belong to Execution Record |
-| Carrier (as a capitalized noun) | It is the zip or folder that moves bytes. Keep one sentence warning it is not the package |
-| recipe template (as an artifact class) | Useful phrase, not a separate kind of thing |
+| Has a glossary entry with a definition | Has no glossary entry |
+| Is used deliberately and means the same thing everywhere | Is just ordinary English; you can still write the words |
+| Is a candidate to become a real type or schema in code | Is not |
+| A reader is expected to learn it before the docs make sense | A reader never has to look it up |
+
+So the real question per term is: **is this a thing with its own boundary that a reader must learn, or is it a handy phrase?** Handy phrases are free. Defined terms cost the reader.
+
+That reframes the instinct "if these are just useful terms to describe things, I do not see the problem" as exactly right, with one caveat: a *capitalized, defined* term implies a thing with a boundary. When the boundary is not real, readers waste effort hunting for a distinction that does not exist. That is the cost, and it is the only cost.
+
+### What each of the 16 functionally does
+
+Grouped by the job it performs, rather than by whether it survives:
+
+| The job | Terms | Verdict |
+|---|---|---|
+| **Decides whether something is valid** — the rulebook a file is checked against | Schema Contract | Keep |
+| **Claims something is true about the world** — content someone asserts and can be held to | Knowledge Set (a body of asserted content, e.g. NIST CSF 2.0), MappingSet (one published crosswalk release), MappingAssertion (one row inside it) | Keep all three |
+| **Specifies what should happen** — instructions, before anything runs | Recipe (the reusable instructions), Recipe binding (those instructions pinned to one exact input) | Keep both |
+| **Records what did happen** — evidence after a run | Execution Record | Keep (planned contract) |
+| **Moves bytes to someone else** | Package (the resolved release), Package Manifest (the signed list of what is inside), Carrier (the zip or folder it travels in) | Keep 2, cut Carrier |
+| **Derived views over data you already have** | Live view (computed on read), Materialized snapshot (computed once and stored), Projection (the mapping from notes into the query database) | Keep all three, qualified |
+| **Not separate things at all** | Recipe specification, Recipe template, Recipe execution | Cut all three |
+
+**11 keep, 1 defer, 4 cut = 16.** `Package` is the defer: it is probably real, but its boundary against Package Manifest is not settled until v0.1.8 defines both.
+
+### The three that are not separate things
+
+Two of these came up directly:
+
+- **Recipe specification vs Recipe** — the same thing. "Specification" only means the Recipe written out in canonical form. There is no second artifact. **Cut.**
+- **Recipe template vs Recipe specification** — different from each other, but neither is a new kind of thing. A template is *a starting point you copy*; a specification is *the finished thing in canonical form*. Both describe a Recipe at different moments. Keep the words, drop the capitals. **Cut as defined terms.**
+- **Recipe execution** — an event, not something you can hold. The durable facts about a run belong to Execution Record. **Cut.**
+
+And **Carrier**: the "vague" read is correct. It means "the zip or folder the bytes travel in." That deserves one sentence of warning — signing a folder name is not the same as signing its contents — but it does not need to be a defined term. **Cut the capital C, keep the sentence.**
+
+### Why the proposed seven were the wrong seven
+
+The proposal kept **Projection**, **Live view**, and **Materialized snapshot** — all derived views, and the authority page itself says Projection "does not gain independent semantic authority." Meanwhile it cut **Execution Record** and **Package Manifest**, the two primary artifacts of v0.1.8, the next milestone. That is backwards: it drops the things with authority and keeps the things without it.
+
+It also cut **Knowledge Set**, the only term separating *"this file is valid"* from *"NIST actually says this."* Those are different claims, and merging them lets "passes validation" quietly start to read as "is authoritative."
 
 ### What each option costs
 
 | Option | Cost | Risk | What you get |
 |---|---|---|---|
-| **Selective prune (~11 keep)** | A modest docs pass | Low | Real clutter goes; nothing the next milestone needs is lost |
-| **Prune to 7** | Re-introduce two names next milestone across every surface | Audit and replay code may encode the wrong boundary permanently | A smaller number |
-| **Defer all pruning** | Free | Clutter stays another milestone | Prune once later against real contracts |
+| **Selective prune (11 keep, 1 defer, 4 cut)** | A modest docs pass | Low | Four genuinely empty terms stop costing readers; nothing the next milestone needs is lost |
+| **Prune to 7** | Re-introduce two terms next milestone across docs, schemas, types, UI labels, and tests | Audit and replay code may encode the wrong boundary permanently | A smaller number, for its own sake |
+| **Defer all pruning** | Free | Four empty terms keep costing readers | Prune once later against real contracts |
 
 ### The call
 
-Selective prune. Your instinct that "selective prune sounds right" matches what the evidence supports.
-
----
+Selective prune, on the rule above: cut the terms that name no boundary, keep the ones that do.
 
 ## P14 — splitting the glossary into two pages
 
@@ -189,17 +212,32 @@ The cause is **not length**. Measured:
 
 What actually makes the page hard to trust is that **five of its claims are stale**, including two that contradict settled commitments (it still discusses a database engine that was rejected, and still presents a renamed concept under its old name).
 
+### A third option neither the card nor the review proposed
+
+The owner suggested it on 2026-08-19, and it is better than both: **organize one page by audience, and link the deep internals out to the pages that own them.**
+
+The split proposal assumed you must choose between "one page that serves nobody" and "two pages that serve two audiences." That is a false choice. Audience separation is a *structural* problem, solvable with sections; it does not require a second URL.
+
+| Shape | Reader finds their terms? | Link migration | Vocabulary authorities |
+|---|---|---|---|
+| One page, undifferentiated (today) | No — reader terms buried among internals | — | 2 (terminology + UI lexicon) |
+| **One page, grouped by audience** | Yes — reader section first, internals below | **None** | **2** |
+| Two pages | Yes | 215 links | 3 |
+
+The "link internals out" half matters as much as the grouping. Today the glossary *duplicates* definitions that live on concept pages, which is why it is both long and prone to drift — two copies, one of which nobody updates. Replacing those with a one-line gloss plus a link to the owning page shortens the page **and** removes the drift source. That is the mechanism the split proposal was reaching for without naming.
+
 ### What each option costs
 
 | Option | Cost | Risk | What you get |
 |---|---|---|---|
-| **Trim in place** | Fix five stale rows, put reader terms first, link internals out instead of duplicating | None — URL and anchors unchanged | The actual problem fixed |
-| **Split now** | 215 link migrations, anchor-compatibility work, a third vocabulary authority | Two pages to keep in sync; still stale unless content is fixed anyway | A 19% shorter first page |
+| **One page, grouped by audience, internals linked out** | Fix five stale rows, regroup by audience, replace duplicated definitions with gloss + link | None — URL and anchors unchanged | Readers find their terms; the drift source is removed; no second authority |
+| **Trim in place, keep current order** | Fix five stale rows | None | Correctness, but reader terms stay buried |
+| **Split into two pages** | 215 link migrations, anchor-compatibility work, a third vocabulary authority | Two pages to keep in sync; still stale unless content is fixed anyway | A 19% shorter first page |
 | **Defer** | Free | Stale claims keep misleading readers | Nothing |
 
 ### The call
 
-Trim in place. Revisit a split after v0.1.8, if the corrected page is still too big — by then the vocabulary will have stopped moving.
+One page, grouped by audience, internals linked out to their owning concept pages. Revisit a split only if the corrected page is still unwieldy after v0.1.8, by which point the vocabulary will have stopped moving.
 
 ---
 
@@ -208,9 +246,9 @@ Trim in place. Revisit a split after v0.1.8, if the corrected page is still too 
 | Decision | Original recommendation | After review |
 |---|---|---|
 | **P12** primitives count | Restate on nine | **Keep five; scope every count.** The "exceeded" claim is false |
-| **P13** the word "primitive" | Full sweep, one schema bump | **Words now, file renames deferred.** The bundled migration does not exist as described |
-| **P7** vocabulary 16 → 7 | Prune to seven | **Selective prune, ~11 keep.** The seven cut next milestone's primary artifacts |
-| **P14** split the glossary | Split after P7/P12/P13 | **Trim in place.** Length was not the problem |
+| **P13** the word "primitive" | Full sweep, one schema bump | **Full sweep now, field names included.** The migration premise was wrong, but so was the caution: there are no saved recipes to break |
+| **P7** vocabulary 16 → 7 | Prune to seven | **Selective prune: 11 keep, 1 defer, 4 cut.** The seven cut next milestone's primary artifacts |
+| **P14** split the glossary | Split after P7/P12/P13 | **One page grouped by audience, internals linked out.** Length was never the problem |
 
 ## Related
 
