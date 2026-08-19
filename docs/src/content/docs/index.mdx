@@ -1,6 +1,6 @@
 ---
 title: Crosswalker
-description: Philosophically, Crosswalker is an ontology lifecycle management engine. In practice, it turns your Obsidian vault into an operational compliance knowledge graph.
+description: Crosswalker helps GRC teams import frameworks, shape useful notes, connect controls and evidence, and understand coverage in plain Markdown.
 hideMeta: true
 sidebar:
   hidden: true
@@ -14,7 +14,7 @@ import RecentUpdates from '../../components/RecentUpdates.astro';
   {/* === TAGLINE === */}
   <div class="cw-tagline">
     <h2 class="cw-headline">The future of <span class="cw-rotate-wrap"><span class="cw-rotate"><span>compliance</span><span>risk management</span><span>governance</span><span>framework mapping</span><span>evidence management</span><span>internal audit</span><span>compliance</span></span></span><br/>is a <span class="cw-accent">knowledge graph.</span></h2>
-    <p class="cw-subtitle">Import frameworks. Link evidence. Query everything. Evolve with every update. Open source.</p>
+    <p class="cw-subtitle">Import frameworks. Shape useful notes. Connect controls and evidence. Understand coverage. Open source.</p>
   </div>
 
   <script>{`
@@ -215,7 +215,7 @@ import RecentUpdates from '../../components/RecentUpdates.astro';
     <g class="cw-sv-item-out">
       <rect x="715" y="150" width="135" height="30" rx="6"/>
       <g transform="translate(723,158) scale(0.8)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
-      <text x="790" y="170">Resilient</text>
+      <text x="790" y="170">Reusable</text>
     </g>
     <g class="cw-sv-item-out">
       <rect x="715" y="195" width="135" height="30" rx="6"/>
@@ -340,7 +340,7 @@ import RecentUpdates from '../../components/RecentUpdates.astro';
     <g class="cw-sv-item-out">
       <rect x="10" y="437" width="160" height="32" rx="6"/>
       <g transform="translate(20,444) scale(0.85)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke-width="1.8"/></g>
-      <text x="100" y="458">Resilient</text>
+      <text x="100" y="458">Reusable</text>
     </g>
     <g class="cw-sv-item-out">
       <rect x="190" y="437" width="160" height="32" rx="6"/>
@@ -841,13 +841,17 @@ import RecentUpdates from '../../components/RecentUpdates.astro';
 
 ## What is Crosswalker?
 
-Philosophically, Crosswalker is an [ontology lifecycle management](/crosswalker/concepts/ontology-lifecycle/) engine. In practice, it turns your [Obsidian](https://obsidian.md) vault into an **operational compliance knowledge graph**. Import structured frameworks, [crosswalk](/crosswalker/concepts/terminology/#core-terms) between standards, link evidence to controls with structured metadata, and query everything — all in plain markdown you own. AI-ready from day one.
+Crosswalker turns your [Obsidian](https://obsidian.md) vault into an **operational compliance knowledge graph**. Bring in frameworks, shape them into notes your team can use, connect controls to evidence and other standards, and query coverage in plain Markdown you own.
 
-**Want the whole system in one picture?** The [system model](/crosswalker/concepts/system-model/) is the illustrated, diagram-first map — source data → canonical vault → answers, every piece linked to its deep page.
+Portable import rules, crosswalk mappings, and saved queries keep the work reusable by people and automation. The current product focuses on guided import, connected output, and analysis inside Obsidian. Comprehensive community sharing and long-term framework update workflows remain [roadmap direction](/crosswalker/reference/roadmap/).
+
+**Built for GRC first; works for any structured framework or taxonomy.** The one-click imports that ship today are all compliance sources — NIST CSF 2.0, NIST SP 800-53 Rev 5, CIS Controls v8, MITRE ATT&CK techniques, CRI Profile 2.2, SCF 2026, plus OLIR-style crosswalk files. Nothing in the note format itself is compliance-specific, so any other structured source (a taxonomy, a standards catalog, a skills matrix, a product hierarchy) goes through the same guided import — it just doesn't get the one-click head start. [Why the core stays domain-neutral](/crosswalker/concepts/what-makes-crosswalker-unique/#5-domain-neutral-core-grc-first-launch-surfaces).
+
+**Want the whole system in one picture?** The [system model](/crosswalker/concepts/system-model/) maps source data → vault notes → answers, with every piece linked to its deeper page.
 
 <CardGrid>
-  <Card title="Import wizard" icon="rocket">
-    Step-by-step wizard: [file selection, column mapping](/crosswalker/features/import-wizard/), preview, and [generation](/crosswalker/features/generation-engine/).
+  <Card title="Import workspace" icon="rocket">
+    Bring in CSV, XLSX, or JSON, map columns to vault shapes, preview real notes, review the result, and [generate](/crosswalker/features/generation-engine/).
   </Card>
   <Card title="Framework crosswalks" icon="random">
     Map relationships between frameworks. Link [NIST](/crosswalker/reference/registry/nist/) to [CIS](/crosswalker/reference/registry/cis/) to [MITRE](/crosswalker/reference/registry/mitre/) with [typed edges and metadata](/crosswalker/agent-context/link-metadata-system/).
@@ -858,11 +862,11 @@ Philosophically, Crosswalker is an [ontology lifecycle management](/crosswalker/
   <Card title="AI-ready" icon="star">
     Plain [markdown](/crosswalker/concepts/what-makes-crosswalker-unique/#1-files-not-databases) is the best format for RAG pipelines, embeddings, and AI agents. Your knowledge base is instantly indexable — no export required.
   </Card>
-  <Card title="Community configs" icon="approve-check-circle">
-    Save, share, and reuse [import configurations](/crosswalker/features/config-system/). Fingerprint-based matching for similar files. Import what others have already mapped.
+  <Card title="Reusable work" icon="approve-check-circle">
+    Save source-bound setups for similar files today. Portable import rules, mappings, and comprehensive community sharing are [roadmap direction](/crosswalker/reference/roadmap/).
   </Card>
-  <Card title="Progressive depth" icon="list-format">
-    Start with the guided [UI wizard](/crosswalker/features/import-wizard/). Graduate to config-as-code for repeatable imports. Add [CLI tooling](/crosswalker/reference/roadmap/) for automation and CI/CD.
+  <Card title="People and automation" icon="list-format">
+    Start in the guided [import workspace](/crosswalker/features/import-wizard/). Plain files and reusable rules let scripts and agents participate without replacing the human review step.
   </Card>
   <Card title="Tool-agnostic" icon="puzzle">
     Works with [Obsidian](https://obsidian.md) Bases or plain markdown search. Your data is just files — [no lock-in](/crosswalker/concepts/what-makes-crosswalker-unique/#1-files-not-databases).
@@ -873,8 +877,8 @@ Philosophically, Crosswalker is an [ontology lifecycle management](/crosswalker/
   <Card title="Built for GRC" icon="approve-check">
     Compliance, risk, and audit teams spend weeks [mapping frameworks](/crosswalker/getting-started/grc-teams/) and [linking evidence](/crosswalker/agent-context/link-metadata-system/) manually. Crosswalker automates the structure so you can focus on the analysis.
   </Card>
-  <Card title="Frameworks change. You're ready." icon="warning">
-    When [NIST updates](/crosswalker/reference/registry/nist/) or [CIS restructures](/crosswalker/reference/registry/cis/), Crosswalker detects what changed and helps you update without losing your [evidence mappings](/crosswalker/concepts/ontology-evolution/).
+  <Card title="Roadmap: stay current" icon="warning">
+    Long-term update workflows will help teams compare framework versions, review changes, and preserve evidence connections. Follow the [roadmap](/crosswalker/reference/roadmap/) for that work.
   </Card>
 </CardGrid>
 

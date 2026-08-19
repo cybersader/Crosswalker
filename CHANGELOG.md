@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Positioning: dual domain-neutral/GRC-first statement on the front doors (2026-07-29)
+
+- **The homepage, GRC-teams page, differentiators page, and README now state the settled dual positioning explicitly**: the note contract and engine are domain-neutral; the first-class part is the bundled one-click recognized-source recipes, which today are all compliance (NIST CSF 2.0, NIST SP 800-53 Rev 5, CIS Controls v8, MITRE ATT&CK, CRI Profile 2.2, SCF 2026, OLIR-style crosswalks). "What is privileged is the fast path, never the model."
+- **Fixed a supported-frameworks drift** on the GRC page: it claimed MITRE D3FEND/ENGAGE pre-built support and CRI v2.0 — the plugin's actual recognized list replaces it, with the Python CLI's extra coverage attributed correctly.
+- **Vocabulary register sweep**: seven definitional uses of "control" in domain-neutral concept pages became "concept" with the GRC example preserved as an example; glossary and review-queue glosses aligned.
+- **Docs test suite moved to its own port (14325)** so Playwright never again latches onto a running dev server (14321) and times out against dev-mode rendering.
+
 ### Knowledge ops: readability, staleness repair, and durable freshness guardrails (2026-07-25)
 
 - **Soft light theme.** Light mode moved from stark near-white to warm paper surfaces via the smallest set of Starlight variable overrides in `docs/src/styles/brand.css`; root cause was page and chrome collapsing onto one color token. AA contrast restored for link text; dark mode untouched.

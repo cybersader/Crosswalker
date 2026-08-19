@@ -3,13 +3,15 @@ title: What makes Crosswalker unique
 description: The core differentiators and novel contributions — why this isn't just another importer, and what the short vs long term vision looks like.
 tags: [architecture, vision]
 sidebar:
-  order: 1
+  order: 5
 volatility: evolving
 ---
 
-Crosswalker is a **meta-system for [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) management**. The import wizard is the entry point, but the real value is what happens after — classification, evolution tracking, migration strategies, and a community ecosystem that makes the hard work of framework configuration shareable.
+Crosswalker helps GRC teams bring frameworks into Obsidian, shape them into useful notes, connect controls and evidence, and understand coverage in plain Markdown. Its longer-term [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) direction extends that foundation into version comparison, migration support, and shared community work.
 
-This page captures what's genuinely novel, what the short and long term vision looks like, and why these design choices matter.
+> **Current versus roadmap:** guided import, flexible note shapes, connected output, and vault-native queries are the active product. Comprehensive sharing of reusable import rules and long-term framework update workflows remain roadmap direction.
+
+This page captures what's genuinely novel, what exists now, what remains directional, and why the underlying design choices matter.
 
 ---
 
@@ -33,8 +35,8 @@ Individual pieces of the puzzle exist elsewhere — [OSCAL](/crosswalker/referen
 |---|---|---|
 | Classify **how** an ontology evolves | No | [EvolutionPattern taxonomy](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) — 8 fields, community-contributed profiles |
 | Auto-select migration strategy from that classification | No | Migration strategy matrix — evolution pattern + SCD type → handling |
-| Community registry for framework configs | Partially ([SCF](/crosswalker/reference/registry/scf/)) | Config-as-code files, shareable via registry (`crosswalker install nist-800-53-r5`) |
-| Detect stale [crosswalks](/crosswalker/concepts/terminology/#core-terms) automatically | No | Version tracking in `_crosswalker` metadata, evolution profile comparison |
+| Community registry for reusable framework imports | Partially ([SCF](/crosswalker/reference/registry/scf/)) | **Roadmap:** portable rules and mappings shared through a registry |
+| Detect stale [crosswalks](/crosswalker/concepts/terminology/#core-terms) automatically | No | **Roadmap:** version comparison plus review of affected mappings and evidence |
 | [Crosswalk edge semantics](/crosswalker/concepts/terminology/#matching--alignment-terms) committed as a layered stack ([STRM](/crosswalker/reference/registry/strm/) vocabulary + [SSSOM](/crosswalker/reference/registry/sssom/) envelope) | Partially (SCF uses STRM, no PKM tool combines with SSSOM) | [Set-theoretic predicates with full audit envelope](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish), not SKOS's vague closeMatch semantics |
 | [Evidence-link edge model](/crosswalker/concepts/terminology/#core-terms) distinct from crosswalk edges | No | [Junction notes](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) with 13-field schema, isomorphic to OSCAL `by-component`, Bases-queryable |
 | File-based compliance knowledge graph | No | Obsidian vault as a [property graph](/crosswalker/concepts/file-based-graph-database/) — plain markdown, zero vendor lock-in |
@@ -42,7 +44,7 @@ Individual pieces of the puzzle exist elsewhere — [OSCAL](/crosswalker/referen
 
 ---
 
-## Four core differentiators
+## Five core differentiators
 
 ### 1. Files, not databases
 
@@ -75,14 +77,29 @@ Most tools treat frameworks as static snapshots. Crosswalker treats them as **li
 - **SCD type mapping**: each pattern maps to a [Slowly Changing Dimension](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) strategy (overwrite, keep history, alias old IDs, or maintain history tables)
 - **Migration strategies**: given old version + new version + evolution pattern → recommended handling with diff preview
 
-### 4. Community-multiplied value
+### 4. Roadmap: community-multiplied value
 
-Once someone configures a framework import — sheets, columns, transforms, crosswalk mappings — that config is **shareable as a file**:
+Crosswalker is building toward portable import rules and mappings that can be reviewed, versioned, and shared as files. The preservation foundation exists, but the complete save/open/share experience and community registry do not yet ship.
 
-- Community config registry (like npm for framework configs)
-- Versioned configs that track framework version changes
-- Hard work done once, shared through the ecosystem
-- [Entity registry](/crosswalker/reference/registry/) documents who maintains what
+The roadmap direction is:
+
+- A community registry for reusable framework imports
+- Versioned rules that declare which source versions they support
+- Mapping files that can be reviewed and reused independently
+- An [entity registry](/crosswalker/reference/registry/) documenting who publishes and maintains each source
+
+### 5. Domain-neutral core, GRC-first launch surfaces
+
+Crosswalker is [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) tooling that launched into compliance, not a compliance tool with a general-purpose veneer. The two halves of that are worth stating precisely, because they are easy to confuse:
+
+| Layer | Domain posture | Why |
+|---|---|---|
+| Note contract, [type system](/crosswalker/agent-context/v0-1-schema-spec/), `render()` engine, [query primitives](/crosswalker/concepts/query-primitives/) | **Domain-neutral.** Nothing in the data model names a control, a framework, or an auditor | A concept, its identity, its place in a hierarchy, and its typed edges are the same primitives whether the source is NIST SP 800-53 or an OBO Foundry biomedical ontology |
+| Bundled recognized-source recipes, starter [view shapes](/crosswalker/concepts/view-shapes/), docs and settings copy | **GRC-first, deliberately.** The recognized sources that ship today are all compliance frameworks | A launch market you can be concretely excellent for beats a generic tool that is nobody's first choice |
+
+The mechanics are honest and worth being explicit about: **the recognized-source registry is a convenience layer, not a capability boundary.** Every bundled recipe (source: `recipes/import/` — NIST CSF 2.0 in three export shapes, NIST SP 800-53 Rev 5, CIS Controls v8 controls and safeguards, MITRE ATT&CK techniques, CRI Profile v2.2, SCF 2026, plus OLIR-style crosswalk edges) is an ordinary import recipe that ships in the box and gets fingerprinted against your file on selection. A confident match skips straight to the review screen. A taxonomy, standards catalog, skills matrix, product hierarchy, or research ontology produces the *same* Tier 1 notes through the *same* guided import — it simply has no bundled recipe to recognize it yet, and you save your own setup instead.
+
+So the correct inverse framings are both true, and each belongs on its own surface: user-facing pages say *"built for GRC first; works for any structured framework or taxonomy"*; the architecture says *domain-neutral contract, with compliance convenience privileged first*. What is privileged is the fast path, never the model.
 
 ---
 
@@ -92,15 +109,18 @@ Once someone configures a framework import — sheets, columns, transforms, cros
 
 The [Foundation phase](/crosswalker/reference/roadmap/) focuses on **spec before code**. The three interconnected schemas — `_crosswalker` metadata, [FrameworkConfig](/crosswalker/agent-context/config-schema-design/), and EvolutionPattern — must be designed together. Getting any wrong is expensive to fix once users have generated notes.
 
-**What exists today (v0.1):**
-- Import wizard (CSV → Obsidian folders + notes with frontmatter and WikiLinks)
-- Config save/load/match system
-- 112-page [documentation site](/crosswalker/reference/roadmap/v0-1-mvp/)
+**What exists today (v0.1 in progress):**
+- An import workspace for CSV, XLSX, and JSON sources
+- Flexible folder, heading, tag, link, property, and body output
+- Source-bound setup save/load/match convenience
+- Typed crosswalk and evidence relationships plus Bases-native queries
+- Portable-import preservation foundations, without the full sharing UI
 
-**What's being designed now:**
-- EvolutionPattern taxonomy as a standalone specification
-- Config-as-code format for version-controllable framework configs
-- [Layered architecture](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) separating spec → library → integrations
+**Roadmap direction:**
+- Durable save/open/share workflows for portable import rules
+- Framework-version comparison and review-assisted updates
+- A community registry for reusable imports and mappings
+- Broader automation and integration surfaces
 
 ### Medium term: the Obsidian-native experience
 

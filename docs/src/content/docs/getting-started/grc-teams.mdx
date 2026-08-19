@@ -10,6 +10,8 @@ Every GRC practitioner knows this pain: you have **evidence** (policies, procedu
 
 This is **evidence mapping** — the core work of compliance — and the tools are broken. Understanding [who owns what](/crosswalker/concepts/institutional-landscape/) in the ontology ecosystem helps explain why.
 
+**Built for GRC first; works for any structured framework or taxonomy.** Every example on this page is compliance, and the one-click imports that ship today are all compliance sources. Nothing in the note format is compliance-specific, though, and that works in your favor: the non-GRC structures your team already maintains — vendor questionnaires, internal control taxonomies, asset and service hierarchies, skills matrices — go through the same guided import, so they can live in the same vault and link to the same evidence instead of a separate tool. [Why the core stays domain-neutral](/crosswalker/concepts/what-makes-crosswalker-unique/#5-domain-neutral-core-grc-first-launch-surfaces).
+
 ### Two worlds that don't talk to each other
 
 | Framework world (structured) | Evidence world (unstructured) |
@@ -26,7 +28,7 @@ The gap between these worlds is where compliance teams spend most of their time 
 - **No bidirectional linking** — you can write "AC-2 → MFA Policy" in a cell, but the MFA Policy document doesn't know it's been mapped. Update the evidence and the mapping is instantly stale. This is the [referential integrity gap](/crosswalker/agent-context/constraint-enforcement/#the-referential-integrity-gap) that [file-based systems](/crosswalker/concepts/file-based-graph-database/) face.
 - **No metadata about the mapping itself** — Is this evidence *sufficient*? Who *reviewed* it? *When* was it last validated? What *type* of evidence is it? Spreadsheets can't answer these. Crosswalker solves this with [typed links and edge metadata](/crosswalker/agent-context/link-metadata-system/).
 - **No cross-framework traceability** — when an auditor asks "show me the CRI diagnostic statement, the CSF subcategory it maps to, the 800-53 control, AND the evidence" — that's a manual detective hunt across 4+ spreadsheets. [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) make this one click.
-- **No query capability** — you can't ask a spreadsheet "which controls have zero evidence?" without formulas that break when rows shift. [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) and Dataview solve this natively.
+- **No query capability** — you can't ask a spreadsheet "which controls have zero evidence?" without formulas that break when rows shift. [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) solves this natively.
 - **Sync is impossible** — frameworks update, evidence moves, people leave. The mapping sheet becomes a graveyard of stale references. This is the [ontology evolution](/crosswalker/concepts/ontology-evolution/) problem — and it's [never fully solved](/crosswalker/concepts/operational-landscape/#tier-4-operational-maintenance-ongoing), only managed.
 
 ### The multi-framework regulatory pressure
@@ -43,7 +45,7 @@ Crosswalker eliminates the gap between frameworks and evidence by putting **ever
 
 ```
 Your Vault
-├── Frameworks/
+├── Ontologies/                   ← default output folder (change it in settings)
 │   ├── NIST-800-53/
 │   │   ├── Access Control/
 │   │   │   ├── AC-1.md          ← full control text, metadata, crosswalk links
@@ -63,16 +65,23 @@ Every framework control is a note you can open, read, and link to. No more hunti
 
 ### Map evidence with structured metadata
 
-This is the breakthrough. When you link evidence to a control, you can attach **metadata about the relationship itself**:
+This is the breakthrough. When you link evidence to a control, you can attach **metadata about the relationship itself** — as a small evidence-link note whose properties describe the relationship:
 
-```markdown
-# In your MFA-Policy.md evidence note:
-nist_800_53.implements:: [[AC-2]] {"sufficient": true, "reviewer": "Alice", "last_validated": "2026-03-15"}
-nist_800_53.implements:: [[IA-5]] {"sufficient": "partial", "gap": "missing hardware token coverage"}
-cis_v8.satisfies:: [[CIS-6.3]]
+```yaml
+# Evidence Links/MFA-Policy--implements--AC-2.md
+---
+kind: junction-note
+subject: "[[MFA-Policy]]"
+predicate: implements
+object: "[[AC-2]]"
+status: implemented
+coverage: full
+reviewer: Alice
+review_date: 2026-03-15
+---
 ```
 
-Now you can query: "Show me all controls where evidence is *partial* and needs remediation." That's one query, not a spreadsheet treasure hunt.
+A second link from the same policy to `IA-5` can carry `coverage: partial` and a gap note. Because every relationship is a note with plain properties, "show me all controls where evidence is *partial* and needs remediation" is one Bases filter — not a spreadsheet treasure hunt.
 
 ### Crosswalk between frameworks automatically
 
@@ -88,10 +97,62 @@ Use [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) for compliance d
 - "What evidence was **last validated more than 90 days ago**?" — date filter
 - "How many controls in each family have evidence?" — group by folder
 
-Use [Dataview](/crosswalker/concepts/metadata-ecosystem/) for relationship traversal:
-- "Trace the full crosswalk chain: CRI → CSF → 800-53 → evidence"
-- "Find all ATT&CK techniques our detection rules cover"
-- "Aggregate evidence sufficiency scores by control family"
+A dashboard is a plain `.base` file you drop in your vault. Save this as `Reports/Control-Coverage.base` and Obsidian renders three live views over the same control notes:
+
+```yaml
+filters:
+  and:
+    - file.inFolder("Ontologies/NIST-800-53")
+    - 'file.ext == "md"'
+
+formulas:
+  evidence_count: 'file.backlinks.length'
+
+properties:
+  control_id:
+    displayName: "Control"
+  family_name:
+    displayName: "Family"
+  last_validated:
+    displayName: "Last validated"
+  formula.evidence_count:
+    displayName: "Evidence count"
+
+views:
+  - type: table
+    name: "Controls with no evidence"
+    filters:
+      and:
+        - 'file.backlinks.isEmpty()'
+    order:
+      - control_id
+      - title
+      - family_name
+
+  - type: table
+    name: "Evidence going stale"
+    filters:
+      and:
+        - 'last_validated < (today() - "90d")'
+    order:
+      - control_id
+      - title
+      - last_validated
+
+  - type: table
+    name: "Coverage by family"
+    groupBy:
+      property: family_name
+      direction: ASC
+    order:
+      - control_id
+      - title
+      - formula.evidence_count
+    summaries:
+      formula.evidence_count: Average
+```
+
+Change a filter, get a different report. No formulas to re-drag, no rows to keep in sync.
 
 ### Own your data
 
@@ -103,26 +164,26 @@ When NIST publishes CSF 3.0, re-import alongside 2.0. Your evidence links to 2.0
 
 ## Supported frameworks
 
-Crosswalker imports **any structured data** from CSV or XLSX. Pre-built support for:
+Crosswalker imports **any structured data** from CSV, XLSX, or JSON. These sources ship with one-click recognized import:
 
-| Framework | What you get | Crosswalks to |
-|-----------|-------------|---------------|
-| NIST SP 800-53 Rev 5 | 1000+ controls + enhancements as notes | CSF, ATT&CK |
-| NIST CSF 2.0 | 106 subcategories in function/category folders | 800-53, CIS, CRI |
-| CIS Controls v8 | 153 safeguards with IG1/IG2/IG3 metadata | CSF |
-| MITRE ATT&CK | 200+ techniques with tactic mapping | D3FEND, 800-53 |
-| MITRE D3FEND | 200+ defensive countermeasures | ATT&CK, 800-53 |
-| MITRE ENGAGE | Engagement goals, approaches, activities | ATT&CK |
-| CRI Profile v2.0 | Diagnostic statements with subject tags | CSF, FFIEC |
+| Framework | What you get |
+|-----------|-------------|
+| NIST CSF 2.0 | Subcategories in function/category structure (three layout variants, including the CPRT export) |
+| NIST SP 800-53 Rev 5 | Controls and enhancements as notes |
+| CIS Controls v8 | Controls and safeguards, two layout variants |
+| MITRE ATT&CK | Techniques with tactic metadata |
+| CRI Profile v2.2 | Diagnostic statements |
+| SCF 2026 | Controls from the Secure Controls Framework workbook |
+| OLIR-style crosswalk files | Framework-to-framework mapping rows as typed crosswalk notes |
 
-Not on the list? If it's in a CSV or XLSX, Crosswalker can import it. See [framework data sources](/crosswalker/reference/framework-data-sources/) for technical details.
+Not on the list? If it's in a CSV, XLSX, or JSON export, Crosswalker imports it through the same guided mapping — it just doesn't get the one-click head start. (The companion Python CLI in the repo additionally batch-imports MITRE D3FEND and ENGAGE.) See [framework data sources](/crosswalker/reference/framework-data-sources/) for technical details.
 
 ## Getting started
 
 1. [Install Crosswalker](/crosswalker/getting-started/installation/)
 2. [Import your first framework](/crosswalker/getting-started/quick-start/)
 3. Start creating evidence notes and linking them to controls
-4. Build compliance dashboards with Bases or Dataview
+4. Build compliance dashboards with Obsidian Bases
 5. When audit time comes, your evidence trail is already built
 
 ---
