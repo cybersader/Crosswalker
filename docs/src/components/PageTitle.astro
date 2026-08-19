@@ -36,10 +36,15 @@ const hideMeta = data.hideMeta === true || data.sidebar?.hidden === true;
 const hasMeta = !hideMeta && Boolean(volatility || createdDate || (updatedDate && !sameDay));
 
 function fmt(d: Date): string {
+  // timeZone UTC is load-bearing: frontmatter `date: YYYY-MM-DD` parses as UTC
+  // midnight, and this component renders at BUILD time in the build machine's
+  // timezone. Without UTC, any build west of Greenwich displays the previous
+  // day — disagreeing with RecentUpdates, which slices the ISO date directly.
   return d.toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    timeZone: 'UTC',
   });
 }
 ---

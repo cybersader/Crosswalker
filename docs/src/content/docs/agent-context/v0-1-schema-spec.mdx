@@ -1,6 +1,6 @@
 ---
-title: "v0.1 schema spec — the four interconnected schemas"
-description: "Unified design document for the v0.1 build target. Specifies the four interconnected schemas (_crosswalker metadata, ImportRecipe, junction notes, Tier 2 sidecar SQL) that v0.1 implementation will build against. Per Foundation phase: must be designed together; getting any wrong is expensive to fix later."
+title: "v0.1 schema spec — governing contracts and representations"
+description: "Unified v0.1 design reference for the Tier 1 and Recipe Schema Contracts, Tier 1 record shapes, and the derived Tier 2 sidecar representation."
 sidebar:
   order: 47
   label: "v0.1 schema spec"
@@ -9,16 +9,33 @@ tags: [schema, foundation, v0-1, architecture]
 
 import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
 
+:::caution[Freshness — verified 2026-07-25, with known drift]
+**Status: verified current as of 2026-07-25 for the shipped contracts.** Every claim below was re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql` on that date. The framing sections (§1, §2, §8 invariants 1 through 5, §9, §10) and the §4 pointer to the machine-readable recipe contract are current; §4 already carries its own historical-sketch caution for the TypeScript/YAML sketch beneath it.
+
+**Known drift — this page declares things the machine schemas do not ship.** Each item was verified, not assumed. Where this page and a machine schema disagree, **the machine schema is authoritative.** These gaps are open decisions in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) (Gate α: P1 through P6), so the body below is preserved as written rather than quietly edited:
+
+- **`predicate_modifier` / `NOT` (§6, §8 invariant 7).** §6 declares `is_equivalent_to_NOT` and an SSSOM `predicate_modifier: NOT`; §8 invariant 7 repeats it. `spec/tier1.schema.json` has no `predicate_modifier` property at all, and `crosswalk_edge_frontmatter.predicate_id` is a **closed enum** — a `_NOT` value is rejected, not accepted. `src/tier2/schema.sql` has no `predicate_modifier` column either (the §7 DDL block does). Tracked as register **P3**.
+- **Bi-temporal valid-time columns (§7).** The §7 DDL declares `valid_time_start` / `valid_time_end` on `mappings` plus `idx_mappings_valid_time`, annotated "v0.1 ships the columns". The shipped `src/tier2/schema.sql` ships **neither the columns nor the index**.
+- **Tier 2 DDL fields (§7).** The DDL block predates the shipped projector schema. Verified differences: the concept table is named **`concepts`** and keyed `(ontology_id, curie)` with `parent_curie`, not `controls` keyed `(ontology_id, control_id)` with `hierarchy_path` / `parent_control` / `superseded_by`; the shipped `mappings` SSSOM columns are `match_type` / `match_confidence` / `mapping_justification` / `mapping_provider` / `mapping_date` / `creator_id` / `review_status`, not `confidence` / `author_id` / `mapping_tool` / `comment`; the shipped `junction_notes` columns are `curie` / `subject` / `predicate` / `object` / `coverage` / `scope` / `notes` / `expires_at` with no foreign key, not `link_type` / `evidence` / `control` / `ontology_id` / `expires` / `evidence_type` / `method` / `responsible` / `collected` / `supersedes`; `closure_cache.confidence_min` and `PRAGMA journal_mode = WAL` are page-only; the reserved vector table is `concept_embeddings`, not `control_embeddings`.
+- **`_crosswalker` block shape (§3).** §3 declares `schema_version` / `source_file` / `import_date` / `recipe_id` / `ontology_id` / `ontology_version` / `control_id` / `history`. The shipped `$defs/provenance_block` is `spec_version` / `source_ref` / `produced_at` / `producer` / `recipe` / `concept_cid` (confirmed against the generated fixtures under `test-vault/Frameworks/NIST-mini/`).
+- **Junction-note 13-field shape (§5).** The shipped `$defs/junction_note_frontmatter` is `kind` / `curie` / `subject` / `predicate` / `object` / `coverage` / `confidence` / `scope` / `reviewer` / `review_date` / `status` / `expires_at` / `notes`, with `status` closed to `proposed | in_review | approved | deprecated`. §5's `link_type` / `evidence` / `control` / `ontology` names and its `implemented | partial | planned | alternative | not-applicable` status enum are not what validates.
+- **STRM predicate count (§6).** §6 lists 5 predicates and maps "Intersects With" onto `is_approximate_to`. The shipped `predicate_id` enum has **6** values: `is_equivalent_to`, `is_broader_than`, `is_narrower_than`, `is_approximate_to`, `intersects_with`, `no_relationship`.
+- **Absent identity and ordering fields.** Neither `mapping_set_id` nor any ordinal / source-order field exists in `spec/tier1.schema.json` or `src/tier2/schema.sql`, though both are discussed as available downstream. Tracked as register **P1** (ordinal) and **P3** (mapping-set identity).
+- **Stale forward-link rows (§1).** The two §7 rows in the "Where this spec is implemented" table still read 🚧; [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) closed ✅ on 2026-05-06 with all 6 phases done.
+:::
+
 ## §1 Why this page exists
 
 The [Foundation phase](/crosswalker/reference/roadmap/) intro states: *"The three interconnected schemas (_crosswalker metadata, ImportRecipe, [StewardshipProfile](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/)) must be designed together — getting any wrong is expensive to fix later."* The [v0.1 stack-pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) makes this concrete by committing to a buildable Tier 1 + Tier 2 sidecar architecture.
 
-This page is the **unified spec** the v0.1 codebase will be built against. It pulls the four interconnected schemas into one place:
+This page is the **unified v0.1 schema reference**. It distinguishes governing [Schema Contracts](/crosswalker/concepts/terminology/#schema-contract), the artifacts they govern, and derived representations:
 
-1. **`_crosswalker` metadata** — the per-note frontmatter Crosswalker writes onto generated control / mapping / evidence files. Tier 1 canonical. (Extends [constraint-enforcement § Metadata tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers).)
-2. **ImportRecipe** — the import recipe (JSON/YAML on disk; user-authored or community-shared) that drives generation. Supersedes the older "FrameworkConfig" naming from [config-schema-design](/crosswalker/agent-context/config-schema-design/); see [§4 naming history](#naming-history-frameworkconfig--importrecipe) for context.
-3. **Junction note 13-field schema** — the per-edge markdown file that holds evidence-link metadata. Tier 1 canonical. ([Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/).)
-4. **Tier 2 sidecar SQL schema** — the projection of Tier 1 frontmatter into a queryable SQLite store. Tier 2, deletable, recoverable from Tier 1.
+1. **Tier 1 Schema Contract** — [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) governs canonical Tier 1 member-record representations, including `_crosswalker` provenance, concept records, crosswalk assertions, and junction/evidence assertions.
+2. **Recipe Schema Contract** — [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) governs **ImportRecipe**, an intensional Recipe subtype that drives generation but remains outside Tier 1 knowledge.
+3. **Tier 1 record shapes** — `_crosswalker` metadata and the junction-note/crosswalk/concept discriminators are member representations within concrete [Knowledge Sets](/crosswalker/concepts/terminology/#knowledge-set). v0.1 does **not** claim a generalized `KnowledgeSet` aggregate schema.
+4. **Tier 2 sidecar SQL representation** — a qualified Tier 1 → Tier 2 projection into queryable SQLite. Tier 2 is deletable and recoverable from Tier 1.
+
+[Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) is the governing conceptual model: Schema Contracts govern; Knowledge Sets are extensional; Recipes are intensional; future Execution Records and Package Manifests are separate administrative envelopes.
 
 The earlier-written [config-schema-design](/crosswalker/agent-context/config-schema-design/) and [constraint-enforcement](/crosswalker/agent-context/constraint-enforcement/) pages stay as background design rationale; this page is the consolidated v0.1 build target.
 
@@ -62,46 +79,47 @@ Historical decision logs (`zz-log/`) and research deliverables (`zz-research/`) 
 ## §2 The schemas at a glance
 
 ```
-                    Tier 1 (canonical, source of truth)
-   ┌───────────────────────────────────────────────────────────┐
-   │  Markdown files in the Obsidian vault, with YAML          │
-   │  frontmatter per the schemas below.                       │
-   │                                                            │
-   │  ┌────────────────┐  ┌──────────────────┐  ┌────────────┐ │
-   │  │ Control note   │  │ Junction note    │  │ Import     │ │
-   │  │ (NIST AC-2.md) │  │ (one per         │  │ Recipe     │ │
-   │  │                │  │  evidence edge)  │  │ (JSON/YAML │ │
-   │  │ frontmatter:   │  │                  │  │  on disk,  │ │
-   │  │  _crosswalker: │  │ frontmatter:     │  │  user-     │ │
-   │  │   {schema-3}   │  │  13-field schema │  │  authored) │ │
-   │  │  + STRM        │  │  {schema-3}      │  │ {schema-2} │ │
-   │  │  predicate     │  │                  │  │            │ │
-   │  │  fields        │  │ body:            │  │            │ │
-   │  │                │  │  prose narrative │  │            │ │
-   │  └────────────────┘  └──────────────────┘  └────────────┘ │
-   └─────────────────────────────┬─────────────────────────────┘
-                                 │
-                                 │  Auto-projected on vault load
-                                 │  (deletable; reproject on demand)
-                                 │
-                                 ▼
-                    Tier 2 (sqlite-wasm sidecar projection)
-   ┌───────────────────────────────────────────────────────────┐
-   │  @sqlite.org/sqlite-wasm + sqlite-vec                     │
-   │                                                            │
-   │  Tables: mappings · junction_notes · controls · ontologies │
-   │  Indexes: covering on (predicate_id, subject_id) etc.      │
-   │  {schema-4}                                                │
-   └───────────────────────────────────────────────────────────┘
+   GOVERNING CONTRACTS AND ADJACENT INTENT
+
+   ┌─ Recipe Schema Contract ─────┐       ┌─ Tier 1 Schema Contract ────┐
+   │ governs ImportRecipe         │       │ governs Tier 1 records      │
+   └──────────────┬───────────────┘       └──────────────┬──────────────┘
+                  │                                       │ validation
+                  │ governs generation                    │
+                  ▼                                       ▼
+   structured source + ImportRecipe ──► render/generate/validate
+                                                  │
+                                                  ▼
+   TIER 1 — CANONICAL CROSSWALKER-MANAGED REPRESENTATION/AUTHORITY
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ Markdown member records representing one or more Knowledge Sets │
+   │                                                                  │
+   │ ┌────────────────┐ ┌──────────────────┐ ┌─────────────────────┐ │
+   │ │ concept record │ │ junction/evidence│ │ crosswalk assertion │ │
+   │ │ + _crosswalker │ │ assertion record │ │ record              │ │
+   │ └────────────────┘ └──────────────────┘ └─────────────────────┘ │
+   │                                                                  │
+   │ No generalized KnowledgeSet aggregate schema is claimed.        │
+   │ ImportRecipe remains outside this Tier 1 knowledge boundary.     │
+   └───────────────────────────────┬──────────────────────────────────┘
+                                   │ qualified Tier 1 → Tier 2 projection
+                                   ▼
+   TIER 2 — SQLITE SIDECAR (DERIVED, DELETABLE, REPRODUCIBLE)
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ tables: mappings · junction_notes · controls · ontologies        │
+   │ indexes and closure cache for query acceleration                 │
+   └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Cross-schema invariants** (load-bearing):
+**Cross-contract and representation invariants** (load-bearing):
 
-- Every field in the Tier 2 SQL schema must be derivable from Tier 1 frontmatter.
+- The Recipe Schema Contract governs ImportRecipe; the Tier 1 Schema Contract governs generated member records. Validity in one contract does not imply validity in the other.
+- ImportRecipe remains adjacent intensional policy, not Tier 1 ontology/mapping content.
+- Every field in the Tier 2 SQL representation must be derivable from Tier 1 frontmatter.
 - Every Tier 1 frontmatter field that needs to be queryable in Tier 2 must be a flat scalar or a wikilink (no nested objects, no inline expressions). [Bases-queryable](/crosswalker/concepts/metadata-ecosystem/) constraint.
 - `_crosswalker` metadata is *additive* — it never overwrites user-authored frontmatter, only adds keys under `_crosswalker:`.
-- Junction notes are *generated*, but users can edit them; v0.1 generation is non-destructive (read git history to confirm).
-- ImportRecipe is *user-authored* (or imported from a community-shared recipe); the plugin does not auto-generate recipes.
+- Junction notes are generated member records, but users can edit them; v0.1 generation is non-destructive.
+- ImportRecipe may be bundled, imported, instantiated from a template, or edited through the workbench. Its canonical specification is preserved separately from implementation-only `ImportMapping`, `RecipeDocument`, `SavedConfig`, and draft state.
 
 ## §3 `_crosswalker` metadata schema (per-note frontmatter)
 
@@ -198,19 +216,37 @@ Per the [meta-schema lifecycle commitment](/crosswalker/agent-context/zz-log/202
 
 The migration is idempotent (re-running on already-migrated data is a no-op) and resumable (per-file state-tracked).
 
-## §4 ImportRecipe schema (import config)
+## §4 Recipe Schema Contract and ImportRecipe specification
 
-:::caution[Practical v0.1 design — may be reframed by Ch 20 synthesis]
-The ImportRecipe shape below is the **practical v0.1 design** (8 column-roles + 24 transform types). Three Ch 20 fresh-agent deliverables landed 2026-05-03 and recommend a **primitive-grounded redesign** rooted in RML/YARRRML retargeted to Tier-1 Notes, with macro-tree-transducer theoretical justification.
+ImportRecipe is a concrete [Recipe](/crosswalker/concepts/terminology/#recipe) subtype: a portable, machine-evaluable declaration of intended source-to-Tier-1 behavior. It is governed by the Recipe Schema Contract and sits adjacent to generation; it is not embedded inside the Tier 1 Knowledge Set it helps produce.
 
-See the **[Ch 20 import-primitive synthesis log](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/)** for the convergent direction (Layer B: 5–6 transformation-algebra primitives over 4 output sinks) and the complementary boundary-semantics layer (Layer A: `ref/resolve/bind/seal` content-addressing + sealed manifests).
+| Recipe role | Meaning in v0.1 |
+|---|---|
+| **Specification** | The canonical ImportRecipe JSON governed by `spec/recipe.schema.json`. |
+| **Template** | Parameterized/default policy, such as a Shape Preset, used to instantiate or initialize a specification/mapping. |
+| **Binding** | A Recipe reference plus concrete source identity and selected parameters. |
+| **Execution** | One application of a bound Recipe. Verified run facts belong in a later separate Execution Record, not in mutable Recipe intent. |
 
-**User has not yet decided** whether v0.1 ships the practical shape and migrates to v0.2 primitive-grounded later (Path A) or pivots v0.1 to primitive-grounded from the start (Path B). The synthesis log is a wargaming setup, not a decision log; concrete examples in §6 of that log walk through what each architectural choice does to typical scenarios.
+:::tip[Current machine-readable contract — implemented 2026-07-21]
+The authoritative v0.1 contract is [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), summarized in the [portable-recipe fidelity synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/). It uses the settled closed grammar (`folder | file | heading | tag | wikilink`) plus `also_emit`, enrichment, graph edges, and optional query declarations.
 
-The §4 below stays as the **practical v0.1 reference**; treat it as the starting shape. Anything depending on the import primitive should also read the synthesis log to understand the open architectural questions.
+The active import workbench now retains the full validated canonical recipe through a lossless `RecipeDocument` boundary. This is **internal/in-memory fidelity**, not yet a durable user recipe library: save/open/export/share UI under `_crosswalker/recipes/import/` remains deferred.
 :::
 
-A ImportRecipe is JSON/YAML on disk that drives the import wizard. One per ontology; can be saved, shared, version-controlled, and matched against incoming source files via fingerprinting.
+Current additive fields include:
+
+- optional display metadata and structured `metadata.based_on` ancestry;
+- optional `source.version` as compatibility metadata, never stronger than verified run provenance;
+- ordered `target.also_emit.body` projections (`append | section` × `text | code | quote | list`);
+- typed managed scalar coercion through the closed `number` template filter;
+- deterministic normalized equality and canonical JSON serialization;
+- four validation layers: JSON Schema, recipe semantics, source compatibility, and editable-model portability.
+
+:::caution[Historical design sketch below]
+The TypeScript shape and YAML example below predate the May 2026 primitive-grounded recipe decision and are retained as naming/design history. They are **not** the current serialized schema. Read the [Ch 20 synthesis](/crosswalker/agent-context/zz-log/2026-05-03-import-primitive-formal-foundation-synthesis/), [Ch 22 target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/), and machine-readable schema before implementing against this section.
+:::
+
+An ImportRecipe is a portable, deterministic instruction artifact. Bundled recipes currently drive recognition and generation; persistent user-authored recipe-file lifecycle is the next UI/storage slice.
 
 ### TypeScript shape
 
@@ -385,20 +421,18 @@ crosswalks:
       mapping_tool: "crosswalker-0.2.0"
 ```
 
-### Migration from v1 (current code) to v2
+### SavedConfig, ImportMapping, and ImportRecipe boundary
 
-Current `src/types/config.ts` defines `CrosswalkerConfig` for column mapping in a single import session. v2 wraps it:
+The earlier v1→v2 migration sketch is superseded by the canonical-fidelity boundary implemented in 2026-07-21.
 
-- v1 `CrosswalkerConfig` becomes v2's `columns` + `output` + `transforms` (existing fields lifted)
-- v2 adds: `id`, `version`, `source_file_patterns`, `fingerprint_columns`, `crosswalks`, `stewardship_profile_id`, `schema_version`
-- The fingerprint-based config matching (current code uses content-derived fingerprint) is preserved; v2 adds explicit `source_file_patterns` for filename-based matching as a faster pre-check
+| Object | Current role | Authority |
+|---|---|---|
+| **SavedConfig** | Legacy fingerprint-bound wizard convenience state | Not a canonical portable Recipe and not auto-migrated into one |
+| **ImportMapping** | Editable source-bound workbench projection over Recipe-owned fields | Implementation/editor state; never the preservation authority |
+| **RecipeDocument** | In-memory preservation/editor transaction boundary around original + editable projection | Preserves the original canonical ImportRecipe while edits patch owned regions |
+| **ImportRecipe** | Portable Recipe specification governed by the Recipe Schema Contract | Canonical instruction artifact |
 
-Migration script:
-1. Read existing v1 saved configs
-2. Wrap each in a v2 envelope, generating an `id` from the `name` field
-3. Set `schema_version: import-recipe-v1`
-4. Empty `crosswalks: []` and `source_file_patterns: []` for now (user fills in)
-5. Write back
+The workbench must patch a validated original rather than rebuild a Recipe from SavedConfig or ImportMapping. See the [portable-recipe fidelity synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/).
 
 ### §4.5 Recipe `query:` block (added v0.1.6 — SchemaVer 1.1.0; additive)
 
@@ -772,7 +806,7 @@ INSERT OR REPLACE INTO schema_meta(key, value) VALUES
   ('crosswalker_version', '0.2.0');
 
 -- ================================================================
--- Frameworks: one row per ImportRecipe the vault knows about
+-- Ontologies: one row per ontology represented in canonical Tier 1 records
 -- ================================================================
 CREATE TABLE IF NOT EXISTS ontologies (
   id              TEXT PRIMARY KEY,         -- 'nist-800-53-r5'
@@ -933,7 +967,7 @@ CREATE INDEX IF NOT EXISTS idx_closure_obj_pred
 The projector (a TypeScript module in `packages/core/`) executes on vault load:
 
 1. **Detect missing/stale state**: if `.crosswalker.sqlite` doesn't exist, or `schema_meta.projected_at` is older than the vault's most recent Tier 1 mtime, reproject.
-2. **Walk ontologies**: for each `ImportRecipe` in the vault, insert/upsert into `ontologies`.
+2. **Derive represented ontologies**: aggregate ontology identity/version/base-path and recipe provenance from canonical Tier 1 records, then insert/upsert into `ontologies`. The projector does not treat ImportRecipe as Tier 1 knowledge.
 3. **Walk control notes**: for each `.md` file with `_crosswalker.control_id` set, insert/upsert into `controls`.
 4. **Extract crosswalk edges**: for each control note, parse STRM predicate frontmatter (`is_equivalent_to`, etc.) and insert one `mappings` row per wikilink target. Object form (with metadata) is parsed into the SSSOM envelope columns.
 5. **Walk junction notes**: for each `.md` file with `link_type: evidence_link`, insert/upsert into `junction_notes`.
@@ -952,18 +986,20 @@ When the Tier 2 SQL schema bumps from `tier2-sqlite-v1` to `tier2-sqlite-v2`:
 
 These are the rules the projector and the import wizard both have to respect:
 
-1. **Tier 1 is canonical**: every Tier 2 column has a Tier 1 source. No data lives only in Tier 2.
-2. **Frontmatter is flat-scalar or wikilink**: enforces Bases-queryability of the Tier 1 path. Object-form metadata on STRM predicates is permitted because it round-trips through SSSOM; the projector flattens it into Tier 2 SSSOM-envelope columns.
-3. **`_crosswalker` is additive**: never overwrites user-authored top-level frontmatter.
-4. **Mandatory junction note fields**: `link_type`, `evidence`, `control`, `ontology`, `status`. Plugin generation refuses to create incomplete notes.
-5. **STRM predicates are the only crosswalk vocabulary**: user-facing crosswalk frontmatter keys MUST be one of the 5 STRM predicates (or their `_NOT` modifier form). SKOS predicates rejected as base vocab; SSSOM is internal validation only.
-6. **Schema versions on every artifact**: every persisted schema (ImportRecipe, `_crosswalker`, junction note, Tier 2 SQL) carries a `schema_version` for migration. "Crosswalker eats own dog food."
-7. **Composite IDs in Tier 2**: `subject_id` / `object_id` in `mappings` are ontology-qualified (`nist-800-53-r5/AC-2`) to enable cross-ontology queries without ID collision.
-8. **Source-hash provenance**: every projected row carries `source_hash` (sha256 of the originating Tier 1 byte content) so re-import detects changes byte-accurately.
+1. **Contracts stay distinct**: the Recipe Schema Contract governs ImportRecipe intent; the Tier 1 Schema Contract governs canonical member-record representations.
+2. **Tier 1 is canonical local managed authority**: every Tier 2 column has a Tier 1 source. No authoritative managed knowledge lives only in Tier 2.
+3. **Knowledge Set is conceptual, not a generalized schema claim**: ontology, MappingSet, and evidence-set aggregates may be represented through Tier 1 members, but v0.1 does not define one universal `KnowledgeSet` envelope.
+4. **Frontmatter is flat-scalar or wikilink**: enforces Bases-queryability of the Tier 1 path. Object-form metadata on STRM predicates is permitted because it round-trips through SSSOM; the projector flattens it into Tier 2 SSSOM-envelope columns.
+5. **`_crosswalker` is additive**: never overwrites user-authored top-level frontmatter.
+6. **Mandatory junction note fields**: `link_type`, `evidence`, `control`, `ontology`, `status`. Plugin generation refuses to create incomplete notes.
+7. **STRM predicates are the only crosswalk vocabulary**: user-facing crosswalk frontmatter keys MUST be one of the 5 STRM predicates (or their `_NOT` modifier form). SKOS predicates rejected as base vocab; SSSOM is internal validation only.
+8. **Version governed representations**: ImportRecipe, Tier 1 record regions, and Tier 2 SQL carry explicit versions for migration without implying that all are the same artifact role.
+9. **Composite IDs in Tier 2**: `subject_id` / `object_id` in `mappings` are ontology-qualified (`nist-800-53-r5/AC-2`) to enable cross-ontology queries without ID collision.
+10. **Source-hash provenance**: every projected row carries `source_hash` (sha256 of the originating Tier 1 byte content) so re-import detects changes byte-accurately.
 
 ## §9 Build sequence
 
-The four schemas land in this order in v0.1 implementation:
+The original v0.1 implementation plan decomposed the governing contracts and representations in this order:
 
 1. **`_crosswalker` metadata v2** — extend existing `src/generation/generation-engine.ts` to write the v2 fields. Lowest-risk: this is just a frontmatter shape change.
 2. **Junction note 13-field schema** — implement junction-note generation as a new code path in the generation engine. Triggered by ImportRecipe with crosswalks that target evidence documents.
@@ -981,13 +1017,18 @@ Items flagged in [Ch 07's "remaining open sub-decisions"](/crosswalker/agent-con
 
 1. **UUID enterprise resilience scope** — Ch 09 settled UUIDv7 + sha256 + CURIEs; the *enterprise* scope (cross-tenant ID stability) needs a separate design pass.
 2. **Multi-editor conflict resolution** — when two users edit the same junction note simultaneously, what does the merge look like? Out of v0.1 scope; v1.0+ collaboration story.
-3. **Inline-Dataview migration script for v0 vaults** — for users who have notes with the legacy `key:: value` syntax. Out of v0.1 scope.
+3. **Legacy inline-field migration script for v0 vaults** — for users who have notes with the superseded `key:: value` syntax. Out of v0.1 scope.
 4. **Tested vault scale threshold documentation** — Ch 18 gives a model; need empirical confirmation in real vaults of varying size.
 5. **OSCAL ↔ Crosswalker mental-model documentation** — `reference/registry/oscal/` page extension. Listed in roadmap Foundation tasks.
 6. **`StewardshipProfile` v2 schema** — separate from this spec but referenced via `ImportRecipe.stewardship_profile_id`. Per the [05-01 commitments log](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/), the schema design pass is deferred until after v0.1 schemas land.
 
 ## §11 Related
 
+- **Concept model**:
+  - [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — Schema Contract, Knowledge Set, Recipe, administrative envelope, representation, and carrier distinctions
+  - [Terminology](/crosswalker/concepts/terminology/) — ImportRecipe, MappingSet, MappingAssertion, ImportMapping, SavedConfig, live view, and materialized snapshot
+  - [System architecture](/crosswalker/concepts/system-architecture/) — representation tiers and logical layers
+  - [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — Acquire, Shape, Connect, Understand, Share, Maintain
 - **Decision logs**:
   - [v0.1 stack-pivot log](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — the stack commitment this spec implements
   - [Evidence-link edge model synthesis (Ch 07)](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction note schema source

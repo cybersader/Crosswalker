@@ -8,9 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Knowledge ops: readability, staleness repair, and durable freshness guardrails (2026-07-25)
+
+- **Soft light theme.** Light mode moved from stark near-white to warm paper surfaces via the smallest set of Starlight variable overrides in `docs/src/styles/brand.css`; root cause was page and chrome collapsing onto one color token. AA contrast restored for link text; dark mode untouched.
+- **Executive-decidable review queue.** Every open decision (P1-P14, D1-D8) is now a self-contained card (what this is / in practice / pros / cons / recommendation) with plain-English titles; Greek gate letters replaced with plain names; registers carry purpose parentheticals at each artifact mention.
+- **Challenges section repaired.** Root cause of the broken ordering found (a date-encoded sidebar order pinning Ch 43 to the top; unordered pages sinking); index reconciled with the archive folder (Ch 25/26 were archived but unlisted); every open brief now carries an explicit status callout; open/resolved split with counts.
+- **Freshness markers with verified drift lists.** The v0.1 schema spec page now declares what is verified-current and what it promises that the machine schemas do not ship (verified field-by-field); milestone and roadmap status tables carry "Status last verified" lines.
+- **System model and terminology rewritten for humans.** Plain-first headers, the Ch-42 open-question wall collapsed to a verified status callout, theme-aware card styling, and the edge-model figure moved out of the glossary opening (evidence linking is one use, not the assumed one).
+- **Durable guardrails.** `.claude/CLAUDE.md` gains a freshness-discipline section (living pages carry verified-as-of markers; counts/enums cite source files; retired commitments get tree-wide purge sweeps); the pre-commit-reviewer agent grows from 11 to 16 checks including staleness, count-drift, sidebar-order, challenge-index drift, and retired-commitment detection.
+
 ### Infrastructure: docs port pinned + owner review queue (2026-07-25)
 
 - **Docs dev/preview/tests moved from Astro's 4321 default to port 14321** (`docs/astro.config.mjs` `server.port`, Playwright config, `scripts/serve.mjs`, launcher and doc references) to stop cross-project port collisions on multi-Astro machines.
+- **Owner review queue log added** (`zz-log/2026-07-25-owner-review-queue.mdx`): the single checklist of the 22 open decisions across both registers in dependency order, the pages changed underneath them, and standing awareness items.
 
 ### Architecture: primitives reconciliation decision register (2026-07-25)
 

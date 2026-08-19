@@ -4,7 +4,7 @@ description: "Layer B of the Crosswalker query engine: mechanism-neutral visual 
 tags: [concept, query-engine, view-shapes, bases, registerbasesview, pivot, graph, hierarchy, timeline]
 sidebar:
   label: "View shapes"
-  order: 6
+  order: 14
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -12,6 +12,10 @@ import { Aside } from '@astrojs/starlight/components';
 :::caution[Pending Ch 30 validation]
 The view-shape catalog below is the **candidate** taxonomy for v0.1, surfaced by the 2026-05-08 alignment review. It is pending [Ch 30 — View shape taxonomy](/crosswalker/agent-context/zz-challenges/30-view-shape-taxonomy/), which catalogs view shapes from BioPortal, Protégé, WebVOWL, OntoBrowser, NIST OLIR portal, OxO2, and other ontology-aware UIs. The list may grow or be re-categorized when Ch 30 lands.
 :::
+
+<Aside type="note" title="Live view versus materialized snapshot">
+[Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) and Crosswalker query views evaluate against current vault data, so they are **live views**, not materialized views. This page uses **materialized snapshot** only for a generated Markdown artifact that persists a query result. See [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) for the view, serialization, and materialization boundaries.
+</Aside>
 
 ## What this page is
 
@@ -21,7 +25,7 @@ Crosswalker's query engine separates concerns into [three layers](/crosswalker/a
 |---|---|---|
 | **A — Query primitives** | Mechanism-neutral irreducible operations | [query-primitives](/crosswalker/concepts/query-primitives/) |
 | **B — View shapes** (this page) | Mechanism-neutral visual presentations | Here |
-| **C — Recipes** | Marketplace instances composing primitives + view shape | Recipe registry; user-facing surfaces |
+| **C — Recipes** | Machine-evaluable declarative query templates composing primitives + view shape | Recipe registry; user-facing surfaces |
 
 A view shape is a **contract**: "I take rows of shape X, render them as Y." It is independent of *which mechanism* renders them. The same pivot shape can appear in: a custom Bases view (`registerBasesView`), a codeblock processor render, or a materialized Markdown snapshot. Each mechanism has different mobile / Publish / portability tradeoffs.
 
@@ -29,12 +33,12 @@ A view shape is a **contract**: "I take rows of shape X, render them as Y." It i
 
 | Shape | What it is | Source data assumption | Bases-native? | Crosswalker custom view needed? |
 |---|---|---|---|---|
-| **table** | Flat 2D grid; rows = records, columns = attributes; headers + cells. The default for "list of concepts." | Tabular result of filter + project | ✅ Yes — Bases' built-in Table view | No |
-| **list** (cards) | Vertical stack of card-like items, often with a primary heading + secondary attributes | Tabular result of filter + project; one row per card | ✅ Yes — Bases' built-in Cards/List views | No |
+| **table** | Flat 2D grid; rows = records, columns = attributes; headers + cells. The default for "list of concepts." | Tabular result of filter + field projection | ✅ Yes — Bases' built-in Table view | No |
+| **list** (cards) | Vertical stack of card-like items, often with a primary heading + secondary attributes | Tabular result of filter + field projection; one row per card | ✅ Yes — Bases' built-in Cards/List views | No |
 | **pivot** | 2D crosstab: rows = one dimension, columns = another, cells = aggregate over a third. Produces a *matrix* output. The shape that makes "framework × control × evidence-count" expressible. | Pivot operation output (group-by-two-axes; aggregate cell value) | ❌ No — Bases summaries are 1-D; can't pivot | **Yes — `crosswalkerPivot`** (registered via `registerBasesView` in v0.1.6) |
 | **graph** | Node-link diagram preserving topology. Nodes = concepts, edges = predicates. Intentionally NOT projected to tabular. | Closure or traversal result preserving edges | ❌ No | Deferred to v0.2+ (`crosswalkerGraph` candidate) |
 | **hierarchy** | Tree or DAG; expresses parent-child or `broader`/`narrower` relationships. Renders as collapsible outline / sunburst / treemap. | Closure result over a hierarchical predicate (SKOS `broader`, OWL `subClassOf`) | ❌ No | Deferred to v0.2+ (`crosswalkerHierarchy` candidate) |
-| **timeline** | Temporal projection: events on a time axis. Renders as horizontal timeline / calendar heatmap. | Filter + project where one dimension is temporal (`last_reviewed`, `created_at`, `version_at`) | Partial — Bases has date filters but no built-in timeline render | Deferred to v0.2+ (`crosswalkerTimeline` candidate) |
+| **timeline** | Temporal projection: events on a time axis. Renders as horizontal timeline / calendar heatmap. | Filter + field projection where one dimension is temporal (`last_reviewed`, `created_at`, `version_at`) | Partial — Bases has date filters but no built-in timeline render | Deferred to v0.2+ (`crosswalkerTimeline` candidate) |
 
 ## Mechanism axis
 
@@ -62,7 +66,7 @@ For each view shape, there are up to four execution mechanisms. They differ in m
 
 ## How recipes select shape
 
-A recipe (Layer C) declares its desired shape. The pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) deliverable will design the YAML grammar, but the rough shape is:
+A recipe (Layer C) is a machine-evaluable declarative specification that selects query primitives and a desired view shape; it is not executable knowledge. The pending [Ch 31](/crosswalker/agent-context/zz-challenges/31-recipe-query-block-schema-design/) deliverable will design the YAML grammar, but the rough shape is:
 
 ```yaml
 # Sketch — Ch 31 will lock the schema
@@ -116,6 +120,7 @@ See [Ch 30 brief](/crosswalker/agent-context/zz-challenges/30-view-shape-taxonom
 ## Related
 
 **Concept pillars**:
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — live-view, materialized-snapshot, recipe, and serialization boundaries
 - [Query primitives](/crosswalker/concepts/query-primitives/) — Layer A (mechanism-neutral operations)
 - [Ontology-web querying](/crosswalker/concepts/ontology-web-querying/) — positioning page
 - [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Bases capabilities + limits

@@ -1,388 +1,229 @@
 ---
 title: Ontology lifecycle
-description: The lifecycle of an ontology within the Crosswalker ecosystem — from acquisition through import, enrichment, maintenance, and sharing.
+description: Six recurring Crosswalker capabilities — Acquire, Shape, Connect, Understand, Share, and Maintain — and the artifacts that cooperate across them.
 tags: [architecture, import, data-model, data-model-evolution]
 sidebar:
-  order: 5
+  order: 10
 ---
 
-## What happens to an ontology in Crosswalker
+## Six recurring capabilities
 
-An ontology (framework, taxonomy, any structured knowledge system) goes through five lifecycle phases within the Crosswalker ecosystem. This isn't a one-shot pipeline — it's an ongoing lifecycle where ontologies are acquired, imported, enriched with evidence and crosswalks, maintained as they evolve, and shared with the community.
+Crosswalker supports **ontology lifecycle management** through six recurring capabilities: **Acquire, Shape, Connect, Understand, Share, and Maintain**. They are not a one-way pipeline or six artifact classes. A team can revisit any capability whenever sources, questions, mappings, release needs, or upstream versions change.
+
+The lifecycle operates through linked artifacts with distinct [roles and authority](/crosswalker/concepts/artifact-roles-and-authority/): governing [Schema Contracts](/crosswalker/concepts/terminology/#schema-contract), extensional [Knowledge Sets](/crosswalker/concepts/terminology/#knowledge-set), and intensional [Recipes](/crosswalker/concepts/terminology/#recipe). [Execution Records](/crosswalker/concepts/terminology/#execution-record) and [Package Manifests](/crosswalker/concepts/terminology/#package-manifest) remain later, separate administrative envelopes.
 
 <style>{`
-.ol-lifecycle-ring {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 0;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding: 2rem 1rem 1rem;
-  position: relative;
-}
-.ol-lifecycle-ring > * { margin-top: 0 !important; }
-.ol-phase {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  position: relative;
-  z-index: 1;
-}
-.ol-phase-card {
-  width: 110px;
-  height: 110px;
+.ol-cap-map {
+  margin: 1.5rem 0 2rem;
+  padding: 1rem;
+  border: 1px solid var(--sl-color-hairline);
   border-radius: 16px;
+  background: var(--sl-color-bg);
+  overflow-x: auto;
+}
+.ol-cap-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  align-items: stretch;
+  gap: .55rem;
+  min-width: 780px;
+}
+.ol-cap-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #fff;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-  animation: ol-pulse 3s ease-in-out infinite;
-  position: relative;
-  transition: transform 0.15s;
-}
-a.ol-phase {
+  gap: .35rem;
+  min-height: 118px;
+  padding: .8rem;
+  border: 1px solid var(--ol-c);
+  border-radius: 12px;
+  background: linear-gradient(160deg, var(--ol-bg), var(--sl-color-bg-nav));
+  color: var(--sl-color-text);
   text-decoration: none;
-  color: inherit;
 }
-a.ol-phase:hover .ol-phase-card {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-}
-.ol-phase-card .ol-icon {
-  font-size: 1.6rem;
-  line-height: 1;
-}
-.ol-acquire { background: linear-gradient(135deg, #2596be, #1d7a9e); animation-delay: 0s; }
-.ol-import  { background: linear-gradient(135deg, #e5c07b, #c9a54e); animation-delay: 0.6s; }
-.ol-enrich  { background: linear-gradient(135deg, #98c379, #6fa352); animation-delay: 1.2s; }
-.ol-maintain { background: linear-gradient(135deg, #e06c75, #c44d56); animation-delay: 1.8s; }
-.ol-share   { background: linear-gradient(135deg, #c678dd, #a555c0); animation-delay: 2.4s; }
-.ol-arrow {
+.ol-cap-card:hover { border-color: var(--sl-color-text-accent); }
+.ol-cap-card strong { color: var(--sl-color-text); font-size: .88rem; }
+.ol-cap-card small { color: var(--sl-color-gray-2); font-size: .7rem; line-height: 1.35; }
+.ol-cap-n { color: var(--ol-c); font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; }
+.ol-acquire { --ol-c: #60a5fa; --ol-bg: rgba(96,165,250,.13); }
+.ol-shape { --ol-c: #e0a458; --ol-bg: rgba(224,164,88,.13); }
+.ol-connect { --ol-c: #34d399; --ol-bg: rgba(52,211,153,.13); }
+.ol-understand { --ol-c: #a78bfa; --ol-bg: rgba(167,139,250,.13); }
+.ol-share { --ol-c: #f0a3c0; --ol-bg: rgba(240,163,192,.13); }
+.ol-maintain { --ol-c: #f87171; --ol-bg: rgba(248,113,113,.13); }
+.ol-cap-loop {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-  color: #888;
-  padding: 0 0.25rem;
-  flex-shrink: 0;
+  gap: .65rem;
+  margin-top: .8rem;
+  color: var(--sl-color-gray-3);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
 }
-.ol-loop-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 0.25rem 0 0;
-  position: relative;
-}
-.ol-loop-arrow svg {
-  width: 100%;
-  max-width: 700px;
-  height: 40px;
-}
-.ol-loop-label {
-  font-size: 0.7rem;
-  color: #aaa;
-  text-align: center;
-  margin-top: 0.15rem;
-}
-.ol-maintain-loop {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.6rem;
-  color: #e06c75;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  pointer-events: none;
-}
-@keyframes ol-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
-  50% { transform: scale(1.03); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
-}
-@media (max-width: 640px) {
-  .ol-lifecycle-ring {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    justify-content: center;
-  }
-  .ol-phase-card {
-    width: 80px;
-    height: 80px;
-    font-size: 0.7rem;
-    border-radius: 12px;
-  }
-  .ol-phase-card .ol-icon { font-size: 1.2rem; }
-  .ol-arrow { font-size: 1rem; padding: 0 0.1rem; }
-  .ol-loop-arrow svg { height: 30px; }
-}
+.ol-cap-loop::before,
+.ol-cap-loop::after { content: ''; height: 1px; flex: 1; background: var(--sl-color-hairline); }
 `}</style>
 
-<div class="ol-lifecycle-ring" role="img" aria-label="Ontology lifecycle: Acquire, Import, Enrich, Maintain, Share, cycling back to Acquire">
-  <a href="#acquire" class="ol-phase">
-    <div class="ol-phase-card ol-acquire">
-      <span class="ol-icon">📥</span>
-      <span>Acquire</span>
-    </div>
-  </a>
-  <div class="ol-arrow">→</div>
-  <a href="#import" class="ol-phase">
-    <div class="ol-phase-card ol-import">
-      <span class="ol-icon">⚙️</span>
-      <span>Import</span>
-    </div>
-  </a>
-  <div class="ol-arrow">→</div>
-  <a href="#enrich" class="ol-phase">
-    <div class="ol-phase-card ol-enrich">
-      <span class="ol-icon">🔗</span>
-      <span>Enrich</span>
-    </div>
-  </a>
-  <div class="ol-arrow">→</div>
-  <a href="#maintain" class="ol-phase">
-    <div class="ol-phase-card ol-maintain" style="position:relative">
-      <div class="ol-maintain-loop">↩ Enrich</div>
-      <span class="ol-icon">🔄</span>
-      <span>Maintain</span>
-    </div>
-  </a>
-  <div class="ol-arrow">→</div>
-  <a href="#share" class="ol-phase">
-    <div class="ol-phase-card ol-share">
-      <span class="ol-icon">🌐</span>
-      <span>Share</span>
-    </div>
-  </a>
+<div class="not-content ol-cap-map" role="img" aria-label="Six recurring ontology lifecycle capabilities: Acquire, Shape, Connect, Understand, Share, and Maintain. Each capability can lead back to any earlier capability as sources and knowledge change.">
+  <div class="ol-cap-row">
+    <a class="ol-cap-card ol-acquire" href="#acquire"><span class="ol-cap-n">Capability 1</span><strong>Acquire</strong><small>Obtain and identify structured source material.</small></a>
+    <a class="ol-cap-card ol-shape" href="#shape"><span class="ol-cap-n">Capability 2</span><strong>Shape</strong><small>Decode, normalize, and re-embody records in vault primitives.</small></a>
+    <a class="ol-cap-card ol-connect" href="#connect"><span class="ol-cap-n">Capability 3</span><strong>Connect</strong><small>Assert mappings, hierarchy, evidence, and other typed relations.</small></a>
+    <a class="ol-cap-card ol-understand" href="#understand"><span class="ol-cap-n">Capability 4</span><strong>Understand</strong><small>Query, compare, navigate, and present useful views.</small></a>
+    <a class="ol-cap-card ol-share" href="#share"><span class="ol-cap-n">Capability 5</span><strong>Share</strong><small>Export, publish, report, and distribute governed selections.</small></a>
+    <a class="ol-cap-card ol-maintain" href="#maintain"><span class="ol-cap-n">Capability 6</span><strong>Maintain</strong><small>Detect change, preserve authority, migrate, and revalidate.</small></a>
+  </div>
+  <div class="ol-cap-loop">recurring lifecycle · revisit any capability</div>
 </div>
-<div class="ol-loop-arrow">
-  <svg viewBox="0 0 700 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M650 5 C680 5 690 20 680 30 L370 35 C350 36 340 36 50 35 L30 30 C15 25 20 10 40 8" stroke="#c678dd" stroke-width="2" stroke-dasharray="6 4" fill="none" />
-    <polygon points="40,2 40,14 28,8" fill="#c678dd" />
-  </svg>
-</div>
-<div class="ol-loop-label">Share feeds back into Acquire — community configs make the next import easier</div>
 
-| Phase | What happens | Current state |
-|-------|-------------|---------------|
-| [Acquire](#acquire) | Get structured data from the outside world | CSV file picker in wizard |
-| [Import](#import) | Parse, transform, generate vault structure | CSV parser + generation engine complete; transforms 0% |
-| [Enrich](#enrich) | Link, crosswalk, attach evidence | Basic WikiLinks; typed links planned |
-| [Maintain](#maintain) | Handle updates, detect staleness, migrate versions | Research complete; implementation planned |
-| [Share](#share) | Export, report, contribute configs back | Not started |
-
-The cycle repeats: shared configs make the next Acquire easier. Framework updates trigger Maintain, which loops back to Enrich. [Evidence mapping](/crosswalker/getting-started/grc-teams/) lives in the Enrich phase. [Ontology evolution](/crosswalker/concepts/ontology-evolution/) lives in Maintain.
-
----
+| Capability | Core question | Current state |
+|---|---|---|
+| [Acquire](#acquire) | What source material are we bringing under management? | **Largely implemented for local acquisition**; CSV is strongest, with XLSX and JSON support shipped and JSONL still open. |
+| [Shape](#shape) | How should source structure be embodied as canonical Markdown? | **Largely implemented** through the wizard, ImportRecipe grammar, `render()`, enrichment, validation, and generation. |
+| [Connect](#connect) | What semantic relationships should be asserted? | **Partial**; hierarchy, generated links, crosswalk-edge records, and evidence-link foundations exist, while full authoring workflows remain incomplete. |
+| [Understand](#understand) | What questions and navigational views should the knowledge answer? | **Partial**; Bases live views, custom pivot, Tier 2 queries, and generated navigation exist, with broader view/report coverage still developing. |
+| [Share](#share) | What should leave the vault, in what representation, with what portability? | **In progress**; first exporter and portable ImportRecipe fidelity slices are implemented, while packaging and full recipe-library UX remain open. |
+| [Maintain](#maintain) | How do authority, mappings, and local work survive change? | **Planned**; research and primitives exist, but end-to-end update, diff, migration, and revalidation workflows are not yet shipped. |
 
 ## Acquire
 
-**What**: Get structured data from the outside world into the system.
+**What:** obtain structured source material and establish enough identity, version, and provenance to work with it safely.
 
-**Current**: File picker in the [import wizard](/crosswalker/features/import-wizard/) accepting CSV files from the local filesystem.
+**Current:** local file acquisition through the [import wizard](/crosswalker/features/import-wizard/) is established for CSV, XLSX, and JSON, with CSV as the strongest path. Acquisition is broader than selecting bytes: it should eventually identify the upstream publisher, source version, hash, license, and expected compatibility.
 
-**Planned**:
-- XLSX file selection with sheet picker
-- JSON/JSONL file import
-- Future: URL-based import (fetch a framework CSV from a public URL)
-- Future: [OSCAL](https://pages.nist.gov/OSCAL/) catalog import (machine-readable framework format)
-- Future: community config [registry](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#8-community-marketplace-research-item) that bundles framework data with import configs
+| Concern | Today | Direction |
+|---|---|---|
+| Local files | CSV, XLSX sheet/header selection, and JSON record/iterator selection | Add JSONL and continue hardening large-source readers |
+| Source recognition | Headers, fingerprints, bundled-recipe matching | Publisher/version-aware recognition and source verification |
+| Remote/community inputs | Manual download or local handoff | URL acquisition and curated registries without weakening provenance |
+| Authority | Source reference and hashes captured during import | Explicit upstream authority distinct from local Tier 1 authority |
 
-**Decision point**: How much do we automate acquisition? The [progressive classification UX](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#1-meta-layer-ux-progressive-classification) starts here — known frameworks could auto-fetch their data.
-
----
-
-## Import
-
-**What**: Parse, transform, and generate — turn raw files into organized vault structure with metadata.
-
-This phase has three sub-steps:
-
-### Parse
-
-Convert raw file bytes into structured data. Using established libraries — solved problems:
-- [PapaParse](https://www.papaparse.com/) for CSV with streaming (files >5MB)
-- `xlsx` package for Excel (installed, not yet integrated)
-- Native JSON parsing (planned)
-- [Column analysis](/crosswalker/features/import-wizard/) auto-detects types (hierarchy, ID, text, numeric, date, tags, URL)
-
-### Transform
-
-Clean, normalize, and restructure parsed data. [24 transform types defined](/crosswalker/design/transformation/) (0% implemented). [Research evaluated 14 engines](/crosswalker/agent-context/zz-log/2026-04-03-transform-engine-research/) — **custom build decided** (~2KB bundle, Obsidian-native output, under 25ms). Optional escape hatches: [Arquero](https://github.com/uwdata/arquero), [JSONata](https://jsonata.org/).
-
-Per-framework transforms: [hierarchical forward-fill](/crosswalker/agent-context/helper-functions/#hierarchical_ffilldataframe-columns), [tag aggregation](/crosswalker/reference/framework-data-sources/#special-transform-tag-aggregation), [ID normalization](/crosswalker/reference/framework-data-sources/#assessment-procedures), [preamble extraction](/crosswalker/reference/framework-data-sources/#special-transform-preamble-extraction). See [helper functions](/crosswalker/agent-context/helper-functions/) and [ChunkyCSV research](/crosswalker/agent-context/zz-log/2026-04-03-chunkycsv-and-transformation-engines/).
-
-### Generate
-
-Produce folders, notes, frontmatter, and [`_crosswalker` metadata](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers). The [generation engine](/crosswalker/features/generation-engine/) is **production-ready** — folder hierarchies, YAML serialization, link formatting, template resolution, path sanitization. Will evolve to support [FrameworkConfig v2](/crosswalker/agent-context/config-schema-design/) and [metadata v2 tiers](/crosswalker/agent-context/constraint-enforcement/#metadata-tiers).
+Acquired files are **upstream inputs**, not automatically Knowledge Sets or Packages. A file becomes a governed package member only when a future [Package Manifest](/crosswalker/concepts/terminology/#package-manifest) deliberately resolves it.
 
 ---
 
-## Enrich
+<span id="import"></span>
+## Shape
 
-**What**: Connect the imported ontology to other frameworks and to your evidence. This is the [evidence mapping](/crosswalker/getting-started/grc-teams/) phase — the core value for GRC teams.
+The retained `#import` anchor points here because import is now understood as the central write-side part of **Shape**, not the whole lifecycle.
 
-- [Cross-framework crosswalking](/crosswalker/agent-context/framework-crosswalks/) — generate typed WikiLinks between frameworks using [matching modes](/crosswalker/agent-context/helper-functions/#match_valuesource-target-mode) (exact, array-contains, regex)
-- [Typed link syntax](/crosswalker/agent-context/link-metadata-syntax-spec/) — `framework_here.implements:: [[AC-2]] {"sufficient": true}`
-- [Link insertion commands](/crosswalker/agent-context/link-metadata-system/) — "Insert framework link" with search modal and metadata form
-- Evidence linking — attach policies, audit findings, and technical docs to framework controls with [structured edge metadata](/crosswalker/agent-context/link-metadata-system/)
+**What:** decode source shape, normalize values, and re-embody concepts and assertions in Obsidian-native primitives.
 
-**Ecosystem note**: [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) can query frontmatter but **cannot traverse typed links**. Edge metadata requires [DataviewJS or Datacore](/crosswalker/concepts/metadata-ecosystem/#comparison-matrix). This is a [known trade-off](/crosswalker/agent-context/link-metadata-system/#ecosystem-compatibility).
+```text
+structured source + ImportRecipe
+        ↓ decode / normalize / map / render
+canonical Tier 1 representation of Knowledge Sets
+```
 
-Enrichment is ongoing — you keep adding evidence links and crosswalks as your compliance posture evolves. It's not a one-time step.
+| Piece | Role |
+|---|---|
+| [Tier 1 Schema Contract](/crosswalker/agent-context/v0-1-schema-spec/) | Governs valid Tier 1 record representations. |
+| [ImportRecipe](/crosswalker/concepts/terminology/#import-recipe) | Intensional Recipe subtype governing deterministic source-to-Tier-1 behavior. |
+| Import wizard / headless harness | Two interfaces over the same Recipe-driven generation path. |
+| [`render()`](/crosswalker/concepts/terminology/#render) | Pure coupling point from Recipe + concept identity to address and content regions. |
+| Tier 1 | Canonical Crosswalker-managed representation/authority tier for local Knowledge Sets. |
+
+Shape includes parsing, bounded transforms, hierarchy recovery, target-primitive selection, body/frontmatter emission, enrichment, pre-write validation, and re-import-safe merge behavior. The current implementation is largely complete for the v0.1 recipe grammar; format breadth and durable user Recipe storage remain active work.
 
 ---
 
-## Maintain
+<span id="enrich"></span>
+## Connect
 
-**What**: Handle framework updates, version migration, [stale crosswalk detection](/crosswalker/agent-context/framework-crosswalks/#crosswalk-staleness), and long-term [data model resilience](/crosswalker/agent-context/data-model-resilience/).
+The retained `#enrich` anchor points here because enrichment is one way of **connecting** knowledge, alongside hierarchy, crosswalks, evidence, and other typed relations.
 
-This is the novel contribution — [no existing tool solves the ontology evolution meta-problem](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-1-ontology-lifecycle-management--does-anything-solve-this).
+**What:** create or import semantic assertions among concepts, evidence, systems, observations, and other entities.
 
-- [EvolutionPattern taxonomy](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right) — classify how each ontology evolves (release cadence, breaking changes, ID stability, changelog format). **Standalone spec.** [Research](/crosswalker/concepts/ontology-evolution/)
-- [Migration strategy engine](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) — given old + new version → recommended [SCD type](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) + handling strategy
-- [Progressive classification UX](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#1-meta-layer-ux-progressive-classification) — community pre-classified → guided wizard → auto-detect
-- [Constraint enforcement](/crosswalker/agent-context/constraint-enforcement/) — lazy detection of orphaned notes, broken links, stale metadata
+| Relationship level | Precise artifact term | Example |
+|---|---|---|
+| Governed collection | [MappingSet](/crosswalker/concepts/terminology/#mapping-set) | A released NIST-to-ISO mapping collection with identity, version, provenance, and license |
+| Member assertion | [MappingAssertion](/crosswalker/concepts/terminology/#mapping-assertion) | `nist:AC-2` `subset-of` `iso:A.5.16` with confidence and justification |
+| Source-to-vault editing | [ImportMapping](/crosswalker/concepts/terminology/#import-mapping) | Workbench state mapping source fields into Recipe-owned layout/frontmatter/body regions |
+| Evidence relation | Junction/evidence assertion | A policy note implements a control with status, review date, and evidence metadata |
 
-Maintain loops back to Enrich — when a framework updates, crosswalk links may need updating, and evidence mappings need re-validation.
+A MappingSet is an extensional [Knowledge Set](/crosswalker/concepts/terminology/#knowledge-set); an ImportRecipe is intensional policy. Keeping them separate prevents crosswalk content from being mistaken for instructions about how to generate it.
+
+**Current:** generated hierarchy and navigation links, crosswalk-edge records, STRM/SSSOM semantics, and junction-note foundations exist. Authoring, review, MappingSet identity/membership, and full evidence workflows remain partial.
+
+---
+
+## Understand
+
+**What:** project canonical knowledge for a question, then present the answer in a useful shape.
+
+| Mechanism | Result | Authority/freshness |
+|---|---|---|
+| Obsidian Bases | [Live view](/crosswalker/concepts/terminology/#live-view) over current Tier 1 properties | Re-evaluated from current vault data; not a materialized result |
+| Tier 2 SQL helpers | Qualified **Tier 1 → Tier 2 projection** used for joins and traversal | Derived and deletable; rebuildable from Tier 1 |
+| Custom views / query processors | Interactive rendition | Derived from current data; renderer-dependent |
+| [Materialized snapshot](/crosswalker/concepts/terminology/#materialized-snapshot) | Persisted point-in-time query result | Reproducible but potentially stale; useful for publish/audit/comparison |
+
+Crosswalker uses **projection** only with a qualifier: field projection, read/view projection, Tier 1 → Tier 2 projection, or editable UI projection. The wider product action is understanding structured knowledge, not turning every output into a new authoritative artifact.
+
+**Current:** Bases live views, the custom pivot surface, Tier 2 query helpers, and generated hubs/navigation are available or partially available. Multi-shape reporting, richer traversal UI, and snapshot workflows remain incomplete.
 
 ---
 
 ## Share
 
-**What**: Export, report, and contribute back to the community.
+**What:** export, publish, report, or distribute selected knowledge and reusable policy without collapsing content, instructions, and packaging into one object.
 
-- Community [config registry](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#8-community-marketplace-research-item) — share [FrameworkConfig](/crosswalker/agent-context/config-schema-design/) files so others don't repeat the per-framework configuration work
-- [OSCAL export](https://pages.nist.gov/OSCAL/) — machine-readable output for GRC tool integration
-- Compliance dashboards — [Bases views](/crosswalker/concepts/metadata-ecosystem/) for gap analysis
-- Report generation — exportable compliance reports for auditors
-- [Spec publication](/crosswalker/reference/roadmap/#community--share-and-scale) — the EvolutionPattern taxonomy as a standalone standard
+| Shared thing | Semantic role | Possible representation/carrier |
+|---|---|---|
+| Ontology or MappingSet | Extensional Knowledge Set | Tier 1 Markdown, STRM/OLIR TSV, SSSOM TSV, OSCAL JSON |
+| ImportRecipe | Intensional Recipe specification | Canonical JSON |
+| Live view definition | Recipe/query policy or binding | `.base` file or query declaration |
+| Point-in-time report | Materialized snapshot | Markdown, JSON, PDF, or another export format |
+| Resolved release | Future Package described by a Package Manifest | Zip, directory, or git repository as the physical carrier |
 
-Share loops back to Acquire — community-contributed configs make the next person's import easier.
+A **[Package](/crosswalker/concepts/terminology/#package)** has semantic resolution, integrity, dependency, license, and installation meaning. A zip, folder, or repository is only a **[carrier](/crosswalker/concepts/terminology/#carrier)** unless a manifest gives the collection package semantics.
 
----
-
-## Lifecycle as architecture
-
-The lifecycle maps to the [layered architecture](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/):
-
-<style>{`
-.ol-arch-map {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  max-width: 700px;
-  margin: 1.5rem auto;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
-.ol-arch-row {
-  display: grid;
-  grid-template-columns: 140px 1fr 1fr;
-  min-height: 52px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-}
-.ol-arch-row:last-child { border-bottom: none; }
-.ol-arch-header {
-  font-weight: 700;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #ccc;
-  background: rgba(255,255,255,0.06);
-}
-.ol-arch-cell {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8rem;
-  line-height: 1.3;
-  color: #ddd;
-}
-.ol-arch-phase {
-  font-weight: 600;
-  color: #fff;
-  border-right: 3px solid;
-  font-size: 0.82rem;
-}
-.ol-arch-phase.ol-c-acquire { border-color: #2596be; background: rgba(37,150,190,0.15); }
-.ol-arch-phase.ol-c-import  { border-color: #e5c07b; background: rgba(229,192,123,0.15); }
-.ol-arch-phase.ol-c-enrich  { border-color: #98c379; background: rgba(152,195,121,0.15); }
-.ol-arch-phase.ol-c-maintain { border-color: #e06c75; background: rgba(224,108,117,0.15); }
-.ol-arch-phase.ol-c-share   { border-color: #c678dd; background: rgba(198,120,221,0.15); }
-.ol-arch-layer {
-  background: rgba(0,212,170,0.06);
-}
-.ol-arch-owner {
-  background: rgba(255,255,255,0.02);
-}
-@media (max-width: 640px) {
-  .ol-arch-row { grid-template-columns: 100px 1fr; }
-  .ol-arch-owner { display: none; }
-  .ol-arch-cell { font-size: 0.72rem; padding: 0.4rem 0.5rem; }
-}
-`}</style>
-
-<div class="ol-arch-map" role="table" aria-label="Lifecycle phases mapped to architecture layers">
-  <div class="ol-arch-row ol-arch-header">
-    <div class="ol-arch-cell">Phase</div>
-    <div class="ol-arch-cell">Architecture layer</div>
-    <div class="ol-arch-cell">Owned by</div>
-  </div>
-  <div class="ol-arch-row">
-    <div class="ol-arch-cell ol-arch-phase ol-c-acquire">📥 Acquire</div>
-    <div class="ol-arch-cell ol-arch-layer">Integration (plugin / CLI)</div>
-    <div class="ol-arch-cell ol-arch-owner">Platform wrapper</div>
-  </div>
-  <div class="ol-arch-row">
-    <div class="ol-arch-cell ol-arch-phase ol-c-import">⚙️ Import</div>
-    <div class="ol-arch-cell ol-arch-layer">Library (SDK)</div>
-    <div class="ol-arch-cell ol-arch-owner">Core library + transform providers</div>
-  </div>
-  <div class="ol-arch-row">
-    <div class="ol-arch-cell ol-arch-phase ol-c-enrich">🔗 Enrich</div>
-    <div class="ol-arch-cell ol-arch-layer">Library + Integration</div>
-    <div class="ol-arch-cell ol-arch-owner">Core library + Obsidian WikiLink API</div>
-  </div>
-  <div class="ol-arch-row">
-    <div class="ol-arch-cell ol-arch-phase ol-c-maintain">🔄 Maintain</div>
-    <div class="ol-arch-cell ol-arch-layer">Spec + Library</div>
-    <div class="ol-arch-cell ol-arch-owner">Spec defines patterns, library implements</div>
-  </div>
-  <div class="ol-arch-row">
-    <div class="ol-arch-cell ol-arch-phase ol-c-share">🌐 Share</div>
-    <div class="ol-arch-cell ol-arch-layer">Integration + Community</div>
-    <div class="ol-arch-cell ol-arch-owner">Plugin UI + config registry</div>
-  </div>
-</div>
-
-| Lifecycle phase | Architecture layer | Who owns it |
-|----------------|-------------------|-------------|
-| Acquire | Integration (plugin/CLI) | Platform wrapper |
-| Import (parse/transform/generate) | Library (SDK) | Core library + transform providers |
-| Enrich | Library + Integration | Core library + Obsidian WikiLink API |
-| Maintain | Spec + Library | Spec defines patterns, library implements |
-| Share | Integration + Community | Plugin UI + config registry |
-
-The [config-as-code](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/#2-config-as-code-is-the-source-of-truth) format ([FrameworkConfig v2](/crosswalker/agent-context/config-schema-design/)) configures every phase. Community [framework drivers](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/#layer-3-integrations-framework-specific-platform-specific) are JSON configs that tell the system how to handle a specific ontology across its entire lifecycle.
+**Current:** Share is in progress. Exporters and canonical ImportRecipe fidelity have landed in v0.1.7; durable Recipe library UX, broader round-trip proofs, package semantics, and signed distribution remain later work.
 
 ---
 
-## Resources
+## Maintain
 
-- [Architecture](/crosswalker/design/architecture/) — component-level system design
-- [Layered architecture vision](/crosswalker/agent-context/zz-log/2026-04-03-layered-architecture-vision/) — spec → library → integrations
-- [Why Obsidian, why files](/crosswalker/agent-context/zz-log/2026-04-03-why-obsidian-why-files/) — the filesystem-first decision
-- [Roadmap](/crosswalker/reference/roadmap/) — which stages are being built when
-- [File-based graph databases](/crosswalker/concepts/file-based-graph-database/) — what the pipeline produces
-- [Consistency models](/crosswalker/concepts/consistency-models/) — how the pipeline handles failure
+**What:** preserve usable authority as upstream sources, local knowledge, mappings, schemas, and Recipes change.
+
+| Maintenance concern | What must remain distinct |
+|---|---|
+| Upstream change | Publisher authority and source versions |
+| Local regeneration | Canonical Tier 1 managed authority plus `managed` / `user_preserve` ownership |
+| Mapping review | MappingSet identity, assertion membership, provenance, and publication state |
+| Recipe evolution | Recipe specification version, compatibility, ancestry, and bindings |
+| Runtime history | Future Execution Record rather than mutable Recipe fields |
+| Distribution update | Future Package Manifest rather than assumptions based on a carrier filename |
+
+Maintain includes diffing, stale-link detection, migration, revalidation, re-import, conflict handling, and release continuity. Research exists for [ontology evolution](/crosswalker/concepts/ontology-evolution/), diff primitives, and consistency, but the integrated capability remains planned.
+
+Maintain can send work back anywhere: changed source material returns to Acquire; changed structure to Shape; invalidated mappings to Connect; changed questions to Understand; and a new release to Share.
+
+---
+
+## Linked artifacts cooperate across the lifecycle
+
+No single config governs the whole lifecycle. Different artifacts cooperate through explicit relations while retaining separate authority.
+
+| Relationship | Meaning | Lifecycle examples |
+|---|---|---|
+| Schema Contract **governs** representation | Defines what validates | Tier 1 Schema governs Tier 1 records; Recipe Schema governs ImportRecipe |
+| Recipe **describes** intended behavior | States what should be done | ImportRecipe drives Shape; query policy drives an Understand view |
+| Recipe binding **selects** concrete inputs/parameters | Makes reusable policy applicable | Source identity + chosen Recipe + parameters |
+| Execution **applies** a bound Recipe | Performs work | Import run, query run, export run |
+| Execution Record **records** outcome | Future separate receipt | Verified inputs, warnings, outputs, validation results |
+| Tier 1 **represents** Knowledge Sets canonically | Holds authoritative local managed knowledge | Concepts, MappingAssertions, and evidence assertions |
+| Qualified projection **derives** a rendition | Selects or reshapes authority for a purpose | Tier 1 → Tier 2, live view, materialized snapshot |
+| Package Manifest **resolves** a release | Future distribution envelope | Selected Knowledge Sets, Recipes, dependencies, hashes, licenses |
+
+This separation keeps the [schema-as-primitive architecture](/crosswalker/concepts/etl-and-import/) intact: Schema Contracts govern, Knowledge Sets assert, Recipes intend, executions happen, records report, and packages distribute.
+
+## Related
+
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — the governing artifact model used by this lifecycle
+- [Terminology](/crosswalker/concepts/terminology/) — Knowledge Set, Recipe, MappingSet, live view, snapshot, package, and carrier definitions
+- [System model](/crosswalker/concepts/system-model/) — picture-first relationship among artifacts, tiers, and runtime components
+- [System architecture](/crosswalker/concepts/system-architecture/) — representation tiers and logical layers
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — Shape capability and schema-as-primitive details
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — Maintain capability research
+- [Roadmap](/crosswalker/reference/roadmap/) — implementation sequence and current delivery status

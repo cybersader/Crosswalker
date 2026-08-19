@@ -58,7 +58,11 @@
   --sl-color-black: #0d1117;
 }
 
-/* Light mode — inverted for readability */
+/* Light mode — inverted for readability.
+   NOTE: the surface/hairline half of this ramp is refined by the
+   "SOFT PAPER LIGHT THEME" block directly below (later declaration, same
+   specificity, so it wins). The values kept here are the *text* end of the
+   ramp (white / gray-1 .. gray-4), which stay as-is. */
 :root[data-theme='light'] {
   --sl-color-accent-low: #d0f5eb;
   --sl-color-accent: #0a8f6f;
@@ -71,6 +75,138 @@
   --sl-color-gray-5: #c8cdd4;
   --sl-color-gray-6: #eceef2;
   --sl-color-black: #f8f9fa;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SOFT PAPER LIGHT THEME  (light mode only — dark mode is untouched)
+
+   Problem this solves: the stock light theme "flashbangs". Every surface was
+   pure or near-pure white, so the whole viewport sat at ~95-100% luminance
+   with nothing to break it up:
+
+     page background   --sl-color-bg -> --sl-color-black       #f8f9fa
+     sidebar           Nova PageFrame: bg-(--sl-color-black)   #f8f9fa
+     top nav           Nova: color-mix(oklch, white 80%, …)    ~#fff @ 80%
+     Nova hero button  Tailwind .bg-white -> --color-white      #ffffff
+     cards / search    Starlight Card + Search: --sl-color-black #f8f9fa
+     inline code       Nova: --color-gray-100                   #f3f4f6
+     hairlines         --sl-color-hairline* -> gray-6           #eceef2 (1.10:1)
+
+   Approach: warm, paper-toned neutrals, and split the two roles that were
+   collapsed onto a single token.
+
+     --sl-color-bg     = PAGE  paper  (#f6f4ef) — the reading surface
+     --sl-color-black  = PANEL chrome (#eeebe4) — sidebar, top nav, cards,
+                         search modal, mobile TOC, code blocks
+
+   Starlight defaults --sl-color-bg to var(--sl-color-black), and Nova's
+   PageFrame hardcodes bg-(--sl-color-black) on the sidebar, so pinning
+   --sl-color-bg separately is what lets panels sit one step *deeper* than the
+   page. Depth therefore comes from tone, not from drop shadows — which is why
+   --sl-shadow-* is deliberately left alone.
+
+   Everything below is a custom-property override so every Starlight/Nova
+   component inherits coherently; only two element-level rules survive at the
+   bottom, for surfaces that are hardcoded upstream and unreachable via vars.
+
+   Contrast (WCAG 2.1, computed against the two new backgrounds
+   PAGE #f6f4ef / PANEL #eeebe4) — all body text passes AA, most pass AAA:
+
+     --sl-color-white  #0d1117  headings         17.22 / 15.90  AAA
+     --sl-color-gray-2 #252a33  --sl-color-text  13.11 / 12.10  AAA
+     --sl-color-gray-3 #3d434e  muted text        9.05 /  8.35  AAA
+     --sl-color-gray-4 #5c636e  dimmest text      5.51 /  5.09  AA
+     --sl-color-accent #0a7358  link text         5.30 /  4.89  AA
+     gray-2 on inline-code #e9e4d9                11.36         AAA
+     PANEL #eeebe4 as text on accent #0a7358       4.89         AA
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root[data-theme='light'] {
+  /* ── Surfaces ────────────────────────────────────────────────────────────
+     PAGE: gentle warm off-white, ~hue 43°, L* ≈ 96. Reads as paper rather
+     than as a lightbox. PANEL: one perceptual step deeper and slightly warmer
+     so nav/sidebar/cards separate from the page without any border or shadow. */
+  --sl-color-bg: #f6f4ef;      /* was: var(--sl-color-black) => #f8f9fa */
+  --sl-color-black: #eeebe4;   /* was: #f8f9fa                          */
+
+  /* Starlight's own (non-Nova) sidebar path — keep it on the panel tone.
+     Light default is var(--sl-color-bg), which would flatten it into the page. */
+  --sl-color-bg-sidebar: var(--sl-color-black); /* was: var(--sl-color-bg) => #f8f9fa */
+
+  /* Top nav sits over scrolling content with backdrop-blur, so it needs alpha.
+     Plain rgba() instead of Nova's color-mix() — no @supports fallback needed. */
+  --sl-color-bg-nav: rgba(238, 235, 228, 0.85);
+  /* was: color-mix(in oklch, var(--color-white) 80%, transparent) => ~#fff @80% */
+
+  /* Inline code: a third, slightly deeper tone so `code` reads as an inset
+     chip on both the page and the panels. */
+  --sl-color-bg-inline-code: #e9e4d9;     /* was: var(--color-gray-100) => #f3f4f6 */
+  --sl-color-border-inline-code: #ddd6c7; /* was: var(--color-gray-300) => #d1d5db */
+
+  /* Tailwind's white token. Nova's secondary LinkButton is literally
+     `bg-white`, which is unreachable through --sl-color-*. Softening the token
+     itself keeps that hero button from punching a pure-white hole in the page
+     while still reading as the lightest raised control on the sheet. */
+  --color-white: #fbfaf7; /* was: #ffffff */
+
+  /* ── Neutral ramp: the surface end only ──────────────────────────────────
+     gray-1..gray-4 (text) are intentionally NOT re-declared here — they keep
+     the values from the block above and their contrast is tabulated in the
+     header comment. Only the two ramp steps that render as *surfaces* and
+     *borders* get warmed, plus gray-7 which Nova adds for light mode. */
+  --sl-color-gray-5: #c9c1ae; /* borders: card, code container, scrollbar. was #c8cdd4 */
+  --sl-color-gray-6: #e3ddd0; /* callout bg, subtle fills.                  was #eceef2 */
+  --sl-color-gray-7: #f1eee7; /* Nova-only lightest step.  was var(--color-gray-100) #f3f4f6 */
+
+  /* ── Hairlines ───────────────────────────────────────────────────────────
+     Declared explicitly rather than inherited from gray-6, so the dividers
+     stay a shade darker than the fills they sit next to. Against PAGE these
+     now measure ~1.28:1 (non-text divider) versus ~1.10:1 before — i.e.
+     actually visible on the warmer surfaces instead of dissolving into them. */
+  --sl-color-hairline: #e0d9c9;       /* was: var(--sl-color-gray-6) => #eceef2 */
+  --sl-color-hairline-light: #e6e0d3; /* was: var(--sl-color-gray-6) => #eceef2 */
+  --sl-color-hairline-shade: #ded7c6; /* nav bottom + sidebar edge. was => #eceef2 */
+
+  /* Highlighted code line (Nova). Follows gray-6 by default; pinned a touch
+     deeper so the highlight still reads on the darker code panel. */
+  --nano-color-highlight: #e0d8c6; /* was: var(--sl-color-gray-6) => #eceef2 */
+
+  /* ── Accent ──────────────────────────────────────────────────────────────
+     Same teal family, one step deeper. #0a8f6f measured 3.69:1 on the new
+     paper (and 3.85:1 on the old #f8f9fa) — i.e. it was already failing AA for
+     body-size link text. #0a7358 restores AA on both new surfaces (5.30 / 4.89)
+     and, because --sl-color-text-invert resolves to --sl-color-black, also
+     fixes the on-accent label used by primary LinkButton / Banner (4.89:1).
+     accent-low and accent-high are unchanged. */
+  --sl-color-accent: #0a7358; /* was: #0a8f6f */
+
+  /* ── starlight-site-graph panel ──────────────────────────────────────────
+     The graph plugin ships its own hardcoded light palette (cool #f2f2f2 /
+     #f3f3f3 / #cccccc) that ignores --sl-color-*. Re-point its variables at
+     the paper tones so the right sidebar doesn't stay a cold white rectangle. */
+  --slsg-graph-minimized-bg-color: #efece5;  /* was: #f2f2f2 */
+  --slsg-graph-maximized-bg-color: #f2efe8;  /* was: #f3f3f3 */
+  --slsg-graph-outline-color: #d8d0c0;       /* was: #cccccc */
+  --slsg-graph-action-bg-color-hover: #e3ded2; /* was: #e0e0e0 */
+  --slsg-context-menu-bg-color: #efece5;     /* was: #f3f3f3 */
+  --slsg-context-menu-bg-color-hover: #e3ded2; /* was: #e0e0e0 */
+  --slsg-context-menu-border-color: #d8d0c0; /* was: #cccccc */
+}
+
+/* Code blocks. Nova's code container renders transparent, so blocks used to
+   show straight through to the page. Putting them on the panel tone gives
+   fenced code the same tonal lift as the sidebar and cards. Scoped to light;
+   dark mode keeps Shiki's own background. */
+:root[data-theme='light'] .sl-markdown-content [data-nova-code-container],
+:root[data-theme='light'] .sl-markdown-content pre.astro-code {
+  background-color: var(--sl-color-black);
+}
+
+/* starlight-tags A-Z jump links hardcode `background: #fff` under
+   [data-theme=light] — no custom property to override, so it needs the
+   element-level rule. Matched with a bare class (unlayered, and this file
+   loads as customCss) which is enough to win. */
+:root[data-theme='light'] .letter-link {
+  background: var(--sl-color-black);
 }
 
 /* ====== NOVA THEME LAYOUT FIX ======

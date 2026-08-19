@@ -2,7 +2,7 @@
 title: ETL and import — schema as primitive, ETL as convenience
 description: Crosswalker's hardest job is taking arbitrary external structure and landing it as canonical Tier 1. The architecture commits to a machine-readable schema as the load-bearing primitive, with a bundled ETL engine, external producers, and a community marketplace as the four orthogonal pieces. This page frames the whole import space.
 sidebar:
-  order: 9
+  order: 19
   label: "ETL and import"
 tags: [etl, import, recipe, schema, primitive, marketplace, yarrrml, transforms]
 ---
@@ -12,6 +12,10 @@ import { Aside } from '@astrojs/starlight/components';
 The import side is the hardest part of Crosswalker. *Everything* a user wants to do — query, crosswalk, evidence, version, share — flows through whatever they already have, in whatever shape it arrives, and lands in the [Tier 1 schema](/crosswalker/agent-context/v0-1-schema-spec/). Get the import boundary right and the rest of the architecture works. Get it wrong and no amount of cleverness downstream rescues it. For the layer-by-layer map of every convention in the pipeline, see [Conventional systems in the stack](/crosswalker/concepts/conventions/); for the front-half morph onto Obsidian's primitives specifically, see [Mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/).
 
 This page frames how Crosswalker thinks about that boundary. **For the system-wide picture (all six layers, not just import), see the [system architecture page](/crosswalker/concepts/system-architecture/).**
+
+<Aside type="note" title="Artifact and operation boundaries">
+Per [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/), a **transform** is a bounded change, and every **projection** on this page is qualified by its target (for example, vault-shape projection or cache projection). **Translation** is reserved for narrow interlingua/adapter work; **compilation** is used only when an explicit lowering architecture exists. An `ImportRecipe` is a machine-evaluable declarative specification, not executable knowledge. SSSOM, STRM, OSCAL, CSV, and Markdown are serializations; ZIP files, folders, and git repositories are carriers; a package requires manifest semantics in addition to a carrier.
+</Aside>
 
 ## The reframe — schema is the primitive, ETL is convenience
 
@@ -23,14 +27,14 @@ Most ingestion tools start with the engine and treat the output schema as a conf
 
 You've seen this pattern before. **HTML** and **Markdown** are the clearest examples: the *format* is the shared contract everyone agrees on, and a whole ecosystem of tools grew up producing it — nobody owns an "official" generator. The spec is what's load-bearing; the producers are interchangeable. Tier 1 plays exactly that role for Crosswalker. *(Same pattern: JSON Schema, OpenAPI, SBOM formats like SPDX/CycloneDX, CSVW.)*
 
-Translated to Crosswalker:
+Applied to Crosswalker:
 
 <div class="not-content" id="the-four-pieces-stack" style="margin:1.3rem 0; padding:1rem 1.1rem; border:1px solid var(--sl-color-hairline); border-radius:14px; background:var(--sl-color-bg);">
 <div style="font-size:.6em; text-transform:uppercase; letter-spacing:.12em; color:var(--sl-color-gray-3); text-align:center; margin-bottom:.5rem;">Producers — interchangeable; adopt as many as you like</div>
 <div style="display:flex; gap:.6rem; flex-wrap:wrap; align-items:stretch;">
 <div style="flex:1 1 165px; padding:.7rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.8em;"><a href="#2-the-bundled-etl-engine-convenience" style="color:var(--sl-color-text-accent); text-decoration:none;">Bundled ETL engine</a></div><div style="font-size:.58em; text-transform:uppercase; letter-spacing:.08em; color:var(--sl-color-gray-3); margin:.15rem 0 .3rem;">convenience</div><div style="font-size:.7em; color:var(--sl-color-gray-2); line-height:1.45;">common formats in → Tier 1 out, without leaving Obsidian</div></div>
 <div style="flex:1 1 165px; padding:.7rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.8em;"><a href="#3-external-producers-custom-transforms" style="color:var(--sl-color-text-accent); text-decoration:none;">External producers</a></div><div style="font-size:.58em; text-transform:uppercase; letter-spacing:.08em; color:var(--sl-color-gray-3); margin:.15rem 0 .3rem;">your toolchain</div><div style="font-size:.7em; color:var(--sl-color-gray-2); line-height:1.45;">dbt · Python / Polars · scrapers · MCP servers · AI agents</div></div>
-<div style="flex:1 1 165px; padding:.7rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.8em;"><a href="#4-the-community-marketplace-transform-once-share-forever" style="color:var(--sl-color-text-accent); text-decoration:none;">Community marketplace</a></div><div style="font-size:.58em; text-transform:uppercase; letter-spacing:.08em; color:var(--sl-color-gray-3); margin:.15rem 0 .3rem;">transform once</div><div style="font-size:.7em; color:var(--sl-color-gray-2); line-height:1.45;">download a pre-built Tier 1 bundle; pull a diff when upstream updates</div></div>
+<div style="flex:1 1 165px; padding:.7rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="font-weight:700; font-size:.8em;"><a href="#4-roadmap-community-packages-transform-once-reuse-deliberately" style="color:var(--sl-color-text-accent); text-decoration:none;">Community packages</a></div><div style="font-size:.58em; text-transform:uppercase; letter-spacing:.08em; color:var(--sl-color-gray-3); margin:.15rem 0 .3rem;">roadmap</div><div style="font-size:.7em; color:var(--sl-color-gray-2); line-height:1.45;">share reviewable, versioned artifacts through manifest-defined packages</div></div>
 </div>
 <div style="text-align:center; margin:.45rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-text-accent);">↓</div><div style="font-size:.58em; color:var(--sl-color-text-accent); text-transform:uppercase; letter-spacing:.1em;">all emit valid Tier 1</div></div>
 <div style="padding:.8rem 1rem; border:2px solid var(--sl-color-text-accent); border-bottom-width:5px; border-radius:10px; background:var(--sl-color-accent-low); color:var(--sl-color-text-accent);"><div style="display:flex; align-items:center; justify-content:center; gap:.5rem; flex-wrap:wrap;"><span style="font-weight:800; font-size:.9em;"><a href="#1-the-tier-1-schema-machine-readable-contract" style="color:inherit; text-decoration:none;">Tier 1 schema</a></span><span style="font-size:.55em; font-weight:800; letter-spacing:.08em; text-transform:uppercase; border:1px solid var(--sl-color-text-accent); border-radius:4px; padding:.1rem .35rem;">the primitive</span></div><div style="text-align:center; font-size:.68em; margin-top:.3rem; color:var(--sl-color-gray-2);">the load-bearing contract — machine-readable JSON Schema, the single interface every producer targets. Swap the engine; the schema doesn’t move.</div></div>
@@ -92,7 +96,7 @@ Both modes are **first-class architectural citizens** per the [schema-as-primiti
 
 ### Why both modes matter
 
-**Mode 1 lets ChunkyCSV / JSONaut / dbt / Polars scripts compose naturally.** They already produce CSV/JSON. Crosswalker just consumes that. The user doesn't have to teach their existing ETL tools how to emit Markdown — they keep doing what they're good at, and the bundled engine handles the projection layer.
+**Mode 1 lets ChunkyCSV / JSONaut / dbt / Polars scripts compose naturally.** They already produce CSV/JSON. Crosswalker just consumes that. The user doesn't have to teach their existing ETL tools how to emit Markdown — they keep doing what they're good at, and the bundled engine handles the structured-rows-to-vault projection layer.
 
 **Mode 2 lets AI agents and bundled-marketplace publishers emit Tier 1 end-to-end.** When an agent extracts an ontology from a corpus, it produces concepts directly — there's no natural intermediate "rows" representation. Skipping the bundled engine is the right call.
 
@@ -172,7 +176,7 @@ The schema validation that *does* happen is at the **output boundary**: every ro
 
 #### Why ChunkyCSV / JSONaut are the right partners for messy sources
 
-The user's existing tools fit this gap precisely. They specialize in **input cleanup** — turning a multi-GB messy XLSX into a streaming UTF-8 CSV with stable columns and proper RFC 4180 quoting. The bundled engine specializes in **projection** — turning structured rows into Tier 1 vault notes per a recipe. Each layer does what it's good at; the boundary between them is "an iterable of records with stable columns." That's the entire contract — and it's intentionally narrow so external tools don't need Crosswalker-specific knowledge.
+The user's existing tools fit this gap precisely. They specialize in **input cleanup** — turning a multi-GB messy XLSX into a streaming UTF-8 CSV with stable columns and proper RFC 4180 quoting. The bundled engine specializes in **vault-shape projection** — turning structured rows into Tier 1 vault notes per a recipe. Each layer does what it's good at; the boundary between them is "an iterable of records with stable columns." That's the entire contract — and it's intentionally narrow so external tools don't need Crosswalker-specific knowledge.
 
 ### Transform engine depth — where the in-plugin work stops
 
@@ -258,8 +262,8 @@ The bundled engine's per-row pipeline (after Ch 22 + Ch 23 + Ch 24 design phase,
 <div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">+ recipe</div></div>
 <div style="display:flex; align-items:center; gap:.7rem; padding:.5rem .8rem; border:1px solid var(--sl-color-text-accent); border-left:4px solid var(--sl-color-text-accent); border-radius:10px; background:var(--sl-color-accent-low);"><div style="flex:0 0 215px; font-weight:700; font-size:.74em; color:var(--sl-color-text-accent);"><code style="font-size:.95em;">render(Recipe, Identity)</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">pure function — the <strong>single coupling point</strong> (Ch 22 §3); deterministic, hashable, replayable</div></div>
 <div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-text-accent);">↓</div><div style="font-size:.58em; color:var(--sl-color-text-accent); text-transform:uppercase; letter-spacing:.1em;">returns</div></div>
-<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">Address</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">&#123;primary, wikilinkTarget, tags, aliases, frontmatter&#125;</div></div>
-<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">+ buildProvenance() + body</div></div>
+<div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">Address</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">&#123;primary, wikilinkTarget, tags, aliases, frontmatter, body&#125; — body templates are already rendered into ordered regions</div></div>
+<div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div><div style="font-size:.58em; color:var(--sl-color-gray-3); text-transform:uppercase; letter-spacing:.1em;">+ buildProvenance() + deterministic Markdown assembly</div></div>
 <div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">validateTier1Frontmatter()</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">pre-write gate (v0.1.4) — STRM enforced here</div></div>
 <div style="text-align:center; margin:.35rem 0;"><div style="font-size:1.5em; line-height:.85; color:var(--sl-color-gray-3);">↓</div></div>
 <div style="display:flex; align-items:center; gap:.7rem; padding:.45rem .8rem; border:1px solid var(--sl-color-hairline); border-radius:10px; background:var(--sl-color-bg-nav);"><div style="flex:0 0 215px; font-weight:600; font-size:.74em;"><code style="font-size:.95em;">mergeFrontmatter(existing, new)</code></div><div style="font-size:.72em; color:var(--sl-color-gray-2); line-height:1.4;">user_preserve fields survive (Ch 22 §8.4)</div></div>
@@ -270,6 +274,14 @@ The bundled engine's per-row pipeline (after Ch 22 + Ch 23 + Ch 24 design phase,
 </div>
 
 `render()` is the **single coupling point** between recipe and vault layout. Pass 1 is vault-independent (deterministic, hashable, replayable). Per [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/), this purity is what makes canonical-state hashing work.
+
+### Canonical recipe versus editable workbench
+
+The workbench does not rebuild an [ImportRecipe](/crosswalker/concepts/terminology/#recipe) from a smaller UI model. `RecipeDocument.original` is the durable preservation authority. `StructureMapping` / `ImportMapping` is editable workbench UI/IR derived from that original, and patching changes only workbench-owned regions. Read-only/deferred fields such as output `kind`, query declarations, `graph_edges`, and `linkStyle` survive untouched.
+
+Unsupported states block portable patching instead of disappearing. Current blockers include table-row body output, legacy body transforms, row filters, lookup naming, materialized level notes, non-default missing policies, and link semantics without a canonical recipe surface. See the [2026-07-21 fidelity synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/).
+
+This closes **in-memory workbench fidelity**. It does not yet add durable save/open/share UI for user ImportRecipe files; that remains a named [UI parity gap](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/).
 
 ## Why import is the hardest part
 
@@ -324,25 +336,30 @@ When the bundled engine isn't enough — messy source, unusual transform, domain
 
 This path is *first-class*, not a fallback. Crosswalker explicitly does not try to be the universal ETL engine. It tries to be the *universal target*.
 
+For the practical version of this path — a complete valid note, the required frontmatter fields, and an AJV snippet to validate your output — see [emit valid notes from your own tools](/crosswalker/development/emit-tier-1/).
+
 The user's own [ChunkyCSV](https://github.com/cybersader) and [JSONaut](https://github.com/cybersader) are examples of external producers — purpose-built ETL tools that could be configured to emit Tier 1 without being absorbed into Crosswalker's codebase.
 
-### 4. The community marketplace (transform once, share forever)
+### 4. Roadmap: community packages (transform once, reuse deliberately)
 
-Once an ontology is transformed to Tier 1, *it stays transformed*. There is no reason every NIST 800-53 user should re-do the import. Crosswalker treats community-shared, pre-transformed Tier 1 bundles as a load-bearing piece of the architecture, not a nice-to-have:
+Comprehensive community sharing is roadmap direction, not a shipped workflow. The goal is to let a maintainer perform a bounded transformation once, publish a reviewable package, and let other users reuse it without repeating source cleanup.
 
-- Someone (the maintainer of an ontology, or an early adopter) does the transformation work once.
-- They publish the resulting Tier 1 directory as a `.zip` or git repo.
-- Other users download it and have a working vault in seconds, with no recipe authoring at all.
-- When the upstream ontology updates, the maintainer publishes a new bundle; downstream users pull a diff.
+A directory, `.zip`, or git repository is only a **carrier**. A Crosswalker package also needs manifest semantics: identity, version, contents, compatibility, integrity, and dependency information. Its contents may include canonical Markdown, an `ImportRecipe`, and independent mapping serializations, but the carrier does not define their authority.
 
-This pattern is the *answer* to the messy-source problem. The bundled engine handles tree-shaped sources well (JSON, YAML, OSCAL); the marketplace fills the gap for messy tabular sources (the original NIST 800-53 XLSX, MITRE ATT&CK matrices) by community-shared pre-transformation. A user with NIST CSF 2.0 doesn't need to fight the spreadsheet — they download the pre-transformed bundle.
+A future workflow can then support:
 
-| Mechanism | Where it lives | Notes |
+- A maintainer publishing a versioned package for a known framework source.
+- Users reviewing its manifest and contents before installation.
+- Upstream updates producing a new package version and an inspectable diff.
+- Import recipes, mapping sets, and framework content remaining independently identifiable.
+
+| Registry carrier | Where it lives | Notes |
 |---|---|---|
-| In-repo registry | Subfolder of Crosswalker repo | Tight integration; CI validates every bundle on merge; PRs from community mix with engine PRs |
-| Companion repo | Separate `crosswalker-recipes` (or `crosswalker-bundles`) repo | Cleaner separation; independent versioning; easier for non-engine contributors |
+| In-repo directory | Subfolder of the Crosswalker repo | Tight CI integration; package manifests validated on merge |
+| Companion git repository | Separate community repository | Independent versioning and contribution flow |
+| Downloadable archive | `.zip` or equivalent | Portable transport only; still requires the same manifest semantics |
 
-Either works; the choice is deferrable. Both are GitHub-based, both are copy-paste-or-clone usable.
+The registry and package lifecycle remain deferrable. The artifact boundaries are not: serializations describe content, carriers transport it, and manifests make packages interpretable.
 
 ## The five-axis recipe selection
 
@@ -356,7 +373,7 @@ Even after a source is parsed, every recipe makes five orthogonal choices about 
 | **Granularity** | One file per leaf concept, or one file per group with leaves as headings? | Per-control file vs per-family file |
 | **Projection** | Which fields of each concept land as frontmatter, body, wikilink, or are dropped? | Control text → body; control ID → frontmatter; baseline → tag |
 
-These five axes are why "the recipe" is a non-trivial declarative artifact, not a single transform expression. They're also the reason a single source ontology can produce many legitimately-different vaults — and why Crosswalker can't just "auto-import" a source without recipe author input.
+These five axes are why a recipe is a non-trivial, machine-evaluable declarative specification, not a single transform expression and not executable knowledge. They're also the reason a single source ontology can produce many legitimately different vaults, and why Crosswalker can't simply auto-import a source without policy choices.
 
 ## The ~40-primitive transformation catalog
 
@@ -459,6 +476,7 @@ See the [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/
 ## Related
 
 **Concept pages:**
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — transform, vault-shape/cache projection, recipe, serialization, carrier, and package boundaries
 - [System model](/crosswalker/concepts/system-model/) — the illustrated, diagram-first map of the whole pipeline this page is the ingest half of
 - [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — folder, file, heading, tag, wikilink and how recipes compose them via the 5-mechanism grammar
 - [The problem](/crosswalker/concepts/problem/) — hierarchy-vs-graph tension; why ingestion target matters

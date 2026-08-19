@@ -1,40 +1,63 @@
 ---
 title: Vision
-description: Short and long-term goals for Crosswalker.
+description: Crosswalker's product identity, operating model, machine-actionability, implementation horizon, and design principles.
 tags: [architecture, grc]
 ---
 
-## Short-term (current)
+## Product identity
 
-A working Obsidian plugin that can:
-1. Import structured data (CSV/XLSX/JSON) into Obsidian as folder hierarchies + notes
-2. Generate proper frontmatter/properties from source columns
-3. Create links between framework nodes (crosswalks)
-4. Output data that works with Bases, Dataview, or any query tool
+**Crosswalker supports acquiring, shaping, connecting, understanding, sharing, and maintaining ontology-shaped knowledge over time.**
 
-## MVP status (achieved)
+The product is an [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) system, not only an importer or Recipe runner. Import is the entry point; durable value comes from keeping structured knowledge navigable, connected, explainable, portable, and maintainable as sources and local needs evolve.
 
-The [import wizard](/crosswalker/features/import-wizard/) MVP is complete:
-- Step-by-step wizard with file selection, column mapping, preview, generation
-- CSV parsing with streaming for large files
-- Config save/load/match system
-- [Generation engine](/crosswalker/features/generation-engine/) with `_crosswalker` metadata
+## Operating model
 
-## Long-term
+**Crosswalker manages schema-governed Knowledge Sets using machine-evaluable declarative Recipes.**
 
-A comprehensive ontology management system for Obsidian:
-- Multiple framework import and linking
-- Typed link syntax with JSON metadata
-- Link insertion commands with autocomplete
-- Compliance dashboards via [Dataview](/crosswalker/concepts/metadata-ecosystem/)/Bases queries
-- [OSCAL](/crosswalker/concepts/framework-standards/) export for interoperability
-- Community-shared framework configs
+| Role | Meaning |
+|---|---|
+| [Schema Contract](/crosswalker/concepts/artifact-roles-and-authority/#schema-contract-governing-meta-artifact) | Governs which representations are valid |
+| [Knowledge Set](/crosswalker/concepts/artifact-roles-and-authority/#knowledge-set-what-is-asserted) | Extensional family: the concepts and assertions being managed |
+| [Recipe](/crosswalker/concepts/artifact-roles-and-authority/#recipe-what-should-be-done) | Intensional family: portable intended behavior |
+| Tier 1 | Canonical Crosswalker-managed representation and local authority, not a root artifact family |
+
+The system's deeper mechanism is [data morphology](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/): decode and re-embody source shapes on the write side; project and present useful shapes on the read side.
+
+## Machine-actionability
+
+**Crosswalker makes ontology knowledge machine-actionable through portable recipes, schemas, queries, and mappings.**
+
+- **Portable Recipes** make repeatable behavior inspectable, validatable, shareable, and replayable.
+- **Schema Contracts** let the plugin, external tools, scripts, agents, and future runtimes produce or consume conforming artifacts.
+- **Queries** turn governed knowledge into answers and views without replacing canonical Tier 1 authority.
+- **Mappings** connect concepts across Knowledge Sets while preserving typed assertions and provenance.
+
+## Current and planned
+
+| Horizon | Capabilities |
+|---|---|
+| **Current** | CSV/XLSX/JSON import; visual mapping and preview; schema-validated Tier 1 generation; portable ImportRecipe preservation; typed crosswalk records; Bases query surfaces; first export paths |
+| **Next** | Durable local Recipe library and browser; full-source portability proofs; first-class MappingSet identity and authoring; broader export/share workflows |
+| **Later** | Ontology evolution and migration; separate Execution Record and Package Manifest contracts; stronger audit, packaging, and community distribution |
+
+Implementation status lives in the [milestone roadmap](/crosswalker/reference/roadmap/milestones/). Artifact roles and authority live in the [permanent concept model](/crosswalker/concepts/artifact-roles-and-authority/).
 
 ## Design principles
 
-1. **Plain text first** — Everything in markdown, YAML, JSON
-2. **Framework agnostic** — Easy to add any structured data source
-3. **Metadata rich** — Links carry structured data about relationships
-4. **Query powered** — Standard tools (Bases, Dataview) for aggregation
-5. **Future proof** — No lock-in, works with standard Obsidian
-6. **User-morphable** — Expose settings generously, smart defaults with full control
+1. **Plain text first** — canonical managed knowledge remains readable Markdown and frontmatter.
+2. **Schema governed** — machine-readable contracts outrank any one engine or UI projection.
+3. **General ontology core, compliance-first experience** — internal primitives work across domains; launch workflows lead with GRC needs.
+4. **Portable and replaceable** — Recipes, schemas, mappings, and queries survive changes in tools and runtimes.
+5. **Retrieval centered** — structure and views help people decide what they need to know and reach it.
+6. **UI first, configuration as escape hatch** — every lifecycle stage needs an understandable interface; declarative files remain the programmatic path.
+7. **Authority is explicit** — authority follows ontological role, not storage location, format, lifecycle phase, or UI model.
+8. **No artifact-noun inflation** — new root nouns require genuinely independent identity, lifecycle, authority, and consumers.
+
+## Related
+
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/)
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/)
+- [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/)
+- [System architecture](/crosswalker/concepts/system-architecture/)
+- [ETL and import](/crosswalker/concepts/etl-and-import/)
+- [Artifact roles and authority synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/)

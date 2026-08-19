@@ -3,7 +3,7 @@ title: Institutional landscape
 description: The entities, relationships, and dynamics of who creates, maintains, maps, mandates, and consumes structured ontologies — the human side of ontology management.
 tags: [frameworks, grc, architecture]
 sidebar:
-  order: 4
+  order: 8
 ---
 
 Every [ontology evolution](/crosswalker/concepts/ontology-evolution/) problem has a human side. Frameworks don't update themselves — institutions create them, other institutions map between them, regulators mandate them, and your team consumes them. Understanding these actors and their relationships is essential for making architectural decisions about how Crosswalker handles the [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/).
@@ -347,18 +347,19 @@ When NIST updates 800-53, the "publishes" link changes. But the "crosswalk" link
 
 ## The artifacts
 
-Each entity type produces and consumes different artifacts:
+Each entity type produces and consumes different artifacts. Artifact role is separate from representation: SSSOM, STRM, OSCAL, CSV, and Markdown are **serializations**. ZIP files, folders, and git repositories are **carriers**. A carrier becomes a package only when a manifest defines identity, version, contents, compatibility, and integrity. See [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/).
 
-| Artifact | Produced by | Consumed by | Format | [Evolution pattern](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) |
+| Artifact | Produced by | Consumed by | Common serializations | [Evolution pattern](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) |
 |----------|------------|------------|--------|------------------|
-| **Framework** | Standard body, Industry group | Everyone | Excel, CSV, PDF, OSCAL, STIX | Varies by publisher |
-| **Crosswalk** | Mapping org, Standard body | Your org, GRC vendors | Excel, SSSOM, JSON | Often stale |
-| **Regulation** | Regulator | Your org, Auditors | Legal text, PDF | Infrequent but binding |
-| **Evidence** | Your org | Auditors | Policies, configs, screenshots, logs | Continuous |
-| **Assessment** | Auditor | Your org, Regulator | Report, PDF, OSCAL | Point-in-time |
-| **Config** | GRC vendor, Community | Your org | JSON, YAML, proprietary | Vendor-dependent |
+| **Framework content** | Standard body, Industry group | Everyone | XLSX, CSV, PDF, OSCAL, STIX | Varies by publisher |
+| **Crosswalk mapping** | Mapping org, Standard body | Your org, GRC vendors | CSV, SSSOM, STRM, JSON | Often stale |
+| **Regulation** | Regulator | Your org, Auditors | Legal text, HTML, PDF | Infrequent but binding |
+| **Evidence** | Your org | Auditors | Markdown, PDF, images, logs | Continuous |
+| **Assessment** | Auditor | Your org, Regulator | Markdown, PDF, OSCAL | Point-in-time |
+| **ImportRecipe** | Crosswalker team, community, your org | People and automation | JSON or YAML representation | Versioned portable specification |
+| **Legacy SavedConfig** | Crosswalker user | The same user and plugin | Plugin-owned JSON state | Source-bound convenience state |
 
-Crosswalker operates on **frameworks** (importing), **crosswalks** (linking), and **evidence** (the user's notes). The other artifacts are context that informs handling strategy.
+Crosswalker operates on **framework content** (importing), **crosswalk mappings** (linking), and **evidence** (the user's notes). An `ImportRecipe` is a machine-evaluable declarative specification for producing vault output, not executable knowledge. `SavedConfig` remains a separate legacy convenience artifact, not an `ImportRecipe`.
 
 ---
 
@@ -480,6 +481,7 @@ The institutional landscape determines:
 
 ## Resources
 
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — authority, serialization, carrier, and package distinctions
 - [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — the three-layer problem with actors model
 - [Framework versioning](/crosswalker/concepts/framework-versioning/) — how each framework handles updates
 - [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — the full lifecycle model

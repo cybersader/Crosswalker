@@ -4,10 +4,15 @@ description: "render()'s layout maps KNOWN levels to mechanisms — depth is fix
 tags: [research, render, recipe, hierarchy, folder, tag, heading, graph-edges, expressivity, determinism, ch-42]
 date: 2026-06-14
 sidebar:
-  label: "42 · Variable-depth hierarchy"
+  label: "Ch 42 · Variable-depth hierarchy"
+  order: 42
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — no research pass has run yet]
+This brief is unresolved and awaiting a fresh-agent research pass. Findings land as a deliverable in [`zz-research/`](/crosswalker/agent-context/zz-research/) plus a dated synthesis entry in [`zz-log/`](/crosswalker/agent-context/zz-log/); the brief then moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/).
+:::
 
 :::caution[The seam: split() makes parts; the mechanism nests them — but depth is fixed]
 A `split()`/`regex()` transform produces *parts*. What nests them is the **mechanism** you pair them with. v0.1 assumes you **know the depth** (one `layout` entry per level). This challenge asks: how should a recipe express a hierarchy whose **depth varies per row** — and what are the fallback semantics when a transform under- or over-splits — across all five mechanisms, without adding a sixth mechanism or a Turing-complete templating language?

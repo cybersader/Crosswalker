@@ -4,10 +4,15 @@ description: "Stress-test the assumption that the unified risk/audit/GRC model h
 tags: [research, unified-risk-model, spine, cri-profile, scf, strm, nist-csf, grc, audit, ch-39]
 date: 2026-06-01
 sidebar:
-  label: "39 · The unified-model spine"
+  label: "Ch 39 · Unified-model spine"
+  order: 39
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — no research pass has run yet]
+This brief is unresolved and awaiting a fresh-agent research pass. Findings land as a deliverable in [`zz-research/`](/crosswalker/agent-context/zz-research/) plus a dated synthesis entry in [`zz-log/`](/crosswalker/agent-context/zz-log/); the brief then moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/).
+:::
 
 :::caution[Foundational — gates ingestion + the unified-model shape]
 The [unified risk model](/crosswalker/examples/unified-risk-model/) and the [2026-05-29 corpus checkpoint](/crosswalker/agent-context/zz-log/2026-05-29-framework-corpus-and-tooling-checkpoint/) both assume **CRI Profile is the spine** — the authority-of-record every other framework crosswalks *to*. That assumption was inherited, not tested. The full security/GRC/risk/audit framework corpus is now assembled, so we are about to ingest ~240 files **around a spine we have not validated**. Pick the wrong spine and re-mapping is expensive. Settle this before ingestion.

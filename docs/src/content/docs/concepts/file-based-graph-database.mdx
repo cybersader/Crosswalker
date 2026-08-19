@@ -2,13 +2,13 @@
 title: File-based graph databases
 description: How markdown vaults function as property graph databases — formal model, trade-offs, and patterns for storing structured relationships in files.
 sidebar:
-  order: 50
+  order: 25
 tags: [data-model-graph, data-model-consistency, architecture]
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="tip">For the full system architecture (how this layer fits with the import, projection, query, export, and audit layers), see the [system architecture page](/crosswalker/concepts/system-architecture/).</Aside>
+<Aside type="tip">For the full system architecture (how this layer fits with the import, cache projection, query, export, and audit layers), see the [system architecture page](/crosswalker/concepts/system-architecture/). For the distinction between canonical artifacts, live views, materialized snapshots, serializations, and carriers, see [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/).</Aside>
 
 ## What kind of database is an Obsidian vault?
 
@@ -32,10 +32,10 @@ where:
 ```
 
 **Crosswalker's implementation:**
-- **Nodes (V)**: Markdown files in generated folders (one per framework control, technique, safeguard)
+- **Nodes (V)**: Markdown files in generated folders (one per imported concept — e.g. a framework control, technique, or safeguard)
 - **Edges (E)**: WikiLinks between notes (crosswalk relationships, hierarchy links)
 - **Properties (σ)**: YAML frontmatter on each file
-- **Labels (λ)**: Folder location + `_crosswalker.type` metadata
+- **Labels (λ)**: Folder location + the top-level `kind` frontmatter field (absent = concept note; `junction-note`; `crosswalk-edge`) + `tags` tag paths. Note that `_crosswalker` is the provenance block only — it is `additionalProperties: false` and carries no node-type field, so labels never come from inside it.
 
 <style>{`
   .fg-graph {
@@ -225,7 +225,7 @@ where:
 | **Collection/Table** | Labels | Collections | Folders |
 | **Primary key** | Internal ID | `_id` field | File path |
 | **Foreign key** | Relationship | `$ref` / manual | `[[WikiLink]]` |
-| **Query language** | Cypher | MQL | Dataview DQL / Bases formulas |
+| **Query language** | Cypher | MQL | Bases filters, formulas, and views |
 | **Index** | Native indexes | B-tree indexes | Obsidian cache + folder structure |
 | **Transactions** | ACID transactions | ACID (single doc) | None |
 | **Graph traversal** | Native O(1) | Manual joins | WikiLink following |
@@ -243,7 +243,7 @@ nist_csf.maps_to:: [[AC-2]]
 # (Obsidian computes this automatically from WikiLinks)
 ```
 
-When Crosswalker generates both forward links (note A references note B) and frontmatter properties that duplicate relationship data, it creates a **materialized view** — cached relationship data for quick access that must be kept in sync with the source.
+When Crosswalker generates both forward links (note A references note B) and frontmatter properties that duplicate relationship data, it creates a **stored denormalized relationship projection** for quick access. Because the projection is persisted in files, re-import must keep every copy in sync with its authoritative relationship data.
 
 This is the denormalization tax: every re-import must update all copies, or the data becomes inconsistent. See [data model resilience](/crosswalker/agent-context/data-model-resilience/) for strategies.
 
@@ -267,9 +267,11 @@ related_controls:
 
 This enables efficient local queries ("what does this control relate to?") without scanning all files.
 
-### Materialized views
+### Live views and materialized snapshots
 
-[Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) and [Dataview](/crosswalker/concepts/metadata-ecosystem/) function as **materialized views** over the file graph — they compute and display aggregated data from individual files. Unlike a SQL materialized view, they recompute on every query (no staleness risk, but no persistence either).
+[Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) provides **live views** over the file graph: filters, formulas, grouping, and summaries are evaluated from current vault data when the view loads. They are not materialized views because the result is not persisted.
+
+A **materialized snapshot** exists only when Crosswalker writes a query result to a Markdown or other durable output artifact. That snapshot can travel without the query runtime, but it can become stale and must record how and when it was produced.
 
 ## Trade-offs of file-based storage
 
@@ -284,9 +286,9 @@ This enables efficient local queries ("what does this control relate to?") witho
 
 ## Why this matters for Crosswalker
 
-Crosswalker generates a file-based graph database every time it imports a framework. Understanding this model explains:
+Crosswalker generates a file-based graph database every time it imports an ontology (e.g. a compliance framework). Understanding this model explains:
 
-1. **Why re-import is complex** — updating a materialized view across hundreds of files requires careful coordination. See [ontology evolution](/crosswalker/concepts/ontology-evolution/).
+1. **Why re-import is complex** — updating persisted, denormalized relationship projections across hundreds of files requires careful coordination. See [ontology evolution](/crosswalker/concepts/ontology-evolution/).
 2. **Why crosswalk links can become stale** — no foreign key constraints mean broken links accumulate silently. See [constraint enforcement](/crosswalker/agent-context/constraint-enforcement/).
 3. **Why frontmatter-first is the right approach** — [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) can query frontmatter but not inline fields, making YAML properties the most queryable storage location.
 4. **Why the `_crosswalker` metadata exists** — it provides the schema versioning and provenance tracking that file-based systems lack natively.
@@ -307,4 +309,5 @@ Crosswalker generates a file-based graph database every time it imports a framew
 - [The problem](/crosswalker/concepts/problem/) — hierarchy vs. graph tension
 - [Consistency models](/crosswalker/concepts/consistency-models/) — ACID, CAP, and eventual consistency
 - [Data model resilience](/crosswalker/agent-context/data-model-resilience/) — handling framework updates
-- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Properties, Dataview, Bases, Datacore
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) — Properties and Obsidian Bases
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — canonical data, live views, snapshots, serializations, and carriers

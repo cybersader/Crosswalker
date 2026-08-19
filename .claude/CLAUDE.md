@@ -75,7 +75,7 @@ The canonical project KB is the docs site. For an agent new to the project:
 | Open research challenges | [agent-context/zz-challenges](https://cybersader.github.io/crosswalker/agent-context/zz-challenges/) |
 | Agent-tooling progressive-disclosure space | [agent-context/agent-tooling](https://cybersader.github.io/crosswalker/agent-context/agent-tooling/) |
 
-## v0.1 implementation status (as of 2026-05-06)
+## v0.1 implementation status (as of 2026-07-21)
 
 | Milestone | Status |
 |---|---|
@@ -85,8 +85,8 @@ The canonical project KB is the docs site. For an agent new to the project:
 | [v0.1.4](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) — Junction notes + crosswalk edges | ✅ Done (2026-05-05) |
 | [v0.1.4.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) — Streaming refactor | ✅ Done (2026-05-05) |
 | [v0.1.5](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — Tier 2 sqlite-wasm sidecar | ✅ Done (2026-05-06) |
-| **[v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer + SSSOM + recipe UX** | 🚧 Phases 1–6.4 ✅ (incl. 2026-06-12 ingestion-corpus sprint + wizard XLSX/JSON parity); v0.1.7 next |
-| [v0.1.7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — Exporters (STRM/OSCAL/SSSOM) | 🚧 First slice landed 2026-07-12 (engine + SSSOM round-trip + 2 commands) |
+| [v0.1.6](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) — Bases query layer + SSSOM + recipe UX | 🚧 Phases 1–7 ✅ through 2026-07-11; delivery detail in `CHANGELOG.md` |
+| **[v0.1.7](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — Portability (exporters + ImportRecipe fidelity)** | 🚧 Exporter first slice ✅ 2026-07-12; canonical RecipeDocument/body/fidelity foundation ✅ 2026-07-21; recipe library + full-source proofs remain |
 | [v0.1.8](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — Audit trail T1 default | 📋 Planning |
 | [v0.1-RC](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — Ship | 📋 Planning |
 
@@ -103,6 +103,9 @@ The canonical project KB is the docs site. For an agent new to the project:
 | **General-ontology vocabulary in docs/KB; compliance-first in user-facing surfaces** — internal vocabulary uses ontology/concept; README + settings stay GRC-first | Memories: `feedback_general_ontology_positioning.md`, `feedback_readme_user_facing_surfaces.md` |
 | **Never surface internal architecture vocabulary in README** — STRM/SSSOM/Tier 2/sqlite-wasm/Polars+DuckDB/runtime-agnostic-recipe-schema alienates evaluators. Plain language only in user-facing surfaces | Memory: `feedback_readme_user_facing_surfaces.md` |
 | **Bases not Dataview** — v0.1 query layer commitment; do NOT reference Dataview in user-facing surfaces or new code | Memory: `project_query_layer_bases_not_dataview.md` |
+| **Portable recipes patch the canonical original** — `RecipeDocument` is the preservation boundary; never rebuild a canonical ImportRecipe from the smaller workbench model. Unsupported lossy edits block. Durable recipe storage/UI is not complete yet | Memory: `project_portable_recipe_fidelity.md`; [2026-07-21 synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) |
+| **Prevent artifact-noun proliferation** — authority follows ontological role, not storage, format, lifecycle phase, or UI model. Start with Schema Contract / Knowledge Set / Recipe; keep Execution Record and Package Manifest separate; Tier 1 is a canonical managed representation, not a root artifact. Add a new noun only for independent identity, lifecycle, authority, and consumers; Blueprint/lifecycle-manifest remains rejected without new semantics | [Concept](https://cybersader.github.io/crosswalker/concepts/artifact-roles-and-authority/) · [2026-07-21 synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) · Memory: `project_artifact_roles_and_authority.md` |
+| **Freshness discipline on living pages** — pages describing *current* behavior carry `Status last verified: YYYY-MM-DD`; a session that changes `src/` behavior or `spec/` must update the affected living pages or log why not; counts/enums in docs cite their source file | § Documentation update reminders — freshness discipline (below); `pre-commit-reviewer` checks 12–16 |
 | **Pattern A test-vault structure** — repo root has src/ + docs/ + spec/ + test-vault/ as siblings; build outputs into `test-vault/.obsidian/plugins/crosswalker/` | Confirmed 2026-05-04 |
 | **Plugin ships only `main.js + manifest.json + styles.css`** — `tools/`, `spec/`, KB don't bloat releases | Confirmed 2026-05-04 |
 | **Manual testing entry point** — `TEST_HANDS_ON_TOUR.md` at repo root is the master surface-coverage checklist (supersedes per-phase TEST_*.md guides for full passes) | Added 2026-06-12 |
@@ -141,6 +144,37 @@ The roadmap lives in two places that must stay in sync:
 4. Flip phase status in roadmap index hub
 
 **Every significant decision** gets a dated log entry in `docs/src/content/docs/agent-context/zz-log/` linked from the roadmap item.
+
+## Documentation update reminders — freshness discipline
+
+Path-keyed reminders ("when you touch X, also update Y") live in the root [`CLAUDE.md` § Documentation update reminders](../CLAUDE.md). This subsection covers the **other** failure mode: pages nobody touches, that keep getting read, and go stale silently. Added 2026-07-27 after a KB audit found five contradictory primitive counts across live pages, a quick-start documenting a removed UI, Dataview recommended on the GRC page months after commitment 6, a glossary teaching a retired query vocabulary, and a schema-spec page promising fields the machine schema never shipped.
+
+### Living pages carry a freshness marker
+
+A **living page** describes *current* behavior (vs a `zz-log/` entry, which describes a dated decision and is immutable). Every living page carries one line directly under its intro:
+
+`**Status last verified:** YYYY-MM-DD — verified against <source of truth>`
+
+| Living page | Source of truth it must be verified against |
+|---|---|
+| `getting-started/quick-start.mdx` | The shipped UI — a wdio screenshot or e2e run, not memory |
+| `getting-started/*.mdx` (GRC teams, install, features) | Shipped UI + the 6 architectural commitments above |
+| `reference/roadmap/milestones/index.mdx` + `v0-1-N-*.mdx` | `CHANGELOG.md` `[Unreleased]` + actual `src/` state |
+| `agent-context/v0-1-schema-spec.mdx` | `spec/tier1.schema.json` + `spec/recipe.schema.json` (field-by-field) |
+| `concepts/terminology.mdx` | Current code vocabulary; retired terms move to a "Retired" table, they are not silently kept |
+| `concepts/system-model.mdx`, `concepts/system-architecture.mdx` | `src/` module layout + the commitments table |
+
+### Rules
+
+| Rule | Detail |
+|---|---|
+| **Behavior change ⇒ touch the living pages** | Any session that materially changes `src/` behavior, UI flow, or `spec/*.schema.json` MUST update the affected living pages **or** state in the commit body / `zz-log/` entry why not. "Docs later" is the failure mode; an explicit deferral note is acceptable, silence is not |
+| **Marker bump is not free** | Only bump `Status last verified` after actually re-checking against the source of truth. Bumping without checking is worse than a stale date |
+| **Counts and enums cite their source** | Never write a bare count ("the 5 primitives", "8 query verbs") or an inline enum in docs. Write it as `5 primitives (source: spec/recipe.schema.json § mechanisms)` so drift is greppable and a reviewer can diff it. Un-sourced counts are how five contradictory primitive counts coexisted |
+| **Retired commitments get a purge sweep, not an edit** | When a commitment is replaced (Dataview → Bases, a removed UI flow), grep the whole `docs/` tree + `README.md` in the same session. Fixing only the page you happened to open is what left Dataview on the GRC page for months |
+| **Stale > 30 days on a living page is a review flag** | The `pre-commit-reviewer` agent's checks 12–16 operationalize this section. It flags, it does not block |
+
+**Where new pages go**: if a page describes current behavior, it is living — add the marker and a row above. If it describes a dated decision, it belongs in `zz-log/` and must NOT carry a freshness marker (logs are historical record; see § Research artifact lifecycle).
 
 ## Cross-linking convention
 
@@ -190,6 +224,6 @@ See `docs/src/content/docs/development/setup.mdx` for the full `bun run` referen
 
 ---
 
-**Last Updated**: 2026-07-05 (v0.1.6 mid-milestone. Added model-tiering & delegation section. In flight on `feat/render-report`: per-row deviation report + Step 3 banner, variadic folder expansion for ragged ids [Ch 42 §1–3], parent_note placement resolved as a user choice [.workspace 2026-07-05 design doc].)
+**Last Updated**: 2026-07-27 (Added § Documentation update reminders — freshness discipline: living-page `Status last verified` markers, sourced counts/enums, retired-commitment purge sweeps; operationalized as `pre-commit-reviewer` checks 12–16. v0.1.7 portability still in progress — canonical ImportRecipe fidelity uses `RecipeDocument`; body renders through pure `render()`; persistent recipe library/UI and full NIST proofs remain.)
 **For**: Crosswalker Obsidian Plugin Development (v0.1 implementation phase)
 **Agent Role**: Architect & Delegation Orchestrator (specs, decisions, reviews — implementation delegated to subagents)

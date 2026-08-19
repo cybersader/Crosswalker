@@ -1,228 +1,94 @@
 ---
 title: Terminology
-description: Key terms and concepts used throughout Crosswalker — with a visual at-a-glance of the two committed edge models (crosswalks and evidence links) at the top.
+description: "The high-level glossary for Crosswalker — short definitions of every recurring term, each linked to the concept page that owns it. Formal words get a plain-English gloss."
 tags: [frameworks, data-model]
+sidebar:
+  order: 2
 ---
 
-<style>{`
-  /* Terminology page edge-model visual (tm-*) */
-  .sl-markdown-content .tm-edge-figure {
-    margin: 0.5rem 0 2rem;
-    max-width: 100%;
-    background: #1e1e2e;
-    border: 1px solid #313244;
-    border-radius: 12px;
-    padding: 1.25rem;
-    font-family: system-ui, -apple-system, sans-serif;
-  }
-  .sl-markdown-content .tm-edge-title {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #6c7086;
-    margin-bottom: 0.25rem;
-  }
-  .sl-markdown-content .tm-edge-subtitle {
-    font-size: 0.85rem;
-    color: #cdd6f4;
-    margin-bottom: 1.25rem;
-    font-weight: 500;
-  }
-  .sl-markdown-content .tm-edge-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-  .sl-markdown-content .tm-edge-card {
-    background: #181825;
-    border: 1.5px solid #313244;
-    border-radius: 10px;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-  }
-  .sl-markdown-content .tm-edge-card-crosswalk { border-color: #89b4fa66; }
-  .sl-markdown-content .tm-edge-card-evidence { border-color: #00d4aa66; }
-  .sl-markdown-content .tm-edge-badge {
-    display: inline-block;
-    font-size: 0.6rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 0.2rem 0.55rem;
-    border-radius: 3px;
-    margin-bottom: 0.55rem;
-    align-self: flex-start;
-    font-weight: 700;
-  }
-  .sl-markdown-content .tm-badge-crosswalk {
-    background: #89b4fa22;
-    color: #89b4fa;
-    border: 1px solid #89b4fa55;
-  }
-  .sl-markdown-content .tm-badge-evidence {
-    background: #00d4aa22;
-    color: #00d4aa;
-    border: 1px solid #00d4aa55;
-  }
-  .sl-markdown-content .tm-edge-cardtitle {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #cdd6f4;
-    margin-bottom: 0.25rem;
-  }
-  .sl-markdown-content .tm-edge-semantic {
-    font-size: 0.75rem;
-    color: #a6adc8;
-    font-style: italic;
-    margin-bottom: 0.9rem;
-    line-height: 1.5;
-  }
-  .sl-markdown-content .tm-edge-diagram {
-    width: 100%;
-    height: auto;
-    display: block;
-    margin-bottom: 0.9rem;
-    aspect-ratio: 260 / 90;
-  }
-  .sl-markdown-content .tm-edge-fields {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 0.7rem;
-    color: #cdd6f4;
-    line-height: 1.65;
-    background: #11111a;
-    border-radius: 4px;
-    padding: 0.6rem 0.75rem;
-    margin-bottom: 0.7rem;
-    border: 1px solid #313244;
-  }
-  .sl-markdown-content .tm-edge-fkey { color: #89b4fa; }
-  .sl-markdown-content .tm-edge-fval { color: #a6e3a1; }
-  .sl-markdown-content .tm-edge-fcomment { color: #6c7086; font-style: italic; }
-  .sl-markdown-content .tm-edge-status {
-    font-size: 0.7rem;
-    color: #a6adc8;
-    line-height: 1.5;
-    border-top: 1px solid #313244;
-    padding-top: 0.7rem;
-    margin-top: auto;
-  }
-  .sl-markdown-content .tm-edge-status strong { color: #cdd6f4; }
-  .sl-markdown-content .tm-edge-status a { color: #89b4fa; }
-  .sl-markdown-content .tm-legend {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    margin-top: 1rem;
-    flex-wrap: wrap;
-    font-size: 0.7rem;
-    color: #6c7086;
-  }
-  .sl-markdown-content .tm-legend-dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-right: 0.3rem;
-    vertical-align: middle;
-  }
-  @media (max-width: 640px) {
-    .sl-markdown-content .tm-edge-grid { grid-template-columns: 1fr; }
-  }
-`}</style>
+A **glossary**, not a textbook: one or two lines per term, with a link to the page that owns the depth. Formal words carry a plain-English gloss in *italics*.
 
-<div class="tm-edge-figure" role="img" aria-label="At-a-glance comparison of Crosswalker's two committed edge models: ontology-to-ontology crosswalks using STRM plus SSSOM, versus evidence-to-framework implementation links using junction notes with a 13-field schema.">
-  <div class="tm-edge-title">Edge model at a glance</div>
-  <div class="tm-edge-subtitle">Crosswalker has two kinds of edges. Both have Foundation-committed architectures. Disambiguating them is the point of this page.</div>
-  <div class="tm-edge-grid">
-    <div class="tm-edge-card tm-edge-card-crosswalk">
-      <span class="tm-edge-badge tm-badge-crosswalk">Crosswalk</span>
-      <div class="tm-edge-cardtitle">Ontology ↔ Ontology</div>
-      <div class="tm-edge-semantic">"These two concepts <em>correspond</em> at such-and-such confidence."</div>
-      <svg class="tm-edge-diagram" viewBox="0 0 260 90" preserveAspectRatio="xMidYMid meet">
-        <circle cx="50" cy="45" r="26" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
-        <text x="50" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">NIST</text>
-        <text x="50" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">AC-2</text>
-        <circle cx="210" cy="45" r="26" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
-        <text x="210" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">ISO</text>
-        <text x="210" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">A.9.2.1</text>
-        <line x1="78" y1="45" x2="182" y2="45" stroke="#89b4fa" stroke-width="2" stroke-dasharray="4 3" />
-        <text x="130" y="36" fill="#89b4fa" font-size="8" text-anchor="middle">subset-of</text>
-      </svg>
-      <div class="tm-edge-fields">
-<span class="tm-edge-fkey">subject_id</span>: <span class="tm-edge-fval">NIST-800-53/AC-2</span>
-<span class="tm-edge-fkey">predicate_id</span>: <span class="tm-edge-fval">strm:subset-of</span>  <span class="tm-edge-fcomment">← STRM</span>
-<span class="tm-edge-fkey">object_id</span>: <span class="tm-edge-fval">ISO-27001/A.9.2.1</span>
-<span class="tm-edge-fkey">confidence</span>: <span class="tm-edge-fval">0.85</span>  <span class="tm-edge-fcomment">← SSSOM</span>
-<span class="tm-edge-fkey">mapping_justification</span>: <span class="tm-edge-fval">…</span>
-      </div>
-      <div class="tm-edge-status">
-        <strong>Committed architecture:</strong> <a href="/crosswalker/reference/registry/strm/">STRM</a> 5-relationship vocabulary in the <code>predicate_id</code> slot + <a href="/crosswalker/reference/registry/sssom/">SSSOM</a> metadata envelope. <a href="/crosswalker/reference/registry/skos/">SKOS</a> rejected as base. See the <a href="/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish">04-10 synthesis §edge semantics</a>.
-      </div>
-    </div>
-    <div class="tm-edge-card tm-edge-card-evidence">
-      <span class="tm-edge-badge tm-badge-evidence">Evidence link</span>
-      <div class="tm-edge-cardtitle">Document → Ontology</div>
-      <div class="tm-edge-semantic">"This document <em>implements</em> this control at such-and-such status."</div>
-      <svg class="tm-edge-diagram" viewBox="0 0 260 90" preserveAspectRatio="xMidYMid meet">
-        <rect x="16" y="22" width="68" height="46" rx="4" fill="#00d4aa22" stroke="#00d4aa" stroke-width="2" />
-        <text x="50" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">MFA</text>
-        <text x="50" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">Policy.md</text>
-        <circle cx="210" cy="45" r="26" fill="#89b4fa22" stroke="#89b4fa" stroke-width="2" />
-        <text x="210" y="42" fill="#cdd6f4" font-size="9" text-anchor="middle" font-weight="600">NIST</text>
-        <text x="210" y="53" fill="#cdd6f4" font-size="9" text-anchor="middle">AC-2</text>
-        <line x1="88" y1="45" x2="178" y2="45" stroke="#00d4aa" stroke-width="2" />
-        <polygon points="178,42 184,45 178,48" fill="#00d4aa" />
-        <text x="133" y="36" fill="#00d4aa" font-size="8" text-anchor="middle">implements</text>
-      </svg>
-      <div class="tm-edge-fields">
-<span class="tm-edge-fkey">link_type</span>: <span class="tm-edge-fval">evidence-control</span>
-<span class="tm-edge-fkey">evidence</span>: <span class="tm-edge-fval">"[[MFA-Policy]]"</span>
-<span class="tm-edge-fkey">control</span>: <span class="tm-edge-fval">"[[NIST--AC-2]]"</span>
-<span class="tm-edge-fkey">status</span>: <span class="tm-edge-fval">implemented</span>  <span class="tm-edge-fcomment">← OSCAL</span>
-<span class="tm-edge-fkey">reviewer</span>: <span class="tm-edge-fval">"[[Jane-Auditor]]"</span>
-<span class="tm-edge-fcomment"># + 8 more fields</span>
-      </div>
-      <div class="tm-edge-status">
-        <strong>Committed architecture:</strong> <a href="/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/">Junction notes</a> — one markdown file per edge with a 13-field flat-YAML schema isomorphic to <a href="/crosswalker/reference/registry/oscal/">OSCAL</a>'s <code>by-component</code>. See <a href="/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/">Challenge 07</a>.
-      </div>
-    </div>
-  </div>
-  <div class="tm-legend">
-    <span><span class="tm-legend-dot" style="background:#89b4fa"></span>Ontology concept (framework control, spine node)</span>
-    <span><span class="tm-legend-dot" style="background:#00d4aa"></span>User-authored document (evidence note)</span>
-  </div>
-</div>
+Looking for the **two kinds of link** (concept ↔ concept *crosswalks* vs. document → concept *evidence links*)? The side-by-side diagram lives on [Mapping into Obsidian · the two kinds of link](/crosswalker/concepts/mapping-into-obsidian/#edge-models); the definitions are in [Core terms](#core-terms) below.
+
+## Artifact roles and authority
+
+Crosswalker separates **what an artifact means** from **where or how it is stored**. Owning page: [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/).
+
+| Term | Plain English | Definition |
+|---|---|---|
+| <span id="schema-contract"></span>**Schema Contract** | *the rules for what counts as valid* | Plainly: the machine-checked **rulebook** that spells out which properties a valid note or recipe may carry — the plugin, an outside script, and an agent all validate against the same rulebook before writing, which is what makes external producers first-class. Formally: a normative, versioned representation contract answering "what is valid?" The JSON Schema files in `spec/` carry these. A Schema Contract governs artifacts; it is not content itself. |
+| <span id="knowledge-set"></span>**Knowledge Set** | *the actual content — what exists* | A named, versioned, governed collection of concepts or assertions. A conceptual superclass, not a claimed generalized `KnowledgeSet` file format. |
+| <span id="recipe"></span>**Recipe** | *the instructions — what should be done* | A portable, schema-validated declaration of repeatable behavior. [`ImportRecipe`](#import-recipe) is the concrete source-to-Tier-1 subtype. A Recipe is not a Knowledge Set, a run receipt, generated output, or a package. |
+| <span id="execution-record"></span>**Execution Record** | *the receipt — what actually happened* | A future historical record of one run: verified inputs, exact recipe identity, outcomes, validation, warnings, output inventory. Today's per-note provenance is not yet a complete Execution Record. |
+| <span id="package-manifest"></span>**Package Manifest** | *the shipping label — what was distributed* | A future distribution and attestation envelope: resolved artifacts, dependencies, hashes, licenses, signatures, install rules. No normative contract is claimed yet. |
+| <span id="tier-1-authority"></span>**Tier 1** | *the real copy, on disk* | Crosswalker's canonical managed Markdown representation of Knowledge Sets. A representation and authority tier, not a peer root artifact class. See [tiers](#tiers). |
+
+### Recipe roles
+
+Roles *around* the [Recipe](#recipe) family — not four new artifact classes.
+
+| Role | Meaning |
+|---|---|
+| **Recipe specification** | The canonical machine-evaluable declaration, governed by a Recipe [Schema Contract](#schema-contract). |
+| **Recipe template** | Parameterized or default policy to instantiate a specification from. A Shape Preset is one. |
+| **Recipe binding** | A recipe reference plus concrete parameters, source identity, or other selected bindings. |
+| **Recipe execution** | One run of a bound recipe. The Recipe states intent; a separate [Execution Record](#execution-record) reports the outcome. |
+
+### Mapping disambiguation
+
+| Term | Definition |
+|---|---|
+| <span id="mapping-set"></span>**MappingSet** | Plainly: **one published crosswalk release** — the whole collection of mapping assertions shipped together (e.g. NIST's 800-53 Rev 4 → Rev 5 mapping). Formally: a [Knowledge Set](#knowledge-set) subtype with its own identity, version, membership, provenance, license, and publication state. Not an [ImportRecipe](#import-recipe), and not a folder inferred from edge rows. |
+| <span id="mapping-assertion"></span>**MappingAssertion** — *also:* assertion | Plainly: **one claimed fact about how two things relate** — a single crosswalk row, "AC-2 is equivalent to A.9.2.1." Someone asserted it, so it can be right, wrong, disputed, or superseded — which is why every assertion carries where it came from. Formally: one subject–predicate–object correspondence inside a MappingSet, optionally carrying confidence, justification, provenance, and review metadata. |
+| <span id="import-mapping"></span>**ImportMapping** | An editable, source-bound workbench projection of how source fields map into Recipe-owned regions. Implementation state around an ImportRecipe — not a MappingSet or a portable artifact. |
+
+### Representation and distribution terms
+
+| Term | Definition |
+|---|---|
+| <span id="live-view"></span>**Live view** | A query-backed view recomputed from current data on read or refresh. [Bases](/crosswalker/concepts/metadata-ecosystem/) views are live views, not stored results. |
+| <span id="materialized-snapshot"></span>**Materialized snapshot** | Query results computed once and persisted — reproducible, potentially stale. Useful for publishing, audit, and comparison; storing one does not make it canonical. |
+| <span id="package"></span>**Package** | A semantically resolved release described by a [Package Manifest](#package-manifest): selected artifacts plus dependency, integrity, license, and install meaning. |
+| <span id="carrier"></span>**Carrier** | The physical container that moves the bytes — a zip, directory, or git repo. A carrier is not a Package by itself. |
+| <span id="projection"></span>**Projection** | Always use with a qualifier: *field* projection, *read/view* projection, *Tier 1 → Tier 2* projection, or *editable UI* projection. ImportRecipe generation is broader than projection — it decodes and re-embodies source structure. |
 
 ## Core terms
 
 | Term | Definition |
 |------|-----------|
-| **Ontology** | A structured representation of knowledge — categories, relationships, and rules |
-| **Framework** | A specific ontology (NIST 800-53, CIS Controls, etc.) |
-| <span id="curie"></span>**CURIE** | A *compact URI* — `prefix:local`, e.g. `nist-800-53:AC-2`. Crosswalker's stable **concept identity**: the same CURIE refers to the same concept no matter where the note is stored. From the [W3C CURIE Syntax 1.0](https://www.w3.org/TR/curie/). See [Mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/). |
-| <span id="conceptidentity"></span>**ConceptIdentity** | A concept's CURIE + its source attributes — the input to `render()`. Identity is invariant; vault layout is a recipe choice. |
-| <span id="recipe"></span>**Recipe** (import recipe) | The declarative spec for *how* a source ontology maps into the vault — the closed 5-mechanism grammar (`folder \| file \| heading \| tag \| wikilink`) × `layout` × `also_emit` × `graph_edges`. See [the recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/). |
-| <span id="render"></span>**render()** | The pure function `render(Recipe, ConceptIdentity) → Address` — the single coupling point turning a concept + recipe into its path, heading anchor, wikilink target, tags, and frontmatter. Deterministic + reproducible. |
-| <span id="tiers"></span>**Tier 0 / 1 / 2** | The three storage tiers: **T0** = your source data (any format); **T1** = the canonical Markdown vault (the source of truth — what Obsidian reads, what git tracks, what survives uninstall); **T2** = a deletable SQLite cache derived from T1. See [system architecture](/crosswalker/concepts/system-architecture/#the-three-storage-tiers). |
-| <span id="managed-user-preserve"></span>**managed / user_preserve** | The frontmatter ownership split — `managed` keys are recipe-owned (overwritten on re-import); `user_preserve` keys are yours (never overwritten on re-import). Full rationale: [the managed / user_preserve split](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/). |
-| <span id="data-morphology"></span>**Data morphology** | The output-layer language — data *shape* + three knobs (transform · reshape · draw) for describing any view or query. See [data morphology](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/). |
-| <span id="lens"></span>**Lens** | A projection/subgraph of the vault read for a purpose — a general capability. The GRC application is the Control / Assurance / Risk lenses of the [Unified Risk Model](/crosswalker/agent-context/zz-log/2026-06-04-urm-questions-data-morphology/). |
-| **Crosswalk** | A mapping between concepts in two structured ontologies — showing how elements in one correspond to elements in another. Examples: `NIST 800-53/AC-2` ↔ `ISO 27001/A.9.2.1` (framework-to-framework), `NIST AC-2` → `SCF/canonical-AM-01` (framework-to-[synthetic spine](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/)). **Crosswalks are a specific kind of edge where both ends are ontology concepts.** Distinct from **evidence links** (see below), which connect user-authored documents to ontology concepts. For the technical vocabulary and metadata envelope Crosswalker commits to for crosswalk edges, see [STRM](/crosswalker/reference/registry/strm/) + [SSSOM](/crosswalker/reference/registry/sssom/). For the architectural pattern, see the [schema matching interlingua / pivot approach](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach). |
-| **Evidence link** — also: implementation link, junction note (storage shape), typed link (evidence case), edge metadata (evidence case), link metadata, dotKey metadata (legacy) | An edge from a user-authored document to an ontology concept — e.g., `MFA-Policy.md` → `NIST 800-53/AC-2` with properties like `status: implemented`, `confidence: 0.85`, `reviewer: Alice`, `review_date: 2026-04-10`. **Not a crosswalk.** The semantic is "this document demonstrates/implements this control at such-and-such status," not "these two concepts correspond." **Foundation direction committed** (pending formal lock-in of open sub-decisions): stored as **junction notes** (one markdown file per edge) with a 13-field flat-YAML schema isomorphic to [OSCAL](/crosswalker/reference/registry/oscal/)'s `by-component` assembly. Three orthogonal status dimensions: `status` (5 OSCAL values) + `freshness` (4 computed values) + `evidence_type` (8 values). Git history is the audit trail. See the [**2026-04-10 evidence-link edge model synthesis log**](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) for the full decision, [Challenge 07](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/) for the research brief, and the [roadmap evidence-link edge model item](/crosswalker/reference/roadmap/) for the commitment tracking + open sub-decisions. The original [link metadata system](/crosswalker/agent-context/link-metadata-system/) inline-Dataview syntax is **superseded** by the junction note approach. |
-| **Hierarchy column** | A data column that defines folder nesting levels |
-| **Frontmatter** | YAML properties at the top of a markdown note |
-| **Typed link** | A link with metadata describing the relationship type. Umbrella term that covers both crosswalks and evidence links as specific sub-kinds. |
-| **Fingerprint** | A hash of a data file's structure used for config matching |
+| **Ontology** | A structured representation of knowledge — categories, relationships, rules. A governed one is a kind of [Knowledge Set](#knowledge-set). |
+| **Framework** | A specific ontology: NIST 800-53, CIS Controls, MITRE ATT&CK. |
+| <span id="curie"></span>**CURIE** | A *compact URI* — `prefix:local`, e.g. `nist-800-53:AC-2`. Crosswalker's stable **concept identity**: the same CURIE means the same concept no matter where the note sits. [W3C CURIE Syntax 1.0](https://www.w3.org/TR/curie/) · [mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/) |
+| <span id="conceptidentity"></span>**ConceptIdentity** | A concept's CURIE plus its source attributes — the input to [`render()`](#render). Identity is fixed; vault layout is a recipe choice. |
+| <span id="import-recipe"></span>**ImportRecipe** | A [Recipe](#recipe) subtype governing deterministic source-to-Tier-1 generation: the closed 5-mechanism grammar (`folder \| file \| heading \| tag \| wikilink`) × ordered `layout` × `also_emit` × enrichment × `graph_edges`. Distinct from a [SavedConfig](#data-flow-and-implementation-terms), a [MappingSet](#mapping-set), and the generated notes. [Recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) · [fidelity boundary](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) |
+| <span id="render"></span>**render()** | The pure function `render(Recipe, ConceptIdentity) → Address` — the single coupling point turning a concept + recipe into its path, heading anchor, wikilink target, tags, frontmatter, and body regions. Deterministic and reproducible. [System model](/crosswalker/concepts/system-model/#from-source-to-structure--render--the-5-mechanisms) |
+| <span id="tiers"></span>**Tier 0 / 1 / 2** | Storage tiers, not peer artifact classes. **T0** = upstream source data · **T1** = the canonical Markdown in your vault (the real copy) · **T2** = a deletable SQLite cache derived from T1. [System architecture](/crosswalker/concepts/system-architecture/) |
+| <span id="managed-user-preserve"></span>**managed / user_preserve** | The frontmatter ownership split: `managed` keys belong to the recipe (overwritten on re-import); `user_preserve` keys are yours (never overwritten). [Rationale](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) |
+| <span id="data-morphology"></span>**Data morphology** | The output-layer language: data *shape* plus three knobs — transform · reshape · draw — for describing any view or query. [More](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) |
+| <span id="lens"></span>**Lens** | A subgraph of the vault read for one purpose. General capability; the GRC application is the Control / Assurance / Risk lenses of the [Unified Risk Model](/crosswalker/agent-context/zz-log/2026-06-04-urm-questions-data-morphology/). |
+| **Crosswalk** | An edge where **both ends are ontology concepts**: *"these two correspond."* `NIST 800-53/AC-2` ↔ `ISO 27001/A.9.2.1`, or a framework mapped onto a [synthetic spine](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/). Committed edge vocabulary: [STRM](/crosswalker/reference/registry/strm/) predicates inside an [SSSOM](/crosswalker/reference/registry/sssom/) envelope. [Diagram](/crosswalker/concepts/mapping-into-obsidian/#edge-models) · [interlingua pattern](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) |
+| **Evidence link** — *also:* implementation link, junction note, link metadata, dotKey metadata (legacy) | An edge from a **user-authored document to an ontology concept**: *"this note attests to that concept, at such-and-such status."* **Not a crosswalk.** Stored as **junction notes** — one markdown file per edge, 13-field flat YAML isomorphic to [OSCAL](/crosswalker/reference/registry/oscal/)'s `by-component`, with three orthogonal status dimensions (`status` · `freshness` · `evidence_type`); git history is the audit trail. [Decision log](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) · [Challenge 07](/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/) · [diagram](/crosswalker/concepts/mapping-into-obsidian/#edge-models). Supersedes the inline-field [link metadata system](/crosswalker/agent-context/link-metadata-system/). |
+| **Typed link** | Umbrella term for any link carrying relationship metadata. Covers both crosswalks and evidence links. |
+| <span id="endpoint"></span>**Endpoint** | The two things at either end of a relationship — in "MFA-Policy implements AC-2," the policy and the control are the endpoints. Today the shipped contract stores relationship endpoints as **wikilink targets** (file addresses, which break on rename); crosswalk edges store CURIE **identities**. Whether junction notes also gain identity-typed endpoint fields is open decision [P2](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/#p2--point-relationship-endpoints-at-identifiers-not-filenames). |
+| <span id="facet-note"></span>**Facet note** | A generated index note collecting every concept that shares one property value — in a GRC vault, all controls carrying a given theme tag. Carries `kind: facet` and a members list of wikilinks. Emitted by import enrichment (source: `src/generation/enrich.ts`) when facet hubs are enabled. Honest status: these notes are written by the generator but have no branch in the [note contract](#schema-contract) yet and skip validation — closing that gap is open decision [P4](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/#p4--validate-the-two-note-kinds-that-currently-skip-validation). |
+| <span id="hub-note"></span>**Hub note** — *also:* level hub | A generated table-of-contents note for one folder level, listing that folder's direct children as wikilinks. Carries `kind: hub`. Emitted by import enrichment (source: `src/generation/enrich.ts`) when level hubs are enabled. Same contract gap and same open decision [P4](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/#p4--validate-the-two-note-kinds-that-currently-skip-validation) as facet notes. |
+| **Hierarchy column** | A source column whose values define nesting levels. |
+| **Frontmatter** | YAML properties at the top of a markdown note. Obsidian calls them *properties*. |
+| **Fingerprint** | A hash of a data file's structure, used to match a source against saved configs. |
 
-## Data flow terms
+## Data flow and implementation terms
+
+Objects that support editors and runtimes. They do **not** become first-class artifacts merely by being persisted or passed between functions.
 
 | Term | Definition |
 |------|-----------|
-| **ParsedData** | The intermediate format after parsing a file (columns + rows) |
-| **ColumnInfo** | Analysis of a single column (type, unique count, samples) |
-| **CrosswalkerConfig** | Full import configuration (column mappings, output settings) |
-| **SavedConfig** | A persisted configuration with fingerprint for reuse |
-| **GeneratedNote** | The output structure before writing to disk |
+| **ParsedData** | Parser output: columns plus eager or streamed rows. Not a tier, not a contract. |
+| **ColumnInfo** | Analysis of one source column — type, unique count, samples. |
+| **CrosswalkerConfig** | Legacy full import configuration shape. Not the portable [Recipe](#recipe) authority. |
+| **SavedConfig** | Legacy fingerprint-bound wizard convenience state in plugin settings. May restore a past mapping; is not an [ImportRecipe](#import-recipe), a Recipe binding, or a share/open lifecycle. |
+| **WizardDraft** | Resume state for an unfinished interaction. Workflow state, not a Recipe or [Execution Record](#execution-record). |
+| **RecipeDocument** | The preservation/editor transaction boundary: original validated ImportRecipe + editable [ImportMapping](#import-mapping) + session-only origin/dirty state. It *patches* workbench-owned regions into the original rather than rebuilding it and dropping opaque fields. [More](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) |
+| **GeneratedNote**, **Address**, **RenderedBodyRegion**, **RenderReport**, **GenerationResult** | Runtime results and diagnostics produced while applying a Recipe. Not separately governed artifacts. |
 
 ## Framework terms
 
@@ -231,122 +97,125 @@ tags: [frameworks, data-model]
 | **Control family** | AC (Access Control) in NIST 800-53 |
 | **Control** | AC-2 (Account Management) |
 | **Enhancement** | AC-2(1) (Automated System Account Management) |
-| **Safeguard** | CIS Controls equivalent of a control |
+| **Safeguard** | CIS Controls' equivalent of a control |
 | **Technique** | T1059 (Command and Scripting Interpreter) in MITRE ATT&CK |
 | **Diagnostic statement** | CRI Profile's equivalent of a control — a testable assertion |
-| **Informative reference** | NIST's term for a crosswalk mapping between frameworks |
+| **Informative reference** | NIST's term for a crosswalk between frameworks |
 
 ## Ontology evolution terms
 
-These come up throughout the [ontology evolution](/crosswalker/concepts/ontology-evolution/) and [framework versioning](/crosswalker/concepts/framework-versioning/) pages.
+Owning pages: [ontology evolution](/crosswalker/concepts/ontology-evolution/) · [framework versioning](/crosswalker/concepts/framework-versioning/).
 
 | Term | Definition |
 |------|-----------|
-| **Ontology evolution** | How a structured knowledge system changes over time — adding, removing, or restructuring concepts. Distinct from ontology *versioning* (tracking which version you have). [More](/crosswalker/concepts/ontology-evolution/) |
-| **Schema evolution** | Changes to the structure of data (adding fields, renaming columns) as opposed to changes to the data itself |
-| **Deprecation chain** | A sequence of `revoked-by` relationships linking old concepts to their replacements. MITRE ATT&CK uses STIX 2.1 for this — when technique T1234 is deprecated, the chain says "replaced by T5678." [More](/crosswalker/concepts/framework-versioning/#mitre-attck--the-gold-standard) |
-| **SemVer** | Semantic Versioning (MAJOR.MINOR.PATCH). OSCAL uses this with a guarantee: content created under a MAJOR version remains valid in later releases within that major. [More](/crosswalker/concepts/ontology-evolution/#schemaver-an-alternative-to-semver-for-data) |
-| **SchemaVer** | MODEL-REVISION-ADDITION versioning for data (from Snowplow). MODEL = can old consumers read new data? REVISION = can new consumers read old data? ADDITION = non-breaking new fields. [More](/crosswalker/concepts/ontology-evolution/#schemaver-an-alternative-to-semver-for-data) |
-| **SCD (Slowly Changing Dimensions)** | Data warehouse pattern for handling records that change over time. Type 1 = overwrite, Type 2 = keep history (version-tagged folders), Type 3 = add alias column, Type 6 = hybrid. [More](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) |
-| **[SKOS](/crosswalker/reference/registry/skos/)** | Simple Knowledge Organization System (W3C). Natural fit for frameworks: ConceptScheme = framework, Concept = control, broader/narrower = hierarchy, exactMatch = crosswalk. The 5-predicate baseline vocabulary (exactMatch/closeMatch/broadMatch/narrowMatch/relatedMatch) — found *insufficient* for compliance crosswalks in the [04-10 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) (no confidence, provenance, or negation). [Registry entry](/crosswalker/reference/registry/skos/) · [More in schema matching](/crosswalker/concepts/ontology-evolution/#skos-the-natural-formal-model) |
-| **[SSSOM](/crosswalker/reference/registry/sssom/)** | Simple Standard for Sharing Ontological Mappings (Matentzoglu et al. 2022). The **row-schema envelope** for crosswalk edges: mandatory `mapping_justification` + optional `confidence`, `author_id`, `mapping_date`, `mapping_tool`, `predicate_modifier` for negation. Predicate-agnostic (you choose the vocabulary for `predicate_id` — see STRM). Crosswalker's candidate edge metadata model. [Registry entry](/crosswalker/reference/registry/sssom/) · [Schema matching](/crosswalker/concepts/schema-matching/#sssom-a-standard-for-sharing-mappings) |
-| **[STRM](/crosswalker/reference/registry/strm/)** — Set Theory Relationship Mapping | The 5-relationship edge vocabulary — **equivalent-to, subset-of, superset-of, intersects-with, no-relationship** — that [NIST IR 8477](https://csrc.nist.gov/pubs/ir/8477/final) (Feb 2024), [SCF](/crosswalker/reference/registry/scf/)'s STRM bundle, and OSCAL's Control Mapping Model independently converged on. Crosswalker's candidate `predicate_id` vocabulary (paired with SSSOM as the envelope). Fills the gaps SKOS leaves open. [Registry entry](/crosswalker/reference/registry/strm/) · [NIST OLIR formal relationship types](/crosswalker/concepts/schema-matching/#nist-olirs-formal-relationship-types) · [Foundation decision](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) |
-| **OSCAL** | Open Security Controls Assessment Language (NIST). Machine-readable format for security controls with built-in versioning. Also adopts STRM relationships in its emerging Control Mapping Model. [Registry entry](/crosswalker/reference/registry/oscal/) · [More](https://pages.nist.gov/OSCAL/) |
-| **[OLIR](/crosswalker/reference/registry/olir/)** | Online Informative References (NIST). Submission-based crosswalk registry with formal relationship types (Subset, Intersects, Equal, Superset, Not Related). Uses the same STRM vocabulary NIST IR 8477 formalized. [Registry entry](/crosswalker/reference/registry/olir/) · [Formal relationship types](/crosswalker/concepts/schema-matching/#nist-olirs-formal-relationship-types) |
-| **Interlingua / pivot** — also: pivot ontology, synthetic spine, hub-and-spoke mapping, meta-framework | A "universal framework" that others map through — like a pivot language in translation. [SCF](/crosswalker/reference/registry/scf/)'s STRM is this for compliance: map to SCF once, get crosswalks to 175+ frameworks. These five terms all describe the same architectural pattern from different disciplines (translation theory, information integration, GRC practice). Open Foundation question — see [Challenge 06](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) and the [04-10 synthesis spine section](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#the-synthetic-spine-is-the-missing-architectural-insight). [Schema matching: interlingua / pivot approach](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) |
+| **Ontology evolution** | How a knowledge system changes over time — concepts added, removed, restructured. Distinct from *versioning* (which release you have). [More](/crosswalker/concepts/ontology-evolution/) |
+| **Schema evolution** | Changes to the *structure* of data (fields added, columns renamed) rather than to the data itself. |
+| **Deprecation chain** | A sequence of `revoked-by` links from old concepts to their replacements. MITRE ATT&CK does this with STIX 2.1. [More](/crosswalker/concepts/framework-versioning/#mitre-attck--the-gold-standard) |
+| **SemVer** | MAJOR.MINOR.PATCH. OSCAL guarantees content valid under a MAJOR version stays valid in later releases of it. [More](/crosswalker/concepts/ontology-evolution/#schemaver-an-alternative-to-semver-for-data) |
+| **SchemaVer** | MODEL-REVISION-ADDITION versioning for data (Snowplow). MODEL = can old consumers read new data? REVISION = the reverse? ADDITION = non-breaking. [More](/crosswalker/concepts/ontology-evolution/#schemaver-an-alternative-to-semver-for-data) |
+| **SCD (Slowly Changing Dimensions)** | Warehouse pattern for records that change over time: Type 1 overwrite · Type 2 keep history · Type 3 alias column · Type 6 hybrid. [More](/crosswalker/concepts/ontology-evolution/#how-data-warehouses-handle-this-slowly-changing-dimensions) |
+| **[SKOS](/crosswalker/reference/registry/skos/)** | Simple Knowledge Organization System (W3C). Natural fit on paper — ConceptScheme = framework, broader/narrower = hierarchy — but its 5 predicates carry no confidence, provenance, or negation, so it was **rejected as the crosswalk base**. [Why](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) |
+| **[SSSOM](/crosswalker/reference/registry/sssom/)** | Simple Standard for Sharing Ontological Mappings. The **row-schema envelope** for crosswalk edges: required `mapping_justification` plus optional `confidence`, `author_id`, `mapping_date`, `mapping_tool`, `predicate_modifier`. Predicate-agnostic — you supply the vocabulary (see STRM). [More](/crosswalker/concepts/schema-matching/#sssom-a-standard-for-sharing-mappings) |
+| **[STRM](/crosswalker/reference/registry/strm/)** — Set Theory Relationship Mapping | The 5-relationship edge vocabulary — **equivalent-to · subset-of · superset-of · intersects-with · no-relationship** — that [NIST IR 8477](https://csrc.nist.gov/pubs/ir/8477/final), [SCF](/crosswalker/reference/registry/scf/), and OSCAL's Control Mapping Model converged on independently. Crosswalker's `predicate_id` vocabulary, paired with SSSOM as envelope. [More](/crosswalker/concepts/schema-matching/#nist-olirs-formal-relationship-types) |
+| **OSCAL** | Open Security Controls Assessment Language (NIST). Machine-readable controls with built-in versioning; also adopts STRM in its Control Mapping Model. [Registry](/crosswalker/reference/registry/oscal/) |
+| **[OLIR](/crosswalker/reference/registry/olir/)** | Online Informative References (NIST) — a submission-based crosswalk registry using the same STRM relationship types. [Registry](/crosswalker/reference/registry/olir/) |
+| **Interlingua / pivot** — *also:* pivot ontology, synthetic spine, hub-and-spoke mapping, meta-framework | One "universal" framework everything else maps through, like a pivot language in translation. Map to [SCF](/crosswalker/reference/registry/scf/) once, get crosswalks to 175+ frameworks. The five names are the same pattern from five disciplines. Open question: [Challenge 06](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/) · [more](/crosswalker/concepts/schema-matching/#the-interlingua--pivot-approach) |
 
 ## Architecture & evolution primitives
 
-These terms emerged from the [Foundation phase](/crosswalker/reference/roadmap/) research. Each has aliases that appear across the knowledge base.
+From the [Foundation phase](/crosswalker/reference/roadmap/) research. Each carries aliases that appear across the knowledge base.
 
 | Term | Aliases | Definition |
 |------|---------|-----------|
-| **Ontology diff primitives** | Graph change atoms, structural change primitives, structural diff engine | The [9 provably complete atomic operations](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) for describing what changed between two versions of a labeled directed graph. The mathematical foundation — "what changed?" Based on graph edit distance (Bunke 1983) and algebraic graph transformation (Ehrig 2006). |
-| **EvolutionPattern** | Framework handling profile, stewardship profile, evolution taxonomy | Per-framework classification of how an ontology evolves. Sets defaults for [handling strategies](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/#step-3-decision). **Open question:** may be replaced or complemented by [transformation recipes](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/). [Original draft](/crosswalker/agent-context/zz-log/2026-04-03-evolution-pattern-taxonomy-draft/) |
-| **Transformation recipe** | Version transition map, migration spec | The actual record of what changed between specific versions of a framework and how to handle each change. E.g., "NIST r5→r6: AC-19(2) merged into AC-19, AC-24 added." May replace or complement EvolutionPattern. |
-| **Handling strategy** | — | What to do when a specific [change type](/crosswalker/agent-context/zz-log/2026-04-08-ontology-evolution-first-principles/) is detected: overwrite, archive, alias, merge, split, skip, or flag for review. |
-| **Decisioning** | Strategy selection | The process of selecting handling strategies per change type. Can be default (from primitives), per-framework (from EvolutionPattern), or per-user/org (custom overrides). [Layered model](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-4-decisioning-as-per-framework-taxonomy-taxonomy-over-taxonomies) |
-| **Pluggable layer** | Extension point, opinionated layer | Any system behavior that is opinionated and swappable rather than first-principles. [Detection](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-1-detection-is-pluggable-not-primitive), decisioning, and [custom transforms](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-5-custom-transfer-logic) are all pluggable. Keeps the system "[tight to first principles while allowing extension of opinionation](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/#the-first-principles-constraint)." |
-| **Progressive depth** | Progressive complexity | Design principle: start with guided UI, graduate to config-as-code, add CLI. Each interface wraps the same [core primitives](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/). Applies to both [import](/crosswalker/features/import-wizard/) and [migration](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) workflows. |
-| **Entity** | User, agent | Any actor utilizing the system — [agents or people](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/#the-entities). The system must be [efficacious for all entity types](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/). |
+| **Ontology diff primitives** | Graph change atoms, structural change primitives, structural diff engine | The [9 provably complete atomic operations](/crosswalker/agent-context/zz-log/2026-04-09-atomic-operations-research/) describing what changed between two versions of a labeled directed graph — the mathematical answer to "what changed?" (graph edit distance, algebraic graph transformation). |
+| **EvolutionPattern** | Framework handling profile, stewardship profile, evolution taxonomy | Per-framework classification of *how* an ontology evolves; sets defaults for [handling strategies](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/#step-3-decision). **Open:** may be replaced by [transformation recipes](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/). |
+| **Transformation recipe** | Version transition map, migration spec | The record of what changed between two specific versions and how to handle each change — "NIST r5→r6: AC-19(2) merged into AC-19, AC-24 added." |
+| **Handling strategy** | — | What to do when a change type is detected: overwrite, archive, alias, merge, split, skip, or flag for review. |
+| **Decisioning** | Strategy selection | Choosing handling strategies per change type — by default, per framework, or per user/org. [Layered model](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-4-decisioning-as-per-framework-taxonomy-taxonomy-over-taxonomies) |
+| **Pluggable layer** | Extension point, opinionated layer | Any behavior that is opinionated and swappable rather than first-principles. Keeps the system [tight to first principles while allowing extension of opinionation](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/#the-first-principles-constraint). |
+| **Progressive depth** | Progressive complexity | Start with guided UI, graduate to config-as-code, add CLI — each interface wrapping the same core primitives. Applies to [import](/crosswalker/features/import-wizard/) and [migration](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/) alike. |
+| **Entity** | User, agent | Any actor using the system — [people or agents](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/#the-entities). Both must be first-class. |
 
 ## Data model terms
 
-These appear in the [file-based graph database](/crosswalker/concepts/file-based-graph-database/) and [consistency models](/crosswalker/concepts/consistency-models/) pages.
+Owning pages: [file-based graph database](/crosswalker/concepts/file-based-graph-database/) · [consistency models](/crosswalker/concepts/consistency-models/).
 
 | Term | Definition |
 |------|-----------|
-| **Property graph** | A graph where both nodes and edges carry key-value properties. Obsidian vaults are property graphs: notes = nodes, WikiLinks = edges, frontmatter = properties. [More](/crosswalker/concepts/file-based-graph-database/#property-graph-model) |
-| **Edge metadata** — also: link metadata, typed link metadata, inline field metadata, dotKey metadata | Structured data attached to a relationship (link) between two notes, not to the notes themselves. The umbrella data-model concept behind both [crosswalks](#core-terms) and [evidence links](#core-terms). Original design: [link metadata system](/crosswalker/agent-context/link-metadata-system/) (superseded — see its caution callout). **Both edge categories now have committed directions**: crosswalks use [STRM + SSSOM](/crosswalker/reference/roadmap/) (ontology↔ontology, set-theory predicates + provenance envelope), evidence links use [junction notes with a 13-field flat-YAML schema](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) (document→control, OSCAL `by-component` isomorphic). |
-| **Denormalization** | Deliberately duplicating data to speed up reads at the cost of write complexity. When Crosswalker stores both forward links and frontmatter arrays, that's denormalization. [More](/crosswalker/concepts/file-based-graph-database/#the-denormalization-tax) |
-| **Materialized view** | Pre-computed query results stored for fast access. Dataview/Bases queries over vault files are materialized views — they compute on each query, never getting stale. |
-| **Referential integrity** | A guarantee that all references (links) point to existing targets. Obsidian vaults have NO referential integrity — you can delete a note and leave broken WikiLinks everywhere. [More](/crosswalker/agent-context/constraint-enforcement/#the-referential-integrity-gap) |
-| **ACID** | Atomicity, Consistency, Isolation, Durability — database transaction guarantees. File-based systems only provide Durability. [More](/crosswalker/concepts/consistency-models/#acid-analysis-for-file-based-systems) |
-| **CAP theorem** | A distributed system can provide at most two of: Consistency, Availability, Partition tolerance. Obsidian vaults are AP systems (available + partition-tolerant, not strongly consistent). [More](/crosswalker/concepts/consistency-models/#cap-theorem-positioning) |
-| **Eventual consistency** | Given enough time, all copies of data converge to the same state. In Crosswalker: re-import achieves consistency, but it requires manual action. [More](/crosswalker/concepts/consistency-models/#base-model) |
-| **Event sourcing** | Storing the sequence of changes (events) rather than just the current state. The `_crosswalker.history` field (future) would enable this. [More](/crosswalker/concepts/consistency-models/#event-sourcing-pattern) |
+| **Property graph** | A graph where both nodes and edges carry key-value properties. An Obsidian vault is one: notes = nodes, wikilinks = edges, frontmatter = properties. [More](/crosswalker/concepts/file-based-graph-database/#property-graph-model) |
+| **Edge metadata** — *also:* link metadata, typed link metadata, inline field metadata, dotKey metadata | Structured data attached to the *relationship* between two notes rather than to either note. The umbrella data-model concept behind both [crosswalks](#core-terms) and [evidence links](#core-terms); both now have committed shapes. [Diagram](/crosswalker/concepts/mapping-into-obsidian/#edge-models) |
+| **Denormalization** | Deliberately duplicating data to make reads fast at the cost of write complexity — e.g. storing both forward links and frontmatter arrays. [More](/crosswalker/concepts/file-based-graph-database/#the-denormalization-tax) |
+| **Referential integrity** | The guarantee that every link points at something that exists. Obsidian vaults have **none** — delete a note and the links stay broken. [More](/crosswalker/agent-context/constraint-enforcement/#the-referential-integrity-gap) |
+| **ACID** | Atomicity, Consistency, Isolation, Durability. File-based systems give you only Durability. [More](/crosswalker/concepts/consistency-models/#acid-analysis-for-file-based-systems) |
+| **CAP theorem** | A distributed system gets at most two of Consistency, Availability, Partition tolerance. Vaults are AP. [More](/crosswalker/concepts/consistency-models/#cap-theorem-positioning) |
+| **Eventual consistency** | Copies converge given enough time. In Crosswalker, re-import achieves it — but you have to run it. [More](/crosswalker/concepts/consistency-models/#base-model) |
+| **Event sourcing** | Storing the sequence of changes rather than only the current state. A future `_crosswalker.history` field would enable it. [More](/crosswalker/concepts/consistency-models/#event-sourcing-pattern) |
 
 ## Matching & alignment terms
 
-From the [schema matching](/crosswalker/concepts/schema-matching/) page.
+Owning page: [schema matching](/crosswalker/concepts/schema-matching/).
 
 | Term | Definition |
 |------|-----------|
-| **Schema matching / schema alignment / ontology matching / ontology alignment / crosswalking / data integration / framework mapping** | *Not separate things — all names for the same broad concept.* Finding correspondences between elements of different structured datasets. Each name comes from a different discipline: schema matching = database community (Rahm & Bernstein 2001), ontology matching/alignment = Semantic Web (Euzenat & Shvaiko 2013), crosswalking = library science (Woodley 2008), data integration = ETL/warehousing, framework mapping = GRC practitioners. Within a single field the terms have precise distinct meanings (see [terminology distinctions table](/crosswalker/concepts/schema-matching/#terminology-distinctions)), but **Crosswalker straddles all these fields** — which name you see on any given KB page depends on which community that page is drawing from. [Aliases callout on schema-matching page](/crosswalker/concepts/schema-matching/) |
-| **Schema matching** (narrow sense) | Database-community term: finding corresponding *elements* (columns, fields, keys) between schemas. Output is a set of element pairs. Crosswalker's column-type detection is a simple example. |
-| **Schema mapping** (narrow sense) | The executable *transformation* that implements a match — "split Column A by comma, map each to Column B." |
-| **Ontology alignment** (narrow sense) | Semantic-web term: finding corresponding *concepts* between ontologies with confidence scores. Output is an "alignment" (set of correspondences). When NIST says "AC-2" corresponds to CIS "5.2 at 0.85 confidence," that's ontology alignment. |
-| **Ontology merging** | Combining two ontologies into one unified ontology. SCF combining 175+ frameworks into a single canonical set is an example. |
-| **Crosswalk edge semantics stack** | Crosswalker-specific term for the layered commitment: [**STRM**](/crosswalker/reference/registry/strm/) as the required `predicate_id` vocabulary + [**SSSOM**](/crosswalker/reference/registry/sssom/) as the required metadata envelope + [**SKOS**](/crosswalker/reference/registry/skos/) rejected-as-base but kept as an export format via the YAML-LD bridge. [Foundation decision](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) · [Roadmap pillar](/crosswalker/reference/roadmap/) |
-| **OAEI** | Ontology Alignment Evaluation Initiative — annual competition benchmarking alignment algorithms. Recent LLM-based systems achieve 0.83-0.95 F1 scores. [More](/crosswalker/concepts/schema-matching/) |
-| **Formal Concept Analysis** | Lattice theory approach to finding structural correspondences between concept hierarchies without relying on string similarity. Candidate mechanism for [spine distillation](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/). [More](/crosswalker/concepts/schema-matching/#formal-concept-analysis-fca) |
+| **Schema matching / schema alignment / ontology matching / ontology alignment / crosswalking / data integration / framework mapping** | *Seven names for one broad concept:* finding correspondences between elements of different structured datasets. Each name comes from a different discipline — databases, semantic web, library science, ETL, GRC. Within one field they have precise distinct meanings ([distinctions table](/crosswalker/concepts/schema-matching/#terminology-distinctions)); Crosswalker straddles all of them, so which name a page uses depends on which community it's drawing from. |
+| **Schema matching** (narrow) | Database sense: finding corresponding *elements* (columns, fields, keys) between schemas. Crosswalker's column-type detection is a simple case. |
+| **Schema mapping** (narrow) | The executable *transformation* implementing a match — "split column A by comma, map each into column B." |
+| **Ontology alignment** (narrow) | Semantic-web sense: finding corresponding *concepts* with confidence scores. "AC-2 corresponds to CIS 5.2 at 0.85" is ontology alignment. |
+| **Ontology merging** | Combining two ontologies into one. SCF folding 175+ frameworks into a single canonical set is the example. |
+| **Crosswalk edge semantics stack** | Crosswalker's layered commitment: [STRM](/crosswalker/reference/registry/strm/) as the required predicate vocabulary + [SSSOM](/crosswalker/reference/registry/sssom/) as the required envelope + [SKOS](/crosswalker/reference/registry/skos/) rejected as base but kept as an export format. [Decision](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) |
+| **OAEI** | Ontology Alignment Evaluation Initiative — the annual benchmark for alignment algorithms. Recent LLM-based systems hit 0.83–0.95 F1. [More](/crosswalker/concepts/schema-matching/) |
+| **Formal Concept Analysis** | Lattice-theory approach to finding structural correspondences between hierarchies without string similarity. Candidate for [spine distillation](/crosswalker/agent-context/zz-challenges/archive/06-synthetic-spine/). [More](/crosswalker/concepts/schema-matching/#formal-concept-analysis-fca) |
 
 ## Query engine — three layers
 
-The Crosswalker query engine separates concerns into three orthogonal layers (settled 2026-05-08; see [synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)):
+The query engine keeps three orthogonal layers apart (settled 2026-05-08; [synthesis](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)):
 
 | Layer | What it is | Concept page |
 |---|---|---|
-| **A — Query primitives** | Mechanism-neutral irreducible operations (filter / project / traversal / closure / anti-join / pivot / aggregate) | [Query primitives](/crosswalker/concepts/query-primitives/) |
-| **B — View shapes** | Mechanism-neutral visual presentations (table / list / pivot / graph / hierarchy / timeline) | [View shapes](/crosswalker/concepts/view-shapes/) |
-| **C — Recipes / reports** | Marketplace instances composing primitives + view shape (e.g. "Coverage Matrix" = filter + traversal + anti-join + pivot) | Recipe registry |
+| **A — Query primitives** | The 8 irreducible query verbs: filter · traverse · bind · project · aggregate · anti-join · set-op · diff (locked by Ch 29) | [Query primitives](/crosswalker/concepts/query-primitives/) |
+| **B — View shapes** | Mechanism-neutral presentations: table · list · pivot · graph · hierarchy · timeline | [View shapes](/crosswalker/concepts/view-shapes/) |
+| **C — Recipes / reports** | Instances composing primitives + a view shape — "Coverage Matrix" = filter + traverse + anti-join, drawn as a pivot | Recipe registry |
+
+[**Query primitives**](/crosswalker/concepts/query-primitives/) is the single source for the verb definitions; this page does not restate them. Two names that used to live here are gone: standalone `closure` folded into `traverse(depth=*)`, and `pivot` is a Layer B [view shape](/crosswalker/concepts/view-shapes/), not a primitive.
 
 | Term | Definition |
 |---|---|
-| **Filter** (Layer A primitive) | Restrict a collection by a predicate over its attributes. SQL `WHERE`, SPARQL `FILTER`, Bases filter. |
-| **Project** (Layer A) | Choose attributes to surface from a row. SQL projection, SPARQL `SELECT`, Bases columns. |
-| **Traversal** (Layer A) | Hop along a typed edge in a single step. SPARQL property path single step, SKOS broader/narrower, Cypher pattern. |
-| **Closure** (Layer A) | Transitive reachability over a predicate. SPARQL `:p+`/`:p*`, Datalog recursion, OWL transitive properties. Crosswalker: `plugin.queryClosure()`. |
-| **Anti-join** (Layer A) | "X without Y" — entities without matching records. SPARQL `MINUS` / `FILTER NOT EXISTS`, SQL `EXCEPT`. The load-bearing operation for "missing/gap" reports. |
-| **Pivot** (Layer A) | Group-by-two-axes; aggregate cell value. Projects graph data into 2D crosstab. OLAP cube, pandas `pivot_table`. Crosswalker: `crosswalkerPivot` custom Bases view. |
-| **Aggregate** (Layer A) | Count / density / sum / max / min over a set. SQL aggregate functions, Bases summaries (1-D), SSSOM mapping density. |
-| **`registerBasesView`** | Obsidian 1.10+ API for plugins to register custom Bases view types. Crosswalker uses this for `crosswalkerPivot` (the v0.1.6 custom view). [obsidian.d.ts reference](https://docs.obsidian.md/Reference/TypeScript+API/Plugin/registerBasesView) |
-| **`crosswalkerPivot`** | The single custom Bases view shipped in v0.1.6. Renders pivot shape; parameterized by recipe. "Coverage Matrix" is the launch recipe. Renamed from `crosswalkerCoverageMatrix` for ontology-web alignment. |
-| **CQRS framing** | Command Query Responsibility Segregation. In Crosswalker: query layer (Bases + codeblock + sqlite-wasm sidecar) ≠ snapshot layer (materialization + OpenTimestamps + git). Don't conflate live read with point-in-time evidence. |
+| **`registerBasesView`** | Obsidian 1.10+ API letting a plugin register custom Bases view types. [API reference](https://docs.obsidian.md/Reference/TypeScript+API/Plugin/registerBasesView) |
+| **`crosswalkerPivot`** | The one custom Bases view shipped in v0.1.6 — renders the pivot shape, parameterized by recipe. "Coverage Matrix" is the launch recipe. |
+| **CQRS framing** | Command Query Responsibility Segregation. Here: the query layer (Bases + codeblock + sqlite sidecar) is *not* the snapshot layer (materialization + timestamping + git). Don't conflate a live read with point-in-time evidence. |
 
 ## Query language & engine terms (engine internals)
 
-Surfaced repeatedly in the [Tier 2/Tier 3 engine research wave](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/). Quick reference; see [Datalog glossary entry](/crosswalker/concepts/zz-glossary/datalog/) for the verbose version.
+Recurring in the [Tier 2/3 engine research wave](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/). Quick reference only.
 
 | Term | Definition |
 |------|-----------|
-| **[Datalog](/crosswalker/concepts/zz-glossary/datalog/)** | A declarative logic-programming language — you write *rules* like `derived(a, c) :- mapping(a, b), mapping(b, c)` and the engine derives all consequences. Conceptually "SQL with built-in recursion + smart join optimization." Used in Crosswalker for **SSSOM chain rules** ("if A maps to B and B maps to C, derive A maps to C with min confidence"). Engine choice: [**Nemo**](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) (Tier 2 WASM) per the [Ch 12 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/). Sister languages: CozoScript, WOQL (TerminusDB), SPARQL property paths (less expressive). [Verbose glossary entry](/crosswalker/concepts/zz-glossary/datalog/) |
-| **SPARQL** | The W3C query language for RDF/triple-store data — the SQL of the Semantic Web. Used in Crosswalker for local RDF queries via [Oxigraph](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-b-engine-survey/) (Tier 2) and [Apache Jena Fuseki / oxigraph-server](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) (Tier 3 default). Supports federated query via `SERVICE` clauses. Native fit for SSSOM because SSSOM is RDF-shaped. |
-| **Recursive CTE** | SQL's `WITH RECURSIVE` construct for computing transitive closures and graph traversals in plain SQL. The fallback in [Tier 2-Lite](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/) when Datalog isn't available; [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) §2.7 and [Ch 18](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/) define the SSSOM rule subset that survives recursive-CTE evaluation. Tractable up to ~10⁵ mappings; collapses on full SSSOM rule expressivity. |
-| **Stratified negation** | Datalog feature: rules can negate other rules' conclusions in a defined order ("layer A's facts; *then* compute layer B; in B's rules you can say `NOT layer-A-fact(X)`"). Lets you express "find mappings A→C that are NOT derivable through any intermediate B." Recursive CTE can fake it with `NOT EXISTS`/`LEFT JOIN` but Datalog optimizers handle it natively. |
-| **SPARQL property paths** | Recursive operators inside SPARQL — `?x (skos:exactMatch|skos:closeMatch)+ ?y`. Looks like Datalog-lite but doesn't support stratified negation or rule-level aggregation, so the [Ch 14 alternative architecture proposal B](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) (Oxigraph-only with property paths replacing Datalog) is conditional on whether Crosswalker's actual rule set fits this expressivity ceiling. |
-| **OWL inference** | Web Ontology Language reasoning — derives implicit class/property relationships ("if X is a Subclass of Y, then every X is a Y"). Apache Jena Fuseki ships with RDFS + a subset of OWL; full OWL 2 RL needs commercial RDFox or GraphDB Free. Crosswalker doesn't currently rely on OWL inference. |
-| **SHACL** | Shapes Constraint Language — W3C standard for *validating* RDF graphs against constraints ("every mapping_set MUST have a creator_id"). Native in Apache Jena Fuseki and Oxigraph; not in DuckDB/SQLite. Used in Crosswalker for SSSOM mapping_set validation at the Tier 2/Tier 3 boundary. |
-| **WOQL** | TerminusDB's Datalog dialect with `path()`, `dot()`, `slice()` operators. Among the most expressive query stacks available; relevant only if [TerminusDB is adopted](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/) as a vault-mirror or Tier 3 primary. |
-| **HDT** | Header-Dictionary-Triples — a binary RDF distribution format giving ~10–20× compression vs Turtle. Used by [Comunica](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) federation in the optional Tier 2 add-on. |
+| **[Datalog](/crosswalker/concepts/zz-glossary/datalog/)** | Declarative logic programming — write *rules* (`derived(a,c) :- mapping(a,b), mapping(b,c)`) and the engine derives all consequences. "SQL with built-in recursion." Used for **SSSOM chain rules**; engine choice is [Nemo](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/). [Verbose entry](/crosswalker/concepts/zz-glossary/datalog/) |
+| **SPARQL** | The W3C query language for RDF — the SQL of the semantic web. Native fit for SSSOM (which is RDF-shaped); supports federation via `SERVICE`. |
+| **Recursive CTE** | SQL's `WITH RECURSIVE` for transitive closure and graph walks. The fallback when Datalog isn't available; tractable to ~10⁵ mappings, collapses on full SSSOM expressivity. [Ch 18](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/) |
+| **Stratified negation** | Datalog's ability to negate another layer's conclusions in a defined order — "find A→C mappings NOT derivable through any intermediate B." Recursive CTE can fake it; Datalog optimizes it natively. |
+| **SPARQL property paths** | Recursive operators inside SPARQL (`?x (skos:exactMatch)+ ?y`). Datalog-lite: no stratified negation, no rule-level aggregation. [Ch 14](/crosswalker/agent-context/zz-research/2026-05-02-challenge-14-missed-engines/) |
+| **OWL inference** | Reasoning that derives implicit class/property relationships. Crosswalker does not currently rely on it. |
+| **SHACL** | Shapes Constraint Language — W3C standard for *validating* RDF graphs ("every mapping_set MUST have a creator_id"). Used for SSSOM validation at the Tier 2/3 boundary. |
+| **WOQL** | TerminusDB's Datalog dialect (`path()`, `dot()`, `slice()`). Relevant only if [TerminusDB is adopted](/crosswalker/agent-context/zz-research/2026-05-02-challenge-16-tier-3-reconsideration/). |
+| **HDT** | Header-Dictionary-Triples — binary RDF distribution format, ~10–20× smaller than Turtle. Used by Comunica federation. |
 
 ## Metadata ecosystem terms
 
-From the [metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/) page.
+Owning page: [metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/).
 
 | Term | Definition |
 |------|-----------|
-| **Inline field** | Dataview syntax: `key:: value` in note body. Only queryable by Dataview (and potentially Datacore), NOT by Obsidian Bases. |
-| **Properties** | Obsidian's native YAML frontmatter system (since v1.4). First-class, queryable by Bases and Dataview. |
-| **Obsidian Bases** | Native database views (.base files). Tabular only — can query frontmatter but CANNOT traverse typed links or query inline fields. [More](/crosswalker/concepts/metadata-ecosystem/) |
-| **Datacore** | Community successor to Dataview (in development). Different API, better performance. |
+| **Inline field** | Legacy `key:: value` syntax in a note body. Not queryable by Bases; Crosswalker uses YAML properties and explicit edge records instead. |
+| **Properties** | Obsidian's native YAML frontmatter system (since v1.4). First-class and Bases-queryable. |
+| **Obsidian Bases** | Native `.base` live views over vault properties. Bases filters and presents frontmatter; it does not by itself do multi-hop typed-edge traversal. [More](/crosswalker/concepts/metadata-ecosystem/) |
+
+## Related
+
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — governing, extensional, intensional, administrative, representation, and carrier distinctions
+- [Mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/#edge-models) — source row → note on disk, and the two-kinds-of-link diagram
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — where artifacts cooperate across recurring capabilities
+- [System model](/crosswalker/concepts/system-model/) — picture-first artifact and tier relationships
+- [System architecture](/crosswalker/concepts/system-architecture/) — representation tiers, logical layers, and components
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive and Recipe-driven generation
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — governing Tier 1 and ImportRecipe Schema Contracts

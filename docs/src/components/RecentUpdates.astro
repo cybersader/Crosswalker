@@ -79,7 +79,13 @@ function truncate(s: string, n = TRUNC): string {
   }
   .cw-recent-updates-item {
     display: grid;
-    grid-template-columns: 7rem 1fr;
+    /* max-content, not a fixed width: the ISO date must never be clipped or
+       overlapped regardless of the site's font-size scaling. */
+    grid-template-columns: max-content 1fr;
+    /* Baseline-align the date with the title's first line — without this the
+       date hugs the row top while the title's taller line-height pushes its
+       text down, so the two columns visibly misalign. */
+    align-items: baseline;
     gap: 0.75rem 1rem;
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--sl-color-hairline);
@@ -89,6 +95,10 @@ function truncate(s: string, n = TRUNC): string {
     color: var(--sl-color-gray-3);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    line-height: 1.4;
+  }
+  .cw-recent-updates-body a {
+    line-height: 1.4;
   }
   .cw-recent-updates-body a {
     font-weight: 600;
@@ -116,7 +126,10 @@ function truncate(s: string, n = TRUNC): string {
 
 <section class="cw-recent-updates">
   <h2>Recent updates</h2>
-  <ul class="cw-recent-updates-list">
+  {/* not-content is load-bearing: without it Starlight's sibling-margin rule
+      injects margin-top on the body column, pushing titles ~18px below their
+      dates. Everything inside is fully self-styled. */}
+  <ul class="cw-recent-updates-list not-content">
     {dated.map((entry) => (
       <li class="cw-recent-updates-item">
         <time class="cw-recent-updates-date" datetime={entry.dateIso}>{entry.dateIso}</time>

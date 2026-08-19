@@ -1,13 +1,154 @@
 ---
 title: "Mapping into Obsidian — from external data to vault primitives"
-description: "The front half of Crosswalker: how disparate external data (framework spreadsheets, crosswalks, ontologies) is morphed onto Obsidian's native primitives — folders, files, headings, tags, frontmatter, wikilinks. The conventions that take a source row to a note on disk: transformation primitives, the recipe grammar, render(), and the Tier 1 contract."
+description: "The front half of Crosswalker: how disparate external data (framework spreadsheets, crosswalks, ontologies) is morphed onto Obsidian's native primitives — folders, files, headings, tags, frontmatter, wikilinks. The conventions that take a source row to a note on disk: transformation primitives, the recipe grammar, render(), the two kinds of link, and the Tier 1 contract."
 sidebar:
   label: "Mapping into Obsidian"
-  order: 3
+  order: 7
 tags: [concepts, architecture, recipe, mapping, primitives, obsidian, foundation]
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+<style>{`
+  .sl-markdown-content .tm-edge-figure {
+    margin: 0.5rem 0 2rem;
+    max-width: 100%;
+    background: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 12px;
+    padding: 1.25rem;
+    font-family: var(--sl-font-body, system-ui, -apple-system, sans-serif);
+    --tm-cw: #89b4fa;
+    --tm-ev: #00d4aa;
+  }
+  :root[data-theme='light'] .sl-markdown-content .tm-edge-figure {
+    --tm-cw: #2f5fb5;
+    --tm-ev: #0a7a63;
+  }
+  .sl-markdown-content .tm-edge-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--sl-color-gray-2);
+    margin-bottom: 0.25rem;
+  }
+  .sl-markdown-content .tm-edge-subtitle {
+    font-size: 0.85rem;
+    color: var(--sl-color-white);
+    margin-bottom: 1.25rem;
+    font-weight: 500;
+  }
+  .sl-markdown-content .tm-edge-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .sl-markdown-content .tm-edge-card {
+    background: var(--sl-color-black);
+    border: 1.5px solid var(--sl-color-gray-5);
+    border-radius: 10px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+  .sl-markdown-content .tm-edge-card-crosswalk { border-color: var(--tm-cw); }
+  .sl-markdown-content .tm-edge-card-evidence { border-color: var(--tm-ev); }
+  .sl-markdown-content .tm-edge-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 3px;
+    margin-bottom: 0.55rem;
+    align-self: flex-start;
+    font-weight: 700;
+  }
+  .sl-markdown-content .tm-badge-crosswalk {
+    background: rgba(128, 160, 220, 0.14);
+    background: color-mix(in srgb, var(--tm-cw) 14%, transparent);
+    color: var(--tm-cw);
+    border: 1px solid var(--tm-cw);
+  }
+  .sl-markdown-content .tm-badge-evidence {
+    background: rgba(0, 180, 150, 0.14);
+    background: color-mix(in srgb, var(--tm-ev) 14%, transparent);
+    color: var(--tm-ev);
+    border: 1px solid var(--tm-ev);
+  }
+  .sl-markdown-content .tm-edge-cardtitle {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--sl-color-white);
+    margin-bottom: 0.25rem;
+  }
+  .sl-markdown-content .tm-edge-semantic {
+    font-size: 0.75rem;
+    color: var(--sl-color-gray-2);
+    font-style: italic;
+    margin-bottom: 0.9rem;
+    line-height: 1.5;
+  }
+  .sl-markdown-content .tm-edge-diagram {
+    width: 100%;
+    height: auto;
+    display: block;
+    margin-bottom: 0.9rem;
+    aspect-ratio: 260 / 90;
+  }
+  .sl-markdown-content .tm-svg-label { fill: var(--sl-color-white); }
+  .sl-markdown-content .tm-svg-node-cw { fill: rgba(128, 160, 220, 0.14); fill: color-mix(in srgb, var(--tm-cw) 14%, transparent); stroke: var(--tm-cw); }
+  .sl-markdown-content .tm-svg-node-ev { fill: rgba(0, 180, 150, 0.14); fill: color-mix(in srgb, var(--tm-ev) 14%, transparent); stroke: var(--tm-ev); }
+  .sl-markdown-content .tm-svg-edge-cw { stroke: var(--tm-cw); }
+  .sl-markdown-content .tm-svg-edge-ev { stroke: var(--tm-ev); }
+  .sl-markdown-content .tm-svg-cap-cw { fill: var(--tm-cw); }
+  .sl-markdown-content .tm-svg-cap-ev { fill: var(--tm-ev); }
+  .sl-markdown-content .tm-edge-fields {
+    font-family: var(--sl-font-mono, 'SF Mono', 'Fira Code', monospace);
+    font-size: 0.7rem;
+    color: var(--sl-color-white);
+    line-height: 1.65;
+    background: var(--sl-color-gray-6);
+    border-radius: 4px;
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 0.7rem;
+    border: 1px solid var(--sl-color-gray-5);
+    overflow-x: auto;
+  }
+  .sl-markdown-content .tm-edge-fkey { color: var(--tm-cw); }
+  .sl-markdown-content .tm-edge-fval { color: var(--sl-color-white); font-weight: 600; }
+  .sl-markdown-content .tm-edge-fcomment { color: var(--sl-color-gray-2); font-style: italic; }
+  .sl-markdown-content .tm-edge-status {
+    font-size: 0.7rem;
+    color: var(--sl-color-gray-2);
+    line-height: 1.5;
+    border-top: 1px solid var(--sl-color-gray-5);
+    padding-top: 0.7rem;
+    margin-top: auto;
+  }
+  .sl-markdown-content .tm-edge-status strong { color: var(--sl-color-white); }
+  .sl-markdown-content .tm-edge-status a { color: var(--sl-color-text-accent); text-decoration: underline; }
+  .sl-markdown-content .tm-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.7rem;
+    color: var(--sl-color-gray-2);
+  }
+  .sl-markdown-content .tm-legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 0.3rem;
+    vertical-align: middle;
+  }
+  @media (max-width: 640px) {
+    .sl-markdown-content .tm-edge-grid { grid-template-columns: 1fr; }
+  }
+`}</style>
 
 Crosswalker's **front half** is a morph: take disparate external data — a NIST control spreadsheet, an OLIR crosswalk, a JSON ontology — and turn it into **Obsidian's own native structures**: folders, notes, headings, tags, frontmatter properties, and `[[wikilinks]]`. Nothing proprietary — just a vault you'd be happy to open without the plugin installed.
 
@@ -29,6 +170,80 @@ Everything maps onto these six native Obsidian structures. The first four are th
 | **Tag** | polyhierarchy, location-independent | `#framework/nist/ac` |
 | **Frontmatter** | typed properties (Bases-queryable) | `control_id: AC-2` |
 | **Wikilink** | the graph — typed relationships | `[[AC-2]]`, `mapped_to: "[[ISO-A.9.2.1]]"` |
+
+## The two kinds of link <span id="edge-models"></span>
+
+The **wikilink** row above is the one that needs unpacking, because a link can mean two quite different things and Crosswalker keeps them apart:
+
+- **Concept ↔ concept** — a **[crosswalk](/crosswalker/concepts/terminology/#core-terms)**: *"these two concepts correspond."* `NIST 800-53/AC-2` ↔ `ISO 27001/A.9.2.1`. Both ends are ontology concepts, so this is the link type every import produces whenever you map one framework or taxonomy onto another.
+- **Your document → a concept** — an **[evidence link](/crosswalker/concepts/terminology/#core-terms)**: *"this note demonstrates that concept, at such-and-such status."* This is **one common use, not the assumed one** — it's what GRC teams reach for (a policy note pointing at the control it satisfies), and the same shape serves any "artefact attests to concept" pattern: a paper citing a method, a dataset backing a claim, a service implementing a spec. If your ontology work never involves attesting to anything, you'll only ever use the first kind.
+
+Both have committed architectures. Side by side:
+
+<div class="tm-edge-figure not-content" role="img" aria-label="Side-by-side comparison of Crosswalker's two edge models: concept-to-concept crosswalks using STRM plus SSSOM, versus document-to-concept evidence links using junction notes with a 13-field schema.">
+  <div class="tm-edge-title">The two edge models</div>
+  <div class="tm-edge-subtitle">Crosswalker has two kinds of edge. Both have committed architectures; they are never merged into one.</div>
+  <div class="tm-edge-grid">
+    <div class="tm-edge-card tm-edge-card-crosswalk">
+      <span class="tm-edge-badge tm-badge-crosswalk">Crosswalk</span>
+      <div class="tm-edge-cardtitle">Concept ↔ Concept</div>
+      <div class="tm-edge-semantic">"These two concepts <em>correspond</em> at such-and-such confidence."</div>
+      <svg class="tm-edge-diagram" viewBox="0 0 260 90" preserveAspectRatio="xMidYMid meet">
+        <circle class="tm-svg-node-cw" cx="50" cy="45" r="26" stroke-width="2" />
+        <text class="tm-svg-label" x="50" y="42" font-size="9" text-anchor="middle" font-weight="600">NIST</text>
+        <text class="tm-svg-label" x="50" y="53" font-size="9" text-anchor="middle">AC-2</text>
+        <circle class="tm-svg-node-cw" cx="210" cy="45" r="26" stroke-width="2" />
+        <text class="tm-svg-label" x="210" y="42" font-size="9" text-anchor="middle" font-weight="600">ISO</text>
+        <text class="tm-svg-label" x="210" y="53" font-size="9" text-anchor="middle">A.9.2.1</text>
+        <line class="tm-svg-edge-cw" x1="78" y1="45" x2="182" y2="45" stroke-width="2" stroke-dasharray="4 3" />
+        <text class="tm-svg-cap-cw" x="130" y="36" font-size="8" text-anchor="middle">subset-of</text>
+      </svg>
+      <div class="tm-edge-fields">
+<span class="tm-edge-fkey">subject_id</span>: <span class="tm-edge-fval">NIST-800-53/AC-2</span>
+<span class="tm-edge-fkey">predicate_id</span>: <span class="tm-edge-fval">strm:subset-of</span>  <span class="tm-edge-fcomment">← STRM</span>
+<span class="tm-edge-fkey">object_id</span>: <span class="tm-edge-fval">ISO-27001/A.9.2.1</span>
+<span class="tm-edge-fkey">confidence</span>: <span class="tm-edge-fval">0.85</span>  <span class="tm-edge-fcomment">← SSSOM</span>
+<span class="tm-edge-fkey">mapping_justification</span>: <span class="tm-edge-fval">…</span>
+      </div>
+      <div class="tm-edge-status">
+        <strong>Committed:</strong> <a href="/crosswalker/reference/registry/strm/">STRM</a>'s 5-relationship vocabulary in the <code>predicate_id</code> slot + the <a href="/crosswalker/reference/registry/sssom/">SSSOM</a> metadata envelope. <a href="/crosswalker/reference/registry/skos/">SKOS</a> rejected as base — <a href="/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish">04-10 synthesis</a>.
+      </div>
+    </div>
+    <div class="tm-edge-card tm-edge-card-evidence">
+      <span class="tm-edge-badge tm-badge-evidence">Evidence link</span>
+      <div class="tm-edge-cardtitle">Document → Concept</div>
+      <div class="tm-edge-semantic">"This document <em>attests to</em> this concept at such-and-such status." (GRC reading: a policy implements a control.)</div>
+      <svg class="tm-edge-diagram" viewBox="0 0 260 90" preserveAspectRatio="xMidYMid meet">
+        <rect class="tm-svg-node-ev" x="16" y="22" width="68" height="46" rx="4" stroke-width="2" />
+        <text class="tm-svg-label" x="50" y="42" font-size="9" text-anchor="middle" font-weight="600">MFA</text>
+        <text class="tm-svg-label" x="50" y="53" font-size="9" text-anchor="middle">Policy.md</text>
+        <circle class="tm-svg-node-cw" cx="210" cy="45" r="26" stroke-width="2" />
+        <text class="tm-svg-label" x="210" y="42" font-size="9" text-anchor="middle" font-weight="600">NIST</text>
+        <text class="tm-svg-label" x="210" y="53" font-size="9" text-anchor="middle">AC-2</text>
+        <line class="tm-svg-edge-ev" x1="88" y1="45" x2="178" y2="45" stroke-width="2" />
+        <polygon class="tm-svg-cap-ev" points="178,42 184,45 178,48" />
+        <text class="tm-svg-cap-ev" x="133" y="36" font-size="8" text-anchor="middle">implements</text>
+      </svg>
+      <div class="tm-edge-fields">
+<span class="tm-edge-fkey">link_type</span>: <span class="tm-edge-fval">evidence-control</span>
+<span class="tm-edge-fkey">evidence</span>: <span class="tm-edge-fval">"[[MFA-Policy]]"</span>
+<span class="tm-edge-fkey">control</span>: <span class="tm-edge-fval">"[[NIST--AC-2]]"</span>
+<span class="tm-edge-fkey">status</span>: <span class="tm-edge-fval">implemented</span>  <span class="tm-edge-fcomment">← OSCAL</span>
+<span class="tm-edge-fkey">reviewer</span>: <span class="tm-edge-fval">"[[Jane-Auditor]]"</span>
+<span class="tm-edge-fcomment"># + 8 more fields</span>
+      </div>
+      <div class="tm-edge-status">
+        <strong>Committed:</strong> <a href="/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/">junction notes</a> — one markdown file per edge, 13-field flat YAML isomorphic to <a href="/crosswalker/reference/registry/oscal/">OSCAL</a>'s <code>by-component</code>. Brief: <a href="/crosswalker/agent-context/zz-challenges/archive/07-link-metadata-edge-model/">Challenge 07</a>.
+      </div>
+    </div>
+  </div>
+  <div class="tm-legend">
+    <span><span class="tm-legend-dot" style="background:var(--tm-cw)"></span>Ontology concept (a framework control, a taxonomy node)</span>
+    <span><span class="tm-legend-dot" style="background:var(--tm-ev)"></span>User-authored document (an evidence note)</span>
+  </div>
+</div>
+
+Both are **[typed links](/crosswalker/concepts/terminology/#core-terms)** — the umbrella term. Crosswalks land through the reserved `wikilink` / `graph_edges` grammar (see [what's wired vs. reserved](#whats-wired-vs-reserved) below); evidence links are authored by you, in your own notes, and never overwritten by a re-import.
 
 ## The conventions — source row to note on disk
 
@@ -67,4 +282,7 @@ So the "morph onto wikilinks" you'd expect for crosswalk navigation is the **res
 - [Target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — the recipe grammar + `render()` decision (commitment #2)
 - [Ch 22 — target-structure expressivity](/crosswalker/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity/) — why the grammar is closed
 - [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the Tier 1 contract
-- [Terminology](/crosswalker/concepts/terminology/) — CURIE, recipe, render, tiers
+- [Terminology](/crosswalker/concepts/terminology/) — CURIE, recipe, render, tiers, crosswalk vs evidence link
+- [Evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction notes, the 13-field schema, and the OSCAL `by-component` isomorphism
+- [Foundation research synthesis · edge semantics](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) — why crosswalk predicates are set-theoretic ([STRM](/crosswalker/reference/registry/strm/)) rather than SKOS
+- [System model](/crosswalker/concepts/system-model/) — the whole pipeline this page is the front half of

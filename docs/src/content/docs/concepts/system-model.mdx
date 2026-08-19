@@ -3,24 +3,39 @@ title: "System model — the whole thing, in pictures"
 description: "The illustrative, high-level map of Crosswalker: how source data becomes a canonical Markdown vault and then queryable answers, the three storage tiers, the producers, the render() coupling point, and the query/output layers — each piece linked to its deep page. Start here for the big picture, then follow any thread."
 sidebar:
   label: "System model (start here)"
-  order: 0
+  order: 1
 tags: [concept, architecture, overview, system-model, diagram, pipeline, tiers]
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 <style>{`
+:root{
+  --cw-surf:var(--sl-color-gray-6);
+  --cw-surf-2:var(--sl-color-gray-5);
+  --cw-text:var(--sl-color-white);
+  --cw-mut:var(--sl-color-gray-2);
+  --cw-line:#343b47;
+  --cw-line-2:#2a303b;
+  --cw-shadow:0 3px 12px rgba(0,0,0,.30);
+  --cw-fold:#e0a458;--cw-leaf:#7fb5ff;--cw-tag:#34d399;--cw-head:#c4a7f5;--cw-link:#f0a3c0;
+}
+:root[data-theme='light']{
+  --cw-line:#ccd3dd;
+  --cw-line-2:#dfe3ea;
+  --cw-shadow:0 2px 8px rgba(15,23,42,.10);
+  --cw-fold:#8a5a0b;--cw-leaf:#1a5cb8;--cw-tag:#0b7a5b;--cw-head:#6737bb;--cw-link:#a83263;
+}
 .cw-sm-pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:.45rem;margin:1.4rem 0;}
 .cw-sm-pipe.cw-mid{align-items:center;}
 .cw-sm-col{display:flex;flex-direction:column;gap:.5rem;}
-.cw-sm-chev{display:flex;align-items:center;color:#5b5b68;font-size:1.5rem;flex:0 0 auto;}
-.cw-sm-or{display:flex;align-items:center;justify-content:center;color:#9a9aa7;font-size:.78rem;font-style:italic;}
-.cw-sm-stage{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.5rem;width:128px;padding:.85rem .6rem;border-radius:14px;border:1px solid var(--c,#3a3a45);background:linear-gradient(165deg,var(--g,#1c1c24),#15151b);box-shadow:0 3px 12px rgba(0,0,0,.28);text-decoration:none;color:#ececf1;justify-content:flex-start;}
+.cw-sm-chev{display:flex;align-items:center;color:var(--cw-mut);font-size:1.5rem;flex:0 0 auto;}
+.cw-sm-or{display:flex;align-items:center;justify-content:center;color:var(--cw-mut);font-size:.78rem;font-style:italic;}
+.cw-sm-stage{display:flex;flex-direction:column;align-items:center;text-align:center;gap:.5rem;width:128px;padding:.85rem .6rem;border-radius:14px;border:1px solid var(--bd,var(--cw-line));background-color:var(--cw-surf);background-image:linear-gradient(165deg,var(--g,transparent),transparent);box-shadow:var(--cw-shadow);text-decoration:none;color:var(--cw-text);justify-content:flex-start;}
 a.cw-sm-stage:hover{border-color:var(--c);}
-.cw-sm-stage b{font-size:.85rem;line-height:1.2;color:#f0f0f4;display:block;}
-.cw-sm-stage small{display:block;}
-.cw-sm-stage small{font-size:.7rem;color:#9a9aa7;line-height:1.32;}
-.cw-sm-badge{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;color:var(--c,#aaa);background:var(--bb,rgba(255,255,255,.05));border:1px solid var(--bd,#444);}
+.cw-sm-stage b{font-size:.85rem;line-height:1.2;color:var(--cw-text);display:block;}
+.cw-sm-stage small{display:block;font-size:.7rem;color:var(--cw-mut);line-height:1.32;}
+.cw-sm-badge{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;color:var(--c,var(--cw-mut));background:var(--bb,rgba(127,127,127,.12));border:1px solid var(--bd,var(--cw-line));}
 .cw-sm-ico{width:24px;height:24px;display:block;}
 .cw-t0{--c:#a78bfa;--g:rgba(167,139,250,.13);--bb:rgba(167,139,250,.16);--bd:rgba(167,139,250,.4);}
 .cw-t1{--c:#34d399;--g:rgba(52,211,153,.13);--bb:rgba(52,211,153,.16);--bd:rgba(52,211,153,.4);}
@@ -28,77 +43,65 @@ a.cw-sm-stage:hover{border-color:var(--c);}
 .cw-io{--c:#60a5fa;--g:rgba(96,165,250,.13);--bb:rgba(96,165,250,.16);--bd:rgba(96,165,250,.4);}
 .cw-eng{--c:#34d399;--g:rgba(52,211,153,.2);--bb:rgba(52,211,153,.22);--bd:rgba(52,211,153,.5);}
 .cw-gate{--c:#a78bfa;--g:rgba(167,139,250,.2);--bb:rgba(167,139,250,.22);--bd:rgba(167,139,250,.5);}
-.cw-sm-doors{border:1px dashed #565663;border-radius:13px;padding:.7rem .8rem;background:rgba(255,255,255,.02);}
-.cw-sm-doors-h{font-size:.78rem;color:#b7b7c4;text-align:center;margin-bottom:.55rem;}
-.cw-sm-card{width:200px;border-radius:12px;border:1px solid #33333f;background:#191921;box-shadow:0 3px 14px rgba(0,0,0,.32);overflow:hidden;}
-.cw-sm-card-fn{display:flex;align-items:center;gap:.4rem;padding:.45rem .65rem;background:#21212c;border-bottom:1px solid #2e2e3a;font-weight:600;font-size:.8rem;color:#e8e8ef;}
-.cw-sm-card-fn .cw-sm-ico{width:15px;height:15px;color:#60a5fa;}
+:root[data-theme='light'] .cw-t0{--c:#6d3fd6;--g:rgba(109,63,214,.10);--bb:rgba(109,63,214,.11);--bd:rgba(109,63,214,.38);}
+:root[data-theme='light'] .cw-t1{--c:#0b7a5b;--g:rgba(11,122,91,.10);--bb:rgba(11,122,91,.11);--bd:rgba(11,122,91,.38);}
+:root[data-theme='light'] .cw-t2{--c:#8a5a0b;--g:rgba(138,90,11,.10);--bb:rgba(138,90,11,.11);--bd:rgba(138,90,11,.38);}
+:root[data-theme='light'] .cw-io{--c:#1a5cb8;--g:rgba(26,92,184,.10);--bb:rgba(26,92,184,.11);--bd:rgba(26,92,184,.38);}
+:root[data-theme='light'] .cw-eng{--c:#0b7a5b;--g:rgba(11,122,91,.15);--bb:rgba(11,122,91,.15);--bd:rgba(11,122,91,.5);}
+:root[data-theme='light'] .cw-gate{--c:#6d3fd6;--g:rgba(109,63,214,.15);--bb:rgba(109,63,214,.15);--bd:rgba(109,63,214,.5);}
+.cw-sm-doors{border:1px dashed var(--cw-line);border-radius:13px;padding:.7rem .8rem;background:transparent;}
+.cw-sm-doors-h{font-size:.78rem;color:var(--cw-mut);text-align:center;margin-bottom:.55rem;}
+.cw-sm-card{width:200px;border-radius:12px;border:1px solid var(--cw-line);background:var(--cw-surf);box-shadow:var(--cw-shadow);overflow:hidden;}
+.cw-sm-card-fn{display:flex;align-items:center;gap:.4rem;padding:.45rem .65rem;background:var(--cw-surf-2);border-bottom:1px solid var(--cw-line);font-weight:600;font-size:.8rem;color:var(--cw-text);}
+.cw-sm-card-fn .cw-sm-ico{width:15px;height:15px;color:var(--cw-leaf);}
 .cw-sm-card-body{padding:.55rem .65rem;font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:.74rem;line-height:1.75;}
-.cw-sm-card-body .k{color:#7f7f8c;}.cw-sm-card-body .v{color:#cfcfda;}
-.cw-sm-hr{height:1px;background:#2a2a36;margin:.45rem -.65rem;}
-.cw-sm-card-body .bd{font-family:var(--sl-font-body,inherit);color:#a0a0ad;font-style:italic;font-size:.76rem;}
-.cw-sm-tree{border-radius:12px;border:1px solid #33333f;background:#16161d;padding:.7rem 1rem .7rem .85rem;font-size:.84rem;line-height:1.95;}
-.cw-sm-tree div{display:flex;align-items:center;gap:.4rem;white-space:nowrap;}
-.cw-sm-tree .cw-sm-ico{width:16px;height:16px;}
-.cw-sm-tree .d1{padding-left:1.5rem;}.cw-sm-tree .d2{padding-left:3rem;}
-.cw-sm-tree .fold{color:#e0a458;}.cw-sm-tree .leaf{color:#7fb5ff;}
-.cw-sm-treemap{border:1px solid #33333f;border-radius:12px;background:#16161d;overflow:hidden;min-width:430px;flex:1 1 430px;}
-.cw-sm-treemap-h{display:flex;justify-content:space-between;gap:1rem;font-size:.7rem;color:#9a9aa7;padding:.42rem .8rem;background:#1d1d26;border-bottom:1px solid #2a2a36;font-family:var(--sl-font-mono,ui-monospace,monospace);}
-.cw-sm-treemap .row{display:flex;align-items:center;justify-content:space-between;gap:1.4rem;padding:.42rem .8rem;border-bottom:1px solid #20202a;font-size:.82rem;}
-.cw-sm-treemap .row:last-child{border-bottom:0;}
-.cw-sm-treemap .seg{display:inline-flex;align-items:center;gap:.4rem;white-space:nowrap;}
-.cw-sm-treemap .seg .cw-sm-ico{width:16px;height:16px;}
-.cw-sm-treemap .seg.d1{padding-left:1.4rem;}.cw-sm-treemap .seg.d2{padding-left:2.8rem;}
-.cw-sm-treemap .fold{color:#e0a458;}.cw-sm-treemap .leaf{color:#7fb5ff;}
-.cw-sm-treemap .rule{font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:.74rem;color:#cfcfda;display:inline-flex;align-items:center;gap:.5rem;white-space:nowrap;}
-.cw-sm-treemap .mech{border-radius:5px;padding:.08rem .42rem;font-size:.7rem;}
-.cw-sm-treemap .mech-f{color:#e0a458;background:rgba(224,164,88,.14);}
-.cw-sm-treemap .mech-l{color:#7fb5ff;background:rgba(96,165,250,.14);}
+.cw-sm-card-body .k{color:var(--cw-mut);}.cw-sm-card-body .v{color:var(--cw-text);}
+.cw-sm-hr{height:1px;background:var(--cw-line-2);margin:.45rem -.65rem;}
+.cw-sm-card-body .bd{font-family:var(--sl-font-body,inherit);color:var(--cw-mut);font-style:italic;font-size:.76rem;}
 .cw-sm-lab{display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;margin:1.4rem 0;}
 .cw-sm-lab .col{display:flex;flex-direction:column;gap:.55rem;}
-.cw-sm-panel{width:262px;border-radius:12px;border:1px solid #33333f;background:#191921;box-shadow:0 3px 14px rgba(0,0,0,.3);overflow:hidden;}
+.cw-sm-panel{width:262px;border-radius:12px;border:1px solid var(--cw-line);background:var(--cw-surf);box-shadow:var(--cw-shadow);overflow:hidden;}
 .cw-sm-panel-wide{width:276px;}
-.cw-sm-panel-h{display:flex;align-items:center;gap:.4rem;padding:.45rem .65rem;font-size:.76rem;font-weight:600;color:#e8e8ef;background:#21212c;border-bottom:1px solid #2e2e3a;}
-.cw-sm-panel-h .cw-sm-ico{width:15px;height:15px;color:#9a9aa7;}
-.cw-sm-panel-h small{font-weight:400;color:#9a9aa7;}
+.cw-sm-panel-h{display:flex;align-items:center;gap:.4rem;padding:.45rem .65rem;font-size:.76rem;font-weight:600;color:var(--cw-text);background:var(--cw-surf-2);border-bottom:1px solid var(--cw-line);}
+.cw-sm-panel-h .cw-sm-ico{width:15px;height:15px;color:var(--cw-mut);}
+.cw-sm-panel-h small{font-weight:400;color:var(--cw-mut);}
 .cw-sm-kv{padding:.45rem .65rem;font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:.72rem;line-height:1.5;}
 .cw-sm-kv .row{display:flex;align-items:center;gap:.45rem;padding:.14rem 0;}
-.cw-sm-kv .k{color:#7f7f8c;}
-.cw-sm-kv .v{color:#cfcfda;}
-.cw-sm-kv .tpl{color:#c9c9d4;}
-.cw-sm-kv .lnk{color:#7fb5ff;}
-.cw-sm-kv hr{border:0;border-top:1px solid #2a2a36;margin:.4rem -.65rem;}
+.cw-sm-kv .k{color:var(--cw-mut);}
+.cw-sm-kv .v{color:var(--cw-text);}
+.cw-sm-kv .tpl{color:var(--cw-text);}
+.cw-sm-kv .lnk{color:var(--cw-leaf);}
+.cw-sm-kv hr{border:0;border-top:1px solid var(--cw-line-2);margin:.4rem -.65rem;}
 .cw-sm-kv .mech{border-radius:5px;padding:.05rem .42rem;font-size:.95em;flex:0 0 auto;}
-.cw-sm-kv .mech-folder{color:#e0a458;background:rgba(224,164,88,.14);}
-.cw-sm-kv .mech-file{color:#7fb5ff;background:rgba(96,165,250,.14);}
-.cw-sm-kv .mech-tag{color:#34d399;background:rgba(52,211,153,.14);}
-.cw-sm-kv .mech-note{color:#c4a7f5;background:rgba(167,139,250,.16);}
-.cw-sm-kv .mech-link{color:#f0a3c0;background:rgba(240,163,192,.14);}
-.cw-sm-kv .fx{color:#c4a7f5;background:rgba(167,139,250,.16);border-radius:4px;padding:.02rem .32rem;font-size:.9em;flex:0 0 auto;}
-.cw-sm-kv .fn{color:#c4a7f5;}
-.cw-sm-kv .small-note{display:block;color:#8a8a97;font-size:.92em;font-style:italic;padding:.25rem 0 0;}
-.cw-sm-bc{display:flex;align-items:center;gap:.28rem;flex-wrap:wrap;padding:.45rem .65rem;background:#1c1c25;border-bottom:1px solid #2a2a36;font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:.73rem;color:#cfcfda;}
+.cw-sm-kv .mech-folder{color:var(--cw-fold);background:rgba(224,164,88,.16);}
+.cw-sm-kv .mech-file{color:var(--cw-leaf);background:rgba(96,165,250,.16);}
+.cw-sm-kv .mech-tag{color:var(--cw-tag);background:rgba(52,211,153,.16);}
+.cw-sm-kv .mech-note{color:var(--cw-head);background:rgba(167,139,250,.18);}
+.cw-sm-kv .mech-link{color:var(--cw-link);background:rgba(240,163,192,.18);}
+.cw-sm-kv .fx{color:var(--cw-head);background:rgba(167,139,250,.18);border-radius:4px;padding:.02rem .32rem;font-size:.9em;flex:0 0 auto;}
+.cw-sm-kv .fn{color:var(--cw-head);}
+.cw-sm-kv .small-note{display:block;color:var(--cw-mut);font-size:.92em;font-style:italic;padding:.25rem 0 0;}
+.cw-sm-bc{display:flex;align-items:center;gap:.28rem;flex-wrap:wrap;padding:.45rem .65rem;background:var(--cw-surf-2);border-bottom:1px solid var(--cw-line);font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:.73rem;color:var(--cw-text);}
 .cw-sm-bc .cw-sm-ico{width:14px;height:14px;}
-.cw-sm-bc .fold{color:#e0a458;}.cw-sm-bc .leaf{color:#7fb5ff;}
-.cw-sm-bc b{color:#e8e8ef;font-weight:600;}
+.cw-sm-bc .fold{color:var(--cw-fold);}.cw-sm-bc .leaf{color:var(--cw-leaf);}
+.cw-sm-bc b{color:var(--cw-text);font-weight:600;}
 .cw-sm-shapes{display:flex;flex-wrap:wrap;gap:.55rem;margin:1.1rem 0;}
-.cw-sm-shape{flex:1 1 174px;min-width:174px;border-radius:11px;border:1px solid #33333f;background:#16161d;overflow:hidden;}
-.cw-sm-shape-h{display:flex;align-items:center;gap:.35rem;padding:.4rem .6rem;font-size:.74rem;font-weight:600;border-bottom:1px solid #2a2a36;background:#1c1c25;}
+.cw-sm-shape{flex:1 1 174px;min-width:174px;border-radius:11px;border:1px solid var(--cw-line);background:var(--cw-surf);overflow:hidden;}
+.cw-sm-shape-h{display:flex;align-items:center;gap:.35rem;padding:.4rem .6rem;font-size:.74rem;font-weight:600;border-bottom:1px solid var(--cw-line);background:var(--cw-surf-2);}
 .cw-sm-shape-h .cw-sm-ico{width:14px;height:14px;}
-.cw-sm-shape-h small{font-weight:400;color:#9a9aa7;font-size:.88em;}
-.cw-sm-shape-b{padding:.5rem .6rem;font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:.7rem;line-height:1.7;color:#cfcfda;}
+.cw-sm-shape-h small{font-weight:400;color:var(--cw-mut);font-size:.88em;}
+.cw-sm-shape-b{padding:.5rem .6rem;font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:.7rem;line-height:1.7;color:var(--cw-text);}
 .cw-sm-shape-b .row{display:flex;align-items:center;gap:.32rem;white-space:nowrap;}
 .cw-sm-shape-b .cw-sm-ico{width:14px;height:14px;}
 .cw-sm-shape-b .i1{padding-left:1rem;}.cw-sm-shape-b .i2{padding-left:2rem;}.cw-sm-shape-b .i3{padding-left:3rem;}
-.cw-sm-shape-b .fold{color:#e0a458;}.cw-sm-shape-b .leaf{color:#7fb5ff;}
-.cw-sm-shape-b .tg{color:#34d399;}.cw-sm-shape-b .hd{color:#c4a7f5;}.cw-sm-shape-b .lk{color:#7fb5ff;}.cw-sm-shape-b .mut{color:#8a8a97;}
-.cw-sm-bigchip{font-family:var(--sl-font-mono,ui-monospace,monospace);font-size:1rem;border:1px solid #4a4a57;border-radius:9px;padding:.5rem .8rem;background:#23232c;color:#e2e2ea;align-self:center;}
+.cw-sm-shape-b .fold{color:var(--cw-fold);}.cw-sm-shape-b .leaf{color:var(--cw-leaf);}
+.cw-sm-shape-b .tg{color:var(--cw-tag);}.cw-sm-shape-b .hd{color:var(--cw-head);}.cw-sm-shape-b .lk{color:var(--cw-leaf);}.cw-sm-shape-b .mut{color:var(--cw-mut);}
 .cw-sm-mech{display:flex;flex-wrap:wrap;gap:.45rem;margin:.6rem 0 0;}
-.cw-sm-mech span{display:inline-flex;align-items:center;gap:.35rem;border:1px solid #45454f;border-radius:8px;padding:.3rem .55rem;font-size:.8rem;font-family:var(--sl-font-mono,ui-monospace,monospace);background:#20202a;color:#cfcfda;}
-.cw-sm-mech .cw-sm-ico{width:15px;height:15px;color:#9a9aa7;}
+.cw-sm-mech span{display:inline-flex;align-items:center;gap:.35rem;border:1px solid var(--cw-line);border-radius:8px;padding:.3rem .55rem;font-size:.8rem;font-family:var(--sl-font-mono,ui-monospace,monospace);background:var(--cw-surf);color:var(--cw-text);}
+.cw-sm-mech .cw-sm-ico{width:15px;height:15px;color:var(--cw-mut);}
 .cw-sm-tierwrap{display:flex;flex-direction:column;align-items:center;gap:.3rem;max-width:520px;}
-.cw-sm-tierlabel{font-size:.78rem;color:#9a9aa7;text-align:center;}
-.cw-sm-tierlabel b{color:#cfcfda;}
+.cw-sm-tierlabel{font-size:.78rem;color:var(--cw-mut);text-align:center;}
+.cw-sm-tierlabel b{color:var(--cw-text);}
 `}</style>
 
 <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
@@ -128,16 +131,16 @@ The **picture-first** overview of the whole system. Every box below links to the
 The model is **domain-neutral**: Crosswalker represents an *ontology* — a set of concepts and the typed relationships between them — as canonical, queryable Markdown. Compliance frameworks are the launch use case, not the model; where something is compliance-specific it's flagged as such. For the detailed reference (component-to-tier matrix, read/write flows), continue to [system architecture](/crosswalker/concepts/system-architecture/).
 </Aside>
 
-## One glance — source data to answers
+## Your data goes in, answers come out
 
-Crosswalker turns whatever shape your data ships in into a **canonical Markdown vault**, then makes that vault queryable. Everything else is detail on this spine:
+Crosswalker takes whatever shape your data ships in — a control spreadsheet, a crosswalk export, a JSON ontology — and turns it into **ordinary Markdown notes in your vault**. Then it makes those notes answerable. Everything else on this page is detail on that one spine:
 
 <div class="not-content cw-sm-pipe">
   <a class="cw-sm-stage cw-t0" href="/crosswalker/concepts/etl-and-import/#the-input-floor"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-table"/></svg></span><b>Sources</b><small>any structured<br/>data</small></a>
   <span class="cw-sm-chev">→</span>
   <a class="cw-sm-stage cw-io" href="#how-you-ingest--two-doors-one-engine"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-wand"/></svg></span><b>Ingest</b><small>wizard or<br/>harness</small></a>
   <span class="cw-sm-chev">→</span>
-  <a class="cw-sm-stage cw-t1" href="/crosswalker/concepts/system-architecture/#tier-1--storage-canonical"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-doc"/></svg></span><b>Tier 1 vault</b><small>canonical<br/>Markdown</small></a>
+  <a class="cw-sm-stage cw-t1" href="/crosswalker/concepts/system-architecture/#layer-2--storage-tier-1--canonical"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-doc"/></svg></span><b>Tier 1 vault</b><small>canonical<br/>Markdown</small></a>
   <span class="cw-sm-chev">→</span>
   <a class="cw-sm-stage cw-t2" href="/crosswalker/concepts/embedded-vs-server-substrates/"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-db"/></svg></span><b>Tier 2 cache</b><small>sqlite,<br/>derived</small></a>
   <span class="cw-sm-chev">→</span>
@@ -146,11 +149,11 @@ Crosswalker turns whatever shape your data ships in into a **canonical Markdown 
   <a class="cw-sm-stage cw-io" href="#from-vault-to-answers"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-chart"/></svg></span><b>Output</b><small>views ·<br/>exports</small></a>
 </div>
 
-Each stage in plain words: **[Sources](/crosswalker/concepts/etl-and-import/#data-input-requirements--what-crosswalker-can-ingest)** are your raw files (the only rule is the input floor: structured records, not prose PDFs) → **Ingest** parses + renders them → **[Tier 1](/crosswalker/concepts/system-architecture/#tier-1--storage-canonical)** is the canonical Markdown vault everything derives from → **[Tier 2](/crosswalker/concepts/embedded-vs-server-substrates/)** is a throwaway sqlite cache for fast queries → **[Query](/crosswalker/concepts/query-primitives/)** + **[output](#from-vault-to-answers)** answer your questions — as views, reports, or exports.
+In one line each: **[Sources](/crosswalker/concepts/etl-and-import/#data-input-requirements--what-crosswalker-can-ingest)** are your raw records → **Ingest** applies an [ImportRecipe](/crosswalker/concepts/terminology/#import-recipe) (the rules for turning rows into notes) → **[Tier 1](/crosswalker/concepts/system-architecture/#layer-2--storage-tier-1--canonical)** is the real copy, plain Markdown on disk → **[Tier 2](/crosswalker/concepts/embedded-vs-server-substrates/)** is a throwaway SQLite cache that makes queries fast → **[Query](/crosswalker/concepts/query-primitives/)** + **[output](#from-vault-to-answers)** give you live views, snapshots, reports, and exports.
 
-## How you ingest — two doors, one engine
+## Two ways in — a wizard, or a recipe file <span id="how-you-ingest--two-doors-one-engine"></span>
 
-This is the part to be clear about: there are **two ways in, and you pick whichever fits — you don't use both.** Either door runs the *same* engine and produces the *identical* Tier 1 vault.
+There are **two doors, and you pick whichever fits — you don't use both.** Either door runs the *same* engine and produces the *identical* vault.
 
 <div class="not-content cw-sm-pipe cw-mid">
   <div class="cw-sm-stage cw-t0"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-table"/></svg></span><b>Your source file</b><small>CSV · XLSX · JSON</small></div>
@@ -164,38 +167,44 @@ This is the part to be clear about: there are **two ways in, and you pick whiche
     </div>
   </div>
   <span class="cw-sm-chev">→</span>
-  <div class="cw-sm-stage cw-eng"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-gear"/></svg></span><b><code>render()</code> engine</b><small>one engine,<br/>both doors</small></div>
+  <a class="cw-sm-stage cw-gate" href="/crosswalker/concepts/terminology/#import-recipe"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-braces"/></svg></span><b>ImportRecipe</b><small>your rules,<br/>in one file</small></a>
   <span class="cw-sm-chev">→</span>
-  <a class="cw-sm-stage cw-t1" href="/crosswalker/concepts/system-architecture/#tier-1--storage-canonical"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-doc"/></svg></span><b>Tier 1 vault</b><small>identical<br/>either way</small></a>
+  <div class="cw-sm-stage cw-eng"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-gear"/></svg></span><b><code>render()</code> engine</b><small>applies the<br/>recipe</small></div>
+  <span class="cw-sm-chev">→</span>
+  <a class="cw-sm-stage cw-t1" href="/crosswalker/concepts/system-architecture/#layer-2--storage-tier-1--canonical"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-shield"/></svg></span><b>Schema check</b><small>every note must<br/>be valid</small></a>
+  <span class="cw-sm-chev">→</span>
+  <a class="cw-sm-stage cw-t1" href="/crosswalker/agent-context/v0-1-schema-spec/"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-doc"/></svg></span><b>Tier 1 vault</b><small>plain Markdown<br/>notes on disk</small></a>
 </div>
 
-Most people use **Door A** (the wizard). **Door B** exists for automation, bulk runs, and agents — it's the same logic, just driven by config instead of clicks ([UI first, config as escape hatch](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/)). Because they share one engine, a wizard import and a CLI import of the same file are byte-identical.
+Most people use **Door A** (the wizard). **Door B** exists for automation, bulk runs, and agents. Both run the same [ImportRecipe](/crosswalker/concepts/terminology/#import-recipe) through the same generation engine ([UI first, config as escape hatch](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/)).
 
-## The three tiers — what's canonical, what's disposable
+**In the formal vocabulary:** the ImportRecipe is a [Recipe](/crosswalker/concepts/terminology/#recipe) artifact *adjacent* to generation — its Recipe [Schema Contract](/crosswalker/concepts/terminology/#schema-contract) governs the instruction, and the Tier 1 Schema Contract governs the generated records. The recipe is never stored inside the vault as ontology content.
 
-The single most important idea: **Tier 1 is canonical; everything else is upstream of it or derived from it.** Tier 1 is just Markdown — here's an actual note it produces:
+## What's the real copy, and what's just a cache
+
+The single most important rule: **the Markdown in your vault is the real thing.** Everything else is either upstream of it or rebuilt from it. Here's an actual note it produces:
 
 <div class="not-content cw-sm-tierwrap">
-  <div class="cw-sm-stage cw-t0" style="width:auto;flex-direction:row;text-align:left;justify-content:flex-start;"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-table"/></svg></span><span><b>Tier 0 · Source</b><small>whatever shape it ships in — input, not authoritative</small></span></div>
+  <div class="cw-sm-stage cw-t0" style="width:auto;flex-direction:row;text-align:left;justify-content:flex-start;"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-table"/></svg></span><span><b>Tier 0 · Source</b><small>the spreadsheet or export you started from</small></span></div>
   <div class="cw-sm-or">↓ &nbsp;import&nbsp; ↓</div>
   <div class="cw-sm-card">
     <div class="cw-sm-card-fn"><svg class="cw-sm-ico"><use href="#i-file"/></svg> DE.AE-02.md</div>
     <div class="cw-sm-card-body"><span class="k">title:</span> <span class="v">Adverse events analyzed</span><br/><span class="k">function:</span> <span class="v">DE</span><br/><span class="k">category:</span> <span class="v">DE.AE</span><div class="cw-sm-hr"></div><span class="bd">Potentially adverse events are analyzed…</span></div>
   </div>
-  <div class="cw-sm-tierlabel"><b>Tier 1 · canonical Markdown</b> — the source of truth, git-tracked</div>
+  <div class="cw-sm-tierlabel"><b>Tier 1 · your vault</b> — plain Markdown, git-trackable, the authoritative copy</div>
   <div class="cw-sm-or">↓ &nbsp;project&nbsp; ↓</div>
   <div class="cw-sm-stage cw-t2" style="width:auto;flex-direction:row;text-align:left;justify-content:flex-start;"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-db"/></svg></span><span><b>Tier 2 · sqlite sidecar</b><small>a query cache — deletable · rebuilds from Tier 1 · never the source</small></span></div>
 </div>
 
-- **Tier 1 is canonical** — nothing important lives only in Tier 2.
-- **Tier 2 is deletable** — if the sidecar is missing, stale, or corrupt, the projector rebuilds it on next load.
-- **The contract is the schema, not the engine** — see the next diagram.
+- **Delete the cache and nothing is lost** — the sidecar rebuilds from the Markdown. If it's missing, stale, or corrupt, the projector regenerates it.
+- **Nothing authoritative lives only in Tier 2.** That's what makes the vault portable and the plugin optional.
+- **The rules are written down, not implied** — a [Schema Contract](/crosswalker/concepts/terminology/#schema-contract) governs what a valid note looks like, and a separate one governs what a valid recipe looks like.
 
-Detail: [system architecture · three storage tiers](/crosswalker/concepts/system-architecture/#the-three-storage-tiers).
+Detail: [system architecture · representation tiers](/crosswalker/concepts/system-architecture/).
 
-## The producers — anyone can write the truth
+## Anything can write the notes — not just this plugin
 
-Because the contract is the **schema** (`tier1.schema.json`), the engine and wizard are *conveniences*, not gatekeepers. Any of these is a first-class producer the moment it emits valid Tier 1:
+The wizard and the engine are conveniences, not gatekeepers. Because the **note format itself** is the contract, any tool that writes conforming notes is a first-class producer.
 
 <div class="not-content cw-sm-pipe cw-mid">
   <div class="cw-sm-col">
@@ -205,21 +214,21 @@ Because the contract is the **schema** (`tier1.schema.json`), the engine and wiz
     <div class="cw-sm-stage cw-io" style="width:210px;flex-direction:row;text-align:left;justify-content:flex-start;"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-server"/></svg></span><b>Agent / MCP server</b></div>
   </div>
   <span class="cw-sm-chev">→</span>
-  <div class="cw-sm-stage cw-gate"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-shield"/></svg></span><b>tier1.schema.json</b><small>the one<br/>contract</small></div>
+  <div class="cw-sm-stage cw-gate"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-shield"/></svg></span><b>Tier 1 Schema Contract</b><small>governs emitted<br/>record validity</small></div>
   <span class="cw-sm-chev">→</span>
   <a class="cw-sm-stage cw-t1" href="/crosswalker/agent-context/v0-1-schema-spec/"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-doc"/></svg></span><b>Tier 1 vault</b></a>
 </div>
 
 This is the **schema-as-primitive** commitment — the whole reason the system is modular. Deep dive: [ETL and import](/crosswalker/concepts/etl-and-import/).
 
-## From source to structure — `render()` + the 5 mechanisms
+## One row in, one note out <span id="from-source-to-structure--render--the-5-mechanisms"></span>
 
-This is the engine room. **`render()`** is one pure function — `render(Recipe, Concept) → Address` — and it takes the two things people always ask about by name:
+This is the engine room. You give it two things and it hands back a finished note — *where* it lives and *what's written* in it:
 
-- a **[Concept](/crosswalker/concepts/terminology/#concept)** — *one record from your source*. Just a bag of named fields. Below it's a biological species, but it could be a security control, a product, a city — any [ontology](/crosswalker/concepts/terminology/#ontology).
-- a **[Recipe](/crosswalker/concepts/terminology/#recipe)** — *your rules*. For each field (or combination of fields), which vault primitive it becomes — folder, file, tag, frontmatter, or link — written as a **template**.
+- **one record** — a row from your source, pinned to a stable id. Below it's a biological species; it could just as easily be a security control, a product, or a city. (Formally: a [ConceptIdentity](/crosswalker/concepts/terminology/#conceptidentity).)
+- **your rules** — which source field becomes the folder, the filename, the tags, the properties, the links. (Formally: an [ImportRecipe](/crosswalker/concepts/terminology/#import-recipe).)
 
-Feed both to `render()` and it hands back a fully-formed note: *where* it lives and *what's written* in it.
+The function that does it is [`render()`](/crosswalker/concepts/terminology/#render) — one pure function, `render(Recipe, ConceptIdentity) → Address`, and the only place layout decisions live.
 
 <div class="not-content cw-sm-lab cw-mid">
   <div class="col">
@@ -227,7 +236,7 @@ Feed both to `render()` and it hands back a fully-formed note: *where* it lives 
       <div class="cw-sm-panel-h"><svg class="cw-sm-ico"><use href="#i-table"/></svg> Concept <small>· one source record</small></div>
       <div class="cw-sm-kv">
         <div class="row"><span class="k">common_name:</span><span class="v">Lion</span></div>
-        <div class="row"><span class="k">lineage:</span><span class="v" style="color:#e0a458">Mammalia;Carnivora;Felidae</span></div>
+        <div class="row"><span class="k">lineage:</span><span class="v" style="color:var(--cw-fold)">Mammalia;Carnivora;Felidae</span></div>
         <div class="row"><span class="k">species:</span><span class="v">Panthera leo</span></div>
         <div class="row"><span class="k">family:</span><span class="v">Felidae</span></div>
         <div class="row"><span class="k">status:</span><span class="v">Vulnerable</span></div>
@@ -261,9 +270,7 @@ Feed both to `render()` and it hands back a fully-formed note: *where* it lives 
   </div>
 </div>
 
-**Two kinds of rule are in play.** Most are plain **templates** — `{field}` interpolation with a closed filter set (`{habitat|lower}`, plus `slug · tagsafe · fs-safe · truncate`). But the `folder` rule does more: <code>split(lineage, ";")</code> is a **transformation expression** (**JSONata**) that breaks **one** packed field — `lineage` — into **three parts** (`Mammalia`, `Carnivora`, `Felidae`). Pairing those parts with the `folder` mechanism is what *nests* them into levels — but that pairing is a free choice, which is the whole point of [the next section](#hierarchy-is-a-choice-not-a-default). This is the everyday taxonomy-code case: when a single key packs a hierarchy — a lineage string, a Dewey number, a code like `AC-2` or `DE.AE-02` — an expression splits, slices, or regexes it into parts. Anything past the closed filters (conditionals, lookups, concatenation) escapes the same way.
-
-So `render()` pulled **several fields and used them five different ways at once** — folder depth from *one* split key, the filename from `common_name`, a faceted tag from `habitat`, two frontmatter keys, and a typed `[[wikilink]]` from `family`. **Structure comes from whatever you template *or compute* — not from one magic identifier.** The five primitives a rule can target:
+One row just got used **five different ways at once** — folder depth from the `lineage` column, the filename from `common_name`, a tag from `habitat`, two properties, and a `[[wikilink]]` from `family`. **Structure comes from whatever you point at it, not from one magic id column.** The five things a rule can produce:
 
 <div class="not-content cw-sm-mech">
   <span><svg class="cw-sm-ico"><use href="#i-folder"/></svg> folder</span>
@@ -273,13 +280,15 @@ So `render()` pulled **several fields and used them five different ways at once*
   <span><svg class="cw-sm-ico"><use href="#i-link"/></svg> wikilink</span>
 </div>
 
-### Hierarchy is a choice, not a default
+**Most rules are just fill-in-the-blank templates** — `{field}` with a small closed filter set (`{habitat|lower}`, plus `slug · tagsafe · fs-safe · truncate`). The `folder` rule above does one thing more: <code>split(lineage, ";")</code> is a **transformation expression** ([JSONata](/crosswalker/concepts/etl-and-import/)) that breaks *one* packed field into *three parts*. That's the everyday case for coded taxonomies — a lineage string, a Dewey number, `AC-2`, `DE.AE-02` — where the hierarchy is hiding inside a single column. Anything past the closed filters (conditionals, lookups, concatenation) escapes the same way.
 
-Look again at what the split did: it produced three **parts** — nothing more. It said nothing about nesting. Whether those parts become a deep folder tree, a flat set of tags, an outline of headings, or a graph of links is decided by the **mechanism** you pair them with. The *same* `[Mammalia, Carnivora, Felidae]` renders four different ways:
+### Folders, or not — you pick the shape <span id="hierarchy-is-a-choice-not-a-default"></span>
+
+Splitting a column gives you **parts**. It says nothing about nesting. **You choose whether those parts become folders at all** — the same `[Mammalia, Carnivora, Felidae]` renders four different ways, and you pick the one your team actually works in:
 
 <div class="not-content cw-sm-shapes">
   <div class="cw-sm-shape">
-    <div class="cw-sm-shape-h" style="color:#e0a458"><svg class="cw-sm-ico"><use href="#i-folder"/></svg> folder <small>· nested dirs</small></div>
+    <div class="cw-sm-shape-h" style="color:var(--cw-fold)"><svg class="cw-sm-ico"><use href="#i-folder"/></svg> folder <small>· nested dirs</small></div>
     <div class="cw-sm-shape-b">
       <div class="row fold"><svg class="cw-sm-ico"><use href="#i-folder"/></svg> Mammalia/</div>
       <div class="row i1 fold"><svg class="cw-sm-ico"><use href="#i-folder"/></svg> Carnivora/</div>
@@ -288,7 +297,7 @@ Look again at what the split did: it produced three **parts** — nothing more. 
     </div>
   </div>
   <div class="cw-sm-shape">
-    <div class="cw-sm-shape-h" style="color:#34d399"><svg class="cw-sm-ico"><use href="#i-tag"/></svg> tag <small>· flat facets</small></div>
+    <div class="cw-sm-shape-h" style="color:var(--cw-tag)"><svg class="cw-sm-ico"><use href="#i-tag"/></svg> tag <small>· flat facets</small></div>
     <div class="cw-sm-shape-b">
       <div class="row leaf"><svg class="cw-sm-ico"><use href="#i-file"/></svg> Lion.md</div>
       <div class="row tg">&#35;clade/mammalia</div>
@@ -297,7 +306,7 @@ Look again at what the split did: it produced three **parts** — nothing more. 
     </div>
   </div>
   <div class="cw-sm-shape">
-    <div class="cw-sm-shape-h" style="color:#c4a7f5"><svg class="cw-sm-ico"><use href="#i-hash"/></svg> heading <small>· one-file outline</small></div>
+    <div class="cw-sm-shape-h" style="color:var(--cw-head)"><svg class="cw-sm-ico"><use href="#i-hash"/></svg> heading <small>· one-file outline</small></div>
     <div class="cw-sm-shape-b">
       <div class="row hd">&#35; Mammalia</div>
       <div class="row i1 hd">&#35;&#35; Carnivora</div>
@@ -306,7 +315,7 @@ Look again at what the split did: it produced three **parts** — nothing more. 
     </div>
   </div>
   <div class="cw-sm-shape">
-    <div class="cw-sm-shape-h" style="color:#7fb5ff"><svg class="cw-sm-ico"><use href="#i-link"/></svg> wikilink <small>· graph edges</small></div>
+    <div class="cw-sm-shape-h" style="color:var(--cw-leaf)"><svg class="cw-sm-ico"><use href="#i-link"/></svg> wikilink <small>· graph edges</small></div>
     <div class="cw-sm-shape-b">
       <div class="row lk">&#91;&#91;Mammalia&#93;&#93;</div>
       <div class="row i1 mut">&rarr; &#91;&#91;Carnivora&#93;&#93;</div>
@@ -316,25 +325,21 @@ Look again at what the split did: it produced three **parts** — nothing more. 
   </div>
 </div>
 
-Each is a different *shape* of the same hierarchy: **folder** nests on disk (browse it); **tag** is flat and faceted, so one concept can sit under many axes at once (cross-cutting search); **heading** nests inside a single document (one reference page); **wikilink** is parent/child as graph edges with no folders at all (traversal + graph queries).
+**Folder** = browse it in the file explorer. **Tag** = flat and faceted, so one note can sit under many axes at once. **Heading** = one reference document with an outline. **Wikilink** = parent/child as graph edges, no folders at all.
 
-**How the system makes this possible** — three choices working together:
+And you don't have to choose only one: `also_emit` runs mechanisms **in parallel**, so an import can be a folder tree *and* a tag facet at the same time — folders to browse, tags to slice ([Ranganathan-style faceted classification](/crosswalker/concepts/hierarchy-primitives/)). Because the mechanism set is closed at five and [`render()`](/crosswalker/concepts/terminology/#render) is the only place *(level + mechanism) → address* is decided, re-pointing the mechanisms re-shapes the whole vault without touching the engine.
 
-1. **A closed set of five mechanisms** (`folder · file · heading · tag · wikilink`). Structure can only ever be one of these, so the space is small, total, and predictable — not an open-ended scripting surface.
-2. **`render()` is the single coupling point.** The transformation (what a part *is*) and the mechanism (what *shape* it takes) are orthogonal — *(level + mechanism) → address* lives in exactly one function. Swap the mechanism, keep the data, get a different vault; the engine never changes.
-3. **`also_emit` runs mechanisms in parallel.** One import can be a folder tree *and* a parallel tag facet at once — folders to browse, tags to slice ([Ranganathan-style faceted classification](/crosswalker/concepts/hierarchy-primitives/)). You're never forced to pick just one.
+<Aside type="note" title="Status — variable-depth (ragged) hierarchy">
+**Shipped:** variadic folder expansion + the tail rule, so ragged ids (`T1055` alongside `T1055.011`) nest correctly — see the [2026-07-11 shape-workbench synthesis](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/).
 
-So **hierarchy is something you declare in a recipe, never something baked into Crosswalker.** Re-point the mechanisms and the same source becomes a tree, a flat tag-space, an outline, or a link graph — that is the control and flexibility the model buys you.
-
-<Aside type="caution" title="Open question — variable-depth structure (under research)">
-The diagrams above are **conceptual**. v0.1 renders **fixed / known depth** well: you declare one `layout` row per level (or the wizard derives them from sample delimiters), and the `split` filter returns one part *by index*. What's **not** yet first-class — and is under active research — is **variable / ragged depth**: splitting one packed key into *however many parts there are*, per row, with smart fallback when a regex over- or under-splits — plus polyhierarchical **tag** layout, data-driven **heading** depth, and hierarchy-as-**graph-edges**. Honest current-state + the design space: [open-question log](/crosswalker/agent-context/zz-log/2026-06-14-variable-depth-hierarchy-open-question/) → [Challenge 42](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/).
+**Still open** for tag / heading / graph-edge layouts and the materialize-as-own-note question: [Challenge 42](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) · [original open-question log](/crosswalker/agent-context/zz-log/2026-06-14-variable-depth-hierarchy-open-question/).
 </Aside>
 
-**Where this convention is stamped in:** [terminology](/crosswalker/concepts/terminology/) (what *Concept*, *Recipe*, *Address* mean) · [`recipe.schema.json` → `$defs.layout_entry`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) (the machine contract — `mechanism`, `template`, ordered `layout`) · [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) (the same, in prose) · [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) (the 5 mechanisms) · [conventions](/crosswalker/concepts/conventions/) (template + filter naming rules) · [mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/) (source → vault) · [target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) (why `render()` is the single coupling point).
+**Where this is written down:** [terminology](/crosswalker/concepts/terminology/) (what *Concept*, *Recipe*, *Address* mean) · [`recipe.schema.json` → `$defs.layout_entry`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) (the machine contract — `mechanism`, `template`, ordered `layout`) · [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) (the same, in prose) · [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) (the 5 mechanisms) · [conventions](/crosswalker/concepts/conventions/) (template + filter naming rules) · [mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/) (source → vault) · [target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) (why `render()` is the single coupling point).
 
-## The ingest tools — readers by source shape
+## The readers — one per shape your data arrives in <span id="the-ingest-tools"></span>
 
-A reader is a *front-end* to `render()`, never a new engine — and the same readers back the wizard's parsers (*one reader, two doors*). There's one per shape structured data actually arrives in, and together they produce the two things any vault holds: **concepts** (the nodes) and **relationships** (the typed edges between them):
+A reader is a *front-end* to `render()`, never a second engine — and the same readers back the wizard's parsers (*one reader, two doors*). Between them they produce the only two things a vault holds: **concepts** (the notes) and **relationships** (the links between them):
 
 | Source shape | What a reader does | Produces |
 |---|---|---|
@@ -344,9 +349,9 @@ A reader is a *front-end* to `render()`, never a new engine — and the same rea
 
 The *shapes* are general. The current named implementations in `tools/` — `generate-fixtures` plus the `crosswalk-from-*` extractors — happen to target the compliance launch corpus; see the [ingestion dev log](/crosswalker/agent-context/zz-log/2026-06-02-ingestion-tooling-dev/) for those specifics and the [readiness board](/crosswalker/agent-context/zz-log/2026-06-12-urm-ingestion-readiness/) for status.
 
-## From vault to answers
+## Getting answers back out <span id="from-vault-to-answers"></span>
 
-A vault is just **concepts and the typed edges between them** — a graph in plain Markdown. You query that graph with a closed set of primitives, then draw the result in whatever shape answers the question:
+A vault is just **notes and the typed links between them** — a graph, in plain Markdown. You query that graph with a small closed set of operations, then draw the result in whatever shape answers the question:
 
 <div class="not-content cw-sm-pipe">
   <div class="cw-sm-stage cw-t1"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-graph"/></svg></span><b>Concepts<br/>+ edges</b><small>the graph</small></div>
@@ -361,23 +366,38 @@ A vault is just **concepts and the typed edges between them** — a graph in pla
 - **[Query primitives](/crosswalker/concepts/query-primitives/)** — the closed 8-verb set every view is composed from.
 - **[View shapes](/crosswalker/concepts/view-shapes/)** — how the same data draws as a table, pivot, graph, etc. (the "[four dials](/crosswalker/agent-context/zz-log/2026-06-03-four-dials-join-shape-layout-view/)": join × shape × layout × view).
 
+A [Bases](/crosswalker/concepts/metadata-ecosystem/)-backed answer is a **[live view](/crosswalker/concepts/terminology/#live-view)** over current data. A saved point-in-time result is a **[materialized snapshot](/crosswalker/concepts/terminology/#materialized-snapshot)**. Neither changes which copy is authoritative — the Markdown still is.
+
 **What an answer *means* is domain-specific — that's the application layer, not the system model.** The same primitives produce a coverage matrix, a gap list, a dependency graph, or a standard-format export, depending on the question you ask. *Example (compliance launch use case):* they compose into the [Control / Assurance / Risk lenses](/crosswalker/agent-context/zz-log/2026-06-04-urm-questions-data-morphology/) — a [data-morphology](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) move (traverse → summarize → reshape → draw). A different domain frames its own.
 
-## Two surfaces — UI first, config as the escape hatch
+## The same power from the UI or a recipe file
 
-Every lifecycle stage is reachable **both** ways, by design ([UI parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/)):
+Every step of the active Shape workflow is reachable from both surfaces by design; later lifecycle capabilities still have named parity gaps ([UI parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/)):
 
 <div class="not-content cw-sm-pipe cw-mid">
   <div class="cw-sm-col">
     <div class="cw-sm-stage cw-io" style="width:240px;flex-direction:row;text-align:left;justify-content:flex-start;"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-wand"/></svg></span><span><b>UI surface (Obsidian)</b><small>wizard · query commands · crosswalk import · reset</small></span></div>
     <div class="cw-sm-or">both reach…</div>
-    <div class="cw-sm-stage cw-t2" style="width:240px;flex-direction:row;text-align:left;justify-content:flex-start;"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-term"/></svg></span><span><b>Config / CLI (escape hatch)</b><small>recipes (JSON) · tools · query frontmatter</small></span></div>
+    <div class="cw-sm-stage cw-t2" style="width:240px;flex-direction:row;text-align:left;justify-content:flex-start;"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-term"/></svg></span><span><b>Recipe / CLI (escape hatch)</b><small>ImportRecipe JSON · tools · automation</small></span></div>
   </div>
   <span class="cw-sm-chev">→</span>
   <div class="cw-sm-stage cw-eng"><span class="cw-sm-badge"><svg class="cw-sm-ico"><use href="#i-gear"/></svg></span><b>same engine<br/>+ schema</b></div>
 </div>
 
-The config files are the *programmatic* path (automation, agents, power users) — never the *only* path. Principle: [UI first, config as escape hatch](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/).
+The recipe file is the portable path for automation, agents, and power users. The UI **edits that same file** rather than keeping a second, private configuration model — which is why anything you can click, you can also script. Principle: [UI first, config as escape hatch](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/).
+
+## Four words that get mixed up
+
+Crosswalker's vocabulary describes four different dimensions. Keeping them separate stops a Recipe, a Tier, a layer, and a lifecycle capability being read as the same kind of thing.
+
+| Dimension | Question answered | Examples |
+|---|---|---|
+| **[Artifact role](/crosswalker/concepts/artifact-roles-and-authority/)** | What kind of governed thing is this? | [Schema Contract](/crosswalker/concepts/terminology/#schema-contract) (the rules); [Knowledge Set](/crosswalker/concepts/terminology/#knowledge-set) (the content); [Recipe](/crosswalker/concepts/terminology/#recipe) (the instructions); later [Execution Record](/crosswalker/concepts/terminology/#execution-record) and [Package Manifest](/crosswalker/concepts/terminology/#package-manifest) |
+| **[Representation tier](/crosswalker/concepts/terminology/#tiers)** | Where does knowledge live, and which copy wins? | Tier 0 source; Tier 1 canonical Markdown; Tier 2 derived SQLite cache |
+| **Logical layer** | Which part of the system is doing the work? | Import, storage, projection, query, export, audit |
+| **[Lifecycle capability](/crosswalker/concepts/ontology-lifecycle/)** | What is the user actually trying to do? | Acquire, Shape, Connect, Understand, Share, Maintain |
+
+Tier 1 is therefore a **representation and authority tier**, not the root artifact. The [ImportRecipe](/crosswalker/concepts/terminology/#import-recipe) sits *beside* generation: its Recipe Schema Contract governs the instruction, the Tier 1 Schema Contract governs the generated records.
 
 ## Follow any thread
 
@@ -392,9 +412,12 @@ This page is the hub; each concept goes as deep as you want:
 
 ## Related
 
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — separates governed artifacts from tiers, derivatives, runtime values, and carriers
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — the six recurring capabilities this system supports
 - [System architecture](/crosswalker/concepts/system-architecture/) — the detailed reference this page illustrates (component matrix, read/write flows, codebase map)
 - [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive, the two-mode architecture, the input floor
 - [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) — the 5 vault mechanisms `render()` composes
+- [Mapping into Obsidian](/crosswalker/concepts/mapping-into-obsidian/) — source row → note on disk, and the two kinds of link Crosswalker creates
 - [Query primitives](/crosswalker/concepts/query-primitives/) + [view shapes](/crosswalker/concepts/view-shapes/) — the answer side
-- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the Tier 1 contract every producer targets
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the Tier 1 and ImportRecipe Schema Contracts
 - [Roadmap](/crosswalker/reference/roadmap/) — how the implementation maps onto this model

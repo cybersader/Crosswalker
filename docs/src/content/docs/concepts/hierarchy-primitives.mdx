@@ -2,7 +2,7 @@
 title: "The four Obsidian primitives — folder, heading, tag, wikilink"
 description: "The four orthogonal structural primitives Obsidian gives you for representing hierarchy and relationships — folder, heading, tag, wikilink. Real recipes compose them; the target-structure choice determines how a source ontology lands in Tier 1. (File and frontmatter are the other two building blocks — see Mapping into Obsidian.)"
 sidebar:
-  order: 8
+  order: 17
   label: "Obsidian primitives"
 tags: [vault, obsidian, hierarchy, polyhierarchy, target-structure, primitives]
 ---
@@ -126,8 +126,8 @@ The mechanisms are orthogonal, so a single import recipe can use multiple at onc
 | **Folder + tag (parallel)** | `Frameworks/NIST/AC/AC-2.md` with frontmatter `tags: [framework/nist/ac/ac-2, cross-cutting/auth]` — primary folder for canonical path, tags for polyhierarchical views. The SEACOW pattern. |
 | **Folder (top) + heading (within)** | Top 2 levels as folders (`Frameworks/NIST/`), then leaf concepts as files, then enhancements as headings within those files (`AC-2.md` with `## AC-2(1)`, `## AC-2(2)`). Reduces file count without losing folder navigation. |
 | **Flat files + wikilink-graph** | All concepts as flat files in `Concepts/`; hierarchy carried entirely in `parent:` / `children:` frontmatter wikilinks. Maximally graph-shaped; loses folder navigation. |
-| **Folder + wikilink-graph (hybrid)** | Folders for organizational chunks (frameworks, evidence, people); wikilinks within frontmatter for typed cross-cutting relationships (a control's `mapped_to:` set). |
-| **Tag-only flat** | All concepts as flat files in `Controls/`; hierarchy carried entirely in nested tags. Best for vaults that prioritize Bases queryability over filesystem navigation. |
+| **Folder + wikilink-graph (hybrid)** | Folders for organizational chunks (frameworks, evidence, people); wikilinks within frontmatter for typed cross-cutting relationships (a concept's `mapped_to:` set — in a GRC vault, a control's crosswalk targets). |
+| **Tag-only flat** | All concepts as flat files in `Concepts/` (e.g. `Controls/` in a GRC vault); hierarchy carried entirely in nested tags. Best for vaults that prioritize Bases queryability over filesystem navigation. |
 
 The right composition depends on:
 - Vault size (heading-heavy keeps file count low)

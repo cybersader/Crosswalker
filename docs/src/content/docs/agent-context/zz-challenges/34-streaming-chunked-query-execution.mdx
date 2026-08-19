@@ -4,10 +4,15 @@ description: "How does merging scale chunk-by-chunk to not blow memory? Survey D
 tags: [research, streaming, chunked-execution, scale, duckdb, polars, materialize, datomic, datafusion, ch-34]
 date: 2026-05-08
 sidebar:
-  label: "34 · Streaming query execution"
+  label: "Ch 34 · Streaming query execution"
+  order: 34
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — no research pass has run yet]
+This brief is unresolved and awaiting a fresh-agent research pass. Findings land as a deliverable in [`zz-research/`](/crosswalker/agent-context/zz-research/) plus a dated synthesis entry in [`zz-log/`](/crosswalker/agent-context/zz-log/); the brief then moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/).
+:::
 
 :::caution[Genuine gap in prior challenges]
 Prior challenges (Ch 10/11/12/14/16/18/24) treated query execution as point-in-time materialization — load result into memory, render. The user's question "how does merging scale chunk-by-chunk to not blow memory" is unanswered. Ch 34 fills the gap.

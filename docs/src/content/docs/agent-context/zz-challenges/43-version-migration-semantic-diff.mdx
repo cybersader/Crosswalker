@@ -4,11 +4,15 @@ description: "Act 2 of the five-act lifecycle arc (import → live with it → m
 tags: [research, migration, versioning, semantic-diff, sssom, curie, evidence, lineage, ch-43]
 date: 2026-07-11
 sidebar:
-  label: "43 · Version migration"
-  order: -20260711
+  label: "Ch 43 · Version migration"
+  order: 43
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — no research pass has run yet]
+This brief is unresolved and awaiting a fresh-agent research pass. Findings land as a deliverable in [`zz-research/`](/crosswalker/agent-context/zz-research/) plus a dated synthesis entry in [`zz-log/`](/crosswalker/agent-context/zz-log/); the brief then moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/).
+:::
 
 :::caution[Two different "version" problems — do not conflate them]
 Crosswalker already has a migration policy for **its own** `_crosswalker` frontmatter schema (`crosswalker-v1` → `crosswalker-v2`, see [the schema-version migration policy](/crosswalker/agent-context/v0-1-schema-spec/#schema-version-migration-policy)) — additive transforms, `previous_ids` aliasing, idempotent, resumable. **That is not this challenge.** This challenge is about the **source ontology** changing — NIST publishes CSF 2.0, MITRE bumps ATT&CK, CIS ships Controls v8 — while concepts already live in a user's vault with evidence links, `user_preserve` fields, and crosswalk edges hanging off them. Keep the two axes distinct throughout the brief; conflating them is the single most likely way to produce a useless deliverable.

@@ -1,0 +1,353 @@
+---
+title: "Owner review queue — what needs your eyes and in what order"
+description: "The single checklist of everything awaiting the project owner's review or ratification: 22 open decisions written as self-contained decision cards, the pages that changed underneath them, and how to ratify without ceremony."
+tags: [log, meta, decision-register, review]
+date: 2026-07-25
+sidebar:
+  label: "07-25 · Review queue"
+  order: -20260725.3
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="How to use this page">
+Read top to bottom; the order is dependency order, not importance. Every decision below is a self-contained card: what it is in plain language, what concretely changes, the tradeoffs, and a recommendation. You do not need to open anything else to decide — the links are there for evidence, not for context. Ratifying can be as terse as "P1a, P2a, P3b, …" in a session. This page is updated as items clear; when the queue is empty it gets a resolution note and stops being maintained.
+</Aside>
+
+Two **decision registers** (working logs that collect open choices, the evidence behind each one, and the options — nothing in a register is policy until it is ratified) feed this queue:
+
+- The [primitives reconciliation register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) — the log tracking proposed upgrades to the core building blocks every imported note is made of. It holds decisions **P1–P14**.
+- The [save-and-exact-replay register](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) — the log tracking how a saved import can be re-run later and produce the same result. It holds decisions **D1–D8**.
+
+**The one sequencing rule:** section 1a changes `spec/tier1.schema.json` (the machine-checked contract that defines what a valid imported note looks like), and D1 locks the fingerprint scheme computed over that same contract. **1a must be ratified before D1.** Everything in 1b is independent and can be decided in any order.
+
+## 1a. Schema fields — 6 decisions
+
+The primitives register calls this group **Gate 1 — schema fields**. All six are additive and optional: existing notes stay valid, and no decision here opens the closed layout grammar or adds a new artifact type.
+
+### P1 — Record the order the source published its items in
+
+**What this is.** Frameworks publish their items in a deliberate order — NIST CSF 2.0 runs GOVERN, IDENTIFY, PROTECT, DETECT, RESPOND, RECOVER. Crosswalker's [note contract](/crosswalker/concepts/terminology/#schema-contract) (the machine-checked rulebook, `spec/tier1.schema.json`, that spells out which properties a valid note may carry) has nowhere to store that order, so every derived list gets re-sorted alphabetically by identifier. The visible damage today: the generated CSF vault shows DETECT before GOVERN. The proposal adds one optional text field holding a position-within-parent path (like `00001.00001.00003`) — the same shape three first-party sources already ship.
+
+**In practice.** One optional string in `spec/tier1.schema.json`, written by the generator, read as a sort key by the enrichment step; the [target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) page (which commits to alphabetical canonicalization) needs an amendment. Sub-decision: does the ordinal join `concept_cid` — the fingerprint that says "this is the same concept no matter where it sits in a folder tree"? Roughly a day. Reversible if kept out of `concept_cid`; **not** reversible if included, because every stored concept fingerprint would change.
+
+**Pros.** Fixes a wrongness a GRC reader will notice immediately. Evidence is first-party, not inferred: CPRT ships a `sort` element per concept, SP 800-53A ships `sort-as` across 5,384 assessment rows, CRI Profile ships `Outline Id`.
+
+**Cons.** One more field to populate and keep correct on re-import. Option (b) would make a publisher renumbering their table look like a content change.
+
+**Recommendation: (a) adopt, excluded from `concept_cid`.** Order is presentation, not identity — a control does not become a different control because the publisher renumbered it. And (a) is the only version you can back out of.
+
+**Status: ratified (a) 2026-07-27.** Implementation started (ordinal stamper + wizard-path stamping landed, compiling) and is deliberately paused mid-rollout while the queue is under review; remaining: recipe-path stamping, enrichment sort, the schema field itself, tests, and register bookkeeping.
+
+### P2 — Point relationship endpoints at identifiers, not filenames
+
+**What this is.** Every relationship connects two things — "MFA-Policy **implements** AC-2" connects a policy to a control. The two things at either end of a relationship are its [**endpoints**](/crosswalker/concepts/terminology/#endpoint) (here: MFA-Policy and AC-2). A junction note (a note that stores one such relationship as its own file, so it can be reviewed, commented on, and diffed) records its endpoints today as Obsidian wikilinks:
+
+```yaml
+subject: "[[MFA-Policy]]"   # a pointer to a FILE, by its current name
+object: "[[AC-2]]"
+```
+
+A wikilink is a **file address** — like referring to a person as "whoever lives at 12 Main St." Rename or move the file and the reference breaks. An **identity** is the concept's own stable identifier — `nist-800-53:AC-2`, the control's catalog ID — like referring to that person by their employee ID, which survives a house move. The docs claim relationship endpoints are identities; the shipped contract stores only the file-address form. That is why renames break resolution and why parent references come back empty in the database projection. The proposal adds the identity alongside the link, which stays as the clickable affordance:
+
+```yaml
+subject: "[[MFA-Policy]]"          # stays — what you click in Obsidian
+subject_curie: "org:mfa-policy"    # new — the stable identity
+object: "[[AC-2]]"
+object_curie: "nist-800-53:AC-2"
+```
+
+**In practice.** Optional `subject_curie` / `object_curie` on junction notes and `parent_curie` as the hierarchy carrier in `spec/tier1.schema.json`; `src/tier2/projector.ts` reads them; wikilinks stay as the clickable affordance. Small to medium. Fully reversible — they are optional fields.
+
+**Pros.** Makes a documented invariant actually true. Survives file moves and renames. Unblocks reliable graph queries across frameworks.
+
+**Cons.** Two representations of the same edge to keep in sync; every writer has to emit both.
+
+**Recommendation: (a) add the optional identity fields.** Option (b) means editing the docs to retract "identity, not address", which is one of the project's stated differentiators.
+
+### P3 — Say which crosswalk release an assertion came from, and let it say "not equivalent"
+
+**What this is.** An [**assertion**](/crosswalker/concepts/terminology/#mapping-assertion) is one claimed fact about how two concepts relate — a single row of a crosswalk; in GRC terms, "NIST AC-2 **is equivalent to** ISO A.9.2.1." Someone asserted it; it can be right, wrong, disputed, or superseded, which is exactly why you need to know where it came from. A [**mapping set**](/crosswalker/concepts/terminology/#mapping-set) is one published crosswalk release — the whole collection of those assertions shipped together, for example NIST's 800-53 Rev 4 to Rev 5 mapping. Crosswalker already carries a `mapping_set_id` through note files and the SSSOM export, but the [**contract**](/crosswalker/concepts/terminology/#schema-contract) — the machine-checked rulebook (`spec/tier1.schema.json`) that spells out which properties a valid note may carry; it is what the plugin, an outside script, or an agent all validate against before writing — does not model it. A property the rulebook doesn't know about is carried along blindly: never checked, never given meaning, and the database drops it. So importing two releases of the same framework silently overwrites the first. Separately, the spec prose promises a `NOT` modifier ("these two are explicitly **not** equivalent") that the machine schema rejects outright, and the ontology version field is never populated.
+
+**In practice.** Promote `mapping_set_id` into `spec/tier1.schema.json` and the Tier 2 database key, add `predicate_modifier: NOT`, populate version. Touches the schema, the SSSOM importer and exporter, the projector key, and the [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) page. A couple of days. Schema-additive, but the database key change means a reprojection.
+
+**Pros.** Kills silent data loss — today two framework revisions collide with no warning. The `NOT` modifier was the stated reason SKOS was rejected as a formalism; without it, that rejection is unjustified. The SSSOM path already round-trips the id, so half the work exists.
+
+**Cons.** (1) One-time cache rebuild: changing the database key means the local query cache is rebuilt — cheap, since it is a deletable cache derived from your notes, but saved views built against the old shape need a look. (2) Mixed vaults until re-import: notes generated before the change stay valid but do not gain release provenance retroactively, so for a while some crosswalk rows know which release they came from and some do not, and queries must tolerate both. (3) `NOT` is a sharp tool for consumers: once an assertion can say "explicitly not equivalent," every exporter and downstream tool must carry the negation faithfully — a dropped `NOT` silently turns "not equivalent" into "equivalent," which is worse than no claim at all. (4) Three changes ride one decision, so if one stalls they all stall; option (b) splits the bundle, deferring `NOT`.
+
+**Recommendation: (a) all three now.** They touch the same files, and shipping the revision-collision bug through another release is worse than the extra day.
+
+### P4 — Validate the two note kinds that currently skip validation
+
+**What this is.** The generator already writes two kinds of note the contract has never heard of: [**facet** notes](/crosswalker/concepts/terminology/#facet-note) (an index note collecting every concept that shares one property value — in a GRC vault, every control tagged with a given theme) and [**hub** notes](/crosswalker/concepts/terminology/#hub-note) (a table-of-contents note for one folder level). Because the contract has no branch for them, they bypass write-time validation entirely — the vault reader knows note kinds the machine contract does not.
+
+**In practice.** Add schema branches for both kinds in `spec/tier1.schema.json` and route them through `validateTier1Frontmatter` in `src/generation/enrich.ts`. Optional add-on (b): today the `kind` property on an ordinary note is free text — a typo like `kind: hubb` silently passes as a plain concept note. (b) would close the list so only kinds the rulebook knows are accepted and anything else fails loudly; the cost is that experimenting with a new note kind then requires a schema release first. Small. Fully reversible.
+
+**Pros.** Closes a validation hole in the one gate that makes external producers first-class. Lets anyone else emit the same note kinds legally. Costs nothing at read time.
+
+**Cons.** Any facet or hub note currently being written non-conformantly will start failing validation — you may surface latent bad output (a warning, not a block, outside strict mode). (b) additionally trades experimentation freedom for typo-catching.
+
+**Recommendation: (a), and take (b) in the same pass.** Surfacing latent bad output is the point of having a contract.
+
+**Owner direction (2026-07-29): adopt the contract branches — the external-producers-first-class half — and decline (b).** A closed kind list is beta discipline; the project is alpha and note-kind experimentation is ongoing. Enforcement-tightening in general stays de-prioritized until beta; the self-validation routing rides along with the branches since it is nearly free and never blocks in non-strict mode.
+
+### P5 — Stop publishing 10 false "these two controls are equal" claims
+
+**What this is.** There are two different ways a list of controls can cover a requirement, and they are different claims. "Each alone": any one of B, C, D satisfies A. "Together": B, C and D satisfy A only *in combination* — like a prescription that needs all three drugs, not any one of them. Published crosswalks make both kinds of claim (CRI Profile even has distinct labels: **Full** = one target alone fully covers it; **Full Summarily** = the targets cover it only taken together, "in sum"). Crosswalker's edge rows can only express "each alone," so every "together" claim gets flattened into separate rows that each say "this one covers it" — a false statement the source never made. Worst case is `equal`: the shipped test vault holds 10 controls marked equal to several statements at once, which flattening turns into "those statements all equal each other." The fix is an optional `group_id` (a tag marking several rows as one joint claim) plus an importer guard that refuses to flatten a multi-target `equal`.
+
+**In practice.** Optional field in `spec/tier1.schema.json`, guard in `src/import/sssom-importer.ts`, regenerated edge fixtures. Small to medium. Reversible.
+
+**Pros.** This is a live correctness bug in a compliance tool, not a nice-to-have. "Together" claims are not rare: in CRI's published mapping workbook they outnumber "each alone" claims roughly 3 to 1 (1,478 rows).
+
+**Cons.** Some already-generated edges change shape or disappear; fixtures must be regenerated.
+
+**Recommendation: (a) field and guard together.** If you defer the field, still take the guard — option (c) means knowingly shipping false equivalence assertions.
+
+**Status: ratified (a) 2026-07-29.** Owner accepts the regeneration cost explicitly — alpha-phase output is regenerable by definition.
+
+### P6 — Write down which relationships are reversible, symmetric, or chainable
+
+**What this is.** When Crosswalker walks relationships across the graph (closure), it needs to know which relationships can be followed backwards (inverse), which hold in both directions (symmetric), and which chain (transitive). Today that knowledge is folklore encoded in query conventions — "remember to check both directions". The proposal is a small vocabulary table declaring those properties per relationship type.
+
+This is the last step of a decision already made: the [April foundation research](/crosswalker/agent-context/zz-log/2026-04-10-foundation-research-synthesis/#edge-semantics-should-be-set-theoretic-not-skos-ish) chose **set-theoretic** relationship types precisely because set relations have mathematically fixed properties — "A broader than B" *necessarily* means "B narrower than A" (inverses); "equals" necessarily holds both ways (symmetric); "approximately equal" deliberately does **not** chain, because approximation decays across hops. The table has no design risk: the math already dictates every one of its six rows. P6 just moves those facts from developers' heads into one file the code reads.
+
+**In practice.** A small table plus the Tier 2 closure code reading it. Option (a) writes the six [STRM](/crosswalker/reference/registry/strm/) rows now. Option (b) is not a different design — it is "later": defer the table to v0.2, when custom relationship vocabularies (`mitigates`, `detects`, user-defined) arrive and a registry becomes mandatory anyway, since nobody can hard-code the properties of predicates users invent. (b)'s only virtue is deferral; its cost is the closure code keeps guessing for another release. (a) now and v0.2 extends the same table. Small. Reversible — it is a lookup table.
+
+**Pros.** Gives closure a principled stopping rule instead of a depth guess, and lets a run explain *why* a path was walked, which is what an auditor asks.
+
+**Cons.** A new vocabulary surface to maintain; a wrong entry produces a wrong closure silently.
+
+**Recommendation: (a) now, scoped to the six STRM predicates.** They are stable and published. Waiting for v0.2 means the closure code keeps guessing for another release.
+
+## 1b. Cleanup and language — 8 decisions
+
+The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate 3 — language** (P12–P14). None of them blocks the replay work; they can all be ratified in the same sitting.
+
+### P7 — Cut the internal vocabulary from 16 names to 7
+
+**What this is.** The project has been naming the kinds of thing it manages — Knowledge Set, Schema Contract, Execution Record, Package Manifest, Recipe Binding, MappingSet, Carrier, and so on. Sixteen such nouns are live in the docs; five of them appear nowhere in the code at all, and the page that introduced them was written specifically to *stop* noun proliferation. The proposal keeps seven and demotes the rest to plain description.
+
+**In practice.** Edits to [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) (the concept page defining who is allowed to assert what), [terminology](/crosswalker/concepts/terminology/), and pages citing them. No code changes. A medium doc pass. Fully reversible — it is language.
+
+**Pros.** This is the cheapest pruning moment there will ever be: the vocabulary layer is still uncommitted and no user-facing surface depends on it. Every removed noun is one less thing a new reader has to learn before the docs make sense.
+
+**Cons.** Two of the removed nouns (Execution Record, Package Manifest) are placeholders for envelopes that will genuinely exist later, so you would be re-introducing them.
+
+**Recommendation: (a) prune to 7**, keeping Execution Record and Package Manifest as a three-line "planned envelopes" note rather than full first-class nouns.
+
+### P8 — Split one oversized schema file into "import" and "query"
+
+**What this is.** `spec/recipe.schema.json` (the machine contract for a Recipe — the saved specification of how a source becomes notes) is one 886-line file covering two unrelated jobs: importing a source, and querying the result. The query half is 45.5% of the file and shares zero definitions with the import half. Query recipes have to fake import-only fields just to validate — one shipped recipe carries a triply-nested empty condition purely to satisfy the schema.
+
+**In practice.** Two schema files with an additive `$id` version bump, plus updated consumers (validator, recipe registry, schema-spec page). Medium. Reversible in code, but a published `$id` is a public surface, so reversing means a second bump.
+
+**Pros.** Import producers stop being shown query syntax they must never use. Validation errors become intelligible. Each half versions independently.
+
+**Cons.** Two contracts to keep aligned; anything pinning the current `$id` needs updating.
+
+**Recommendation: (a) two schema files.** Option (b) — conditional requirements inside one file — makes the schema harder to read than the problem it solves.
+
+### P9 — Delete the unused second validation style
+
+**What this is.** The validator supports two ways of expressing the same rule set ("shape dispatch" styles A and B), documented as producing identical verdicts. Both production call sites hardcode style A. Style B still compiles a second validator at every plugin startup and doubles roughly 350 lines of tests.
+
+**In practice.** Delete the B branch in `src/validation/validator.ts`, its definitions in `spec/recipe.schema.json`, and the doubled test matrix. An hour or two. Fully reversible via git.
+
+**Pros.** Faster plugin startup, less test noise, one fewer way to say the same thing.
+
+**Cons.** An external producer using style B would break — there is no evidence any exists.
+
+**Recommendation: (a) delete.**
+
+### P10 — Collapse five internal recipe representations down to two
+
+**What this is.** A Recipe is represented five different ways inside the plugin — the renderer's hand-typed one, the schema-generated one, two legacy config models, and the workbench editor model — with roughly 2,470 lines of translation glue between them. The enrichment block alone is declared four separate times. Every translation boundary is a place where a saved recipe can silently lose a field.
+
+**In practice.** Make the renderer's type an alias of the generated type, retire the legacy models behind a dated shim, and move one leaking validation check to the workbench UI. Touches `src/render/index.ts`, `src/types/config.ts`, `src/import/mapping/types.ts`. Large, multi-day, and it is the same code the save-and-replay slice will rewrite. Medium reversibility — a wide refactor, but test-covered.
+
+**Pros.** Every bug caused by translation drift disappears, and the `RecipeDocument` fidelity work (the preservation boundary that keeps a saved recipe byte-faithful to its original) gets substantially simpler.
+
+**Cons.** Big diff, and doing it now means doing much of it twice once the replay slice lands.
+
+**Recommendation: (b) collapse during the replay slice.** Same files, same tests, one review instead of two.
+
+### P11 — Put every "reserved for later" feature on one page, and delete the dead code
+
+**What this is.** Several features are declared but never executed: a general graph-edges block, a shortest-link style, tag and wikilink layout mechanisms, and Graph/Timeline view parameters. Each is documented (or half-documented) somewhere different, so a reader cannot tell what actually works. Separately, `query-composer.ts` has zero production importers, and a 1,558-line query module is reachable only from a benchmark command.
+
+**In practice.** One `reference/reserved-for-v0.2` page, delete `query-composer.ts`, and a "wire it or drop it" gate on the query module before [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) ships. Small-to-medium doc pass plus a deletion. Reversible.
+
+**Pros.** A reader gets one honest answer about what is live. Dead code stops being maintained, reviewed, and shipped.
+
+**Cons.** The RC gate creates a forcing decision later, which is the point but is still a future obligation.
+
+**Recommendation: (a) consolidate, delete, and set the RC gate.**
+
+### P12 — Correct the public claim about how many building blocks there are
+
+**What this is.** The project committed publicly to a "closed 5-mechanism grammar" — five ways a level of a source can land in the vault. The real palette has grown to nine (folder, name, note, heading, tag, link, property, alias, body) under three different names in three different files, with counts of 3, 4, 5, 6 and 9 live simultaneously and none cross-referencing the others. The proposal restates the commitment honestly: nine destination primitives, five of which can serve as ordered layout mechanisms, each marked wired / partial / reserved.
+
+**In practice.** Edits to the commitment text in the agent instructions, [hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/), and the [Ch 22 synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/). No code. A medium doc pass. Fully reversible.
+
+**Pros.** The commitment stops being false. The "is this a new primitive?" review trigger starts firing on the real palette instead of an enum that no longer bounds anything.
+
+**Cons.** Publicly restating a numbered architectural commitment reads as drift — because it was drift.
+
+**Recommendation: (a) restate on the true palette.** A closed grammar you have already exceeded is not a constraint, it is a claim.
+
+### P13 — Give the word "primitive" exactly one meaning
+
+**What this is.** "Primitive" currently carries twelve distinct senses across docs and code. The proposal keeps the word for three families — destination primitives (nine ways meaning lands in the vault), query primitives (eight mechanism-neutral question verbs), change primitives (nine atomic graph edits) — plus one stance ("schema-as-primitive": the contract is load-bearing, engines are convenience) and one adjective use. Everything else says `irreducible` or its own proper name.
+
+**In practice.** A doc sweep plus mechanical renames across `spec/` and `src/`: transformation primitives to **transforms** (`spec/primitives/` to `spec/transforms/`), `TablePrimitives` to `TableParams` (a `spec/preset.schema.json` `$id` bump), ontology diff primitives to **change primitives**, "import primitive" to "import engine". Large but mechanical and fully delegable. Renames reverse cleanly; a published `$id` bump is a public surface.
+
+**Pros.** The single biggest readability win available in the knowledge base. New readers stop mis-learning the central word.
+
+**Cons.** Wide diff touching file paths and a schema id; must land with P12 or the docs contradict each other mid-sweep.
+
+**Recommendation: (a) full sweep**, sequenced alongside P8 so there is one `$id` bump event rather than two.
+
+### P14 — Split the terminology page into a reader glossary and an internals reference
+
+**What this is.** [Terminology](/crosswalker/concepts/terminology/) currently serves two audiences at once: a reader who needs a dozen words defined, and an implementer who needs the internals reference. It also carries about 15 orphaned rows and a glossary of engines the project already rejected.
+
+**In practice.** Two pages — a roughly 180-line reader glossary (the words that matter, the overloaded-words collision table, the three families, domain vocabulary, alias index) and an internals reference under `agent-context` — plus inbound link fixes. No code. Medium doc pass. Fully reversible.
+
+**Pros.** The glossary a new GRC reader needs becomes short enough to actually read, while implementers keep the depth where they look for it.
+
+**Cons.** Two pages to keep in sync; inbound links need updating.
+
+**Recommendation: (a) split — but only after P7, P12 and P13 land.** Splitting first means rewriting the new glossary twice.
+
+## 1c. Save and exact replay — 8 decisions
+
+From the [save-and-exact-replay register](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) (the log tracking how a saved import re-runs later and produces the same result). Its **Gate 1** — D1 through D4 — blocks the design specification. D5 and D6 block v0.1.7 shipping; D7 and D8 block v0.1.8. **D1 must be decided after section 1a.**
+
+### D1 — Add a second fingerprint that identifies the exact recipe revision
+
+**What this is.** Crosswalker uses fingerprints (hashes) to answer different questions. `effective_target_hash` answers "did anything that changes output behavior change?"; `concept_cid` answers "is this the same concept?". Replay needs a third: "which exact revision of this recipe is this?" The existing `computeRecipeHash()` covers only layout, also_emit and enrichment — it is **not** a whole-recipe fingerprint and must not be repurposed as one. `metadata.based_on.hash` currently stores the effective-target hash, so redefining it silently would corrupt existing ancestry records.
+
+**In practice.** Add a `recipe_document_digest` field across `spec/tier1.schema.json`, `spec/recipe.schema.json` and `src/generation/hash.ts`, and pick one wire syntax (`sha256-<hex>` everywhere, or also allow `sha256:<hex>`). Small to medium. Adding a field is reversible; option (b), renaming the existing field, is a migration.
+
+**Pros.** Keeps the drift-diagnosis matrix intact — separate fingerprints answer separate questions, and merging any two collapses diagnosis to a single bit.
+
+**Cons.** Five digests is a lot of vocabulary; it has to be taught once, clearly.
+
+**Recommendation: (a) new field, leave `recipe.hash` alone, and keep `sha256-<hex>` as the only syntax.** Two syntaxes for one hash is a needless comparison hazard.
+
+### D2 — Decide what a saved run is allowed to vary
+
+**What this is.** A **binding** is the record joining a saved recipe to the specific inputs it ran against — which file, which sheet, which header row, where output goes, what to do on conflict. The open question is whether a binding may also carry free-form parameters. If it can, it silently becomes a sixth way to change output, outside the closed layout grammar the project committed to.
+
+**In practice.** (a) a closed union of parser, destination and write-policy fields only; (b) an additive Recipe schema change declaring typed parameter slots. Touches the binding type and `spec/recipe.schema.json`. (a) is small, (b) medium. (a) can grow into (b) later; the reverse is not true.
+
+**Pros of (a).** The grammar stays closed, and `render(Recipe, ConceptIdentity)` stays a pure function of the recipe — the single coupling point the architecture depends on.
+
+**Cons of (a).** Genuinely parameterized recipes (same recipe, different scope) need a fork instead of a parameter.
+
+**Recommendation: (a) closed union.** Start closed; typed parameter slots stay available as a purely additive change if a real use case appears.
+
+### D3 — Define what "exact replay" is allowed to promise
+
+**What this is.** "Exact replay" needs a definition you can test. Byte-identical files are not achievable today: every note records a produced-at timestamp and producer version, and `user_preserve` regions hold edits the user owns and Crosswalker must not overwrite. Option (a) promises equivalence of the **managed projection** — everything Crosswalker owns matches, excluding run-scoped provenance and user-owned regions. Option (b) promises byte-identity, but only into an empty destination.
+
+**In practice.** An acceptance definition plus a test suite over `src/generation/provenance.ts` and `src/generation/frontmatter-merge.ts`; [conventions](/crosswalker/concepts/conventions/) and [consistency models](/crosswalker/concepts/consistency-models/) state the promise publicly. Definition is small; the test suite is medium. Low reversibility — narrowing a published promise later is a breaking claim.
+
+**Pros of (a).** It is true in a real vault where users have edited notes, and it is what an auditor actually needs: the managed facts match.
+
+**Cons of (a).** The word "exact" needs a footnote every time it is used.
+
+**Recommendation: (a) managed-projection equivalence**, with (b) available as a stricter opt-in check against a clean destination.
+
+### D4 — Decide whether to keep a copy of the original source file
+
+**What this is.** A hash proves a source file has not changed; it cannot bring the file back. Without retention, replay depends on the user finding the identical file again years later. Options: retain the bytes in a content-addressed store by default; verify a re-selected file instead; or support both with a visible per-binding status.
+
+**In practice.** A retained-object store (vault-visible versus plugin-private is a sub-decision), plus quota handling and license/privacy warnings — some framework sources cannot be redistributed. Mobile storage for retained bytes is unproven and currently scheduled at RC. Large. Low reversibility once users have data in a chosen location.
+
+**Pros of (c).** Honest about what is actually recoverable: each binding visibly reads "retained" or "needs reselection".
+
+**Cons.** Storage size, licensing exposure and the unproven mobile path all become real work.
+
+**Recommendation: (c) both, with explicit per-binding status — and retention off by default where source redistribution terms are unclear.** Do not promise retained-by-default until the mobile path is proven.
+
+### D5 — Decide whether editing a recipe makes a new version or a new recipe
+
+**What this is.** Today, customizing a recognized recipe **forks** it: a new recipe id with recorded ancestry pointing at the original. The replay proposal introduces an "active revision pointer", which blurs the line — is an edited recipe a new version of the same recipe, or a different recipe?
+
+**In practice.** (a) storage snapshots only, fork semantics unchanged; (b) true revision chains per logical recipe; (c) both, explicitly distinguished. Touches `src/import/recipe-document.ts` and the artifact-roles model. (a) small; (b) and (c) medium-to-large. Lineage semantics get written into shipped files, so changing them later means migrating stored ancestry.
+
+**Pros of (a).** Preserves the recipe-fidelity model already committed to; nothing stored today changes meaning.
+
+**Cons of (a).** A user who edits a recipe ten times ends up with ten recipes, which reads badly in a library UI.
+
+**Recommendation: (a) for v0.1.7**, with the library UI grouping forks by ancestry so they *read* as versions. Revisit (c) once the library UI exists and the pain is measured rather than predicted.
+
+### D6 — Decide what happens to setups saved under the old system
+
+**What this is.** `SavedConfig` is the older "remember my setup" object: bound to a source's column fingerprint, convenience state rather than a portable, shareable recipe. Portable recipes now do the same job better and travel between vaults. The question is what happens to the setups users already saved.
+
+**In practice.** (a) keep both, no migration; (b) an explicit opt-in converter that reports exactly what cannot be carried across; (c) stop creating new SavedConfigs. Touches the wizard UI, the [UI lexicon](/crosswalker/agent-context/ui-lexicon/), and the schema-spec page. (b) is medium. (c) is hard to undo once the old path is gone.
+
+**Pros of (b).** Nobody loses a saved setup, and the blocker report tells the user precisely what does not translate — the same "block rather than silently lose" rule the recipe-fidelity work already follows.
+
+**Cons.** A converter is real UI work and another surface to test.
+
+**Recommendation: (b) opt-in convert with blocker reporting**, and deprecate new SavedConfig creation only after the converter has shipped and been exercised.
+
+### D7 — Retire the overlapping audit-snapshot manifest
+
+**What this is.** Earlier audit research proposed a snapshot `manifest.json`. Its fields now overlap two things the artifact model already defines: the **Execution Record** (what one run did) and the **Package Manifest** (what a distributed bundle contains). Keeping all three means three contracts describing overlapping facts, which is exactly the proliferation the project just committed to preventing.
+
+**In practice.** (a) retire the audit-specific manifest; (b) keep it as a `package_kind: audit-snapshot` variant of Package Manifest; (c) keep three contracts. This lands in [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/), not now — today it is a documentation decision only. Fully reversible; nothing is built yet.
+
+**Pros of (b).** Preserves the audit fields the earlier research identified without adding a root artifact type.
+
+**Cons.** The audit research's specific fields still need re-homing one by one.
+
+**Recommendation: (b) keep it as a `package_kind` variant — and it is safe to defer the final call to v0.1.8 planning.** Nothing before v0.1.8 depends on this.
+
+### D8 — Decide whether the audit trail is signed by default
+
+**What this is.** The v0.1 stack pivot committed to git plus **signed commits** as the audit floor — a cryptographic guarantee that a change came from a specific, verifiable person. The current v0.1.8 page makes signing opt-in. So the project is either promising a signed audit trail it does not deliver by default, or describing ordinary version history in audit-trail language.
+
+**In practice.** (a) restore signed-by-default (requires key setup most Obsidian users do not have, and fails confusingly when absent); (b) keep opt-in and change public wording from "audit trail" to "version history", documenting signing as the upgrade path. Touches the v0.1.8 milestone page, [tradeoffs](/crosswalker/agent-context/tradeoffs/), and user-facing copy. (b) is small and fully reversible.
+
+**Pros of (b).** Honest with a GRC evaluator, who will ask what the signature covers and who holds the key.
+
+**Cons of (b).** "Version history" sells less well than "audit trail" in exactly the market being targeted.
+
+**Recommendation: (b) keep opt-in and downgrade the public wording.** An unsigned trail described as an audit trail is the kind of claim that fails a real audit; signing stays documented for teams that already run key management.
+
+## 2. Pages worth a skim (changed underneath you)
+
+In reading order; each takes a minute or two.
+
+| Page | Why skim it |
+|---|---|
+| [Primitives reconciliation register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) (the log tracking proposed upgrades to the core building blocks every imported note is made of) | The evidence behind P1–P14: verified findings, corpus counts, file-level citations |
+| [Save-and-exact-replay register](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) (the log tracking how a saved import re-runs later and produces the same result) | The evidence behind D1–D8, plus the five-digest model |
+| [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) (the concept page defining which artifact is allowed to assert what) | The page P7 would prune — read it as "keep or trim?" |
+| [Quick start](/crosswalker/getting-started/quick-start/) | Rewritten against the shipped workspace tab; the example note is now a real fixture |
+| [For GRC teams](/crosswalker/getting-started/grc-teams/) | Dataview fully purged; the evidence example is now a junction note (a relationship stored as its own reviewable file); worked `.base` snippet added |
+| [Emit valid notes from your own tools](/crosswalker/development/emit-tier-1/) | New page for external producers; its example is machine-validated against the real contract |
+| [Terminology](/crosswalker/concepts/terminology/) | Now second in the sidebar; the stale query table is replaced — the full restructure waits on P14 |
+| `README.md` (repo root) | The `_crosswalker` frontmatter example was contract-invalid; it now validates |
+
+## 3. Standing items (not decisions, just awareness)
+
+| Item | State |
+|---|---|
+| Docs dev/preview/tests moved to **port 14321** | Done — avoids collisions with other local Astro sites on 4321 |
+| Recent-updates stream on the [home page](/crosswalker/) | Already existed; anything with a `date:` frontmatter field surfaces automatically |
+| Knowledge-base work gated on decisions (the "primitive" rename sweep, noun pruning, terminology split) | Queued behind P7 and P12–P14; the change plans are already written into the primitives register (the log tracking proposed upgrades to the core building blocks) |
+| The false multi-target `equal` claims in the shipped test vault | Registered as P5; the importer guard is the minimum fix if the `group_id` field is deferred |
+| Everything remains **uncommitted** | Commit batching happens after ratification, per the working agreement |
+
+## Related
+
+- [Primitives reconciliation — decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) — evidence for P1–P14; its Gate 1 (schema fields) sequences before replay D1
+- [Save and exact replay — decision register](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) — evidence for D1–D8
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — the authority model P7 prunes and P4 enforces
+- [Artifact roles and authority synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) — why the anti-noun rule exists
+- [Roadmap milestones](/crosswalker/reference/roadmap/milestones/) — where each ratified decision lands

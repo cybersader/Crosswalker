@@ -4,10 +4,15 @@ description: "Survey multi-modal databases (DuckDB+DuckPGQ, Polars, Cozo, Oxigra
 tags: [research, query-engine, landscape-audit, duckdb, polars, cozo, oxigraph, materialize, datomic, scale, ch-33]
 date: 2026-05-08
 sidebar:
-  label: "33 · Multi-modal landscape audit"
+  label: "Ch 33 · Multi-modal landscape audit"
+  order: 33
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — deliverable landed 2026-05-09, brief not yet archived]
+Research has run: [Ch 33 deliverable](/crosswalker/agent-context/zz-research/2026-05-09-challenge-33-multi-modal-query-engine-landscape-audit/). The [Bases query layer synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) that absorbs these verdicts is not finalized, so the brief stays open here and remains re-runnable. It moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/) once that log closes it.
+:::
 
 :::caution[Pre-requisite for synthesis-log finalization + v0.1.7+ commitments]
 Prior engine commitments (Ch 10/11/12/14/16/18/24) were made under a GRC framing where vault sizes are bounded (~5K controls × 8 frameworks = ~50K junctions). Under [the ontology-web framing](/crosswalker/concepts/ontology-web-querying/), BioPortal hosts 700+ ontologies; UMLS has 3.5M concepts; OBO Foundry has hundreds × thousands. Sqlite-wasm with recursive CTE may not survive that scale. This challenge re-audits prior commitments and surveys multi-modal DBs to validate the path.

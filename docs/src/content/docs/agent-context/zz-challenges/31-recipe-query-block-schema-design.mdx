@@ -4,10 +4,15 @@ description: "Design the JSON Schema for an additive `query:` block in `recipe.s
 tags: [research, recipe-schema, query-block, json-schema, sparql, graphql, dbt, looker, cube-dev, ch-31]
 date: 2026-05-08
 sidebar:
-  label: "31 · Recipe query: block schema"
+  label: "Ch 31 · Recipe query block schema"
+  order: 31
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — deliverable landed 2026-05-08, brief not yet archived]
+Research has run: two deliverables (linked in the callout below). The [Bases query layer synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) that absorbs these verdicts is not finalized, so the brief stays open here and remains re-runnable. It moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/) once that log closes it.
+:::
 
 :::caution[Pre-requisite for D8 lock]
 [Synthesis log D8](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) (recipe schema additive bump in v0.1.6) leans Yes but the **schema design** itself is pending this challenge. The custom `crosswalkerPivot` view ([D7](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/)) needs SOMETHING to parameterize on; without Ch 31 we'd hand-design ad-hoc and break early users when v0.1.7 codeblock processor lands.

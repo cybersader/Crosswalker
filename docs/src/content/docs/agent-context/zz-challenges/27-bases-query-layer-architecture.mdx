@@ -4,10 +4,15 @@ description: "Bases is committed as the v0.1 query layer (Ch 23 + project memory
 tags: [research, query-layer, bases, junction-notes, tier-2, sql-wasm, hybrid-architecture, foundation]
 date: 2026-05-07
 sidebar:
-  label: "27 · Bases query layer"
+  label: "Ch 27 · Bases query layer"
+  order: 27
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — deliverable landed 2026-05-07, brief not yet archived]
+Research has run: three deliverables (linked in the callout below). The [Bases query layer synthesis log](/crosswalker/agent-context/zz-log/2026-05-07-bases-query-layer-architecture-synthesis/) that absorbs these verdicts is not finalized, so the brief stays open here and remains re-runnable. It moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/) once that log closes it.
+:::
 
 :::caution[Pre-requisite for v0.1.6 implementation]
 The [v0.1.6 Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) currently describes the *outcome* (Bases-shaped queries replacing Dataview) but not the *architecture* (where each query type lives, how junction-note queries work in practice, how Bases + Tier 2 SQL compose at user-surface level). This challenge resolves that gap **before code is written**.
