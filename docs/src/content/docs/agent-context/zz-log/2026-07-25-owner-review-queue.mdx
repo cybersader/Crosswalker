@@ -65,6 +65,8 @@ object_curie: "nist-800-53:AC-2"
 
 **Recommendation: (a) add the optional identity fields.** Option (b) means editing the docs to retract "identity, not address", which is one of the project's stated differentiators.
 
+**Status: ratified (a) 2026-08-19.** Add the optional identity fields. Data-shape change, so it lands before further generation: notes written without them cannot gain the fields retroactively.
+
 ### P3 — Say which crosswalk release an assertion came from, and let it say "not equivalent"
 
 **What this is.** An [**assertion**](/crosswalker/concepts/terminology/#mapping-assertion) is one claimed fact about how two concepts relate — a single row of a crosswalk; in GRC terms, "NIST AC-2 **is equivalent to** ISO A.9.2.1." Someone asserted it; it can be right, wrong, disputed, or superseded, which is exactly why you need to know where it came from. A [**mapping set**](/crosswalker/concepts/terminology/#mapping-set) is one published crosswalk release — the whole collection of those assertions shipped together, for example NIST's 800-53 Rev 4 to Rev 5 mapping. Crosswalker already carries a `mapping_set_id` through note files and the SSSOM export, but the [**contract**](/crosswalker/concepts/terminology/#schema-contract) — the machine-checked rulebook (`spec/tier1.schema.json`) that spells out which properties a valid note may carry; it is what the plugin, an outside script, or an agent all validate against before writing — does not model it. A property the rulebook doesn't know about is carried along blindly: never checked, never given meaning, and the database drops it. So importing two releases of the same framework silently overwrites the first. Separately, the spec prose promises a `NOT` modifier ("these two are explicitly **not** equivalent") that the machine schema rejects outright, and the ontology version field is never populated.
@@ -76,6 +78,8 @@ object_curie: "nist-800-53:AC-2"
 **Cons.** (1) One-time cache rebuild: changing the database key means the local query cache is rebuilt — cheap, since it is a deletable cache derived from your notes, but saved views built against the old shape need a look. (2) Mixed vaults until re-import: notes generated before the change stay valid but do not gain release provenance retroactively, so for a while some crosswalk rows know which release they came from and some do not, and queries must tolerate both. (3) `NOT` is a sharp tool for consumers: once an assertion can say "explicitly not equivalent," every exporter and downstream tool must carry the negation faithfully — a dropped `NOT` silently turns "not equivalent" into "equivalent," which is worse than no claim at all. (4) Three changes ride one decision, so if one stalls they all stall; option (b) splits the bundle, deferring `NOT`.
 
 **Recommendation: (a) all three now.** They touch the same files, and shipping the revision-collision bug through another release is worse than the extra day.
+
+**Status: ratified (a) 2026-08-19.** All three together. Same reasoning as P2 - this is a stored-data change, and the revision-collision bug is the one that bites first in real org use, the moment a framework ships its next release.
 
 ### P4 — Validate the two note kinds that currently skip validation
 
@@ -119,6 +123,8 @@ This is the last step of a decision already made: the [April foundation research
 
 **Recommendation: (a) now, scoped to the six STRM predicates.** They are stable and published. Waiting for v0.2 means the closure code keeps guessing for another release.
 
+**Status: ratified (a) 2026-08-19, scoped to all six shipped predicates.** Behavior-only (a lookup table the closure code reads), so it carries no sequencing risk and no migration. Note the count discrepancy found while deciding: the external standard (NIST IR 8477 / SCF / OSCAL) defines **five**; `spec/tier1.schema.json` ships **six**, adding `is_approximate_to`, and its own description hedges "five-or-six". Five rows are dictated by set theory; `is_approximate_to` is a Crosswalker extension whose properties are a genuine judgment call and must be labelled as such in the table. Fix the schema hedge in the same pass.
+
 ## 1b. Cleanup and language — 8 decisions
 
 The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate 3 — language** (P12–P14). None of them blocks the replay work; they can all be ratified in the same sitting.
@@ -135,6 +141,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 
 **Recommendation: (a) prune to 7**, keeping Execution Record and Package Manifest as a three-line "planned envelopes" note rather than full first-class nouns.
 
+**Status: UNDER ADVERSARIAL REVIEW (opened 2026-08-19).** Not ratified. Routed to a fresh-agent adversarial pass together with P12/P13/P14: these four are the primitives and vocabulary layer, which the owner considers load-bearing for the project long-term, so the recommendations are to be argued against before any call is made.
+
 ### P8 — Split one oversized schema file into "import" and "query"
 
 **What this is.** `spec/recipe.schema.json` (the machine contract for a Recipe — the saved specification of how a source becomes notes) is one 886-line file covering two unrelated jobs: importing a source, and querying the result. The query half is 45.5% of the file and shares zero definitions with the import half. Query recipes have to fake import-only fields just to validate — one shipped recipe carries a triply-nested empty condition purely to satisfy the schema.
@@ -146,6 +154,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 **Cons.** Two contracts to keep aligned; anything pinning the current `$id` needs updating.
 
 **Recommendation: (a) two schema files.** Option (b) — conditional requirements inside one file — makes the schema harder to read than the problem it solves.
+
+**Status: ratified (a) 2026-08-19.** Mechanical, reversible.
 
 ### P9 — Delete the unused second validation style
 
@@ -159,6 +169,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 
 **Recommendation: (a) delete.**
 
+**Status: ratified (a) 2026-08-19.** Mechanical, reversible.
+
 ### P10 — Collapse five internal recipe representations down to two
 
 **What this is.** A Recipe is represented five different ways inside the plugin — the renderer's hand-typed one, the schema-generated one, two legacy config models, and the workbench editor model — with roughly 2,470 lines of translation glue between them. The enrichment block alone is declared four separate times. Every translation boundary is a place where a saved recipe can silently lose a field.
@@ -170,6 +182,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 **Cons.** Big diff, and doing it now means doing much of it twice once the replay slice lands.
 
 **Recommendation: (b) collapse during the replay slice.** Same files, same tests, one review instead of two.
+
+**Status: ratified (b) 2026-08-19.** Collapse during the replay slice, as recommended. Mechanical, reversible.
 
 ### P11 — Put every "reserved for later" feature on one page, and delete the dead code
 
@@ -183,6 +197,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 
 **Recommendation: (a) consolidate, delete, and set the RC gate.**
 
+**Status: ratified (a) 2026-08-19.** Mechanical, reversible.
+
 ### P12 — Correct the public claim about how many building blocks there are
 
 **What this is.** The project committed publicly to a "closed 5-mechanism grammar" — five ways a level of a source can land in the vault. The real palette has grown to nine (folder, name, note, heading, tag, link, property, alias, body) under three different names in three different files, with counts of 3, 4, 5, 6 and 9 live simultaneously and none cross-referencing the others. The proposal restates the commitment honestly: nine destination primitives, five of which can serve as ordered layout mechanisms, each marked wired / partial / reserved.
@@ -194,6 +210,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 **Cons.** Publicly restating a numbered architectural commitment reads as drift — because it was drift.
 
 **Recommendation: (a) restate on the true palette.** A closed grammar you have already exceeded is not a constraint, it is a claim.
+
+**Status: UNDER ADVERSARIAL REVIEW (opened 2026-08-19).** See P7.
 
 ### P13 — Give the word "primitive" exactly one meaning
 
@@ -207,6 +225,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 
 **Recommendation: (a) full sweep**, sequenced alongside P8 so there is one `$id` bump event rather than two.
 
+**Status: UNDER ADVERSARIAL REVIEW (opened 2026-08-19).** See P7.
+
 ### P14 — Split the terminology page into a reader glossary and an internals reference
 
 **What this is.** [Terminology](/crosswalker/concepts/terminology/) currently serves two audiences at once: a reader who needs a dozen words defined, and an implementer who needs the internals reference. It also carries about 15 orphaned rows and a glossary of engines the project already rejected.
@@ -218,6 +238,8 @@ The primitives register calls these **Gate 2 — cleanup** (P7–P11) and **Gate
 **Cons.** Two pages to keep in sync; inbound links need updating.
 
 **Recommendation: (a) split — but only after P7, P12 and P13 land.** Splitting first means rewriting the new glossary twice.
+
+**Status: UNDER ADVERSARIAL REVIEW (opened 2026-08-19).** See P7.
 
 ## 1c. Save and exact replay — 8 decisions
 

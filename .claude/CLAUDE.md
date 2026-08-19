@@ -143,7 +143,7 @@ Rules:
 | e2e screenshots run against native Xwayland `DISPLAY=:0` (no WSLg anymore); Obsidian + chromedriver already cached linux-x64 in `.obsidian-cache/` | Confirmed 2026-08-19 |
 | `docs/astro.config.mjs` polling watcher removed (was a WSL-inotify workaround; native ext4 inotify is reliable) | ✅ done 2026-08-19 |
 | `docs/node_modules` clean-reinstalled from the lockfile; win32 optional-dep leftovers gone | ✅ done 2026-08-19 |
-| `portagenty` not yet installed on this machine | Flagged 2026-08-19 |
+| `portagenty` IS installed — the binary is `pa` (built from source, symlinked in `~/.local/bin`), not `portagenty`. Workspace file: `crosswalker-obsidian-plugin.portagenty.toml` (sessions: shell, plugin-dev, docs-dev, docs-share, test-watch) | ✅ verified 2026-08-19 |
 
 ## Roadmap conventions
 
