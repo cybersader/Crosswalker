@@ -20,9 +20,10 @@ import { wipeGeneratedOutput } from './tests/e2e/helpers/vault-hygiene';
  *           into the sandbox, so specs never accumulate a backlog the way
  *           `Frameworks/` did (3,553 notes from historical runs — see
  *           `scripts/e2e-clean.mjs` for that one-shot cleanup)
- *        c. build the plugin (esbuild → test-vault/.obsidian/plugins/crosswalker/),
- *           with one retry if the esbuild-service `goroutine`/deadlock flake
- *           signature is detected in the build output
+ *        c. build the root plugin distribution; wdio-obsidian-service copies
+ *           `main.js`, `manifest.json`, and `styles.css` from `plugins: ['.']`
+ *           into its isolated vault, with one retry if the esbuild-service
+ *           `goroutine`/deadlock flake signature is detected in the build output
  *   2. wdio-obsidian-service downloads (or reuses) Obsidian into `.obsidian-cache/`
  *   3. Each spec opens Obsidian against test-vault, runs assertions
  *
@@ -52,7 +53,7 @@ async function buildPluginWithRetry(): Promise<void> {
 		}
 	};
 
-	console.log('Building plugin into test-vault…');
+	console.log('Building root plugin distribution for the isolated E2E vault…');
 	let result = attempt();
 	if (!result.ok && /goroutine|deadlock/i.test(result.output)) {
 		console.warn('[wdio.onPrepare] detected esbuild-service deadlock signature in build output — killing orphaned esbuild processes and retrying build once');

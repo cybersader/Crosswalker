@@ -104,6 +104,22 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 			// @ts-expect-error — commands API is untyped
 			app.commands.executeCommandById('crosswalker:open-crosswalker-workspace');
 			const view = await waitFor('.crosswalker-workspace-view', 8000);
+			// The test vault can persist a second center split from an interrupted run.
+			// Remove only sibling leaves in the main workspace so this view actually
+			// receives the full width promised by the visual scenario.
+			const target = app.workspace.getLeavesOfType('crosswalker-workspace')[0];
+			const siblings: typeof target[] = [];
+			if (target) {
+				app.workspace.iterateAllLeaves((leaf) => {
+					if (
+						leaf !== target
+						&& leaf.containerEl.closest('.workspace-split.mod-root')
+					) siblings.push(leaf);
+				});
+				for (const leaf of siblings) leaf.detach();
+				app.workspace.revealLeaf(target);
+				await sleep(300);
+			}
 			return {
 				ok: !!view,
 				noModal: !document.querySelector('.modal'),
@@ -222,12 +238,20 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 			const wb = await waitFor('.crosswalker-workbench', 8000);
 			if (!wb) return { ok: false as const, reason: 'NO_WORKBENCH' };
 			const grid = getComputedStyle(wb as HTMLElement).gridTemplateColumns;
+			const source = root.querySelector('.crosswalker-wb-source') as HTMLElement | null;
+			const collapse = root.querySelector('[data-source-control="collapse"]') as HTMLButtonElement | null;
 			return {
 				ok: true as const,
-				hasSource: !!root.querySelector('.crosswalker-wb-source'),
+				hasSource: !!source,
 				hasCanvas: !!root.querySelector('.crosswalker-wb-canvas'),
 				hasPreview: !!root.querySelector('.crosswalker-wb-preview'),
 				gridTemplateColumns: grid,
+				flowWidth: root.getBoundingClientRect().width,
+				sourceId: source?.id ?? '',
+				collapseControls: collapse?.getAttribute('aria-controls') ?? '',
+				collapseExpanded: collapse?.getAttribute('aria-expanded') ?? '',
+				connectionOptions: Array.from(root.querySelectorAll('[data-connection-option]'))
+					.map((el) => el.getAttribute('data-connection-option')),
 				viewportWidth: window.innerWidth,
 				matchesWideBreakpoint: window.matchMedia('(min-width: 1100px)').matches,
 			};
@@ -239,44 +263,108 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 			expect(workbench.hasSource).toBe(true);
 			expect(workbench.hasCanvas).toBe(true);
 			expect(workbench.hasPreview).toBe(true);
-			// Three real columns either way (base or wide breakpoint).
+			// The full-width workspace begins as three real zones.
+			expect(workbench.flowWidth).toBeGreaterThan(760);
 			expect(workbench.gridTemplateColumns.split(' ').length).toBe(3);
+			expect(workbench.sourceId).toMatch(/^crosswalker-source-\d+$/);
+			expect(workbench.collapseControls).toBe(workbench.sourceId);
+			expect(workbench.collapseExpanded).toBe('true');
+			expect(workbench.connectionOptions).toEqual(expect.arrayContaining([
+				'children-lists', 'shared-value-hubs', 'folder-indexes',
+			]));
 		}
 
-		// -- Stage E: collapse the source rail — reclaims width for the canvas.
+		// -- Stage E: collapse Source. Above 760px it leaves no visible box or
+		//    placeholder track: Mappings + Preview become exactly two columns, and
+		//    the visible Show source action receives focus.
 		const collapsed = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			const root = document.querySelector('.crosswalker-workspace-flow');
 			if (!root) return { ok: false as const };
-			const btn = root.querySelector('.crosswalker-wb-collapse-btn') as HTMLButtonElement | null;
+			const btn = root.querySelector('[data-source-control="collapse"]') as HTMLButtonElement | null;
 			if (!btn) return { ok: false as const, reason: 'NO_COLLAPSE_BTN' };
-			const before = root.querySelector('.crosswalker-wb-source')?.getBoundingClientRect().width ?? 0;
+			const source = root.querySelector('.crosswalker-wb-source') as HTMLElement | null;
+			const before = source?.getBoundingClientRect().width ?? 0;
+			const controls = btn.getAttribute('aria-controls') ?? '';
 			btn.click();
 			await sleep(400);
-			const after = root.querySelector('.crosswalker-wb-source')?.getBoundingClientRect().width ?? 0;
+			const wb = root.querySelector('.crosswalker-workbench') as HTMLElement | null;
+			const collapsedSource = root.querySelector('.crosswalker-wb-source') as HTMLElement | null;
+			const visibleRestores = Array.from(root.querySelectorAll<HTMLElement>('[data-source-control="restore"]'))
+				.filter((el) => getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0);
+			const restore = visibleRestores[0];
 			return {
 				ok: true as const,
-				isCollapsed: root.querySelector('.crosswalker-workbench')?.classList.contains('is-source-collapsed') ?? false,
+				isCollapsed: wb?.classList.contains('is-source-collapsed') ?? false,
 				widthBefore: before,
-				widthAfter: after,
+				widthAfter: collapsedSource?.getBoundingClientRect().width ?? 0,
+				sourceDisplay: collapsedSource ? getComputedStyle(collapsedSource).display : '',
+				gridTemplateColumns: wb ? getComputedStyle(wb).gridTemplateColumns : '',
+				visibleRestoreCount: visibleRestores.length,
+				restoreText: restore?.textContent?.trim() ?? '',
+				restoreControls: restore?.getAttribute('aria-controls') ?? '',
+				restoreExpanded: restore?.getAttribute('aria-expanded') ?? '',
+				restoreFocused: document.activeElement === restore,
+				controls,
+				connectionsOutcome: root.querySelector('[data-connection-option="children-lists"] .crosswalker-wb-connection-outcome')?.textContent?.trim() ?? '',
 			};
 		});
 		console.log('[view] collapse → ' + JSON.stringify(collapsed));
 		await browser.saveScreenshot(path.join(OUT, 'view-05-source-collapsed.png'));
+		const previousTheme = await browser.executeObsidian(() => ({
+			dark: document.body.classList.contains('theme-dark'),
+			light: document.body.classList.contains('theme-light'),
+		}));
+		await browser.executeObsidian(() => {
+			document.body.classList.remove('theme-light');
+			document.body.classList.add('theme-dark');
+		});
+		await browser.pause(200);
+		await browser.saveScreenshot(path.join(OUT, 'view-05-source-collapsed-dark.png'));
+		await browser.executeObsidian((_a, state: unknown) => {
+			const theme = state as { dark: boolean; light: boolean };
+			document.body.classList.toggle('theme-dark', theme.dark);
+			document.body.classList.toggle('theme-light', theme.light);
+		}, previousTheme);
+		await browser.pause(200);
 		expect(collapsed.ok).toBe(true);
 		if (collapsed.ok) {
 			expect(collapsed.isCollapsed).toBe(true);
-			expect(collapsed.widthAfter).toBeLessThan(collapsed.widthBefore);
+			expect(collapsed.widthBefore).toBeGreaterThan(0);
+			expect(collapsed.widthAfter).toBe(0);
+			expect(collapsed.sourceDisplay).toBe('none');
+			expect(collapsed.gridTemplateColumns.split(' ').length).toBe(2);
+			expect(collapsed.gridTemplateColumns).not.toContain('56px');
+			expect(collapsed.visibleRestoreCount).toBe(1);
+			expect(collapsed.restoreText).toBe('Show source');
+			expect(collapsed.restoreControls).toBe(collapsed.controls);
+			expect(collapsed.restoreExpanded).toBe('false');
+			expect(collapsed.restoreFocused).toBe(true);
+			expect(collapsed.connectionsOutcome).toBe('Parents list their direct children.');
 		}
 
-		// Expand the rail again before moving on (leave the workbench in its
-		// normal state for the rest of the flow).
-		await browser.executeObsidian(async () => {
+		// Restore Source and verify focus returns to the newly rendered collapse
+		// control, not the CSS-hidden compact disclosure action.
+		const restored = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const btn = document.querySelector('.crosswalker-wb-collapse-btn') as HTMLButtonElement | null;
-			btn?.click();
-			await sleep(300);
+			const restores = Array.from(document.querySelectorAll<HTMLElement>('[data-source-control="restore"]'));
+			const restore = restores.find((el) => getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0);
+			(restore as HTMLButtonElement | undefined)?.click();
+			await sleep(350);
+			const collapse = document.querySelector('[data-source-control="collapse"]') as HTMLButtonElement | null;
+			const source = document.querySelector('.crosswalker-wb-source') as HTMLElement | null;
+			return {
+				focused: document.activeElement === collapse,
+				expanded: collapse?.getAttribute('aria-expanded') ?? '',
+				controls: collapse?.getAttribute('aria-controls') ?? '',
+				sourceId: source?.id ?? '',
+				sourceVisible: source ? getComputedStyle(source).display !== 'none' : false,
+			};
 		});
+		expect(restored.focused).toBe(true);
+		expect(restored.expanded).toBe('true');
+		expect(restored.controls).toBe(restored.sourceId);
+		expect(restored.sourceVisible).toBe(true);
 
 		// -- Stage F: Next → the review screen, in-view. Set an explicit,
 		//    recognizable destination so the post-generate "Import again" affordance
@@ -480,11 +568,9 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 			await plugin.saveSettings();
 		}, savedDefaultOutputPath);
 
-		// -- Stage K: "Customize" → the workbench, in-view, screenshotting the new
-		//    Connections card (spec §7k UI): the children-lists toggle and the
-		//    facet-hubs select, plus (only if a ragged/variadic hierarchy is
-		//    present in this sample) the sibling/folder-note placement chooser.
-		//    Exercises the checkbox write round-trip live (not just unit-tested).
+		// -- Stage K: "Customize" → the workbench, in-view, screenshotting the
+		//    outcome-first Connections cards. Exercises the child-list checkbox
+		//    write round-trip through its stable enrichment selector.
 		const connections = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			const waitFor = async (sel: string, ms: number) => {
@@ -506,8 +592,11 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 			const conn = await waitFor('.crosswalker-wb-connections', 8000);
 			if (!conn) return { ok: false as const, reason: 'NO_CONNECTIONS' };
 
-			const childrenCb = conn.querySelector('.crosswalker-wb-connection-toggle input[type=checkbox]') as HTMLInputElement | null;
-			const facetSel = conn.querySelector('.crosswalker-wb-connection-select select') as HTMLSelectElement | null;
+			const childrenCard = conn.querySelector('[data-connection-option="children-lists"]');
+			const facetCard = conn.querySelector('[data-connection-option="shared-value-hubs"]');
+			const foldersCard = conn.querySelector('[data-connection-option="folder-indexes"]');
+			const childrenCb = childrenCard?.querySelector('input[data-enrichment-key="children_lists"]') as HTMLInputElement | null;
+			const facetSel = facetCard?.querySelector('select[data-enrichment-key="facet_notes"]') as HTMLSelectElement | null;
 			const before = { childrenChecked: childrenCb?.checked ?? null, facetValue: facetSel?.value ?? null };
 
 			// Exercise the write round-trip: toggle children-lists on and re-read
@@ -515,7 +604,9 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 			childrenCb?.click();
 			await sleep(400);
 			const rootAfter = document.querySelector('.crosswalker-workspace-flow');
-			const childrenCbAfter = rootAfter?.querySelector('.crosswalker-wb-connections .crosswalker-wb-connection-toggle input[type=checkbox]') as HTMLInputElement | null;
+			const childrenCbAfter = rootAfter?.querySelector(
+				'[data-connection-option="children-lists"] input[data-enrichment-key="children_lists"]',
+			) as HTMLInputElement | null;
 
 			// Scroll the Connections card into view so the screenshot below
 			// actually shows it (the mapping cards above push it past the fold).
@@ -526,6 +617,11 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 				ok: true as const,
 				hasChildrenToggle: !!childrenCb,
 				hasFacetSelect: !!facetSel,
+				hasFolderIndexes: !!foldersCard,
+				childOutcome: childrenCard?.querySelector('.crosswalker-wb-connection-outcome')?.textContent?.trim() ?? '',
+				folderOutcome: foldersCard?.querySelector('.crosswalker-wb-connection-outcome')?.textContent?.trim() ?? '',
+				detailsClosed: Array.from(conn.querySelectorAll<HTMLDetailsElement>('.crosswalker-wb-connection-details'))
+					.every((details) => !details.open),
 				hasPlacementChooser: !!rootAfter?.querySelector('.crosswalker-wb-placement'),
 				before,
 				childrenCheckedAfterToggle: childrenCbAfter?.checked ?? null,
@@ -537,6 +633,10 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 		if (connections.ok) {
 			expect(connections.hasChildrenToggle).toBe(true);
 			expect(connections.hasFacetSelect).toBe(true);
+			expect(connections.hasFolderIndexes).toBe(true);
+			expect(connections.childOutcome).toBe('Parents list their direct children.');
+			expect(connections.folderOutcome).toBe('Each generated folder gets a Contents list.');
+			expect(connections.detailsClosed).toBe(true);
 			// The toggle click flipped the model and the re-render reflects it.
 			expect(connections.childrenCheckedAfterToggle).toBe(!connections.before.childrenChecked);
 		}

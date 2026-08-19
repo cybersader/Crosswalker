@@ -163,6 +163,25 @@ describe('computeRecipeHash', () => {
 		expect(computeRecipeHash(baseTarget)).not.toBe(computeRecipeHash(changed));
 	});
 
+	it('changes when canonical body output changes through also_emit.body', () => {
+		const withBody = {
+			...baseTarget,
+			also_emit: {
+				...baseTarget.also_emit,
+				body: [{ template: '{description}', position: 'append', format: 'text' }],
+			},
+		};
+		const editedBody = {
+			...withBody,
+			also_emit: {
+				...withBody.also_emit,
+				body: [{ template: '{discussion}', position: 'section', heading: 'Discussion', format: 'quote' }],
+			},
+		};
+		expect(computeRecipeHash(baseTarget)).not.toBe(computeRecipeHash(withBody));
+		expect(computeRecipeHash(withBody)).not.toBe(computeRecipeHash(editedBody));
+	});
+
 	it('changes when enrichment changes', () => {
 		const changed = { ...baseTarget, enrichment: { children_lists: false } };
 		expect(computeRecipeHash(baseTarget)).not.toBe(computeRecipeHash(changed));

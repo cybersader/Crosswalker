@@ -12,9 +12,12 @@
 
 import {
 	initValidator,
+	isValidRecipe,
 	validateRecipe,
 	validateTier1Frontmatter,
 } from '../src/validation/validator';
+import type { CrosswalkerImportRecipe } from '../src/types/generated/recipe';
+import richPortableRecipe from './fixtures/portable-import-recipe-rich.json';
 
 beforeAll(() => {
 	initValidator();
@@ -293,5 +296,32 @@ describe('validateRecipe', () => {
 			},
 		});
 		expect(result.valid).toBe(false);
+	});
+
+	it('accepts the rich portable contract fixture and narrows it to the generated root type', () => {
+		const input: unknown = richPortableRecipe;
+		expect(isValidRecipe(input)).toBe(true);
+		if (!isValidRecipe(input)) throw new Error('Fixture unexpectedly failed validation');
+		const narrowed: CrosswalkerImportRecipe = input;
+		expect(narrowed.metadata?.based_on?.recipe).toBe('portable-contract-base');
+		expect(narrowed.source.version).toBe('2026.1');
+		expect(narrowed.target.also_emit?.body).toHaveLength(4);
+	});
+
+	it.each([
+		['table-row position', { template: '{text}', position: 'table-row' }],
+		['legacy transform', { template: '{text}', transform: [{ type: 'trim' }] }],
+		['heading on append', { template: '{text}', position: 'append', heading: 'Invalid' }],
+		['section without heading', { template: '{text}', position: 'section' }],
+	])('rejects non-portable body state: %s', (_label, bodyEntry) => {
+		const recipe = JSON.parse(JSON.stringify(validNistAllFolders));
+		recipe.target.also_emit.body = [bodyEntry];
+		expect(validateRecipe(recipe).valid).toBe(false);
+	});
+
+	it('requires based_on.recipe when ancestry is present', () => {
+		const recipe = JSON.parse(JSON.stringify(validNistAllFolders));
+		recipe.metadata = { based_on: { hash: `sha256-${'0'.repeat(64)}` } };
+		expect(validateRecipe(recipe).valid).toBe(false);
 	});
 });

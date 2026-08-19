@@ -176,7 +176,7 @@ describe('Visual — the furnished vault: review-screen plan line, home note, fo
 		console.log('[report-graph] open → ' + JSON.stringify(openInfo));
 		expect(openInfo.ok).toBe(true);
 
-		// -- Stage B: explicitly select "Folder note" placement in the Connections
+		// -- Stage B: explicitly select "Inside its folder" placement in Connections
 		//    card's placement chooser (only rendered because T1078/T1548 give the
 		//    mapping a ragged tail) — deterministic, not relying on the ambient
 		//    default so this run always produces T1078/T1078.md.
@@ -195,8 +195,7 @@ describe('Visual — the furnished vault: review-screen plan line, home note, fo
 			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
 			const wrap = await waitFor('.crosswalker-wb-placement', 6000);
 			if (!wrap) return { ok: false as const, reason: 'NO_PLACEMENT_CHOOSER' };
-			const cols = Array.from(wrap.querySelectorAll('.crosswalker-wb-placement-col'));
-			const folderCol = cols.find((c) => c.textContent?.includes('Folder note'));
+			const folderCol = wrap.querySelector('[data-parent-note-value="folder-note"]');
 			const radio = folderCol?.querySelector('input[type=radio]') as HTMLInputElement | null;
 			if (!radio) return { ok: false as const, reason: 'NO_FOLDER_RADIO' };
 			radio.click();
@@ -325,7 +324,7 @@ describe('Visual — the furnished vault: review-screen plan line, home note, fo
 		}
 		if (genInfo.ok && !genInfo.parentNotePath) {
 			console.log(`[report-graph] FINDING: no folder-note parent at ${DEST}/T1078/T1078.md. paths → ${JSON.stringify(genInfo.allPaths)}`);
-			// Exact repro capture: the placement chooser was set to "Folder note"
+			// Exact repro capture: placement was set to "Inside its folder"
 			// (Stage B confirmed `checked: true`) but the relocation didn't happen.
 			// Dump the sibling T1078.md's own frontmatter (does it carry a
 			// `children` list at all — i.e. did enrichment run for this parent —

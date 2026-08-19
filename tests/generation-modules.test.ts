@@ -18,6 +18,7 @@ import {
 	buildNoteData,
 	buildNoteContent,
 	composeDocumentBody,
+	renderedBodyRegionsToMarkdown,
 	normalizeTagList,
 	normalizeAliasList,
 } from '../src/generation/generation-engine';
@@ -448,6 +449,18 @@ describe('mergeFrontmatter: tags/aliases union on re-import', () => {
 // ---------------------------------------------------------------------------
 // composeDocumentBody — H1 title + prose (spec §7k item 2)
 // ---------------------------------------------------------------------------
+
+describe('renderedBodyRegionsToMarkdown', () => {
+	it('assembles append and section regions with one blank line between regions', () => {
+		expect(
+			renderedBodyRegionsToMarkdown([
+				{ position: 'append', content: 'Intro' },
+				{ position: 'section', heading: 'Discussion', headingDepth: 2, content: '> Detail' },
+				{ position: 'section', heading: 'Empty', headingDepth: 3, content: '' },
+			]),
+		).toBe('Intro\n\n## Discussion\n\n> Detail\n\n### Empty');
+	});
+});
 
 describe('composeDocumentBody', () => {
 	it('prepends an H1 title and a blank line before the body', () => {

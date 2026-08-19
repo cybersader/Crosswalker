@@ -1,0 +1,130 @@
+{
+  "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
+  "recipe": "portable-contract-rich",
+  "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
+  "metadata": {
+    "title": "Portable contract rich fixture",
+    "description": "Exercises the complete additive ImportRecipe contract.",
+    "based_on": {
+      "recipe": "portable-contract-base",
+      "hash": "sha256-0000000000000000000000000000000000000000000000000000000000000000",
+      "spec_version": "https://crosswalker.dev/spec/recipe.schema.json"
+    }
+  },
+  "source": {
+    "ontology": "portable-contract",
+    "version": "2026.1",
+    "levels": ["root", "edge"]
+  },
+  "target": {
+    "layout": [
+      {
+        "level": "root",
+        "mechanism": "folder",
+        "template": "Frameworks/Portable"
+      },
+      {
+        "level": "edge",
+        "mechanism": "folder",
+        "template": "{edge_id}",
+        "variadic": {
+          "delimiter": ".",
+          "segment": "prefix",
+          "drop_last": true,
+          "max_depth": 4,
+          "on_overflow": "error"
+        }
+      },
+      {
+        "level": "edge",
+        "mechanism": "file",
+        "template": "cw-{edge_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "tags": ["portable/{subject_group|tagsafe}"],
+      "aliases": ["{edge_id}", "{title}"],
+      "frontmatter": {
+        "managed": {
+          "title": "{title}",
+          "subject_id": "{subject_id}",
+          "predicate_id": "{predicate_id}",
+          "object_id": "{object_id}",
+          "mapping_justification": "{mapping_justification}",
+          "mapping_provider": "{mapping_provider}"
+        },
+        "managed_links": {
+          "related": {
+            "template": "{related}",
+            "split": [",", ";"]
+          }
+        },
+        "user_preserve": ["reviewer", "status", "*notes*"]
+      },
+      "body": [
+        {
+          "template": "{description}",
+          "position": "append",
+          "format": "text",
+          "omit_if_empty": true
+        },
+        {
+          "template": "{discussion}",
+          "position": "section",
+          "heading": "Discussion",
+          "heading_depth": 2,
+          "format": "quote",
+          "omit_if_empty": true
+        },
+        {
+          "template": "{example}",
+          "position": "section",
+          "heading": "Example",
+          "heading_depth": 3,
+          "format": "code",
+          "omit_if_empty": true
+        },
+        {
+          "template": "{items}",
+          "format": "list",
+          "omit_if_empty": false
+        }
+      ]
+    },
+    "graph_edges": [
+      {
+        "from": "{subject_id}",
+        "via": "{predicate_id}",
+        "to": "{object_id}"
+      }
+    ],
+    "linkStyle": "shortest",
+    "enrichment": {
+      "children_lists": true,
+      "facet_notes": "tags-only",
+      "parent_note": "sibling",
+      "level_hubs": "notes",
+      "waypoint_marker": false
+    }
+  },
+  "query": {
+    "version": "1.0.0",
+    "id": "portable_contract_table",
+    "title": "Portable contract table",
+    "shape": "table",
+    "primitives": {
+      "from": "portable-contract",
+      "select": [
+        {
+          "field": "concept.label",
+          "as": "Label"
+        }
+      ]
+    },
+    "output": {
+      "target": "bases",
+      "path": "Portable contract.base"
+    }
+  }
+}

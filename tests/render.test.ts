@@ -14,6 +14,7 @@
 import {
 	render,
 	renderTemplate,
+	renderTemplateValue,
 	RenderError,
 	type Recipe,
 	type ConceptIdentity,
@@ -87,6 +88,13 @@ describe('renderTemplate', () => {
 
 	it('applies the trim filter', () => {
 		expect(renderTemplate('{c|trim}', { c: '  hi  ' })).toBe('hi');
+	});
+
+	it('preserves numeric managed values through the number filter', () => {
+		expect(renderTemplate('{c|number}', { c: '0.95' })).toBe('0.95');
+		expect(renderTemplateValue('{c|number}', { c: '0.95' })).toBe(0.95);
+		expect(renderTemplateValue('confidence-{c|number}', { c: '0.95' })).toBe('confidence-0.95');
+		expect(() => renderTemplateValue('{c|number}', { c: 'high' })).toThrow(/finite numeric value/);
 	});
 
 	it('applies the truncate filter with argument', () => {
@@ -290,6 +298,70 @@ describe('render — also_emit', () => {
 		expect(a.frontmatter.framework).toBe('nist-800-53-r5');
 		expect(a.frontmatter.family).toBe('AC');
 		expect(a.frontmatter.control_id).toBe('AC-2');
+	});
+});
+
+describe('render — canonical body projections', () => {
+	const bodyIdentity: ConceptIdentity = {
+		curie: 'test:AC-2',
+		scope: {
+			id: 'AC-2',
+			text: 'Account management',
+			quote: 'first line\n\nthird line',
+			code: 'const fence = ```nested```;',
+			items: ' one \n\n two ',
+			empty: '   ',
+		},
+	};
+
+	const recipe: Recipe = {
+		recipe: 'body-projections',
+		target: {
+			layout: [{ level: 'leaf', mechanism: 'file', template: '{id}.md' }],
+			also_emit: {
+				body: [
+					{ template: '{text}' },
+					{ template: '{quote}', position: 'section', heading: 'Discussion', format: 'quote' },
+					{ template: '{code}', position: 'section', heading: 'Example', heading_depth: 3, format: 'code' },
+					{ template: '{items}', format: 'list' },
+					{ template: '{empty}', position: 'section', heading: 'Kept empty', omit_if_empty: false },
+					{ template: '{empty}', position: 'section', heading: 'Omitted empty' },
+				],
+			},
+		},
+	};
+
+	it('returns ordered, fully rendered regions with canonical format semantics', () => {
+		const address = render(recipe, bodyIdentity);
+		expect(address.body).toEqual([
+			{ position: 'append', content: 'Account management' },
+			{
+				position: 'section',
+				content: '> first line\n>\n> third line',
+				heading: 'Discussion',
+				headingDepth: 2,
+			},
+			{
+				position: 'section',
+				content: '````\nconst fence = ```nested```;\n````',
+				heading: 'Example',
+				headingDepth: 3,
+			},
+			{ position: 'append', content: '- one\n- two' },
+			{ position: 'section', content: '   ', heading: 'Kept empty', headingDepth: 2 },
+		]);
+	});
+
+	it('returns body: [] when the recipe has no body declaration', () => {
+		const noBody: Recipe = {
+			recipe: 'no-body',
+			target: { layout: [{ level: 'leaf', mechanism: 'file', template: '{id}.md' }] },
+		};
+		expect(render(noBody, bodyIdentity).body).toEqual([]);
+	});
+
+	it('is deterministic across repeated body renders', () => {
+		expect(JSON.stringify(render(recipe, bodyIdentity))).toBe(JSON.stringify(render(recipe, bodyIdentity)));
 	});
 });
 
