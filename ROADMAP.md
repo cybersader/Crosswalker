@@ -34,9 +34,11 @@ The 0.1 design phase concluded with all named architectural questions resolved. 
 
 - [x] `tools/generate-fixtures.ts` + `tools/fixtures/synthetic/nist-mini.csv` — bootstraps reproducible test data via `bun run fixtures` without waiting for `render()`
 
-## v0.1 implementation status (as of 2026-07-11)
+## v0.1 implementation status
 
 Mirrors the docs [milestone status snapshot](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/) — that page is the live source; treat this as a snapshot.
+
+**Status last verified: 2026-07-25** — every line below re-checked against the milestone pages, `CHANGELOG.md` `[Unreleased]`, and the commit log. If today is far past that date and no newer verification line has replaced it, treat this list as unverified.
 
 - [x] v0.1.1 — Type system + validation foundation (2026-05-04)
 - [x] v0.1.2 — `render()` v1 (2026-05-05)
@@ -44,10 +46,12 @@ Mirrors the docs [milestone status snapshot](https://cybersader.github.io/crossw
 - [x] v0.1.4 — Junction notes + crosswalk edges (2026-05-05)
 - [x] v0.1.4.5 — Streaming refactor (2026-05-05)
 - [x] v0.1.5 — Tier 2 sqlite-wasm sidecar projector (2026-05-06)
-- [ ] **v0.1.6 — Bases query layer + SSSOM import + recipe UX** — 🚧 in progress. Phases 1–6.4 (Bases pivot view, SSSOM import, primitives, ingestion-corpus sprint) shipped through 2026-06-12. A concurrent **shape-workbench side-arc** (2026-07-05 → 2026-07-11, tracked as Phase 7) then landed inside this milestone's window. Full architectural record: [shape-workbench synthesis log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/). Delivery detail for both Phase 6.4 and Phase 7 lives in `CHANGELOG.md` `[Unreleased]`, not restated here (per the [docs anti-duplication convention](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-docs-sync-and-anti-duplication-convention/)). v0.1.7 is next.
-- [ ] v0.1.7 — Exporters (STRM TSV / OSCAL JSON) — 🚧 in progress (first slice landed 2026-07-12: exporter engine + SSSOM round-trip + two palette commands; detail in `CHANGELOG.md` `[Unreleased]`)
-- [ ] v0.1.8 — Audit trail T1 default — planning
-- [ ] v0.1-RC — Bundle, polish, ship — planning
+- [ ] **v0.1.6 — Bases query layer + SSSOM import + recipe UX** — 🚧 in progress. Phases 1–6.4 (Bases pivot view, SSSOM import, primitives, ingestion-corpus sprint) shipped through 2026-06-12. A concurrent **shape-workbench side-arc** (2026-07-05 → 2026-07-11, tracked as Phase 7) then landed inside this milestone's window. Full architectural record: [shape-workbench synthesis log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/). Delivery detail for both Phase 6.4 and Phase 7 lives in `CHANGELOG.md` `[Unreleased]`, not restated here (per the [docs anti-duplication convention](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-11-docs-sync-and-anti-duplication-convention/)). v0.1.7 is active.
+- [ ] v0.1.7 — Portability (exporters, reusable configurations, source bindings, MappingSets) — 🚧 in progress (exporter first slice landed 2026-07-12; canonical recipe-fidelity foundation landed 2026-07-21; configuration library, exact source-bound replay, minimal MappingSet envelope/UI, exporter completion, and explicit OSCAL target-shape decision remain, now gated on the [save-and-replay](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) and [primitives](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) decision registers of 2026-07-25; detail in `CHANGELOG.md` `[Unreleased]`)
+- [ ] v0.1.8 — Execution records, audit, and package manifests — planning; depends on v0.1.7
+- [ ] v0.1-RC — Artifact-chain acceptance, bundle, polish, ship — planning
+
+Closing acceptance chain: **source bytes → reusable configuration → Knowledge Set/MappingSet → Execution Record → Package Manifest**. See [artifact roles and authority](https://cybersader.github.io/crosswalker/concepts/artifact-roles-and-authority/) and the [artifact-role synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/).
 
 ## Foundation — earlier resolved decisions
 
@@ -77,8 +81,8 @@ Concrete, shippable. ~1.2 MB plugin total. Tier 1 + Tier 2 sqlite-wasm sidecar b
 - [ ] Junction note generation as new code path in the generation engine; non-destructive, git-history-preserving
 - [ ] Tier 2 sqlite-wasm sidecar projector — new `packages/core/` module; auto-runs on vault load; lazy closure cache
 - [ ] Bases-shaped query render layer (Dataview replaced)
-- [ ] STRM-shaped TSV exporter (NIST IR 8278A r1 OLIR template) + OSCAL JSON profile exporter + optional SSSOM-flavored TSV emission
-- [ ] Audit trail T1 default (git commits + Ed25519-signed releases + on-demand FRE 902(13) PDF)
+- [ ] Portability chain: STRM/SSSOM/CSV export; explicit OSCAL target-shape decision; reusable ImportRecipe library under `_crosswalker/recipes/import/`; separate exact source/run binding; minimal MappingSet identity/membership/integrity/provenance/license envelope with inspect/export UI
+- [ ] Execution records, audit, and package manifests: one terminal Execution Record per run; execution-linked provenance/log events; git + Ed25519 + FRE 902(13) consume it; a separate Package Manifest inventories and attests each distributed release
 - [ ] Bundle target — under 500 KB plugin core + ~600 KB sqlite-wasm sidecar = ~1.2 MB compressed total
 
 **Implementation infrastructure:**
@@ -110,11 +114,16 @@ Concrete, shippable. ~1.2 MB plugin total. Tier 1 + Tier 2 sqlite-wasm sidecar b
 - [ ] Expand E2E smoke tests minimally
 - [ ] Fluid layout scaling (clamp() CSS replacing rigid breakpoints)
 
-## Formats — "Import anything, transform it properly" (v0.2)
+## Formats / Acquire — "Import anything, transform it properly" (v0.2)
+
+Expand source-format breadth and acquisition while preserving exact-source replay semantics.
 
 - [ ] Complete import wizard UI (redesigned around recipe schema)
 - [x] XLSX parser (sheet picker + header-row offset, shipped 2026-06-12) + JSON parser (iterator path + row filter + record picker, shipped 2026-06-12)
 - [ ] JSONL (newline-delimited JSON) parser — not yet supported
+- [ ] Remote acquisition through explicit source references, kept separate from ImportRecipe transformation/layout policy
+- [ ] Content-hash pinning with upstream source-drift diagnostics
+- [ ] Verified source cache, deliberate refresh, and offline replay
 - [ ] `mechanism: tag` and `mechanism: wikilink` layout-levels wired (schema-reserved at v0.1)
 - [ ] `graph_edges` wired (schema-reserved at v0.1)
 - [ ] Transform system implementation (~40 primitives across 9 categories)
@@ -167,6 +176,8 @@ Server-tier deployment options for users who genuinely need a shared multi-team 
 
 ## Evolution — "The meta-system"
 
+- [ ] Version-transition loop — acquire/pin old + new versions → detect structural/semantic change → review mappings/migration decisions → apply → validate → record for replay/audit
+- [ ] Later generalized Knowledge Set governance — expand beyond the v0.1 MappingSet envelope only after identity, membership, authority, versioning, licensing, and lifecycle semantics are proven across set types
 - [ ] Entity-aligned migration UX — guided form → migration plan YAML → CLI
 - [ ] Version registry standard — pluggable detection interface
 - [ ] Per-framework decisioning format — taxonomy over taxonomies
@@ -178,8 +189,9 @@ Server-tier deployment options for users who genuinely need a shared multi-team 
 ## Community — "Share and scale"
 
 - [ ] Community marketplace — pre-transformed Tier 1 bundles. In-repo registry OR companion repo (deferrable). Once landed, the fixture generator gains `--from-bundle <id>` mode
+- [ ] Package lifecycle — discover packages, resolve dependencies/compatibility, verify Package Manifest hashes/signatures/licenses, install, update, and uninstall
 - [ ] Marketplace-driven fixtures — `bun run fixtures --from-bundle <id>` becomes the canonical "test against real published bundles" path
-- [ ] OSCAL export (deferred to Phase 2+ per 2026-05-02 user decision; document OSCAL into Crosswalker mental model first)
+- [ ] Expanded OSCAL support — add catalog or other post-v0.1 models only after the v0.1 crosswalk target-shape decision is explicit and schema-valid
 - [ ] Compliance dashboards
 - [ ] Custom migration transforms (inline → named → custom scripts)
 - [ ] AI-assisted transforms (LLM property mapping, like Obsidian web clipper AI templates)

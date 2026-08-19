@@ -51,12 +51,14 @@ The v0.1 implementation phase breaks into 10 sequenced milestones. Each has its 
 | [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | Junction notes + crosswalk edges | 2–3 days | ✅ Done (2026-05-05) |
 | [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) | Streaming refactor (engine accepts row iterator) | 1–2 days | ✅ Done (2026-05-05) |
 | [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Tier 2 sqlite-wasm sidecar projector | 5–8 days | ✅ Done (2026-05-06) |
-| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer + SSSOM import + recipe UX | 3–5 days | 🚧 In progress — Phases 1–6.4 ✅ + Phase 7 (shape-workbench side-arc) ✅ 2026-07-11; v0.1.7 next. See `CHANGELOG.md` `[Unreleased]` for delivery detail |
-| [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Exporters (STRM TSV / OSCAL JSON) | 2–3 days | 🚧 In progress |
-| [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) | Audit trail T1 default | 1–2 days | 📋 Planning |
-| [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) | Bundle, polish, ship | 2–3 days | 📋 Planning |
+| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer + SSSOM import + recipe UX | 3–5 days (ran long — absorbed the shape-workbench side-arc) | 🚧 In progress — Phases 1–6.4 ✅ + Phase 7 (shape-workbench side-arc) ✅ 2026-07-11; v0.1.7 is active. See `CHANGELOG.md` `[Unreleased]` for delivery detail |
+| [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Portability: exporters, reusable configurations, source bindings, MappingSets | Expanded | 🚧 In progress — exporter first slice ✅; recipe-fidelity foundation ✅ 2026-07-21; configuration library, exact source-bound replay, MappingSet envelope/UI, and exporter completion remain, now gated on the [save-and-replay](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) + [primitives](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) decision registers (2026-07-25). See `CHANGELOG.md` `[Unreleased]` |
+| [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) | Execution records, audit, and package manifests | Expanded | 📋 Planning; depends on v0.1.7 |
+| [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) | Artifact-chain acceptance, bundle, polish, ship | 2–3 days | 📋 Planning |
 
-Total estimate: **~3–6 weeks of focused work** (running a bit long — v0.1.6 absorbed an adjacent import-wizard rebuild). See the [milestone hub](/crosswalker/reference/roadmap/milestones/) for the full sequencing detail and dependency graph.
+**Status last verified: 2026-07-25** — every cell above re-checked against the milestone pages, `CHANGELOG.md` `[Unreleased]`, and the commit log. If today is far past that date and no newer verification line has replaced it, treat this table as unverified.
+
+Total estimate: **~3–6 weeks of focused work** (running a bit long — v0.1.6 absorbed an adjacent import-wizard rebuild). The closing acceptance chain is **source bytes → reusable configuration → Knowledge Set/MappingSet → Execution Record → Package Manifest**; see [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) and the [artifact-role synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/). See the [milestone hub](/crosswalker/reference/roadmap/milestones/) for full sequencing and dependencies.
 
 ## Foundation — "Get the architecture right" (closed)
 
@@ -82,8 +84,8 @@ Concrete, shippable. ~1.2 MB total. Tier 1 + Tier 2 sqlite-wasm sidecar bundled 
 - [ ] **Tier 1 in-memory index**: plain JS Map built at vault-load time over frontmatter; works without Tier 2 (slow on large vaults but functional)
 - [ ] **Tier 2 sqlite-wasm sidecar projector**: `@sqlite.org/sqlite-wasm` (~600 KB) + sqlite-vec; auto-projects from Tier 1 on vault load; deletable; reprojected on next load. Per [Ch 18 expressivity matrix](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/), 4 ✅ tractable rule types + 4 ⚠️ caveat-tractable cover the realistic GRC workload comfortably under 100K mappings
 - [ ] **Crosswalk-render plugin**: Dataview-style queries on frontmatter for the Tier 1 path; recursive CTE over Tier 2 sidecar for transitive closure / multi-framework joins / coverage matrices / perspective views
-- [ ] **STRM-shaped TSV exporter** (NIST IR 8278A r1 OLIR template shape, Excel-friendly CSV) + **OSCAL JSON profile exporter** + **SSSOM-flavored TSV emission** (optional, for academic interop). Hybrid SSSOM↔STRM resolution per [v0.1 pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#6-sssom--strm-resolution--hybrid)
-- [ ] **Audit trail (T1 default)**: git commits + Ed25519-signed releases for shared mapping bundles; auto-generated FRE 902(13) certification PDF available on demand. Per [v0.1 pivot §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#8-audit-trail-default--t1)
+- [ ] **Portability chain**: STRM/SSSOM/CSV export; explicit OSCAL target-shape decision; reusable ImportRecipe library; separate exact source/run binding; minimal MappingSet identity/membership/integrity/provenance/license envelope. Hybrid SSSOM↔STRM resolution per [v0.1 pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#6-sssom--strm-resolution--hybrid)
+- [ ] **Execution records, audit, and package manifests**: one terminal Execution Record per run; execution-linked provenance/events; git + Ed25519 + FRE 902(13) consume that receipt; a separate Package Manifest inventories and attests each distributed release. Per [v0.1 pivot §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#8-audit-trail-default--t1)
 - [ ] **Bundle target**: under 500 KB plugin core + ~600 KB sqlite-wasm sidecar = ~1.2 MB compressed total
 
 **Plugin scope**: a single, focused import wizard + crosswalk-render plugin + Tier 2 sidecar projector. Performance enhancements (DuckDB-WASM, Oxigraph, Nemo, Comunica federation) live in [separate companion plugins](#performance--v10-companion-plugins) released later.
@@ -142,9 +144,9 @@ These are design / spec items that need work before/during v0.1 implementation. 
 
 ---
 
-## Formats — "Import anything, transform it properly"
+## Formats / Acquire — "Import anything, transform it properly"
 
-Built on the Foundation spec. The wizard UI is redesigned around FrameworkConfig v2.
+Built on the Foundation spec. This phase expands both source-format breadth and acquisition while preserving exact-source replay semantics.
 
 - [ ] **Complete [import wizard](/crosswalker/features/import-wizard/) UI** — steps 2-4 redesigned around the new config schema
 - [ ] **Complete settings tab** — all 8 sections reflecting new schema
@@ -152,6 +154,9 @@ Built on the Foundation spec. The wizard UI is redesigned around FrameworkConfig
 - [x] **XLSX parser** — sheet picker + header-row offset, shipped 2026-06-12
 - [x] **JSON parser** — iterator path + row filter + record picker, shipped 2026-06-12
 - [ ] **JSONL (newline-delimited JSON) parser** — not yet supported
+- [ ] **Remote acquisition** — acquire supported sources over explicit remote references without merging acquisition policy into ImportRecipe transformation/layout semantics
+- [ ] **Content-hash pinning** — bind runs to exact acquired bytes; detect upstream drift before refresh or replay
+- [ ] **Cache, refresh, and offline replay** — retain verified source bytes and metadata so users can refresh deliberately or reproduce a prior run without network access
 - [ ] **[Transform system](/crosswalker/design/transformation/)** — implement 20+ transform types defined in schema (string, array, type conversion, conditional). [Current types](/crosswalker/design/transformation/)
 - [ ] **Improved preview** — expandable folder tree, full note preview in Step 3
 - [ ] **E2E test suite** — full import wizard workflow tests, [built from spec](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-3-e2e-testing-with-wdio-obsidian)
@@ -201,6 +206,8 @@ Server-tier deployment options for users who genuinely need a shared multi-team 
 
 Implement the [ontology evolution](/crosswalker/concepts/ontology-evolution/) classification system designed in Foundation. This is the novel contribution — [no existing tool solves this](/crosswalker/agent-context/zz-log/2026-04-03-deep-research-synthesis/#research-1-ontology-lifecycle-management--does-anything-solve-this).
 
+- [ ] **Version-transition loop** — acquire/pin old and new source versions → detect structural/semantic change → review mappings and migration decisions → apply → validate → record the transition for replay and audit
+- [ ] **Later generalized Knowledge Set governance** — extend beyond the v0.1 MappingSet portability envelope only after identity, membership, authority, versioning, licensing, and lifecycle semantics are proven across multiple set types
 - [ ] **[Entity-aligned migration UX](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/)** — design the experience for entities (agents or people) [going through and fixing things](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/). Guided form → migration plan YAML → CLI. Progressive depth. [User-first maintenance](/crosswalker/agent-context/zz-log/2026-04-09-user-first-ontology-maintenance/)
 - [ ] **[Version registry standard](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-1-detection-is-pluggable-not-primitive)** — define the interface for declaring "framework version X exists." [Community builds implementations](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-1-detection-is-pluggable-not-primitive) (GitHub repo, API, scrapers). Detection is pluggable, not primitive.
 - [ ] **[Per-framework decisioning format](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-4-decisioning-as-per-framework-taxonomy-taxonomy-over-taxonomies)** — the [taxonomy-over-taxonomies](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-4-decisioning-as-per-framework-taxonomy-taxonomy-over-taxonomies) config. Per-ontology handling strategy overrides layered on default primitives.
@@ -217,7 +224,8 @@ Implement the [ontology evolution](/crosswalker/concepts/ontology-evolution/) cl
 Build the ecosystem around the spec.
 
 - [ ] **Community config registry** — start with GitHub repo, evaluate built-in registry later
-- [ ] **[OSCAL](/crosswalker/concepts/framework-standards/) export** — export to [Open Security Controls Assessment Language](https://pages.nist.gov/OSCAL/) for GRC tool integration
+- [ ] **Package lifecycle** — discover packages, resolve dependencies/compatibility, verify Package Manifest hashes/signatures/licenses, install, update, and uninstall without bypassing canonical artifact identities
+- [ ] **Expanded [OSCAL](/crosswalker/concepts/framework-standards/) support** — add catalog or other post-v0.1 models only after the v0.1 crosswalk target-shape decision is explicit and schema-valid
 - [ ] **Compliance dashboards** — [Bases views](/crosswalker/concepts/metadata-ecosystem/) for gap analysis, coverage tracking
 - [ ] **Report generation** — exportable compliance reports for auditors
 - [ ] **[Custom migration transforms](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-5-custom-transfer-logic)** — user-defined transformation logic for version migrations. From inline expressions to named transforms to [custom scripts](/crosswalker/agent-context/zz-log/2026-04-09-primitives-depth-and-pluggable-layers/#thread-5-custom-transfer-logic). Progressive depth applied to migration.

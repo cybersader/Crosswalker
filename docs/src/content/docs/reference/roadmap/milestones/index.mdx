@@ -21,16 +21,18 @@ The [v0.1 implementation phase](/crosswalker/reference/roadmap/#v01-implementati
 | [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | Junction notes + crosswalk edges | 2–3 days | ✅ Done (2026-05-05) |
 | [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) | Streaming refactor (engine accepts row iterator) | 1–2 days | ✅ Done (2026-05-05) |
 | [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Tier 2 sqlite-wasm sidecar projector | 5–8 days | ✅ Done (2026-05-06) |
-| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer + SSSOM import + recipe UX | 3–5 days (ran long — absorbed the shape-workbench side-arc) | 🚧 In progress — Phases 1–6.4 ✅ + Phase 7 (shape-workbench side-arc) ✅ 2026-07-11; v0.1.7 next. Delivery detail: `CHANGELOG.md` `[Unreleased]`; phase list: [milestone page](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) |
-| [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Exporters (STRM TSV / OSCAL JSON) | 2–3 days | 🚧 In progress |
-| [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) | Audit trail T1 default | 1–2 days | 📋 Planning |
-| [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) | Bundle, polish, ship | 2–3 days | 📋 Planning |
+| [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer + SSSOM import + recipe UX | 3–5 days (ran long — absorbed the shape-workbench side-arc) | 🚧 In progress — Phases 1–6.4 ✅ + Phase 7 (shape-workbench side-arc) ✅ 2026-07-11; v0.1.7 is active. Delivery detail: `CHANGELOG.md` `[Unreleased]`; phase list: [milestone page](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) |
+| [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Portability: exporters, reusable configurations, source bindings, MappingSets | Expanded | 🚧 In progress — exporter first slice ✅; recipe-fidelity foundation ✅ 2026-07-21; configuration library, exact source-bound replay, MappingSet envelope/UI, and exporter completion remain, now gated on the [save-and-replay](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) + [primitives](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) decision registers (2026-07-25). Detail: `CHANGELOG.md` `[Unreleased]` |
+| [v0.1.8](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) | Execution records, audit, and package manifests | Expanded | 📋 Planning; depends on v0.1.7 |
+| [v0.1-RC](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) | Artifact-chain acceptance, bundle, polish, ship | 2–3 days | 📋 Planning |
 
 **Status legend**: 📋 Planning · 🚧 In progress · ✅ Done · ⏸ Blocked
 
+**Status last verified: 2026-07-25** — every cell above re-checked against the milestone pages, `CHANGELOG.md` `[Unreleased]`, and the commit log. If today is far past that date and no newer verification line has replaced it, treat this table as unverified.
+
 ## Total estimate
 
-~3–6 weeks of focused work, depending on velocity. Each milestone has explicit dependencies on the previous one (each is a step on the same dependency chain), so the order is roughly fixed.
+~3–6 weeks of focused work, depending on velocity. Each milestone has explicit dependencies on the previous one, so the order is roughly fixed. The closing sequence is **source bytes → reusable configuration → Knowledge Set/MappingSet → Execution Record → Package Manifest**, using the role boundaries in [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) and the [artifact-role synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/).
 
 ## How milestones work in this roadmap
 
@@ -67,15 +69,15 @@ Per-milestone E2E spec — verbatim from the [testing-patterns skill](https://gi
 | v0.1.4.5 | `streaming.spec.ts` — large-CSV streaming import; bounded RAM |
 | v0.1.5 | `sidecar.spec.ts` — `.crosswalker.sqlite` projects + recovers on delete |
 | v0.1.6 | `bases-queries.spec.ts` — emitted Bases query renders in note body |
-| v0.1.7 | `export.spec.ts` — STRM TSV columns + OSCAL JSON schema valid |
-| v0.1.8 | `audit.spec.ts` — git commit produced + signed manifest verifies |
-| v0.1-RC | full smoke against bundled plugin pre-submission |
+| v0.1.7 | `export.spec.ts` — reusable configuration save/reopen/replay + MappingSet SSSOM/STRM round-trip + honest OSCAL target handling |
+| v0.1.8 | `audit.spec.ts` — terminal Execution Record through UI/programmatic paths + Package Manifest inventory/hash/signature verification |
+| v0.1-RC | full artifact-chain replay, parity, tamper, mobile, and bundled-plugin smoke pre-submission |
 
 If a milestone closes without its E2E spec passing, that's a violation of the milestone success criteria — flip status back to In progress.
 
 ## Architectural foundation for these milestones
 
-All 9 milestones build on the [2026-05-04 design phase commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/):
+All 10 milestones build on the [2026-05-04 design phase commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/):
 
 - [Schema-as-primitive reframe](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience) — Tier 1 schema is the load-bearing contract
 - [Closed 5-mechanism recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — Ch 22 synthesis

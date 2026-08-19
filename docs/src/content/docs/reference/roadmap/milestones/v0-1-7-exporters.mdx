@@ -1,37 +1,42 @@
 ---
-title: "v0.1.7 — Exporters (STRM TSV, OSCAL JSON, optional SSSOM)"
-description: "Add the three v0.1 exporters: STRM-shaped TSV (NIST IR 8278A r1 OLIR template), OSCAL JSON profile, and optional SSSOM-flavored TSV for academic interop."
+title: "v0.1.7 — Portability: exporters, reusable configurations, source bindings, and MappingSets"
+description: "Make outputs, reusable import configurations, source bindings, and mapping sets portable without conflating their identities or authority."
 sidebar:
   order: 17
-  label: "v0.1.7 · Exporters"
-tags: [milestone, v0-1, exporters, strm, oscal, sssom, interop]
+  label: "v0.1.7 · Portability"
+tags: [milestone, v0-1, portability, import-recipe, mapping-set, exporters, strm, oscal, sssom, interop]
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 ## Goal
 
-Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable. Three target formats for v0.1 — [STRM](/crosswalker/reference/registry/strm/)-shaped TSV (the user-facing wire format from [NIST IR 8278A r1](/crosswalker/reference/registry/olir/) OLIR template), [OSCAL](/crosswalker/reference/registry/oscal/) JSON profile (for compliance-tool interop), and [SSSOM](/crosswalker/reference/registry/sssom/)-flavored TSV (optional, for academic interop). Hybrid SSSOM↔STRM resolution per [v0.1 stack pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/).
+Make the portable parts of the import/export chain explicit without collapsing distinct artifact roles. [ImportRecipe](/crosswalker/concepts/terminology/#recipe) remains the reusable configuration; a separate source/run binding records the exact input and parameters selected for replay; a minimal MappingSet envelope governs portable mapping assertions; exporters serialize canonical [Tier 1](/crosswalker/concepts/terminology/) data as [STRM](/crosswalker/reference/registry/strm/)-shaped TSV, [OSCAL](/crosswalker/reference/registry/oscal/) JSON, [SSSOM](/crosswalker/reference/registry/sssom/)-flavored TSV, and CSV. See the [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) and [artifact-role synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/). Hybrid SSSOM↔STRM resolution remains per [v0.1 stack pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/).
 
 ## Status
 
-🚧 In progress (started 2026-07-12) — first slice landed: exporter engine + two palette commands. Delivery detail lives in `CHANGELOG.md` `[Unreleased]` ("Vault-wide connection defaults + export lands").
+🚧 In progress (started 2026-07-12) — exporter first slice ✅; ImportRecipe fidelity foundation ✅ 2026-07-21. Remaining scope is the reusable-configuration library lifecycle, separate source/run binding + full-source replay proofs, and the minimal MappingSet portability envelope. Delivery detail lives only in `CHANGELOG.md` `[Unreleased]`.
 
 ## Dependencies
 
 - [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (joins, coverage matrices, deduped exports use sidecar queries)
+- [v0.1.6 — Bases query layer + recipe UX](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) (workbench and inspection surfaces reused by portable configuration and MappingSet UI)
 
 ## Scope
 
 **In:**
 - STRM-shaped TSV exporter — produces NIST IR 8278A r1 OLIR template format; Excel-friendly
-- OSCAL JSON profile exporter — emits the `Control Mapping Model` shape; isomorphic to junction notes per [Ch 07 synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)
+- OSCAL JSON exporter — target shape must be selected explicitly before edge emission; no claim that OSCAL Profile itself contains a crosswalk mapping construct
 - SSSOM-flavored TSV (optional, opt-in) — for users who want to share crosswalks with the SSSOM academic ecosystem
 - CSV exporter — any generated framework folder back to a spreadsheet (scope addition, delivered 2026-07-12 ahead of plan)
-- Command palette entries: "Crosswalker: Export STRM TSV", "Export OSCAL profile", "Export SSSOM TSV"
+- Reusable-configuration library lifecycle — canonical ImportRecipe save/open/browse/inspect/export/delete under `_crosswalker/recipes/import/`
+- Separate source/run binding — recipe reference + recipe hash, exact source-byte hash, parser selectors, destination, and bound parameters; source drift is diagnosed before replay
+- Minimal MappingSet portability envelope — stable set identity/version, participants, membership/integrity, provenance/license, canonical SSSOM/STRM round-trip, and inspect/export UI
+- Command palette entries: "Crosswalker: Export STRM TSV", "Export OSCAL JSON" (only after target shape settles), "Export SSSOM TSV"
 - Roundtrip test: STRM TSV → import → STRM TSV produces identical bytes (deterministic)
 
 **Out:**
+- A generalized KnowledgeSet schema or governance model; v0.1.7 defines only the minimum MappingSet portability envelope needed for crosswalk interchange
 - OSCAL catalog export (deferred to v1.0+)
 - Compliance dashboards / report generation (community phase)
 - AI-assisted mapping suggestions (community phase)
@@ -41,17 +46,49 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 - [x] SSSOM TSV exporter — shipped 2026-07-12 as `src/export/sssom-exporter.ts`, reading Tier 1 directly via `src/export/vault-reader.ts` (implementation delta from the sidecar-read plan above; vault is canonical, sidecar not required for export)
 - [x] Round-trip test (SSSOM) — import → export → import, edge sets deep-equal order-independent; the STRM byte-identical round-trip remains open
 - [ ] STRM TSV exporter — engine shipped + tested (`src/export/strm-tsv-exporter.ts`); command wiring pending
-- [ ] OSCAL JSON profile exporter — skeleton shipped (`imports` shell real); the stable OSCAL 1.1.x Profile schema has no mapping construct, so crosswalk-edge emission is explicitly not-implemented pending a target-shape decision (see the module's TODO table)
+- [ ] OSCAL JSON exporter — skeleton shipped (`imports` shell real); make an explicit target-shape decision before crosswalk-edge emission. OSCAL 1.1.x Profile has no mapping construct, so the exporter must remain an honest non-implementation unless a valid OSCAL target shape is selected and documented
 - [ ] Command-palette + settings UI — two commands live ("Export folder as crosswalk mapping file", "Export folder as CSV"); STRM command + settings toggle for SSSOM pending (off by default since "zero GRC adoption" per [Ch 19](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/))
 - [ ] Validation — exports against published STRM / OSCAL / SSSOM JSON Schemas (not all are formal but where they exist)
+
+### Track 1 — ImportRecipe / reusable-configuration library lifecycle
+
+- [x] Add canonical metadata/ancestry, source compatibility version, and ordered body projections to `spec/recipe.schema.json`
+- [x] Add lossless `RecipeDocument` patching with normalized/canonical equality and explicit portability blockers
+- [x] Preserve recognized/fresh recipe identity, `crosswalk-edge` kind, opaque fields, and canonical body through workbench preview/generation
+- [x] Verify with rich fixture, codegen drift gate, unit suite, and real Obsidian E2E ([synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/))
+- [ ] Settle the public UI term while retaining `ImportRecipe` as the machine-contract name
+- [ ] Store canonical user configurations under `_crosswalker/recipes/import/` without rebuilding them from the smaller workbench model
+- [ ] Add save, reopen, browse, inspect, export, and delete UI; preserve identity, hash, ancestry, opaque fields, and portability blockers across the full lifecycle
+
+### Track 2 — Source/run binding and exact replay
+
+- [ ] Keep the reusable configuration independent from a concrete run binding
+- [ ] Record recipe reference + canonical recipe hash, exact source-byte hash, parser selectors (for example sheet/header/iterator), destination, and bound parameters
+- [ ] Diagnose missing or drifted source bytes before replay; never silently treat a changed source as the original input
+- [ ] Prove NIST CSF 2.0 and NIST SP 800-53 full-source save → reopen → replay equivalence through both UI and programmatic paths
+
+### Track 3 — Minimal MappingSet portability envelope
+
+- [ ] Define stable MappingSet identity and version plus explicit source/target participants and participant versions
+- [ ] Define assertion membership and integrity hashes without inferring set identity from a folder, filename, tag, or repeated edge values
+- [ ] Carry minimum provenance, provider/contributor, and license fields required for responsible interchange
+- [ ] Round-trip the same semantic set through canonical SSSOM and STRM representations while preserving set identity/version and assertion membership
+- [ ] Add MappingSet inspect/export UI and programmatic access
+- [ ] Keep generalized Knowledge Set governance deferred to the Evolution phase
 
 ## Success criteria
 
 - [ ] STRM TSV opens cleanly in Excel; column ordering matches NIST IR 8278A r1
-- [ ] OSCAL JSON profile validates against the OSCAL JSON Schema (NIST published)
+- [ ] OSCAL target shape is explicitly selected and documented; the chosen representation validates against its published OSCAL schema. If no valid mapping-bearing target is selected, the exporter remains explicitly unsupported rather than emitting misleading JSON
 - [ ] SSSOM TSV passes the `sssom-py` validator (optional CI step)
 - [ ] All three exporters handle large vaults (~10K mappings) without UI freeze (cooperative yielding)
-- [ ] Round-trip determinism verified
+- [ ] STRM and SSSOM round-trip determinism verified at both assertion and MappingSet-envelope levels
+- [x] Untouched canonical ImportRecipe retains normalized semantics, canonical JSON, identity, and deferred fields through the workbench
+- [x] Customized recipe receives deterministic identity + structured ancestry without mutating the original
+- [ ] User can durably save, reopen, browse, inspect, export, and delete a portable reusable configuration through UI
+- [ ] A saved run binding retains recipe reference/hash, exact source-byte hash, parser selectors, destination, and parameters; source drift is visible before replay
+- [ ] Full NIST CSF 2.0 and NIST SP 800-53 save/reopen/replay produce equivalent canonical Tier 1 output
+- [ ] A portable MappingSet retains stable identity/version, participants, membership/integrity, provenance/license, and canonical SSSOM/STRM round-trip semantics
 
 ## Files to touch
 
@@ -66,7 +103,7 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 ## Open questions
 
 - [ ] Where does the user choose the export destination — OS file picker, or a vault path? Both have UX trade-offs
-- [ ] OSCAL profile vs. catalog vs. assessment-result — all three are OSCAL types; v0.1 emits which? (Default: profile, since that's the "import + merge + tailoring" shape that maps to crosswalks. Catalog is a future v1.0+ concern when Crosswalker becomes a publishing platform.)
+- [ ] OSCAL target shape — OSCAL Profile is useful for imports/tailoring but does not represent crosswalk mappings in OSCAL 1.1.x. Select and document a valid mapping-bearing target before implementing edge emission; Catalog remains out of scope for v0.1
 
 ## Related
 
@@ -76,6 +113,7 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 - [Framework standards](/crosswalker/concepts/framework-standards/) — what exporters target
 - [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — round-trip determinism guarantees
 - [Institutional landscape](/crosswalker/concepts/institutional-landscape/) — who consumes STRM/OSCAL/SSSOM
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — distinction among reusable configurations, bindings, Knowledge Sets/MappingSets, execution receipts, and package manifests
 
 **Agent context:**
 - [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — Tier 1 shapes that exporters serialize
@@ -84,10 +122,12 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 - [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) — domain context
 
 **Design decisions (synthesis logs):**
-- [Ch 07 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — junction notes are isomorphic to OSCAL Control Mapping Model
+- [Ch 07 evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) — historical junction-note/OSCAL analogy that motivated exporter research; not the v0.1 target-shape decision
 - [v0.1 stack pivot (2026-05-02) §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — STRM↔SSSOM resolution
 - [Volatility and registry (2026-04-04)](/crosswalker/agent-context/zz-log/2026-04-04-volatility-and-registry/) — STRM/SSSOM stability assessment
 - [Direction commitments (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/) — exporter scope
+- [Portable ImportRecipe fidelity synthesis (2026-07-21)](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) — canonical/editable boundary and deferred storage/UI
+- [Artifact roles and authority synthesis (2026-07-21)](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) — artifact boundaries and authority chain
 
 **Research deliverables:**
 - [Ch 19 deliverable (overengineering stress test)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-19-overengineering-stress-test/) — "SSSOM has zero GRC adoption" → opt-in default
@@ -96,11 +136,11 @@ Make the user's [Tier 1](/crosswalker/concepts/terminology/) vault data portable
 
 **Spec & schema files:**
 - [`spec/tier1.schema.json` crosswalk_edge_frontmatter](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — source data for STRM TSV
-- [`spec/tier1.schema.json` junction_note_frontmatter](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — source data for OSCAL profile
+- [`spec/tier1.schema.json` junction_note_frontmatter](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) — candidate source data for the eventual OSCAL target adapter
 
 **Registry references:**
 - [STRM (NIST IR 8477)](/crosswalker/reference/registry/strm/) — predicate vocabulary + TSV format
-- [OSCAL](/crosswalker/reference/registry/oscal/) — control mapping model (NIST published JSON Schema)
+- [OSCAL](/crosswalker/reference/registry/oscal/) — OSCAL model registry; v0.1 crosswalk target-shape decision remains explicit and open
 - [SSSOM](/crosswalker/reference/registry/sssom/) — Mapping Commons envelope shape
 - [OLIR](/crosswalker/reference/registry/olir/) — NIST IR 8278A r1 OLIR template
 - [NIST](/crosswalker/reference/registry/nist/) · [ISO](/crosswalker/reference/registry/iso/) · [MITRE](/crosswalker/reference/registry/mitre/) · [CIS](/crosswalker/reference/registry/cis/) · [CRI](/crosswalker/reference/registry/cri/) · [FFIEC](/crosswalker/reference/registry/ffiec/)

@@ -1,6 +1,6 @@
 ---
-title: "v0.1-RC — Bundle, polish, ship"
-description: "Bundle size verification (under 1.2 MB), mobile portability test, README polish, community plugin submission prep, release as v0.2.0 (since v0.1.0 was the existing MVP)."
+title: "v0.1-RC — Artifact-chain acceptance, bundle, polish, ship"
+description: "Gate the complete source-to-package artifact chain, verify UI/config parity and public claims, then complete bundle, mobile, and community-plugin release checks."
 sidebar:
   order: 19
   label: "v0.1-RC · Ship"
@@ -9,9 +9,9 @@ tags: [milestone, v0-1, release, bundle, community-plugins]
 
 import { Aside } from '@astrojs/starlight/components';
 
-Ship the v0.1-implementation phase as a release. Verify bundle size, confirm mobile portability (per [Ch 23 §5 `isDesktopOnly: false` commitment](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)), polish remaining UX rough edges, prepare [community-plugin submission](https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin). Released as **v0.2.0** since v0.1.0 was the original MVP shipped 2026-04-02.
+Ship the v0.1 implementation phase only after the complete artifact chain is demonstrably coherent: **source bytes → reusable configuration → Knowledge Set/MappingSet → Execution Record → Package Manifest**. The RC then verifies bundle size, confirms mobile portability (per [Ch 23 §5 `isDesktopOnly: false` commitment](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#5-specific-v01-build-target-locks)), polishes remaining UX rough edges, and prepares [community-plugin submission](https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin). Released as **v0.2.0** since v0.1.0 was the original MVP shipped 2026-04-02.
 
-This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) settled in the 2026-05-04 design phase: schema-as-primitive, closed 5-mechanism recipe grammar, TS in-plugin engine, sqlite-wasm Tier 2 substrate, runtime-agnostic recipe schema, Bases query layer.
+This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent-context/zz-log/2026-05-04-import-engine-design/) and verifies the artifact boundaries described by [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) and the [artifact-role synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/).
 
 ## Status
 
@@ -24,6 +24,10 @@ This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent
 ## Scope
 
 **In:**
+- Artifact-chain acceptance — exact replay from pinned source bytes + reusable configuration through canonical Knowledge Set/MappingSet output, terminal Execution Record, and verified Package Manifest
+- UI/config parity — every release-critical portable operation available through UI has equivalent programmatic/config behavior, and every supported programmatic path has a discoverable UI path or an explicitly documented escape-hatch exception
+- Truthful public language — README, notices, settings, docs, and release notes describe implemented guarantees without claiming unsupported OSCAL mappings, generalized Knowledge Set governance, or stronger audit assurance than v0.1 provides
+- Docs/roadmap parity — milestone hub, docs roadmap, root `ROADMAP.md`, release notes, and status labels agree
 - Bundle size verification — measure plugin core + sqlite-wasm + sqlite-vec; target ≤ 1.2 MB compressed
 - Mobile portability test — install on Obsidian Mobile (iOS or Android via Capacitor); verify import wizard, Tier 1 generation, sidecar projection, exporters all work
 - README final polish — aligned with the design-phase-complete state; tagline preserved; jargon stripped
@@ -39,6 +43,18 @@ This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent
 
 ## Concrete tasks
 
+### Artifact-chain release gates
+
+- [ ] Exact replay — pin source bytes by content hash, reopen the reusable configuration + binding, replay through UI and programmatic paths, and verify equivalent canonical output plus a valid terminal Execution Record
+- [ ] MappingSet round-trip — canonical set identity/version, participants, membership/integrity, and provenance/license survive SSSOM → canonical → STRM → canonical interchange
+- [ ] Execution Record terminal coverage — successful, failed, and cancelled UI/programmatic runs each produce one valid terminal record with resolvable source, recipe, output, validation, and trace facts
+- [ ] Package Manifest verification — every distributed artifact is inventoried; byte hashes, dependencies, license/attribution, and signatures verify; tampering or omission fails closed
+- [ ] UI/config parity audit — reusable-configuration lifecycle, source binding/replay, MappingSet inspect/export, run history, and package inspection have equivalent supported UI and programmatic paths
+- [ ] Public-language audit — no unsupported OSCAL, audit, portability, generalized Knowledge Set, or mobile claims
+- [ ] Docs/roadmap parity audit — milestone pages, milestone hub, docs roadmap, root `ROADMAP.md`, README, and release notes agree on scope and status
+
+### Release engineering
+
 - [ ] Run `bun run build` in production mode; report final bundle size
 - [ ] Compare against the 1.2 MB target; if over, identify trim opportunities (lazy-load XLSX, skip SSSOM exporter unless user enables, etc.)
 - [ ] Install plugin in a real Obsidian Desktop install (not just `test-vault/`); run a full import workflow
@@ -52,6 +68,13 @@ This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent
 
 ## Success criteria
 
+- [ ] The chain source bytes → reusable configuration → Knowledge Set/MappingSet → Execution Record → Package Manifest passes exact-replay and tamper-detection gates
+- [ ] MappingSet canonical SSSOM/STRM round-trip preserves set and assertion integrity
+- [ ] Every UI and programmatic run path produces a valid terminal Execution Record
+- [ ] Every release Package Manifest completely inventories distributed artifacts and verifies every byte hash/signature
+- [ ] UI/config parity audit has no unexplained lifecycle gaps
+- [ ] Public language is truthful about implemented formats, audit assurance, portability, and deferred governance
+- [ ] Docs, roadmap mirrors, release notes, and milestone status are semantically aligned
 - [ ] Bundle ≤ 1.2 MB compressed total
 - [ ] Plugin installs and runs cleanly on Obsidian Desktop AND Mobile
 - [ ] `bun run lint` exits 0
@@ -83,6 +106,7 @@ This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent
 - [Terminology](/crosswalker/concepts/terminology/) — canonical vocabulary; check user-facing surfaces follow it
 - [Ecosystem](/crosswalker/concepts/ecosystem/) — community-plugin landscape context
 - [Operational landscape](/crosswalker/concepts/operational-landscape/) — adoption + deployment story
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — authority boundaries for the release artifact chain
 
 **Agent context:**
 - [Vision](/crosswalker/agent-context/vision/) — what the RC needs to deliver against
@@ -97,6 +121,7 @@ This RC consolidates the [six v0.1 architectural commitments](/crosswalker/agent
 - [Ch 24 synthesis (Tier 2 substrate)](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) — sqlite-wasm
 - [v0.1 stack pivot (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) — overall stack
 - [README user-facing-surface rule](/crosswalker/agent-context/zz-log/) — saved 2026-05-04; keep README jargon-free
+- [Artifact roles and authority synthesis (2026-07-21)](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) — release-chain role boundaries and deferred-governance limits
 
 **Research deliverables (RC verification context):**
 - [Ch 23 deliverable (bundle/engine/language)](/crosswalker/agent-context/zz-research/2026-05-04-challenge-23-bundle-engine-language/) — bundle-size + portability evidence

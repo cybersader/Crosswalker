@@ -1,15 +1,15 @@
 ---
-title: "v0.1.8 — Audit trail T1 default"
-description: "Wire the Tier 1 audit trail: git-commit integration, Ed25519-signed release manifests, on-demand FRE 902(13) PDF certification template."
+title: "v0.1.8 — Execution records, audit, and package manifests"
+description: "Record what happened in each run, link provenance and audit events to that receipt, then attest separately inventoried release packages."
 sidebar:
   order: 18
-  label: "v0.1.8 · Audit trail"
-tags: [milestone, v0-1, audit, git, ed25519, fre-902, compliance]
+  label: "v0.1.8 · Records + manifests"
+tags: [milestone, v0-1, execution-record, audit, package-manifest, git, ed25519, fre-902, compliance]
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-Implement the v0.1 [audit trail](/crosswalker/concepts/terminology/) floor — [Tier 1](/crosswalker/concepts/terminology/) = git commits + Ed25519-signed releases for shared mapping bundles + auto-generated FRE 902(13) certification PDF available on demand. Per [Ch 08 synthesis (audit-trail tenability)](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) + [v0.1 stack pivot §8](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) + [Ch 15 4-tier audit model](/crosswalker/agent-context/zz-research/2026-05-02-challenge-15-non-git-audit-trail/).
+Make every run inspectable before adding stronger attestation around it. The primary artifact is an **Execution Record**: one schema-valid receipt answering what actually happened for one bound run. Per-note provenance and durable log events link to that record. Existing git, Ed25519 signing, and FRE 902(13) mechanisms consume the record rather than reconstructing run facts independently. A **Package Manifest** is separate: it inventories, hashes, and optionally attests the artifacts distributed in one release. See the [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) and [artifact-role synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/).
 
 ## Status
 
@@ -17,68 +17,89 @@ Implement the v0.1 [audit trail](/crosswalker/concepts/terminology/) floor — [
 
 ## Dependencies
 
-- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (write-event hook needed)
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (terminal run and write-event hooks)
+- [v0.1.7 — Portability](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) (portable recipes, source/run bindings, MappingSet identity, and integrity facts)
 
 ## Scope
 
 **In:**
-- Git-commit-on-write hook — every Tier 1 generation pass produces one commit; commit message includes recipe ID + recipe hash + concept count + summary diff
-- Ed25519 release-manifest signing — when a user publishes a Tier 1 bundle, optionally sign with their Ed25519 key; signature lives in `_crosswalker_manifest.json` at vault root
-- FRE 902(13) PDF certification — on-demand generation of a compliance-export certification template suitable for evidence submission in US litigation
-- Settings toggle — "Sign on commit" + key-management UX (point at git config or OS keychain; don't reinvent)
-- **Logging-infrastructure production-hardening sub-phase** — the wide-event NDJSON substrate from [Phase 3.5a/b/c](/crosswalker/agent-context/zz-log/2026-05-15-context-briefing/) is the same shape as the audit trail itself (`{ts, level, category, op, msg, trace_id, ...}`). Consolidate them into one substrate. See dedicated section below.
+- Execution Record contract — one terminal receipt per run, including status, timing, recipe reference/hash, exact source-byte hash, parser selectors, destination/parameters, output inventory/hashes, validation outcomes, warnings/deviations, and trace identity
+- Execution-linked provenance — generated Tier 1 notes and durable NDJSON events carry the same execution ID without pretending either is the complete aggregate receipt
+- Run-history UI — browse, filter, inspect, and export prior Execution Records; both UI and programmatic import paths use the same recorder
+- Git audit consumer — successful runs can produce one deterministic commit whose message summarizes the Execution Record
+- Ed25519 signing and FRE 902(13) certification consumers — attest a Package Manifest and its referenced execution evidence instead of signing an underspecified folder
+- Package Manifest contract — separately inventory a distributed release's Knowledge Sets/MappingSets, reusable configurations, relevant Execution Records, dependencies, licenses/attribution, versions, paths, and content hashes
+- Package-inspection UI — inspect inventory, verify hashes/signatures, and export the manifest before distribution or installation
+- **Logging-infrastructure production-hardening sub-phase** — retain one wide-event NDJSON substrate, but separate rotating debug output from non-stripped execution/audit events
 
 **Out:**
 - T2 / T3 audit profiles (OpenTimestamps, RFC 3161, Sigstore Rekor v2 + in-toto, eIDAS QTSA + W3C VC) — opt-in compliance-export mode for v1.0+
+- Community package discovery/install/update lifecycle — later Community phase
 - PQC dual-sign migration — 2027+ work per [NIST IR 8547 timeline](/crosswalker/reference/roadmap/#performance--v10-companion-plugins)
 
 ## Concrete tasks
 
-### Audit trail (primary scope)
+### Execution Record first
 
-- [ ] Git integration — `src/audit/git-commit.ts`; uses `simple-git` or shells out to system git; produces deterministic commit messages
-- [ ] Ed25519 sign helper — `src/audit/sign.ts`; `@noble/curves` or equivalent; uses key from settings (path-to-PEM or OS keychain reference)
-- [ ] Release manifest writer — `_crosswalker_manifest.json` at vault root; includes recipe IDs + recipe hashes + Ed25519 signatures
-- [ ] FRE 902(13) PDF template — `src/audit/fre-902.ts`; produces a one-page PDF using `pdf-lib` or equivalent; includes vault hash, signed manifest, signer identity
-- [ ] Settings UI — toggle for "Sign on commit"; key-source selector (git config, file path, keychain)
-- [ ] Tests — sign + verify roundtrip; commit-on-write produces consistent message; FRE 902(13) renders without errors
+- [ ] Define and validate the versioned Execution Record contract; keep it distinct from per-note `_crosswalker` provenance, debug logs, and Package Manifests
+- [ ] Write exactly one terminal record for success, failure, or cancellation through both UI and programmatic run paths
+- [ ] Correlate output notes, validation results, warnings, and durable log events by execution ID
+- [ ] Add run-history browse/filter/inspect/export UI
+- [ ] Test deterministic record serialization, terminal-status coverage, source/recipe hash capture, and output inventory integrity
+
+### Audit and attestation consumers
+
+- [ ] Git integration — consume a successful Execution Record and produce one deterministic commit message with recipe/run identity, concept count, and summary diff
+- [ ] Ed25519 sign/verify helper — use a configured key reference; signatures attest the Package Manifest bytes
+- [ ] FRE 902(13) PDF template — derive the certification fields from the verified Package Manifest plus referenced Execution Records
+- [ ] Settings UI — explicit commit/sign controls and key-source selector; signing remains opt-in
+- [ ] Tests — commit message determinism, sign/verify round-trip, tamper detection, and FRE 902(13) rendering
+
+### Package Manifest separately
+
+- [ ] Define the versioned Package Manifest contract and canonical vault path independently from the Execution Record contract
+- [ ] Inventory every distributed artifact with role, identity/version, path, byte hash, dependencies, provenance/license, and optional execution-record reference
+- [ ] Verify inventory completeness and hashes before signing, exporting, or installing a package
+- [ ] Add package inspect/verify/export UI and equivalent programmatic APIs
 
 ### Logging-infrastructure production-hardening sub-phase
 
-**Rationale**: the audit trail and the wide-event debug log are the same substrate. Phase 3.5a/b/c shipped a solid NDJSON wide-event logger (`src/utils/debug.ts`, 422 LOC, trace correlation via `withTrace`, categories, levels). For v0.1.8 we promote it from "debug-only" to "production-grade observability" by closing four gaps surfaced during Phase 4.5 testing (2026-05-18):
+**Rationale**: the debug logger and execution/audit event streams can share plumbing without becoming the same artifact. Phase 3.5a/b/c shipped the NDJSON wide-event logger (`src/utils/debug.ts`, trace correlation via `withTrace`, categories, levels). v0.1.8 closes the production gaps while preserving the Execution Record as the aggregate run receipt:
 
-- [ ] **Bundle stripping** — add esbuild `define` flag (`__DEBUG__`); wrap trace/info-level emit sites in `if (__DEBUG__)`; production build (`bun run build`) strips the verbose emit code, keeping only error/warn paths. Bundle audit before vs. after — current `main.js` is ~650KB; target 50KB+ reduction.
-- [ ] **Log rotation** — cap at `MAX_LOG_LINES` setting (default ~10k); when exceeded, archive oldest half to `crosswalker-debug.log.1` and truncate primary file. Prevents indefinite growth in long-lived vaults.
-- [ ] **Settings surface** — expose `logLevel: 'error' | 'warn' | 'info' | 'trace'` dropdown in settings tab; default `info`. Power users + bug reporters can crank to `trace`; everyone else gets quiet logs.
-- [ ] **"Copy redacted log slice for bug report" command** — palette command that grabs the last N events, scrubs absolute paths + usernames + email-shaped strings, and copies the JSON array to clipboard. Lowers OSS issue-triage friction.
-- [ ] **Audit-log promotion** — the audit-trail events from this milestone (`audit/commit-written`, `audit/signed`, `audit/manifest-published`) emit through the same `DebugLog` substrate but to a separate `crosswalker-audit.log` file (NDJSON, non-rotating, non-stripped). One logger, two output streams — same JSON shape both places.
-
-Total estimated effort: ~6 hours (separate commit from the audit-trail primary work).
+- [ ] **Bundle stripping** — add esbuild `define` flag (`__DEBUG__`); strip trace/info debug emit sites from production while retaining execution/audit and error/warn paths
+- [ ] **Log rotation** — cap rotating debug output at `MAX_LOG_LINES`; durable execution/audit records are governed separately
+- [ ] **Settings surface** — expose `logLevel: 'error' | 'warn' | 'info' | 'trace'`; default `info`
+- [ ] **"Copy redacted log slice for bug report" command** — scrub absolute paths, usernames, email-shaped strings, and secrets before copying
+- [ ] **Execution/audit event stream** — emit non-stripped NDJSON events keyed by execution ID for record-written, commit-written, package-verified, signed, and manifest-published outcomes
 
 ## Success criteria
 
-- [ ] Every successful generation pass produces exactly one git commit with deterministic message
-- [ ] Signed releases verify cleanly with `openssl` or `gpg --verify` (depending on signature format)
-- [ ] FRE 902(13) PDF includes all required fields per the FRE 902(13) statutory text
-- [ ] Settings toggle off → no signing (opt-in)
-- [ ] No Tier 2/Tier 3 audit dependencies in v0.1.8 — all that's deferred to opt-in compliance-export mode
-- [ ] **Logging sub-phase**: production `main.js` size drops measurably after `__DEBUG__` stripping; log rotation prevents `crosswalker-debug.log` from growing past `MAX_LOG_LINES`; `logLevel` setting works end-to-end; "Copy redacted log slice" command produces clipboard JSON with no absolute paths or usernames
+- [ ] Every terminal UI or programmatic run produces exactly one schema-valid Execution Record, including failed and cancelled runs
+- [ ] Execution Record recipe/source hashes and output inventory verify against the bound reusable configuration, exact source bytes, and generated files
+- [ ] Per-note provenance and durable log events resolve to the same execution ID without duplicating the aggregate contract
+- [ ] Run-history UI can inspect/export records and clearly surface failures, warnings, validation outcomes, and source drift
+- [ ] Successful-run git commits are deterministic consumers of Execution Records; disabling commit/sign controls causes no hidden audit side effects
+- [ ] Package Manifest inventory is complete, byte hashes verify, tampering fails verification, and Ed25519 signatures attest the manifest bytes
+- [ ] Package-inspection UI and programmatic verification report the same result
+- [ ] FRE 902(13) PDF derives from verified package/run evidence and contains the required certification fields
+- [ ] No Tier 2/Tier 3 audit dependencies in v0.1.8
+- [ ] **Logging sub-phase**: production debug code shrinks measurably; rotation bounds debug logs; log-level controls work; redacted slices contain no absolute paths, usernames, email addresses, or secrets
 
 ## Files to touch
 
-- `src/audit/git-commit.ts` — new
-- `src/audit/sign.ts` — new
-- `src/audit/fre-902.ts` — new (PDF template)
-- `src/audit/manifest.ts` — new (`_crosswalker_manifest.json` writer)
-- `src/main.ts` — wire commit hook to generation events
-- `src/settings/settings-tab.ts` — new audit section
-- `tests/audit/sign-verify.test.ts` — new
+- `spec/` — versioned Execution Record and Package Manifest contracts
+- `src/audit/` — record writer, git consumer, signing, manifest verification, FRE 902(13)
+- `src/generation/` and import orchestration — terminal run hooks + execution correlation
+- `src/settings/settings-tab.ts` — commit/sign/log controls
+- run-history and package-inspection UI modules
+- unit + real-Obsidian E2E coverage for UI and programmatic paths
 
 ## Open questions
 
-- [ ] Do we shell out to system git, or use a JS library? `simple-git` exists but adds a dep. Shell-out is closer to user expectations; library is more portable across environments
-- [ ] Key management UX — referencing a file path vs. integrating with macOS Keychain / Windows Credential Manager / Linux secret-service. Pick one v0.1 default; cross-platform parity is v1.0+
-- [ ] FRE 902(13) PDF — fully programmatic via `pdf-lib`, or a templated approach (JSX-PDF / hbs)?
+- [ ] Canonical vault paths and retention policy for Execution Records and Package Manifests
+- [ ] Do we shell out to system git, or use a JS library? `simple-git` exists but adds a dependency
+- [ ] Key management UX — file reference vs. OS credential store; choose a portable v0.1 floor without storing private key material in manifests or logs
+- [ ] FRE 902(13) PDF — fully programmatic via `pdf-lib`, or a templated approach?
 
 ## Related
 
@@ -88,6 +109,7 @@ Total estimated effort: ~6 hours (separate commit from the audit-trail primary w
 - [Institutional landscape](/crosswalker/concepts/institutional-landscape/) — who consumes audit artifacts (regulators, attesters)
 - [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — provenance + versioning context
 - [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — git-native audit trail differentiates from db-backed competitors
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — distinction between Execution Records, per-note provenance, log events, and Package Manifests
 
 **Agent context:**
 - [Vision](/crosswalker/agent-context/vision/) — file-based canonical state enables git-native audit
@@ -99,6 +121,7 @@ Total estimated effort: ~6 hours (separate commit from the audit-trail primary w
 - [v0.1 stack pivot §8 (audit trail floor)](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/)
 - [Direction third-wave architectural shifts (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/) — T1/T2/T3 model emerges
 - [Direction commitments TLDR (2026-05-02)](/crosswalker/agent-context/zz-log/2026-05-02-direction-commitments-tldr/)
+- [Artifact roles and authority synthesis (2026-07-21)](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) — execution-receipt and distribution-envelope boundary
 
 **Research deliverables:**
 - [Ch 08 deliverable (audit trail tenability)](/crosswalker/agent-context/zz-research/2026-05-02-challenge-08-git-audit-trail/) — git audit trail viability assessment
@@ -113,6 +136,7 @@ Total estimated effort: ~6 hours (separate commit from the audit-trail primary w
 - [Sigstore Rekor v2](https://docs.sigstore.dev/logging/overview/)
 
 **Other milestones:**
-- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — dependency (write-event hook)
-- [v0.1-RC — Bundle, polish, ship](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — what this unblocks
+- [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) — dependency (terminal run + write-event hooks)
+- [v0.1.7 — Portability](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — dependency (recipes, source bindings, MappingSet identity/integrity)
+- [v0.1-RC — Artifact-chain acceptance, bundle, polish, ship](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) — what this unblocks
 - [Milestone hub](/crosswalker/reference/roadmap/milestones/)
