@@ -9,6 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { inflateRawSync } from 'node:zlib';
 import { lstat, readFile, readlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,8 @@ const ALLOWLIST = [
   'docs/src/content/docs/agent-context/zz-research/2026-05-04-challenge-22-target-structure-expressivity.md', // Windows MAX_PATH research intentionally uses a fictional user path.
   '.claude/agents/pre-commit-reviewer.md', // Reviewer instructions intentionally document personal-data detection patterns.
   'tests/debug-diagnostics.test.ts', // Redaction test intentionally uses a fictional home path and asserts it is scrubbed.
+  'Frameworks/sp800-53r5-control-catalog.xlsx', // Published NIST artifact redistributed as-is; docProps names are its published authors.
+  'Frameworks/Cybersecurity_Framework_v2-0_Concept_Crosswalk_800-53_final.xlsx', // Published NIST artifact redistributed as-is; docProps name is its published author.
   'node_modules/**', // Third-party dependencies are not repository-authored content.
   '.git/**', // Git object and index data are internal repository metadata.
   'docs/dist/**', // Built documentation output is generated from scanned sources.
@@ -130,6 +133,76 @@ function matchesAllowlist(path) {
 
 function hasGeneratedSegment(path) {
   return path.split('/').some((segment) => GENERATED_SEGMENTS.has(segment));
+}
+
+
+// --- Office document metadata -------------------------------------------------
+// Office files are ZIP containers. The personal data in them is authorship
+// metadata under docProps, not text in the body, so the binary skip below would
+// miss it entirely. That is how a real full name reached an already-published
+// spreadsheet in this repo (found 2026-08-19). Parsed with a minimal ZIP reader
+// rather than by shelling out to `unzip`, so a missing tool cannot make a
+// security gate silently pass.
+const OFFICE_EXTENSIONS = ['.xlsx', '.docx', '.pptx', '.xlsm'];
+
+// Generic tool/product identities that carry no personal information.
+const OFFICE_AUTHOR_ALLOWLIST = new Set([
+  '', 'microsoft office user', 'apache poi', 'openpyxl', 'libreoffice',
+  'unknown', 'author', 'user', 'administrator', 'excel', 'python-docx',
+]);
+
+function readZipEntry(buffer, wantedName) {
+  // Locate End Of Central Directory, allowing for a trailing comment.
+  let eocd = -1;
+  for (let i = buffer.length - 22; i >= 0 && i > buffer.length - 66000; i--) {
+    if (buffer.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return null;
+  const entryCount = buffer.readUInt16LE(eocd + 10);
+  let offset = buffer.readUInt32LE(eocd + 16);
+
+  for (let n = 0; n < entryCount; n++) {
+    if (offset + 46 > buffer.length || buffer.readUInt32LE(offset) !== 0x02014b50) return null;
+    const method = buffer.readUInt16LE(offset + 10);
+    const nameLen = buffer.readUInt16LE(offset + 28);
+    const extraLen = buffer.readUInt16LE(offset + 30);
+    const commentLen = buffer.readUInt16LE(offset + 32);
+    const localOffset = buffer.readUInt32LE(offset + 42);
+    const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLen);
+
+    if (name === wantedName) {
+      if (buffer.readUInt32LE(localOffset) !== 0x04034b50) return null;
+      const lNameLen = buffer.readUInt16LE(localOffset + 26);
+      const lExtraLen = buffer.readUInt16LE(localOffset + 28);
+      const compSize = buffer.readUInt32LE(offset + 20);
+      const start = localOffset + 30 + lNameLen + lExtraLen;
+      const raw = buffer.subarray(start, start + compSize);
+      try {
+        return method === 0 ? raw.toString('utf8') : inflateRawSync(raw).toString('utf8');
+      } catch { return null; }
+    }
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return null;
+}
+
+function findOfficeMetadataViolations(buffer, path) {
+  const core = readZipEntry(buffer, 'docProps/core.xml');
+  if (!core) return [];
+  const out = [];
+  const fields = [
+    ['dc:creator', 'creator'],
+    ['cp:lastModifiedBy', 'lastModifiedBy'],
+    ['cp:manager', 'manager'],
+    ['Company', 'company'],
+  ];
+  for (const [tag, label] of fields) {
+    const m = core.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+    const value = (m && m[1] ? m[1] : '').trim();
+    if (!value || OFFICE_AUTHOR_ALLOWLIST.has(value.toLowerCase())) continue;
+    out.push({ path, line: 1, rule: 'office-metadata-author', match: `${label}=${value}` });
+  }
+  return out;
 }
 
 function isBinary(buffer) {
@@ -251,6 +324,11 @@ async function main() {
     }
     if (result.buffer.length > MAX_FILE_BYTES) {
       skipped.large++;
+      continue;
+    }
+    if (OFFICE_EXTENSIONS.some((ext) => path.toLowerCase().endsWith(ext))) {
+      scanned++;
+      violations.push(...findOfficeMetadataViolations(result.buffer, path));
       continue;
     }
     if (isBinary(result.buffer)) {
