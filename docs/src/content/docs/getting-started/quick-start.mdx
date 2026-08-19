@@ -68,7 +68,21 @@ _crosswalker:
 Support the management of system accounts using automated mechanisms.
 ```
 
-The `_crosswalker` block is what makes a re-import safe: Crosswalker updates the notes it made rather than duplicating them, and anything you wrote yourself stays put. See the [generation engine](/crosswalker/features/generation-engine/) for exactly what lands in each note.
+The `_crosswalker` block is how a re-import recognizes its own notes, so it updates them rather than creating duplicates. See the [generation engine](/crosswalker/features/generation-engine/) for exactly what lands in each note.
+
+:::caution[What a re-import preserves, and what it does not]
+This depends entirely on the **existing-file mode** you choose in the import wizard.
+
+| Mode | Effect on a note that already exists |
+|---|---|
+| **Skip existing** (the default) | The note is left completely untouched. Nothing you wrote is at risk |
+| **Replace** | The note is **rebuilt from the source row**. Frontmatter keys you added are merged back, but **anything you typed into the note body is overwritten and not recoverable** |
+| **Error** | The import stops rather than touching the existing note |
+
+So: keep your own writing — evidence links, analysis, commentary — in **separate notes** that link to the generated ones, not inside the generated notes themselves. Generated folders are best treated as importer-owned and disposable.
+
+Verified against `src/generation/generation-engine.ts` on 2026-08-19: in Replace mode the note content is rebuilt and written without reading the existing body.
+:::
 
 ## Where the settings are
 
