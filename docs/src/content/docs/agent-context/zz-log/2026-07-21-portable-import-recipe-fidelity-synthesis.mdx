@@ -1,0 +1,112 @@
+---
+title: "Portable ImportRecipe fidelity — synthesis (canonical recipe survives the workbench)"
+description: "Records the v0.1.7 recipe-portability foundation: a lossless RecipeDocument boundary, canonical body rendering, layered validation, deterministic equality, ancestry, source-version compatibility, and typed scalar projection. Persistent recipe storage and the public UI term remain deliberately open."
+tags: [log, synthesis, import-recipe, portability, render, workbench, v0-1-7]
+date: 2026-07-21
+sidebar:
+  label: "07-21 · Recipe fidelity"
+  order: -20260721.1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="What this settles">
+This completes the canonical/editable boundary implied by the [runtime-agnostic recipe commitment](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/#4-the-most-important-commitment-runtime-agnostic-recipe-schema). It does not redesign recipes: a bounded KB/code audit found roughly two-thirds of the direction was already settled.
+</Aside>
+
+<Aside type="note" title="2026-07-21 artifact-role reconciliation">
+This log records the implementation verdict without renaming its historical concepts. In the [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) model, an `ImportRecipe` is a machine-evaluable declarative specification, not executable knowledge; `RecipeDocument.original` is durable preservation authority; and `StructureMapping` / `ImportMapping` is editable UI/IR. Serializations such as SSSOM, STRM, OSCAL, CSV, and Markdown are representations, while ZIP files, folders, and git repositories are carriers. A shareable package additionally requires manifest semantics.
+</Aside>
+
+## §1 The verdict
+
+A validated [ImportRecipe](/crosswalker/concepts/terminology/#recipe) is now the preservation authority throughout the import workbench. The editable mapping patches only fields the workbench owns; untouched canonical fields survive, and unsupported edits block instead of disappearing.
+
+| Decision | Verdict |
+|---|---|
+| Canonical recipe ↔ editable workbench boundary | **Adopted:** `RecipeDocument` retains the original recipe plus editable `ImportMapping` and session-only metadata |
+| Body projection | **Adopted:** ordered `target.also_emit.body`; evaluated only by pure [`render()`](/crosswalker/concepts/terminology/#render) |
+| Equality | **Adopted:** normalized semantic equality + deterministic canonical JSON, not literal source whitespace/key order |
+| Recipe ancestry | **Adopted:** structured `metadata.based_on` with recipe ID and optional target hash/spec URI |
+| Source version | **Adopted:** compatibility declaration; verified run metadata remains authoritative |
+| Persistent user recipe library | **Deferred:** namespace reserved; no save/open/browser UI in this slice |
+| Public UI name | **Deferred:** internal term remains `ImportRecipe` until product wording is settled |
+| Mapping-set packaging | **Deferred:** recipes, crosswalk mapping sets, and ontology content remain independently modeled |
+
+## §2 Why this boundary is correct
+
+- **Preserve first:** the workbench cannot safely reconstruct fields it does not edit, including `kind`, `query`, `graph_edges`, and `linkStyle`.
+- **Block loss:** nonportable mapping states such as table-row body output, lookup naming, row filters, materialized notes, and non-default missing policies now return explicit blockers.
+- **Keep render pure:** body templates and formats are resolved into ordered body regions by `render()`; generation only assembles Markdown.
+- **Separate recipe compatibility from run truth:** `source.version` can describe intended compatibility, but `_crosswalker.source_ref` records the source actually used.
+
+## §3 Load-bearing principle
+
+> **An editor over a portable artifact must patch a validated original; it must never rebuild the artifact from a smaller view model.**
+
+This is the recipe-side application of [schema-as-primitive](/crosswalker/concepts/etl-and-import/): the canonical artifact outranks any one UI projection.
+
+## §4 What is locked in
+
+| Aspect | v0.1 lock |
+|---|---|
+| Preservation authority | `RecipeDocument.original` |
+| Editor-owned fields | layout; tags; aliases; managed frontmatter/links; `user_preserve`; enrichment; canonical body |
+| Opaque preserved fields | leaf `kind`; query; `graph_edges`; `linkStyle`; display/source metadata not edited by the workbench |
+| Fresh identity | `custom-<source-ontology-slug>` |
+| Customized identity | `<original-id>-custom` plus `metadata.based_on` |
+| Body positions | `append`, `section`; table rows remain blocked |
+| Body formats | `text`, `code`, `quote`, `list` |
+| Validation | schema → recipe semantics → source compatibility → editable-model portability |
+| User recipe namespace | future `_crosswalker/recipes/import/*.json`; existing query templates stay `_crosswalker/recipes/*.json` |
+| Scalar typing | exact managed templates may use `|number` to emit a JSON/YAML number instead of a string |
+
+## §5 Verification and the defect it exposed
+
+The contract is pinned by a rich fixture plus unit and real-Obsidian E2E coverage:
+
+- canonical load → no-op patch retains recipe ID and canonical equality;
+- one edit changes only owned regions and writes ancestry;
+- array order survives when emissions attach to different mapping levels;
+- prefixed multi-column templates such as `cw-{subject_id|slug}--{object_id|slug}.md` survive exactly;
+- canonical body renders and generates through the workbench;
+- recognized and detected `crosswalk-edge` kinds survive preview/generation.
+
+The real crosswalk E2E found one additional portability defect: CSV confidence values remained strings, but Tier 1 requires numeric `match_confidence`. The closed template filter set now includes `number`, and the bundled OLIR-style recipe uses `{match_confidence|number}`. This is why real runtime validation remains part of the recipe-fidelity gate.
+
+## §6 Reconciliation with prior decisions
+
+| Prior commitment | Reconciliation |
+|---|---|
+| [Closed five-mechanism grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) | Unchanged. Body remains cross-cutting output, not a sixth layout mechanism. |
+| [Runtime-agnostic JSON Schema recipes](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) | Strengthened: generated boundary types, AJV narrowing, deterministic codegen drift check. |
+| [Shape workbench](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) | Corrected: internal mapping conversion is now lossless for supported fields, but durable user recipe-file lifecycle is still open. |
+| [UI parity principle](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) | The active import UI edits canonical recipes safely; standalone save/open/share UI remains a named gap. |
+| [v0.1.7 exporters](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Recipe portability joins output export as the other side of the same portability milestone. |
+
+## §7 What this does not do
+
+- no persistent user ImportRecipe store or browser;
+- no final public term such as “blueprint” or “reusable configuration”;
+- no automatic SavedConfig → ImportRecipe migration;
+- no first-class mapping-set identity or authoring UI;
+- no claim that every valid future recipe field is editable;
+- no full NIST CSF / NIST 800-53 save-reopen-reapply proof yet.
+
+## §8 What this unblocks
+
+1. Settle the public term and add a local recipe library under `_crosswalker/recipes/import/`.
+2. Prove NIST CSF 2.0 and NIST SP 800-53 portability on full verbose sources.
+3. Design first-class mapping-set storage and authoring independently from ImportRecipe storage.
+4. Stress breadth across D3FEND, ATT&CK, and the 369-column SCF workbook.
+
+## §9 Related
+
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — recipe authority, editable IR, serialization, carrier, and package boundaries
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive and the bundled projector
+- [Terminology](/crosswalker/concepts/terminology/) — ImportRecipe, `RecipeDocument`, `render()`, and SavedConfig boundaries
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — canonical fields and body contract
+- [UI parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) — active-import UI versus durable recipe lifecycle
+- [Shape-workbench synthesis](/crosswalker/agent-context/zz-log/2026-07-11-shape-workbench-architecture-synthesis/) — editable mapping architecture
+- [v0.1.7 milestone](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — portability implementation home
+- [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) — machine-readable contract
