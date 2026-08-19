@@ -56,6 +56,15 @@ import type {
 } from './mapping/types';
 import { toSourceRefs, isConstantRef } from './mapping/types';
 import { deriveFacetMemberships } from './mapping/facets';
+import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
+import {
+	createFreshRecipeDocument,
+	loadRecipeDocument,
+	patchRecipeDocument,
+	updateRecipeDocumentMapping,
+	type RecipeDocument,
+	type RecipeDocumentOrigin,
+} from './recipe-document';
 import {
 	SHAPE_CARDS,
 	deriveShapeCards,
@@ -133,6 +142,17 @@ const SHAPE_CARD_COPY: Record<ShapeCardId, { icon: string; afford: string; whisp
 };
 
 const PREVIEW_ROW_LIMIT = 20;
+let workbenchInstanceCounter = 0;
+
+/** Semantic focus target that survives the workbench's full DOM rebuilds. */
+type WorkbenchFocusTarget =
+	| { kind: 'evidence-badge'; key: string; column: string }
+	| { kind: 'evidence-action'; key: string; column: string }
+	| { kind: 'chooser-trigger' }
+	| { kind: 'chooser-search' }
+	| { kind: 'source-restore' }
+	| { kind: 'source-collapse' }
+	| { kind: 'mapping-card'; index: number };
 
 /** How many sample notes the preview tree renders as clickable rows. */
 const TREE_ROW_LIMIT = 12;
@@ -150,6 +170,12 @@ export interface WorkbenchOptions {
 	 * and the preset-drift chip); only the mapping is taken from here.
 	 */
 	initialMapping?: ImportMapping;
+	/** Full canonical preservation authority for a recognized or resumed recipe. */
+	initialRecipe?: CrosswalkerImportRecipe;
+	/** Application origin for initialRecipe. Defaults to bundled. */
+	recipeOrigin?: RecipeDocumentOrigin;
+	/** Deterministic source ontology slug seed for fresh in-memory drafts. */
+	sourceOntology?: string;
 	/**
 	 * Adaptive parent-note default (owner): folder-note when the vault runs a
 	 * folder-notes plugin, else sibling. Applied only to a FRESH instantiation
@@ -210,6 +236,7 @@ export interface WorkbenchOptions {
  */
 export class MappingWorkbench {
 	private mapping: ImportMapping;
+	private recipeDocument: RecipeDocument;
 	private detections: Detection[];
 	private dismissed = new Set<string>();
 	private presetId: string;
@@ -235,14 +262,18 @@ export class MappingWorkbench {
 	// Transient view state (persists across re-renders).
 	private expanded = new Set<number>();
 	private matrixOpen = new Set<number>();
-	private openEvidence: string | null = null;
+	private openEvidence: { key: string; column: string } | null = null;
+	private mappingChooserOpen = false;
+	private mappingChooserQuery = '';
+	private pendingFocus: WorkbenchFocusTarget | null = null;
 	private allColumnsOpen = false;
 	private addMenu: { mi: number; li: number } | null = null;
 	private addMenuPrimitive: DestinationPrimitive | null = null;
 	private addMenuParams: Record<string, string> = {};
 	private selectedNoteRow = 0;
-	/** Source rail collapsed to a compact strip (screen-space design, spec §7n item 2). */
+	/** Source visibility is transient to this workbench instance, never persisted. */
 	private sourceCollapsed = false;
+	private readonly sourceRegionId = `crosswalker-source-${++workbenchInstanceCounter}`;
 
 	private container: HTMLElement | null = null;
 	private rerenderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -256,13 +287,21 @@ export class MappingWorkbench {
 		this.columnSig = opts.parsedData.columns.join('|');
 		this.detections = detectStructure(opts.parsedData, opts.columnInfos);
 		this.presetId = getBuiltInPreset(opts.defaultPresetId) ? opts.defaultPresetId : 'browsable-framework';
-		// Draft resume (spec §7i): rehydrate from the persisted mapping when present,
-		// otherwise instantiate the preset over the fresh detections.
-		this.mapping = opts.initialMapping ?? instantiate(this.currentPreset(), this.activeDetections());
-		// Vault defaults + adaptive parent_note only apply to a FRESH instantiation
-		// (never override a draft's or a vetted recipe's explicit choice, both of
-		// which arrive as `initialMapping`).
-		if (!opts.initialMapping) this.applyDefaultsOverlay();
+		const loadedRecipe = opts.initialRecipe
+			? loadRecipeDocument(opts.initialRecipe, {
+				origin: opts.recipeOrigin ?? 'bundled',
+				sourceColumns: opts.parsedData.columns,
+			})
+			: null;
+		if (loadedRecipe && !loadedRecipe.ok) {
+			throw new Error(loadedRecipe.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
+		}
+		// A full canonical recipe seeds both the preservation authority and mapping.
+		// A resumed legacy draft may still supply only the mapping.
+		this.mapping = opts.initialMapping
+			?? (loadedRecipe?.ok ? loadedRecipe.document.mapping : instantiate(this.currentPreset(), this.activeDetections()));
+		// Vault defaults + adaptive parent_note only apply to a FRESH instantiation.
+		if (!opts.initialMapping && !opts.initialRecipe) this.applyDefaultsOverlay();
 		// M8: a restored columnDests snapshot IS the seed — never re-run the
 		// detection-derived default seeding over it (that would silently reset
 		// every manual "route this column to…" choice back to the heuristic
@@ -273,6 +312,31 @@ export class MappingWorkbench {
 			this.columnDests = new Map(Object.entries(opts.initialColumnDests));
 		} else if (opts.seedColumnDefaults !== false) {
 			this.seedColumnDests();
+		}
+		if (loadedRecipe?.ok) {
+			this.recipeDocument = updateRecipeDocumentMapping(loadedRecipe.document, this.mapping);
+		} else {
+			const fresh = createFreshRecipeDocument(this.mapping, opts.sourceOntology ?? this.sourceLabel(), {
+				sourceColumns: opts.parsedData.columns,
+			});
+			if (!fresh.ok) throw new Error(fresh.diagnostics.map((diagnostic) => diagnostic.message).join('; '));
+			if (this.detections.some((detection) => detection.kind === 'edge-file')) {
+				const leaf = [...fresh.document.original.target.layout]
+					.reverse()
+					.find((entry) => entry.mechanism === 'file' || entry.mechanism === 'heading');
+				if (leaf) leaf.kind = 'crosswalk-edge';
+			}
+			const completeDraft = patchRecipeDocument(fresh.document, {
+				mapping: this.mapping,
+				regions: this.buildFinalRegions(),
+			});
+			this.recipeDocument = {
+				...fresh.document,
+				original: completeDraft.ok ? completeDraft.recipe : fresh.document.original,
+				origin: opts.initialMapping ? 'legacy' : 'fresh',
+				mapping: this.mapping,
+				dirty: false,
+			};
 		}
 		opts.debug.info('wizard', 'workbench-init', 'Shape workbench initialized', {
 			detections: this.detections.length,
@@ -290,6 +354,11 @@ export class MappingWorkbench {
 	/** The shape mappings (the single coherent model). */
 	getMapping(): ImportMapping {
 		return this.mapping;
+	}
+
+	/** The canonical preservation boundary backing preview and generation. */
+	getRecipeDocument(): RecipeDocument {
+		return this.recipeDocument;
 	}
 
 	/** Snapshot of the demoted "all columns" destinations (draft persistence, M8). */
@@ -339,9 +408,33 @@ export class MappingWorkbench {
 		const tags = [...(base.also_emit?.tags ?? [])];
 		const aliases = [...(base.also_emit?.aliases ?? [])];
 		const managed: Record<string, string> = { ...(base.also_emit?.frontmatter?.managed ?? {}) };
+		const managedLinks = { ...(base.also_emit?.frontmatter?.managed_links ?? {}) };
+		const userPreserve = [...(base.also_emit?.frontmatter?.user_preserve ?? [])];
+		const body = [...(base.also_emit?.body ?? [])];
+		const bodyCandidates = new Set<string>();
+		for (const detection of this.activeDetections()) {
+			if (detection.kind === 'body-candidate') bodyCandidates.add(detection.column);
+		}
+		let primaryBodyUsed = body.some((entry) => entry.position !== 'section');
 
 		for (const [col, dest] of this.columnDests) {
-			if (dest === 'skip' || dest === 'body') continue;
+			if (dest === 'skip') continue;
+			if (dest === 'body') {
+				if (!primaryBodyUsed && bodyCandidates.has(col)) {
+					body.push({ template: `{${col}}`, position: 'append', format: 'text', omit_if_empty: true });
+					primaryBodyUsed = true;
+				} else {
+					body.push({
+						template: `{${col}}`,
+						position: 'section',
+						heading: this.keyOf(col),
+						heading_depth: 2,
+						format: 'text',
+						omit_if_empty: true,
+					});
+				}
+				continue;
+			}
 			const key = this.keyOf(col);
 			switch (dest) {
 				case 'property':
@@ -369,10 +462,20 @@ export class MappingWorkbench {
 		const alsoEmit: RecipeRegions['also_emit'] = {};
 		if (tags.length) alsoEmit.tags = tags;
 		if (aliases.length) alsoEmit.aliases = aliases;
-		if (Object.keys(managed).length) alsoEmit.frontmatter = { managed };
-		const regions: RecipeRegions = tags.length || aliases.length || Object.keys(managed).length
-			? { layout, also_emit: alsoEmit }
-			: { layout };
+		if (body.length) alsoEmit.body = body;
+		if (Object.keys(managed).length || Object.keys(managedLinks).length || userPreserve.length) {
+			alsoEmit.frontmatter = {};
+			if (Object.keys(managed).length) alsoEmit.frontmatter.managed = managed;
+			if (Object.keys(managedLinks).length) alsoEmit.frontmatter.managed_links = managedLinks;
+			if (userPreserve.length) alsoEmit.frontmatter.user_preserve = userPreserve;
+		}
+		const hasAlsoEmit = tags.length
+			|| aliases.length
+			|| body.length
+			|| Object.keys(managed).length
+			|| Object.keys(managedLinks).length
+			|| userPreserve.length;
+		const regions: RecipeRegions = hasAlsoEmit ? { layout, also_emit: alsoEmit } : { layout };
 		// §7o root cause: toRecipeRegions(this.mapping) computes `base.enrichment`
 		// (Pass 1.5 batch enrichment — children lists, facet hubs, edge stats), but
 		// this method was rebuilding a fresh regions literal that dropped it, so
@@ -381,9 +484,26 @@ export class MappingWorkbench {
 		return regions;
 	}
 
-	/** A full Recipe for render() / generation. */
+	/** A full canonical Recipe for render() / generation. */
 	buildRecipe(): Recipe {
-		return { recipe: 'shape-workbench', target: this.buildFinalRegions() as Recipe['target'] };
+		const patched = patchRecipeDocument(this.recipeDocument, {
+			mapping: this.mapping,
+			regions: this.buildFinalRegions(),
+		});
+		if (!patched.ok) {
+			throw new Error(
+				patched.diagnostics
+					.filter((diagnostic) => diagnostic.severity === 'blocking')
+					.map((diagnostic) => diagnostic.message)
+					.join('; '),
+			);
+		}
+		this.recipeDocument = {
+			...this.recipeDocument,
+			mapping: this.mapping,
+			dirty: patched.dirty,
+		};
+		return patched.recipe as Recipe;
 	}
 
 	/** Columns the user routed to the note body — fed to the legacy body path at generate time. */
@@ -426,9 +546,109 @@ export class MappingWorkbench {
 		const grid = container.createDiv({
 			cls: 'crosswalker-workbench' + (this.sourceCollapsed ? ' is-source-collapsed' : ''),
 		});
-		this.renderSourceRail(grid.createDiv({ cls: 'crosswalker-wb-rail crosswalker-wb-source' }));
+		this.renderSourceRail(grid.createDiv({
+			cls: 'crosswalker-wb-rail crosswalker-wb-source',
+			attr: { id: this.sourceRegionId },
+		}));
 		this.renderCanvas(grid.createDiv({ cls: 'crosswalker-wb-canvas' }));
 		this.renderPreviewRail(grid.createDiv({ cls: 'crosswalker-wb-rail crosswalker-wb-preview' }));
+
+		// Escape and click-away stay scoped to this workbench. The modal host also
+		// routes Escape through its Obsidian Scope before Modal's close handler;
+		// the workspace host relies on this local DOM fallback instead.
+		grid.addEventListener('keydown', (event) => {
+			if (event.key !== 'Escape' || !this.closeTransientUi()) return;
+			event.preventDefault();
+			event.stopPropagation();
+		});
+		grid.addEventListener('click', (event) => {
+			const target = event.target;
+			if (!(target instanceof Element)) return;
+			let changed = false;
+			if (
+				this.openEvidence
+				&& !target.closest('.crosswalker-wb-evidence')
+				&& !target.closest('.crosswalker-wb-badge')
+			) {
+				this.openEvidence = null;
+				changed = true;
+			}
+			if (
+				this.mappingChooserOpen
+				&& !target.closest('.crosswalker-wb-mapping-chooser')
+				&& !target.closest('.crosswalker-wb-addmapping-trigger')
+			) {
+				this.mappingChooserOpen = false;
+				this.mappingChooserQuery = '';
+				this.pendingFocus = { kind: 'chooser-trigger' };
+				changed = true;
+			}
+			if (changed) this.scheduleRerender();
+		});
+		this.restorePendingFocus(grid);
+	}
+
+	/**
+	 * Close the topmost transient workbench surface. Modal hosts call this from
+	 * their Obsidian Scope so Escape is consumed before Modal closes; workspace
+	 * hosts reach the same path through the workbench-local keydown listener.
+	 */
+	closeTransientUi(): boolean {
+		if (this.mappingChooserOpen) {
+			this.mappingChooserOpen = false;
+			this.mappingChooserQuery = '';
+			this.pendingFocus = { kind: 'chooser-trigger' };
+		} else if (this.openEvidence) {
+			this.pendingFocus = { kind: 'evidence-badge', ...this.openEvidence };
+			this.openEvidence = null;
+		} else {
+			return false;
+		}
+		this.scheduleRerender();
+		return true;
+	}
+
+	/** Resolve a semantic focus target against the newly rendered, visible DOM. */
+	private restorePendingFocus(grid: HTMLElement): void {
+		const target = this.pendingFocus;
+		if (!target) return;
+		this.pendingFocus = null;
+		let element: HTMLElement | null = null;
+		if (target.kind === 'evidence-badge' || target.kind === 'evidence-action') {
+			const selector = target.kind === 'evidence-badge'
+				? '.crosswalker-wb-badge'
+				: '.crosswalker-wb-evidence-action';
+			element = Array.from(grid.querySelectorAll<HTMLElement>(selector)).find(
+				(el) => el.dataset.detectionKey === target.key
+					&& el.dataset.column === target.column
+					&& this.isVisibleFocusTarget(el),
+			) ?? null;
+		} else if (target.kind === 'chooser-trigger') {
+			element = grid.querySelector<HTMLElement>('.crosswalker-wb-addmapping-trigger');
+		} else if (target.kind === 'chooser-search') {
+			element = grid.querySelector<HTMLElement>('.crosswalker-wb-chooser-search');
+		} else if (target.kind === 'source-restore') {
+			element = Array.from(grid.querySelectorAll<HTMLElement>('[data-source-control="restore"]'))
+				.find((el) => this.isVisibleFocusTarget(el)) ?? null;
+		} else if (target.kind === 'source-collapse') {
+			element = Array.from(grid.querySelectorAll<HTMLElement>('[data-source-control="collapse"]'))
+				.find((el) => this.isVisibleFocusTarget(el)) ?? null;
+		} else {
+			element = grid.querySelector<HTMLElement>(`.crosswalker-wb-mapcard[data-mapping-index="${target.index}"]`);
+		}
+		if (element && this.isVisibleFocusTarget(element)) element.focus();
+	}
+
+	/** CSS-hidden duplicate restore controls must never receive focus. */
+	private isVisibleFocusTarget(element: HTMLElement): boolean {
+		if (element.hidden || element.getAttribute('aria-hidden') === 'true') return false;
+		let current: HTMLElement | null = element;
+		while (current) {
+			const style = getComputedStyle(current);
+			if (style.display === 'none' || style.visibility === 'hidden') return false;
+			current = current.parentElement;
+		}
+		return element.getClientRects().length > 0;
 	}
 
 	/** Schedule a full re-render; `delay` debounces text-input-driven updates (~300ms). */
@@ -442,6 +662,13 @@ export class MappingWorkbench {
 
 	/** Commit a model change: persist via onChange, then re-render. */
 	private applyChange(delay = 0): void {
+		let regions: RecipeRegions | undefined;
+		try {
+			regions = this.buildFinalRegions();
+		} catch {
+			// The preview/generation path surfaces the full blocking diagnostic.
+		}
+		this.recipeDocument = updateRecipeDocumentMapping(this.recipeDocument, this.mapping, regions);
 		this.opts.onChange();
 		this.scheduleRerender(delay);
 	}
@@ -499,31 +726,36 @@ export class MappingWorkbench {
 	// -------------------------------------------------------------------------
 
 	private renderSourceRail(rail: HTMLElement): void {
+		const { parsedData, columnInfos } = this.opts;
+		if (this.sourceCollapsed) {
+			const compact = rail.createDiv({ cls: 'crosswalker-wb-source-disclosure' });
+			compact.createSpan({ cls: 'crosswalker-wb-source-disclosure-label', text: 'Source' });
+			compact.createSpan({
+				cls: 'crosswalker-wb-source-disclosure-summary',
+				text: `${parsedData.rowCount.toLocaleString()} rows · ${parsedData.columns.length.toLocaleString()} columns`,
+			});
+			this.renderSourceRestoreButton(compact, 'crosswalker-wb-source-restore is-compact');
+			return;
+		}
+
 		const eyebrowRow = rail.createDiv({ cls: 'crosswalker-wb-eyebrow crosswalker-wb-eyebrow-row' });
 		eyebrowRow.createSpan({ text: 'Source' });
-		const { parsedData, columnInfos } = this.opts;
 		const collapseBtn = eyebrowRow.createEl('button', {
 			cls: 'crosswalker-wb-collapse-btn',
 			attr: {
-				title: this.sourceCollapsed ? 'Expand the source rail' : 'Collapse the source rail',
-				'aria-label': this.sourceCollapsed ? 'Expand the source rail' : 'Collapse the source rail',
+				title: 'Hide source',
+				'aria-label': 'Hide source',
+				'aria-controls': this.sourceRegionId,
+				'aria-expanded': 'true',
+				'data-source-control': 'collapse',
 			},
 		});
-		wbIcon(collapseBtn, this.sourceCollapsed ? 'chevrons-right' : 'chevrons-left');
+		wbIcon(collapseBtn, 'chevrons-left');
 		collapseBtn.addEventListener('click', () => {
-			this.sourceCollapsed = !this.sourceCollapsed;
+			this.sourceCollapsed = true;
+			this.pendingFocus = { kind: 'source-restore' };
 			this.scheduleRerender();
 		});
-
-		if (this.sourceCollapsed) {
-			// Compact strip — enough to orient, none of the detail. The mapping
-			// canvas reclaims the reclaimed width via the grid's collapsed columns.
-			rail.createDiv({
-				cls: 'crosswalker-wb-chip',
-				text: `${parsedData.rowCount.toLocaleString()} rows × ${parsedData.columns.length} cols`,
-			});
-			return;
-		}
 
 		const fileLine = rail.createDiv({ cls: 'crosswalker-wb-source-file' });
 		fileLine.createEl('b', { text: this.sourceLabel() });
@@ -532,71 +764,97 @@ export class MappingWorkbench {
 			text: `table · ${parsedData.rowCount.toLocaleString()} rows × ${parsedData.columns.length} columns`,
 		});
 
-		// One-line hint that the badges are inspectable (spec §7h #2).
-		if (columnInfos.some((c) => this.detectionsForColumn(c.name).length > 0)) {
-			rail.createDiv({ cls: 'crosswalker-wb-collist-hint', text: 'Click a badge to inspect what we detected.' });
+		const detectedColumns = columnInfos.filter((c) => this.detectionsForColumn(c.name).length > 0);
+		rail.createDiv({ cls: 'crosswalker-wb-detected-heading', text: 'Detected structure' });
+		if (detectedColumns.length > 0) {
+			rail.createDiv({
+				cls: 'crosswalker-wb-collist-hint',
+				text: 'Inspect the evidence behind each automatic suggestion.',
+			});
 		}
 
-		// Column list with detection badges. The evidence card expands inline as an
-		// accordion directly under the clicked column's row (spec §7h #3), so it
-		// stays visually tied to the column and never shoves "All columns" down.
+		// Only columns with findings belong in the compact detected-structure list.
+		// Dismissed findings remain visible here because dismissal changes automatic
+		// mapping, not the evidence Crosswalker observed in the source.
 		const colList = rail.createDiv({ cls: 'crosswalker-wb-collist' });
-		let evidenceShown = false;
-		for (const col of columnInfos) {
+		if (detectedColumns.length === 0) {
+			colList.createDiv({ cls: 'crosswalker-wb-detected-empty', text: 'No structural patterns detected.' });
+		}
+		for (const col of detectedColumns) {
 			const dets = this.detectionsForColumn(col.name);
 			const row = colList.createDiv({ cls: 'crosswalker-wb-colrow' });
 			row.createSpan({ cls: 'crosswalker-wb-colname mono', text: col.name });
 			const badges = row.createSpan({ cls: 'crosswalker-wb-badges' });
 			for (const d of dets) {
 				const key = this.detectionKey(d);
-				const active = this.openEvidence === key;
+				const active = this.openEvidence?.key === key && this.openEvidence.column === col.name;
 				const badge = badges.createEl('button', {
 					cls: 'crosswalker-wb-badge'
 						+ (this.dismissed.has(key) ? ' is-dismissed' : '')
 						+ (active ? ' is-active' : ''),
-					attr: { title: this.badgeTitle(d), 'aria-label': this.badgeTitle(d) },
+					attr: {
+						title: this.badgeTitle(d),
+						'aria-label': `${this.badgeTitle(d)} evidence for ${col.name}`,
+						'aria-expanded': active ? 'true' : 'false',
+						'data-detection-key': key,
+						'data-column': col.name,
+					},
 				});
 				wbIcon(badge, this.badgeIcon(d), 'crosswalker-wb-badge-icon');
 				badge.createSpan({ cls: 'crosswalker-wb-badge-label', text: this.badgeLabel(d) });
 				badge.addEventListener('click', () => {
-					this.openEvidence = this.openEvidence === key ? null : key;
+					this.openEvidence = active ? null : { key, column: col.name };
+					this.pendingFocus = { kind: 'evidence-badge', key, column: col.name };
 					this.scheduleRerender();
 				});
 			}
 
-			// Inline evidence, anchored under the first column that owns the open
-			// detection (multi-column detections still render exactly once).
-			if (this.openEvidence && !evidenceShown) {
-				const openDet = dets.find((d) => this.detectionKey(d) === this.openEvidence);
-				if (openDet) {
-					this.renderEvidenceCard(colList, openDet);
-					evidenceShown = true;
-				}
+			if (this.openEvidence?.column === col.name) {
+				const openDet = dets.find((d) => this.detectionKey(d) === this.openEvidence?.key);
+				if (openDet) this.renderEvidenceCard(colList, openDet, col);
 			}
 		}
 
-		// Demoted "all columns" disclosure, pinned at the rail bottom.
+		// Exhaustive destination routing stays available without diluting the evidence list.
 		this.renderAllColumns(rail);
 	}
 
-	private renderEvidenceCard(parent: HTMLElement, d: Detection): void {
+	private renderEvidenceCard(parent: HTMLElement, d: Detection, columnInfo: ColumnInfo): void {
 		const key = this.detectionKey(d);
-		const card = parent.createDiv({ cls: 'crosswalker-wb-evidence' });
+		const column = columnInfo.name;
+		const card = parent.createDiv({
+			cls: 'crosswalker-wb-evidence',
+			attr: { 'data-detection-key': key, 'data-column': column },
+		});
+		const header = card.createDiv({ cls: 'crosswalker-wb-evidence-head' });
+		const context = header.createDiv({ cls: 'crosswalker-wb-evidence-context' });
+		context.createSpan({ cls: 'crosswalker-wb-evidence-context-label', text: 'Source column' });
+		context.createEl('code', { text: column });
+		const close = header.createEl('button', {
+			cls: 'crosswalker-wb-evidence-close',
+			attr: { title: 'Close evidence', 'aria-label': `Close evidence for ${column}` },
+		});
+		setIcon(close, 'x');
+		close.addEventListener('click', () => {
+			this.openEvidence = null;
+			this.pendingFocus = { kind: 'evidence-badge', key, column };
+			this.scheduleRerender();
+		});
+
 		card.createDiv({ cls: 'crosswalker-wb-evidence-title', text: this.evidenceTitle(d) });
+		const noticed = card.createDiv({ cls: 'crosswalker-wb-evidence-section' });
+		noticed.createDiv({ cls: 'crosswalker-wb-evidence-label', text: 'What Crosswalker noticed' });
+		noticed.createDiv({ cls: 'crosswalker-wb-evidence-copy', text: this.evidenceNotice(d) });
 
-		// Sample receipts.
-		if ('sampleValues' in d && d.sampleValues.length) {
-			const samples = card.createDiv({ cls: 'crosswalker-wb-samples mono' });
-			for (const s of d.sampleValues.slice(0, 5)) samples.createDiv({ text: String(s) });
-		}
+		const coverage = card.createDiv({ cls: 'crosswalker-wb-evidence-section' });
+		coverage.createDiv({ cls: 'crosswalker-wb-evidence-label', text: 'Coverage' });
+		coverage.createDiv({ cls: 'crosswalker-wb-evidence-cov', text: this.evidenceCoverage(d, column) });
 
-		// Coverage / match rate.
-		const coverage = this.evidenceCoverage(d);
-		if (coverage) card.createDiv({ cls: 'crosswalker-wb-evidence-cov', text: coverage });
-
-		// Depth histogram (CSS bars) for packed hierarchies.
+		// Depth distribution is meaningful only for a packed hierarchy.
 		if (d.kind === 'packed-hierarchy') {
-			const hist = card.createDiv({ cls: 'crosswalker-wb-hist' });
+			const histSection = card.createDiv({ cls: 'crosswalker-wb-evidence-section' });
+			histSection.createDiv({ cls: 'crosswalker-wb-evidence-label', text: 'Depth histogram' });
+			const hist = histSection.createDiv({ cls: 'crosswalker-wb-hist' });
 			const entries = Object.entries(d.depthHistogram).sort((a, b) => Number(a[0]) - Number(b[0]));
 			const max = Math.max(1, ...entries.map(([, n]) => n));
 			for (const [depth, n] of entries) {
@@ -608,18 +866,39 @@ export class MappingWorkbench {
 			}
 		}
 
-		const btns = card.createDiv({ cls: 'crosswalker-wb-evidence-btns' });
+		const examples = card.createDiv({ cls: 'crosswalker-wb-evidence-section' });
+		examples.createDiv({ cls: 'crosswalker-wb-evidence-label', text: `Examples from ${column}` });
+		const sampleValues = [...new Set(
+			columnInfo.sampleValues
+				.filter((value) => value !== null && value !== undefined && String(value).length > 0)
+				.map((value) => String(value)),
+		)];
+		if (sampleValues.length > 0) {
+			const samples = examples.createDiv({ cls: 'crosswalker-wb-samples mono' });
+			for (const value of sampleValues.slice(0, 5)) samples.createDiv({ text: String(value) });
+		} else {
+			examples.createDiv({ cls: 'crosswalker-wb-evidence-copy is-muted', text: 'No non-empty examples available.' });
+		}
+
+		const effect = card.createDiv({ cls: 'crosswalker-wb-evidence-section' });
+		effect.createDiv({ cls: 'crosswalker-wb-evidence-label', text: 'Effect on automatic mapping' });
+		effect.createDiv({ cls: 'crosswalker-wb-evidence-copy', text: this.evidenceEffect(d) });
+
 		const dismissed = this.dismissed.has(key);
-		const useBtn = btns.createEl('button', { cls: 'crosswalker-wb-confirm', text: dismissed ? 'Use this' : 'In use' });
-		useBtn.disabled = !dismissed;
-		useBtn.addEventListener('click', () => {
-			this.dismissed.delete(key);
-			this.reinstantiate();
+		const footer = card.createDiv({ cls: 'crosswalker-wb-evidence-footer' });
+		footer.createSpan({
+			cls: 'crosswalker-wb-evidence-status' + (dismissed ? ' is-ignored' : ' is-included'),
+			text: dismissed ? 'Ignored by automatic mapping' : 'Included in automatic mapping',
 		});
-		const dismissBtn = btns.createEl('button', { cls: 'crosswalker-wb-dismiss', text: 'Dismiss' });
-		dismissBtn.disabled = dismissed;
-		dismissBtn.addEventListener('click', () => {
-			this.dismissed.add(key);
+		const action = footer.createEl('button', {
+			cls: 'crosswalker-wb-evidence-action',
+			text: dismissed ? 'Use this detection' : 'Ignore this detection',
+			attr: { 'data-detection-key': key, 'data-column': column },
+		});
+		action.addEventListener('click', () => {
+			if (dismissed) this.dismissed.delete(key);
+			else this.dismissed.add(key);
+			this.pendingFocus = { kind: 'evidence-action', key, column };
 			this.reinstantiate();
 		});
 	}
@@ -630,7 +909,11 @@ export class MappingWorkbench {
 		details.addEventListener('toggle', () => {
 			this.allColumnsOpen = (details as HTMLDetailsElement).open;
 		});
-		details.createEl('summary', { text: `All columns (${this.opts.columnInfos.length})` });
+		details.createEl('summary', { text: `Column destinations (${this.opts.columnInfos.length})` });
+		details.createDiv({
+			cls: 'crosswalker-wb-allcols-explainer',
+			text: 'Choose where each source column goes, including columns without detected structure.',
+		});
 		const structural = this.structuralColumns();
 		for (const col of this.opts.columnInfos) {
 			const r = details.createDiv({ cls: 'crosswalker-wb-allcol-row' });
@@ -655,12 +938,35 @@ export class MappingWorkbench {
 		}
 	}
 
+	private renderSourceRestoreButton(parent: HTMLElement, cls: string): HTMLButtonElement {
+		const button = parent.createEl('button', {
+			cls,
+			attr: {
+				'aria-controls': this.sourceRegionId,
+				'aria-expanded': 'false',
+				'data-source-control': 'restore',
+			},
+		});
+		wbIcon(button, 'chevrons-right');
+		button.createSpan({ text: 'Show source' });
+		button.addEventListener('click', () => {
+			this.sourceCollapsed = false;
+			this.pendingFocus = { kind: 'source-collapse' };
+			this.scheduleRerender();
+		});
+		return button;
+	}
+
 	// -------------------------------------------------------------------------
 	// Zone 2 — mapping canvas
 	// -------------------------------------------------------------------------
 
 	private renderCanvas(canvas: HTMLElement): void {
-		canvas.createDiv({ cls: 'crosswalker-wb-eyebrow', text: 'Mappings' });
+		const eyebrow = canvas.createDiv({ cls: 'crosswalker-wb-eyebrow crosswalker-wb-eyebrow-row' });
+		eyebrow.createSpan({ text: 'Mappings' });
+		if (this.sourceCollapsed) {
+			this.renderSourceRestoreButton(eyebrow, 'crosswalker-wb-source-restore is-canvas');
+		}
 
 		// Preset bar.
 		const presetBar = canvas.createDiv({ cls: 'crosswalker-wb-presetbar' });
@@ -682,29 +988,139 @@ export class MappingWorkbench {
 		});
 		renderProvenanceBadge(presetBar, this.provenance());
 
+		// Manual mapping is a first-class next step, directly below the preset.
+		this.renderMappingChooser(canvas);
+
 		// One card per mapping.
 		if (this.mapping.mappings.length === 0) {
-			canvas.createDiv({ cls: 'crosswalker-wb-empty', text: 'No structure detected yet. Use the all columns section to map fields to frontmatter.' });
+			canvas.createDiv({
+				cls: 'crosswalker-wb-empty',
+				text: 'No automatic mappings yet. Use Add mapping from a column to create one.',
+			});
 		}
 		this.mapping.mappings.forEach((m, mi) => this.renderMappingCard(canvas, m, mi));
 
 		// Connections — the Pass 1.5 batch-enrichment block gets its own controls
 		// (spec §7k, "generated vaults must be graphs, not filing cabinets").
 		if (this.mapping.mappings.length > 0) this.renderConnections(canvas);
+	}
 
-		// Add a mapping by hand.
+	private renderMappingChooser(canvas: HTMLElement): void {
 		const addRow = canvas.createDiv({ cls: 'crosswalker-wb-addmapping' });
-		const addSel = addRow.createEl('select', { cls: 'dropdown' });
-		addSel.createEl('option', { text: 'Add mapping from a column…', attr: { value: '' } });
-		for (const col of this.opts.parsedData.columns) addSel.createEl('option', { text: col, attr: { value: col } });
-		addSel.addEventListener('change', () => {
-			if (!addSel.value) return;
-			this.addManualMapping(addSel.value);
+		const trigger = addRow.createEl('button', {
+			cls: 'crosswalker-wb-addmapping-trigger',
+			attr: {
+				'aria-expanded': this.mappingChooserOpen ? 'true' : 'false',
+				'aria-controls': 'crosswalker-mapping-chooser',
+			},
 		});
+		wbIcon(trigger, 'plus');
+		trigger.createSpan({ text: 'Add mapping from a column' });
+		trigger.addEventListener('click', () => {
+			this.mappingChooserOpen = !this.mappingChooserOpen;
+			this.mappingChooserQuery = '';
+			this.pendingFocus = this.mappingChooserOpen
+				? { kind: 'chooser-search' }
+				: { kind: 'chooser-trigger' };
+			this.scheduleRerender();
+		});
+		if (!this.mappingChooserOpen) return;
+
+		const chooser = addRow.createDiv({
+			cls: 'crosswalker-wb-mapping-chooser',
+			attr: { id: 'crosswalker-mapping-chooser' },
+		});
+		const head = chooser.createDiv({ cls: 'crosswalker-wb-chooser-head' });
+		const heading = head.createDiv();
+		heading.createDiv({ cls: 'crosswalker-wb-chooser-title', text: 'Choose a source column' });
+		heading.createDiv({ cls: 'crosswalker-wb-chooser-hint', text: 'Search names or example values.' });
+		const close = head.createEl('button', {
+			cls: 'crosswalker-wb-chooser-close',
+			attr: { title: 'Close column chooser', 'aria-label': 'Close column chooser' },
+		});
+		setIcon(close, 'x');
+		close.addEventListener('click', () => {
+			this.mappingChooserOpen = false;
+			this.mappingChooserQuery = '';
+			this.pendingFocus = { kind: 'chooser-trigger' };
+			this.scheduleRerender();
+		});
+
+		const search = chooser.createEl('input', {
+			cls: 'crosswalker-wb-chooser-search',
+			type: 'search',
+			placeholder: 'Search column names or sample values',
+			attr: { 'aria-label': 'Search source columns' },
+		});
+		search.value = this.mappingChooserQuery;
+		const results = chooser.createDiv({ cls: 'crosswalker-wb-chooser-results' });
+		const renderResults = () => {
+			results.empty();
+			const matches = this.mappingChooserMatches(this.mappingChooserQuery);
+			if (matches.length === 0) {
+				results.createDiv({ cls: 'crosswalker-wb-chooser-empty', text: 'No columns match this search.' });
+				return;
+			}
+			for (const info of matches) {
+				const option = results.createEl('button', {
+					cls: 'crosswalker-wb-chooser-option',
+					attr: { 'data-column': info.name },
+				});
+				option.createDiv({ cls: 'crosswalker-wb-chooser-column mono', text: info.name });
+				const metadata = option.createDiv({ cls: 'crosswalker-wb-column-meta' });
+				metadata.createSpan({ text: `Type: ${info.detectedType}` });
+				metadata.createSpan({ text: `${info.uniqueCount.toLocaleString()} unique` });
+				metadata.createSpan({ text: info.hasEmptyValues ? 'Contains empty values' : 'No empty values' });
+				const sampleValues = info.sampleValues
+					.filter((value) => value !== null && value !== undefined && String(value).length > 0)
+					.map((value) => String(value));
+				const needle = this.mappingChooserQuery.trim().toLocaleLowerCase();
+				const samples = needle
+					? [
+						...sampleValues.filter((value) => value.toLocaleLowerCase().includes(needle)),
+						...sampleValues.filter((value) => !value.toLocaleLowerCase().includes(needle)),
+					].slice(0, 3)
+					: sampleValues.slice(0, 3);
+				option.createDiv({
+					cls: 'crosswalker-wb-column-samples',
+					text: samples.length > 0 ? `Examples: ${samples.join(' · ')}` : 'Examples: none available',
+				});
+				option.addEventListener('click', () => {
+					const newIndex = this.mapping.mappings.length;
+					this.mappingChooserOpen = false;
+					this.mappingChooserQuery = '';
+					this.pendingFocus = { kind: 'mapping-card', index: newIndex };
+					this.addManualMapping(info.name);
+				});
+			}
+		};
+		search.addEventListener('input', () => {
+			this.mappingChooserQuery = search.value;
+			renderResults();
+		});
+		renderResults();
+	}
+
+	/** Source-order, case-insensitive matches, capped so a wide source stays usable. */
+	private mappingChooserMatches(query: string): ColumnInfo[] {
+		const infoByName = new Map(this.opts.columnInfos.map((info) => [info.name, info]));
+		const needle = query.trim().toLocaleLowerCase();
+		return this.opts.parsedData.columns
+			.map((column) => infoByName.get(column))
+			.filter((info): info is ColumnInfo => info !== undefined)
+			.filter((info) => {
+				if (!needle) return true;
+				if (info.name.toLocaleLowerCase().includes(needle)) return true;
+				return info.sampleValues.some((value) => String(value ?? '').toLocaleLowerCase().includes(needle));
+			})
+			.slice(0, 50);
 	}
 
 	private renderMappingCard(canvas: HTMLElement, m: StructureMapping, mi: number): void {
-		const card = canvas.createDiv({ cls: 'crosswalker-wb-mapcard' });
+		const card = canvas.createDiv({
+			cls: 'crosswalker-wb-mapcard',
+			attr: { tabindex: '-1', 'data-mapping-index': String(mi) },
+		});
 		const head = card.createDiv({ cls: 'crosswalker-wb-mapcard-head' });
 		const expanded = this.expanded.has(mi);
 		const toggle = head.createEl('button', { cls: 'crosswalker-wb-mapcard-toggle', text: expanded ? '▾' : '▸' });
@@ -756,25 +1172,68 @@ export class MappingWorkbench {
 		for (const { id, label, primitive } of SHAPE_CARDS) {
 			const state = states[id];
 			const copy = SHAPE_CARD_COPY[id];
-			const shape = grid.createDiv({ cls: 'crosswalker-wb-shape' + (state === 'on' ? ' is-on' : state === 'mixed' ? ' is-mixed' : '') });
-			const top = shape.createDiv({ cls: 'crosswalker-wb-shape-top' });
-			const cb = top.createEl('input', { type: 'checkbox' });
+			const stateLabel = state === 'on' ? 'On' : state === 'mixed' ? 'Some levels' : 'Off';
+			const shape = grid.createDiv({
+				cls: 'crosswalker-wb-shape'
+					+ (state === 'on' ? ' is-on' : state === 'mixed' ? ' is-mixed' : ''),
+			});
+			const control = shape.createEl('label', { cls: 'crosswalker-wb-shape-control' });
+			const cb = control.createEl('input', { type: 'checkbox' });
 			cb.checked = state === 'on';
 			cb.indeterminate = state === 'mixed';
+			if (state === 'mixed') cb.setAttr('aria-checked', 'mixed');
 			cb.addEventListener('change', () => {
 				this.toggleShapeCard(mi, m, primitive, cb.checked);
 			});
-			// The whole card is a valid toggle target (bigger hit area than the box).
-			// A tri-state click moves toward "on" (off→on, mixed→on, on→off).
-			shape.addEventListener('click', (e) => {
-				if (e.target === cb) return;
-				this.toggleShapeCard(mi, m, primitive, state !== 'on');
-			});
-			const title = top.createEl('span', { cls: 'crosswalker-wb-shape-title' });
+			const title = control.createSpan({ cls: 'crosswalker-wb-shape-title' });
 			wbIcon(title, copy.icon);
 			title.createSpan({ text: label });
-			shape.createDiv({ cls: 'crosswalker-wb-shape-afford', text: copy.afford });
-			shape.createDiv({ cls: 'crosswalker-wb-whisper', text: `${copy.whisper} →` });
+			control.createSpan({ cls: 'crosswalker-wb-shape-state', text: stateLabel });
+
+			this.renderShapeIllustration(shape, id);
+			const details = shape.createEl('details', { cls: 'crosswalker-wb-shape-details' });
+			details.createEl('summary', { text: 'What this does' });
+			details.createDiv({ cls: 'crosswalker-wb-shape-afford', text: copy.afford });
+			details.createDiv({ cls: 'crosswalker-wb-whisper', text: copy.whisper });
+		}
+	}
+
+	/** Small decorative vault-shape diagrams; labels and state text carry meaning. */
+	private renderShapeIllustration(parent: HTMLElement, id: ShapeCardId): void {
+		const illustration = parent.createDiv({
+			cls: `crosswalker-wb-shape-illustration is-${id}`,
+			attr: { 'aria-hidden': 'true' },
+		});
+		switch (id) {
+			case 'folder':
+				for (let i = 0; i < 3; i++) illustration.createDiv({ cls: `crosswalker-wb-mini-folder is-depth-${i}` });
+				break;
+			case 'name':
+				for (let i = 0; i < 3; i++) illustration.createDiv({ cls: 'crosswalker-wb-mini-file' });
+				break;
+			case 'tag':
+				for (const text of ['#one', '#two', '#three']) illustration.createSpan({ cls: 'crosswalker-wb-mini-tag', text });
+				break;
+			case 'heading': {
+				const sheet = illustration.createDiv({ cls: 'crosswalker-wb-mini-sheet' });
+				sheet.createDiv({ cls: 'crosswalker-wb-mini-heading' });
+				for (let i = 0; i < 3; i++) sheet.createDiv({ cls: 'crosswalker-wb-mini-line' });
+				break;
+			}
+			case 'link':
+				illustration.createSpan({ cls: 'crosswalker-wb-mini-node is-a' });
+				illustration.createSpan({ cls: 'crosswalker-wb-mini-connector is-a' });
+				illustration.createSpan({ cls: 'crosswalker-wb-mini-node is-b' });
+				illustration.createSpan({ cls: 'crosswalker-wb-mini-connector is-b' });
+				illustration.createSpan({ cls: 'crosswalker-wb-mini-node is-c' });
+				break;
+			case 'property':
+				for (let i = 0; i < 3; i++) {
+					const row = illustration.createDiv({ cls: 'crosswalker-wb-mini-property' });
+					row.createSpan({ cls: 'crosswalker-wb-mini-key' });
+					row.createSpan({ cls: 'crosswalker-wb-mini-value' });
+				}
+				break;
 		}
 	}
 
@@ -801,11 +1260,10 @@ export class MappingWorkbench {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * The Connections card: children-list toggle, facet-hubs control, and (only
-	 * when a ragged/variadic hierarchy is present) the sibling-vs-folder-note
-	 * placement chooser. All three write straight to `ImportMapping.enrichment`
-	 * (`target.enrichment` on serialize — the single coupling point, same law
-	 * every other zone follows).
+	 * Outcome-first Connections cards for child lists, shared-value hubs, folder
+	 * indexes, optional Waypoint marking, and (for ragged/variadic hierarchies)
+	 * parent placement. Every control writes its existing enrichment key straight
+	 * to `ImportMapping.enrichment`; this refactor changes presentation, not values.
 	 */
 	private renderConnections(canvas: HTMLElement): void {
 		const card = canvas.createDiv({ cls: 'crosswalker-wb-mapcard crosswalker-wb-connections' });
@@ -814,73 +1272,134 @@ export class MappingWorkbench {
 		head.createEl('b', { text: 'Connections' });
 		card.createDiv({
 			cls: 'crosswalker-wb-connections-sub',
-			text: 'How the generated notes link to each other, beyond the shapes above.',
+			text: 'Choose the useful relationships Crosswalker adds around the generated notes.',
 		});
 
 		const enrichment = this.mapping.enrichment ?? {};
+		const options = card.createDiv({ cls: 'crosswalker-wb-connection-options' });
 
-		// Children lists — the managed reverse of the parent link.
-		const childrenRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
-		const childrenLabel = childrenRow.createEl('label', { cls: 'crosswalker-wb-connection-toggle' });
-		const childrenCb = childrenLabel.createEl('input', { type: 'checkbox' });
-		childrenCb.checked = enrichment.children_lists === true;
-		childrenLabel.createSpan({ text: 'Link parents and children' });
+		// Children lists — the managed reverse of the parent link. This control
+		// deliberately writes only children_lists; the existing parent-link shape
+		// and every other enrichment value remain untouched.
+		const childrenOn = enrichment.children_lists === true;
+		const childrenCard = options.createDiv({
+			cls: 'crosswalker-wb-connection-option' + (childrenOn ? ' is-on' : ''),
+			attr: { 'data-connection-option': 'children-lists', 'data-enrichment-key': 'children_lists' },
+		});
+		const childrenControl = childrenCard.createEl('label', { cls: 'crosswalker-wb-connection-control' });
+		const childrenCb = childrenControl.createEl('input', {
+			type: 'checkbox',
+			attr: { 'data-enrichment-key': 'children_lists' },
+		});
+		childrenCb.checked = childrenOn;
+		const childrenTitle = childrenControl.createSpan({ cls: 'crosswalker-wb-connection-title' });
+		wbIcon(childrenTitle, 'list-tree');
+		childrenTitle.createSpan({ text: 'Child lists' });
+		childrenControl.createSpan({ cls: 'crosswalker-wb-connection-state', text: childrenOn ? 'On' : 'Off' });
 		childrenCb.addEventListener('change', () => this.updateEnrichment({ children_lists: childrenCb.checked }));
-		childrenRow.createDiv({
-			cls: 'crosswalker-wb-connection-hint',
-			text: 'Every parent note lists its direct children, alongside the parent link already on each child.',
+		childrenCard.createDiv({
+			cls: 'crosswalker-wb-connection-outcome',
+			text: 'Parents list their direct children.',
+		});
+		const childrenDetails = childrenCard.createEl('details', { cls: 'crosswalker-wb-connection-details' });
+		childrenDetails.createEl('summary', { text: 'What this does' });
+		childrenDetails.createDiv({
+			text: 'Adds a managed children list to each parent note. The parent link already written on each child is unchanged.',
 		});
 
-		// Facet hubs — one hub note per facet value, or tags only, or off.
+		// Shared-value hubs — one hub note per tagged facet value, tags only, or off.
 		const facetCols = facetTagColumns(this.mapping);
-		const facetRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
-		const facetLabel = facetRow.createEl('label', { cls: 'crosswalker-wb-connection-select' });
-		facetLabel.createSpan({ text: 'Create hub notes for' });
-		const facetSel = facetLabel.createEl('select', { cls: 'dropdown' });
-		facetSel.createEl('option', { text: 'Off', attr: { value: 'none' } });
-		facetSel.createEl('option', { text: 'Tags only (no hub notes)', attr: { value: 'tags-only' } });
-		const notesOption = facetSel.createEl('option', {
-			text: facetCols.length ? `Hub notes for ${facetCols.join(', ')}` : 'Hub notes (turn on Tags first)',
-			attr: { value: 'notes' },
+		const facetMode = enrichment.facet_notes ?? 'none';
+		const facetCard = options.createDiv({
+			cls: 'crosswalker-wb-connection-option' + (facetMode !== 'none' ? ' is-on' : ''),
+			attr: { 'data-connection-option': 'shared-value-hubs', 'data-enrichment-key': 'facet_notes' },
 		});
+		const facetHead = facetCard.createDiv({ cls: 'crosswalker-wb-connection-control' });
+		const facetTitle = facetHead.createSpan({ cls: 'crosswalker-wb-connection-title' });
+		wbIcon(facetTitle, 'tags');
+		facetTitle.createSpan({ text: 'Shared-value hubs' });
+		const facetSel = facetHead.createEl('select', {
+			cls: 'dropdown crosswalker-wb-connection-select',
+			attr: { 'aria-label': 'Shared-value hubs', 'data-enrichment-key': 'facet_notes' },
+		});
+		facetSel.createEl('option', { text: 'Off', attr: { value: 'none' } });
+		facetSel.createEl('option', { text: 'Tags only', attr: { value: 'tags-only' } });
+		const notesOption = facetSel.createEl('option', { text: 'Create hub notes', attr: { value: 'notes' } });
 		notesOption.disabled = facetCols.length === 0;
-		facetSel.value = enrichment.facet_notes ?? 'none';
+		facetSel.value = facetMode;
 		facetSel.addEventListener('change', () => {
 			this.updateEnrichment({ facet_notes: facetSel.value as Enrichment['facet_notes'] });
 		});
-		facetRow.createDiv({
-			cls: 'crosswalker-wb-connection-hint',
-			text: facetCols.length
-				? `Groups notes by ${facetCols.join(', ')} and gathers each value under one hub note.`
-				: 'Toggle the Tags shape on a mapping above to unlock hub notes.',
+		facetCard.createDiv({
+			cls: 'crosswalker-wb-connection-outcome',
+			text: 'Shared values can connect related notes with tags or navigable hub notes.',
+		});
+		facetCard.createDiv({
+			cls: 'crosswalker-wb-connection-context' + (facetCols.length === 0 ? ' is-inactive' : ''),
+			text: facetCols.length > 0
+				? `Using tags: ${facetCols.join(', ')}.`
+				: 'Enable the Tags shape above to create hub notes.',
+		});
+		const facetDetails = facetCard.createEl('details', { cls: 'crosswalker-wb-connection-details' });
+		facetDetails.createEl('summary', { text: 'What this does' });
+		facetDetails.createDiv({
+			text: 'Tags only writes the selected shared values as tags. Create hub notes also gathers every note with the same value under one generated note.',
 		});
 
-		// Folder index notes (level hubs, 2026-07-11 ICSB audit gap #1) — every
-		// folder in the generated structure gets an index note derived from the
-		// model, so browsing the vault or the graph never dead-ends.
-		const hubsRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
-		const hubsLabel = hubsRow.createEl('label', { cls: 'crosswalker-wb-connection-toggle' });
-		const hubsCb = hubsLabel.createEl('input', { type: 'checkbox' });
-		hubsCb.checked = enrichment.level_hubs === 'notes';
-		hubsLabel.createSpan({ text: 'Create folder index notes' });
+		// Folder index notes (level hubs). Waypoint is subordinate to this outcome:
+		// when indexes are off its persisted value remains intact, but its control is
+		// visibly inactive because there are no generated folder notes to mark.
+		const folderIndexesOn = enrichment.level_hubs === 'notes';
+		const hubsCard = options.createDiv({
+			cls: 'crosswalker-wb-connection-option' + (folderIndexesOn ? ' is-on' : ''),
+			attr: { 'data-connection-option': 'folder-indexes', 'data-enrichment-key': 'level_hubs' },
+		});
+		const hubsControl = hubsCard.createEl('label', { cls: 'crosswalker-wb-connection-control' });
+		const hubsCb = hubsControl.createEl('input', {
+			type: 'checkbox',
+			attr: { 'data-enrichment-key': 'level_hubs' },
+		});
+		hubsCb.checked = folderIndexesOn;
+		const hubsTitle = hubsControl.createSpan({ cls: 'crosswalker-wb-connection-title' });
+		wbIcon(hubsTitle, 'folder-tree');
+		hubsTitle.createSpan({ text: 'Folder indexes' });
+		hubsControl.createSpan({ cls: 'crosswalker-wb-connection-state', text: folderIndexesOn ? 'On' : 'Off' });
 		hubsCb.addEventListener('change', () => this.updateEnrichment({ level_hubs: hubsCb.checked ? 'notes' : 'none' }));
-		hubsRow.createDiv({
-			cls: 'crosswalker-wb-connection-hint',
-			text: 'Every folder gets an index note listing what is directly inside it, so browsing the vault or the graph never dead-ends. Folders that already have their own note (a parent living inside its own folder) get the listing added there instead of a new file.',
+		hubsCard.createDiv({
+			cls: 'crosswalker-wb-connection-outcome',
+			text: 'Each generated folder gets a Contents list.',
+		});
+		const hubsDetails = hubsCard.createEl('details', { cls: 'crosswalker-wb-connection-details' });
+		hubsDetails.createEl('summary', { text: 'What this does' });
+		hubsDetails.createDiv({
+			text: 'Creates an index note for each generated folder. If a parent note already lives inside that folder, its Contents list is added there instead.',
 		});
 
-		// Waypoint marker — additive, opt-in, offered only when a Waypoint-style
-		// plugin is actually enabled in this vault (2026-07-11 ICSB audit §4).
 		if (this.opts.waypointDetected) {
-			const waypointRow = card.createDiv({ cls: 'crosswalker-wb-connection-row' });
-			const waypointLabel = waypointRow.createEl('label', { cls: 'crosswalker-wb-connection-toggle' });
-			const waypointCb = waypointLabel.createEl('input', { type: 'checkbox' });
-			waypointCb.checked = enrichment.waypoint_marker === true;
-			waypointLabel.createSpan({ text: 'Also mark folder notes for Waypoint' });
+			const waypointOn = enrichment.waypoint_marker === true;
+			const waypoint = hubsCard.createDiv({
+				cls: 'crosswalker-wb-waypoint' + (folderIndexesOn ? '' : ' is-inactive'),
+				attr: { 'data-connection-option': 'waypoint', 'data-enrichment-key': 'waypoint_marker' },
+			});
+			const waypointControl = waypoint.createEl('label', { cls: 'crosswalker-wb-connection-control' });
+			const waypointCb = waypointControl.createEl('input', {
+				type: 'checkbox',
+				attr: { 'data-enrichment-key': 'waypoint_marker' },
+			});
+			waypointCb.checked = waypointOn;
+			waypointCb.disabled = !folderIndexesOn;
+			const waypointTitle = waypointControl.createSpan({ cls: 'crosswalker-wb-connection-title' });
+			wbIcon(waypointTitle, 'map-pin');
+			waypointTitle.createSpan({ text: 'Also mark for Waypoint' });
+			waypointControl.createSpan({
+				cls: 'crosswalker-wb-connection-state',
+				text: folderIndexesOn ? (waypointOn ? 'On' : 'Off') : 'Needs folder indexes',
+			});
 			waypointCb.addEventListener('change', () => this.updateEnrichment({ waypoint_marker: waypointCb.checked }));
-			waypointRow.createDiv({
-				cls: 'crosswalker-wb-connection-hint',
-				text: 'Crosswalker already generates its own index notes above. This additionally lets Waypoint track notes you add to a folder by hand, later.',
+			const waypointDetails = waypoint.createEl('details', { cls: 'crosswalker-wb-connection-details' });
+			waypointDetails.createEl('summary', { text: 'What this does' });
+			waypointDetails.createDiv({
+				text: 'Adds the Waypoint marker to generated folder notes so Waypoint can also track notes added by hand later.',
 			});
 		}
 
@@ -903,45 +1422,53 @@ export class MappingWorkbench {
 	 */
 	private renderPlacementChooser(card: HTMLElement, enrichment: Enrichment): void {
 		const wrap = card.createDiv({ cls: 'crosswalker-wb-placement' });
-		wrap.createDiv({
-			cls: 'crosswalker-wb-connection-row-label',
-			text: 'Where should a note that is also a parent live?',
-		});
+		const prompt = wrap.createDiv({ cls: 'crosswalker-wb-connection-row-label' });
+		prompt.createSpan({ text: 'When ' });
+		prompt.createEl('code', { text: 'X/' });
+		prompt.createSpan({ text: ' contains child notes, where should ' });
+		prompt.createEl('code', { text: 'X.md' });
+		prompt.createSpan({ text: ' live?' });
 		const preview = this.computePreview();
 		const paths = preview ? preview.addresses.map((a) => a.address.primary.path) : [];
 		const trees = buildParentPlacementPreview(paths);
 		const current = enrichment.parent_note ?? 'sibling';
-
 		const defaultChoice = this.opts.defaultParentNote?.value ?? 'sibling';
-		const options: { id: 'sibling' | 'folder-note'; label: string; nodes: PathTreeNode[]; disabled?: boolean; reason?: string }[] = [
-			{ id: 'sibling', label: defaultChoice === 'sibling' ? 'Sibling (default)' : 'Sibling', nodes: trees.sibling },
-			{ id: 'folder-note', label: defaultChoice === 'folder-note' ? 'Folder note (default)' : 'Folder note', nodes: trees.folderNote },
+		const options: { id: 'sibling' | 'folder-note'; label: string; nodes: PathTreeNode[] }[] = [
+			{ id: 'sibling', label: 'Beside its folder', nodes: trees.sibling },
+			{ id: 'folder-note', label: 'Inside its folder', nodes: trees.folderNote },
 		];
-		if (this.opts.defaultParentNote?.reason) {
-			wrap.createDiv({ cls: 'crosswalker-wb-placement-reason', text: this.opts.defaultParentNote.reason });
-		}
 
 		const grid = wrap.createDiv({ cls: 'crosswalker-wb-placement-grid' });
 		for (const opt of options) {
-			const col = grid.createDiv({ cls: 'crosswalker-wb-placement-col' + (opt.disabled ? ' is-disabled' : '') });
-			const radioLabel = col.createEl('label', { cls: 'crosswalker-wb-placement-radio' });
-			const radio = radioLabel.createEl('input', { type: 'radio', attr: { name: 'crosswalker-parent-note' } });
-			radio.checked = current === opt.id;
-			radio.disabled = !!opt.disabled;
+			const selected = current === opt.id;
+			const col = grid.createDiv({
+				cls: 'crosswalker-wb-placement-col' + (selected ? ' is-selected' : ''),
+				attr: { 'data-parent-note-value': opt.id },
+			});
+			const head = col.createDiv({ cls: 'crosswalker-wb-placement-head' });
+			const radioLabel = head.createEl('label', { cls: 'crosswalker-wb-placement-radio' });
+			const radio = radioLabel.createEl('input', {
+				type: 'radio',
+				attr: {
+					name: `${this.sourceRegionId}-parent-note`,
+					value: opt.id,
+					'data-parent-note-value': opt.id,
+				},
+			});
+			radio.checked = selected;
 			radioLabel.createSpan({ text: opt.label });
-			if (!opt.disabled) {
-				radio.addEventListener('change', () => {
-					if (radio.checked) this.updateEnrichment({ parent_note: opt.id });
-				});
-			}
-			if (opt.reason) col.createDiv({ cls: 'crosswalker-wb-placement-reason', text: opt.reason });
+			radio.addEventListener('change', () => {
+				if (radio.checked) this.updateEnrichment({ parent_note: opt.id });
+			});
+			const states = head.createDiv({ cls: 'crosswalker-wb-placement-states' });
+			if (selected) states.createSpan({ cls: 'crosswalker-wb-placement-state is-selected', text: 'Selected' });
+			if (defaultChoice === opt.id) states.createSpan({ cls: 'crosswalker-wb-placement-state', text: 'Default' });
 			const treeEl = col.createDiv({ cls: 'crosswalker-wb-placement-tree crosswalker-wb-tree' });
 			if (opt.nodes.length === 0) {
 				treeEl.createDiv({ cls: 'crosswalker-muted', text: '(no sample rows to preview)' });
 			} else {
-				// Highlight the connected pair (owner): the parent NOTE and its
-				// matching FOLDER both render accent so you can see which two
-				// pieces belong together in each placement.
+				// Highlight the connected pair: the parent note and its matching
+				// folder both render accent so each option shows the real move.
 				for (const node of opt.nodes.slice(0, 12)) {
 					let cls = 'crosswalker-wb-tree-row' + (node.isFile ? ' is-file' : '');
 					if (node.relation === 'parent') cls += ' cw-rel-parent';
@@ -952,6 +1479,19 @@ export class MappingWorkbench {
 				}
 			}
 		}
+
+		const details = wrap.createEl('details', { cls: 'crosswalker-wb-placement-details' });
+		details.createEl('summary', { text: 'Placement details' });
+		if (this.opts.defaultParentNote?.reason) {
+			details.createDiv({
+				cls: 'crosswalker-wb-placement-reason',
+				text: `Default: ${this.opts.defaultParentNote.reason}`,
+			});
+		}
+		details.createDiv({
+			cls: 'crosswalker-wb-placement-reason',
+			text: 'Only parent notes with child notes inside a same-named folder move. Childless notes keep their rendered location.',
+		});
 	}
 
 	/**
@@ -1164,9 +1704,17 @@ export class MappingWorkbench {
 				// B2: a thrown guard (the single-structural-mapping assertion, most
 				// commonly) surfaces as a visible blocking error — never a silent
 				// "nothing to preview" state that a user could mistake for "all clear".
+				// The guard's own message is engineer-facing (it cites instantiate()
+				// and the spec); the banner translates the common case to plain
+				// language naming the conflicting mappings (2026-07-12 hands-on
+				// finding: the raw message wrapped into an unreadable wall).
 				const banner = rail.createDiv({ cls: 'crosswalker-render-banner is-warning' });
 				wbIcon(banner, 'alert-triangle', 'crosswalker-render-banner-icon');
-				banner.createSpan({ cls: 'crosswalker-render-banner-text', text: `Can't generate: ${this.previewError}` });
+				const structuralTitles = this.structuralMappingTitles();
+				const text = structuralTitles.length > 1
+					? `${structuralTitles.join(' and ')} both shape the vault. On one mapping, untick Folders and File names. Tags, Properties, and Links can stay enabled.`
+					: `Can't generate: ${this.previewError}`;
+				banner.createSpan({ cls: 'crosswalker-render-banner-text', text });
 				return;
 			}
 			rail.createDiv({ cls: 'crosswalker-wb-preview-empty', text: 'Preview is available for in-memory sources. Streamed sources render at generate time.' });
@@ -1378,16 +1926,24 @@ export class MappingWorkbench {
 	 * serialize.ts import for one boolean).
 	 */
 	private hasStructuralMapping(): boolean {
+		return this.structuralMappingTitles().length > 0;
+	}
+
+	/** Titles of every mapping carrying a structural destination (folder/name/
+	 *  heading), for the plain-language two-structural banner. */
+	private structuralMappingTitles(): string[] {
 		const isStructural = (d: Destination): boolean =>
 			d.primitive === 'folder' || d.primitive === 'name' || d.primitive === 'heading';
-		return this.mapping.mappings.some(
-			(m) => m.levels.some((l) => l.destinations.some(isStructural))
-				|| (m.tail !== undefined && m.tail.destinations.some(isStructural)),
-		);
+		return this.mapping.mappings
+			.filter(
+				(m) => m.levels.some((l) => l.destinations.some(isStructural))
+					|| (m.tail !== undefined && m.tail.destinations.some(isStructural)),
+			)
+			.map((m) => this.mappingTitle(m));
 	}
 
 	/**
-	 * Add a mapping by hand from the "Add mapping from a column…" dropdown
+	 * Add a mapping by hand from the "Add mapping from a column" chooser
 	 * (B6). A recipe supports exactly one structural mapping (folder/name/
 	 * heading) — `serialize.ts`'s `assertSingleStructural` throws the moment a
 	 * second one exists, and this control had zero guard against creating that
@@ -1542,25 +2098,66 @@ export class MappingWorkbench {
 
 	private evidenceTitle(d: Detection): string {
 		switch (d.kind) {
-			case 'packed-hierarchy': return `A hierarchy is hiding in ${d.column} (${d.classification})`;
-			case 'level-column-chain': return `A hierarchy spans ${d.columns.join(' → ')}`;
-			case 'facet-candidate': return `${d.column} looks like a label set`;
-			case 'parent-column': return `${d.column} points at ${d.idColumn}`;
-			case 'multi-value-link': return `${d.column} lists several ${d.idColumn} values`;
-			case 'title-candidate': return `${d.column} names each row`;
-			case 'body-candidate': return `${d.column} reads like body text`;
-			case 'edge-file': return 'This file is relationships, not concepts';
-			case 'row-type-discriminator': return `${d.column} mixes levels as rows`;
+			case 'packed-hierarchy': return 'Packed hierarchy';
+			case 'level-column-chain': return 'Hierarchy across columns';
+			case 'facet-candidate': return 'Facet candidate';
+			case 'parent-column': return 'Parent references';
+			case 'multi-value-link': return 'Multiple references per cell';
+			case 'title-candidate': return 'Title candidate';
+			case 'body-candidate': return 'Body text candidate';
+			case 'edge-file': return 'Relationship-shaped source';
+			case 'row-type-discriminator': return 'Mixed row levels';
 		}
 	}
 
-	private evidenceCoverage(d: Detection): string | null {
+	private evidenceNotice(d: Detection): string {
 		switch (d.kind) {
-			case 'packed-hierarchy': return `Splitting on "${d.delimiter}": ${Math.round(d.coverage * 100)}% of ids have a parent in front of the delimiter.`;
-			case 'facet-candidate': return `Every row carries a few of ${d.cardinality} values.`;
-			case 'parent-column': return `${Math.round(d.matchRate * 100)}% of values match a row id.`;
-			case 'multi-value-link': return `${Math.round(d.matchRate * 100)}% of split values match a row id.`;
-			default: return null;
+			case 'packed-hierarchy': return `Values split on "${d.delimiter}" into a ${d.classification} hierarchy.`;
+			case 'level-column-chain': return `Values become more specific across ${d.columns.join(' → ')}.`;
+			case 'facet-candidate': return `A small repeated set of ${d.cardinality} values behaves like labels.`;
+			case 'parent-column': return `Values point from ${d.column} to identifiers in ${d.idColumn}.`;
+			case 'multi-value-link': return `Cells list several identifiers found in ${d.idColumn}.`;
+			case 'title-candidate': return 'Values are distinct enough to name individual rows.';
+			case 'body-candidate': return 'Values are long, distinct prose suitable for note content.';
+			case 'edge-file': return 'The source has subject and object identifiers, so its rows describe relationships.';
+			case 'row-type-discriminator': return 'Repeated row types correlate with different sets of populated columns.';
+		}
+	}
+
+	private evidenceCoverage(d: Detection, column: string): string {
+		switch (d.kind) {
+			case 'packed-hierarchy': return `${Math.round(d.coverage * 100)}% of sampled non-empty values contain the delimiter.`;
+			case 'level-column-chain': {
+				const position = d.columns.indexOf(column);
+				const agreement = position > 0 ? d.agreements[position - 1] : d.agreements[0];
+				const cardinality = d.cardinalities[column];
+				return `${cardinality ?? 0} unique values${agreement === undefined ? '' : `, ${Math.round(agreement * 100)}% hierarchy agreement`}.`;
+			}
+			case 'facet-candidate': return `${d.cardinality} distinct label values in the sampled rows.`;
+			case 'parent-column': return `${Math.round(d.matchRate * 100)}% of values match an identifier in ${d.idColumn}.`;
+			case 'multi-value-link': return `${Math.round(d.matchRate * 100)}% of split values match an identifier, averaging ${d.avgValuesPerCell.toFixed(1)} per cell.`;
+			case 'title-candidate': return `${Math.round(d.distinctness * 100)}% distinct among non-empty sampled values.`;
+			case 'body-candidate': return `${Math.round(d.distinctness * 100)}% distinct, with an average length of ${Math.round(d.avgLength)} characters.`;
+			case 'row-type-discriminator': return `${d.values.length} row types, with ${Math.round(d.maxJaccardDistance * 100)}% maximum fill-pattern difference.`;
+			case 'edge-file': {
+				if (column === d.subjectColumn) return `${Math.round(d.subjectConfidence * 100)}% identifier confidence for subjects.`;
+				if (column === d.objectColumn) return `${Math.round(d.objectConfidence * 100)}% identifier confidence for objects.`;
+				return `${Math.round((d.predicateConfidence ?? 0) * 100)}% predicate confidence.`;
+			}
+		}
+	}
+
+	private evidenceEffect(d: Detection): string {
+		switch (d.kind) {
+			case 'packed-hierarchy': return 'Proposes folders and a file name from the hierarchy levels.';
+			case 'level-column-chain': return 'Proposes one hierarchy level for each detected source column.';
+			case 'facet-candidate': return 'Proposes tags from this column when the active preset uses facets.';
+			case 'parent-column': return 'Proposes a parent link when the active preset uses links.';
+			case 'multi-value-link': return 'Proposes a list of links when the active preset uses links.';
+			case 'title-candidate': return 'Supplies naming evidence but does not create a mapping by itself.';
+			case 'body-candidate': return 'Suggests note content routing but does not create a shape mapping by itself.';
+			case 'edge-file': return 'Flags relationship-shaped input but does not create a shape mapping by itself.';
+			case 'row-type-discriminator': return 'Flags mixed row levels for review but does not create a mapping by itself.';
 		}
 	}
 

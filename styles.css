@@ -1373,9 +1373,16 @@
 	color: var(--text-muted);
 }
 .crosswalker-render-banner.is-warning {
-	background: var(--background-modifier-warning, rgba(255, 200, 0, 0.1));
-	color: var(--text-warning, var(--text-normal));
-	border-left: 3px solid var(--text-warning, var(--color-orange));
+	/* Deliberately NOT background-modifier-warning: several themes resolve it
+	   to a solid orange while text-warning is also orange, rendering the
+	   message invisible (orange-on-orange). Subtle tint + accent border +
+	   normal text color stays readable in every theme. */
+	background: rgba(255, 180, 0, 0.12);
+	color: var(--text-normal);
+	border-left: 3px solid var(--color-orange, #e6a700);
+}
+.crosswalker-render-banner.is-warning .crosswalker-wb-ico {
+	color: var(--color-orange, #e6a700);
 }
 .crosswalker-render-details {
 	margin: 0 0 12px;
@@ -1762,27 +1769,33 @@
 	}
 }
 
-/* Collapsible source rail (spec §7n item 2): reclaim its width for the canvas.
-   Collapsed-wide minimum is 56+560+380+2 gaps = 1028px, so collapsing the rail
-   earns the wide canvas earlier than the full three columns do. */
+/* Collapsing Source removes the zone entirely above the stacked boundary:
+   Mappings + Preview become a true two-column workspace with no placeholder
+   strip or empty grid track. */
 .crosswalker-workbench.is-source-collapsed {
-	grid-template-columns: 56px minmax(320px, 1.8fr) minmax(220px, 1.2fr);
+	grid-template-columns: minmax(320px, 1.8fr) minmax(220px, 1.2fr);
+}
+.crosswalker-workbench.is-source-collapsed > .crosswalker-wb-source {
+	display: none;
 }
 @container cw-flow (min-width: 1080px) {
 	.crosswalker-workbench.is-source-collapsed {
-		grid-template-columns: 56px minmax(560px, 2fr) minmax(380px, 1.1fr);
+		grid-template-columns: minmax(560px, 2fr) minmax(380px, 1.1fr);
 	}
 }
 
-/* Stack the zones vertically below the three-column minimum (190+320+220 +
-   gaps is roughly 760px of pane). A stacked pane never scrolls horizontally. */
+/* Stack when the workbench container has at most 760px of usable width. */
 @container cw-flow (max-width: 760px) {
-	.crosswalker-workbench {
+	.crosswalker-workbench,
+	.crosswalker-workbench.is-source-collapsed {
 		grid-template-columns: 1fr;
 		gap: var(--cw-s2);
 	}
-	.crosswalker-workbench.is-source-collapsed {
-		grid-template-columns: 1fr;
+	.crosswalker-workbench.is-source-collapsed > .crosswalker-wb-source {
+		display: block;
+	}
+	.crosswalker-wb-source-restore.is-canvas {
+		display: none;
 	}
 }
 
@@ -1820,6 +1833,25 @@
 	padding: 2px; border-radius: var(--cw-radius-sm); flex-shrink: 0;
 }
 .crosswalker-wb-collapse-btn:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.crosswalker-wb-source-restore {
+	display: inline-flex; align-items: center; justify-content: center; gap: var(--cw-chip-gap);
+	border: none; background: transparent; color: var(--text-muted); cursor: pointer;
+	padding: 2px var(--cw-s1); border-radius: var(--cw-radius-sm); flex: 0 0 auto;
+	font-size: var(--cw-fs-small); text-transform: none; letter-spacing: normal;
+}
+.crosswalker-wb-source-restore:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.crosswalker-wb-source-disclosure {
+	display: flex; align-items: center; gap: var(--cw-s2); min-width: 0;
+}
+.crosswalker-wb-source-disclosure-label {
+	font-size: var(--cw-fs-eyebrow); font-weight: 600; letter-spacing: var(--cw-track-eyebrow);
+	text-transform: uppercase; color: var(--text-faint); flex: 0 0 auto;
+}
+.crosswalker-wb-source-disclosure-summary {
+	font-size: var(--cw-fs-small); color: var(--text-muted); min-width: 0;
+	overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.crosswalker-wb-source-disclosure .crosswalker-wb-source-restore { margin-left: auto; }
 
 /* Lucide glyph wrapper — uniform, theme-aware (inherits currentColor). */
 .crosswalker-wb-ico {
@@ -1873,61 +1905,85 @@
 .crosswalker-wb-source-file { font-size: var(--cw-fs-body); margin-bottom: var(--cw-s2); }
 /* The "table · N rows × M columns" caption chip wraps instead of clipping the rail. */
 .crosswalker-wb-source > .crosswalker-wb-chip { white-space: normal; max-width: 100%; }
-.crosswalker-wb-collist { margin: var(--cw-s3) 0 var(--cw-s2); display: flex; flex-direction: column; gap: var(--cw-s1); }
-/* Row wraps so detection badges drop below the column name when space is tight —
-   the name keeps priority and never collapses to "des…". */
+.crosswalker-wb-detected-heading {
+	font-size: var(--cw-fs-body); font-weight: 650; color: var(--text-normal);
+	margin-top: var(--cw-s3); padding-top: var(--cw-s3);
+	border-top: 1px solid var(--background-modifier-border);
+}
+.crosswalker-wb-collist { margin: var(--cw-s2) 0; display: flex; flex-direction: column; gap: 2px; }
+/* Row wraps so detection badges drop below the column name when space is tight. */
 .crosswalker-wb-colrow {
 	display: flex; justify-content: space-between; align-items: center;
-	gap: var(--cw-s1) var(--cw-s2); font-size: var(--cw-fs-body); padding: var(--cw-s1) 0;
-	flex-wrap: wrap;
+	gap: var(--cw-s1) var(--cw-s2); font-size: var(--cw-fs-body); padding: 3px 0;
+	flex-wrap: wrap; min-width: 0;
 }
 .crosswalker-wb-colname { color: var(--text-normal); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 5em; }
-.crosswalker-wb-collist-hint { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s2); line-height: 1.4; }
-.crosswalker-wb-badges { display: flex; gap: var(--cw-s1); flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; }
-/* Labeled detection chips — interactive (button), so they get hover + focus. */
-.crosswalker-wb-badge { cursor: pointer; }
+.crosswalker-wb-collist-hint, .crosswalker-wb-detected-empty { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s2); line-height: 1.4; }
+.crosswalker-wb-badges { display: flex; gap: var(--cw-s1); flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+/* Labeled detection chips remain visible after dismissal so the observation is inspectable. */
+.crosswalker-wb-badge { cursor: pointer; max-width: 100%; }
 .crosswalker-wb-badge:hover { border-color: var(--interactive-accent); color: var(--text-normal); }
-.crosswalker-wb-badge:focus-visible {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: 1px;
-}
 .crosswalker-wb-badge.is-active {
 	border-color: var(--interactive-accent);
 	color: var(--text-accent);
 	background: var(--background-modifier-hover);
 }
-.crosswalker-wb-badge-label { letter-spacing: 0.01em; }
-.crosswalker-wb-badge.is-dismissed { opacity: 0.45; text-decoration: line-through; }
+.crosswalker-wb-badge-label { letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; }
+.crosswalker-wb-badge.is-dismissed { opacity: 0.55; text-decoration: line-through; }
 
-/* Evidence card — a quiet inspect panel: subtle accent, not a loud full border. */
+/* Evidence card uses source context, receipts, effect, and one mapping action. */
 .crosswalker-wb-evidence {
 	border: 1px solid var(--background-modifier-border);
 	border-left: 3px solid var(--interactive-accent);
 	border-radius: var(--cw-radius-sm);
-	padding: var(--cw-s3); margin: var(--cw-s2) 0;
+	padding: var(--cw-s2); margin: var(--cw-s2) 0;
 	background: var(--background-primary);
 	display: flex; flex-direction: column; gap: var(--cw-s2);
+	min-width: 0; max-width: 100%; overflow: hidden;
 }
-.crosswalker-wb-evidence-title { font-weight: 600; font-size: var(--cw-fs-body); line-height: 1.35; }
-.crosswalker-wb-samples { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.6; }
-.crosswalker-wb-evidence-cov { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.45; }
-.crosswalker-wb-hist { display: flex; gap: var(--cw-s2); align-items: flex-end; }
-.crosswalker-wb-hcol { display: flex; flex-direction: column; align-items: center; gap: var(--cw-s1); font-size: var(--cw-fs-small); color: var(--text-muted); }
+.crosswalker-wb-evidence-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--cw-s2); min-width: 0; }
+.crosswalker-wb-evidence-context { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.crosswalker-wb-evidence-context-label {
+	font-size: var(--cw-fs-eyebrow); font-weight: 650; letter-spacing: 0.04em;
+	text-transform: uppercase; color: var(--text-faint);
+}
+.crosswalker-wb-evidence-label {
+	font-size: var(--cw-fs-small); font-weight: 650; color: var(--text-muted);
+	line-height: 1.3;
+}
+.crosswalker-wb-evidence-context code { color: var(--text-normal); overflow-wrap: anywhere; }
+.crosswalker-wb-evidence-close, .crosswalker-wb-chooser-close {
+	display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+	border: none; background: none; color: var(--text-muted); cursor: pointer;
+	border-radius: var(--cw-radius-sm); padding: 3px;
+}
+.crosswalker-wb-evidence-close:hover, .crosswalker-wb-chooser-close:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.crosswalker-wb-evidence-close .svg-icon, .crosswalker-wb-chooser-close .svg-icon { width: var(--cw-icon); height: var(--cw-icon); }
+.crosswalker-wb-evidence-title { font-weight: 650; font-size: var(--cw-fs-title); line-height: 1.35; }
+.crosswalker-wb-evidence-section { display: flex; flex-direction: column; gap: var(--cw-s1); min-width: 0; }
+.crosswalker-wb-evidence-copy, .crosswalker-wb-evidence-cov { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.45; overflow-wrap: anywhere; }
+.crosswalker-wb-evidence-copy.is-muted { color: var(--text-faint); }
+.crosswalker-wb-samples { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.5; min-width: 0; }
+.crosswalker-wb-samples > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crosswalker-wb-hist { display: flex; gap: var(--cw-s2); align-items: flex-end; overflow-x: auto; padding-top: var(--cw-s1); }
+.crosswalker-wb-hcol { display: flex; flex-direction: column; align-items: center; gap: var(--cw-s1); font-size: var(--cw-fs-small); color: var(--text-muted); flex: 0 0 auto; }
 .crosswalker-wb-hbar { width: 24px; border-radius: 3px 3px 0 0; background: var(--interactive-accent); opacity: 0.85; }
-.crosswalker-wb-evidence-btns { display: flex; gap: var(--cw-s2); }
-/* Confirm = the one accent action; dismiss = quiet neutral. */
-.crosswalker-wb-confirm { border: 1px solid var(--interactive-accent); color: var(--text-on-accent); background: var(--interactive-accent); border-radius: var(--cw-radius-sm); padding: var(--cw-s1) var(--cw-s3); font-size: var(--cw-fs-small); cursor: pointer; }
-.crosswalker-wb-confirm:hover:not(:disabled) { background: var(--interactive-accent-hover); }
-.crosswalker-wb-confirm:disabled { cursor: default; opacity: 0.5; background: none; color: var(--text-muted); border-color: var(--background-modifier-border); }
-.crosswalker-wb-dismiss { border: 1px solid var(--background-modifier-border); color: var(--text-muted); background: var(--background-primary); border-radius: var(--cw-radius-sm); padding: var(--cw-s1) var(--cw-s3); font-size: var(--cw-fs-small); cursor: pointer; }
-.crosswalker-wb-dismiss:disabled { cursor: default; opacity: 0.5; }
-.crosswalker-wb-dismiss:hover:not(:disabled) { color: var(--text-normal); border-color: var(--text-muted); }
+.crosswalker-wb-evidence-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--cw-s2); flex-wrap: wrap; padding-top: var(--cw-s2); border-top: 1px solid var(--background-modifier-border); }
+.crosswalker-wb-evidence-status { font-size: var(--cw-fs-small); color: var(--text-muted); }
+.crosswalker-wb-evidence-status.is-included { color: var(--text-success); }
+.crosswalker-wb-evidence-action {
+	border: 1px solid var(--background-modifier-border); color: var(--text-normal);
+	background: var(--background-secondary); border-radius: var(--cw-radius-sm);
+	padding: var(--cw-s1) var(--cw-s2); font-size: var(--cw-fs-small); cursor: pointer;
+}
+.crosswalker-wb-evidence-action:hover { border-color: var(--interactive-accent); color: var(--text-accent); }
 
-.crosswalker-wb-allcols { margin-top: var(--cw-s3); font-size: var(--cw-fs-body); }
-.crosswalker-wb-allcols summary { cursor: pointer; color: var(--text-muted); padding: var(--cw-s1) 0; }
+.crosswalker-wb-allcols { margin-top: var(--cw-s3); font-size: var(--cw-fs-body); border-top: 1px solid var(--background-modifier-border); padding-top: var(--cw-s2); }
+.crosswalker-wb-allcols summary { cursor: pointer; color: var(--text-muted); padding: var(--cw-s1) 0; font-weight: 600; }
 .crosswalker-wb-allcols summary:hover { color: var(--text-normal); }
-.crosswalker-wb-allcol-row { display: flex; justify-content: space-between; align-items: center; gap: var(--cw-s2); padding: var(--cw-s1) 0; }
-.crosswalker-wb-allcol-row select { max-width: 45%; }
+.crosswalker-wb-allcols-explainer { color: var(--text-muted); font-size: var(--cw-fs-small); line-height: 1.4; margin: var(--cw-s1) 0 var(--cw-s2); }
+.crosswalker-wb-allcol-row { display: flex; justify-content: space-between; align-items: center; gap: var(--cw-s2); padding: var(--cw-s1) 0; min-width: 0; }
+.crosswalker-wb-allcol-row select { max-width: 48%; min-width: 0; }
 
 /* -- mapping canvas -- */
 .crosswalker-wb-presetbar { display: flex; align-items: center; gap: var(--cw-s2); flex-wrap: wrap; margin-bottom: var(--cw-s3); font-size: var(--cw-fs-body); }
@@ -1951,16 +2007,16 @@
 .crosswalker-wb-mapcard-rm .svg-icon { width: var(--cw-icon); height: var(--cw-icon); }
 .crosswalker-wb-summary-chips { display: flex; gap: var(--cw-s1); flex-wrap: wrap; }
 
-/* Shape cards — the toggle grid. Selected = one accent ring, no double shadow. */
+/* Shape cards use native labeled checkboxes; only the label is a toggle target. */
 .crosswalker-wb-shapes {
-	display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 	gap: var(--cw-s2); margin: var(--cw-s3) 0;
 }
 .crosswalker-wb-shape {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--cw-radius-md); padding: var(--cw-s3); background: var(--background-secondary);
-	display: flex; flex-direction: column; gap: var(--cw-s2);
-	cursor: pointer; transition: border-color 0.1s ease, background 0.1s ease;
+	display: flex; flex-direction: column; gap: var(--cw-s2); min-width: 0;
+	transition: border-color 0.1s ease, background 0.1s ease;
 }
 .crosswalker-wb-shape:hover { border-color: var(--background-modifier-border-hover); }
 .crosswalker-wb-shape.is-on {
@@ -1969,10 +2025,49 @@
 	box-shadow: inset 0 0 0 1px var(--interactive-accent);
 }
 .crosswalker-wb-shape.is-mixed { border-color: var(--text-warning); }
-.crosswalker-wb-shape-top { display: flex; align-items: center; gap: var(--cw-s2); }
-.crosswalker-wb-shape-title { font-size: var(--cw-fs-body); font-weight: 600; display: inline-flex; align-items: center; gap: var(--cw-chip-gap); }
+.crosswalker-wb-shape-control { display: flex; align-items: center; gap: var(--cw-s2); cursor: pointer; min-width: 0; }
+.crosswalker-wb-shape-control input { flex: 0 0 auto; }
+.crosswalker-wb-shape-title { font-size: var(--cw-fs-body); font-weight: 600; display: inline-flex; align-items: center; gap: var(--cw-chip-gap); min-width: 0; }
+.crosswalker-wb-shape-state {
+	margin-left: auto; flex: 0 0 auto; padding: 1px 6px;
+	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-pill);
+	font-size: var(--cw-fs-small); color: var(--text-muted); background: var(--background-primary);
+}
+.crosswalker-wb-shape.is-on .crosswalker-wb-shape-state { border-color: var(--interactive-accent); color: var(--text-accent); }
+.crosswalker-wb-shape.is-mixed .crosswalker-wb-shape-state { border-color: var(--text-warning); color: var(--text-warning); }
+.crosswalker-wb-shape-illustration {
+	height: 64px; min-width: 0; overflow: hidden; position: relative;
+	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-sm);
+	background: var(--background-primary); padding: var(--cw-s2);
+	color: var(--text-muted);
+}
+.crosswalker-wb-mini-folder { height: 10px; width: 62%; margin: 3px 0; border: 1px solid currentColor; border-radius: 2px; opacity: 0.72; }
+.crosswalker-wb-mini-folder.is-depth-1 { margin-left: 16%; width: 66%; }
+.crosswalker-wb-mini-folder.is-depth-2 { margin-left: 32%; width: 62%; color: var(--text-accent); }
+.crosswalker-wb-shape-illustration.is-name { display: flex; flex-direction: column; justify-content: center; gap: 5px; }
+.crosswalker-wb-mini-file { height: 8px; border-radius: 2px; background: var(--background-modifier-border); }
+.crosswalker-wb-mini-file:nth-child(2) { width: 78%; background: var(--interactive-accent); opacity: 0.55; }
+.crosswalker-wb-mini-file:nth-child(3) { width: 62%; }
+.crosswalker-wb-shape-illustration.is-tag { display: flex; align-content: center; justify-content: center; flex-wrap: wrap; gap: 5px; }
+.crosswalker-wb-mini-tag { border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-pill); padding: 1px 5px; font-size: 9px; color: var(--text-accent); }
+.crosswalker-wb-shape-illustration.is-heading { display: flex; align-items: center; justify-content: center; }
+.crosswalker-wb-mini-sheet { width: 66%; height: 44px; border: 1px solid currentColor; border-radius: 2px; padding: 6px; }
+.crosswalker-wb-mini-heading { height: 5px; width: 52%; background: var(--text-accent); border-radius: 1px; margin-bottom: 6px; }
+.crosswalker-wb-mini-line { height: 3px; background: var(--background-modifier-border); margin: 4px 0; border-radius: 1px; }
+.crosswalker-wb-shape-illustration.is-link { display: flex; align-items: center; justify-content: space-around; }
+.crosswalker-wb-mini-node { width: 15px; height: 15px; border: 2px solid var(--text-accent); border-radius: 50%; background: var(--background-primary); z-index: 1; }
+.crosswalker-wb-mini-node.is-b { border-color: var(--text-muted); }
+.crosswalker-wb-mini-connector { height: 1px; flex: 1 1 auto; max-width: 30px; background: var(--text-muted); }
+.crosswalker-wb-mini-connector.is-b { transform: rotate(-12deg); }
+.crosswalker-wb-shape-illustration.is-property { display: flex; flex-direction: column; justify-content: center; gap: 5px; }
+.crosswalker-wb-mini-property { display: grid; grid-template-columns: 35% 1fr; gap: 5px; }
+.crosswalker-wb-mini-key, .crosswalker-wb-mini-value { height: 6px; border-radius: 1px; background: var(--background-modifier-border); }
+.crosswalker-wb-mini-value { background: var(--interactive-accent); opacity: 0.45; }
+.crosswalker-wb-shape-details { border-top: 1px solid var(--background-modifier-border); padding-top: var(--cw-s2); font-size: var(--cw-fs-small); }
+.crosswalker-wb-shape-details summary { cursor: pointer; color: var(--text-muted); font-weight: 600; }
+.crosswalker-wb-shape-details[open] summary { margin-bottom: var(--cw-s2); color: var(--text-normal); }
 .crosswalker-wb-shape-afford { font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.45; }
-.crosswalker-wb-whisper { font-size: var(--cw-fs-small); color: var(--text-accent); }
+.crosswalker-wb-whisper { font-size: var(--cw-fs-small); color: var(--text-accent); margin-top: var(--cw-s1); }
 
 .crosswalker-wb-combined { margin: var(--cw-s3) 0; }
 .crosswalker-wb-combined-label { font-size: var(--cw-fs-small); color: var(--text-muted); margin-bottom: var(--cw-s1); }
@@ -2032,19 +2127,121 @@
 .crosswalker-wb-addmenu-field input { max-width: 55%; }
 .crosswalker-wb-addmenu-btns { display: flex; gap: var(--cw-s2); margin-top: var(--cw-s2); }
 
-.crosswalker-wb-addmapping { margin-top: var(--cw-s3); }
-.crosswalker-wb-addmapping select { width: 100%; }
-
-/* -- Connections card (spec §7k, Pass 1.5 batch enrichment controls) -- */
-.crosswalker-wb-connections-sub { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s3); }
-.crosswalker-wb-connection-row { margin-bottom: var(--cw-s3); }
-.crosswalker-wb-connection-row:last-child { margin-bottom: 0; }
-.crosswalker-wb-connection-toggle, .crosswalker-wb-connection-select {
-	display: flex; align-items: center; gap: var(--cw-s2); font-size: var(--cw-fs-body); cursor: pointer;
+.crosswalker-wb-addmapping { margin: 0 0 var(--cw-s3); min-width: 0; }
+.crosswalker-wb-addmapping-trigger {
+	width: 100%; display: flex; align-items: center; justify-content: center; gap: var(--cw-s2);
+	border: 1px dashed var(--background-modifier-border); border-radius: var(--cw-radius-md);
+	background: var(--background-primary); color: var(--text-accent); cursor: pointer;
+	padding: var(--cw-s2) var(--cw-s3); font-size: var(--cw-fs-body);
 }
-.crosswalker-wb-connection-select select { margin-left: auto; }
-.crosswalker-wb-connection-hint { font-size: var(--cw-fs-small); color: var(--text-muted); margin-top: var(--cw-s1); line-height: 1.45; }
-.crosswalker-wb-connection-row-label { font-size: var(--cw-fs-body); font-weight: 600; margin-bottom: var(--cw-s2); }
+.crosswalker-wb-addmapping-trigger:hover { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
+.crosswalker-wb-mapping-chooser {
+	margin-top: var(--cw-s2); border: 1px solid var(--background-modifier-border);
+	border-radius: var(--cw-radius-md); padding: var(--cw-s3); background: var(--background-primary);
+	display: flex; flex-direction: column; gap: var(--cw-s2); min-width: 0; max-width: 100%;
+}
+.crosswalker-wb-chooser-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--cw-s2); }
+.crosswalker-wb-chooser-title { font-size: var(--cw-fs-body); font-weight: 650; color: var(--text-normal); }
+.crosswalker-wb-chooser-hint { font-size: var(--cw-fs-small); color: var(--text-muted); margin-top: 2px; }
+.crosswalker-wb-chooser-search { width: 100%; min-width: 0; }
+.crosswalker-wb-chooser-results {
+	display: flex; flex-direction: column; gap: var(--cw-s1);
+	max-height: min(360px, 45vh); overflow-y: auto; overflow-x: hidden;
+	padding-right: var(--cw-s1); min-width: 0;
+}
+.crosswalker-wb-chooser-option {
+	width: 100%; min-width: 0; text-align: left; display: flex; flex-direction: column;
+	align-items: stretch; gap: var(--cw-s1);
+	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-sm);
+	background: var(--background-secondary); color: var(--text-normal); cursor: pointer;
+	height: auto; min-height: 72px; padding: var(--cw-s2); overflow: hidden;
+}
+.crosswalker-wb-chooser-option:hover { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
+.crosswalker-wb-chooser-column { width: 100%; text-align: left; font-size: var(--cw-fs-body); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crosswalker-wb-column-meta { width: 100%; text-align: left; display: flex; flex-wrap: wrap; gap: var(--cw-s1) var(--cw-s2); font-size: var(--cw-fs-small); color: var(--text-muted); }
+.crosswalker-wb-column-meta > span { white-space: nowrap; }
+.crosswalker-wb-column-samples { width: 100%; text-align: left; font-size: var(--cw-fs-small); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crosswalker-wb-chooser-empty { padding: var(--cw-s4) var(--cw-s2); text-align: center; color: var(--text-muted); font-size: var(--cw-fs-body); }
+
+.crosswalker-wb-badge:focus-visible,
+.crosswalker-wb-evidence-close:focus-visible,
+.crosswalker-wb-evidence-action:focus-visible,
+.crosswalker-wb-addmapping-trigger:focus-visible,
+.crosswalker-wb-chooser-close:focus-visible,
+.crosswalker-wb-chooser-search:focus-visible,
+.crosswalker-wb-chooser-option:focus-visible,
+.crosswalker-wb-collapse-btn:focus-visible,
+.crosswalker-wb-source-restore:focus-visible,
+.crosswalker-wb-shape-control input:focus-visible,
+.crosswalker-wb-shape-details summary:focus-visible,
+.crosswalker-wb-connection-control input:focus-visible,
+.crosswalker-wb-connection-select:focus-visible,
+.crosswalker-wb-connection-details summary:focus-visible,
+.crosswalker-wb-placement-radio input:focus-visible,
+.crosswalker-wb-placement-details summary:focus-visible,
+.crosswalker-wb-mapcard:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+/* -- Connections card: outcome-first controls in the shape-card language. -- */
+.crosswalker-wb-connections-sub { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s3); line-height: 1.45; }
+.crosswalker-wb-connection-options {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+	gap: var(--cw-s2); margin-bottom: var(--cw-s3);
+}
+.crosswalker-wb-connection-option {
+	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-md);
+	padding: var(--cw-s3); background: var(--background-secondary);
+	display: flex; flex-direction: column; gap: var(--cw-s2); min-width: 0;
+	transition: border-color 0.1s ease, background 0.1s ease;
+}
+.crosswalker-wb-connection-option:hover { border-color: var(--background-modifier-border-hover); }
+.crosswalker-wb-connection-option.is-on {
+	border-color: var(--interactive-accent); background: var(--background-primary);
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+.crosswalker-wb-connection-control {
+	display: flex; align-items: center; gap: var(--cw-s2); min-width: 0;
+	font-size: var(--cw-fs-body); cursor: pointer;
+}
+.crosswalker-wb-connection-control input { flex: 0 0 auto; }
+.crosswalker-wb-connection-title {
+	display: inline-flex; align-items: center; gap: var(--cw-chip-gap);
+	font-weight: 600; min-width: 0;
+}
+.crosswalker-wb-connection-select { margin-left: auto; min-width: 0; max-width: 145px; }
+.crosswalker-wb-connection-state,
+.crosswalker-wb-placement-state {
+	margin-left: auto; flex: 0 0 auto; padding: 1px 6px;
+	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-pill);
+	font-size: var(--cw-fs-small); color: var(--text-muted); background: var(--background-primary);
+}
+.crosswalker-wb-connection-option.is-on > .crosswalker-wb-connection-control .crosswalker-wb-connection-state {
+	border-color: var(--interactive-accent); color: var(--text-accent);
+}
+.crosswalker-wb-connection-outcome { font-size: var(--cw-fs-body); color: var(--text-normal); line-height: 1.4; }
+.crosswalker-wb-connection-context { font-size: var(--cw-fs-small); color: var(--text-accent); line-height: 1.4; }
+.crosswalker-wb-connection-context.is-inactive { color: var(--text-muted); }
+.crosswalker-wb-connection-details,
+.crosswalker-wb-placement-details {
+	border-top: 1px solid var(--background-modifier-border); padding-top: var(--cw-s2);
+	font-size: var(--cw-fs-small); color: var(--text-muted); line-height: 1.45;
+}
+.crosswalker-wb-connection-details summary,
+.crosswalker-wb-placement-details summary { cursor: pointer; color: var(--text-muted); font-weight: 600; }
+.crosswalker-wb-connection-details[open] summary,
+.crosswalker-wb-placement-details[open] summary { color: var(--text-normal); margin-bottom: var(--cw-s2); }
+.crosswalker-wb-waypoint {
+	margin-top: var(--cw-s1); padding: var(--cw-s2) 0 0 var(--cw-s3);
+	border-top: 1px solid var(--background-modifier-border);
+	border-left: 2px solid var(--interactive-accent);
+	display: flex; flex-direction: column; gap: var(--cw-s2);
+}
+.crosswalker-wb-waypoint.is-inactive { opacity: 0.55; border-left-color: var(--background-modifier-border); }
+.crosswalker-wb-waypoint.is-inactive .crosswalker-wb-connection-control { cursor: not-allowed; }
+.crosswalker-wb-connection-row-label { font-size: var(--cw-fs-body); font-weight: 600; margin-bottom: var(--cw-s2); line-height: 1.45; }
+.crosswalker-wb-connection-row-label code { font-size: 0.92em; }
 .crosswalker-wb-connection-stats { font-size: var(--cw-fs-small); color: var(--text-accent); margin-top: var(--cw-s2); }
 
 .crosswalker-wb-placement { margin-top: var(--cw-s3); padding-top: var(--cw-s3); border-top: 1px solid var(--background-modifier-border); }
@@ -2052,12 +2249,20 @@
 .crosswalker-wb-placement-col {
 	border: 1px solid var(--background-modifier-border); border-radius: var(--cw-radius-md);
 	padding: var(--cw-s2) var(--cw-s3); background: var(--background-secondary);
+	transition: border-color 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
 }
-.crosswalker-wb-placement-col.is-disabled { opacity: 0.6; }
-.crosswalker-wb-placement-radio { display: flex; align-items: center; gap: var(--cw-s2); font-size: var(--cw-fs-body); font-weight: 600; cursor: pointer; }
-.crosswalker-wb-placement-col.is-disabled .crosswalker-wb-placement-radio { cursor: not-allowed; }
-.crosswalker-wb-placement-reason { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0 var(--cw-s2); line-height: 1.4; }
+.crosswalker-wb-placement-col.is-selected {
+	border-color: var(--interactive-accent); background: var(--background-primary);
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+.crosswalker-wb-placement-head { display: flex; align-items: center; gap: var(--cw-s2); min-width: 0; }
+.crosswalker-wb-placement-radio { display: flex; align-items: center; gap: var(--cw-s2); font-size: var(--cw-fs-body); font-weight: 600; cursor: pointer; min-width: 0; }
+.crosswalker-wb-placement-states { margin-left: auto; display: flex; gap: var(--cw-s1); flex-wrap: wrap; justify-content: flex-end; }
+.crosswalker-wb-placement-state { margin-left: 0; }
+.crosswalker-wb-placement-state.is-selected { border-color: var(--interactive-accent); color: var(--text-accent); }
+.crosswalker-wb-placement-reason { font-size: var(--cw-fs-small); color: var(--text-muted); margin: var(--cw-s1) 0; line-height: 1.4; }
 .crosswalker-wb-placement-tree { margin-top: var(--cw-s2); }
+.crosswalker-wb-placement-details { margin-top: var(--cw-s3); }
 
 /* -- vault preview rail -- */
 /* Tree + rendered note stack by default; on a wide, generous preview rail

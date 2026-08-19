@@ -18,6 +18,8 @@
 import { App, TFile, TFolder } from 'obsidian';
 import type { ColumnInfo, ImportRecipe } from '../types/config';
 import type { ImportMapping } from './mapping/types';
+import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
+import type { RecipeDocumentOrigin } from './recipe-document';
 import type { ColumnDest } from './workbench';
 import type { DebugLog } from '../utils/debug';
 
@@ -57,6 +59,9 @@ export interface WizardDraft {
 	// draft was saved in workbench (beta) mode; on resume the workbench is
 	// rehydrated from it instead of re-detecting from scratch.
 	workbenchMapping?: ImportMapping;
+	/** Canonical preservation authority for lossless recipe-backed resume. */
+	workbenchRecipe?: CrosswalkerImportRecipe;
+	workbenchRecipeOrigin?: RecipeDocumentOrigin;
 
 	/**
 	 * B5: which workbench-entry path produced this draft's mapping — the

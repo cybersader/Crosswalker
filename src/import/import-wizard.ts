@@ -1,4 +1,4 @@
-import { App, Modal, Setting, Notice, normalizePath, setIcon, TFile, TFolder } from 'obsidian';
+import { App, Modal, Scope, Setting, Notice, normalizePath, setIcon, TFile, TFolder } from 'obsidian';
 import CrosswalkerPlugin from '../main';
 import { ParsedData, ImportRecipe, ColumnInfo, SavedConfig, HierarchyMapping, isEagerRows } from '../types/config';
 import { parseCSVFile, analyzeColumns, shouldUseStreaming, ParseProgress } from './parsers/csv-parser';
@@ -33,12 +33,13 @@ import {
 } from './draft-store';
 import { MappingWorkbench, renderProvenanceBadge, type ColumnDest } from './workbench';
 import type { ImportMapping, Enrichment } from './mapping/types';
+import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
+import type { RecipeDocumentOrigin } from './recipe-document';
 import { buildShapeMapRecap, deriveDestinationDefault, preferredParentNote, detectWaypointPlugin, type Provenance } from './mapping/view-model';
 import { computePlan } from './mapping/plan';
 import { deriveFacetMemberships } from './mapping/facets';
 import {
 	bestRecognizedRecipe,
-	recipeMapping,
 	summarizeRecipeShapes,
 	RECIPE_REGISTRY,
 	type RecipeMatch,
@@ -106,6 +107,12 @@ export interface ImportFlowHost {
 	/** Called when the flow reaches a terminal "done" action (generation
 	 *  success, the results screen's Close button). */
 	close: () => void;
+	/**
+	 * Optional host-level Escape registration. Modal hosts use their Obsidian
+	 * Scope so a transient workbench surface can consume Escape before the
+	 * modal's own close handler. The callback returns true only when handled.
+	 */
+	registerEscapeHandler?: (handler: () => boolean) => void;
 	/**
 	 * When set, every step's nav bar shows a persistent quiet exit button with
 	 * this label that calls close(). The view host needs it: without an exit,
@@ -177,6 +184,9 @@ export class ImportFlow {
 	 *  workbench (draft resume, spec §7i). Consumed once by renderStep2_Workbench,
 	 *  then cleared so later rebuilds re-instantiate from detections. */
 	private pendingWorkbenchMapping: ImportMapping | null = null;
+	/** Canonical preservation authority paired with a resumed workbench mapping. */
+	private pendingWorkbenchRecipe: CrosswalkerImportRecipe | null = null;
+	private pendingWorkbenchRecipeOrigin: RecipeDocumentOrigin | null = null;
 	/** M8: persisted "all columns" destination table awaiting rehydration,
 	 *  alongside `pendingWorkbenchMapping` — consumed together, once, by
 	 *  `renderStep2_Workbench`. */
@@ -239,8 +249,16 @@ export class ImportFlow {
 		this.app = app;
 		this.plugin = plugin;
 		this.host = host;
+		// Register once for hosts whose keyboard lifecycle sits above the rendered
+		// DOM. The workspace host omits this and uses the workbench-local fallback.
+		host.registerEscapeHandler?.(() => this.closeWorkbenchTransient());
 		// Initialize from settings
 		this.outputPath = plugin.settings.defaultOutputPath;
+	}
+
+	/** Consume Escape only while Step 2 is showing an open workbench surface. */
+	private closeWorkbenchTransient(): boolean {
+		return this.currentStep === 2 && (this.workbench?.closeTransientUi() ?? false);
 	}
 
 	onOpen() {
@@ -322,6 +340,8 @@ export class ImportFlow {
 		// Stash the persisted shape mapping (+ M8's columnDests/dismissed) for
 		// renderStep2_Workbench to consume.
 		this.pendingWorkbenchMapping = draft.workbenchMapping ?? null;
+		this.pendingWorkbenchRecipe = draft.workbenchRecipe ?? null;
+		this.pendingWorkbenchRecipeOrigin = draft.workbenchRecipeOrigin ?? null;
 		this.pendingColumnDests = draft.workbenchColumnDests ?? null;
 		this.pendingDismissed = draft.workbenchDismissed ?? null;
 		this.workbench = null;
@@ -347,6 +367,8 @@ export class ImportFlow {
 					new Notice('Could not re-read the source file from the vault. Please re-select it to resume.', 8000);
 					this.currentStep = 1;
 					this.pendingWorkbenchMapping = null;
+					this.pendingWorkbenchRecipe = null;
+					this.pendingWorkbenchRecipeOrigin = null;
 					this.pendingColumnDests = null;
 					this.pendingDismissed = null;
 				}
@@ -355,6 +377,8 @@ export class ImportFlow {
 				new Notice('Source file needs to be re-selected to resume this draft. Your column configuration has been preserved.', 8000);
 				this.currentStep = 1;
 				this.pendingWorkbenchMapping = null;
+				this.pendingWorkbenchRecipe = null;
+				this.pendingWorkbenchRecipeOrigin = null;
 				this.pendingColumnDests = null;
 				this.pendingDismissed = null;
 			}
@@ -1094,13 +1118,14 @@ export class ImportFlow {
 		// destination (unless a plugin-wide default already overrides it), and any
 		// LIVE recommendedEnrichment hint rides along on the seeded mapping.
 		this.outputPath = recognizedDestination(entry, this.plugin.settings.defaultOutputPath);
-		const mapping = recipeMapping(entry);
-		const enrichment = honestEnrichment(entry);
-		if (enrichment) mapping.enrichment = enrichment;
-		// Seed the workbench from the recipe (seedColumnDefaults=false → emit EXACTLY
-		// the vetted recipe). columnsSignature matches, so renderStep2/3 reuse it.
-		this.workbench = this.makeWorkbench(mapping, false);
+		// Seed from the COMPLETE canonical recipe. The RecipeDocument keeps every
+		// deferred/read-only field while exposing its editable mapping to the workbench.
+		// No curated overlay is applied here: an untouched recognized recipe must retain
+		// its original identity and target hash.
+		this.workbench = this.makeWorkbench(undefined, false, undefined, undefined, entry.recipe, 'bundled');
 		this.pendingWorkbenchMapping = null;
+		this.pendingWorkbenchRecipe = null;
+		this.pendingWorkbenchRecipeOrigin = null;
 		this.currentStep = toStep;
 		this.plugin.debug.info('wizard', 'recognized-recipe-chosen', `Fast path: ${entry.id} → step ${toStep}`, {
 			recipeId: entry.id,
@@ -1468,12 +1493,23 @@ export class ImportFlow {
 			// columnDests/dismissed once, then clear them so a later column-
 			// signature change re-instantiates fresh.
 			const initialMapping = this.pendingWorkbenchMapping ?? undefined;
+			const initialRecipe = this.pendingWorkbenchRecipe ?? undefined;
+			const recipeOrigin = this.pendingWorkbenchRecipeOrigin ?? 'legacy';
 			const initialColumnDests = this.pendingColumnDests ?? undefined;
 			const initialDismissed = this.pendingDismissed ?? undefined;
 			this.pendingWorkbenchMapping = null;
+			this.pendingWorkbenchRecipe = null;
+			this.pendingWorkbenchRecipeOrigin = null;
 			this.pendingColumnDests = null;
 			this.pendingDismissed = null;
-			this.workbench = this.makeWorkbench(initialMapping, true, initialColumnDests, initialDismissed);
+			this.workbench = this.makeWorkbench(
+				initialMapping,
+				!initialRecipe,
+				initialColumnDests,
+				initialDismissed,
+				initialRecipe,
+				recipeOrigin,
+			);
 		}
 		this.workbench.render(container.createDiv());
 	}
@@ -1492,6 +1528,8 @@ export class ImportFlow {
 		seedColumnDefaults = true,
 		initialColumnDests?: Record<string, ColumnDest>,
 		initialDismissed?: string[],
+		initialRecipe?: CrosswalkerImportRecipe,
+		recipeOrigin: RecipeDocumentOrigin = 'bundled',
 	): MappingWorkbench {
 		// Adaptive placement default: a vault running a folder-notes plugin has
 		// already chosen how parents should live — match it (pure helper over
@@ -1505,6 +1543,9 @@ export class ImportFlow {
 			debug: this.plugin.debug,
 			defaultPresetId: 'browsable-framework',
 			initialMapping,
+			initialRecipe,
+			recipeOrigin: initialRecipe ? recipeOrigin : undefined,
+			sourceOntology: initialRecipe?.source.ontology ?? this.sourceFile?.name ?? this.parsedData?.sheetName ?? 'source',
 			seedColumnDefaults,
 			initialColumnDests,
 			initialDismissed,
@@ -1756,6 +1797,17 @@ export class ImportFlow {
 		if (!this.workbench) return;
 		const prov = this.recognizedProvenance() ?? this.workbench.provenance(this.appliedConfig?.name ?? null);
 		const line = container.createEl('div', { cls: 'crosswalker-provenance' });
+		// Keep the effective portable identity machine-readable for diagnostics and
+		// end-to-end fidelity checks without adding unsettled recipe terminology to UI.
+		try {
+			const recipe = this.workbench.buildRecipe();
+			line.dataset.recipeId = recipe.recipe;
+			if (recipe.metadata?.based_on?.recipe) {
+				line.dataset.recipeBasedOn = recipe.metadata.based_on.recipe;
+			}
+		} catch {
+			// The visible preview-error banner already owns blocking recipe feedback.
+		}
 		line.createEl('span', { cls: 'crosswalker-provenance-lead', text: 'Using: ' });
 		line.createEl('span', { cls: 'crosswalker-provenance-text', text: prov.line });
 		renderProvenanceBadge(line, prov);
@@ -2010,6 +2062,8 @@ export class ImportFlow {
 			...(this.workbench
 				? {
 					workbenchMapping: this.workbench.getMapping(),
+					workbenchRecipe: this.workbench.getRecipeDocument().original,
+					workbenchRecipeOrigin: this.workbench.getRecipeDocument().origin,
 					workbenchColumnDests: this.workbench.getColumnDests(),
 					workbenchDismissed: this.workbench.getDismissed(),
 				}
@@ -3217,9 +3271,19 @@ export class ImportWizardModal extends Modal {
 
 	constructor(app: App, plugin: CrosswalkerPlugin, opts?: { presetRecipeId?: string; prefillFile?: TFile }) {
 		super(app);
+		// Put workbench-specific shortcuts in a child scope. Child handlers run
+		// before Modal's inherited Escape-to-close binding, so an open evidence card
+		// or column chooser gets the first Escape without weakening normal modal close.
+		this.scope = new Scope(this.scope);
 		this.flow = new ImportFlow(app, plugin, {
 			containerEl: this.contentEl,
 			close: () => this.close(),
+			registerEscapeHandler: (handler) => {
+				// Registered after Modal's own Escape binding. Scope evaluates the
+				// newest matching handler first, so return false only when the
+				// workbench consumed Escape and the modal must remain open.
+				this.scope.register([], 'Escape', () => handler() ? false : undefined);
+			},
 		});
 		if (opts?.presetRecipeId) this.flow.presetRecipeId = opts.presetRecipeId;
 		if (opts?.prefillFile) this.flow.pendingPrefill = opts.prefillFile;
