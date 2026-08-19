@@ -1,0 +1,220 @@
+---
+title: "Primitives and vocabulary — the adversarial review, in plain language"
+description: "Four proposed decisions about what Crosswalker calls its building blocks were sent to independent adversarial review before ratification. All four recommendations turned out to be wrong in some way. This page explains what each decision is actually about, what the review found, and what each option costs — written to be decided from, not studied."
+tags: [decision, primitives, vocabulary, terminology, adversarial-review, p7, p12, p13, p14]
+date: 2026-08-19
+sidebar:
+  label: "08-19 · Primitives review (plain language)"
+  order: -20260819
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Four decisions (P7, P12, P13, P14) about **what Crosswalker calls its own building blocks** were held back from ratification on 2026-08-19 and sent to two independent adversarial reviews, on the grounds that the primitives layer is load-bearing and a wrong call there is expensive to unwind.
+
+**All four recommendations turned out to be wrong in some way.** Holding them back was the right call. This page explains each one without jargon, with the trade-offs made explicit.
+
+<Aside type="note" title="How to read this">
+Each section answers four questions: what is this actually about, what was proposed, what the review found, and what each option costs you. Skip to **The call** at the end of each section if you only want the decision.
+</Aside>
+
+## P12 — "we said five building blocks but really there are nine"
+
+### What this is actually about
+
+There are two different questions you can ask about an import, and they have different answers. The confusion is that both answers got called "primitives."
+
+**Question 1: where does the note go?** A row in a spreadsheet has to become a note *somewhere*. The ways to place and address it:
+
+| Way | What it means |
+|---|---|
+| folder | the note goes in a folder named from this column |
+| file | this column becomes the note's filename |
+| heading | this becomes a heading inside a parent note |
+| tag | reserved, not built yet |
+| wikilink | reserved, not built yet |
+
+That is **five**, and it is a closed list on purpose. It is what makes "given a recipe and a concept, compute its address" a single, predictable step.
+
+**Question 2: what can I send a column to?** Once a note exists, a column's value can also fill in things that are not locations at all:
+
+| Destination | Is it a location? |
+|---|---|
+| folder, name, heading | yes — these *are* questions 1's mechanisms |
+| tag, property, alias | no — these are labels and fields on the note |
+| link | no — this is a relationship to another note |
+| body | no — this is text inside the note |
+| note | no — this decides whether a separate note gets made at all |
+
+That is **nine**. The workbench shows nine because nine is the honest answer to *question 2*.
+
+### What was proposed
+
+That the public claim of "five" is false because nine exist, and the docs should be restated on a nine-primitive palette.
+
+### What the review found
+
+**The claim is false, and it is a category error.** Verified directly against the machine contract, not the docs:
+
+- `spec/recipe.schema.json` defines the mechanism list as a closed set of exactly five.
+- The generated TypeScript has exactly five variants.
+- The renderer handles those five and rejects anything else.
+- The schema file says, in its own text, that body is **"not a sixth layout mechanism."**
+
+And two of the "nine" are not new things at all:
+
+- **`name` is `file`.** Same mechanism, different label in the UI.
+- **`link` is not `wikilink`.** One emits a relationship; the other is a reserved addressing mechanism. Different jobs.
+- **`note` cannot even be written into a portable recipe** — it blocks serialization today.
+
+Only **three of the nine** are layout mechanisms. The rest are content, and content was always a declared, separate dimension of the design.
+
+**The real defect is different, and it is real:** the docs assert **twelve different counts** in different places (3, 4, 5, 6, 6, 9, 9, 8, 7, 13, ~40, and "12 senses"), almost none of which say *what they are counting*. That is what makes the docs feel contradictory — not a broken contract.
+
+### What each option costs
+
+| Option | Cost | Risk | What you get |
+|---|---|---|---|
+| **Defend five, scope every count** | One docs pass. No code, no schema change | None to code | Public claim becomes true *and* legible. Every count says what it counts |
+| **Declare nine canonical** | Either rewrite the schema so nine is actually true (large, breaks anyone already emitting recipes) or publish docs that contradict the code | High | Nothing identified |
+| **Defer** | Free today | Readers keep hitting contradictory numbers | Nothing |
+
+### The call
+
+Keep five, and fix the counts by saying what each one counts: *five layout mechanisms (three built, two reserved)*, *nine workbench destinations*, *four hierarchy carriers*, *eight query verbs*, *nine graph-change operations*.
+
+---
+
+## P13 — the word "primitive" means five different things
+
+### What this is actually about
+
+Yes — this is mostly a communication problem, and the intuitive fix is the right one. But **one part of it is not just words**, and that distinction is the whole decision.
+
+The word "primitive" is currently used for: layout mechanisms, workbench destinations, query verbs, view settings, and change operations. A reader meeting the bare word cannot tell which is meant.
+
+### The two halves
+
+| Half | What it is | Risk to change |
+|---|---|---|
+| **Words in the docs** | Prose saying "primitive" where it should say "layout mechanism" or "query verb" | **None.** Reversible, no code |
+| **Names inside saved files** | The `query.primitives` field written into saved recipes, and `TablePrimitives` in the schema | **Real.** Renaming a field breaks recipes people already saved, and needs a version migration |
+
+### What the review found
+
+The proposal bundled both halves and assumed they could ride one schema version bump. **That plan does not work, because it names the wrong file** — `TablePrimitives` lives in the recipe schema, not the preset schema. There are actually three independent renames, on three different compatibility clocks, one of which breaks saved recipes.
+
+Also worth knowing: the proposal is titled "give it exactly one meaning," but what it actually delivers is *qualified names* — several meanings, each clearly labelled. That is the correct fix. The title oversells it.
+
+### What each option costs
+
+| Option | Cost | Risk | What you get |
+|---|---|---|---|
+| **Fix the words now, defer the file renames** | A docs sweep | None | The reading problem goes away immediately; nothing breaks |
+| **Do both now as one migration** | The bundled migration does not exist as described; would need re-planning | Breaks saved recipes | — |
+| **Defer everything** | Free | The word stays ambiguous | Nothing |
+
+### The call
+
+Do the words now — this is the "I like intuitive" half, and it is free. Hold the file-format renames until the schema split (P8) and the recipe-model decision (P10) settle, so they happen once, deliberately, with a migration.
+
+---
+
+## P7 — cutting the internal vocabulary from 16 names to 7
+
+### What this is actually about
+
+The project has named the kinds of thing it manages. The question is which of those names are *real things* and which are just descriptions that got capitalized.
+
+The project already has a test for this: **does it have its own identity, its own lifecycle, its own authority, and its own consumers?**
+
+### What was proposed
+
+Cut from 16 names to 7.
+
+### What the review found
+
+**The proposed seven cut the wrong ones.** It removes names that carry real authority and keeps ones the project's own page calls derivative.
+
+Most importantly, two of the names slated for removal are **the primary artifacts of the very next milestone**:
+
+| Name | What it actually is | Why cutting it is wrong |
+|---|---|---|
+| **Execution Record** | The record of one import run: what ran, against what source, when, and what came out | v0.1.8 calls this "the primary artifact." Cutting it means re-adding it one milestone later, across docs, schemas, types, UI labels, and tests |
+| **Package Manifest** | The signed list of what is actually inside a release | v0.1.8 signs and verifies *this*, specifically so that signing is not just "signing a folder name" |
+| **Knowledge Set** | Who asserted the content — "NIST says this" — as distinct from whether the file is valid | Without it, "passes validation" quietly starts to read as "is authoritative." Those are different claims |
+
+Meanwhile the proposed keep-list retains **projection**, which the project's own authority page says "does not gain independent semantic authority."
+
+The card's supporting evidence is also weaker than it looks: "five of them appear nowhere in the code" is literally true but measures **roadmap order**, not whether the thing is real. Three of those five are simply not built yet because they belong to the next two milestones.
+
+### What is genuinely safe to cut
+
+These fail the test — they are descriptions, not things:
+
+| Cut | Why |
+|---|---|
+| recipe specification | It is just the Recipe in canonical form |
+| recipe execution | It is an event; the durable facts belong to Execution Record |
+| Carrier (as a capitalized noun) | It is the zip or folder that moves bytes. Keep one sentence warning it is not the package |
+| recipe template (as an artifact class) | Useful phrase, not a separate kind of thing |
+
+### What each option costs
+
+| Option | Cost | Risk | What you get |
+|---|---|---|---|
+| **Selective prune (~11 keep)** | A modest docs pass | Low | Real clutter goes; nothing the next milestone needs is lost |
+| **Prune to 7** | Re-introduce two names next milestone across every surface | Audit and replay code may encode the wrong boundary permanently | A smaller number |
+| **Defer all pruning** | Free | Clutter stays another milestone | Prune once later against real contracts |
+
+### The call
+
+Selective prune. Your instinct that "selective prune sounds right" matches what the evidence supports.
+
+---
+
+## P14 — splitting the glossary into two pages
+
+### What this is actually about
+
+The terminology page is hard to read. The proposal assumed the cause is **length** and prescribed splitting it into a short reader glossary plus a deep internals reference.
+
+### What the review found
+
+The cause is **not length**. Measured:
+
+- Current page: **221 lines**. Proposed reader page: **about 180 lines**. That is 19% shorter — not a transformation.
+- The split would require migrating **215 inbound links** across 79 files, 89 of them in historical logs that should not be rewritten at all.
+- It would create a **third** competing vocabulary authority, alongside the existing UI lexicon — exactly the collision problem P13 exists to remove.
+
+What actually makes the page hard to trust is that **five of its claims are stale**, including two that contradict settled commitments (it still discusses a database engine that was rejected, and still presents a renamed concept under its old name).
+
+### What each option costs
+
+| Option | Cost | Risk | What you get |
+|---|---|---|---|
+| **Trim in place** | Fix five stale rows, put reader terms first, link internals out instead of duplicating | None — URL and anchors unchanged | The actual problem fixed |
+| **Split now** | 215 link migrations, anchor-compatibility work, a third vocabulary authority | Two pages to keep in sync; still stale unless content is fixed anyway | A 19% shorter first page |
+| **Defer** | Free | Stale claims keep misleading readers | Nothing |
+
+### The call
+
+Trim in place. Revisit a split after v0.1.8, if the corrected page is still too big — by then the vocabulary will have stopped moving.
+
+---
+
+## Summary
+
+| Decision | Original recommendation | After review |
+|---|---|---|
+| **P12** primitives count | Restate on nine | **Keep five; scope every count.** The "exceeded" claim is false |
+| **P13** the word "primitive" | Full sweep, one schema bump | **Words now, file renames deferred.** The bundled migration does not exist as described |
+| **P7** vocabulary 16 → 7 | Prune to seven | **Selective prune, ~11 keep.** The seven cut next milestone's primary artifacts |
+| **P14** split the glossary | Split after P7/P12/P13 | **Trim in place.** Length was not the problem |
+
+## Related
+
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) — the original cards
+- [Primitives reconciliation register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) — where P7–P14 came from
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — the page defining the noun vocabulary
+- [Terminology](/crosswalker/concepts/terminology/) — the page P14 proposes splitting
