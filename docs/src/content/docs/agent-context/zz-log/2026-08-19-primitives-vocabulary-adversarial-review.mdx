@@ -164,17 +164,20 @@ Grouped by the job it performs, rather than by whether it survives:
 | **Records what did happen** — evidence after a run | Execution Record | Keep (planned contract) |
 | **Moves bytes to someone else** | Package (the resolved release), Package Manifest (the signed list of what is inside), Carrier (the zip or folder it travels in) | Keep 2, cut Carrier |
 | **Derived views over data you already have** | Live view (computed on read), Materialized snapshot (computed once and stored), Projection (the mapping from notes into the query database) | Keep all three, qualified |
-| **Not separate things at all** | Recipe specification, Recipe template, Recipe execution | Cut all three |
+| **Reusable starting points** — a shipped default you copy and adapt | Recipe template | Keep (not a root artifact) |
+| **Not separate things at all** | Recipe specification, Recipe execution | Cut both |
 
-**11 keep, 1 defer, 4 cut = 16.** `Package` is the defer: it is probably real, but its boundary against Package Manifest is not settled until v0.1.8 defines both.
+**12 keep, 1 defer, 3 cut = 16.** `Package` is the defer: it is probably real, but its boundary against Package Manifest is not settled until v0.1.8 defines both.
 
-### The three that are not separate things
+<Aside type="tip" title="Corrected 2026-08-19 by owner review">
+`Recipe template` was originally slated for cutting. The owner pushed back that a recipe template is a legitimate thing if it is actually used somewhere. It is: `src/views/recipe-templates.ts` ships reference templates per recipe, and `renderRecipeTemplate()` is called from the query-application and layout-migration paths. So it names a real, shipped concept and keeps its definition. What it does **not** get is promotion to a root artifact family alongside Schema Contract, Knowledge Set, and Recipe.
+</Aside>
 
-Two of these came up directly:
+### The two that are not separate things, and the one that is
 
 - **Recipe specification vs Recipe** — the same thing. "Specification" only means the Recipe written out in canonical form. There is no second artifact. **Cut.**
-- **Recipe template vs Recipe specification** — different from each other, but neither is a new kind of thing. A template is *a starting point you copy*; a specification is *the finished thing in canonical form*. Both describe a Recipe at different moments. Keep the words, drop the capitals. **Cut as defined terms.**
 - **Recipe execution** — an event, not something you can hold. The durable facts about a run belong to Execution Record. **Cut.**
+- **Recipe template** — genuinely different, and genuinely used. A template is *a shipped starting point you copy*; a specification is *the finished thing in canonical form*. The template one is backed by real code. **Keep as a defined term, not as a root artifact.**
 
 And **Carrier**: the "vague" read is correct. It means "the zip or folder the bytes travel in." That deserves one sentence of warning — signing a folder name is not the same as signing its contents — but it does not need to be a defined term. **Cut the capital C, keep the sentence.**
 
@@ -188,9 +191,9 @@ It also cut **Knowledge Set**, the only term separating *"this file is valid"* f
 
 | Option | Cost | Risk | What you get |
 |---|---|---|---|
-| **Selective prune (11 keep, 1 defer, 4 cut)** | A modest docs pass | Low | Four genuinely empty terms stop costing readers; nothing the next milestone needs is lost |
+| **Selective prune (12 keep, 1 defer, 3 cut)** | A modest docs pass | Low | Three genuinely empty terms stop costing readers; nothing the next milestone needs is lost |
 | **Prune to 7** | Re-introduce two terms next milestone across docs, schemas, types, UI labels, and tests | Audit and replay code may encode the wrong boundary permanently | A smaller number, for its own sake |
-| **Defer all pruning** | Free | Four empty terms keep costing readers | Prune once later against real contracts |
+| **Defer all pruning** | Free | Three empty terms keep costing readers | Prune once later against real contracts |
 
 ### The call
 
@@ -241,13 +244,26 @@ One page, grouped by audience, internals linked out to their owning concept page
 
 ---
 
+:::tip[Ratified 2026-08-19]
+All four decisions were called after this review, each on the modified path rather than the original recommendation:
+
+| Decision | Ratified as |
+|---|---|
+| **P12** | Defend the closed five; scope every count by what it counts |
+| **P13** | Full sweep now, field names included — no saved recipes exist to break |
+| **P7** | Selective prune: 12 keep, 1 defer, 3 cut |
+| **P14** | One page grouped by audience, deep internals linked out |
+
+Implementation specs follow in the next orchestrator sprint.
+:::
+
 ## Summary
 
 | Decision | Original recommendation | After review |
 |---|---|---|
 | **P12** primitives count | Restate on nine | **Keep five; scope every count.** The "exceeded" claim is false |
 | **P13** the word "primitive" | Full sweep, one schema bump | **Full sweep now, field names included.** The migration premise was wrong, but so was the caution: there are no saved recipes to break |
-| **P7** vocabulary 16 → 7 | Prune to seven | **Selective prune: 11 keep, 1 defer, 4 cut.** The seven cut next milestone's primary artifacts |
+| **P7** vocabulary 16 → 7 | Prune to seven | **Selective prune: 12 keep, 1 defer, 3 cut.** The seven cut next milestone's primary artifacts |
 | **P14** split the glossary | Split after P7/P12/P13 | **One page grouped by audience, internals linked out.** Length was never the problem |
 
 ## Related
