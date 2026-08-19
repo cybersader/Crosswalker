@@ -1,0 +1,145 @@
+---
+title: "Challenge 45: Org rollout readiness — what actually blocks real use at work"
+description: "The owner wants to use Crosswalker at their organization now, to map compliance frameworks and analyze the evidence around them. Separate what genuinely blocks that from what merely annoys, and from what can wait. Covers installation and licensing, vault topology and collaboration, the framework-update loop, evidence workflow, recoverability, scale, and what an auditor would ask."
+tags: [research, rollout, deployment, adoption, collaboration, evidence, readiness, ch-45]
+date: 2026-08-19
+sidebar:
+  label: "Ch 45 · Org rollout readiness"
+  order: 45
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+:::note[Status: OPEN — no research pass has run yet]
+This brief is unresolved and awaiting a fresh-agent research pass. Findings land as a deliverable in [`zz-research/`](/crosswalker/agent-context/zz-research/) plus a dated synthesis entry in [`zz-log/`](/crosswalker/agent-context/zz-log/); the brief then moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/).
+:::
+
+:::caution[This is a subtraction exercise, not a wishlist]
+The failure mode for this challenge is producing an enterprise-readiness checklist — SSO, RBAC, audit logging, SLAs, admin consoles — that is technically true, universally applicable, and completely useless, because it describes a product nobody asked for.
+
+The question is narrower and harder: **one person wants to do real compliance work with this at their job, starting now.** What stops them? What merely irritates them? What can wait a year? A deliverable that cannot rank and cut has failed, no matter how thorough it is.
+:::
+
+## Why this exists
+
+Every milestone since v0.1.1 has been driven by one stated goal: Crosswalker running **resiliently in practice at the owner's organization**. That goal has never been decomposed. It has been inferred, one decision card at a time, which is how you end up building things nobody needed and missing things everybody did.
+
+Surfaced 2026-08-19 during the P-queue review sitting, when a sequencing question — "what has to be in place early versus later?" — turned out to have no written answer. A partial rule emerged from that sitting and is worth carrying into this work:
+
+> **Decisions that change what gets written into notes must land early**, because notes generated before them cannot gain the field retroactively and re-import is the only fix. **Decisions that only change behavior can land anytime.**
+
+That rule sorts *schema* work. It says nothing about installation, collaboration, recoverability, or trust. This challenge covers the rest.
+
+## What already ships (measured 2026-08-19 — do not re-derive)
+
+| Capability | State |
+|---|---|
+| Import wizard + shape workbench | Shipped |
+| Recognized one-click sources | 10 bundled recipes: NIST CSF 2.0 (3 shapes), NIST SP 800-53 Rev 5, CIS Controls v8 (2 shapes), MITRE ATT&CK techniques, CRI Profile 2.2, SCF 2026, OLIR-style crosswalk edges |
+| Crosswalk edges as junction notes | Shipped |
+| Tier 2 query sidecar (`sqlite-wasm`) | Shipped |
+| Bases-backed views | Shipped |
+| Exporters | STRM TSV, SSSOM TSV, CSV shipped; OSCAL JSON skeleton only |
+| Portable recipe fidelity (`RecipeDocument`) | Shipped |
+| Recipe library (save/open/browse) | **Not shipped** — v0.1.7 remaining scope |
+| Source/run binding + replay with drift detection | **Not shipped** — v0.1.7 remaining scope |
+| Audit trail | **Not shipped** — v0.1.8, planning only |
+| Version migration / semantic diff | **Not shipped** — proposed v0.2 headline ([Ch 43](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/)) |
+| Installation | **Manual only.** Not in the Obsidian community registry; download three files from a GitHub release into the vault plugin folder |
+| Multi-user / shared vault behavior | **Never designed.** The terms appear only in archived challenges, never as a live design question |
+
+## Owner input required
+
+Parts of this cannot be answered from the repository. Collect these before or during the research pass; if unavailable, state the assumption explicitly and carry it as a labelled variable rather than guessing silently.
+
+| Unknown | Why it changes the answer |
+|---|---|
+| Single user, or a team? How many? | Decides whether vault topology and conflict handling are blockers or non-issues |
+| Where would the vault live — local, Obsidian Sync, git, OneDrive/SharePoint, network share? | Some of these are actively hostile to a plugin writing thousands of files; one of them can silently corrupt a vault |
+| Will IT permit installing an unlisted plugin, and is a commercial Obsidian licence in place? | Obsidian requires a paid commercial licence for business use. A hard blocker that no amount of engineering fixes |
+| Which frameworks are actually in scope, and are any not in the bundled ten? | Determines whether guided import is exercised on day one |
+| What does "evidence" mean concretely in their workflow — documents, ticket links, screenshots, control narratives? | The evidence-linking story is the stated purpose; its shape decides whether junction notes fit |
+| Is anyone external (auditor, regulator, client) going to read the output? | Decides whether the audit trail is a launch blocker or a later nicety |
+| What is the tolerance for rework if alpha output must be regenerated? | The owner has already accepted regeneration once; the limit is unknown |
+
+## What to investigate
+
+### 1. Installation, licensing, and update path
+
+- What is the realistic install and update story for a non-developer colleague today? Manual file copying versus BRAT versus waiting for community-registry listing. What breaks when the plugin updates — does anything in the vault need regenerating?
+- The Obsidian commercial-licence requirement: confirm the current terms and flag it plainly. This is the kind of thing that stops a rollout after the work is done.
+- Is there any reason the plugin could not be submitted to the community registry now, and would listing materially change the rollout story?
+
+### 2. Vault topology and collaboration — the biggest unknown
+
+This has never been designed, and it is the most likely place a rollout dies.
+
+- What actually happens when two people edit the same generated vault? Consider each realistic backing store: Obsidian Sync, git, OneDrive/SharePoint/Dropbox, a network share.
+- Crosswalker generates many files at once. Which sync mechanisms tolerate that, and which produce conflict storms, partial states, or silent corruption? Look for known-bad combinations (file-locking behavior, case sensitivity, path length, `.obsidian` folder contention).
+- Is there a viable single-writer pattern — one person imports and regenerates, others read and annotate — and does the [managed / user_preserve split](/crosswalker/concepts/terminology/) actually protect a colleague's annotations through a re-import? **Test this claim, do not assume it.**
+- What is the smallest change that would make team use safe, if any?
+
+### 3. The update loop, at rollout scale
+
+[Ch 43](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) owns the semantic-diff design. This challenge asks the narrower operational question: **what happens the first time a framework the org depends on publishes a new release, given only what ships today?**
+
+- Walk it concretely for one real case. What breaks, what survives, what does the user have to do by hand?
+- The recently-ratified mapping-set provenance work (P3) exists specifically to stop two releases silently overwriting each other. Does that close the gap for rollout, or only part of it?
+- Is "do not update frameworks for the first six months" a legitimate rollout mitigation, or does it defeat the purpose?
+
+### 4. Evidence workflow, end to end
+
+The stated goal is mapping frameworks **and analyzing the evidence around them**. The evidence half is much less exercised than the import half.
+
+- Trace the complete loop: import a framework, attach evidence to a control, query across frameworks, produce something a human or auditor reads. Where does it break down or require undocumented manual steps?
+- Do the shipped Bases views answer the questions a compliance person actually asks (coverage gaps, overlapping obligations, what evidence supports which control across two frameworks)? Note the known constraint that [Bases cannot rank by aggregate](/crosswalker/concepts/ontology-web-querying/).
+- Is there a reporting or export step missing between "the data is correct in the vault" and "I can hand this to someone"?
+
+### 5. Recoverability and failure modes
+
+- What is the blast radius of a bad import into a vault that already contains real work? Can it be undone? Is there anything resembling a dry run or a backup prompt?
+- What happens on interruption mid-generation — crash, quit, sync conflict? Is a partial state detectable, or does it look like success?
+- What would you tell a first-time org user to do before their first real import, to make a mistake survivable?
+
+### 6. Scale and performance at real corpus size
+
+- Real numbers, not estimates: what happens with the full NIST 800-53 Rev 5 catalog plus CSF 2.0 plus a crosswalk between them, in one vault? Note generation time, vault file count, Obsidian responsiveness afterward, sidecar query latency, and index/startup cost.
+- Where is the first wall, and is it plausible to hit it at this org's scale?
+
+### 7. Trust — what an auditor or a skeptical colleague asks
+
+- The audit trail is v0.1.8 and unbuilt. Given only what ships, can a user answer "where did this mapping come from, and who decided it?" The `_crosswalker` provenance block exists — is it sufficient for that question, and is it visible anywhere in the UI?
+- Which claims currently made in the docs would embarrass the project if a compliance professional stress-tested them on day one?
+
+## Anti-patterns for this challenge
+
+| Do not | Why |
+|---|---|
+| Produce a generic enterprise-readiness checklist | SSO/RBAC/SLA answers describe a product nobody asked for. The question is what blocks *this* person at *their* job |
+| Assume unshipped features | The table above is authoritative. Recommendations resting on the recipe library, replay bindings, or the audit trail must say so explicitly |
+| Recommend building everything before rollout | The likely correct answer includes "use it now, with these three specific cautions." Find that answer if it exists |
+| Confuse polish with blockers | A rough UI is not a blocker. Silent data loss is. Rank by consequence, not by discomfort |
+| Treat single-user and team rollout as one problem | They have different blockers. Answer them separately |
+| Skip the vault-topology question because it is hard | It is the least-examined and most likely to end a rollout. It gets real effort |
+| Re-derive the shipped-state table | It was measured. Spend the effort on what is unknown |
+
+## Success criteria
+
+A deliverable succeeds if it produces:
+
+1. **A ranked blocker list**, split into: blocks single-user org use / blocks team use / degrades the experience but ships / can wait. Every entry cites repo evidence or a named test performed.
+2. **A defined "minimum viable org use"** — the smallest configuration where the owner gets real value with acceptable risk, stated concretely enough to act on this month.
+3. **An honest risk statement** for using it now: what could lose data, what could require rework, what could embarrass the user in front of a colleague or auditor.
+4. **A verdict on vault topology**: which backing stores are safe, which are not, and whether team use is viable today at all.
+5. **A first-90-days sequence**: what to do first, what to avoid, what to revisit once v0.1.7 and v0.1.8 land.
+6. **Any finding that belongs to a different milestone**, routed explicitly — if something is really a Ch 43 or Ch 44 problem, say so rather than absorbing it.
+
+A deliverable fails if it concludes "it is ready" or "it is not ready" without decomposing by use case, or if its recommendations cannot be sequenced.
+
+## Related
+
+- [Ch 43 — version migration and the semantic-diff loop](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) — owns the framework-update design; this challenge only asks what happens operationally today
+- [Ch 44 — E2E testing strategy](/crosswalker/agent-context/zz-challenges/44-e2e-testing-strategy/) — confidence in the code that a rollout depends on
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) — the decisions ratified 2026-08-19, several of which exist for exactly this rollout
+- [Roadmap milestones](/crosswalker/reference/roadmap/milestones/) — what v0.1.7 and v0.1.8 still owe
+- [GRC teams](/crosswalker/getting-started/grc-teams/) — the current user-facing pitch, which this challenge should stress-test
