@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Infrastructure: docs port pinned + owner review queue (2026-07-25)
+
+- **Docs dev/preview/tests moved from Astro's 4321 default to port 14321** (`docs/astro.config.mjs` `server.port`, Playwright config, `scripts/serve.mjs`, launcher and doc references) to stop cross-project port collisions on multi-Astro machines.
+
 ### Architecture: primitives reconciliation decision register (2026-07-25)
 
 - **Adversarially re-audited the core primitives and published the open decision register.** Three independent audits (essence completeness, knowledge-representation formalism comparison, minimality), an independent verification pass that corrected two findings before publication, and a first-party corpus investigation (NIST CPRT, SP 800-53/53A, CSF 2.0, CRI Profile 2.2, SCF, CTID/D3FEND). Validated: reified edge notes, identity-before-render hashing, mandatory provenance, the managed/user_preserve split, and the two-digest orthogonality. Fourteen decisions registered across three gates: Tier 1 field completions (ordinal, identity-typed edge endpoints, mapping-set identity + negation modifier, facet/hub legalization, edge groups, predicate characteristics), subtractions (role-noun pruning, recipe-schema split, ShapeDispatchB deletion, recipe-model collapse, reserved-surface consolidation), and language (grammar re-basing on the true 9-primitive palette, "primitive" disambiguation to three families, terminology restructure). Corpus evidence resolved graph_edges: stays reserved for v0.2. Known correctness bug registered: multi-target `equal` rows materialize as logically false pairwise equivalences.

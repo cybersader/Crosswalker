@@ -24,7 +24,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const docsDir = resolve(repoRoot, 'docs');
 
-const DOCS_PORT = 4321;
+const DOCS_PORT = 14321;
 const isWindows = process.platform === 'win32';
 
 let mode = process.argv[2] || 'interactive';

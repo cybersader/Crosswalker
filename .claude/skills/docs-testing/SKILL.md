@@ -79,7 +79,7 @@ await page.screenshot({ path: 'docs/test-results/my-screenshot.png' });
 
 - **Config**: `docs/playwright.config.ts`
 - **Base path**: All test URLs use `/Crosswalker` prefix (Astro base path)
-- **Preview server**: Auto-starts `bun run preview` on port 4321
+- **Preview server**: Auto-starts `bun run preview` on port 14321
 - **Browser**: Chromium only (sufficient for docs)
 
 ## Adding New Tests

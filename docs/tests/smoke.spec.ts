@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 
-const BASE = '/Crosswalker';
+const BASE = '/crosswalker';
 
 test.describe('Smoke tests', () => {
   test('homepage loads', async ({ page }) => {
     await page.goto(`${BASE}/`);
-    await expect(page).toHaveTitle(/crosswalker/);
+    await expect(page).toHaveTitle(/crosswalker/i);
   });
 
   test('homepage has hero content', async ({ page }) => {

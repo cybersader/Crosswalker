@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE = '/Crosswalker';
+const BASE = '/crosswalker';
 
 /**
  * Deployment verification tests

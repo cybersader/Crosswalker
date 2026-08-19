@@ -37,8 +37,8 @@ bun run serve
 ```
 ━━━ Crosswalker local serve ━━━
 
-  1) Docs dev server          http://localhost:4321   HMR, for KB editing
-  2) Docs preview (built)     http://localhost:4321   built site
+  1) Docs dev server          http://localhost:14321   HMR, for KB editing
+  2) Docs preview (built)     http://localhost:14321   built site
   3) Docs build only          → docs/dist
   4) Plugin dev (watch)       → test-vault
   5) Docs + plugin dev        both in parallel
@@ -65,7 +65,7 @@ Four `.bat` files at the repo root, for when you'd rather double-click than open
 | File | Runs | Use |
 |---|---|---|
 | `serve.bat` | `bun run serve` | Interactive menu (docs / plugin / both / tunnel / tests) |
-| `serve-docs.bat` | `bun run serve:docs` | Docs dev server only → http://localhost:4321/crosswalker/ |
+| `serve-docs.bat` | `bun run serve:docs` | Docs dev server only → http://localhost:14321/crosswalker/ |
 | `dev.bat` | `bun run serve:plugin` | Plugin watch build only, skipping the menu |
 | `reset.bat` | `node scripts/reset-test-vault.mjs` | Clears ad-hoc test imports from `test-vault/` — previews what would be deleted, then waits for a keypress to confirm |
 
@@ -93,7 +93,7 @@ Then:
 bun run serve:docs
 ```
 
-Opens the Astro dev server at `http://localhost:4321/crosswalker/`. HMR is active — edits to `.mdx` files hot-reload in the browser (with the exception of inline `<style>` blocks in MDX files, which sometimes require a full page refresh).
+Opens the Astro dev server at `http://localhost:14321/crosswalker/`. HMR is active — edits to `.mdx` files hot-reload in the browser (with the exception of inline `<style>` blocks in MDX files, which sometimes require a full page refresh).
 
 **Do not** open `docs/` as an Obsidian vault — content files are `.mdx`, not `.md`. Use VS Code with the [MDX extension](https://marketplace.visualstudio.com/items?itemName=unifiedjs.vscode-mdx) for rich editing.
 
@@ -202,7 +202,7 @@ bun run lint
 
 # Docs dev server starts
 bun run serve:docs
-# Open http://localhost:4321/crosswalker/ and check the homepage loads
+# Open http://localhost:14321/crosswalker/ and check the homepage loads
 ```
 
 If the plugin build or docs dev server fails with a rollup native-binary error (e.g. `Cannot find module @rollup/rollup-<platform>`), just re-run `bun run serve` — the orchestrator auto-detects the contamination and reinstalls `docs/node_modules` with the correct platform binaries.

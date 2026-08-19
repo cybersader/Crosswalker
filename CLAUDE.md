@@ -38,7 +38,7 @@ bun run test:watch
 bun run serve
 
 # Non-interactive shortcuts (skip the menu)
-bun run serve:docs       # Docs dev server (Astro HMR) → http://localhost:4321
+bun run serve:docs       # Docs dev server (Astro HMR) → http://localhost:14321
 bun run serve:plugin     # Plugin watch build → test-vault
 bun run serve:both       # Docs dev + plugin watch in parallel
 bun run serve:share      # Docs dev + Tailscale tunnel (tailnet only)
@@ -54,13 +54,13 @@ bun scripts/serve.mjs test         # Docs E2E (Playwright test:local)
 
 | # | Option | What it does |
 |---|--------|--------------|
-| 1 | Docs dev server | `bun x astro dev` in `docs/` on port 4321 with HMR — use this for KB editing |
+| 1 | Docs dev server | `bun x astro dev` in `docs/` on port 14321 with HMR — use this for KB editing |
 | 2 | Docs preview (built) | `bun x astro build` + `bun x astro preview` — test the production render |
 | 3 | Docs build only | `bun x astro build` → `docs/dist`, then exits |
 | 4 | Plugin dev (watch) | `bun run dev` at repo root — rebuilds plugin into `test-vault/.obsidian/plugins/crosswalker/` on save |
 | 5 | Docs + plugin dev | Runs options 1 + 4 in parallel. Single `Ctrl+C` kills both |
-| 6 | Share docs (Tailscale) | Docs dev + `tailscale serve 4321`, prints tailnet URL |
-| 7 | Share docs (Cloudflare) | Docs dev + `bun x cloudflared tunnel --url http://localhost:4321`, prints public URL |
+| 6 | Share docs (Tailscale) | Docs dev + `tailscale serve 14321`, prints tailnet URL |
+| 7 | Share docs (Cloudflare) | Docs dev + `bun x cloudflared tunnel --url http://localhost:14321`, prints public URL |
 | 8 | Docs E2E tests | `bun run test:local` in `docs/` (Playwright smoke + deployment suites) |
 
 **Cross-platform notes:**
@@ -136,8 +136,8 @@ bun run build                          # preview server serves from dist/
 
 **Configuration:**
 - `docs/playwright.config.ts` — Playwright config
-- Base path: `/Crosswalker` (Astro base) — all `page.goto()` calls must prefix this
-- Preview server auto-starts on port 4321
+- Base path: `/crosswalker` (Astro base, lowercase) — all `page.goto()` calls must prefix this
+- Preview server auto-starts on its own test port 14325 (the dev server owns 14321)
 - Browser: Chromium only (sufficient for docs coverage)
 
 **Screenshots on failure:** automatically captured to `docs/test-results/`. Can be read by agents directly.

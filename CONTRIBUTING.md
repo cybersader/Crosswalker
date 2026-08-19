@@ -34,7 +34,7 @@ From the repo root, use the **local dev orchestrator** — an interactive menu t
 
 ```bash
 bun run serve            # Interactive menu (8 options)
-bun run serve:docs       # Docs dev server (Astro HMR) → http://localhost:4321
+bun run serve:docs       # Docs dev server (Astro HMR) → http://localhost:14321
 bun run serve:plugin     # Plugin watch build → test-vault
 bun run serve:both       # Docs + plugin watch in parallel
 bun run serve:share      # Docs dev + Tailscale tunnel (tailnet only)

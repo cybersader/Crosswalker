@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-const BASE = '/Crosswalker';
+const BASE = '/crosswalker';
 test('screenshot hero', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE}/`);

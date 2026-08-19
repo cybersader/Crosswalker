@@ -38,6 +38,8 @@ test.describe('Q3 — elastic content width', () => {
       expect(pxValue).toBeGreaterThan(800);
     } else if (contentWidth.endsWith('rem')) {
       expect(pxValue).toBeGreaterThan(50);
+    } else if (contentWidth.startsWith('clamp(')) {
+      expect(contentWidth).toBe('clamp(50rem, 68vw, 85rem)');
     } else {
       throw new Error(`Unexpected --sl-content-width value: ${contentWidth}`);
     }
@@ -158,13 +160,13 @@ test.describe('Q2.2 — PageTitle override', () => {
     await expect(badge).toHaveText(/evolving/i);
   });
 
-  test('page with no volatility frontmatter does NOT render meta row', async ({ page }) => {
-    // The zz-log page doesn't have volatility or date, so .cw-page-meta should be absent
+  test('page with no volatility frontmatter does NOT render volatility badge', async ({ page }) => {
+    // Dated log pages may render date metadata, but should not invent volatility.
     await page.goto(`${BASE}/agent-context/zz-log/2026-04-10-foundation-research-synthesis/`);
     await page.waitForLoadState('networkidle');
 
-    const meta = page.locator('.cw-page-meta');
-    await expect(meta).toHaveCount(0);
+    const badge = page.locator('.cw-page-meta .cw-meta-badge');
+    await expect(badge).toHaveCount(0);
   });
 
   test('h1 still renders with correct PAGE_TITLE_ID', async ({ page }) => {
@@ -189,7 +191,7 @@ test.describe('New session pages — smoke', () => {
     { path: '/reference/registry/strm/', h1: 'STRM' },
     { path: '/agent-context/zz-log/2026-04-10-foundation-research-synthesis/', h1: 'Foundation research synthesis' },
     { path: '/agent-context/zz-log/2026-04-10-seacow-and-folder-tag-sync-prior-art/', h1: 'SEACOW' },
-    { path: '/agent-context/zz-challenges/06-synthetic-spine/', h1: 'Pairwise vs synthetic spine' },
+    { path: '/agent-context/zz-challenges/archive/06-synthetic-spine/', h1: 'Pairwise vs synthetic spine' },
   ];
 
   for (const { path, h1 } of newPages) {
@@ -259,9 +261,9 @@ test.describe('Regression — existing pages still render', () => {
     await page.waitForLoadState('networkidle');
     await expect(page.locator('h1')).toContainText(/roadmap/i);
 
-    // The three new Foundation items added this session
-    await expect(page.locator('body')).toContainText('Pairwise crosswalks vs synthetic spine');
-    await expect(page.locator('body')).toContainText('Crosswalk edge semantics commitment');
+    // Stable roadmap anchors spanning current delivery and settled foundation work.
+    await expect(page.locator('body')).toContainText('Portability: exporters, reusable configurations');
+    await expect(page.locator('body')).toContainText('Pairwise crosswalks + optional inheritable pivot');
     await expect(page.locator('body')).toContainText('SEACOW');
   });
 });

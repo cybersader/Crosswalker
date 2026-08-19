@@ -20,6 +20,9 @@ import rehypeExternalLinks from 'rehype-external-links';
 export default defineConfig({
   site: 'https://cybersader.github.io',
   base: '/crosswalker',
+  // Pinned off Astro's 4321 default to avoid cross-project port collisions
+  // (multiple Astro sites on this machine). Applies to dev AND preview.
+  server: { port: 14321 },
   vite: {
     plugins: [tailwindcss()],
     define: {
@@ -32,6 +35,15 @@ export default defineConfig({
       // Vite 6+ blocks non-localhost Host headers by default — this opens it back up.
       // Safe for local dev only; production builds are served as static files.
       allowedHosts: true,
+      // Polling watcher is load-bearing on this repo: the vault lives on /mnt/c
+      // (Windows drive mounted into WSL), where inotify events are silently
+      // dropped — the dev server repeatedly served stale content after .mdx
+      // edits (observed 2026-07-27 and 2026-07-29). Polling costs a little CPU
+      // but makes hot reload actually trustworthy here.
+      watch: {
+        usePolling: true,
+        interval: 1000,
+      },
     },
   },
   markdown: {

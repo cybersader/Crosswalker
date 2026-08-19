@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: 'html',
 
   use: {
-    baseURL: process.env.TEST_URL || 'http://localhost:4321',
+    baseURL: process.env.TEST_URL || 'http://localhost:14325',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -22,8 +22,10 @@ export default defineConfig({
   ],
 
   webServer: process.env.TEST_URL ? undefined : {
-    command: 'bun run preview',
-    url: 'http://localhost:4321/crosswalker/',
+    // Dedicated test port: the dev server owns 14321, and reuseExistingServer
+    // would otherwise latch onto it and time out against dev-mode rendering.
+    command: 'bun x astro preview --port 14325',
+    url: 'http://localhost:14325/crosswalker/',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
