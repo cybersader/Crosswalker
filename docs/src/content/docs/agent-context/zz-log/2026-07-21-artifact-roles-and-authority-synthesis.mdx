@@ -1,0 +1,86 @@
+---
+title: "Artifact roles and authority — synthesis (minimal model, scoped authority)"
+description: "Settles Crosswalker's minimal internal artifact model: Schema Contract, Knowledge Set, Recipe, and separate planned Execution Record and Package Manifest envelopes. Tier 1 remains the canonical managed representation rather than a root artifact, and new artifact nouns require genuinely independent semantics."
+tags: [log, synthesis, architecture, ontology, artifacts, authority, recipe, schema]
+date: 2026-07-21
+sidebar:
+  label: "07-21 · Artifact roles"
+  order: -20260721.2
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="What this settles">
+This publishes the minimal role-and-authority model that the [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/), [schema-as-primitive commitment](/crosswalker/concepts/etl-and-import/), and [portable Recipe boundary](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) require. It replaces inventory-by-file-type with classification by ontological role.
+</Aside>
+
+## §1 Verdict
+
+Crosswalker's root model is one governing meta-artifact, two domain-artifact families, and two separate planned administrative envelopes.
+
+| Decision | Verdict |
+|---|---|
+| **Schema Contract** | **Adopted:** governing meta-artifact; answers what representations are valid |
+| **Knowledge Set** | **Adopted:** extensional family, what is asserted; conceptual distinction settled, generalized schema deferred |
+| **MappingSet / MappingAssertion** | **Adopted:** MappingSet is a Knowledge Set subtype; MappingAssertion is a member |
+| **Recipe / ImportRecipe** | **Adopted:** intensional family, what should be done; ImportRecipe is the implemented subtype |
+| **Execution Record** | **Planned separately:** historical receipt for what actually happened |
+| **Package Manifest** | **Planned separately:** distribution and attestation envelope |
+| **Tier 1 as a root artifact** | **Rejected:** Tier 1 is the canonical Crosswalker-managed representation/authority tier |
+| **Blueprint / lifecycle manifest umbrella** | **Rejected:** no independent semantics beyond Recipes, bindings, executions, packages, and ordinary lifecycle workflow |
+
+## §2 Load-bearing principle
+
+> **Authority follows ontological role, not storage location, format, lifecycle phase, or UI model.**
+
+A Recipe is authoritative for intended behavior; a Knowledge Set for asserted knowledge; an Execution Record for verified run facts; a Package Manifest for a resolved release; a Schema Contract for conformance. Moving or serializing one does not transfer those authorities.
+
+## §3 Reconciliation
+
+| Prior commitment | Reconciliation |
+|---|---|
+| [Ontology lifecycle management](/crosswalker/agent-context/zz-log/2026-04-03-vision-alignment-decisions/) | Remains the product identity. Acquire, shape, connect, understand, share, and maintain are activities, not artifact classes. |
+| [Data morphology](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) | Remains the operating model for shapes and operations; it does not create a “transformative artifact” family. |
+| [Schema as primitive](/crosswalker/concepts/etl-and-import/) | Clarified: Schema Contract governs validity; Tier 1 is the canonical managed representation, not the root noun. |
+| [Portable ImportRecipe fidelity](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) | Strengthened: the Recipe specification outranks `RecipeDocument`, `ImportMapping`, drafts, bindings, and editor state. |
+| [Bases query architecture](/crosswalker/concepts/ontology-web-querying/) | Queries and reports are machine-actionable Recipe policy, bindings, or derivative renditions, not a new root family. |
+
+## §4 Roadmap consequences
+
+| Area | Consequence |
+|---|---|
+| v0.1.7 portability | Durable ImportRecipe storage/browser remains a Recipe lifecycle feature; it must not absorb MappingSets or execution history |
+| Mapping authoring | First-class MappingSet identity, membership, provenance, and release semantics need an independent future contract |
+| v0.1.8 audit | Execution Record and Package Manifest must be designed as separate envelopes, even if one manifest references execution receipts |
+| Query/export | Generated Bases files, reports, TSV, JSON, and Markdown remain derivative renditions or serializations |
+| Product naming | Do not introduce Blueprint, lifecycle manifest, or another umbrella noun without demonstrably new authority and consumers |
+
+## §5 Recommended build sequence
+
+1. Lock source/run binding and stable identity/hash boundaries.
+2. Complete the ImportRecipe library and retained exact-source replay.
+3. Define the minimal MappingSet contract, canonical serialization, and UI.
+4. Define the Execution Record contract and generate one terminal record per run.
+5. Connect audit, git, and signing behavior through execution IDs.
+6. Define the Package Manifest and package inspection/verification UI.
+7. Prove the complete artifact chain at RC.
+8. After RC, add remote acquisition, version-transition workflows, and marketplace package lifecycle.
+
+## §6 Non-commitments
+
+- no generalized `KnowledgeSet` JSON Schema in this decision;
+- no settled MappingSet storage or membership encoding;
+- no normative Execution Record or Package Manifest fields yet;
+- no requirement that every lifecycle behavior share one Recipe “god object”;
+- no new public product label;
+- no change to Tier 1, Recipe, or query machine schemas.
+
+## Related
+
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — permanent concept model
+- [Vision](/crosswalker/agent-context/vision/) — canonical product, operating-model, and machine-actionability statements
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — product sequence and activities
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive
+- [System architecture](/crosswalker/concepts/system-architecture/) — Tier 1 and Tier 2 authority boundaries
+- [Portable ImportRecipe fidelity](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) — canonical specification/editor boundary
+- [Terminology](/crosswalker/concepts/terminology/) — existing Recipe, `RecipeDocument`, and Tier definitions

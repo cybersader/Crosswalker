@@ -14,6 +14,10 @@ import { Aside } from '@astrojs/starlight/components';
 Not a single-challenge resolution — a **synthesis of a build era**. Between 2026-07-05 and 2026-07-11 the project owner and the architect session settled the import wizard's shape, mandated connected output, and rewrote the testing doctrine. The decisions are **implemented and committed on `feat/render-report`**; the working drafts lived in gitignored `.workspace/`. This log makes them public per the [log-all-decisions](/crosswalker/agent-context/zz-log/) convention so every later choice can be checked against them. It sits directly under the [retrieval + finite shapes essence](/crosswalker/agent-context/zz-log/2026-07-05-retrieval-and-the-finite-shapes-essence/), which named *why* the wizard must speak shapes.
 </Aside>
 
+<Aside type="caution" title="2026-07-21 terminology reconciliation">
+This historical log keeps its 2026-07-11 wording. Under the later [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) model, `StructureMapping` is editable workbench UI/IR, not preservation authority; an `ImportRecipe` is a machine-evaluable declarative specification; `RecipeDocument.original` is the durable preservation authority; a Shape Preset is a recipe template/default policy; and legacy `SavedConfig` is source-bound convenience state, not an `ImportRecipe`. The phrase “translation engine” below is also historical: current usage reserves translation for a narrow interlingua/adapter step, while the workbench performs mapping and vault-shape projection. Read references below to “saved mapping” and save-as behavior as the direction at that date, superseded where the [recipe-fidelity synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) is more specific.
+</Aside>
+
 ## 1. The verdict
 
 The import wizard stops being a 4-step form and becomes a **mapping workbench**: one live screen where you shape a source into vault primitives and watch the vault render back, plus a **review screen** that answers where/what/why before Generate. Underneath sits **one model** — `StructureMapping` — read and written by three progressive views. Output is **connected by default**: every relation the source encodes must exist as a graph-visible artifact. And tests now assert **the consumer's view** of the generated vault, not each module's own boundary.
@@ -138,6 +142,7 @@ One [recipe](/crosswalker/concepts/terminology/#recipe) = one primary address pe
 
 ## Related
 
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — current authority boundaries for recipe, workbench IR, preset, serialization, and package
 - [Retrieval + finite shapes — Crosswalker's essence](/crosswalker/agent-context/zz-log/2026-07-05-retrieval-and-the-finite-shapes-essence/) — *why* the wizard must speak shapes; this log is its product realization
 - [Data morphology — the finite shapes and the operations between them](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) — the shape vocabulary both screens use
 - [UI-parity audit — every lifecycle stage gets a face](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) — the mandate this workbench satisfies for import

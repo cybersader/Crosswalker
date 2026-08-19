@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Architecture: artifact roles and authority (2026-07-21)
+
+- **Published the minimal internal artifact model.** Schema Contract governs validity; Knowledge Set names asserted content; Recipe names intended behavior; Execution Record and Package Manifest remain separate planned envelopes. Tier 1 is the canonical Crosswalker-managed representation rather than a root artifact, and new artifact nouns now require independent identity, lifecycle, authority, and consumers.
+
 ### Mapping workbench clarity + portable ImportRecipe fidelity (2026-07-21)
 
 - **The mapping screen is easier to read and navigate.** “Add mapping from a column” is a top-level searchable chooser with source examples; evidence cards explain what Crosswalker noticed and what using or ignoring it changes; Escape, close, and click-away all behave normally. Mapping shapes use compact illustrations with details on demand.

@@ -37,3 +37,7 @@ tags: [architecture]
 ### Output path configurable, default "Ontologies"
 **Decision**: Let users choose where generated folders go, default to `Ontologies/`
 **Rationale**: Some users want `Frameworks/`, some want nested paths. Sensible default with full override.
+
+### Artifact roles and authority
+**Decision**: Authority follows ontological role, not storage location, format, lifecycle phase, or UI model. Use the minimal Schema Contract / Knowledge Set / Recipe model; keep Execution Record and Package Manifest separate; treat Tier 1 as the canonical managed representation rather than a root artifact.
+**Pointer**: [Concept model](/crosswalker/concepts/artifact-roles-and-authority/) · [2026-07-21 synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/)

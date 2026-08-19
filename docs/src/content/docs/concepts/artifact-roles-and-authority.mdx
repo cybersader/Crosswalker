@@ -1,0 +1,126 @@
+---
+title: Artifact roles and authority
+description: "Crosswalker's minimal artifact model: governing Schema Contracts, extensional Knowledge Sets, intensional Recipes, planned administrative envelopes, and the authority relations between them."
+tags: [architecture, ontology, recipe, schema, authority, data-model]
+sidebar:
+  label: "Artifact roles and authority"
+  order: 15
+---
+
+Crosswalker manages several kinds of durable information, but they do not all have the same ontological role or authority. The governing rule is:
+
+> **Authority follows ontological role, not storage location, format, lifecycle phase, or UI model.**
+
+This page is organized by what each artifact *means*. The [ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) describes activities over time; this model describes the artifacts those activities govern, assert, specify, record, or distribute.
+
+**Crosswalker supports acquiring, shaping, connecting, understanding, sharing, and maintaining ontology-shaped knowledge over time.**
+
+## The minimal model
+
+| Role | Canonical term | Question answered | Status |
+|---|---|---|---|
+| Governing meta-artifact | **Schema Contract** | What representations are valid? | Implemented for Tier 1 and Recipes |
+| Extensional domain-artifact family | **Knowledge Set** | What concepts and assertions are claimed? | Conceptual distinction settled; no generalized machine schema yet |
+| Intensional specification family | **Recipe** | What should be done? | Implemented through the **ImportRecipe** subtype |
+| Historical administrative envelope | **Execution Record** | What actually happened? | Planned; separate contract |
+| Distribution and attestation envelope | **Package Manifest** | What was resolved and distributed? | Planned; separate contract |
+
+**Crosswalker manages schema-governed Knowledge Sets using machine-evaluable declarative Recipes.**
+
+**Crosswalker makes ontology knowledge machine-actionable through portable recipes, schemas, queries, and mappings.**
+
+## Schema Contract: governing meta-artifact
+
+A **Schema Contract** is a normative, versioned representation contract. It validates artifacts and makes any conforming producer a first-class participant in the system.
+
+| Contract | Governs |
+|---|---|
+| [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) | Crosswalker's canonical managed knowledge representation |
+| [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json) | Portable declarative Recipes |
+
+This is the [schema-as-primitive](/crosswalker/concepts/etl-and-import/#the-reframe--schema-is-the-primitive-etl-is-convenience) commitment: the contract is load-bearing; any particular engine, editor, or producer is replaceable.
+
+## Knowledge Set: what is asserted
+
+A **Knowledge Set** is the extensional family: a named, governed collection of concepts or assertions. The conceptual distinction is settled, but Crosswalker does **not** yet have one generalized `KnowledgeSet` machine schema.
+
+Potential subtypes include ontology/concept sets, evidence or implementation-link sets, and persisted change sets. The first subtype that needs explicit independent governance is the **MappingSet**.
+
+### MappingSet and MappingAssertion
+
+| Term | Role |
+|---|---|
+| **MappingSet** | A Knowledge Set subtype with its own identity, version, participants, membership, provenance, ownership, license, review state, integrity, and release cadence |
+| **MappingAssertion** | A member assertion relating a subject concept to an object concept through a typed predicate, with mapping evidence and confidence where available |
+
+A `crosswalk-edge` Tier 1 record can represent a MappingAssertion. It is not by itself the aggregate MappingSet. MappingSet storage and membership semantics remain a future machine-contract decision, independent from [ImportRecipe storage](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/).
+
+## Recipe: what should be done
+
+A **Recipe** is the intensional family: a portable, schema-validated declaration of intended repeatable behavior over a source or Knowledge Set.
+
+**ImportRecipe** is the implemented concrete subtype. It declares deterministic source-to-Tier-1 behavior using the closed [five-mechanism grammar](/crosswalker/concepts/hierarchy-primitives/) and pure [`render()`](/crosswalker/concepts/terminology/#render). It does not contain ontology knowledge, verified run facts, editor state, or generated output.
+
+### Specification, template, binding, and execution
+
+These are roles around a Recipe, not new root artifact families:
+
+| Role | Meaning | Example |
+|---|---|---|
+| **Specification** | The canonical machine-evaluable declaration | A validated ImportRecipe JSON document |
+| **Template** | Parameterized or default policy from which a specification or binding can be instantiated | A shape preset or reusable query template |
+| **Binding** | A Recipe reference plus selected parameters and source/Knowledge Set identities | A saved query with concrete parameters |
+| **Execution** | One run of a bound Recipe | The event whose outcome belongs in an Execution Record |
+
+The [portable-recipe fidelity boundary](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) preserves the specification: `RecipeDocument` patches the validated original rather than rebuilding it from a smaller editor projection.
+
+## Planned administrative envelopes
+
+Execution and distribution have distinct authority from specification and domain knowledge.
+
+| Envelope | Authoritative for | Not authoritative for |
+|---|---|---|
+| **Execution Record** | Verified inputs, exact Recipe identity/hash, bindings, actor/time, status, outputs, validation, warnings, trace identity | Intended behavior or ontology truth |
+| **Package Manifest** | Resolved package members, dependencies, compatibility, hashes, licenses, attribution, release identity, signatures, installation rules | The semantics of each packaged Knowledge Set or Recipe |
+
+Per-note `_crosswalker` provenance is a local child projection, not yet a complete aggregate Execution Record. A zip, directory, or repository is a physical carrier; it becomes a governed package only when a Package Manifest supplies package semantics.
+
+## Authority relations
+
+| Relation | Authority statement |
+|---|---|
+| **Schema Contract validates representation** | Conformance authority belongs to the governing schema |
+| **Knowledge Set asserts knowledge** | Domain authority belongs to the identified set and its governed members |
+| **Recipe specifies intent** | Instruction authority belongs to the canonical Recipe specification |
+| **Tier 1 represents managed knowledge** | Tier 1 is the canonical Crosswalker-managed representation and local authority for that managed knowledge |
+| **Execution Record records outcome** | Run authority belongs to verified execution facts, not to the Recipe's compatibility declaration |
+| **Package Manifest resolves a release** | Distribution authority belongs to the manifest's identified selection and attestations |
+| **Projection or export derives a rendition** | A reproducible derivative does not gain independent semantic authority merely because it is stored elsewhere |
+
+“Canonical” must therefore name its scope: canonical Recipe representation, canonical Crosswalker-managed Tier 1 representation, upstream publisher authority, or derived rendition.
+
+## What is not a root artifact
+
+| Candidate | Correct role |
+|---|---|
+| **Tier 1** | Canonical Crosswalker-managed representation/authority tier, not a root artifact family |
+| **Tier 2** | Deletable, reproducible projection/cache |
+| `ImportMapping`, `RecipeDocument`, `WizardDraft`, `SavedConfig` | Editor projection, preservation boundary, workflow state, or legacy convenience state |
+| `ParsedData`, `ConceptIdentity`, `Address`, render/generation reports | Runtime values and results |
+| `concept`, `crosswalk-edge`, `junction-note` | Member-record validation shapes within Knowledge Sets |
+| CSV, SSSOM, STRM/OLIR TSV, OSCAL JSON, Markdown | Serializations or representations |
+| Zip, directory, git repository | Physical carriers |
+| Import, query, export, migrate, maintain, share | [Lifecycle](/crosswalker/concepts/ontology-lifecycle/) activities |
+| Blueprint / lifecycle manifest | Rejected umbrella language: no non-overlapping semantics established |
+
+Do not promote a new noun until it proves independent identity, lifecycle, authority, consumers, and relations not already covered by a subtype, member, template, binding, workflow state, derivative, serialization, or carrier. Public **Blueprint** or **lifecycle-manifest** language remains rejected unless genuinely new semantics appear.
+
+## Related
+
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — acquiring, shaping, connecting, understanding, sharing, and maintaining knowledge over time
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive and the two producer modes
+- [System architecture](/crosswalker/concepts/system-architecture/) — tiers, layers, and data flow
+- [Terminology](/crosswalker/concepts/terminology/) — Recipe, `RecipeDocument`, `render()`, and Tier definitions
+- [Data morphology](/crosswalker/agent-context/zz-log/2026-06-04-data-morphology/) — the operating model for data shapes and operations
+- [Portable ImportRecipe fidelity](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) — canonical Recipe preservation
+- [Artifact roles and authority synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) — the decision record for this model
