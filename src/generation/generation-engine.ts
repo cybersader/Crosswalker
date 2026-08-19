@@ -36,6 +36,7 @@ import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
 import { computeConceptCid, computeRecipeHash } from './hash';
+import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
 import { validateTier1Frontmatter } from '../validation/validator';
 import {
 	enrich,
@@ -326,6 +327,7 @@ export async function generateNotes(
 		// Track paths emitted in THIS generation pass to detect collisions
 		// (two source rows rendering to the same vault path).
 		const emittedPaths = new Set<string>();
+		const sourceOrderStamper = new SourceOrderStamper();
 
 		// Pass 1.5 enrichment (v0.1.6.1): the wizard/workbench path shares the
 		// SAME enrichment phase generateFromRecipe uses (see applyEnrichment
@@ -401,6 +403,15 @@ export async function generateNotes(
 						return;
 					}
 					emittedPaths.add(noteData.path);
+
+					// P1 (2026-07-27): stamp source publication order onto concept
+					// notes. Sync prefix — see SourceOrderStamper's determinism note.
+					if (shouldStampSourceOrder(noteData.frontmatter)) {
+						noteData.frontmatter.source_order = sourceOrderStamper.stamp(
+							stripBasePath(noteData.path, options.basePath),
+							rowNum,
+						);
+					}
 
 					// M1 (2026-07-12 pre-merge review): validate against Tier 1 schema
 					// BEFORE writing — mirrors generateFromRecipe's step 6 (~line 1692)
