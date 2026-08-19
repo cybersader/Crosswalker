@@ -1,0 +1,288 @@
+---
+title: "Save and exact replay — open decision register (aligned direction, unsettled details)"
+description: "Three independent audits confirm the Save and Exact Replay direction fits Crosswalker's settled primitives, artifact authority model, and prior provenance/migration research. This register captures what is already settled, the eight decisions that must be made before implementation, and the pages each decision touches."
+tags: [log, architecture, recipe, replay, provenance, decision-register, v0-1-7]
+date: 2026-07-25
+sidebar:
+  label: "07-25 · Replay decisions"
+  order: -20260725.1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="This is a decision register, not a decision">
+A **decision register** is a working log of open choices — what was found, what the options are, what each one costs. Nothing in it is policy until the owner ratifies it. This register (the log tracking how a saved import can be re-run later and produce the same result) is not settled. Three read-only audits checked the proposed **Save and exact replay** slice against the [five-mechanism grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/), the [artifact roles and authority model](/crosswalker/concepts/artifact-roles-and-authority/) (the concept page defining which artifact is allowed to assert what), and prior provenance/migration/audit research. The direction survives. Eight decisions do not have answers yet, and each one changes what gets built.
+
+For an executive-readable version of all eight — plain-English title, tradeoffs, and a recommendation — see the [owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) (the single checklist of everything awaiting the project owner's ratification) § 1c. This page is the evidence; that page is the decidable surface.
+</Aside>
+
+## Verdict in one line
+
+The direction is the natural next layer around Crosswalker's existing primitives, but the generic reproducible-build sketch that produced it must not be implemented verbatim.
+
+| Question | Answer |
+|---|---|
+| Does it conflict with schema-as-primitive? | **No** — provided stored recipes stay canonical and schema-validated |
+| Does it conflict with the closed 5-mechanism grammar? | **No** — provided the binding never gains row-dependent target behavior |
+| Does it conflict with `render(Recipe, ConceptIdentity)`? | **No** — the binding sits around the pure function, not inside it |
+| Does it conflict with the `RecipeDocument` preservation boundary? | **No** — it is the natural completion of it. (`RecipeDocument` is the wrapper that keeps a saved recipe byte-faithful to the original it was derived from, patching rather than rebuilding it.) |
+| Does it conflict with artifact roles and authority? | **No** — provided the new objects stay subtypes, bindings, descriptors, and index state |
+| Can it be implemented as originally sketched? | **No** — eight decisions below are load-bearing and unanswered |
+
+<style>{`
+.sr-fig {
+  margin: 1.5rem 0 2rem;
+  padding: 1rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 14px;
+  background: var(--sl-color-bg);
+  overflow-x: auto;
+}
+.sr-cap {
+  margin-top: .75rem;
+  color: var(--sl-color-gray-3);
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.sr-join { display: grid; grid-template-columns: minmax(150px,1.05fr) 24px minmax(120px,.8fr) 24px minmax(150px,1fr); align-items: center; gap: .5rem; min-width: 640px; }
+.sr-stack { display: flex; flex-direction: column; gap: .4rem; }
+.sr-box { padding: .55rem .7rem; border: 1px solid var(--sr-c, var(--sl-color-hairline)); border-left: 3px solid var(--sr-c, var(--sl-color-hairline)); border-radius: 8px; background: var(--sr-bg, var(--sl-color-bg-nav)); color: var(--sl-color-text); font-size: .76rem; }
+.sr-box b { display: block; color: var(--sl-color-text); font-size: .78rem; }
+.sr-box span { color: var(--sl-color-gray-2); font-size: .68rem; }
+.sr-arrow { color: var(--sl-color-gray-3); text-align: center; font-size: 1.1rem; }
+.sr-in { --sr-c: #60a5fa; --sr-bg: rgba(96,165,250,.1); }
+.sr-bind { --sr-c: #e0a458; --sr-bg: rgba(224,164,88,.12); }
+.sr-out { --sr-c: #34d399; --sr-bg: rgba(52,211,153,.1); }
+.sr-later { --sr-c: #a78bfa; --sr-bg: rgba(167,139,250,.1); }
+.sr-cols { display: grid; grid-template-columns: repeat(4, minmax(160px,1fr)); gap: .55rem; min-width: 720px; }
+.sr-col { padding: .7rem; border: 1px solid var(--sr-c, var(--sl-color-hairline)); border-radius: 10px; background: var(--sr-bg, var(--sl-color-bg-nav)); }
+.sr-col h4 { margin: 0 0 .1rem; color: var(--sl-color-text); font-size: .8rem; }
+.sr-col em { display: block; margin-bottom: .45rem; color: var(--sr-c); font-size: .62rem; font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+.sr-col ul { margin: 0; padding-left: 1rem; }
+.sr-col li { color: var(--sl-color-gray-2); font-size: .7rem; line-height: 1.5; }
+.sr-hash { display: flex; flex-direction: column; gap: .4rem; min-width: 480px; }
+.sr-h { display: grid; grid-template-columns: minmax(190px,auto) 1fr minmax(84px,auto); align-items: center; gap: .75rem; padding: .55rem .7rem; border: 1px solid var(--sl-color-hairline); border-left: 3px solid var(--sr-c); border-radius: 8px; background: var(--sl-color-bg-nav); }
+.sr-h code { color: var(--sl-color-text); font-size: .72rem; letter-spacing: 0; white-space: nowrap; }
+.sr-h span { color: var(--sl-color-gray-2); font-size: .72rem; line-height: 1.4; }
+.sr-h b { color: var(--sr-c); font-size: .6rem; text-align: right; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.sr-gates { display: grid; grid-template-columns: repeat(3, minmax(190px,1fr)); gap: .6rem; min-width: 640px; }
+.sr-gate { padding: .75rem; border: 1px solid var(--sr-c); border-radius: 10px; background: var(--sr-bg); }
+.sr-gate h4 { margin: 0 0 .15rem; color: var(--sl-color-text); font-size: .82rem; }
+.sr-gate em { display: block; margin-bottom: .5rem; color: var(--sr-c); font-size: .62rem; font-style: normal; text-transform: uppercase; letter-spacing: .08em; }
+.sr-chip { display: block; margin-bottom: .3rem; padding: .3rem .45rem; border-radius: 6px; background: var(--sl-color-bg); color: var(--sl-color-text); font-size: .7rem; }
+.sr-now { --sr-c: #f87171; --sr-bg: rgba(248,113,113,.09); }
+.sr-soon { --sr-c: #e0a458; --sr-bg: rgba(224,164,88,.09); }
+.sr-next { --sr-c: #a78bfa; --sr-bg: rgba(167,139,250,.09); }
+`}</style>
+
+## Illustration 1 — it is a join, not a chain
+
+The roadmap currently reads `source bytes → reusable configuration → output`. That is ontologically wrong: source bytes do not produce the recipe. They are **independent inputs joined by a binding**.
+
+<div class="not-content sr-fig" role="img" aria-label="Four independent inputs (source snapshot, canonical recipe revision, parser selectors, destination and write policy) feed a recipe binding. The binding is executed, producing canonical managed Tier 1 output and, later, a separate Execution Record.">
+  <div class="sr-join">
+    <div class="sr-stack">
+      <div class="sr-box sr-in"><b>Source snapshot</b><span>Exact Tier 0 bytes + digest</span></div>
+      <div class="sr-box sr-in"><b>Recipe revision</b><span>Canonical ImportRecipe</span></div>
+      <div class="sr-box sr-in"><b>Parser selectors</b><span>Sheet / header / iterator / filter</span></div>
+      <div class="sr-box sr-in"><b>Destination + policy</b><span>Root path, skip/replace/error</span></div>
+    </div>
+    <div class="sr-arrow">→</div>
+    <div class="sr-stack">
+      <div class="sr-box sr-bind"><b>Recipe binding</b><span>Intent only. No outcomes.</span></div>
+    </div>
+    <div class="sr-arrow">→</div>
+    <div class="sr-stack">
+      <div class="sr-box sr-out"><b>Run</b><span>parse → render() → generate → validate → merge</span></div>
+      <div class="sr-box sr-out"><b>Canonical Tier 1</b><span>Managed knowledge representation</span></div>
+      <div class="sr-box sr-later"><b>Execution Record</b><span>Later. Reports what happened.</span></div>
+    </div>
+  </div>
+  <div class="sr-cap">inputs join at the binding · the binding never transforms rows</div>
+</div>
+
+## Illustration 2 — five digests, five different questions
+
+The single biggest correction. The existing `computeRecipeHash()` at `src/generation/hash.ts` is **not** a recipe-artifact digest, and must not be repurposed as one.
+
+<div class="not-content sr-fig" role="img" aria-label="Five distinct digests: recipe document digest for exact revision identity, effective target hash for output behavior drift, source byte digest for exact source identity, binding digest for the locked input set, and concept CID for pre-render concept identity.">
+  <div class="sr-hash">
+    <div class="sr-h" style="--sr-c:#60a5fa"><code>recipe_document_digest</code><span>Which exact portable recipe revision is this?</span><b>New</b></div>
+    <div class="sr-h" style="--sr-c:#34d399"><code>effective_target_hash</code><span>Did output-affecting target behavior change?</span><b>Exists today</b></div>
+    <div class="sr-h" style="--sr-c:#e0a458"><code>source_byte_digest</code><span>Which exact pre-parse source bytes?</span><b>New</b></div>
+    <div class="sr-h" style="--sr-c:#f0a3c0"><code>binding_digest</code><span>Which exact locked input set?</span><b>New</b></div>
+    <div class="sr-h" style="--sr-c:#a78bfa"><code>concept_cid</code><span>Which concept, before render() ran?</span><b>Exists today</b></div>
+  </div>
+  <div class="sr-cap">overloading any one of these breaks drift diagnosis</div>
+</div>
+
+`metadata.based_on.hash` currently stores the **effective target hash** of an ancestor. Silently redefining it would break existing ancestry semantics.
+
+## Illustration 3 — what is allowed to live where
+
+<div class="not-content sr-fig" role="img" aria-label="Four authority lanes. Recipe owns transformation policy. Binding owns selected inputs. Execution Record owns run outcomes. Local index owns rebuildable convenience state.">
+  <div class="sr-cols">
+    <div class="sr-col" style="--sr-c:#60a5fa;--sr-bg:rgba(96,165,250,.08)">
+      <h4>Recipe</h4><em>Intended behavior</em>
+      <ul>
+        <li>layout mechanisms</li>
+        <li>also_emit / body</li>
+        <li>enrichment</li>
+        <li>graph_edges, linkStyle</li>
+        <li>source compatibility declaration</li>
+        <li>ancestry</li>
+      </ul>
+    </div>
+    <div class="sr-col" style="--sr-c:#e0a458;--sr-bg:rgba(224,164,88,.08)">
+      <h4>Binding</h4><em>Selected inputs</em>
+      <ul>
+        <li>recipe revision digest</li>
+        <li>source identity</li>
+        <li>parser id + version</li>
+        <li>decode selectors</li>
+        <li>destination root</li>
+        <li>write policy</li>
+      </ul>
+    </div>
+    <div class="sr-col" style="--sr-c:#a78bfa;--sr-bg:rgba(167,139,250,.08)">
+      <h4>Execution Record</h4><em>Later. Outcomes</em>
+      <ul>
+        <li>execution id</li>
+        <li>start/end, status</li>
+        <li>actor</li>
+        <li>output inventory</li>
+        <li>validation results</li>
+        <li>warnings</li>
+      </ul>
+    </div>
+    <div class="sr-col" style="--sr-c:#8b929c;--sr-bg:rgba(139,146,156,.08)">
+      <h4>Local index</h4><em>Rebuildable state</em>
+      <ul>
+        <li>favorites, recency</li>
+        <li>display order</li>
+        <li>active pointer</li>
+        <li>retained/missing status</li>
+        <li>locator hints</li>
+        <li>last proof time</li>
+      </ul>
+    </div>
+  </div>
+  <div class="sr-cap">no new root artifact nouns · index state never becomes authority</div>
+</div>
+
+## Illustration 4 — the decision gates
+
+These are this register's own gates. The sibling [primitives reconciliation register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) (the log tracking proposed upgrades to the core building blocks every imported note is made of) has its own three gates — **Gate 1 — schema fields**, **Gate 2 — cleanup**, **Gate 3 — language** — and its Gate 1 must land before D1 below. Always name the register when citing a gate.
+
+<div class="not-content sr-fig" role="img" aria-label="Three decision gates in this register. Gate one blocks the design specification with four decisions. Gate two blocks the v0.1.7 milestone with two decisions. Gate three blocks v0.1.8 with two decisions.">
+  <div class="sr-gates">
+    <div class="sr-gate sr-now">
+      <h4>Gate 1</h4><em>Blocks the design spec</em>
+      <span class="sr-chip">D1 · Hash taxonomy + wire syntax</span>
+      <span class="sr-chip">D2 · Binding parameter surface</span>
+      <span class="sr-chip">D3 · Replay-equivalence profile</span>
+      <span class="sr-chip">D4 · Source retention model</span>
+    </div>
+    <div class="sr-gate sr-soon">
+      <h4>Gate 2</h4><em>Blocks v0.1.7 shipping</em>
+      <span class="sr-chip">D5 · Revision vs fork lineage</span>
+      <span class="sr-chip">D6 · SavedConfig coexistence</span>
+    </div>
+    <div class="sr-gate sr-next">
+      <h4>Gate 3</h4><em>Blocks v0.1.8</em>
+      <span class="sr-chip">D7 · Retire audit-snapshot manifest</span>
+      <span class="sr-chip">D8 · Signed-git default vs opt-in</span>
+    </div>
+  </div>
+  <div class="sr-cap">gate 1 must close before any storage or UI code</div>
+</div>
+
+## The eight open decisions
+
+### Gate 1 — before the design specification
+
+**Sequencing:** D1 must be decided **after** the [primitives reconciliation register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/)'s Gate 1 (schema fields), because adding Tier 1 fields after digests are locked would invalidate stored hashes.
+
+| # | Decision | Options | Connects to |
+|---|---|---|---|
+| **D1** | **Hash taxonomy.** Add a full canonical recipe digest (a fingerprint identifying the exact recipe revision) without disturbing the existing effective-target hash (which answers only "did output-affecting behavior change?"). Also pick one wire syntax. | (a) new `recipe_document_digest` field, leave `recipe.hash` alone; (b) rename `recipe.hash` to `effective_target_hash` with migration. Syntax: keep `sha256-<hex>` everywhere, or allow `sha256:<hex>` | [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) · [Terminology](/crosswalker/concepts/terminology/) · [Recipe fidelity](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) · `spec/tier1.schema.json`, `spec/recipe.schema.json`, `src/generation/hash.ts` |
+| **D2** | **Binding parameter surface.** A **binding** is the record joining a saved recipe to the specific inputs it ran against: which file, which sheet, where output goes, what to do on conflict. A free-form parameter bag would create a hidden sixth mechanism. | (a) closed parser/destination/policy union only, no general parameters; (b) additive Recipe Schema change declaring typed parameter slots | [Target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) · [Hierarchy primitives](/crosswalker/concepts/hierarchy-primitives/) · [ETL and import](/crosswalker/concepts/etl-and-import/) |
+| **D3** | **What "exact replay" promises.** Byte-identical whole files are not currently achievable because `produced_at`, producer version, and `user_preserve` (the regions of a note the user owns and the tool must never overwrite) all vary. | (a) managed-projection equivalence, excluding execution-scoped provenance and user-owned regions; (b) byte-identical only into a clean destination | [Conventions](/crosswalker/concepts/conventions/) · [Consistency models](/crosswalker/concepts/consistency-models/) · `src/generation/provenance.ts`, `src/generation/frontmatter-merge.ts` |
+| **D4** | **Source retention.** A hash verifies bytes; it does not recover them. | (a) retain bytes by default in a content-addressed store; (b) verified reselection only; (c) both, with explicit per-binding status. Plus: vault-visible vs plugin-private, quota, license/privacy warnings | [Ontology lifecycle · Acquire](/crosswalker/concepts/ontology-lifecycle/#acquire) · [System architecture](/crosswalker/concepts/system-architecture/) · [v0.1.7 milestone](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) |
+
+### Gate 2 — before v0.1.7 ships
+
+| # | Decision | Options | Connects to |
+|---|---|---|---|
+| **D5** | **Lineage semantics.** Today, customizing a recognized recipe forks it to `<id>-custom` with `based_on` ancestry. An "active revision pointer" would blur that. | (a) storage snapshots only, keep fork semantics; (b) true revision chains per logical recipe; (c) both, explicitly distinguished | [Recipe fidelity](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) · [Artifact roles](/crosswalker/concepts/artifact-roles-and-authority/) · `src/import/recipe-document.ts` |
+| **D6** | **SavedConfig coexistence.** `SavedConfig` is the older "remember my setup" object. Legacy saved setups are fingerprint-bound convenience state, not portable recipes. | (a) keep both, no migration; (b) explicit opt-in convert with blocker reporting; (c) deprecate new SavedConfig creation | [UI lexicon](/crosswalker/agent-context/ui-lexicon/) · [UI parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) · [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) |
+
+### Gate 3 — before v0.1.8
+
+| # | Decision | Options | Connects to |
+|---|---|---|---|
+| **D7** | **Audit manifest overlap.** Earlier audit research proposed a snapshot `manifest.json` whose fields now overlap the Execution Record (the record of what one run actually did) plus the Package Manifest (the record of what a distributed bundle contains). | (a) retire the audit-specific manifest; (b) keep it as a `package_kind: audit-snapshot` Package Manifest; (c) keep three contracts (not recommended) | [Artifact roles](/crosswalker/concepts/artifact-roles-and-authority/) · [v0.1.8 milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) · [Ch 28 deliverable C](/crosswalker/agent-context/zz-research/2026-05-07-challenge-28-deliverable-c-narrow-and-defer/) |
+| **D8** | **Signed git: default or opt-in.** The v0.1 stack pivot committed to git plus signed commits (a cryptographic guarantee that a change came from a specific, verifiable person) as the audit floor; the current v0.1.8 page makes signing opt-in. | (a) restore signed-by-default; (b) keep opt-in and downgrade public language from "audit trail" to "version history" | [v0.1 stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) · [v0.1.8 milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) · [Tradeoffs](/crosswalker/agent-context/tradeoffs/) |
+
+## Settled — do not relitigate
+
+| Already decided | Where |
+|---|---|
+| The binding role exists and is not a new artifact family | [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/#specification-template-binding-and-execution) |
+| Execution Record and Package Manifest stay separate and later | [Artifact-role synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) |
+| `RecipeDocument.original` is preservation authority; save the patched canonical recipe, never the editor model | [Recipe fidelity synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) |
+| Source paths, URLs, and byte hashes stay out of `ImportRecipe` | `spec/recipe.schema.json` source block |
+| `source.version` is a compatibility declaration; verified run facts outrank it | [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) |
+| Retained bytes stay Tier 0 inputs, never Tier 1 authority or Knowledge Sets | [System architecture](/crosswalker/concepts/system-architecture/) |
+| Direct Tier 1 producers stay first-class without any recipe or replay binding | [ETL and import](/crosswalker/concepts/etl-and-import/) |
+| Every lifecycle capability needs a UI; config is the escape hatch | [UI parity audit](/crosswalker/agent-context/zz-log/2026-06-12-ui-parity-audit/) |
+| MappingSet identity stays independent of parser column mapping | [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/#mappingset-and-mappingassertion) |
+| Save and replay is infrastructure for version migration, not the migration loop itself | [Ontology evolution](/crosswalker/concepts/ontology-evolution/) |
+
+## Implementation gaps the audits surfaced
+
+These are facts about the current code, not decisions. They become work once Gate 1 closes.
+
+| Gap | Where |
+|---|---|
+| `sha256Hex()` takes a string; exact source hashing needs a byte-oriented path | `src/generation/hash.ts` |
+| Generation call sites never pass `sourceHash`, though provenance can emit it | `src/generation/generation-engine.ts`, `src/generation/provenance.ts` |
+| Draft resume reparses the current file with no digest comparison | `src/import/import-wizard.ts` |
+| Drafts persist only the selected sheet; header row, JSON iterator, and filter are dropped | `src/import/draft-store.ts` |
+| Destination and write policy live in workflow state, not in any durable binding | `src/import/draft-store.ts` |
+| Mobile storage for retained bytes is unproven and currently scheduled at RC | [v0.1-RC milestone](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/) |
+
+## Roadmap correction to make
+
+The linear acceptance chain appears in three places and should be restated as the join shown in Illustration 1:
+
+- [Roadmap index](/crosswalker/reference/roadmap/)
+- [Milestone hub](/crosswalker/reference/roadmap/milestones/)
+- [v0.1-RC milestone](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/)
+- `ROADMAP.md` at the repo root
+
+## What happens after Gate 1 closes
+
+1. Write the Crosswalker-native design specification in `.workspace/`, with worked examples and acceptance cases.
+2. Implement identity and binding primitives, test-first, no storage or UI.
+3. Add portable storage and the retained-object store, mobile-proven.
+4. Build the library and replay UI.
+5. Prove full NIST CSF 2.0 and NIST SP 800-53 replay.
+
+Small sequential waves, reviewed between each. Not one large fan-out.
+
+## Related
+
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) — the single checklist of everything awaiting the owner's ratification; D1–D8 restated as executive decision cards
+- [Primitives reconciliation — decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) — the sibling log tracking proposed upgrades to the core building blocks every imported note is made of; its Gate 1 (schema fields) must land before D1 here
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — the concept page defining which artifact is allowed to assert what; the model these decisions must not violate
+- [Artifact roles and authority synthesis](/crosswalker/agent-context/zz-log/2026-07-21-artifact-roles-and-authority-synthesis/) — build sequence this register refines
+- [Portable ImportRecipe fidelity](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/) — the preservation boundary being completed
+- [Target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — closed grammar and the `render()` coupling point
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive and the two producer modes
+- [Ontology lifecycle](/crosswalker/concepts/ontology-lifecycle/) — Acquire, Shape, and Maintain context
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — the migration loop this only lays groundwork for
+- [Terminology](/crosswalker/concepts/terminology/) — Recipe, binding, `RecipeDocument`, Tier definitions
+- [v0.1.7 milestone](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) — where Gate 1 and Gate 2 land
+- [v0.1.8 milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — where Gate 3 lands
