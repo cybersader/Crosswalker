@@ -109,24 +109,41 @@ The canonical project KB is the docs site. For an agent new to the project:
 | **Pattern A test-vault structure** — repo root has src/ + docs/ + spec/ + test-vault/ as siblings; build outputs into `test-vault/.obsidian/plugins/crosswalker/` | Confirmed 2026-05-04 |
 | **Plugin ships only `main.js + manifest.json + styles.css`** — `tools/`, `spec/`, KB don't bloat releases | Confirmed 2026-05-04 |
 | **Manual testing entry point** — `TEST_HANDS_ON_TOUR.md` at repo root is the master surface-coverage checklist (supersedes per-phase TEST_*.md guides for full passes) | Added 2026-06-12 |
-| **Screenshot Obsidian UI yourself — it IS automatable here** — real Obsidian runs via wdio + WSLg (`DISPLAY=:0 bun run e2e -- --spec tests/e2e/visual-*.spec.ts` → PNGs in `test-screenshots/`, readable by agents). Visual-verify rendering with a screenshot before claiming "can't render headlessly" or asking the user to eyeball. Never conclude Obsidian can't be screenshotted. | Memory: `reference_obsidian_screenshots_via_wdio.md`; `testing-patterns` skill |
+| **Screenshot Obsidian UI yourself — it IS automatable here** — real Obsidian runs via wdio + X11 (`DISPLAY=:0 bun run e2e -- --spec tests/e2e/visual-*.spec.ts` → PNGs in `test-screenshots/`, readable by agents; native Xwayland on Fedora since 2026-08-19, formerly WSLg). Visual-verify rendering with a screenshot before claiming "can't render headlessly" or asking the user to eyeball. Never conclude Obsidian can't be screenshotted. | Memory: `reference_obsidian_screenshots_via_wdio.md`; `testing-patterns` skill |
 
 ## Model tiering & delegation (how to spend the main session)
 
-The main session runs the strongest available model (Fable 5, or Opus 4.8 for easier problem tiers). **Spend it at the highest level of abstraction the task allows; push mechanical work down to subagents.** Added 2026-07-05 per user direction.
+Three-tier scheme, refined 2026-08-19 per user direction. The owner selects the session model explicitly (`/model`); each tier does the work of its altitude and pushes the rest down. **Spend every session at the highest level of abstraction its task allows.**
 
-| Layer | Model | Work |
-|---|---|---|
-| **Architect** (main session) | Fable 5 / Opus 4.8 | The hard ontological/data-model problems; specs + schema deltas; pseudocode skeletons; design decisions (captured in `.workspace/` design docs → `zz-log/`); reviewing delegated diffs; deciding what to delegate |
-| **Implementation** (subagents) | **Match the tier to the task's difficulty** — `sonnet` for fully-specified mechanical work (surveys, batch commits, sweeps, spec-exact implementation); `opus` when the work needs judgment (ambiguous integration, design-adjacent implementation, KB writing) | Implementation against a written spec; test authoring; themed commit batches; corpus/code surveys; doc sweeps |
+| Tier | Model | Session role | Work |
+|---|---|---|---|
+| **Architect** | Fable 5 | Occasional, owner-driven sessions | The hard ontological/data-model problems; sprint layout (dated `.workspace/` sprint plans); specs + schema deltas; design decisions (→ `zz-log/`); owner review-queue sittings; ratifying merges. Does NOT do ground engineering — if it catches itself editing `src/`, it should be writing a spec instead |
+| **Orchestrator** | Opus 5 (or Opus 4.8) | The default implementation session | Executes the current sprint plan from `.workspace/`; decomposes specs into delegable tasks; reviews delegated diffs; runs gates; commits |
+| **Workers** (subagents) | **Sol 5.6** for spec-exact implementation, surveys, sweeps, batch mechanics; **Sonnet** as fallback (Sol lane down/metered) or for the cheapest mechanical work; Opus only when a subagent task genuinely needs judgment (design-adjacent integration, KB writing) | Spawned by the orchestrator | Implementation against a written spec; test authoring; themed commit batches; corpus/code surveys; doc sweeps |
 
-**The loop:** architect writes the spec (dated `.workspace/` design doc: exact semantics, worked examples, acceptance cases) → subagent implements exactly to spec, **no commits** → architect reviews the diff, runs the gates, commits. (Exception: pure git-chunking tasks may commit on a side branch; nothing is ever pushed by a subagent.)
+**The loop:** architect writes the sprint plan + specs (dated `.workspace/` docs: exact semantics, worked examples, acceptance cases) → orchestrator session delegates to workers, who implement exactly to spec, **no commits** → orchestrator reviews the diff, runs the gates, commits. (Exception: pure git-chunking tasks may commit on a side branch; nothing is ever pushed by a subagent.)
+
+**Where the current sprint plan lives:** the newest `.workspace/*-sprint-plan.md` (local, gitignored). An orchestrator session starting cold should read it before anything else; if none exists or it's exhausted, that's a signal to ask the owner for an architect session.
 
 Rules:
-- Always set an explicit `model` on Agent calls — never inherit the frontier model into fully-specified mechanical work.
-- Hand subagents the env quirks (WSL /mnt/c: run tests via `node node_modules/jest/bin/jest.js`, never reinstall `node_modules`) and repo commit rules (no AI attribution, no personal data).
-- If the main session catches itself doing >~15 min of fully-specified mechanical work, delegate it.
+- Always set an explicit `model` on Agent calls — never inherit the session model into fully-specified mechanical work.
+- Sol 5.6 rides a weekly-metered proxy lane (see global CLAUDE.md delegation budget rules) — small sequential batches (3–5 workers), never wide fan-outs on that lane.
+- Hand subagents the repo commit rules (no AI attribution, no personal data) and current env notes (§ Environment below).
+- If any session catches itself doing >~15 min of work below its tier, delegate it (or, for the architect, spec it for the next orchestrator session).
 - Worked example of the loop: 2026-07-05 variadic folder expansion (`.workspace/2026-07-05-variadic-split-and-folder-note-design.md` → Sonnet implementation → architect review + commit).
+
+## Environment (current dev machine)
+
+**Native Fedora Linux since 2026-08-19** — the repo moved off a Windows drive mounted into WSL and onto a native Linux home directory. Audited 2026-08-19:
+
+| Fact | Status |
+|---|---|
+| bun / node / git / gh (authed) / tailscale / zellij | ✅ all installed and working |
+| **WSL jest workaround is RETIRED** — `bun run test` and bare `jest` work natively; do not tell subagents to use `node node_modules/jest/bin/jest.js` anymore | Confirmed 2026-08-19 |
+| e2e screenshots run against native Xwayland `DISPLAY=:0` (no WSLg anymore); Obsidian + chromedriver already cached linux-x64 in `.obsidian-cache/` | Confirmed 2026-08-19 |
+| `docs/astro.config.mjs` polling watcher removed (was a WSL-inotify workaround; native ext4 inotify is reliable) | ✅ done 2026-08-19 |
+| `docs/node_modules` clean-reinstalled from the lockfile; win32 optional-dep leftovers gone | ✅ done 2026-08-19 |
+| `portagenty` not yet installed on this machine | Flagged 2026-08-19 |
 
 ## Roadmap conventions
 

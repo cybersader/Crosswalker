@@ -35,15 +35,12 @@ export default defineConfig({
       // Vite 6+ blocks non-localhost Host headers by default — this opens it back up.
       // Safe for local dev only; production builds are served as static files.
       allowedHosts: true,
-      // Polling watcher is load-bearing on this repo: the vault lives on /mnt/c
-      // (Windows drive mounted into WSL), where inotify events are silently
-      // dropped — the dev server repeatedly served stale content after .mdx
-      // edits (observed 2026-07-27 and 2026-07-29). Polling costs a little CPU
-      // but makes hot reload actually trustworthy here.
-      watch: {
-        usePolling: true,
-        interval: 1000,
-      },
+      // NOTE: a polling watcher (usePolling/interval) used to live here because
+      // the vault sat on a Windows drive mounted into WSL, where inotify events
+      // were silently dropped and the dev server served stale content. The dev
+      // machine moved to native Linux (ext4) on 2026-08-19, where inotify is
+      // reliable, so polling was removed — it only cost CPU. Restore it if this
+      // repo is ever edited over a network mount or a WSL drvfs path again.
     },
   },
   markdown: {
