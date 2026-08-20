@@ -281,7 +281,7 @@ Crosswalker always qualifies **projection** by scope. This layer is not the same
                                               ┌─ schema_meta ────┐
                                               │ key │ value     │
                                               │ schema_version:  │
-                                              │ tier2-sqlite-v1  │
+                                              │ tier2-sqlite-v2  │
                                               └──────────────────┘
 ```
 
@@ -352,7 +352,7 @@ If `.crosswalker.sqlite` is missing, corrupted, or stale, the projector reprojec
 | Flat key/value over a single note kind | **Tier 1 via Bases** | Native; no plugin; survives Tier 2 corruption |
 | Tag-prefix or single-frontmatter-field filter | **Tier 1 via Bases** | Same |
 | Multi-ontology joins | **Tier 2 via SQL** | Bases doesn't do joins; SQL does |
-| Transitive closure (chain of crosswalks) | **Tier 2 via SQL recursive CTE** | Closure cache materialized once; subsequent queries hit the cache |
+| Transitive closure (chain of crosswalks) | **Tier 2 via SQL recursive CTE** | Depth-covered cache partitions safely reuse equal or shallower queries; deeper queries extend coverage |
 | Coverage matrix (controls × evidence × frameworks) | **Tier 2 via SQL** | Multi-table join; awkward in Bases |
 | Vector / semantic similarity | **Tier 2 via sqlite-vec** | Deferred to a future milestone (see Ch 24 §5 Q4) |
 

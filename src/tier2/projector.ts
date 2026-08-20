@@ -144,13 +144,26 @@ export async function projectFromTier1(
 		}
 	}
 
-	// If any mappings were written, invalidate the closure cache (Ch 18 §2.5)
+	// If any mappings were written, invalidate both closure rows and their
+	// coverage watermarks atomically (Ch 18 §2.5). A stale watermark with no
+	// rows would otherwise turn an invalidated closure into a false empty hit.
 	if (result.counts.mappings > 0) {
 		try {
-			db.exec('DELETE FROM closure_cache');
+			db.exec(`
+				SAVEPOINT closure_cache_invalidate;
+				DELETE FROM closure_cache_state;
+				DELETE FROM closure_cache;
+				RELEASE closure_cache_invalidate;
+			`);
 		} catch (err) {
-			// Non-fatal — closure_cache may not exist if migrations haven't run
-			options.debug?.warn('tier2', 'closure-cache-invalidate-failed', 'closure_cache invalidate failed (non-fatal)', {
+			try {
+				db.exec('ROLLBACK TO closure_cache_invalidate');
+				db.exec('RELEASE closure_cache_invalidate');
+			} catch {
+				// Preserve the invalidation error if rollback also fails.
+			}
+			// Non-fatal — cache tables may not exist if migrations haven't run
+			options.debug?.warn('tier2', 'closure-cache-invalidate-failed', 'Closure cache invalidate failed (non-fatal)', {
 				error: err instanceof Error ? err.message : String(err),
 			});
 		}

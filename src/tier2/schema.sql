@@ -1,6 +1,6 @@
 -- ================================================================
 -- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
--- Schema version: tier2-sqlite-v1
+-- Schema version: tier2-sqlite-v2
 --
 -- Per spec/tier1.schema.json + v0.1 schema spec §7.
 -- This file is the canonical DDL; the migrations module (migrations.ts)
@@ -141,6 +141,16 @@ CREATE TABLE IF NOT EXISTS closure_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_closure_obj_pred ON closure_cache(object_id, predicate_id);
+
+-- A row proves the corresponding cache partition was fully computed through
+-- computed_max_depth. Row count alone cannot represent a valid empty closure.
+CREATE TABLE IF NOT EXISTS closure_cache_state (
+  subject_id         TEXT NOT NULL,
+  predicate_id       TEXT NOT NULL,
+  computed_max_depth INTEGER NOT NULL CHECK (computed_max_depth >= 0),
+  computed_at        TEXT NOT NULL,
+  PRIMARY KEY (subject_id, predicate_id)
+);
 
 -- ----------------------------------------------------------------
 -- Vector embeddings (sqlite-vec, deferred until vector-feature lands)

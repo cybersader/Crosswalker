@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Fixed: depth-safe Tier 2 closure caching (2026-08-20)
+
+- **Transitive mapping queries no longer return silently truncated results after a shallower query runs first.** Each subject/predicate cache partition now records the depth through which it was fully computed; deeper requests recompute and atomically advance that coverage, while shallower requests safely reuse and filter deeper results.
+- **Empty closures are cached deliberately.** A separate coverage-state row distinguishes a computed empty result from a cache miss, and mapping projection invalidates cached rows and coverage together.
+- **Tier 2 schema upgraded to `tier2-sqlite-v2`.** Because the sidecar is fully derived from canonical Markdown, versioned and unversioned older schemas are deliberately rebuilt rather than preserving the ambiguous v1 cache shape.
+
 ### Infrastructure: mechanical personal-data gate + static checks in CI (2026-08-19)
 
 - **New `bun run check:personal-data` gate.** A regex scanner (no AI in the loop) that fails on machine-specific absolute paths, email addresses, and an optional local denylist of names/identifiers. Runs over the whole tracked tree by default, or `--staged` / `--range <gitrange>` for pre-commit and pre-merge use. Legitimate discussions of these patterns (PII-scrubbing decision logs, redaction tests, the reviewer agent's own detection rules) are allowlisted by path with a stated reason; well-known bot identities are allowlisted by address.

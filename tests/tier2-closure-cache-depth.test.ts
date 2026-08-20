@@ -1,0 +1,364 @@
+import { TIER2_SCHEMA_VERSION, applyMigrations, getCurrentSchemaVersion } from '../src/tier2/migrations';
+import {
+	closureFromConcept,
+	precomputeClosureForOntologyPair,
+	type ClosureEntry,
+} from '../src/tier2/queries';
+import { projectFromTier1 } from '../src/tier2/projector';
+
+const { DatabaseSync } = require('node:sqlite');
+
+interface ExecOptions {
+	sql: string;
+	bind?: Record<string, unknown>;
+	rowMode?: 'array';
+	returnValue?: 'resultRows';
+}
+
+interface TestDb {
+	exec(input: string | ExecOptions): unknown[][] | void;
+	close(): void;
+	getRecursiveQueryCount(): number;
+}
+
+function createTestDb(): TestDb {
+	const sqlite = new DatabaseSync(':memory:');
+	let recursiveQueryCount = 0;
+
+	return {
+		exec(input: string | ExecOptions): unknown[][] | void {
+			if (typeof input === 'string') {
+				sqlite.exec(input);
+				return;
+			}
+
+			if (/WITH\s+RECURSIVE/.test(input.sql)) recursiveQueryCount += 1;
+			const statement = sqlite.prepare(input.sql);
+			if (input.rowMode === 'array') statement.setReturnArrays(true);
+			const bind = input.bind ?? {};
+
+			if (input.returnValue === 'resultRows') {
+				return Object.keys(bind).length > 0 ? statement.all(bind) : statement.all();
+			}
+
+			if (Object.keys(bind).length > 0) statement.run(bind);
+			else statement.run();
+		},
+		close(): void {
+			sqlite.close();
+		},
+		getRecursiveQueryCount(): number {
+			return recursiveQueryCount;
+		},
+	};
+}
+
+const PREDICATE = 'skos:closeMatch';
+const OTHER_PREDICATE = 'skos:relatedMatch';
+const CHAIN = [
+	['example:A', 'example:B'],
+	['example:B', 'example:C'],
+	['example:C', 'example:D'],
+] as const;
+
+function insertMapping(
+	db: TestDb,
+	subject: string,
+	predicate: string,
+	object: string,
+	suffix: string,
+): void {
+	db.exec({
+		sql: `
+			INSERT INTO mappings
+				(subject_id, predicate_id, object_id, source_path, source_hash)
+			VALUES ($subject, $predicate, $object, $path, $hash)
+		`,
+		bind: {
+			$subject: subject,
+			$predicate: predicate,
+			$object: object,
+			$path: `Mappings/edge-${suffix}.md`,
+			$hash: `hash-${suffix}`,
+		},
+	});
+}
+
+function seedMappingChain(db: TestDb): void {
+	for (const [index, [subject, object]] of CHAIN.entries()) {
+		insertMapping(db, subject, PREDICATE, object, String(index + 1));
+	}
+}
+
+function queryRows(db: TestDb, sql: string, bind: Record<string, unknown> = {}): unknown[][] {
+	return db.exec({
+		sql,
+		bind,
+		rowMode: 'array',
+		returnValue: 'resultRows',
+	}) as unknown[][];
+}
+
+function targets(entries: ClosureEntry[]): Array<[string, number]> {
+	return entries.map((entry) => [entry.target_curie, entry.shortest_depth]);
+}
+
+describe('Tier 2 closure cache depth', () => {
+	let db: TestDb;
+
+	beforeEach(() => {
+		db = createTestDb();
+		applyMigrations(db);
+		seedMappingChain(db);
+	});
+
+	afterEach(() => {
+		db.close();
+	});
+
+	it('recomputes a deeper closure after a shallow query populated the cache', () => {
+		const shallow = closureFromConcept(db, 'example:A', PREDICATE, 1);
+		expect(targets(shallow)).toEqual([['example:B', 1]]);
+
+		const deeper = closureFromConcept(db, 'example:A', PREDICATE, 3);
+		expect(targets(deeper)).toEqual([
+			['example:B', 1],
+			['example:C', 2],
+			['example:D', 3],
+		]);
+		expect(db.getRecursiveQueryCount()).toBe(2);
+		expect(queryRows(db, `SELECT computed_max_depth FROM closure_cache_state`)).toEqual([[3]]);
+	});
+
+	it('filters a cached deep closure when a shallow query runs second', () => {
+		const deeper = closureFromConcept(db, 'example:A', PREDICATE, 3);
+		expect(targets(deeper)).toEqual([
+			['example:B', 1],
+			['example:C', 2],
+			['example:D', 3],
+		]);
+
+		const shallow = closureFromConcept(db, 'example:A', PREDICATE, 1);
+		expect(targets(shallow)).toEqual([['example:B', 1]]);
+		expect(db.getRecursiveQueryCount()).toBe(1);
+	});
+
+	it('caches an empty closure with a state row instead of treating it as a miss', () => {
+		expect(closureFromConcept(db, 'example:missing', PREDICATE, 4)).toEqual([]);
+		expect(closureFromConcept(db, 'example:missing', PREDICATE, 4)).toEqual([]);
+		expect(db.getRecursiveQueryCount()).toBe(1);
+		expect(
+			queryRows(
+				db,
+				`SELECT subject_id, predicate_id, computed_max_depth FROM closure_cache_state
+				 WHERE subject_id = $subject`,
+				{ $subject: 'example:missing' },
+			),
+		).toEqual([['example:missing', PREDICATE, 4]]);
+		expect(
+			queryRows(db, `SELECT COUNT(*) FROM closure_cache WHERE subject_id = $subject`, {
+				$subject: 'example:missing',
+			}),
+		).toEqual([[0]]);
+	});
+
+	it('keeps wildcard and predicate-specific coverage in separate cache partitions', () => {
+		insertMapping(db, 'example:A', OTHER_PREDICATE, 'example:X', 'other-1');
+		insertMapping(db, 'example:X', OTHER_PREDICATE, 'example:Y', 'other-2');
+
+		expect(targets(closureFromConcept(db, 'example:A', PREDICATE, 3))).toEqual([
+			['example:B', 1],
+			['example:C', 2],
+			['example:D', 3],
+		]);
+		expect(targets(closureFromConcept(db, 'example:A', undefined, 3))).toEqual([
+			['example:B', 1],
+			['example:X', 1],
+			['example:C', 2],
+			['example:Y', 2],
+			['example:D', 3],
+		]);
+		expect(
+			queryRows(
+				db,
+				`SELECT predicate_id, computed_max_depth FROM closure_cache_state
+				 WHERE subject_id = $subject ORDER BY predicate_id`,
+				{ $subject: 'example:A' },
+			),
+		).toEqual([
+			['*', 3],
+			[PREDICATE, 3],
+		]);
+	});
+
+	it('rejects a literal star predicate before it can poison a wildcard cache', () => {
+		insertMapping(db, 'example:A', '*', 'example:Star', 'literal-star-edge-first');
+		insertMapping(db, 'example:A', OTHER_PREDICATE, 'example:X', 'literal-star-first');
+
+		expect(() => closureFromConcept(db, 'example:A', '*', 2)).toThrow(
+			new RangeError("predicateId '*' is reserved for unfiltered closure queries"),
+		);
+		expect(() =>
+			precomputeClosureForOntologyPair(db, 'example', 'example', '*', 2),
+		).toThrow(new RangeError("predicateId '*' is reserved for unfiltered closure queries"));
+		expect(targets(closureFromConcept(db, 'example:A', undefined, 2))).toEqual([
+			['example:B', 1],
+			['example:Star', 1],
+			['example:X', 1],
+			['example:C', 2],
+		]);
+		expect(db.getRecursiveQueryCount()).toBe(1);
+	});
+
+	it('rejects a literal star predicate without disturbing an existing wildcard cache', () => {
+		insertMapping(db, 'example:A', '*', 'example:Star', 'literal-star-edge-second');
+		insertMapping(db, 'example:A', OTHER_PREDICATE, 'example:X', 'wildcard-first');
+		const expected: Array<[string, number]> = [
+			['example:B', 1],
+			['example:Star', 1],
+			['example:X', 1],
+			['example:C', 2],
+		];
+
+		expect(targets(closureFromConcept(db, 'example:A', undefined, 2))).toEqual(expected);
+		expect(() => closureFromConcept(db, 'example:A', '*', 2)).toThrow(
+			new RangeError("predicateId '*' is reserved for unfiltered closure queries"),
+		);
+		expect(targets(closureFromConcept(db, 'example:A', undefined, 2))).toEqual(expected);
+		expect(db.getRecursiveQueryCount()).toBe(1);
+	});
+
+	it('terminates on cycles and preserves shortest depths', () => {
+		insertMapping(db, 'example:D', PREDICATE, 'example:A', 'cycle');
+
+		expect(targets(closureFromConcept(db, 'example:A', PREDICATE, 10))).toEqual([
+			['example:B', 1],
+			['example:C', 2],
+			['example:D', 3],
+		]);
+	});
+
+	it('returns an empty depth-zero closure without running the recursive CTE', () => {
+		expect(closureFromConcept(db, 'example:A', PREDICATE, 0)).toEqual([]);
+		expect(db.getRecursiveQueryCount()).toBe(0);
+		expect(queryRows(db, `SELECT computed_max_depth FROM closure_cache_state`)).toEqual([[0]]);
+
+		expect(targets(closureFromConcept(db, 'example:A', PREDICATE, 1))).toEqual([
+			['example:B', 1],
+		]);
+		expect(db.getRecursiveQueryCount()).toBe(1);
+	});
+
+	it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+		'rejects invalid maxDepth %s',
+		(maxDepth) => {
+			expect(() => closureFromConcept(db, 'example:A', PREDICATE, maxDepth)).toThrow(
+			new RangeError('maxDepth must be a non-negative integer'),
+			);
+		},
+	);
+
+	it('scopes precompute counts to the requested predicate and depth', () => {
+		insertMapping(db, 'source:A', PREDICATE, 'target:B', 'precompute-1');
+		insertMapping(db, 'target:B', PREDICATE, 'target:C', 'precompute-2');
+		insertMapping(db, 'source:A', OTHER_PREDICATE, 'target:X', 'precompute-3');
+
+		expect(precomputeClosureForOntologyPair(db, 'source', 'target', PREDICATE, 2)).toBe(2);
+		expect(precomputeClosureForOntologyPair(db, 'source', 'target', undefined, 1)).toBe(2);
+		expect(
+			queryRows(
+				db,
+				`SELECT predicate_id, computed_max_depth FROM closure_cache_state
+				 WHERE subject_id = 'source:A' ORDER BY predicate_id`,
+			),
+		).toEqual([
+			['*', 1],
+			[PREDICATE, 2],
+		]);
+	});
+
+	it('matches ontology prefixes literally when precomputing underscore IDs', () => {
+		insertMapping(db, 'src_a:A', PREDICATE, 'dst_a:B', 'underscore-exact');
+		insertMapping(db, 'srcXa:C', PREDICATE, 'dstXa:D', 'underscore-decoy');
+
+		expect(precomputeClosureForOntologyPair(db, 'src_a', 'dst_a', PREDICATE, 2)).toBe(1);
+		expect(targets(closureFromConcept(db, 'src_a:A', PREDICATE, 2))).toEqual([
+			['dst_a:B', 1],
+		]);
+		expect(
+			queryRows(
+				db,
+				`SELECT subject_id FROM closure_cache_state
+				 WHERE subject_id IN ('src_a:A', 'srcXa:C') ORDER BY subject_id`,
+			),
+		).toEqual([['src_a:A']]);
+	});
+
+	it('invalidates cache rows and coverage state together after mapping projection', async () => {
+		closureFromConcept(db, 'example:A', PREDICATE, 3);
+		expect(queryRows(db, `SELECT COUNT(*) FROM closure_cache`)).toEqual([[3]]);
+		expect(queryRows(db, `SELECT COUNT(*) FROM closure_cache_state`)).toEqual([[1]]);
+
+		const file = { path: 'Mappings/projected-edge.md', stat: { mtime: Date.now() } };
+		const app = {
+			vault: { getMarkdownFiles: () => [file] },
+			metadataCache: {
+				getFileCache: () => ({
+					frontmatter: {
+						_crosswalker: { produced_at: '2026-01-01T00:00:00.000Z' },
+						kind: 'crosswalk-edge',
+						subject_id: 'example:D',
+						predicate_id: PREDICATE,
+						object_id: 'example:E',
+					},
+				}),
+			},
+		};
+
+		const result = await projectFromTier1(app as any, db, { yieldEvery: 100 });
+		expect(result.success).toBe(true);
+		expect(result.counts.mappings).toBe(1);
+		expect(queryRows(db, `SELECT COUNT(*) FROM closure_cache`)).toEqual([[0]]);
+		expect(queryRows(db, `SELECT COUNT(*) FROM closure_cache_state`)).toEqual([[0]]);
+	});
+});
+
+describe('Tier 2 closure cache migration', () => {
+	it.each([
+		['versioned v1', true],
+		['unversioned', false],
+	])('rebuilds a %s database instead of preserving the old cache shape', (_label, versioned) => {
+		const db = createTestDb();
+		try {
+			db.exec(`
+				${versioned ? 'CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);' : ''}
+				CREATE TABLE closure_cache (
+					subject_id TEXT NOT NULL,
+					predicate_id TEXT NOT NULL,
+					object_id TEXT NOT NULL,
+					shortest_depth INTEGER NOT NULL,
+					computed_at TEXT NOT NULL,
+					PRIMARY KEY (subject_id, predicate_id, object_id)
+				);
+			`);
+			if (versioned) {
+				db.exec(`INSERT INTO schema_meta(key, value) VALUES ('schema_version', 'tier2-sqlite-v1')`);
+			}
+			db.exec(`
+				INSERT INTO closure_cache
+					(subject_id, predicate_id, object_id, shortest_depth, computed_at)
+				VALUES ('example:A', '${PREDICATE}', 'example:B', 1, 'old')
+			`);
+
+			applyMigrations(db);
+
+			expect(getCurrentSchemaVersion(db)).toBe(TIER2_SCHEMA_VERSION);
+			expect(queryRows(db, `SELECT COUNT(*) FROM closure_cache`)).toEqual([[0]]);
+			expect(
+				queryRows(db, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'closure_cache_state'`),
+			).toEqual([['closure_cache_state']]);
+		} finally {
+			db.close();
+		}
+	});
+});

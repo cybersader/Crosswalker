@@ -10,6 +10,8 @@ tags: [schema, foundation, v0-1, architecture]
 import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
 
 :::caution[Freshness — verified 2026-07-25, with known drift]
+**Tier 2 cache addendum verified 2026-08-20:** the schema-version, closure-cache, and migration passages below were re-checked against `src/tier2/schema.sql`, `src/tier2/migrations.ts`, and `src/tier2/queries.ts`. The broader field-by-field verification remains dated 2026-07-25.
+
 **Status: verified current as of 2026-07-25 for the shipped contracts.** Every claim below was re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql` on that date. The framing sections (§1, §2, §8 invariants 1 through 5, §9, §10) and the §4 pointer to the machine-readable recipe contract are current; §4 already carries its own historical-sketch caution for the TypeScript/YAML sketch beneath it.
 
 **Known drift — this page declares things the machine schemas do not ship.** Each item was verified, not assumed. Where this page and a machine schema disagree, **the machine schema is authoritative.** These gaps are open decisions in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) (Gate α: P1 through P6), so the body below is preserved as written rather than quietly edited:
@@ -788,7 +790,7 @@ v0.1 substrate is `@sqlite.org/sqlite-wasm` + `sqlite-vec` (canonical, foundatio
 ```sql
 -- ================================================================
 -- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
--- Schema version: tier2-sqlite-v1
+-- Schema version: tier2-sqlite-v2
 -- ================================================================
 
 PRAGMA journal_mode = WAL;          -- or TRUNCATE on OPFS per Ch 18
@@ -801,7 +803,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
   value TEXT NOT NULL
 );
 INSERT OR REPLACE INTO schema_meta(key, value) VALUES
-  ('schema_version', 'tier2-sqlite-v1'),
+  ('schema_version', 'tier2-sqlite-v2'),
   ('projected_at', strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
   ('crosswalker_version', '0.2.0');
 
@@ -952,6 +954,16 @@ CREATE TABLE IF NOT EXISTS closure_cache (
 CREATE INDEX IF NOT EXISTS idx_closure_obj_pred
   ON closure_cache(object_id, predicate_id);
 
+-- Proves that one (subject, predicate-filter) partition was fully computed
+-- through the recorded depth, including valid empty closures.
+CREATE TABLE IF NOT EXISTS closure_cache_state (
+  subject_id         TEXT NOT NULL,
+  predicate_id       TEXT NOT NULL,
+  computed_max_depth INTEGER NOT NULL CHECK (computed_max_depth >= 0),
+  computed_at        TEXT NOT NULL,
+  PRIMARY KEY (subject_id, predicate_id)
+);
+
 -- ================================================================
 -- Vector embeddings for semantic similarity (sqlite-vec, optional)
 -- Only populated if user enables the embedding feature.
@@ -971,16 +983,13 @@ The projector (a TypeScript module in `packages/core/`) executes on vault load:
 3. **Walk control notes**: for each `.md` file with `_crosswalker.control_id` set, insert/upsert into `controls`.
 4. **Extract crosswalk edges**: for each control note, parse STRM predicate frontmatter (`is_equivalent_to`, etc.) and insert one `mappings` row per wikilink target. Object form (with metadata) is parsed into the SSSOM envelope columns.
 5. **Walk junction notes**: for each `.md` file with `link_type: evidence_link`, insert/upsert into `junction_notes`.
-6. **Invalidate closure cache** if any `mappings` row changed.
+6. **Invalidate closure rows and coverage state atomically** if any `mappings` row changed.
 
 Projection is idempotent. Re-running on an unchanged vault is a no-op (mtime check + content hash).
 
 ### Schema-version migration
 
-When the Tier 2 SQL schema bumps from `tier2-sqlite-v1` to `tier2-sqlite-v2`:
-- Simplest path: drop the .sqlite, reproject from canonical Tier 1.
-- Faster path: per-version `ALTER TABLE` migration.
-- v0.1 ships only `tier2-sqlite-v1`; the migration mechanism is documented but not exercised yet.
+Tier 2 now ships `tier2-sqlite-v2`. Opening a sidecar with any other version, or an unversioned database carrying old tables, deliberately drops and recreates the derived schema before reprojection from canonical Tier 1. The v1 → v2 transition adds `closure_cache_state`; preserving the old row-only cache would retain ambiguous depth coverage.
 
 ## §8 Cross-schema invariants & constraints
 

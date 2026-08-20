@@ -12,11 +12,10 @@
  *   - crosswalkBetween(db, subjectOntology, objectOntology, predicateId?)
  *   - closureFromConcept(db, startCurie, predicateId?, maxDepth?)
  *
- * Closure-cache materialization (Ch 18 §2.5): the first call to
- * closureFromConcept that finds the cache empty for a given query
- * computes the recursive CTE, populates the cache, and returns. Subsequent
- * calls hit the cache. Invalidation happens in the projector after any
- * mappings change.
+ * Closure-cache materialization (Ch 18 §2.5): each (start, predicate)
+ * partition records the maximum depth fully computed. Equal or shallower
+ * requests reuse it; deeper requests atomically replace and advance it.
+ * Invalidation happens in the projector after any mappings change.
  */
 
 /**
@@ -56,18 +55,28 @@ export interface MappingRow {
  *   - subject_id = the START of the chain (the starting concept the
  *                  closure was queried from)
  *   - object_id  = the REACHABLE TARGET (a concept reachable from start)
- *   - predicate_id = the predicate-filter applied (or '*' if no filter)
+ *   - predicate_id = the predicate-filter applied (or the reserved '*' cache marker if no filter)
  *   - shortest_depth = number of edges in the shortest chain start → target
  */
 export interface ClosureEntry {
 	/** Starting CURIE (constant across rows produced by one query). */
 	start_curie: string;
-	/** Predicate filter applied (or '*' for no filter). */
+	/** Predicate filter applied (or the reserved '*' cache marker for no filter). */
 	predicate_filter: string;
 	/** A concept reachable from start_curie. */
 	target_curie: string;
 	/** Number of edges in the shortest path start → target. */
 	shortest_depth: number;
+}
+
+const WILDCARD_PREDICATE_FILTER = '*';
+
+function assertPredicateFilterIsNotReserved(predicateId?: string): void {
+	if (predicateId === WILDCARD_PREDICATE_FILTER) {
+		throw new RangeError(
+			`predicateId '${WILDCARD_PREDICATE_FILTER}' is reserved for unfiltered closure queries`,
+		);
+	}
 }
 
 // ============================================================================
@@ -187,14 +196,16 @@ export function crosswalkBetween(
  *
  * **Lazy closure-cache behavior (Ch 18 §2.5):**
  *
- * 1. First call for a given (start, predicate, maxDepth) tuple: check
- *    `closure_cache` for matching rows. If empty (or missing for this
- *    starting CURIE), compute the recursive CTE, INSERT OR REPLACE
- *    results into `closure_cache`, return them.
- * 2. Subsequent calls: read from `closure_cache` directly.
+ * 1. A cache-state row records the maximum depth fully computed for each
+ *    (start, predicate) partition. Cached rows are authoritative only when
+ *    that watermark covers the requested depth.
+ * 2. A deeper request replaces that partition atomically, then advances the
+ *    watermark. Shallower requests reuse the deeper rows with a SQL depth filter.
+ * 3. The separate state row makes a computed empty closure distinguishable
+ *    from a cache miss.
  *
  * **Cache invalidation**: the projector (`src/tier2/projector.ts`)
- * deletes from `closure_cache` after any mappings rows change. So a
+ * deletes from both cache tables after any mappings rows change. So a
  * fresh projection invalidates all cached closures globally — simple
  * and correct (mtime-based per-row invalidation is a future
  * optimization).
@@ -210,139 +221,144 @@ export function closureFromConcept(
 	predicateId?: string,
 	maxDepth: number = 10,
 ): ClosureEntry[] {
-	const predicateFilter = predicateId ?? '*';
+	if (!Number.isInteger(maxDepth) || maxDepth < 0) {
+		throw new RangeError('maxDepth must be a non-negative integer');
+	}
+	assertPredicateFilterIsNotReserved(predicateId);
 
-	// Step 1: cache check. Cache hit = at least one row exists in
-	// closure_cache for (subject_id=startCurie, predicate_id=predicateFilter).
-	// The projector clears closure_cache after any mappings change, so
-	// any rows present here are valid for the current Tier 2 state.
-	const cached = readCache(db, startCurie, predicateFilter);
-	if (cached.length > 0) {
-		return cached.filter((c) => c.shortest_depth <= maxDepth);
+	const predicateFilter = predicateId ?? WILDCARD_PREDICATE_FILTER;
+	const hasPredicateFilter = typeof predicateId === 'string';
+
+	// The watermark, not row count, proves cache completeness. A valid cache
+	// partition may contain zero rows when the start concept has no outbound edges.
+	const cached = readCache(db, startCurie, predicateFilter, maxDepth);
+	if (cached !== null) {
+		return cached;
 	}
 
-	// Step 2: compute recursive CTE.
-	// Each row in the CTE encodes (start, target, depth) where start is
-	// the original startCurie (constant across all rows of one query).
-	// Cycle detection via delimited `path` string + `instr` membership check.
-	const baseSql = predicateId
-		? `
-			WITH RECURSIVE
-			  closure(start_curie, target, depth, path) AS (
-			    SELECT
-			      $start,
-			      m.object_id,
-			      1 AS depth,
-			      '|' || $start || '|' || m.object_id || '|' AS path
-			    FROM mappings m
-			    WHERE m.subject_id = $start AND m.predicate_id = $pred
+	let entries: ClosureEntry[] = [];
+	if (maxDepth > 0) {
+		// Each row in the CTE encodes (start, target, depth) where start is
+		// the original startCurie (constant across all rows of one query).
+		// Cycle detection uses a delimited path + instr membership check.
+		const baseSql = hasPredicateFilter
+			? `
+				WITH RECURSIVE
+				  closure(start_curie, target, depth, path) AS (
+				    SELECT
+				      $start,
+				      m.object_id,
+				      1 AS depth,
+				      '|' || $start || '|' || m.object_id || '|' AS path
+				    FROM mappings m
+				    WHERE m.subject_id = $start AND m.predicate_id = $pred
 
-			    UNION ALL
+				    UNION ALL
 
-			    SELECT
-			      c.start_curie,
-			      m.object_id,
-			      c.depth + 1,
-			      c.path || m.object_id || '|'
-			    FROM mappings m
-			    JOIN closure c ON m.subject_id = c.target
-			    WHERE c.depth < $max
-			      AND m.predicate_id = $pred
-			      AND instr(c.path, '|' || m.object_id || '|') = 0
-			  )
-			SELECT start_curie, target, MIN(depth) AS shortest_depth
-			FROM closure
-			GROUP BY start_curie, target
-			ORDER BY shortest_depth, target
-		`
-		: `
-			WITH RECURSIVE
-			  closure(start_curie, target, depth, path) AS (
-			    SELECT
-			      $start,
-			      m.object_id,
-			      1 AS depth,
-			      '|' || $start || '|' || m.object_id || '|' AS path
-			    FROM mappings m
-			    WHERE m.subject_id = $start
+				    SELECT
+				      c.start_curie,
+				      m.object_id,
+				      c.depth + 1,
+				      c.path || m.object_id || '|'
+				    FROM mappings m
+				    JOIN closure c ON m.subject_id = c.target
+				    WHERE c.depth < $max
+				      AND m.predicate_id = $pred
+				      AND instr(c.path, '|' || m.object_id || '|') = 0
+				  )
+				SELECT start_curie, target, MIN(depth) AS shortest_depth
+				FROM closure
+				GROUP BY start_curie, target
+				ORDER BY shortest_depth, target
+			`
+			: `
+				WITH RECURSIVE
+				  closure(start_curie, target, depth, path) AS (
+				    SELECT
+				      $start,
+				      m.object_id,
+				      1 AS depth,
+				      '|' || $start || '|' || m.object_id || '|' AS path
+				    FROM mappings m
+				    WHERE m.subject_id = $start
 
-			    UNION ALL
+				    UNION ALL
 
-			    SELECT
-			      c.start_curie,
-			      m.object_id,
-			      c.depth + 1,
-			      c.path || m.object_id || '|'
-			    FROM mappings m
-			    JOIN closure c ON m.subject_id = c.target
-			    WHERE c.depth < $max
-			      AND instr(c.path, '|' || m.object_id || '|') = 0
-			  )
-			SELECT start_curie, target, MIN(depth) AS shortest_depth
-			FROM closure
-			GROUP BY start_curie, target
-			ORDER BY shortest_depth, target
-		`;
+				    SELECT
+				      c.start_curie,
+				      m.object_id,
+				      c.depth + 1,
+				      c.path || m.object_id || '|'
+				    FROM mappings m
+				    JOIN closure c ON m.subject_id = c.target
+				    WHERE c.depth < $max
+				      AND instr(c.path, '|' || m.object_id || '|') = 0
+				  )
+				SELECT start_curie, target, MIN(depth) AS shortest_depth
+				FROM closure
+				GROUP BY start_curie, target
+				ORDER BY shortest_depth, target
+			`;
 
-	const bind: Record<string, unknown> = { $start: startCurie, $max: maxDepth };
-	if (predicateId) bind.$pred = predicateId;
+		const bind: Record<string, unknown> = { $start: startCurie, $max: maxDepth };
+		if (hasPredicateFilter) bind.$pred = predicateId;
 
-	const rows = db.exec({
-		sql: baseSql,
-		bind,
-		rowMode: 'array',
-		returnValue: 'resultRows',
-	}) as unknown[][];
+		const rows = db.exec({
+			sql: baseSql,
+			bind,
+			rowMode: 'array',
+			returnValue: 'resultRows',
+		}) as unknown[][];
 
-	const entries: ClosureEntry[] = rows.map((r) => ({
-		start_curie: String(r[0]),
-		predicate_filter: predicateFilter,
-		target_curie: String(r[1]),
-		shortest_depth: Number(r[2]),
-	}));
-
-	// Step 3: populate the cache. Schema columns (subject_id, predicate_id,
-	// object_id) carry semantic meaning (start, predicate-filter, target)
-	// per the ClosureEntry interface comment.
-	const computedAt = new Date().toISOString();
-	for (const entry of entries) {
-		db.exec({
-			sql: `
-				INSERT OR REPLACE INTO closure_cache
-					(subject_id, predicate_id, object_id, shortest_depth, computed_at)
-				VALUES ($subj, $pred, $obj, $depth, $at)
-			`,
-			bind: {
-				$subj: entry.start_curie,
-				$pred: entry.predicate_filter,
-				$obj: entry.target_curie,
-				$depth: entry.shortest_depth,
-				$at: computedAt,
-			},
-		});
+		entries = rows.map((r) => ({
+			start_curie: String(r[0]),
+			predicate_filter: predicateFilter,
+			target_curie: String(r[1]),
+			shortest_depth: Number(r[2]),
+		}));
 	}
 
+	replaceCache(db, startCurie, predicateFilter, maxDepth, entries);
 	return entries;
 }
 
 /**
- * Read closure-cache rows for a starting CURIE. Returns empty array if
- * no rows match — caller treats that as "cache miss" and recomputes.
- *
- * Cache row semantics (per the ClosureEntry comment): subject_id holds
- * the START of the chain (constant for all rows of one closure query);
- * object_id holds the REACHABLE target. So `WHERE subject_id = $start`
- * returns the full closure for that starting CURIE.
+ * Read a cache partition only when its coverage watermark proves it was
+ * completely computed through maxDepth. Returns null for a cache miss;
+ * an empty array is a valid cached empty closure.
  */
-function readCache(db: any, startCurie: string, predicateFilter: string): ClosureEntry[] {
+function readCache(
+	db: any,
+	startCurie: string,
+	predicateFilter: string,
+	maxDepth: number,
+): ClosureEntry[] | null {
+	const state = db.exec({
+		sql: `
+			SELECT computed_max_depth
+			FROM closure_cache_state
+			WHERE subject_id = $start AND predicate_id = $pred
+			LIMIT 1
+		`,
+		bind: { $start: startCurie, $pred: predicateFilter },
+		rowMode: 'array',
+		returnValue: 'resultRows',
+	}) as unknown[][];
+
+	if (state.length === 0 || Number(state[0][0]) < maxDepth) {
+		return null;
+	}
+
 	const rows = db.exec({
 		sql: `
 			SELECT subject_id, predicate_id, object_id, shortest_depth
 			FROM closure_cache
-			WHERE subject_id = $start AND predicate_id = $pred
+			WHERE subject_id = $start
+			  AND predicate_id = $pred
+			  AND shortest_depth <= $max
 			ORDER BY shortest_depth, object_id
 		`,
-		bind: { $start: startCurie, $pred: predicateFilter },
+		bind: { $start: startCurie, $pred: predicateFilter, $max: maxDepth },
 		rowMode: 'array',
 		returnValue: 'resultRows',
 	}) as unknown[][];
@@ -353,6 +369,73 @@ function readCache(db: any, startCurie: string, predicateFilter: string): Closur
 		target_curie: String(r[2]),
 		shortest_depth: Number(r[3]),
 	}));
+}
+
+/**
+ * Replace one cache partition and advance its coverage watermark atomically.
+ * The watermark is written last so a failed row insert cannot advertise
+ * completeness the cache does not contain.
+ */
+function replaceCache(
+	db: any,
+	startCurie: string,
+	predicateFilter: string,
+	maxDepth: number,
+	entries: ClosureEntry[],
+): void {
+	const computedAt = new Date().toISOString();
+	db.exec('SAVEPOINT closure_cache_replace');
+
+	try {
+		db.exec({
+			sql: 'DELETE FROM closure_cache_state WHERE subject_id = $start AND predicate_id = $pred',
+			bind: { $start: startCurie, $pred: predicateFilter },
+		});
+		db.exec({
+			sql: 'DELETE FROM closure_cache WHERE subject_id = $start AND predicate_id = $pred',
+			bind: { $start: startCurie, $pred: predicateFilter },
+		});
+
+		for (const entry of entries) {
+			db.exec({
+				sql: `
+					INSERT INTO closure_cache
+						(subject_id, predicate_id, object_id, shortest_depth, computed_at)
+					VALUES ($subj, $pred, $obj, $depth, $at)
+				`,
+				bind: {
+					$subj: entry.start_curie,
+					$pred: entry.predicate_filter,
+					$obj: entry.target_curie,
+					$depth: entry.shortest_depth,
+					$at: computedAt,
+				},
+			});
+		}
+
+		db.exec({
+			sql: `
+				INSERT INTO closure_cache_state
+					(subject_id, predicate_id, computed_max_depth, computed_at)
+				VALUES ($subj, $pred, $max, $at)
+			`,
+			bind: {
+				$subj: startCurie,
+				$pred: predicateFilter,
+				$max: maxDepth,
+				$at: computedAt,
+			},
+		});
+		db.exec('RELEASE closure_cache_replace');
+	} catch (error) {
+		try {
+			db.exec('ROLLBACK TO closure_cache_replace');
+			db.exec('RELEASE closure_cache_replace');
+		} catch {
+			// Preserve the original cache-write error if rollback also fails.
+		}
+		throw error;
+	}
 }
 
 /**
@@ -380,14 +463,20 @@ export function precomputeClosureForOntologyPair(
 	predicateId?: string,
 	maxDepth = 10,
 ): number {
+	if (!Number.isInteger(maxDepth) || maxDepth < 0) {
+		throw new RangeError('maxDepth must be a non-negative integer');
+	}
+	assertPredicateFilterIsNotReserved(predicateId);
+
 	const sourcePrefix = `${sourceOntology}:`;
+	const hasPredicateFilter = typeof predicateId === 'string';
 	const subjects = db.exec({
 		sql: `
 			SELECT DISTINCT subject_id FROM mappings
-			WHERE subject_id LIKE $prefix || '%'
-			${predicateId ? 'AND predicate_id = $pred' : ''}
+			WHERE substr(subject_id, 1, length($prefix)) = $prefix
+			${hasPredicateFilter ? 'AND predicate_id = $pred' : ''}
 		`,
-		bind: predicateId
+		bind: hasPredicateFilter
 			? { $prefix: sourcePrefix, $pred: predicateId }
 			: { $prefix: sourcePrefix },
 		rowMode: 'array',
@@ -404,10 +493,17 @@ export function precomputeClosureForOntologyPair(
 	const count = db.exec({
 		sql: `
 			SELECT COUNT(*) FROM closure_cache cc
-			WHERE cc.subject_id LIKE $sourcePrefix || '%'
-			  AND cc.object_id LIKE $targetPrefix || '%'
+			WHERE substr(cc.subject_id, 1, length($sourcePrefix)) = $sourcePrefix
+			  AND substr(cc.object_id, 1, length($targetPrefix)) = $targetPrefix
+			  AND cc.predicate_id = $predicateFilter
+			  AND cc.shortest_depth <= $max
 		`,
-		bind: { $sourcePrefix: sourcePrefix, $targetPrefix: `${targetOntology}:` },
+		bind: {
+			$sourcePrefix: sourcePrefix,
+			$targetPrefix: `${targetOntology}:`,
+			$predicateFilter: predicateId ?? WILDCARD_PREDICATE_FILTER,
+			$max: maxDepth,
+		},
 		rowMode: 'array',
 		returnValue: 'resultRows',
 	}) as unknown[][];

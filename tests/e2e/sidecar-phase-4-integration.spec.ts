@@ -93,7 +93,7 @@ describe('Crosswalker plugin — v0.1.5 Phase 4 plugin integration', function ()
 		});
 
 		expect(result.success).toBe(true);
-		// At least the schema_meta tier2-sqlite-v1 row exists (sidecar
+		// At least the schema_meta tier2-sqlite-v2 row exists (sidecar
 		// is operational); concept counts may be 0 if no Tier 1 fixtures
 		// remain from prior tests, which is fine — the test verifies
 		// recovery, not specific counts

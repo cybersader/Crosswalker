@@ -1,7 +1,7 @@
 /**
  * Tier 2 schema migrations.
  *
- * v0.1.5 ships only `tier2-sqlite-v1`. If a sidecar reports a different
+ * Tier 2 currently ships `tier2-sqlite-v2`. If a sidecar reports a different
  * schema_version (or no version at all), the simplest correct response
  * is to drop all tables and recreate from canonical Tier 1. The Tier 1
  * vault is the source of truth; the sidecar is a deletable projection.
@@ -13,10 +13,10 @@
  * risk-free to bundle in v0.1."
  */
 
-export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v1';
+export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v2';
 
 /**
- * The DDL for tier2-sqlite-v1. Imported as a string at build time
+ * The DDL for tier2-sqlite-v2. Imported as a string at build time
  * from src/tier2/schema.sql. esbuild's `text` loader handles `.sql`
  * imports as plain strings.
  *
@@ -24,7 +24,7 @@ export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v1';
  * default TS pipeline doesn't auto-load .sql; explicit constants
  * keep the build simple.
  */
-export const TIER2_DDL_V1 = `
+export const TIER2_DDL_V2 = `
 PRAGMA foreign_keys = ON;
 PRAGMA synchronous = NORMAL;
 
@@ -128,6 +128,14 @@ CREATE TABLE IF NOT EXISTS closure_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_closure_obj_pred ON closure_cache(object_id, predicate_id);
+
+CREATE TABLE IF NOT EXISTS closure_cache_state (
+  subject_id         TEXT NOT NULL,
+  predicate_id       TEXT NOT NULL,
+  computed_max_depth INTEGER NOT NULL CHECK (computed_max_depth >= 0),
+  computed_at        TEXT NOT NULL,
+  PRIMARY KEY (subject_id, predicate_id)
+);
 `.trim();
 
 /**
@@ -152,7 +160,7 @@ export function getCurrentSchemaVersion(db: any): string | null {
 /**
  * Apply the migration to bring the database to TIER2_SCHEMA_VERSION.
  *
- * v0.1.5 strategy: any version mismatch (or no version) → drop all
+ * Migration strategy: any version mismatch (or no version) → drop all
  * tables + recreate. This is correct because Tier 2 is purely a
  * projection of canonical Tier 1; nothing is lost on rebuild beyond
  * the cached closure (which gets recomputed on demand).
@@ -165,21 +173,22 @@ export function applyMigrations(db: any): void {
 		return;
 	}
 
-	if (current !== null) {
-		// Version mismatch — drop everything and recreate
-		db.exec(`
-			DROP VIEW IF EXISTS junction_notes_with_freshness;
-			DROP TABLE IF EXISTS closure_cache;
-			DROP TABLE IF EXISTS junction_notes;
-			DROP TABLE IF EXISTS mappings;
-			DROP TABLE IF EXISTS concepts;
-			DROP TABLE IF EXISTS ontologies;
-			DROP TABLE IF EXISTS schema_meta;
-		`);
-	}
+	// Tier 2 is fully derived, so every non-current state is rebuilt. This
+	// deliberately includes unversioned databases: CREATE TABLE IF NOT EXISTS
+	// must not preserve an old cache shape and then stamp it as current.
+	db.exec(`
+		DROP VIEW IF EXISTS junction_notes_with_freshness;
+		DROP TABLE IF EXISTS closure_cache_state;
+		DROP TABLE IF EXISTS closure_cache;
+		DROP TABLE IF EXISTS junction_notes;
+		DROP TABLE IF EXISTS mappings;
+		DROP TABLE IF EXISTS concepts;
+		DROP TABLE IF EXISTS ontologies;
+		DROP TABLE IF EXISTS schema_meta;
+	`);
 
-	// Apply the v1 DDL
-	db.exec(TIER2_DDL_V1);
+	// Apply the v2 DDL
+	db.exec(TIER2_DDL_V2);
 
 	// Stamp the version + timestamps
 	db.exec({

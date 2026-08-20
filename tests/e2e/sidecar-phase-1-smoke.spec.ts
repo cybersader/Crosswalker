@@ -8,7 +8,7 @@
  *   4. sqlite_version() returns a real version string (smoke check that
  *      the runtime is fully initialized — sqlite-vec deferred per Ch 24
  *      §5 Q4, revisit by 2026-11-06)
- *   5. Schema migrations applied (schema_meta has tier2-sqlite-v1)
+ *   5. Schema migrations applied (schema_meta has tier2-sqlite-v2)
  *   6. clear-tier-2-sidecar command exists and registers
  *
  * NOT a milestone gate (that's the bigger sidecar.spec.ts in Phase 5).
@@ -79,7 +79,7 @@ describe('Crosswalker plugin — v0.1.5 Phase 1 substrate scaffolding (smoke)', 
 		expect(Number(value)).toBe(1);
 	});
 
-	it('schema migrations applied — schema_meta has tier2-sqlite-v1', async () => {
+	it('schema migrations applied — schema_meta has tier2-sqlite-v2', async () => {
 		const version = await browser.executeObsidian(async ({ app }) => {
 			// @ts-expect-error - internal plugin lookup
 			const plugin = app.plugins.plugins['crosswalker'];
@@ -92,7 +92,7 @@ describe('Crosswalker plugin — v0.1.5 Phase 1 substrate scaffolding (smoke)', 
 			return rows[0]?.[0] ?? null;
 		});
 
-		expect(version).toBe('tier2-sqlite-v1');
+		expect(version).toBe('tier2-sqlite-v2');
 	});
 
 	it('all expected tables exist after migration', async () => {
@@ -110,6 +110,7 @@ describe('Crosswalker plugin — v0.1.5 Phase 1 substrate scaffolding (smoke)', 
 
 		const expectedTables = [
 			'closure_cache',
+			'closure_cache_state',
 			'concepts',
 			'junction_notes',
 			'junction_notes_with_freshness',
