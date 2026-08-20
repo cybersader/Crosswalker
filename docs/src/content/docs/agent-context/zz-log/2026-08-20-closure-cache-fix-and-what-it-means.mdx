@@ -1,0 +1,128 @@
+---
+title: "A silent wrong-answer bug, fixed — and the one still open"
+description: "Written as a funnel for someone returning to the project cold. What Crosswalker is, what broke, why it mattered for real compliance work, what was fixed on 2026-08-20, and the one related decision still waiting. Read the first section and stop if that is all you need."
+tags: [decision, tier2, closure, correctness, session-summary]
+date: 2026-08-20
+sidebar:
+  label: "08-20 · Closure cache fix"
+  order: -20260820
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="How to read this">
+This page narrows as it goes. **Section 1 is thirty seconds** and may be all you need. Each section after it adds detail for anyone who wants it. Stop wherever you have enough.
+</Aside>
+
+## 1. Thirty seconds
+
+**Crosswalker** imports compliance frameworks (NIST, CIS, MITRE) into an Obsidian vault as ordinary markdown notes, and lets you link your evidence to them and ask questions across frameworks. The goal driving the whole project is being able to use it for real work at an organization.
+
+**What happened today:** a bug was found and fixed that made the tool give **quietly wrong answers** to "what is this control connected to?" — not an error message, just an incomplete answer that looked complete.
+
+**What you need to do:** nothing urgent. There is **one related decision** waiting for you, described in section 5. It is the same kind of problem — the tool being confidently wrong instead of saying "I do not know" — in a different place.
+
+---
+
+## 2. Two minutes: what the bug actually was
+
+Crosswalker stores relationships between controls. "AC-2 in NIST is equivalent to A.9.2.1 in ISO." Those relationships chain together: if A connects to B, and B connects to C, then A reaches C in **two hops**.
+
+**Following those chains is called "closure."** When you ask a question like *"show me everything AC-2 connects to,"* you also say how far to follow the chain — one hop, or ten.
+
+Because following chains is slow, the tool **saves the answer** so the next identical question is instant. That saved answer is a **cache** (a stored result kept so the work is not repeated).
+
+Here is what went wrong. The saved answer **did not record how far it had looked.**
+
+| You ask | What happened |
+|---|---|
+| First: "what connects within **1 hop**?" | Tool looks 1 hop deep, finds the answer, saves it |
+| Later: "what connects within **10 hops**?" | Tool sees a saved answer, uses it, and returns **the 1-hop answer** |
+
+The second answer was wrong. It was missing everything between 2 and 10 hops away. And nothing warned you — no error, no empty result, just a shorter list that looked like a complete one.
+
+Whichever question you happened to ask **first** silently determined the answer to every question after it.
+
+---
+
+## 3. Why this mattered for using Crosswalker at work
+
+This is not an obscure internal detail. Chain-following is exactly what makes the tool worth using.
+
+The reason to import three frameworks instead of one is to ask questions like *"our evidence covers this NIST control — what does that also satisfy in ISO and CIS?"* Answering that means following chains across frameworks. That is closure.
+
+So the failure mode was: **an incomplete coverage answer that looks complete.** In compliance work, that is the worst shape a wrong answer can take — you cannot tell it is wrong by looking at it, and you might report it to someone.
+
+<Aside type="caution" title="Was any real work affected?">
+Almost certainly not. The project is pre-alpha with no users, and the effect only appears once you have chains longer than one hop and ask at more than one depth. But it is exactly the class of defect that must be gone **before** real work goes into a vault, not after.
+</Aside>
+
+---
+
+## 4. What was fixed
+
+**The tool now remembers how deep each saved answer looked.**
+
+A small companion record stores, for every saved answer, the depth it was computed to. When a question arrives:
+
+- If the saved answer went **at least** as deep as you are asking, it is used, trimmed to your depth. Fast, and correct.
+- If the saved answer was **shallower** than you are asking, it is ignored and the real work is redone.
+
+So a 1-hop answer can never again be handed back to a 10-hop question.
+
+Two smaller problems were fixed in the same pass:
+
+| Also fixed | Plain description |
+|---|---|
+| Empty answers were never saved | If a control genuinely connects to nothing, the tool could not tell "nothing found" apart from "not looked up yet," so it re-did that work forever. It now saves the empty answer properly |
+| An upgrade could keep the broken storage | When the internal database format changes, old storage is supposed to be rebuilt. A database with no version stamp could slip through, keep the old broken shape, and then be marked current. That gap is closed |
+
+Checks: type-check clean, linter clean, **1,251 tests passing** (17 new ones added, including a test that specifically reproduces the shallow-then-deep failure). All four CI workflows green.
+
+<Aside type="note" title="A near-miss worth recording">
+A separate review caught something the three adversarial reviewers on this work missed: the new tests only run under Node, not Bun, and the CI setup never pinned a Node version. It passed locally and would have failed in CI on whichever machine happened to have an older Node. Now pinned explicitly, with the reasoning written into the workflow file so nobody "cleans it up" later.
+</Aside>
+
+---
+
+## 5. The one decision waiting for you
+
+Same family of problem — the tool being confidently wrong rather than admitting ignorance — in a different place. **This is pre-existing, not caused by today's fix**, but today's fix makes it more likely to fire.
+
+**The setup.** Crosswalker keeps a fast lookup database built *from* your markdown notes. The notes are the real thing; the database is a rebuildable convenience. When its internal format changes, the database is wiped and rebuilt from your notes on the next vault load.
+
+**The gap.** Wiping and rebuilding are two separate steps, and the rebuild can be **switched off in settings**. If it is off, the wipe still happens. You are then left with an empty database that nothing refills — and queries against it return **empty results rather than an error.** "No controls match" is indistinguishable from "the index is empty because it was never rebuilt."
+
+Today's fix changes the internal format, which means this wipe will happen on next load for any existing vault. That is why it is worth deciding now.
+
+### Your options
+
+| Option | What it does | Trade-off |
+|---|---|---|
+| **Make the index admit it is empty** *(recommended)* | Record whether a rebuild has actually happened since the wipe. If not, queries say "index not built" instead of returning nothing | Small amount of work. Respects your setting. Turns a silent wrong answer into an honest one |
+| **Always rebuild after a wipe** | Force the rebuild even if the setting says off | Simplest, but overrides a choice you deliberately made |
+| **Just warn** | Show a notice when the index is wiped | Cheapest, easiest to miss, does not fix the query answer |
+
+I recommend the first. It is the same principle as today's fix: when the tool does not know, it should say so rather than return something that looks like an answer.
+
+---
+
+## 6. Where the wider work stands
+
+Beyond this fix, recent sessions produced:
+
+| Area | State |
+|---|---|
+| Uncommitted backlog | Landed as 16 commits, merged, pushed |
+| Automatic checks | A scanner that blocks personal data, paths, and emails from being committed; static checks now actually run in CI (they never did) |
+| Open decisions (the "P" cards) | All 11 decided. Four were sent to adversarial review first, and **all four original recommendations turned out to be wrong** |
+| Research | Two challenge briefs filed and one run: what blocks real organizational use |
+| Documentation | A false safety promise removed — the quick-start told readers a re-import preserved anything they wrote, which was untrue for note bodies |
+
+**Ratified but not yet built:** stable identifiers on relationships, framework-release provenance, a relationship-properties table, and a vocabulary cleanup sweep. Those are specced but the specs need one more pass — a reviewer found they still leave design choices open and contradict each other in places.
+
+## Related
+
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) — the decision cards
+- [Primitives review, in plain language](/crosswalker/agent-context/zz-log/2026-08-19-primitives-vocabulary-adversarial-review/) — the four overturned recommendations
+- [Ch 45 — org rollout readiness](/crosswalker/agent-context/zz-challenges/45-org-rollout-readiness/) — the research that surfaced this bug
