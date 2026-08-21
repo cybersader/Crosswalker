@@ -134,6 +134,43 @@ Rules:
 - If any session catches itself doing >~15 min of work below its tier, delegate it (or, for the architect, spec it for the next orchestrator session).
 - Worked example of the loop: 2026-07-05 variadic folder expansion (`.workspace/2026-07-05-variadic-split-and-folder-note-design.md` → Sonnet implementation → architect review + commit).
 
+## Resource discipline (HARD — this host is shared)
+
+This workstation runs several Claude sessions plus other projects against a shared
+cgroup. Tools that size themselves to the machine are hostile here: each assumes it
+is alone. Three separate incidents on 2026-08-21 traced to exactly that, including a
+desktop lockup at load ~39 with 12 GiB spilled to swap.
+
+**Caps already in place — do not raise them, do not override them per-invocation:**
+
+| Cap | Where | Why |
+|---|---|---|
+| Jest `maxWorkers: 2` | `jest.config.js` | Default is ~1 worker/core; three verification agents running the suite at once spawned ~21 workers on 8 cores |
+| Playwright `workers: 2` | `docs/playwright.config.ts` | Default saturated the single-threaded `astro preview`, making every spec fail on `page.goto` timeout — which reads like a site regression, not a load problem |
+| Astro image service `noop` | `docs/astro.config.mjs` | `sharp` was loaded for a site with one 12 KB logo. Peak build memory 3 GB -> 1.35 GB (measured) |
+
+**Rules for any session or agent:**
+
+1. **Never run heavy commands concurrently.** One build, test wave, or lint at a time.
+   A workflow's parallel verify agents each invoking the full suite is the classic way
+   to violate this — prefer having them assert against one shared run where possible.
+2. **Exit code 143 is a SIGTERM, not a failure and not a hang.** A resource guard on
+   this machine terminates offending process groups. Treat that run as INTERRUPTED
+   WITH NO RESULT. Do not claim pass or fail from it, and do not immediately retry.
+3. **NEVER wrap a retry in `git stash` / `stash pop`.** Under pressure that risks the
+   working tree for no benefit. This was attempted once and was the wrong instinct.
+4. **Use `build-contained -- <cmd>`** for lint or docs builds when pressure is elevated.
+5. **Check before measuring:** `uptime` and `cat /proc/pressure/memory`. Instantaneous
+   `some avg10` near zero means a window is open even if the 5-minute average is high.
+6. **Measure, then cap — and record the number.** Every cap above cites a real
+   before/after figure. An unmeasured "seems better" is how these regress.
+7. **Prefer the cheap gate.** `check:mdx` catches MDX errors far cheaper than a full
+   site build, and CI builds the site authoritatively on every push.
+
+**When adding any new tool invoked from an agent workflow, give it an explicit
+resource ceiling rather than accepting its default.** That is the whole lesson: three
+independent tools, three defaults, three incidents.
+
 ## Environment (current dev machine)
 
 **Native Fedora Linux since 2026-08-19** — the repo moved off a Windows drive mounted into WSL and onto a native Linux home directory. Audited 2026-08-19:

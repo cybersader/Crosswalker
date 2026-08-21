@@ -53,6 +53,12 @@ The 0.1 design phase concluded 2026-05-04 and implementation began the same day.
 - **Empty closures are cached deliberately.** A separate coverage-state row distinguishes a computed empty result from a cache miss, and mapping projection invalidates cached rows and coverage together.
 - **Tier 2 schema upgraded to `tier2-sqlite-v2`.** Because the sidecar is fully derived from canonical Markdown, versioned and unversioned older schemas are deliberately rebuilt rather than preserving the ambiguous v1 cache shape.
 
+### Coverage views no longer count "explicitly not equivalent" as coverage (2026-08-21)
+
+- **A crosswalk row can say two concepts are explicitly NOT equivalent. The counting views were counting those rows as coverage** — reporting the opposite of what the data says, in exactly the reports a compliance reader trusts. The query engine already excluded negated assertions from relationship-chain results in both directions; the presentation layer is a separate code path and was missed when negation shipped. Three views are fixed: the two coverage matrices and the crosswalk-density table.
+- **The guard explicitly admits rows that carry no modifier at all**, which is nearly all of them. A bare inequality would have depended on how a missing property compares, and getting that wrong would have silently emptied every coverage view rather than merely miscounting it.
+- Pinned by a test written as a property over every counting view, so a fourth such view added later cannot quietly skip the guard.
+
 ### Re-import finds notes by identity, and stops counting things that are gone (2026-08-21)
 
 - **A re-import now finds a generated note by what it is, not where it sits.** Every generated note carries a stable identifier in its frontmatter, but the importer looked notes up by file path. If a note's address changed — a renamed output folder, a different destination, a changed layout — the re-import could not see the note it had made and wrote a second one beside it. Notes are now matched by identifier, and a note whose address changed is **moved** through Obsidian's rename (so links pointing at it follow) rather than duplicated. Two notes claiming one identifier is reported as an error rather than silently resolved.

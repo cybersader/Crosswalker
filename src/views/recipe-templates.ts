@@ -21,6 +21,9 @@ const TEMPLATES: Record<string, string> = {
   and:
     - file.inFolder("_crosswalker/mappings/csf-to-800-53")
     - 'confidence >= {{confidence_threshold}}'
+    - or:
+        - predicate_modifier.isEmpty()
+        - 'predicate_modifier != "NOT"'
 views:
   - type: crosswalker-pivot
     name: "NIST CSF → 800-53 coverage matrix"
@@ -35,6 +38,9 @@ views:
   and:
     - file.inFolder("_crosswalker/mappings/csf-to-mitre")
     - 'confidence >= {{confidence_threshold}}'
+    - or:
+        - predicate_modifier.isEmpty()
+        - 'predicate_modifier != "NOT"'
 {{#tactic_filter}}    - 'tactic == "{{tactic_filter}}"'
 {{/tactic_filter}}views:
   - type: crosswalker-pivot
@@ -49,6 +55,9 @@ views:
 	'crosswalk-density-by-framework': `filters:
   and:
     - file.inFolder("_crosswalker/mappings")
+    - or:
+        - predicate_modifier.isEmpty()
+        - 'predicate_modifier != "NOT"'
 formulas:
   pair: 'source_framework + " → " + target_framework'
 views:
