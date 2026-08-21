@@ -14,6 +14,12 @@ The 0.1 design phase concluded 2026-05-04 and implementation began the same day.
 - **Empty closures are cached deliberately.** A separate coverage-state row distinguishes a computed empty result from a cache miss, and mapping projection invalidates cached rows and coverage together.
 - **Tier 2 schema upgraded to `tier2-sqlite-v2`.** Because the sidecar is fully derived from canonical Markdown, versioned and unversioned older schemas are deliberately rebuilt rather than preserving the ambiguous v1 cache shape.
 
+### Tier 2 correctness: an emptied index no longer answers queries silently (2026-08-21)
+
+- **A schema rebuild now forces a reprojection.** Changing the internal database format empties every derived table, and rebuilding it was a separate step that could be switched off in settings. With it off, queries were served from an empty index and returned "nothing matches" rather than an error, which is indistinguishable from a vault that genuinely contains nothing. `openTier2()` now reprojects unconditionally when the schema was rebuilt. That setting governs routine auto-projection on vault load, not whether the index may be left knowingly empty while still answering questions.
+- **The migration stopped claiming a projection that never happened.** It stamped `projected_at` at the exact moment it emptied the tables. The value was read nowhere, so nothing was misled today, but recording the opposite of what is true is how a future reader gets misled. Removed, with the reason written down.
+- **Index proliferation recorded as a first-class cost** against the calendar-anchored `sqlite-vec` revisit. Verified that Tier 2 does not crawl the vault: it reads Obsidian's shared metadata cache rather than files, and stores rows only for Crosswalker-generated notes. Vector search is where that would change, so any future adoption must state what gets embedded and justify being another indexer.
+
 ### Infrastructure: mechanical personal-data gate + static checks in CI (2026-08-19)
 
 - **New `bun run check:personal-data` gate.** A regex scanner (no AI in the loop) that fails on machine-specific absolute paths, email addresses, and an optional local denylist of names/identifiers. Runs over the whole tracked tree by default, or `--staged` / `--range <gitrange>` for pre-commit and pre-merge use. Legitimate discussions of these patterns (PII-scrubbing decision logs, redaction tests, the reviewer agent's own detection rules) are allowlisted by path with a stated reason; well-known bot identities are allowlisted by address.

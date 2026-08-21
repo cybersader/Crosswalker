@@ -323,6 +323,46 @@ describe('Tier 2 closure cache depth', () => {
 	});
 });
 
+describe('Tier 2 migration reports whether it rebuilt', () => {
+	it('returns true when it rebuilds, so the caller knows to reproject', () => {
+		const db = createTestDb();
+		try {
+			// A fresh database has no schema at all, so migrating it is a rebuild:
+			// every derived table ends up empty and MUST be reprojected before any
+			// query answer can be trusted.
+			expect(applyMigrations(db)).toBe(true);
+			expect(getCurrentSchemaVersion(db)).toBe(TIER2_SCHEMA_VERSION);
+		} finally {
+			db.close();
+		}
+	});
+
+	it('returns false when already current, so no needless reprojection happens', () => {
+		const db = createTestDb();
+		try {
+			applyMigrations(db);
+			expect(applyMigrations(db)).toBe(false);
+		} finally {
+			db.close();
+		}
+	});
+
+	it('does not claim a projection happened while the tables are empty', () => {
+		const db = createTestDb();
+		try {
+			applyMigrations(db);
+			// `projected_at` previously got stamped here, asserting a projection at
+			// the exact moment every table was emptied. Nothing may record a
+			// projection that did not occur.
+			expect(
+				queryRows(db, `SELECT COUNT(*) FROM schema_meta WHERE key = 'projected_at'`),
+			).toEqual([[0]]);
+		} finally {
+			db.close();
+		}
+	});
+});
+
 describe('Tier 2 closure cache migration', () => {
 	it.each([
 		['versioned v1', true],

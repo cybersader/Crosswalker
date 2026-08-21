@@ -102,6 +102,29 @@ No commitments are abandoned. The vec layer is deferred, not removed.
 - **v0.1-RC** — ships without vec; bundle stays well under 1.2 MB
 - **2026-11-06 checkpoint** — revisit vec packaging state; sequence WASM-B retry or WASM-C custom build per signals at that time
 
+## §10 Owner input added 2026-08-21 — index proliferation is a first-class cost
+
+Raised by the owner while deciding an unrelated Tier 2 defect, and recorded here because it is a **direct input to the 2026-11-06 revisit** rather than to anything shipping sooner.
+
+**The concern, in the owner's framing:** a vault may eventually run several plugins that each index it. The owner maintains a separate search plugin of their own, and the prospect of four plugins independently crawling and embedding the same vault is a real cost — battery, memory, startup time, and duplicated storage. "Do we want to index the whole vault" is a much larger question than any single defect makes it look.
+
+**Why this does not apply to Tier 2 as it stands today** (verified 2026-08-21 against `src/tier2/projector.ts`):
+
+| Worry | Actual behavior |
+|---|---|
+| A second full-vault crawl | There is none. The projector never reads file contents. Frontmatter comes from `app.metadataCache`, the index Obsidian builds once and every plugin shares |
+| Indexing every note | It does not. Files without a `_crosswalker` block are skipped, so only Crosswalker-generated notes are stored. A `pathFilter` can narrow it further |
+| Duplicating what a search plugin does | Different data structure for a different question. A search index answers "which notes contain this text"; Tier 2 answers "what is transitively connected to this concept across frameworks" — joins, recursion, anti-joins, which is precisely why Tier 2 exists rather than Bases alone |
+
+**Why it applies squarely to `sqlite-vec`.** Vector search is the point where Crosswalker would stop reusing shared infrastructure and start building its own embedding index over vault content — the exact shape of the owner's concern. Any revisit that concludes "adopt sqlite-vec" must therefore answer:
+
+1. What content gets embedded — only Crosswalker-generated notes, as the projector does today, or vault-wide? Vault-wide is a materially different product decision and should not arrive by implication.
+2. What is the cost when other embedding plugins are already installed, and is there any way to consume an existing index rather than build a second?
+3. Could the capability be delivered by cooperating with a search plugin the user already runs? Note the constraint found 2026-08-21: Obsidian offers no standard cross-plugin index API. `metadataCache` is the shared one and Tier 2 already uses it. Plugin-to-plugin access means reaching into another plugin's runtime object, which is undocumented, breaks on their releases, and hard-fails when that plugin is absent.
+4. Is the added capability worth being the fourth thing indexing the vault?
+
+**Standing principle this establishes**, independent of the vec decision: *reuse the shared index before building a private one, and store only what is ours.* Tier 2 already satisfies both halves. Any future component that would violate either needs an explicit decision, not an implementation detail.
+
 ## §9 Related
 
 **Architectural decisions:**

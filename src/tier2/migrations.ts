@@ -165,12 +165,12 @@ export function getCurrentSchemaVersion(db: any): string | null {
  * projection of canonical Tier 1; nothing is lost on rebuild beyond
  * the cached closure (which gets recomputed on demand).
  */
-export function applyMigrations(db: any): void {
+export function applyMigrations(db: any): boolean {
 	const current = getCurrentSchemaVersion(db);
 
 	if (current === TIER2_SCHEMA_VERSION) {
 		// Already at target version; nothing to do
-		return;
+		return false;
 	}
 
 	// Tier 2 is fully derived, so every non-current state is rebuilt. This
@@ -190,13 +190,17 @@ export function applyMigrations(db: any): void {
 	// Apply the v2 DDL
 	db.exec(TIER2_DDL_V2);
 
-	// Stamp the version + timestamps
+	// Stamp the version. Deliberately NOT `projected_at`: the tables were just
+	// emptied, so nothing has been projected. Recording a projection timestamp
+	// here would assert the opposite of what is true. The caller is responsible
+	// for reprojecting — see openTier2() in main.ts, which does so unconditionally
+	// when this function reports a rebuild.
 	db.exec({
-		sql: `
-			INSERT OR REPLACE INTO schema_meta(key, value) VALUES
-				('schema_version', $sv),
-				('projected_at', strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-		`,
+		sql: `INSERT OR REPLACE INTO schema_meta(key, value) VALUES ('schema_version', $sv)`,
 		bind: { $sv: TIER2_SCHEMA_VERSION },
 	});
+
+	// Signals to the caller that every derived table is now empty and MUST be
+	// reprojected before any query result can be trusted.
+	return true;
 }

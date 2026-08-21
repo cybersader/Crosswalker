@@ -133,10 +133,35 @@ export default class CrosswalkerPlugin extends Plugin {
 	 */
 	openTier2 = async (): Promise<SidecarHandle> => {
 		if (this.tier2Handle) return this.tier2Handle;
-		this.tier2Handle = await openSidecar(this, this.app, {
+		const handle = await openSidecar(this, this.app, {
 			sidecarPath: this.settings.tier2SidecarPath,
 		});
-		return this.tier2Handle;
+		// Cache BEFORE any projection below, so the reprojection path cannot
+		// re-enter this function and open a second handle.
+		this.tier2Handle = handle;
+
+		if (handle.schemaRebuilt) {
+			// A schema rebuild empties every derived table. Without an immediate
+			// reprojection the sidecar answers queries with zero rows, which is
+			// indistinguishable from a vault that genuinely contains nothing --
+			// a silent wrong answer, the same failure class as the closure-cache
+			// depth bug fixed on 2026-08-20.
+			//
+			// This runs even when `enableTier2Projection` is off. That setting
+			// governs routine auto-projection on vault load, not whether the
+			// index may be left knowingly empty while still answering queries.
+			// Reprojection is cheap: the projector reads Obsidian's existing
+			// metadataCache rather than the filesystem, and stores rows only for
+			// Crosswalker-generated notes.
+			this.debug?.info(
+				'tier2',
+				'schema-rebuild-reprojection',
+				'Tier 2 schema was rebuilt; reprojecting so queries are not served from an empty index',
+			);
+			await projectFromTier1(this.app, handle.db, { debug: this.debug });
+		}
+
+		return handle;
 	};
 
 	/**

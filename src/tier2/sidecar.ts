@@ -46,6 +46,12 @@ export interface SidecarHandle {
 	/** Close the sqlite handle (commits + flushes OPFS). */
 	close(): Promise<void>;
 	/**
+	 * True when opening this handle rebuilt the schema, which empties every
+	 * derived table. Query results are meaningless until a projection runs, so
+	 * the owner of this handle must reproject before serving queries.
+	 */
+	schemaRebuilt: boolean;
+	/**
 	 * Returns the SQLite library version for diagnostics.
 	 * v0.1.5 ships plain sqlite-wasm; sqlite-vec is deferred — see Ch 24
 	 * §5 Q4 for the date-bound revisit (2026-11-06).
@@ -155,7 +161,7 @@ export async function openSidecar(
 
 	// Apply schema migrations (drops + recreates if version mismatch)
 	const { applyMigrations } = await import('./migrations');
-	applyMigrations(db);
+	const schemaRebuilt = applyMigrations(db);
 
 	const sqliteVersion = (): string => {
 		try {
@@ -175,6 +181,7 @@ export async function openSidecar(
 		db,
 		sidecarPath,
 		sqliteVersion,
+		schemaRebuilt,
 		async close() {
 			try {
 				db.close();
