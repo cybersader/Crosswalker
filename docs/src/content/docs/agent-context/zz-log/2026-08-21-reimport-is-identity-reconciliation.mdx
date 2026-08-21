@@ -1,0 +1,80 @@
+---
+title: "Re-import is identity reconciliation, not path migration"
+description: "Architect decision after the SSSOM path-restructuring work failed two remediation rounds. The failure was not the code — it was reconciling by the wrong key. A re-import must match notes by concept identity (the curie every note already carries), never by path patterns. Addresses are derived and disposable; identity is the join key. This sets the design for rebuilding P3, feeds Ch 43, and closes the 'should Crosswalker move files?' question."
+tags: [decision, architecture, reimport, identity, reconciliation, p2, p3, ch-43]
+date: 2026-08-21
+sidebar:
+  label: "08-21 · Re-import = identity reconciliation"
+  order: -20260821
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="How to read this">
+Funnel-shaped: section 1 is thirty seconds and stands alone. Stop wherever you have enough.
+</Aside>
+
+## 1. Thirty seconds
+
+The current work phase is one sentence: **making it safe to import the same thing twice.** One piece of that — what happens when an import's output layout changes and a vault already has notes in the old layout — failed two rounds of fixes.
+
+**The decision:** it failed because it was matching notes by *where they live* (paths), when it should match them by *what they are* (the identity every note already carries in its frontmatter). A re-import becomes a reconciliation between two identity sets: what the source produces versus what the vault holds. Same identity at a different path is a **move**, not a duplicate. An identity the source no longer produces is an **orphan** to report, not silently keep. Duplicates become impossible by construction, because one identity maps to one note.
+
+No further remediation of the parked path-matching code. The mapping-set work gets rebuilt on this foundation.
+
+## 2. Two minutes — why path matching kept failing
+
+The parked P3 work changed where crosswalk notes are written (a per-mapping-set folder instead of one shared folder). To avoid leaving old notes behind, it tried to *detect the old layout* and migrate or refuse. Two remediation rounds later it still had four holes: duplicates when metadata changed, detection failing open on a cold cache, detection bypassed by a custom output folder, and cleanup advice that left phantom database rows.
+
+Those four look unrelated. They share one root: **a path is a guess about a note, not a fact about it.** Every path-pattern rule has an exception — a renamed folder, a user-chosen destination, a moved vault — so every detector built on paths fails open somewhere.
+
+Meanwhile, verified 2026-08-21:
+
+| Fact | Evidence |
+|---|---|
+| Every generated note already carries a stable identity | `curie: "nist-mini:AC-1"` in frontmatter, on every note |
+| But generation looks existing notes up **by path** | `getAbstractFileByPath` at six call sites in `src/generation/generation-engine.ts`; nothing in `src/` looks a note up by curie |
+| And the project's stated differentiator is the opposite | "Identity, not address" — the reason P2 exists at all |
+
+The tool preaches identity and joins on address. That inconsistency is the bug factory.
+
+## 3. The decision
+
+**A re-import reconciles identity sets.** For each row, compute the identity (curie) and the *desired* address via `render()` (the one function that turns a recipe plus an identity into an address). Then look the identity up in the vault — via Obsidian's metadata cache, which already indexes frontmatter — and classify:
+
+| Vault state for this identity | Action |
+|---|---|
+| Note exists at the desired address | Ordinary merge (current behavior) |
+| Note exists at a **different** address | **Move it** using Obsidian's rename API, which updates every wikilink pointing at it — then merge. Never create a second note |
+| No note exists | Create |
+| Note exists whose identity the source **no longer produces** | **Orphan**: report it; never silently delete, never silently keep counting it |
+
+Scope guard: reconciliation only ever touches notes that carry `_crosswalker` provenance matching the recipe being run. User notes are structurally unreachable.
+
+This also answers the open question "should Crosswalker move files in a user's vault?" — **yes, but only** identity-preserving renames of its own notes through the link-updating API, shown in the import preview before anything is written.
+
+### Two subsidiary rules ratified with this
+
+**Identity inputs are declared, not accumulated.** The parked branch changed every concept's content hash by quietly adding mapping-only fields into the identity computation. Rule: what feeds a note-kind's identity is declared in the contract per kind; an importer may never widen it as a side effect. (This is the same "authority comes from declaration, not from what happened this row" rule that fixed field-clearing — applied to identity.)
+
+**Derived stores prune by the same key.** The query database (Tier 2) mirrors the vault. When a full projection runs, rows whose identity no longer exists in the vault are deleted. A partial projection deletes nothing. Same reconciliation, one layer down.
+
+## 4. What this unblocks and what it costs
+
+**Unblocks:** the P3 rebuild (mapping-set folders become trivial — the layout change is just new desired addresses; reconciliation moves the notes); the framework-update story ([Ch 43](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) — a new framework release is *also* just a changed identity set, so this is its substrate); and the org-rollout safety story, since duplicates-on-upgrade was a ranked blocker in [Ch 45](/crosswalker/agent-context/zz-challenges/45-org-rollout-readiness/).
+
+**Costs:** an identity index (curie → file) built from the metadata cache per run — cheap, the cache is already in memory; a reconciliation preview in the import flow; and honest handling of the one genuinely hard case, **identity collisions** (two rows claiming one curie), which today produce a collision error and continue to.
+
+**Owner calls embedded here** (defaults chosen, easy to reverse): orphans are *reported, kept, and excluded from coverage counts* by default, with delete-after-confirm offered; moves are shown in the preview and on by default. If either default feels wrong in practice, it is a setting, not a redesign.
+
+## 5. What happens to the parked branch
+
+`feat/p2-p3-identity-provenance` stays parked as reference material. Its good parts — the P2 identity fields, the normalization helpers, the negation plumbing, the repaired specs — get cherry-picked into the rebuild *on top of* reconciliation. Its path-detection code is not remediated further; this decision supersedes it.
+
+## Related
+
+- [Closure-cache fix funnel](/crosswalker/agent-context/zz-log/2026-08-20-closure-cache-fix-and-what-it-means/) — the sibling "stale claim presented as current" defect
+- [P2/P3 delivery log](/crosswalker/agent-context/zz-log/2026-08-21-p2-p3-identity-and-provenance/) — the branch this supersedes the path work from
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) — P2/P3 ratification
+- [Ch 43 — version migration](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) — the larger problem this is the substrate for
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — the declaration-over-observation principle this extends
