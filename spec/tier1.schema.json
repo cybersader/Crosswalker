@@ -194,7 +194,7 @@
             "intersects_with",
             "no_relationship"
           ],
-          "description": "STRM (NIST IR 8477) predicate vocabulary. The five-or-six set-theoretic relationships between two ontology concepts."
+          "description": "Six Crosswalker predicates: the five set-theoretic STRM relationships from NIST IR 8477 (used by SCF/OSCAL) plus the Crosswalker extension is_approximate_to."
         },
         "object_id": { "$ref": "#/$defs/curie", "description": "Target-side concept CURIE (e.g., iso27001:A.9.2.1)." },
         "match_type": {

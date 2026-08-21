@@ -1,3 +1,8 @@
+import {
+	PREDICATE_CHARACTERISTICS,
+	getPredicateCharacteristics,
+} from './predicate-characteristics';
+
 /**
  * Tier 2 query API — typed SQL helpers for the v0.1.6 Bases query layer
  * + v0.1.7 exporters to consume.
@@ -55,7 +60,7 @@ export interface MappingRow {
  *   - subject_id = the START of the chain (the starting concept the
  *                  closure was queried from)
  *   - object_id  = the REACHABLE TARGET (a concept reachable from start)
- *   - predicate_id = the predicate-filter applied (or the reserved '*' cache marker if no filter)
+ *   - predicate_id = the versioned physical cache-partition key
  *   - shortest_depth = number of edges in the shortest chain start → target
  */
 export interface ClosureEntry {
@@ -70,14 +75,84 @@ export interface ClosureEntry {
 }
 
 const WILDCARD_PREDICATE_FILTER = '*';
+const CLOSURE_SEMANTICS_VERSION = 'predicate-characteristics-v1';
 
-function assertPredicateFilterIsNotReserved(predicateId?: string): void {
+interface PredicateCharacteristicsSqlPlan {
+	cte: string;
+	bind: Record<string, unknown>;
+}
+
+function assertPredicateFilterIsValid(predicateId?: string): void {
 	if (predicateId === WILDCARD_PREDICATE_FILTER) {
 		throw new RangeError(
 			`predicateId '${WILDCARD_PREDICATE_FILTER}' is reserved for unfiltered closure queries`,
 		);
 	}
+	if (predicateId !== undefined && getPredicateCharacteristics(predicateId) === null) {
+		throw new RangeError(`Unknown Crosswalker predicate: ${predicateId}`);
+	}
 }
+
+function cachePredicateKey(logicalPredicateFilter: string): string {
+	return `${CLOSURE_SEMANTICS_VERSION}|${logicalPredicateFilter}`;
+}
+
+function buildPredicateCharacteristicsSqlPlan(): PredicateCharacteristicsSqlPlan {
+	const bind: Record<string, unknown> = {};
+	const values = Object.values(PREDICATE_CHARACTERISTICS).map((characteristics, index) => {
+		const predicateKey = `$characteristicPredicate${index}`;
+		const inverseKey = `$characteristicInverse${index}`;
+		const symmetricKey = `$characteristicSymmetric${index}`;
+		const transitiveKey = `$characteristicTransitive${index}`;
+		bind[predicateKey] = characteristics.predicate_id;
+		bind[inverseKey] = characteristics.inverse_predicate_id;
+		bind[symmetricKey] = characteristics.symmetric ? 1 : 0;
+		bind[transitiveKey] = characteristics.transitive ? 1 : 0;
+		return `(${predicateKey}, ${inverseKey}, ${symmetricKey}, ${transitiveKey})`;
+	});
+
+	return {
+		cte: `predicate_characteristics(
+			predicate_id, inverse_predicate_id, symmetric, transitive
+		) AS (VALUES ${values.join(', ')})`,
+		bind,
+	};
+}
+
+// IMPORTANT — read before implementing P3 (predicate_modifier / the NOT modifier).
+//
+// Both branches below select every row in `mappings` unconditionally. That is
+// correct TODAY because no negation exists: `predicate_modifier` is not yet a
+// column. The moment P3 adds it, this becomes a correctness bug — an assertion
+// saying "these two concepts are explicitly NOT equivalent" would be walked as
+// if it were a positive edge, and the reverse-direction branch below would
+// synthesize an inferred edge from it too. A dropped negation turns "not
+// equivalent" into "equivalent", which is worse than making no claim at all.
+//
+// P3 MUST therefore filter both branches, e.g. COALESCE(m.predicate_modifier,'')
+// <> 'NOT', and ship a test proving a negated row stays directly queryable while
+// being absent from closure in both directions. Stored-assertion queries such as
+// crosswalkBetween must keep returning the modifier so callers can see it.
+//
+// Verified 2026-08-21 with a throwaway probe: adding the column and inserting a
+// NOT-modified equivalence returned the object at depth 1 rather than nothing.
+const EFFECTIVE_EDGES_CTE = `effective_edges(subject_id, predicate_id, object_id) AS (
+	SELECT m.subject_id, m.predicate_id, m.object_id
+	FROM mappings m
+	JOIN predicate_characteristics pc ON pc.predicate_id = m.predicate_id
+
+	UNION
+
+	SELECT
+		m.object_id,
+		CASE
+			WHEN pc.symmetric = 1 THEN pc.predicate_id
+			ELSE pc.inverse_predicate_id
+		END,
+		m.subject_id
+	FROM mappings m
+	JOIN predicate_characteristics pc ON pc.predicate_id = m.predicate_id
+)`;
 
 // ============================================================================
 // 1. List concepts in an ontology
@@ -212,7 +287,7 @@ export function crosswalkBetween(
  *
  * @param db sqlite-wasm OO1 DB handle
  * @param startCurie e.g. 'nist-csf:Identify' — the starting concept
- * @param predicateId e.g. 'is_equivalent_to' — optional STRM predicate filter
+ * @param predicateId e.g. 'is_equivalent_to' — optional Crosswalker predicate filter
  * @param maxDepth max chain length (default 10; prevents runaway recursion)
  */
 export function closureFromConcept(
@@ -224,101 +299,86 @@ export function closureFromConcept(
 	if (!Number.isInteger(maxDepth) || maxDepth < 0) {
 		throw new RangeError('maxDepth must be a non-negative integer');
 	}
-	assertPredicateFilterIsNotReserved(predicateId);
+	assertPredicateFilterIsValid(predicateId);
 
-	const predicateFilter = predicateId ?? WILDCARD_PREDICATE_FILTER;
+	const logicalPredicateFilter = predicateId ?? WILDCARD_PREDICATE_FILTER;
+	const physicalCacheKey = cachePredicateKey(logicalPredicateFilter);
 	const hasPredicateFilter = typeof predicateId === 'string';
 
 	// The watermark, not row count, proves cache completeness. A valid cache
 	// partition may contain zero rows when the start concept has no outbound edges.
-	const cached = readCache(db, startCurie, predicateFilter, maxDepth);
+	const cached = readCache(
+		db,
+		startCurie,
+		physicalCacheKey,
+		logicalPredicateFilter,
+		maxDepth,
+	);
 	if (cached !== null) {
 		return cached;
 	}
 
 	let entries: ClosureEntry[] = [];
 	if (maxDepth > 0) {
-		// Each row in the CTE encodes (start, target, depth) where start is
-		// the original startCurie (constant across all rows of one query).
-		// Cycle detection uses a delimited path + instr membership check.
-		const baseSql = hasPredicateFilter
-			? `
-				WITH RECURSIVE
-				  closure(start_curie, target, depth, path) AS (
-				    SELECT
-				      $start,
-				      m.object_id,
-				      1 AS depth,
-				      '|' || $start || '|' || m.object_id || '|' AS path
-				    FROM mappings m
-				    WHERE m.subject_id = $start AND m.predicate_id = $pred
-
-				    UNION ALL
-
-				    SELECT
-				      c.start_curie,
-				      m.object_id,
-				      c.depth + 1,
-				      c.path || m.object_id || '|'
-				    FROM mappings m
-				    JOIN closure c ON m.subject_id = c.target
-				    WHERE c.depth < $max
-				      AND m.predicate_id = $pred
-				      AND instr(c.path, '|' || m.object_id || '|') = 0
-				  )
-				SELECT start_curie, target, MIN(depth) AS shortest_depth
-				FROM closure
-				GROUP BY start_curie, target
-				ORDER BY shortest_depth, target
-			`
-			: `
-				WITH RECURSIVE
-				  closure(start_curie, target, depth, path) AS (
-				    SELECT
-				      $start,
-				      m.object_id,
-				      1 AS depth,
-				      '|' || $start || '|' || m.object_id || '|' AS path
-				    FROM mappings m
-				    WHERE m.subject_id = $start
-
-				    UNION ALL
-
-				    SELECT
-				      c.start_curie,
-				      m.object_id,
-				      c.depth + 1,
-				      c.path || m.object_id || '|'
-				    FROM mappings m
-				    JOIN closure c ON m.subject_id = c.target
-				    WHERE c.depth < $max
-				      AND instr(c.path, '|' || m.object_id || '|') = 0
-				  )
-				SELECT start_curie, target, MIN(depth) AS shortest_depth
-				FROM closure
-				GROUP BY start_curie, target
-				ORDER BY shortest_depth, target
-			`;
-
-		const bind: Record<string, unknown> = { $start: startCurie, $max: maxDepth };
-		if (hasPredicateFilter) bind.$pred = predicateId;
-
+		const characteristicsPlan = buildPredicateCharacteristicsSqlPlan();
 		const rows = db.exec({
-			sql: baseSql,
-			bind,
+			sql: `
+				WITH RECURSIVE
+				  ${characteristicsPlan.cte},
+				  ${EFFECTIVE_EDGES_CTE},
+				  closure(start_curie, target, predicate_id, depth, path) AS (
+				    SELECT
+				      $start,
+				      edge.object_id,
+				      edge.predicate_id,
+				      1 AS depth,
+				      '|' || $start || '|' || edge.object_id || '|' AS path
+				    FROM effective_edges edge
+				    WHERE edge.subject_id = $start
+				      ${hasPredicateFilter ? 'AND edge.predicate_id = $pred' : ''}
+
+				    UNION ALL
+
+				    SELECT
+				      closure.start_curie,
+				      edge.object_id,
+				      closure.predicate_id,
+				      closure.depth + 1,
+				      closure.path || edge.object_id || '|'
+				    FROM closure
+				    JOIN effective_edges edge
+				      ON edge.subject_id = closure.target
+				     AND edge.predicate_id = closure.predicate_id
+				    JOIN predicate_characteristics pc
+				      ON pc.predicate_id = closure.predicate_id
+				     AND pc.transitive = 1
+				    WHERE closure.depth < $max
+				      AND instr(closure.path, '|' || edge.object_id || '|') = 0
+				  )
+				SELECT start_curie, target, MIN(depth) AS shortest_depth
+				FROM closure
+				GROUP BY start_curie, target
+				ORDER BY shortest_depth, target
+			`,
+			bind: {
+				...characteristicsPlan.bind,
+				$start: startCurie,
+				$max: maxDepth,
+				...(hasPredicateFilter ? { $pred: predicateId } : {}),
+			},
 			rowMode: 'array',
 			returnValue: 'resultRows',
 		}) as unknown[][];
 
 		entries = rows.map((r) => ({
 			start_curie: String(r[0]),
-			predicate_filter: predicateFilter,
+			predicate_filter: logicalPredicateFilter,
 			target_curie: String(r[1]),
 			shortest_depth: Number(r[2]),
 		}));
 	}
 
-	replaceCache(db, startCurie, predicateFilter, maxDepth, entries);
+	replaceCache(db, startCurie, physicalCacheKey, maxDepth, entries);
 	return entries;
 }
 
@@ -330,7 +390,8 @@ export function closureFromConcept(
 function readCache(
 	db: any,
 	startCurie: string,
-	predicateFilter: string,
+	physicalCacheKey: string,
+	logicalPredicateFilter: string,
 	maxDepth: number,
 ): ClosureEntry[] | null {
 	const state = db.exec({
@@ -340,7 +401,7 @@ function readCache(
 			WHERE subject_id = $start AND predicate_id = $pred
 			LIMIT 1
 		`,
-		bind: { $start: startCurie, $pred: predicateFilter },
+		bind: { $start: startCurie, $pred: physicalCacheKey },
 		rowMode: 'array',
 		returnValue: 'resultRows',
 	}) as unknown[][];
@@ -351,23 +412,23 @@ function readCache(
 
 	const rows = db.exec({
 		sql: `
-			SELECT subject_id, predicate_id, object_id, shortest_depth
+			SELECT subject_id, object_id, shortest_depth
 			FROM closure_cache
 			WHERE subject_id = $start
 			  AND predicate_id = $pred
 			  AND shortest_depth <= $max
 			ORDER BY shortest_depth, object_id
 		`,
-		bind: { $start: startCurie, $pred: predicateFilter, $max: maxDepth },
+		bind: { $start: startCurie, $pred: physicalCacheKey, $max: maxDepth },
 		rowMode: 'array',
 		returnValue: 'resultRows',
 	}) as unknown[][];
 
 	return rows.map((r) => ({
 		start_curie: String(r[0]),
-		predicate_filter: String(r[1]),
-		target_curie: String(r[2]),
-		shortest_depth: Number(r[3]),
+		predicate_filter: logicalPredicateFilter,
+		target_curie: String(r[1]),
+		shortest_depth: Number(r[2]),
 	}));
 }
 
@@ -379,7 +440,7 @@ function readCache(
 function replaceCache(
 	db: any,
 	startCurie: string,
-	predicateFilter: string,
+	physicalCacheKey: string,
 	maxDepth: number,
 	entries: ClosureEntry[],
 ): void {
@@ -389,11 +450,11 @@ function replaceCache(
 	try {
 		db.exec({
 			sql: 'DELETE FROM closure_cache_state WHERE subject_id = $start AND predicate_id = $pred',
-			bind: { $start: startCurie, $pred: predicateFilter },
+			bind: { $start: startCurie, $pred: physicalCacheKey },
 		});
 		db.exec({
 			sql: 'DELETE FROM closure_cache WHERE subject_id = $start AND predicate_id = $pred',
-			bind: { $start: startCurie, $pred: predicateFilter },
+			bind: { $start: startCurie, $pred: physicalCacheKey },
 		});
 
 		for (const entry of entries) {
@@ -405,7 +466,7 @@ function replaceCache(
 				`,
 				bind: {
 					$subj: entry.start_curie,
-					$pred: entry.predicate_filter,
+					$pred: physicalCacheKey,
 					$obj: entry.target_curie,
 					$depth: entry.shortest_depth,
 					$at: computedAt,
@@ -421,7 +482,7 @@ function replaceCache(
 			`,
 			bind: {
 				$subj: startCurie,
-				$pred: predicateFilter,
+				$pred: physicalCacheKey,
 				$max: maxDepth,
 				$at: computedAt,
 			},
@@ -445,8 +506,8 @@ function replaceCache(
  * + projection runs.
  *
  * Strategy:
- *   1. Find all distinct subject_ids in `mappings` whose subject CURIE prefix matches
- *      sourceOntology.
+ *   1. Find all distinct effective subject_ids, including characteristic-derived reverse
+ *      directions, whose subject CURIE prefix matches sourceOntology.
  *   2. For each subject, call closureFromConcept (which lazy-builds + caches) so
  *      future queries hit the cache without re-running the recursive CTE.
  *   3. Return the count of (subject_id, target_id) cache rows now populated.
@@ -466,19 +527,27 @@ export function precomputeClosureForOntologyPair(
 	if (!Number.isInteger(maxDepth) || maxDepth < 0) {
 		throw new RangeError('maxDepth must be a non-negative integer');
 	}
-	assertPredicateFilterIsNotReserved(predicateId);
+	assertPredicateFilterIsValid(predicateId);
 
 	const sourcePrefix = `${sourceOntology}:`;
+	const logicalPredicateFilter = predicateId ?? WILDCARD_PREDICATE_FILTER;
+	const physicalCacheKey = cachePredicateKey(logicalPredicateFilter);
 	const hasPredicateFilter = typeof predicateId === 'string';
+	const characteristicsPlan = buildPredicateCharacteristicsSqlPlan();
 	const subjects = db.exec({
 		sql: `
-			SELECT DISTINCT subject_id FROM mappings
+			WITH
+			  ${characteristicsPlan.cte},
+			  ${EFFECTIVE_EDGES_CTE}
+			SELECT DISTINCT subject_id FROM effective_edges
 			WHERE substr(subject_id, 1, length($prefix)) = $prefix
 			${hasPredicateFilter ? 'AND predicate_id = $pred' : ''}
 		`,
-		bind: hasPredicateFilter
-			? { $prefix: sourcePrefix, $pred: predicateId }
-			: { $prefix: sourcePrefix },
+		bind: {
+			...characteristicsPlan.bind,
+			$prefix: sourcePrefix,
+			...(hasPredicateFilter ? { $pred: predicateId } : {}),
+		},
 		rowMode: 'array',
 		returnValue: 'resultRows',
 	}) as unknown[][];
@@ -495,13 +564,13 @@ export function precomputeClosureForOntologyPair(
 			SELECT COUNT(*) FROM closure_cache cc
 			WHERE substr(cc.subject_id, 1, length($sourcePrefix)) = $sourcePrefix
 			  AND substr(cc.object_id, 1, length($targetPrefix)) = $targetPrefix
-			  AND cc.predicate_id = $predicateFilter
+			  AND cc.predicate_id = $physicalCacheKey
 			  AND cc.shortest_depth <= $max
 		`,
 		bind: {
 			$sourcePrefix: sourcePrefix,
 			$targetPrefix: `${targetOntology}:`,
-			$predicateFilter: predicateId ?? WILDCARD_PREDICATE_FILTER,
+			$physicalCacheKey: physicalCacheKey,
 			$max: maxDepth,
 		},
 		rowMode: 'array',

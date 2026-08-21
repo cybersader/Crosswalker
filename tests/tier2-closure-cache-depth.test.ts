@@ -53,8 +53,9 @@ function createTestDb(): TestDb {
 	};
 }
 
-const PREDICATE = 'skos:closeMatch';
-const OTHER_PREDICATE = 'skos:relatedMatch';
+const PREDICATE = 'is_broader_than';
+const OTHER_PREDICATE = 'is_narrower_than';
+const CACHE_PREFIX = 'predicate-characteristics-v1|';
 const CHAIN = [
 	['example:A', 'example:B'],
 	['example:B', 'example:C'],
@@ -154,12 +155,48 @@ describe('Tier 2 closure cache depth', () => {
 				 WHERE subject_id = $subject`,
 				{ $subject: 'example:missing' },
 			),
-		).toEqual([['example:missing', PREDICATE, 4]]);
+		).toEqual([['example:missing', `${CACHE_PREFIX}${PREDICATE}`, 4]]);
 		expect(
 			queryRows(db, `SELECT COUNT(*) FROM closure_cache WHERE subject_id = $subject`, {
 				$subject: 'example:missing',
 			}),
 		).toEqual([[0]]);
+	});
+
+	it('ignores legacy raw cache keys even when their watermark covers the request', () => {
+		db.exec({
+			sql: `
+				INSERT INTO closure_cache
+					(subject_id, predicate_id, object_id, shortest_depth, computed_at)
+				VALUES ($subject, $predicate, 'example:stale', 1, 'old')
+			`,
+			bind: { $subject: 'example:A', $predicate: PREDICATE },
+		});
+		db.exec({
+			sql: `
+				INSERT INTO closure_cache_state
+					(subject_id, predicate_id, computed_max_depth, computed_at)
+				VALUES ($subject, $predicate, 99, 'old')
+			`,
+			bind: { $subject: 'example:A', $predicate: PREDICATE },
+		});
+
+		expect(targets(closureFromConcept(db, 'example:A', PREDICATE, 2))).toEqual([
+			['example:B', 1],
+			['example:C', 2],
+		]);
+		expect(db.getRecursiveQueryCount()).toBe(1);
+		expect(
+			queryRows(
+				db,
+				`SELECT predicate_id, computed_max_depth FROM closure_cache_state
+				 WHERE subject_id = $subject ORDER BY predicate_id`,
+				{ $subject: 'example:A' },
+			),
+		).toEqual([
+			[PREDICATE, 99],
+			[`${CACHE_PREFIX}${PREDICATE}`, 2],
+		]);
 	});
 
 	it('keeps wildcard and predicate-specific coverage in separate cache partitions', () => {
@@ -186,8 +223,8 @@ describe('Tier 2 closure cache depth', () => {
 				{ $subject: 'example:A' },
 			),
 		).toEqual([
-			['*', 3],
-			[PREDICATE, 3],
+			[`${CACHE_PREFIX}*`, 3],
+			[`${CACHE_PREFIX}${PREDICATE}`, 3],
 		]);
 	});
 
@@ -203,7 +240,6 @@ describe('Tier 2 closure cache depth', () => {
 		).toThrow(new RangeError("predicateId '*' is reserved for unfiltered closure queries"));
 		expect(targets(closureFromConcept(db, 'example:A', undefined, 2))).toEqual([
 			['example:B', 1],
-			['example:Star', 1],
 			['example:X', 1],
 			['example:C', 2],
 		]);
@@ -215,7 +251,6 @@ describe('Tier 2 closure cache depth', () => {
 		insertMapping(db, 'example:A', OTHER_PREDICATE, 'example:X', 'wildcard-first');
 		const expected: Array<[string, number]> = [
 			['example:B', 1],
-			['example:Star', 1],
 			['example:X', 1],
 			['example:C', 2],
 		];
@@ -272,8 +307,8 @@ describe('Tier 2 closure cache depth', () => {
 				 WHERE subject_id = 'source:A' ORDER BY predicate_id`,
 			),
 		).toEqual([
-			['*', 1],
-			[PREDICATE, 2],
+			[`${CACHE_PREFIX}*`, 1],
+			[`${CACHE_PREFIX}${PREDICATE}`, 2],
 		]);
 	});
 
