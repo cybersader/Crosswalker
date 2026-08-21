@@ -1,109 +1,75 @@
 #!/usr/bin/env bun
 /**
- * check-fixtures-drift.mjs — verify committed fixtures match a clean regeneration
- *
- * Used as a CI gate (and pre-commit check) to catch silent drift when:
- *   - spec/tier1.schema.json or spec/recipe.schema.json changes
- *   - tools/generate-fixtures.ts logic changes
- *   - tools/fixtures/synthetic/*.csv source data changes
- *   - The fixture generator becomes non-deterministic (regression on the
- *     2026-05-09 deterministic-fixtures commit)
- *
- * How it works:
- *   1. Save current state of test-vault/Frameworks/NIST-mini/ via git stash
- *      (only that subtree; other working changes preserved)
- *   2. Run `bun run fixtures` (which uses --deterministic)
- *   3. git diff test-vault/Frameworks/NIST-mini/ — fail if non-empty
- *   4. Restore stashed state regardless of pass/fail
- *
- * Exit codes:
- *   0 — fixtures match canonical regeneration (no drift)
- *   1 — drift detected (committed fixtures differ from regen output)
- *   2 — script error (couldn't stash, regen failed, etc.)
- *
- * Usage:
- *   bun run check:fixtures-drift     # CI / pre-commit
- *   bun scripts/check-fixtures-drift.mjs --verbose
+ * Verify that checked-in fixtures match a deterministic regeneration without
+ * manipulating repository state or losing a developer's uncommitted fixture work.
  */
 
 import { execSync } from 'node:child_process';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join, relative, resolve } from 'node:path';
 
-const FIXTURE_DIR = 'test-vault/Frameworks/NIST-mini';
+const FIXTURE_DIR = process.env.CROSSWALKER_FIXTURE_DIR ?? 'test-vault/Frameworks/NIST-mini';
+const REGEN_COMMAND = process.env.CROSSWALKER_FIXTURE_COMMAND ?? 'bun run fixtures';
 const VERBOSE = process.argv.includes('--verbose');
 
-function sh(cmd, opts = {}) {
-	try {
-		return execSync(cmd, { encoding: 'utf-8', stdio: VERBOSE ? 'inherit' : 'pipe', ...opts }).toString().trim();
-	} catch (err) {
-		if (opts.allowFail) return null;
-		throw err;
-	}
+function snapshotTree(root) {
+	const snapshot = new Map();
+	if (!existsSync(root)) return snapshot;
+	const walk = (dir) => {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const path = join(dir, entry.name);
+			if (entry.isDirectory()) walk(path);
+			else if (entry.isFile()) snapshot.set(relative(root, path), readFileSync(path));
+		}
+	};
+	walk(root);
+	return snapshot;
+}
+
+function changedPaths(before, after) {
+	const paths = new Set([...before.keys(), ...after.keys()]);
+	return [...paths].filter((path) => {
+		const left = before.get(path);
+		const right = after.get(path);
+		return !left || !right || !left.equals(right);
+	}).sort();
 }
 
 function run() {
+	const fixturePath = resolve(FIXTURE_DIR);
+	const backupRoot = mkdtempSync(join(tmpdir(), 'crosswalker-fixtures-'));
+	const backupPath = join(backupRoot, basename(fixturePath));
 	console.log(`Checking fixture drift in ${FIXTURE_DIR}...`);
 
-	// Stash only the fixture dir (preserves other working changes).
-	// `git stash push -- <path>` is the path-scoped stash form.
-	let stashed = false;
-	const status = sh(`git status --short ${FIXTURE_DIR}`, { allowFail: true });
-	if (status && status.length > 0) {
-		console.log('  Stashing existing fixture changes...');
-		sh(`git stash push --include-untracked -- ${FIXTURE_DIR}`);
-		stashed = true;
-	}
-
-	let driftDetected = false;
+	if (existsSync(fixturePath)) cpSync(fixturePath, backupPath, { recursive: true, force: true });
+	const before = snapshotTree(backupPath);
+	let drift = [];
 	let regenError = null;
 
 	try {
-		// Regenerate from canonical source.
-		console.log('  Running bun run fixtures...');
-		sh('bun run fixtures');
-
-		// Diff against committed (HEAD) state.
-		const diff = sh(`git diff ${FIXTURE_DIR}`, { allowFail: true });
-		if (diff && diff.length > 0) {
-			driftDetected = true;
-			console.error('\n❌ Fixture drift detected!\n');
-			console.error('Committed fixtures differ from a clean regeneration. Run:');
-			console.error('    bun run fixtures');
-			console.error('and commit the result. Likely causes:');
-			console.error('  - spec/*.schema.json changed without regenerating fixtures');
-			console.error('  - tools/generate-fixtures.ts logic changed');
-			console.error('  - tools/fixtures/synthetic/*.csv source data changed');
-			console.error('  - generate-fixtures.ts is non-deterministic (regression — fix this first)');
-			console.error('\nFirst 50 lines of drift:');
-			console.error(diff.split('\n').slice(0, 50).join('\n'));
-		} else {
-			console.log('  ✓ No drift — fixtures match canonical regeneration');
-		}
-	} catch (err) {
-		regenError = err;
+		console.log(`  Running ${REGEN_COMMAND}...`);
+		execSync(REGEN_COMMAND, { encoding: 'utf-8', stdio: VERBOSE ? 'inherit' : 'pipe' });
+		drift = changedPaths(before, snapshotTree(fixturePath));
+	} catch (error) {
+		regenError = error;
 	} finally {
-		// Restore stashed changes regardless of pass/fail.
-		if (stashed) {
-			console.log('  Restoring stashed fixture state...');
-			// Discard the regenerated fixtures first; they'll be re-applied by stash pop.
-			sh(`git checkout -- ${FIXTURE_DIR}`, { allowFail: true });
-			sh('git stash pop', { allowFail: true });
-		} else {
-			// No prior changes; clean up the regenerated fixtures since they shouldn't differ.
-			// (Drift case logs the diff above; we still discard so the working tree is clean.)
-			if (driftDetected) {
-				sh(`git checkout -- ${FIXTURE_DIR}`, { allowFail: true });
-			}
-		}
+		rmSync(fixturePath, { recursive: true, force: true });
+		if (existsSync(backupPath)) cpSync(backupPath, fixturePath, { recursive: true, force: true });
+		rmSync(backupRoot, { recursive: true, force: true });
 	}
 
 	if (regenError) {
-		console.error(`\n❌ Fixture regeneration failed: ${regenError.message}`);
+		console.error(`Fixture regeneration failed: ${regenError.message}`);
 		process.exit(2);
 	}
-	if (driftDetected) {
+	if (drift.length > 0) {
+		console.error('Fixture drift detected. Run bun run fixtures and commit the result.');
+		console.error(`Changed paths (${drift.length}):`);
+		for (const path of drift.slice(0, 50)) console.error(`  ${path}`);
 		process.exit(1);
 	}
-	process.exit(0);
+	console.log('  No drift. Fixtures match canonical regeneration.');
 }
 
 run();

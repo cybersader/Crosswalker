@@ -11,7 +11,7 @@
  */
 
 import { legacyConfigToRecipe } from '../src/generation/legacy-recipe-shim';
-import { mergeFrontmatter, computeManagedKeys } from '../src/generation/frontmatter-merge';
+import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from '../src/generation/frontmatter-merge';
 import { buildProvenance } from '../src/generation/provenance';
 import {
 	buildConfigFromWizardState,
@@ -194,6 +194,36 @@ describe('mergeFrontmatter + computeManagedKeys', () => {
 		const result = mergeFrontmatter(existing, managed, keys);
 		expect(result.user_notes).toBe('hand-written');
 		expect(result.user_status).toBe('in-review');
+	});
+
+	it('clears a declared parent_curie when the source becomes empty', () => {
+		const existing = { parent_curie: 'x:OLD', user_note: 'keep' };
+		const managed = { curie: 'x:ROOT' };
+		const declared = computeDeclaredManagedKeys({ managed: { parent_curie: '{parent_id|optional}' } });
+		const result = mergeFrontmatter(existing, managed, computeManagedKeys(managed, [], declared));
+		expect(result).not.toHaveProperty('parent_curie');
+		expect(result.user_note).toBe('keep');
+	});
+
+	it('clears a declared predicate_modifier when a mapping becomes positive', () => {
+		const existing = { predicate_modifier: 'NOT', user_note: 'keep' };
+		const managed = { kind: 'crosswalk-edge' };
+		const declared = computeDeclaredManagedKeys({ managed: { predicate_modifier: '{predicate_modifier|optional}' } });
+		const result = mergeFrontmatter(existing, managed, computeManagedKeys(managed, [], declared));
+		expect(result).not.toHaveProperty('predicate_modifier');
+		expect(result.user_note).toBe('keep');
+	});
+
+	it('clears declared managed links while user_preserve can retain declared empty keys', () => {
+		const existing = { related: ['[[Old]]'], reviewer: 'alice' };
+		const managed = {};
+		const declared = computeDeclaredManagedKeys({
+			managed: { reviewer: '{reviewer|optional}' },
+			managed_links: { related: { template: '{related|optional}' } },
+		});
+		const result = mergeFrontmatter(existing, managed, computeManagedKeys(managed, ['reviewer'], declared));
+		expect(result).not.toHaveProperty('related');
+		expect(result.reviewer).toBe('alice');
 	});
 
 	it('produces identical output for identical input (purity)', () => {

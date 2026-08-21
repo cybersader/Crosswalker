@@ -33,7 +33,7 @@ import {
 	type RenderReport,
 } from '../render';
 import { legacyConfigToRecipe } from './legacy-recipe-shim';
-import { mergeFrontmatter, computeManagedKeys } from './frontmatter-merge';
+import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildProvenance } from './provenance';
 import { computeConceptCid, computeRecipeHash } from './hash';
 import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
@@ -318,6 +318,12 @@ export async function generateNotes(
 		// The shape workbench passes a pre-built recipe (recipeOverride) so its
 		// full mechanism set survives; otherwise the legacy shim translates.
 		const recipe = options.recipeOverride ?? legacyConfigToRecipe(config as ImportRecipe);
+		// Authority for which frontmatter keys this run OWNS comes from the recipe's
+		// declaration, not from which keys happened to render non-empty for a row.
+		// Without this, a declared field that renders empty is absent from managedKeys,
+		// so the merge below mistakes the stale previous value for user content and
+		// keeps it forever - which silently inverts a predicate_modifier of NOT.
+		const declaredManagedKeys = computeDeclaredManagedKeys(recipe.target.also_emit?.frontmatter);
 
 		// _crosswalker.recipe.hash: computed ONCE per generation run (the
 		// recipe's target doesn't change per-row) and threaded through every
@@ -466,7 +472,7 @@ export async function generateNotes(
 								// hardcoded `[]`, so a recipe-declared user_preserve key was
 								// silently overwritten on re-import through the wizard path.
 								const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
-								const managedKeys = computeManagedKeys(noteData.frontmatter, userPreserve);
+								const managedKeys = computeManagedKeys(noteData.frontmatter, userPreserve, declaredManagedKeys);
 								noteData.frontmatter = mergeFrontmatter(
 									existingFm,
 									noteData.frontmatter,
@@ -1655,6 +1661,8 @@ export async function generateFromRecipe(
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
 	// src/generation/hash.ts's doc comments for the exact field-set definition.
 	const recipeHash = computeRecipeHash(recipe.target);
+	// See generateNotes above: recipe declaration, not row output, decides ownership.
+	const declaredManagedKeys = computeDeclaredManagedKeys(recipe.target.also_emit?.frontmatter);
 
 	debug?.info('generation', 'recipe-start', `generateFromRecipe: starting (${recipe.recipe})`, {
 		recipe: recipe.recipe,
@@ -1801,7 +1809,7 @@ export async function generateFromRecipe(
 					const existingFm = await readExistingFrontmatter(app, existingFile);
 					if (existingFm && Object.keys(existingFm).length > 0) {
 						const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
-						const managedKeys = computeManagedKeys(frontmatter, userPreserve);
+						const managedKeys = computeManagedKeys(frontmatter, userPreserve, declaredManagedKeys);
 						const merged = mergeFrontmatter(existingFm, frontmatter, managedKeys);
 						Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
 						Object.assign(frontmatter, merged);

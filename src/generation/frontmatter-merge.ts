@@ -108,17 +108,30 @@ function unionStringList(managed: unknown, existing: unknown): unknown[] {
 /**
  * Compute the set of keys this recipe manages.
  *
- * Conservative: every key in the rendered managed object + the always-managed
+ * Authority is the union of keys present in the rendered object and keys the
+ * recipe declares as managed. This lets a declared-but-empty value delete a
+ * stale value without serializing an empty placeholder. The always-managed
  * special keys (`_crosswalker`, `curie`). Recipes that explicitly declare
  * `also_emit.frontmatter.user_preserve` patterns are honored upstream
  * (the patterns get filtered OUT of `managedKeys` so they're treated as
  * user-owned even if the recipe wrote them initially).
  */
+export function computeDeclaredManagedKeys(frontmatter?: {
+	managed?: Record<string, unknown>;
+	managed_links?: Record<string, unknown>;
+}): Set<string> {
+	return new Set([
+		...Object.keys(frontmatter?.managed ?? {}),
+		...Object.keys(frontmatter?.managed_links ?? {}),
+	]);
+}
+
 export function computeManagedKeys(
 	managed: Record<string, unknown>,
 	userPreservePatterns: string[] = [],
+	declaredManagedKeys: Iterable<string> = [],
 ): Set<string> {
-	const keys = new Set<string>(Object.keys(managed));
+	const keys = new Set<string>([...Object.keys(managed), ...declaredManagedKeys]);
 	keys.add('_crosswalker');
 	keys.add('curie');
 
