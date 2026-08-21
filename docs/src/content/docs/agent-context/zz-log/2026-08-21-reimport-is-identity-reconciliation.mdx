@@ -67,9 +67,47 @@ This also answers the open question "should Crosswalker move files in a user's v
 
 **Owner calls embedded here** (defaults chosen, easy to reverse): orphans are *reported, kept, and excluded from coverage counts* by default, with delete-after-confirm offered; moves are shown in the preview and on by default. If either default feels wrong in practice, it is a setting, not a redesign.
 
-## 5. What happens to the parked branch
+## 5. What shipped
+
+R1's three planned engine pieces now exist:
+
+| Problem closed | Shipped behavior |
+|---|---|
+| A layout change duplicated an existing concept | Generation resolves Crosswalker notes by `curie` and moves the existing file before merging |
+| A removed source identity disappeared without explanation | Complete, error-free owned runs return an orphan report; they do not delete Markdown |
+| The query database kept rows after their notes disappeared | A full projection (a complete vault-to-index rebuild) prunes unseen derived rows; partial projection never prunes |
+
+The build exposed three safety preconditions the decision had not made explicit:
+
+- **Completeness must be proven.** A partial, failed, or ambiguously owned run cannot establish that an identity disappeared.
+- **Ownership must use the exact provenance key.** The comparison set is recipe-scoped; path, folder, and note kind are not substitutes.
+- **Pruning must fail closed.** If Obsidian cannot provide readable metadata for a possible Crosswalker note, the [query database (Tier 2)](/crosswalker/concepts/system-architecture/) must preserve its prior rows rather than infer deletion. The current violation of this rule is recorded as a pre-alpha limit below.
+
+The accepted report-and-prune limits are recorded in [`CHANGELOG.md` `[Unreleased]`](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md#re-import-correctness-notes-now-follow-their-identity-2026-08-21); they do not change the decision or authorize Markdown deletion.
+
+## 6. What happens to the parked branch
 
 `feat/p2-p3-identity-provenance` stays parked as reference material. Its good parts — the P2 identity fields, the normalization helpers, the negation plumbing, the repaired specs — get cherry-picked into the rebuild *on top of* reconciliation. Its path-detection code is not remediated further; this decision supersedes it.
+
+## 6. What shipped, and what the build taught
+
+Sprint R1 landed the engine layer of this decision on 2026-08-21:
+
+| Piece | Behavior |
+|---|---|
+| Identity lookup + move | A re-import resolves a note by `curie` wherever it sits, and relocates it to the rendered address via the link-updating rename API instead of creating a duplicate. Ambiguous identity is an error, not a silent pick |
+| Orphan report | After a complete, error-free run with unambiguous ownership, identities the source no longer produces are listed. Report only; nothing is deleted |
+| Tier 2 pruning | A full projection removes rows whose note is gone and invalidates dependent closure caches. A filtered projection cannot request pruning, and any error suppresses it |
+
+### Three things the build taught that the decision did not anticipate
+
+**Choosing the right key is necessary but not sufficient — you also need proof the pass was complete.** Identity tells you *what* to compare; it says nothing about whether your view of the vault was whole. Every deletion inference therefore needs a second, independent guarantee: this pass saw everything. That is now explicit (`projectionMode`, defaulting to partial) rather than inferred.
+
+**Absence of evidence is not evidence of absence.** A verified deletion bug: reading a note's frontmatter returns nothing both when a note genuinely has none *and* when its frontmatter exists but failed to parse. The first is safely skippable; the second is unknown. Treating them alike meant a note with malformed YAML left no trace of having been seen, and its rows were pruned while the note sat untouched on disk. Unknown must now fail closed. The discriminator was already available — Obsidian records that a note *has* a frontmatter block regardless of whether it parsed — and was simply unused.
+
+**An ownership key that several imports share is not an ownership key.** Orphan detection asks "which identities did this import produce before, that it no longer produces?" That question is only answerable if the ownership key identifies exactly one import. Unnamed classic-wizard configs all fall back to a single shared identifier, so one framework's re-import could report another framework's notes as missing. Rather than guess, detection now stands down when ownership is ambiguous — including for enrichment-enabled runs, whose synthetic hub notes are not yet tracked as produced and would otherwise be flagged as orphans the moment they were created.
+
+The third is a design gap, not a coding error: **stable per-import identity is still unmodelled**, and it gates both full orphan coverage and any future delete-after-confirm flow. That is architect work, not a patch.
 
 ## Related
 

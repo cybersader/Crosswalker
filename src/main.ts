@@ -158,7 +158,7 @@ export default class CrosswalkerPlugin extends Plugin {
 				'schema-rebuild-reprojection',
 				'Tier 2 schema was rebuilt; reprojecting so queries are not served from an empty index',
 			);
-			await projectFromTier1(this.app, handle.db, { debug: this.debug });
+			await projectFromTier1(this.app, handle.db, { debug: this.debug, projectionMode: 'full' });
 		}
 
 		return handle;
@@ -173,7 +173,7 @@ export default class CrosswalkerPlugin extends Plugin {
 	 */
 	runProjection = async (): Promise<ProjectionResult> => {
 		const handle = await this.openTier2();
-		return projectFromTier1(this.app, handle.db, { debug: this.debug });
+		return projectFromTier1(this.app, handle.db, { debug: this.debug, projectionMode: 'full' });
 	};
 
 	/**

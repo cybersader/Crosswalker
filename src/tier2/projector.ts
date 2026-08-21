@@ -53,6 +53,12 @@ export interface ProjectionOptions {
 	 * Default: all .md files in the vault.
 	 */
 	pathFilter?: (path: string) => boolean;
+	/**
+	 * Whether this pass has complete-vault coverage. Default: 'partial'.
+	 * Pruning is allowed only when callers explicitly declare 'full'; a path
+	 * filter is never compatible with a full projection.
+	 */
+	projectionMode?: 'full' | 'partial';
 }
 
 /**
@@ -72,6 +78,10 @@ export async function projectFromTier1(
 ): Promise<ProjectionResult> {
 	const startMs = Date.now();
 	const yieldEvery = options.yieldEvery ?? 50;
+	const fullProjection = options.projectionMode === 'full';
+	if (fullProjection && options.pathFilter) {
+		throw new Error(`A full Tier 2 projection cannot use pathFilter`);
+	}
 	const result: ProjectionResult = {
 		success: true,
 		counts: {
@@ -94,6 +104,7 @@ export async function projectFromTier1(
 
 	// Track ontologies seen so we don't issue redundant upserts
 	const ontologiesSeen = new Set<string>();
+	if (fullProjection) initializeProjectionMarks(db);
 
 	const files = app.vault.getMarkdownFiles();
 	const filtered = options.pathFilter ? files.filter((f) => options.pathFilter!(f.path)) : files;
@@ -108,8 +119,30 @@ export async function projectFromTier1(
 		}
 
 		try {
+			const cacheEntry = app.metadataCache.getFileCache(file);
+			if (fullProjection && !cacheEntry) {
+				throw new Error(`metadata cache unavailable during full projection`);
+			}
 			const fm = readFrontmatter(app, file);
 			if (!fm) {
+				// Absence of evidence is not evidence of absence. `readFrontmatter`
+				// returns null for BOTH an ordinary note with no frontmatter (safe to
+				// skip) and a note whose frontmatter block exists but did not parse —
+				// malformed YAML, or a cache entry populated before its frontmatter is
+				// available. The second case may well be one of ours, and skipping it
+				// silently leaves no seen-mark, so a pruning pass would delete the rows
+				// of a note that is sitting right there.
+				//
+				// `frontmatterPosition` is the discriminator: Obsidian records it when a
+				// note HAS a frontmatter block, whether or not the parse succeeded. So a
+				// position with no parsed content means unknown, and during a pruning
+				// pass unknown must fail closed.
+				const hasUnparsedFrontmatter = Boolean(
+					(cacheEntry as { frontmatterPosition?: unknown } | null)?.frontmatterPosition,
+				);
+				if (fullProjection && hasUnparsedFrontmatter) {
+					throw new Error(`frontmatter present but unreadable; refusing to prune on an incomplete pass`);
+				}
 				result.counts.skipped += 1;
 				continue;
 			}
@@ -124,16 +157,21 @@ export async function projectFromTier1(
 
 			if (kind === 'junction-note') {
 				upsertJunctionNote(db, file, fm);
+				if (fullProjection) markJunctionNoteSeen(db, file.path);
 				result.counts.junction_notes += 1;
 			} else if (kind === 'crosswalk-edge') {
 				// Crosswalk-edges span two ontologies — register both subject + object
 				ensureOntologyForKind(db, fm, ontologiesSeen, file.path, 'crosswalk-edge');
 				upsertMapping(db, file, fm);
+				if (fullProjection) markMappingSeen(db, file.path);
 				result.counts.mappings += 1;
 			} else {
 				// default / 'concept'
 				ensureOntologyForKind(db, fm, ontologiesSeen, file.path, 'concept');
 				upsertConcept(db, file, fm);
+				if (fullProjection) {
+					markConceptSeen(db, deriveConceptOntologyId(fm), String(fm.curie).trim());
+				}
 				result.counts.concepts += 1;
 			}
 		} catch (err) {
@@ -144,29 +182,28 @@ export async function projectFromTier1(
 		}
 	}
 
-	// If any mappings were written, invalidate both closure rows and their
-	// coverage watermarks atomically (Ch 18 §2.5). A stale watermark with no
-	// rows would otherwise turn an invalidated closure into a false empty hit.
-	if (result.counts.mappings > 0) {
+	let prunedRows = 0;
+	if (fullProjection) {
 		try {
-			db.exec(`
-				SAVEPOINT closure_cache_invalidate;
-				DELETE FROM closure_cache_state;
-				DELETE FROM closure_cache;
-				RELEASE closure_cache_invalidate;
-			`);
-		} catch (err) {
-			try {
-				db.exec('ROLLBACK TO closure_cache_invalidate');
-				db.exec('RELEASE closure_cache_invalidate');
-			} catch {
-				// Preserve the invalidation error if rollback also fails.
+			if (result.errors.length === 0) {
+				for (const ontologyId of ontologiesSeen) markOntologySeen(db, ontologyId);
+				prunedRows = pruneUnseenRows(db);
 			}
-			// Non-fatal — cache tables may not exist if migrations haven't run
-			options.debug?.warn('tier2', 'closure-cache-invalidate-failed', 'Closure cache invalidate failed (non-fatal)', {
-				error: err instanceof Error ? err.message : String(err),
-			});
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			result.errors.push({ vault_path: '<tier2-prune>', message: msg });
+			result.counts.errors += 1;
+			options.debug?.warn('tier2', 'projection-prune-error', 'Tier 2 pruning failed', { error: msg });
+		} finally {
+			dropProjectionMarks(db, options.debug);
 		}
+	}
+
+	// Mapping changes and any successful prune invalidate both closure rows and
+	// their coverage watermarks atomically (Ch 18 §2.5). A stale watermark with
+	// no rows would otherwise turn an invalidated closure into a false empty hit.
+	if (result.counts.mappings > 0 || prunedRows > 0) {
+		invalidateClosureCaches(db, options.debug);
 	}
 
 	// Final ontology count is from the seen-set
@@ -182,9 +219,167 @@ export async function projectFromTier1(
 		success: result.success,
 		counts: result.counts,
 		duration_ms: result.durationMs,
+		pruned_rows: prunedRows,
 	});
 
 	return result;
+}
+
+// ============================================================================
+// Full-projection pruning helpers
+// ============================================================================
+
+function initializeProjectionMarks(db: any): void {
+	db.exec(`
+		DROP TABLE IF EXISTS temp.crosswalker_seen_concepts;
+		DROP TABLE IF EXISTS temp.crosswalker_seen_mappings;
+		DROP TABLE IF EXISTS temp.crosswalker_seen_junction_notes;
+		DROP TABLE IF EXISTS temp.crosswalker_seen_ontologies;
+		CREATE TEMP TABLE crosswalker_seen_concepts (
+			ontology_id TEXT NOT NULL,
+			curie TEXT NOT NULL,
+			PRIMARY KEY (ontology_id, curie)
+		);
+		CREATE TEMP TABLE crosswalker_seen_mappings (source_path TEXT PRIMARY KEY);
+		CREATE TEMP TABLE crosswalker_seen_junction_notes (vault_path TEXT PRIMARY KEY);
+		CREATE TEMP TABLE crosswalker_seen_ontologies (id TEXT PRIMARY KEY);
+	`);
+}
+
+function markConceptSeen(db: any, ontologyId: string, curie: string): void {
+	db.exec({
+		sql: `INSERT OR IGNORE INTO temp.crosswalker_seen_concepts (ontology_id, curie)
+			VALUES ($ontology_id, $curie)`,
+		bind: { $ontology_id: ontologyId, $curie: curie },
+	});
+}
+
+function markMappingSeen(db: any, sourcePath: string): void {
+	markPathSeen(db, 'crosswalker_seen_mappings', 'source_path', sourcePath);
+}
+
+function markJunctionNoteSeen(db: any, vaultPath: string): void {
+	markPathSeen(db, 'crosswalker_seen_junction_notes', 'vault_path', vaultPath);
+}
+
+function markOntologySeen(db: any, ontologyId: string): void {
+	markPathSeen(db, 'crosswalker_seen_ontologies', 'id', ontologyId);
+}
+
+function markPathSeen(db: any, table: string, column: string, value: string): void {
+	db.exec({
+		sql: `INSERT OR IGNORE INTO temp.${table} (${column}) VALUES ($value)`,
+		bind: { $value: value },
+	});
+}
+
+function pruneUnseenRows(db: any): number {
+	const countRows = db.exec({
+		sql: `
+			SELECT
+				(SELECT COUNT(*) FROM concepts AS c
+				 WHERE NOT EXISTS (
+					SELECT 1 FROM temp.crosswalker_seen_concepts AS seen
+					WHERE seen.ontology_id = c.ontology_id AND seen.curie = c.curie
+				 ))
+				+
+				(SELECT COUNT(*) FROM mappings AS m
+				 WHERE NOT EXISTS (
+					SELECT 1 FROM temp.crosswalker_seen_mappings AS seen
+					WHERE seen.source_path = m.source_path
+				 ))
+				+
+				(SELECT COUNT(*) FROM junction_notes AS j
+				 WHERE NOT EXISTS (
+					SELECT 1 FROM temp.crosswalker_seen_junction_notes AS seen
+					WHERE seen.vault_path = j.vault_path
+				 ))
+				+
+				(SELECT COUNT(*) FROM ontologies AS o
+				 WHERE NOT EXISTS (
+					SELECT 1 FROM temp.crosswalker_seen_ontologies AS seen
+					WHERE seen.id = o.id
+				 )) AS stale_count
+		`,
+		rowMode: 'array',
+		returnValue: 'resultRows',
+	}) as unknown[][];
+	const staleCount = Number(countRows?.[0]?.[0] ?? 0);
+	if (staleCount === 0) return 0;
+
+	try {
+		db.exec(`
+			SAVEPOINT tier2_prune;
+			DELETE FROM concepts
+			WHERE NOT EXISTS (
+				SELECT 1 FROM temp.crosswalker_seen_concepts AS seen
+				WHERE seen.ontology_id = concepts.ontology_id AND seen.curie = concepts.curie
+			);
+			DELETE FROM mappings
+			WHERE NOT EXISTS (
+				SELECT 1 FROM temp.crosswalker_seen_mappings AS seen
+				WHERE seen.source_path = mappings.source_path
+			);
+			DELETE FROM junction_notes
+			WHERE NOT EXISTS (
+				SELECT 1 FROM temp.crosswalker_seen_junction_notes AS seen
+				WHERE seen.vault_path = junction_notes.vault_path
+			);
+			DELETE FROM ontologies
+			WHERE NOT EXISTS (
+				SELECT 1 FROM temp.crosswalker_seen_ontologies AS seen
+				WHERE seen.id = ontologies.id
+			);
+			RELEASE tier2_prune;
+		`);
+	} catch (err) {
+		try {
+			db.exec('ROLLBACK TO tier2_prune');
+			db.exec('RELEASE tier2_prune');
+		} catch {
+			// Preserve the prune error if rollback also fails.
+		}
+		throw err;
+	}
+
+	return staleCount;
+}
+
+function dropProjectionMarks(db: any, debug?: DebugLog): void {
+	try {
+		db.exec(`
+			DROP TABLE IF EXISTS temp.crosswalker_seen_concepts;
+			DROP TABLE IF EXISTS temp.crosswalker_seen_mappings;
+			DROP TABLE IF EXISTS temp.crosswalker_seen_junction_notes;
+			DROP TABLE IF EXISTS temp.crosswalker_seen_ontologies;
+		`);
+	} catch (err) {
+		debug?.warn('tier2', 'projection-mark-cleanup-failed', 'Projection mark cleanup failed (non-fatal)', {
+			error: err instanceof Error ? err.message : String(err),
+		});
+	}
+}
+
+function invalidateClosureCaches(db: any, debug?: DebugLog): void {
+	try {
+		db.exec(`
+			SAVEPOINT closure_cache_invalidate;
+			DELETE FROM closure_cache_state;
+			DELETE FROM closure_cache;
+			RELEASE closure_cache_invalidate;
+		`);
+	} catch (err) {
+		try {
+			db.exec('ROLLBACK TO closure_cache_invalidate');
+			db.exec('RELEASE closure_cache_invalidate');
+		} catch {
+			// Preserve the invalidation error if rollback also fails.
+		}
+		// Non-fatal: cache tables may not exist if migrations have not run.
+		debug?.warn('tier2', 'closure-cache-invalidate-failed', 'Closure cache invalidate failed (non-fatal)', {
+			error: err instanceof Error ? err.message : String(err),
+		});
+	}
 }
 
 // ============================================================================

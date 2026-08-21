@@ -411,6 +411,13 @@ export interface GenerationResult {
 	 */
 	moved?: Array<{ curie: string; from: string; to: string }>;
 	/**
+	 * Identities previously produced by this recipe that a complete, successful
+	 * run no longer produced. Orphans are kept by default, flagged for review,
+	 * and excluded from coverage counts. Deletion requires a separate confirmed
+	 * action and is never performed by generation.
+	 */
+	orphans?: Array<{ curie: string; path: string }>;
+	/**
 	 * Per-row render deviations (v0.1.6): rows that imported fine but didn't
 	 * fully fit the recipe's expected shape (skipped folder level, split/regex
 	 * fallback). Never blocks the import — surfaced so a "weird vault" is

@@ -8,11 +8,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Re-import correctness: notes now follow their identity (2026-08-21)
+
+- **Changing an import's layout no longer creates a second copy of the same note.** Crosswalker now finds its own notes by their stable `curie` identity, moves an existing note through Obsidian's link-updating rename API when its destination changes, then merges the new managed content in place. Hand-written notes are structurally outside this lookup.
+- **A source that stops producing an identity no longer leaves that disappearance invisible.** After a complete, error-free classic wizard or workbench run with readable ownership metadata, the generation result reports the recipe-owned notes that were not produced this time as orphans (Crosswalker notes kept in the vault but absent from the latest source). This is report-only: no Markdown note is deleted.
+- **The query index no longer keeps rows for notes that are gone.** A full projection (a complete vault-to-index rebuild) records the identities it actually saw, then prunes stale concepts, mappings, junction notes, and ontology rows. Partial or filtered projections never prune; any projection error blocks all pruning; a moved concept is reconciled by identity at its new path. Successful pruning also clears cached transitive results so queries cannot reuse answers derived from removed rows.
+- **Known pre-alpha limits:** orphan reporting is not yet shared by the native `generateFromRecipe`/SSSOM path; enrichment-generated hub notes can be misreported as orphans; classic imports without a distinct configuration ID can share the fallback owner `legacy-config`; unknown-length streams are not yet proof of completeness; kept orphans still remain in Tier 2 coverage; and a full projection can currently prune an existing indexed note when Obsidian returns a cache object without readable frontmatter. There is no review/delete interface yet. These are explicit follow-ups, not deletion permissions: canonical Markdown remains untouched.
+
+[Decision and rationale](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/).
+
 ### Fixed: depth-safe Tier 2 closure caching (2026-08-20)
 
 - **Transitive mapping queries no longer return silently truncated results after a shallower query runs first.** Each subject/predicate cache partition now records the depth through which it was fully computed; deeper requests recompute and atomically advance that coverage, while shallower requests safely reuse and filter deeper results.
 - **Empty closures are cached deliberately.** A separate coverage-state row distinguishes a computed empty result from a cache miss, and mapping projection invalidates cached rows and coverage together.
 - **Tier 2 schema upgraded to `tier2-sqlite-v2`.** Because the sidecar is fully derived from canonical Markdown, versioned and unversioned older schemas are deliberately rebuilt rather than preserving the ambiguous v1 cache shape.
+
+### Re-import finds notes by identity, and stops counting things that are gone (2026-08-21)
+
+- **A re-import now finds a generated note by what it is, not where it sits.** Every generated note carries a stable identifier in its frontmatter, but the importer looked notes up by file path. If a note's address changed — a renamed output folder, a different destination, a changed layout — the re-import could not see the note it had made and wrote a second one beside it. Notes are now matched by identifier, and a note whose address changed is **moved** through Obsidian's rename (so links pointing at it follow) rather than duplicated. Two notes claiming one identifier is reported as an error rather than silently resolved.
+- **Notes the source stopped producing are reported.** A control that existed in a previous import but is absent from the current source is listed as an orphan. It is only ever **reported** — never deleted, never silently kept in coverage counts.
+- **The query index drops rows whose note is gone,** so counts stop including things that no longer exist. Deletion is deliberately all-or-nothing on a clean, complete pass: a filtered projection cannot even request it, and a single error anywhere suppresses it entirely.
+
+**Known limits, stated plainly rather than implied:**
+
+| Limit | What it means |
+|---|---|
+| Wizard path only | Identity moves and orphan reporting cover the import-wizard path. The recipe and SSSOM path does not have them yet |
+| No user-facing orphan surface | Orphans are reported in the import result. There is no preview, no delete-after-confirm, and no coverage-exclusion UI yet — that is later work, not a missing safety control |
+| Orphan detection stands down when it cannot be certain | It is skipped entirely for enrichment-enabled runs (synthetic hub notes are not yet tracked as produced) and for unnamed classic-wizard configs (they share one fallback ownership key, so one framework's re-import could otherwise flag another framework's notes). Reporting nothing beats reporting a note as missing when it is not |
 
 ### Re-import correctness: a field the tool manages can now be removed (2026-08-21)
 

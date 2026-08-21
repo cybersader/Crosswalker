@@ -319,6 +319,12 @@ export async function generateNotes(
 		// The shape workbench passes a pre-built recipe (recipeOverride) so its
 		// full mechanism set survives; otherwise the legacy shim translates.
 		const recipe = options.recipeOverride ?? legacyConfigToRecipe(config as ImportRecipe);
+		// Compute recipe ownership once and reuse the exact value written to
+		// `_crosswalker.recipe.id`; orphan detection must never invent a different
+		// ownership key from the provenance stored on notes.
+		const provenanceRecipeId = options.recipeOverride
+			? recipe.recipe
+			: (options.configId ?? recipe.recipe);
 		// Authority for which frontmatter keys this run OWNS comes from the recipe's
 		// declaration, not from which keys happened to render non-empty for a row.
 		// Without this, a declared field that renders empty is absent from managedKeys,
@@ -344,6 +350,7 @@ export async function generateNotes(
 		// Track paths emitted in THIS generation pass to detect collisions
 		// (two source rows rendering to the same vault path).
 		const emittedPaths = new Set<string>();
+		const producedCuries = new Set<string>();
 		const sourceOrderStamper = new SourceOrderStamper();
 
 		// Pass 1.5 enrichment (v0.1.6.1): the wizard/workbench path shares the
@@ -392,6 +399,7 @@ export async function generateNotes(
 						ontologyId,
 						renderReport,
 						recipeHash,
+						provenanceRecipeId,
 					);
 					if (renderReport.notes.length > 0) {
 						result.warnings ??= [];
@@ -450,6 +458,10 @@ export async function generateNotes(
 							}
 						}
 					}
+
+					// This identity belongs to the current source set even when the note is
+					// skipped or merged rather than newly created.
+					producedCuries.add(noteData.curie);
 
 					// Check if file exists. Consults BOTH the sibling path AND (when
 					// enrichment is on) the folder-note-relocated path by curie — see
@@ -590,6 +602,37 @@ export async function generateNotes(
 			}
 		}
 
+		// Orphan detection is safe only after every expected row was visited and no
+		// row failed. A partial source would make every unvisited identity look gone.
+		const rowCountComplete = parsedData.rowCount < 0 || completed === parsedData.rowCount;
+		const hasStableRecipeId = typeof provenanceRecipeId === 'string'
+			&& provenanceRecipeId.trim().length > 0
+			// `legacy-config` is the shim's fallback for any unnamed classic-wizard
+			// config (legacy-recipe-shim.ts), so EVERY unnamed import shares it. It
+			// looks stable but identifies no single import: re-importing one framework
+			// would report another framework's notes as orphans. A shared key is not
+			// an ownership key.
+			&& provenanceRecipeId !== 'legacy-config';
+		const canReadOwnership = typeof app.metadataCache?.getFileCache === 'function';
+		// Enrichment writes synthetic facet and level hubs carrying this same recipe
+		// provenance, but their identities are never added to producedCuries, so every
+		// successfully written hub would be reported as an orphan. Until hub identities
+		// are tracked, an enrichment-enabled run cannot answer the orphan question
+		// honestly. Reporting a note as missing when it was just created is worse than
+		// reporting nothing.
+		const ownershipIsUnambiguous = !enrichmentEnabled;
+		// Provenance writes no recipe ownership when there is no stable id. Without
+		// that key (or a readable metadata cache), skip rather than guessing from paths.
+		if (result.success && result.errors.length === 0 && rowCountComplete
+			&& hasStableRecipeId && canReadOwnership && ownershipIsUnambiguous) {
+			const recipeIdentityIndex = buildIdentityIndex(app, { recipeId: provenanceRecipeId });
+			const orphans = recipeIdentityIndex.curies()
+				.filter((curie) => !producedCuries.has(curie))
+				.map((curie) => ({ curie, path: recipeIdentityIndex.get(curie)!.path }))
+				.sort((a, b) => a.curie.localeCompare(b.curie) || a.path.localeCompare(b.path));
+			if (orphans.length > 0) result.orphans = orphans;
+		}
+
 		// Final progress update
 		if (options.onProgress) {
 			options.onProgress(completed, total, 'Complete');
@@ -724,6 +767,7 @@ function buildNoteDataViaRender(
 	ontologyId: string,
 	report?: RenderReport,
 	recipeHash?: string,
+	provenanceRecipeId?: string,
 ): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[] } {
 	// 1. Build a CURIE for this row. Strategy: ontology + filename stem.
 	//    The filename is whatever the recipe's leaf file template resolves to.
@@ -800,7 +844,7 @@ function buildNoteDataViaRender(
 		{
 			sourceFile: options.sourceFileName,
 			sourceVersion: options.frameworkVersion ?? recipe.source?.version,
-			recipeId: options.recipeOverride ? recipe.recipe : (options.configId ?? recipe.recipe),
+			recipeId: provenanceRecipeId,
 			recipeHash,
 			conceptCid: computeConceptCid({ curie, scope: row as Record<string, unknown> }),
 		},
