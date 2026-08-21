@@ -23,6 +23,27 @@ export default defineConfig({
   // Pinned off Astro's 4321 default to avoid cross-project port collisions
   // (multiple Astro sites on this machine). Applies to dev AND preview.
   server: { port: 14321 },
+
+  // Image optimization is switched OFF because this site has no images to
+  // optimize. Verified 2026-08-21: the entire docs source contains exactly one
+  // image file, a 12 KB logo in public/, which Astro copies verbatim without
+  // touching the image pipeline. Nothing anywhere imports `astro:assets` or the
+  // <Image> component.
+  //
+  // Astro's default image service instantiates `sharp` regardless. sharp is a
+  // native module that allocates large decode buffers, so the build was paying a
+  // substantial memory cost to process nothing. That is invisible on an idle
+  // machine and actively harmful here: this workstation runs several agent
+  // sessions and another project against a shared cgroup, and the docs build was
+  // reaching roughly 3 GB of a 5 GB limit, forcing local builds to be abandoned
+  // and deferred to CI.
+  //
+  // If real images are ever added and need resizing or format conversion, delete
+  // this block to restore the default sharp service — and re-measure peak RSS at
+  // the same time, because that is the cost being reintroduced.
+  image: {
+    service: { entrypoint: 'astro/assets/services/noop' },
+  },
   vite: {
     plugins: [tailwindcss()],
     define: {
