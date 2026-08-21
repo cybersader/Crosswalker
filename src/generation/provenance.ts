@@ -17,6 +17,8 @@
  * version-migration-deliverable.md`).
  */
 
+import type { ImportSetReference } from './import-set';
+
 const SPEC_VERSION = 'https://crosswalker.dev/spec/tier1.schema.json';
 
 export interface ProvenanceInput {
@@ -34,6 +36,8 @@ export interface ProvenanceInput {
 	sourceVersion?: string;
 	/** Optional: hash of the source file at import time */
 	sourceHash?: string;
+	/** Optional only for legacy/direct callers; generation always stamps ownership. */
+	importSet?: ImportSetReference;
 	/** Optional: the canonical concept identity content hash */
 	conceptCid?: string;
 }
@@ -64,6 +68,13 @@ export function buildProvenance(input: ProvenanceInput, pluginVersion: string): 
 		block.recipe = {
 			id: input.recipeId,
 			...(input.recipeHash ? { hash: input.recipeHash } : {}),
+		};
+	}
+
+	if (input.importSet) {
+		block.import_set = {
+			id: input.importSet.id,
+			scheme: input.importSet.scheme,
 		};
 	}
 

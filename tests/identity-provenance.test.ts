@@ -42,6 +42,27 @@ describe('stable identity fields', () => {
 		expect(() => renderTemplate('{parent.id|optional}', {})).toThrow('hit non-object value');
 	});
 
+	it('keeps import-set provenance additive but validates both pinned fields when present', () => {
+		const concept = { curie: 'nist:AC-2', _crosswalker: provenance };
+		expect(validateTier1Frontmatter(concept).valid).toBe(true);
+		expect(validateTier1Frontmatter({
+			...concept,
+			_crosswalker: { ...provenance, import_set: { id: 'iset-abc123', scheme: 'endpoint-v1' } },
+		}).valid).toBe(true);
+		expect(validateTier1Frontmatter({
+			...concept,
+			_crosswalker: { ...provenance, import_set: { id: 'derived-name', scheme: 'endpoint-v1' } },
+		}).valid).toBe(false);
+		expect(validateTier1Frontmatter({
+			...concept,
+			_crosswalker: { ...provenance, import_set: { id: 'iset-abc123', scheme: 'future-v1' } },
+		}).valid).toBe(false);
+		expect(validateTier1Frontmatter({
+			...concept,
+			_crosswalker: { ...provenance, import_set: { id: 'iset-abc123' } },
+		}).valid).toBe(false);
+	});
+
 	it('accepts optional identities while rejecting malformed CURIEs', () => {
 		const base = { curie: 'cwk:jn-1', kind: 'junction-note', subject: 'Concepts/A', predicate: 'covers', object: 'Evidence/X', _crosswalker: provenance };
 		expect(validateTier1Frontmatter(base).valid).toBe(true);

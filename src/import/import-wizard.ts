@@ -45,6 +45,7 @@ import {
 	type RecipeMatch,
 	type RecipeRegistryEntry,
 } from './recipe-registry';
+import { discoverImportSets, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
 
 /**
  * Curated destination default for a recognized recipe (spec §7m): an explicit
@@ -212,6 +213,9 @@ export class ImportFlow {
 	private destEditing: boolean = false;
 	/** The step-2 workbench one-line hint has been dismissed for the session (spec §7j #5). */
 	private workbenchHintDismissed: boolean = false;
+	/** Import-set choice belongs to one destination; changing the path resets it. */
+	private importSetChoice: ImportSetOption | null = null;
+	private importSetChoiceBasePath: string = '';
 
 	// Output settings (captured from Step 4)
 	outputPath: string = '';
@@ -1584,6 +1588,7 @@ export class ImportFlow {
 
 		// (a) Destination block — WHERE.
 		this.renderDestinationBlock(container);
+		this.renderImportSetReview(container, this.currentOutputPath());
 
 		// (b) Shape-map recap table (moved here from step 4) — WHAT.
 		container.createEl('h4', { text: 'Your shape map' });
@@ -1673,6 +1678,119 @@ export class ImportFlow {
 			cls: 'crosswalker-plan-line-note',
 			text: rows.length > 0 ? ' (figures marked ~ are estimates from the full file)' : ' (streamed source; only the note count is known before generating)',
 		});
+	}
+
+	private currentOutputPath(): string {
+		return this.outputPath || this.plugin.settings.defaultOutputPath;
+	}
+
+	/**
+	 * Inline ownership review. Zero sets stays silent and mints at generation;
+	 * one set defaults to refresh; several sets require an explicit choice.
+	 */
+	private renderImportSetReview(container: HTMLElement, basePath: string): void {
+		let sets: DiscoveredImportSet[];
+		try {
+			sets = this.importSetsForDestination(basePath);
+		} catch (error) {
+			container.createEl('p', {
+				text: error instanceof Error ? error.message : String(error),
+				cls: 'crosswalker-warning',
+			});
+			return;
+		}
+
+		if (sets.length === 0) return;
+		const wrap = container.createEl('div', { cls: 'crosswalker-import-set-review' });
+
+		if (sets.length === 1) {
+			const set = sets[0];
+			if (this.importSetChoice !== 'new') this.importSetChoice = { id: set.id };
+			const line = wrap.createEl('p', { cls: 'setting-item-description' });
+			if (this.importSetChoice === 'new') {
+				line.setText('Importing as a new set. The existing set will remain separate.');
+				const refresh = wrap.createEl('button', { text: `Refresh ${set.id} instead` });
+				refresh.addEventListener('click', () => {
+					this.importSetChoice = { id: set.id };
+					this.renderStep();
+				});
+			} else {
+				line.setText(`Refreshing import set ${set.id} (${set.noteCount} existing notes)`);
+				const fresh = wrap.createEl('button', { text: 'Import as a new set instead' });
+				fresh.addEventListener('click', () => {
+					this.importSetChoice = 'new';
+					this.renderStep();
+				});
+			}
+			return;
+		}
+
+		wrap.createEl('p', {
+			text: 'This destination contains multiple import sets. Choose which set to refresh, or import as a new set.',
+			cls: 'crosswalker-warning',
+		});
+		const list = wrap.createEl('ul');
+		for (const set of sets) {
+			list.createEl('li', { text: `${set.id}: ${set.noteCount} existing notes` });
+		}
+
+		new Setting(wrap)
+			.setName('Import set')
+			.setDesc('Required because this destination contains more than one owned collection')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('', 'Choose one');
+				for (const set of sets) dropdown.addOption(set.id, `${set.id} (${set.noteCount} existing notes)`);
+				dropdown.addOption('__new__', 'Import as a new set');
+				const value = this.importSetChoice === 'new'
+					? '__new__'
+					: (this.importSetChoice && typeof this.importSetChoice === 'object' ? this.importSetChoice.id : '');
+				dropdown.setValue(value).onChange((selected) => {
+					this.importSetChoice = selected === '__new__'
+						? 'new'
+						: (selected ? { id: selected } : null);
+					this.renderStep();
+				});
+			});
+	}
+
+	private importSetsForDestination(basePath: string): DiscoveredImportSet[] {
+		const normalized = normalizePath(basePath || '');
+		if (normalized !== this.importSetChoiceBasePath) {
+			this.importSetChoiceBasePath = normalized;
+			this.importSetChoice = null;
+		}
+		const sets = discoverImportSets(this.app, normalized);
+		if (sets.length === 1 && this.importSetChoice !== 'new') {
+			this.importSetChoice = { id: sets[0].id };
+		} else if (sets.length > 1) {
+			const choice = this.importSetChoice;
+			if (choice && choice !== 'new' && !sets.some((set) => set.id === choice.id)) {
+				this.importSetChoice = null;
+			}
+		} else if (sets.length === 0) {
+			this.importSetChoice = null;
+		}
+		return sets;
+	}
+
+	private selectedImportSet(basePath: string): ImportSetOption | undefined {
+		const sets = this.importSetsForDestination(basePath);
+		if (sets.length === 0) return undefined;
+		if (sets.length === 1) return this.importSetChoice === 'new' ? 'new' : { id: sets[0].id };
+		const choice = this.importSetChoice;
+		if (choice === 'new') return 'new';
+		if (choice && sets.some((set) => set.id === choice.id)) return { id: choice.id };
+		throw new Error('Choose an import set to refresh, or choose to import as a new set.');
+	}
+
+	private validateImportSetSelection(basePath: string): boolean {
+		try {
+			this.selectedImportSet(basePath);
+			return true;
+		} catch (error) {
+			new Notice(error instanceof Error ? error.message : String(error));
+			return false;
+		}
 	}
 
 	/**
@@ -2553,14 +2671,19 @@ export class ImportFlow {
 			new Setting(container)
 				.setName('Output path')
 				.setDesc('Folder where notes will be created')
-				.addText(text => text
-					.setPlaceholder('Ontologies')
-					.setValue(this.outputPath)
-					.onChange(value => {
-						this.outputPath = value;
-						this.scheduleDraftSave();
-					}));
+				.addText((text) => {
+					text.setPlaceholder('Ontologies')
+						.setValue(this.outputPath)
+						.onChange((value) => {
+							this.outputPath = value;
+							this.scheduleDraftSave();
+						});
+					// Refresh the inline set list once the destination edit is complete.
+					text.inputEl.addEventListener('blur', () => this.renderStep());
+				});
 		}
+
+		this.renderImportSetReview(container, this.currentOutputPath());
 
 		// Framework ID setting (for _crosswalker metadata)
 		new Setting(container)
@@ -2915,6 +3038,8 @@ export class ImportFlow {
 					return parseSuccess;
 				}
 				return true;
+			case 3:
+				return !this.isWorkbenchMode() || this.validateImportSetSelection(this.currentOutputPath());
 			default:
 				return true;
 		}
@@ -3031,6 +3156,7 @@ export class ImportFlow {
 			new Notice('No data to generate. Please go back and select a file.');
 			return;
 		}
+		if (!this.validateImportSetSelection(this.currentOutputPath())) return;
 
 		// Phase 3.5c: thread a fresh trace_id through the entire generation
 		// flow. Every wizard / generation / Tier 2 / view event that fires
@@ -3057,8 +3183,10 @@ export class ImportFlow {
 			);
 
 		// Prepare generation options
+		const outputPath = this.currentOutputPath();
 		const options: GenerationOptions = {
-			basePath: this.outputPath || this.plugin.settings.defaultOutputPath,
+			basePath: outputPath,
+			importSet: this.selectedImportSet(outputPath),
 			overwriteMode: this.overwriteMode,
 			createFolders: true,
 			frameworkId: this.frameworkId || undefined,

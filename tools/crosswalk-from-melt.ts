@@ -35,11 +35,18 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import * as XLSX from 'xlsx';
 import { render, type Recipe } from '../src/render';
 import { validateTier1Frontmatter, validateRecipe } from '../src/validation/validator';
+
+const DETERMINISTIC_IMPORT_SET_ID = 'iset-c6d7e8';
+const IMPORT_SET_SCHEME = 'endpoint-v1';
+
+function importSetIdForRun(deterministic: boolean): string {
+	return deterministic ? DETERMINISTIC_IMPORT_SET_ID : `iset-${randomBytes(3).toString('hex')}`;
+}
 
 import {
 	SPEC_VERSION,
@@ -159,6 +166,7 @@ const normKey = (k: string) => k.replace(/\s+/g, ' ').trim();
 
 function main() {
 	const a = parseArgs(process.argv.slice(2));
+	const importSetId = importSetIdForRun(a.deterministic);
 	const absSource = resolve(a.source);
 	if (!existsSync(absSource)) {
 		console.error(`Source workbook not found: ${absSource}`);
@@ -278,7 +286,8 @@ function main() {
 						source_hash: sourceHash,
 					},
 					produced_at: a.deterministic ? DETERMINISTIC_TIMESTAMP : new Date().toISOString(),
-					recipe: { id: recipe.recipe },
+					import_set: { id: importSetId, scheme: IMPORT_SET_SCHEME },
+			recipe: { id: recipe.recipe },
 				};
 
 				const check = validateTier1Frontmatter(fm);

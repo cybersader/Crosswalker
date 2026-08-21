@@ -20,7 +20,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, readdirSync, copyFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { render, renderTemplate, type Recipe } from '../src/render';
@@ -62,6 +62,12 @@ interface Args {
  * which IS dynamic + meaningful.
  */
 const DETERMINISTIC_TIMESTAMP = '2026-05-04T00:00:00.000Z';
+const DETERMINISTIC_IMPORT_SET_ID = 'iset-a0f1e2';
+const IMPORT_SET_SCHEME = 'endpoint-v1';
+
+function importSetIdForRun(deterministic: boolean): string {
+	return deterministic ? DETERMINISTIC_IMPORT_SET_ID : `iset-${randomBytes(3).toString('hex')}`;
+}
 
 interface CsvRow {
 	id: string;
@@ -303,6 +309,7 @@ function buildFrontmatter(
 	ontology: string,
 	sourceRef: { file: string; sourceHash: string },
 	deterministic: boolean,
+	importSetId: string,
 ): Record<string, unknown> {
 	const id = row.id?.trim();
 	if (!id) {
@@ -351,6 +358,7 @@ function buildFrontmatter(
 		},
 		produced_at: deterministic ? DETERMINISTIC_TIMESTAMP : new Date().toISOString(),
 		producer: PRODUCER,
+		import_set: { id: importSetId, scheme: IMPORT_SET_SCHEME },
 		recipe: {
 			id: `${ontology}-fixture-flat`,
 			hash: '(synthetic — no real recipe)',
@@ -434,6 +442,7 @@ function main(): void {
 		file: relative(REPO_ROOT, sourceAbs).replace(/\\/g, '/'),
 		sourceHash,
 	};
+	const importSetId = importSetIdForRun(args.deterministic);
 
 	if (args.clean && existsSync(targetAbs)) {
 		console.log(`  cleaning: ${relative(REPO_ROOT, targetAbs)}/`);
@@ -496,6 +505,7 @@ function main(): void {
 				source_ref: { file: sourceRef.file, curie: `${ontology}:_`, source_hash: sourceRef.sourceHash },
 				produced_at: args.deterministic ? DETERMINISTIC_TIMESTAMP : new Date().toISOString(),
 				producer: PRODUCER,
+				import_set: { id: importSetId, scheme: IMPORT_SET_SCHEME },
 				recipe: { id: recipe.recipe, hash: recipeHash },
 			};
 			const outPath = join(targetAbs, address.primary.path);
@@ -512,7 +522,7 @@ function main(): void {
 				console.warn(`  skipped row with empty id: ${JSON.stringify(row)}`);
 				continue;
 			}
-			const fm = buildFrontmatter(row, args.ontology, sourceRef, args.deterministic);
+			const fm = buildFrontmatter(row, args.ontology, sourceRef, args.deterministic, importSetId);
 			const body = buildBody(row, fm);
 			const filename = `${slugifyForFilesystem(id)}.md`;
 			const outPath = join(targetAbs, filename);

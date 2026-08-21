@@ -14,6 +14,7 @@ interface MockNote {
 	curie?: string;
 	generated?: boolean;
 	recipeId?: string;
+	importSetId?: string;
 }
 
 function mockApp(files: Record<string, MockNote>) {
@@ -30,7 +31,10 @@ function mockApp(files: Record<string, MockNote>) {
 				const frontmatter: Record<string, unknown> = {};
 				if (note.curie) frontmatter.curie = note.curie;
 				if (note.generated !== false) {
-					frontmatter._crosswalker = note.recipeId ? { recipe: { id: note.recipeId } } : {};
+					frontmatter._crosswalker = {
+						...(note.recipeId ? { recipe: { id: note.recipeId } } : {}),
+						...(note.importSetId ? { import_set: { id: note.importSetId, scheme: 'endpoint-v1' } } : {}),
+					};
 				}
 				return { frontmatter };
 			},
@@ -72,13 +76,22 @@ describe('buildIdentityIndex', () => {
 		expect(index.collisions).toEqual([{ curie: 'nist:AC-2', paths: ['A/AC-2.md', 'B/AC-2.md'] }]);
 	});
 
-	it('can scope to one recipe, which is what makes orphan detection answerable', () => {
+	it('scopes ownership to one import set while retaining recipe filtering for compatibility', () => {
 		const app = mockApp({
-			'Frameworks/AC-2.md': { curie: 'nist:AC-2', recipeId: 'nist-flat' },
-			'Other/X-1.md': { curie: 'other:X-1', recipeId: 'other-recipe' },
+			'Frameworks/AC-2.md': { curie: 'nist:AC-2', recipeId: 'nist-flat', importSetId: 'iset-abc123' },
+			'Other/X-1.md': { curie: 'other:X-1', recipeId: 'other-recipe', importSetId: 'iset-def456' },
 		});
-		const index = buildIdentityIndex(app, { recipeId: 'nist-flat' });
-		expect(index.curies()).toEqual(['nist:AC-2']);
+		expect(buildIdentityIndex(app, { importSetId: 'iset-abc123' }).curies()).toEqual(['nist:AC-2']);
+		expect(buildIdentityIndex(app, { recipeId: 'nist-flat' }).curies()).toEqual(['nist:AC-2']);
+	});
+
+	it('import-set ownership takes precedence over the deprecated recipe filter', () => {
+		const app = mockApp({
+			'Frameworks/stamped.md': { curie: 'nist:STAMPED', recipeId: 'new-recipe', importSetId: 'iset-abc123' },
+			'Frameworks/legacy.md': { curie: 'nist:LEGACY', recipeId: 'old-recipe' },
+		});
+		const index = buildIdentityIndex(app, { importSetId: 'iset-abc123', recipeId: 'old-recipe' });
+		expect(index.curies()).toEqual(['nist:STAMPED']);
 	});
 });
 

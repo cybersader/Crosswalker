@@ -145,6 +145,22 @@ describe('Pass 1.5 re-import — end-to-end via generateFromRecipe', () => {
 		expect(hub).toContain('kind: facet');
 		expect(hub).toContain('members:');
 		expect(hub).toContain('# Persistence');
+		const stamps = [...files.values()].map((content) => {
+			const fm = yaml.load(/^---\n([\s\S]*?)\n---/.exec(content)![1]) as any;
+			return fm._crosswalker.import_set;
+		});
+		expect(new Set(stamps.map((stamp) => stamp.id)).size).toBe(1);
+		expect(stamps[0].id).toMatch(/^iset-[a-z0-9]{6}$/);
+		expect(stamps.every((stamp) => stamp.scheme === 'endpoint-v1')).toBe(true);
+	});
+
+	it('reports a removed concept without misreporting stamped facet hubs', async () => {
+		const { app } = makeApp();
+		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		const reduced = { columns: ['id', 'parent', 'tactic'], rows: ROWS.slice(0, 2), rowCount: 2 };
+		const result = await generateFromRecipe(app, reduced, RECIPE, OPTS);
+		expect(result.errors).toEqual([]);
+		expect(result.orphans).toEqual([{ curie: 'attack:T1078.002', path: 'Frameworks/T1078.002.md' }]);
 	});
 
 	it('import twice → byte-identical vault (produced_at normalized)', async () => {
@@ -333,6 +349,11 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 		expect(home).toContain('kind: hub');
 		expect(home).toContain('# Frameworks');
 		expect(home).toContain('- [[T1078]]');
+		const homeFm = yaml.load(/^---\n([\s\S]*?)\n---/.exec(home)![1]) as any;
+		expect(homeFm._crosswalker.import_set).toEqual({
+			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/),
+			scheme: 'endpoint-v1',
+		});
 	});
 
 	it('import twice → byte-identical vault (level hubs included)', async () => {

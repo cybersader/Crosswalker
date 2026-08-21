@@ -86,6 +86,24 @@
             "hash": { "type": "string", "description": "Hash of the recipe content at production time. Format: 'sha256-{hex}'." }
           }
         },
+        "import_set": {
+          "type": "object",
+          "description": "The durable ownership set this generated note belongs to. Optional for legacy notes; all new Crosswalker emissions include it.",
+          "required": ["id", "scheme"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^iset-[a-z0-9]{6}$",
+              "description": "Crypto-random, semantically meaningless import-set identifier. Minted once and reused on refresh."
+            },
+            "scheme": {
+              "type": "string",
+              "enum": ["endpoint-v1"],
+              "description": "Identity scheme fixed when the import set is minted. The closed enum has one shipped member in v0.1."
+            }
+          }
+        },
         "concept_cid": {
           "$ref": "#/$defs/sha256_cid",
           "description": "Content identifier of the canonical concept-identity record. Same across recipes that produce different vault layouts from identical source data."

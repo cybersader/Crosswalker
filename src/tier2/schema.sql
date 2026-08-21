@@ -1,6 +1,6 @@
 -- ================================================================
 -- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
--- Schema version: tier2-sqlite-v3
+-- Schema version: tier2-sqlite-v4
 --
 -- Per spec/tier1.schema.json + v0.1 schema spec §7.
 -- This file is the canonical DDL; the migrations module (migrations.ts)
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS concepts (
   -- Provenance
   vault_path     TEXT NOT NULL UNIQUE,    -- 'Frameworks/NIST 800-53 r5/AC/AC-2.md'
   source_hash    TEXT NOT NULL,           -- sha256 of canonical frontmatter
+  import_set_id  TEXT,                    -- owning import set; null for legacy notes
   -- Display
   title          TEXT NOT NULL DEFAULT '',
   -- Hierarchy
@@ -62,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_concepts_parent ON concepts(parent_curie);
 -- Mappings — one row per crosswalk-edge note (STRM predicate triple)
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS mappings (
+  import_set_id         TEXT,
   mapping_set_id        TEXT NOT NULL DEFAULT '',
   subject_id            TEXT NOT NULL,
   predicate_id          TEXT NOT NULL,
@@ -114,6 +116,7 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   expires_at      TEXT,
   notes           TEXT,
   -- Provenance
+  import_set_id   TEXT,
   source_hash     TEXT NOT NULL,
   modified_at     TEXT NOT NULL
 );

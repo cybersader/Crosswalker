@@ -13,7 +13,7 @@ tags: [schema, foundation, v0-1, architecture]
 
 The machine-readable contracts and canonical SQL remain authoritative. Sections §3 and §7 below summarize the shipped shapes. Historical TypeScript/YAML sketches are labeled as history and must not be used as implementation contracts.
 
-The 2026-08-21 additive contract change closes the earlier P2/P3 gaps: explicit hierarchy/endpoint identities, mapping-set provenance, and `predicate_modifier: NOT` now validate and project. Source ordering remains a separate open P1 question in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/).
+The 2026-08-21 additive contract changes close the earlier P2/P3 gaps and add durable import ownership: explicit hierarchy/endpoint identities, mapping-set provenance, `predicate_modifier: NOT`, and `_crosswalker.import_set` now validate and project. Source ordering remains a separate open P1 question in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/).
 :::
 
 ## §1 Why this page exists
@@ -126,6 +126,7 @@ Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schem
 | `produced_at` | Yes | ISO 8601 production timestamp |
 | `producer` | No | Producer name and version |
 | `recipe` | No | Recipe identifier and content hash used for this output |
+| `import_set` | No | Durable ownership stamp: `id` matches `^iset-[a-z0-9]{6}$`; `scheme` is fixed at mint. The closed scheme enum currently has exactly `endpoint-v1` (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set.properties.scheme.enum`) |
 | `concept_cid` | No | Content identifier for the declared concept-identity scope; layout and mapping-only defaults do not enter a concept's scope |
 
 ### Concept-note fields
@@ -181,7 +182,7 @@ A mapping set (one published collection of mapping assertions) gives repeated as
 
 ### Additive compatibility
 
-All five 2026-08-21 fields are optional: `parent_curie`, `subject_curie`, `object_curie`, `mapping_set_id`, and `predicate_modifier`. Legacy Tier 1 records therefore continue to validate. Producers clear a declared managed field when its rendered source becomes empty, but never clear a `user_preserve` field.
+All six 2026-08-21 additions are optional at their containing-record boundary: `parent_curie`, `subject_curie`, `object_curie`, `mapping_set_id`, `predicate_modifier`, and `_crosswalker.import_set`. When `import_set` is present, both its `id` and `scheme` are required (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set`). Legacy Tier 1 records without an ownership stamp therefore continue to validate. Producers clear a declared managed field when its rendered source becomes empty, but never clear a `user_preserve` field.
 
 ## §4 Recipe Schema Contract and ImportRecipe specification
 
@@ -713,15 +714,15 @@ v0.1 ships `@sqlite.org/sqlite-wasm` as the embedded query substrate. `sqlite-ve
 
 ### Current schema summary
 
-`src/tier2/schema.sql` is the canonical DDL. Tier 2 currently ships as `tier2-sqlite-v3`. The table below cites every stored column by table so additions are reviewable without copying a second SQL source that can drift.
+`src/tier2/schema.sql` is the canonical DDL. Tier 2 currently ships as `tier2-sqlite-v4`. The table below cites every stored column by table so additions are reviewable without copying a second SQL source that can drift.
 
 | Table/view | Current columns | Purpose |
 |---|---|---|
 | `schema_meta` | `key`, `value` | Schema and projection metadata |
-| `ontologies` | `id`, `name`, `version`, `base_path`, `upstream_url`, `recipe_id`, `imported_at`, `control_count` | One represented ontology/import owner |
-| `concepts` | `ontology_id`, `curie`, `vault_path`, `source_hash`, `title`, `parent_curie`, `status`, `imported_at`, `modified_at` | Canonical concept projection with explicit parent identity |
-| `mappings` | `mapping_set_id`, `subject_id`, `predicate_id`, `predicate_modifier`, `object_id`, `match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `mapping_date`, `creator_id`, `review_status`, `source_path`, `source_hash` | One mapping occurrence with release provenance and explicit negation |
-| `junction_notes` | `vault_path`, `curie`, `subject`, `subject_curie`, `predicate`, `object`, `object_curie`, `coverage`, `reviewer`, `review_date`, `status`, `confidence`, `scope`, `expires_at`, `notes`, `source_hash`, `modified_at` | Evidence relationship with separate addresses and identities |
+| `ontologies` | `id`, `name`, `version`, `base_path`, `upstream_url`, `recipe_id`, `imported_at`, `control_count` | One represented ontology summary |
+| `concepts` | `ontology_id`, `curie`, `vault_path`, `source_hash`, `import_set_id`, `title`, `parent_curie`, `status`, `imported_at`, `modified_at` | Canonical concept projection with explicit parent identity |
+| `mappings` | `import_set_id`, `mapping_set_id`, `subject_id`, `predicate_id`, `predicate_modifier`, `object_id`, `match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `mapping_date`, `creator_id`, `review_status`, `source_path`, `source_hash` | One mapping occurrence with release provenance and explicit negation |
+| `junction_notes` | `vault_path`, `curie`, `subject`, `subject_curie`, `predicate`, `object`, `object_curie`, `coverage`, `reviewer`, `review_date`, `status`, `confidence`, `scope`, `expires_at`, `notes`, `import_set_id`, `source_hash`, `modified_at` | Evidence relationship with separate addresses and identities |
 | `junction_notes_with_freshness` | All junction columns plus computed `freshness` | Review-age view |
 | `closure_cache` | `subject_id`, `predicate_id`, `object_id`, `shortest_depth`, `computed_at` | Cached transitive answers |
 | `closure_cache_state` | `subject_id`, `predicate_id`, `computed_max_depth`, `computed_at` | Proof that a closure partition was computed through a depth, including empty results |
@@ -732,17 +733,18 @@ The mapping primary key includes `mapping_set_id`, the subject/predicate/modifie
 ### Projection rules (Tier 1 → Tier 2)
 
 1. Read only notes with valid `_crosswalker` provenance; canonical Markdown remains the authority.
-2. Project concept `parent_curie` directly. Never derive it from the `parent` wikilink.
-3. Project junction `subject_curie` and `object_curie` directly. Never derive them from wikilink text.
-4. Normalize mapping-set identifiers and predicate modifiers through the shared provenance helpers, then store each mapping occurrence with its source path.
-5. Reconcile an ontology's displayed version deterministically across projected concepts using binary lexical order, so file traversal order cannot change the result.
-6. Exclude `predicate_modifier = 'NOT'` from effective graph edges, including symmetric and inverse expansion. Direct `crosswalkBetween()` queries retain negated rows and their provenance.
-7. Invalidate mapping-dependent closure rows and depth-coverage state together whenever mappings change.
-8. Prune unseen rows only during a complete `full` projection. Filters, projection errors, or unreadable-but-present frontmatter suppress pruning.
+2. Project `_crosswalker.import_set.id` to nullable `import_set_id` on concepts, mappings, and junction notes. Legacy unstamped records project `NULL`.
+3. Project concept `parent_curie` directly. Never derive it from the `parent` wikilink.
+4. Project junction `subject_curie` and `object_curie` directly. Never derive them from wikilink text.
+5. Normalize mapping-set identifiers and predicate modifiers through the shared provenance helpers, then store each mapping occurrence with its source path.
+6. Reconcile an ontology's displayed version deterministically across projected concepts using binary lexical order, so file traversal order cannot change the result.
+7. Exclude `predicate_modifier = 'NOT'` from effective graph edges, including symmetric and inverse expansion. Direct `crosswalkBetween()` queries retain negated rows and their provenance.
+8. Invalidate mapping-dependent closure rows and depth-coverage state together whenever mappings change.
+9. Prune unseen rows only during a complete `full` projection. Filters, projection errors, or unreadable-but-present frontmatter suppress pruning.
 
 ### Schema-version migration
 
-Tier 2 now ships `tier2-sqlite-v3`. Because Tier 2 is derived, opening any other schema version drops and recreates the sidecar, then reprojects canonical Tier 1 Markdown. v3 adds mapping occurrence provenance, explicit predicate modifiers, junction endpoint identities, and the indexes needed to query them. It preserves the v2 depth-safe closure-cache model.
+Tier 2 now ships `tier2-sqlite-v4`. Because Tier 2 is derived, opening any other schema version drops and recreates the sidecar, then reprojects canonical Tier 1 Markdown. v4 adds nullable `import_set_id` ownership projection to concepts, mappings, and junction notes. It preserves the v3 mapping-occurrence, negation, endpoint-identity, and depth-safe closure-cache model.
 
 ## §8 Cross-schema invariants & constraints
 

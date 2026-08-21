@@ -44,11 +44,12 @@ export interface IdentityIndex {
 }
 
 export interface BuildIdentityIndexOptions {
+	/** Restrict to notes owned by one durable import set. */
+	importSetId?: string;
 	/**
-	 * Restrict to notes produced by one recipe (`_crosswalker.recipe.id`).
-	 * Orphan detection needs this: "identities THIS recipe produced before, that it
-	 * no longer produces" is answerable, while "identities missing from the whole
-	 * vault" is not — another recipe legitimately owns those.
+	 * @deprecated Recipe ids name reusable instructions, not ownership. Retained
+	 * for one release of compatibility. When importSetId is present it takes
+	 * precedence, so unstamped legacy notes remain outside every ownership set.
 	 */
 	recipeId?: string;
 }
@@ -81,7 +82,13 @@ export function buildIdentityIndex(app: App, options: BuildIdentityIndexOptions 
 		const provenance = (fm as Record<string, unknown>)._crosswalker;
 		if (!provenance || typeof provenance !== 'object') continue;
 
-		if (options.recipeId !== undefined) {
+		if (options.importSetId !== undefined) {
+			const importSet = (provenance as Record<string, unknown>).import_set;
+			const id = importSet && typeof importSet === 'object'
+				? readString((importSet as Record<string, unknown>).id)
+				: null;
+			if (id !== options.importSetId) continue;
+		} else if (options.recipeId !== undefined) {
 			const recipe = (provenance as Record<string, unknown>).recipe;
 			const id = recipe && typeof recipe === 'object'
 				? readString((recipe as Record<string, unknown>).id)

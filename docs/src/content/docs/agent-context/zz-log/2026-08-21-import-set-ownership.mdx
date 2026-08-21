@@ -78,6 +78,16 @@ Costs: a mint step in both import paths; the stamp in `buildProvenance`; the ind
 3. **Delete-after-confirm** — first safe foundation for it
 4. **Ch 43** — the semantic-diff loop gets its container: diff happens *within* a set across refreshes
 
+
+## 6. What shipped
+
+- Every newly emitted concept, junction note, crosswalk edge, facet hub, and synthetic level hub carries `_crosswalker.import_set.id` plus the schema-pinned `endpoint-v1` scheme. Legacy unstamped notes remain valid and outside every set.
+- Wizard and headless imports share destination discovery: zero sets mints, one defaults to refresh, and multiple sets block until a set or new import is selected. Explicit headless ids may refresh an empty destination.
+- Orphan reporting is now import-set scoped on both generation paths, including enrichment runs. It remains report-only and fails closed on incomplete or errored runs; global identity reconciliation remains unchanged.
+- Tier 2 advances to `tier2-sqlite-v4` and projects nullable `import_set_id` on concepts, mappings, and junction notes. Concept CIDs remain independent of ownership provenance.
+
+Verification is pinned by import-set selection/discovery tests, both generation-path regressions, hub-produced-membership tests, CID stability, Tier 2 projection tests, schema validation, regenerated fixtures, and the full repository gates.
+
 ## Related
 
 - [Re-import is identity reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/) — the sibling decision; §7's lesson is generalized here

@@ -36,6 +36,7 @@ import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
+import { resolveImportSet, type ImportSetOption, type ImportSetReference } from './import-set';
 import { computeConceptCid, computeRecipeHash, identityScopeForNoteKind } from './hash';
 import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
 import { validateTier1Frontmatter } from '../validation/validator';
@@ -95,6 +96,9 @@ export interface CrosswalkerMetadata {
 export interface GenerationOptions {
 	/** Base path for output (e.g., "Ontologies/MyFramework") */
 	basePath: string;
+
+	/** Import-set selection from the review step. Absent applies destination discovery. */
+	importSet?: ImportSetOption;
 
 	/** How to handle existing files */
 	overwriteMode: 'skip' | 'replace' | 'error';
@@ -310,6 +314,11 @@ export async function generateNotes(
 			throw new Error('No mapping configuration provided');
 		}
 
+		// Ownership is minted or selected once per run, before any note is written.
+		// Never derive this id from recipe/source/path: all are allowed to change on
+		// a legitimate refresh, while the import set must remain the same.
+		const importSet = resolveImportSet(app, options.basePath, options.importSet);
+
 		// Ensure base folder exists
 		if (options.createFolders) {
 			await ensureFolderExists(app, options.basePath);
@@ -326,6 +335,15 @@ export async function generateNotes(
 		const provenanceRecipeId = options.recipeOverride
 			? recipe.recipe
 			: (options.configId ?? recipe.recipe);
+		// Snapshot this set's PRE-RUN membership. Metadata-cache updates are not
+		// guaranteed to land before generation completes, and orphan reporting asks
+		// what the set owned before this run, not what the cache happens to expose
+		// after writes. recipeId stays as the deprecated grace parameter; the
+		// import-set filter takes precedence, so unstamped legacy notes stay outside.
+		const ownedIdentityIndex = buildIdentityIndex(app, {
+			importSetId: importSet.id,
+			recipeId: provenanceRecipeId,
+		});
 		// Authority for which frontmatter keys this run OWNS comes from the recipe's
 		// declaration, not from which keys happened to render non-empty for a row.
 		// Without this, a declared field that renders empty is absent from managedKeys,
@@ -401,6 +419,7 @@ export async function generateNotes(
 						renderReport,
 						recipeHash,
 						provenanceRecipeId,
+						importSet,
 					);
 					if (renderReport.notes.length > 0) {
 						result.warnings ??= [];
@@ -579,6 +598,7 @@ export async function generateNotes(
 		// Pass 1.5 — batch enrichment patch phase (post-stream), same phase
 		// generateFromRecipe runs. See applyEnrichment for the exact semantics
 		// (children lists + facet hub notes + edgeCount, re-import-safe merge).
+		let enrichmentComplete = true;
 		if (enrichmentEnabled && enrichRecords.length > 0) {
 			try {
 				await applyEnrichment(
@@ -592,10 +612,13 @@ export async function generateNotes(
 					curiePrefix,
 					enrichRecords,
 					result,
+					importSet,
+					producedCuries,
 					isStreamed,
 					debug,
 				);
 			} catch (enrichErr) {
+				enrichmentComplete = false;
 				const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
 				result.warnings ??= [];
 				result.warnings.push({ row: 0, message: `Enrichment pass failed: ${msg}` });
@@ -605,31 +628,14 @@ export async function generateNotes(
 
 		// Orphan detection is safe only after every expected row was visited and no
 		// row failed. A partial source would make every unvisited identity look gone.
+		// Membership is import-set-only: legacy unstamped notes are outside the set,
+		// and enrichment hubs are included because applyEnrichment records their
+		// curies at the same point that it stamps their ownership provenance.
 		const rowCountComplete = parsedData.rowCount < 0 || completed === parsedData.rowCount;
-		const hasStableRecipeId = typeof provenanceRecipeId === 'string'
-			&& provenanceRecipeId.trim().length > 0
-			// `legacy-config` is the shim's fallback for any unnamed classic-wizard
-			// config (legacy-recipe-shim.ts), so EVERY unnamed import shares it. It
-			// looks stable but identifies no single import: re-importing one framework
-			// would report another framework's notes as orphans. A shared key is not
-			// an ownership key.
-			&& provenanceRecipeId !== 'legacy-config';
-		const canReadOwnership = typeof app.metadataCache?.getFileCache === 'function';
-		// Enrichment writes synthetic facet and level hubs carrying this same recipe
-		// provenance, but their identities are never added to producedCuries, so every
-		// successfully written hub would be reported as an orphan. Until hub identities
-		// are tracked, an enrichment-enabled run cannot answer the orphan question
-		// honestly. Reporting a note as missing when it was just created is worse than
-		// reporting nothing.
-		const ownershipIsUnambiguous = !enrichmentEnabled;
-		// Provenance writes no recipe ownership when there is no stable id. Without
-		// that key (or a readable metadata cache), skip rather than guessing from paths.
-		if (result.success && result.errors.length === 0 && rowCountComplete
-			&& hasStableRecipeId && canReadOwnership && ownershipIsUnambiguous) {
-			const recipeIdentityIndex = buildIdentityIndex(app, { recipeId: provenanceRecipeId });
-			const orphans = recipeIdentityIndex.curies()
+		if (result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete) {
+			const orphans = ownedIdentityIndex.curies()
 				.filter((curie) => !producedCuries.has(curie))
-				.map((curie) => ({ curie, path: recipeIdentityIndex.get(curie)!.path }))
+				.map((curie) => ({ curie, path: ownedIdentityIndex.get(curie)!.path }))
 				.sort((a, b) => a.curie.localeCompare(b.curie) || a.path.localeCompare(b.path));
 			if (orphans.length > 0) result.orphans = orphans;
 		}
@@ -769,6 +775,7 @@ function buildNoteDataViaRender(
 	report?: RenderReport,
 	recipeHash?: string,
 	provenanceRecipeId?: string,
+	importSet?: ImportSetReference,
 ): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[] } {
 	// 1. Build a CURIE for this row. Strategy: ontology + filename stem.
 	//    The filename is whatever the recipe's leaf file template resolves to.
@@ -869,6 +876,7 @@ function buildNoteDataViaRender(
 			sourceVersion: options.frameworkVersion ?? recipe.source?.version,
 			recipeId: provenanceRecipeId,
 			recipeHash,
+			importSet,
 			// Raw source scope on purpose: mapping-only defaults must never enter
 			// concept identity, or every concept's content hash shifts.
 			conceptCid: computeConceptCid({ curie, scope: sourceScope }),
@@ -1702,6 +1710,8 @@ export interface RecipeImportOptions {
 	/** Vault-relative output base path. May be empty if the recipe's layout
 	 *  templates already resolve to absolute paths. */
 	basePath: string;
+	/** Select an existing import set explicitly or force a freshly minted set. */
+	importSet?: ImportSetOption;
 	/** How to handle existing files. */
 	overwriteMode: 'skip' | 'replace' | 'error';
 	/** Whether to create missing folders. Defaults to true. */
@@ -1771,6 +1781,10 @@ export async function generateFromRecipe(
 	const createFolders = options.createFolders ?? true;
 	const ontologyId = recipe.source?.ontology ?? recipe.recipe;
 	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
+	// Headless imports obey the same destination-discovery rules as the wizard.
+	// Callers can name a wiped/empty set explicitly or force a new mint.
+	const importSet = resolveImportSet(app, options.basePath, options.importSet);
+	const ownedIdentityIndex = buildIdentityIndex(app, { importSetId: importSet.id });
 
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
 	// src/generation/hash.ts's doc comments for the exact field-set definition.
@@ -1804,6 +1818,7 @@ export async function generateFromRecipe(
 	}
 
 	const emittedPaths = new Set<string>();
+	const producedCuries = new Set<string>();
 	// Pass 1.5 enrichment (v0.1.6): records collected during the stream so the
 	// post-stream patch phase can derive parent→children + facet hubs without
 	// re-reading the vault. One lightweight record per written note. Only
@@ -1908,6 +1923,7 @@ export async function generateFromRecipe(
 					sourceVersion: options.sourceVersion ?? recipe.source?.version,
 					recipeId: recipe.recipe,
 					recipeHash,
+					importSet,
 					conceptCid: computeConceptCid({
 						curie,
 						scope: identityScopeForNoteKind(address.frontmatter.kind, sourceScope, scope),
@@ -1931,6 +1947,10 @@ export async function generateFromRecipe(
 					debug?.warn('generation', 'validation-warning', `Validation warning at ${fullPath} (non-strict mode)`, { path: fullPath, error: errMsg });
 				}
 			}
+
+			// This identity belongs to the current source set even when overwrite mode
+			// skips or merges the note rather than creating a new file.
+			producedCuries.add(curie);
 
 			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND
 			//    (when enrichment is on) the folder-note-relocated path by curie —
@@ -2021,6 +2041,7 @@ export async function generateFromRecipe(
 	// + facet hubs from the collected records (never re-reads the vault for the
 	// derivation), then writes children onto parents and materializes hub notes via
 	// the same managed-merge path so re-imports stay idempotent + user-safe.
+	let enrichmentComplete = true;
 	if (enrichmentEnabled && enrichRecords.length > 0) {
 		try {
 			await applyEnrichment(
@@ -2030,15 +2051,29 @@ export async function generateFromRecipe(
 				curiePrefix,
 				enrichRecords,
 				result,
+				importSet,
+				producedCuries,
 				isStreamed,
 				debug,
 			);
 		} catch (enrichErr) {
+			enrichmentComplete = false;
 			const msg = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
 			result.warnings ??= [];
 			result.warnings.push({ row: 0, message: `Enrichment pass failed: ${msg}` });
 			debug?.error('generation', 'enrichment-failed', 'Enrichment pass failed', { error: msg });
 		}
+	}
+
+	// Same fail-closed orphan guard as the wizard path: only a complete run with
+	// zero errors can prove that a formerly-owned identity is absent from source.
+	const rowCountComplete = parsedData.rowCount < 0 || completed === parsedData.rowCount;
+	if (result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete) {
+		const orphans = ownedIdentityIndex.curies()
+			.filter((curie) => !producedCuries.has(curie))
+			.map((curie) => ({ curie, path: ownedIdentityIndex.get(curie)!.path }))
+			.sort((a, b) => a.curie.localeCompare(b.curie) || a.path.localeCompare(b.path));
+		if (orphans.length > 0) result.orphans = orphans;
 	}
 
 	if (options.onProgress) options.onProgress(completed, total, 'Complete');
@@ -2094,6 +2129,8 @@ async function applyEnrichment(
 	curiePrefix: string,
 	records: EnrichRecord[],
 	result: GenerationResult,
+	importSet: ImportSetReference,
+	producedCuries: Set<string>,
 	streamed: boolean,
 	debug?: DebugLog,
 ): Promise<void> {
@@ -2213,9 +2250,13 @@ async function applyEnrichment(
 		const fullPath = options.basePath ? normalizePath(`${options.basePath}/${hub.path}`) : normalizePath(hub.path);
 		const frontmatter: Record<string, any> = { ...hub.frontmatter };
 		frontmatter._crosswalker = buildProvenance(
-			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe, recipeHash },
+			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe, recipeHash, importSet },
 			PLUGIN_VERSION,
 		);
+		// Hub ownership and produced membership are recorded together. Splitting
+		// these operations is what previously made successful hubs look orphaned.
+		const hubCurie = typeof frontmatter.curie === 'string' ? frontmatter.curie : null;
+		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
 		const existing = app.vault.getAbstractFileByPath(fullPath);
@@ -2255,9 +2296,13 @@ async function applyEnrichment(
 		const fullPath = normalizePath(hub.path);
 		const frontmatter: Record<string, any> = { ...hub.frontmatter };
 		frontmatter._crosswalker = buildProvenance(
-			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe, recipeHash },
+			{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe, recipeHash, importSet },
 			PLUGIN_VERSION,
 		);
+		// Hub ownership and produced membership are recorded together. Splitting
+		// these operations is what previously made successful hubs look orphaned.
+		const hubCurie = typeof frontmatter.curie === 'string' ? frontmatter.curie : null;
+		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
 		const existing = app.vault.getAbstractFileByPath(fullPath);

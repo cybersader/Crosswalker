@@ -1,7 +1,7 @@
 /**
  * Tier 2 schema migrations.
  *
- * Tier 2 currently ships `tier2-sqlite-v3`. If a sidecar reports a different
+ * Tier 2 currently ships `tier2-sqlite-v4`. If a sidecar reports a different
  * schema_version (or no version at all), the simplest correct response
  * is to drop all tables and recreate from canonical Tier 1. The Tier 1
  * vault is the source of truth; the sidecar is a deletable projection.
@@ -13,10 +13,10 @@
  * risk-free to bundle in v0.1."
  */
 
-export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v3';
+export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v4';
 
 /**
- * The DDL for tier2-sqlite-v3. Imported as a string at build time
+ * The DDL for tier2-sqlite-v4. Imported as a string at build time
  * from src/tier2/schema.sql. esbuild's `text` loader handles `.sql`
  * imports as plain strings.
  *
@@ -24,7 +24,7 @@ export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v3';
  * default TS pipeline doesn't auto-load .sql; explicit constants
  * keep the build simple.
  */
-export const TIER2_DDL_V3 = `
+export const TIER2_DDL_V4 = `
 PRAGMA foreign_keys = ON;
 PRAGMA synchronous = NORMAL;
 
@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS concepts (
   curie          TEXT NOT NULL,
   vault_path     TEXT NOT NULL UNIQUE,
   source_hash    TEXT NOT NULL,
+  import_set_id  TEXT,
   title          TEXT NOT NULL DEFAULT '',
   parent_curie   TEXT,
   status         TEXT NOT NULL DEFAULT 'active',
@@ -62,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_concepts_curie ON concepts(curie);
 CREATE INDEX IF NOT EXISTS idx_concepts_parent ON concepts(parent_curie);
 
 CREATE TABLE IF NOT EXISTS mappings (
+  import_set_id         TEXT,
   mapping_set_id        TEXT NOT NULL DEFAULT '',
   subject_id            TEXT NOT NULL,
   predicate_id          TEXT NOT NULL,
@@ -110,6 +112,7 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   scope           TEXT,
   expires_at      TEXT,
   notes           TEXT,
+  import_set_id   TEXT,
   source_hash     TEXT NOT NULL,
   modified_at     TEXT NOT NULL
 );
@@ -204,7 +207,7 @@ export function applyMigrations(db: any): boolean {
 	`);
 
 	// Apply the v3 DDL
-	db.exec(TIER2_DDL_V3);
+	db.exec(TIER2_DDL_V4);
 
 	// Stamp the version. Deliberately NOT `projected_at`: the tables were just
 	// emptied, so nothing has been projected. Recording a projection timestamp

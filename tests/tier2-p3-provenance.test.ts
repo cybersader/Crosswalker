@@ -39,19 +39,23 @@ function mockApp(entries: Array<[string, Record<string, unknown>]>): any {
 	};
 }
 
-const provenance = (version?: string) => ({
+const provenance = (version?: string, importSetId?: string) => ({
 	spec_version: 'https://crosswalker.dev/spec/tier1.schema.json',
 	source_ref: { file: 'source.csv', ...(version ? { version } : {}) },
 	produced_at: '2026-08-21T00:00:00.000Z',
+	...(importSetId ? { import_set: { id: importSetId, scheme: 'endpoint-v1' } } : {}),
 });
 
-describe('Tier 2 v3 identity and mapping-set provenance', () => {
+describe('Tier 2 v4 import-set, identity, and mapping-set provenance', () => {
 	let db: TestDb;
 	beforeEach(() => { db = createTestDb(); applyMigrations(db); });
 	afterEach(() => db.close());
 
-	it('installs the composed v3 occurrence key and identity indexes', () => {
-		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v3');
+	it('installs the v4 ownership columns, composed occurrence key, and identity indexes', () => {
+		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v4');
+		for (const table of ['concepts', 'mappings', 'junction_notes']) {
+			expect(rows(db, `SELECT name FROM pragma_table_info('${table}') ORDER BY cid`)).toContainEqual(['import_set_id']);
+		}
 		expect(rows(db, `SELECT name FROM pragma_table_info('mappings') ORDER BY cid`)).toEqual(expect.arrayContaining([
 			['mapping_set_id'], ['predicate_modifier'], ['source_path'],
 		]));
@@ -65,10 +69,10 @@ describe('Tier 2 v3 identity and mapping-set provenance', () => {
 
 	it('projects explicit identities, preserves release occurrences, and reconciles concept versions lexically', async () => {
 		const app = mockApp([
-			['Concepts/A.md', { curie: 'example:A', parent: '[[Display Parent]]', _crosswalker: provenance('v10') }],
+			['Concepts/A.md', { curie: 'example:A', parent: '[[Display Parent]]', _crosswalker: provenance('v10', 'iset-abc123') }],
 			['Concepts/B.md', { curie: 'example:B', parent: '[[Other Address]]', parent_curie: 'example:A', _crosswalker: provenance('v2') }],
-			['Evidence/jn.md', { kind: 'junction-note', curie: 'cwk:jn-1', subject: '[[Concepts/A]]', subject_curie: 'example:A', predicate: 'covers', object: '[[Evidence/Policy]]', object_curie: 'org:policy', _crosswalker: provenance() }],
-			['Mappings/positive.md', { kind: 'crosswalk-edge', subject_id: 'example:A', predicate_id: 'is_equivalent_to', object_id: 'other:B', mapping_set_id: ' set:release-1 ', _crosswalker: provenance() }],
+			['Evidence/jn.md', { kind: 'junction-note', curie: 'cwk:jn-1', subject: '[[Concepts/A]]', subject_curie: 'example:A', predicate: 'covers', object: '[[Evidence/Policy]]', object_curie: 'org:policy', _crosswalker: provenance(undefined, 'iset-abc123') }],
+			['Mappings/positive.md', { kind: 'crosswalk-edge', subject_id: 'example:A', predicate_id: 'is_equivalent_to', object_id: 'other:B', mapping_set_id: ' set:release-1 ', _crosswalker: provenance(undefined, 'iset-abc123') }],
 			['Mappings/negative.md', { kind: 'crosswalk-edge', subject_id: 'example:A', predicate_id: 'is_equivalent_to', predicate_modifier: 'NOT', object_id: 'other:B', mapping_set_id: 'set:release-2', _crosswalker: provenance() }],
 		]);
 		const result = await projectFromTier1(app, db, { yieldEvery: 100 });
@@ -76,12 +80,15 @@ describe('Tier 2 v3 identity and mapping-set provenance', () => {
 		expect(rows(db, `SELECT curie, parent_curie FROM concepts ORDER BY curie`)).toEqual([
 			['example:A', null], ['example:B', 'example:A'],
 		]);
-		expect(rows(db, `SELECT subject, subject_curie, object, object_curie FROM junction_notes`)).toEqual([
-			['[[Concepts/A]]', 'example:A', '[[Evidence/Policy]]', 'org:policy'],
+		expect(rows(db, `SELECT curie, import_set_id FROM concepts ORDER BY curie`)).toEqual([
+			['example:A', 'iset-abc123'], ['example:B', null],
 		]);
-		expect(rows(db, `SELECT mapping_set_id, predicate_modifier, source_path FROM mappings ORDER BY source_path`)).toEqual([
-			['set:release-2', 'NOT', 'Mappings/negative.md'],
-			['set:release-1', '', 'Mappings/positive.md'],
+		expect(rows(db, `SELECT subject, subject_curie, object, object_curie, import_set_id FROM junction_notes`)).toEqual([
+			['[[Concepts/A]]', 'example:A', '[[Evidence/Policy]]', 'org:policy', 'iset-abc123'],
+		]);
+		expect(rows(db, `SELECT mapping_set_id, predicate_modifier, source_path, import_set_id FROM mappings ORDER BY source_path`)).toEqual([
+			['set:release-2', 'NOT', 'Mappings/negative.md', null],
+			['set:release-1', '', 'Mappings/positive.md', 'iset-abc123'],
 		]);
 		expect(rows(db, `SELECT id, version FROM ontologies WHERE id='example'`)).toEqual([
 			['example', 'v2'],

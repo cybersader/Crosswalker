@@ -43,7 +43,7 @@ function makeApp() {
 		vault: {
 			// generateNotes resolves existing notes by identity, which reads the
 			// vault markdown list. This double has no pre-existing notes.
-			getMarkdownFiles: () => [],
+			getMarkdownFiles: () => [...files.keys()].map((path) => new TFile(path)),
 			getAbstractFileByPath,
 			create: async (path: string, content: string) => {
 				files.set(path, content);
@@ -123,6 +123,7 @@ const CONFIG: Partial<ImportRecipe> = {
 function baseOptions(recipeOverride: Recipe): GenerationOptions {
 	return {
 		basePath: 'Frameworks',
+		importSet: { id: 'iset-abc123' },
 		overwriteMode: 'replace',
 		createFolders: true,
 		recipeOverride,
@@ -155,6 +156,22 @@ describe('Pass 1.5 enrichment — generateNotes (wizard/workbench path)', () => 
 		expect(hub).toContain('kind: facet');
 		expect(hub).toContain('members:');
 		expect(hub).toContain('# Persistence');
+
+		const stamps = [...files.values()].map((content) => {
+			const fm = yaml.load(/^---\n([\s\S]*?)\n---/.exec(content)![1]) as any;
+			return fm._crosswalker.import_set;
+		});
+		expect(new Set(stamps.map((stamp) => stamp.id))).toEqual(new Set(['iset-abc123']));
+		expect(stamps.every((stamp) => stamp.scheme === 'endpoint-v1')).toBe(true);
+	});
+
+	it('reports removed concepts with enrichment on without misreporting produced hubs', async () => {
+		const { app } = makeApp();
+		await generateNotes(app, parsed(), CONFIG, baseOptions(RECIPE_WITH_ENRICHMENT));
+		const reduced: ParsedData = { columns: ['id', 'parent', 'tactic'], rows: ROWS.slice(0, 2), rowCount: 2 };
+		const result = await generateNotes(app, reduced, CONFIG, baseOptions(RECIPE_WITH_ENRICHMENT));
+		expect(result.errors).toEqual([]);
+		expect(result.orphans).toEqual([{ curie: 'attack:T1078.002', path: 'Frameworks/T1078.002.md' }]);
 	});
 
 	it('import twice → byte-identical vault (produced_at normalized)', async () => {
@@ -237,7 +254,7 @@ describe('Pass 1.5 enrichment — generateNotes (classic/legacy-shim path)', () 
 		// No recipeOverride, no facetsForRow — exactly what the classic (non-
 		// workbench) wizard step 4 passes (import-wizard.ts's doGenerate only
 		// sets these inside `workbenchMode && this.workbench`).
-		return { basePath: 'Frameworks', overwriteMode: 'replace', createFolders: true };
+		return { basePath: 'Frameworks', importSet: { id: 'iset-abc123' }, overwriteMode: 'replace', createFolders: true };
 	}
 
 	it('legacyConfigToRecipe now carries default enrichment (was undefined)', () => {

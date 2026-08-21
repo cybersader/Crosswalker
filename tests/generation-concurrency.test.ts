@@ -169,7 +169,7 @@ describe('generateNotes — concurrency parity + folder de-dup (end-to-end)', ()
 	];
 	const parsed: any = { columns: ['id', 'family', 'name'], rows, rowCount: rows.length };
 	const opts = (concurrency: number): any => ({
-		basePath: 'Out', overwriteMode: 'skip', createFolders: true, concurrency,
+		basePath: 'Out', importSet: { id: 'iset-abc123' }, overwriteMode: 'skip', createFolders: true, concurrency,
 	});
 
 	it('concurrent run produces the same files as sequential', async () => {

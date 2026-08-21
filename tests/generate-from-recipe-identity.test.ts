@@ -60,6 +60,7 @@ function generatedCrosswalkContent(): string {
 			spec_version: 'https://crosswalker.dev/spec/tier1.schema.json',
 			source_ref: { curie: 'unknown:_' },
 			produced_at: '2026-08-21T00:00:00.000Z',
+			import_set: { id: 'iset-abc123', scheme: 'endpoint-v1' },
 			recipe: { id: RECIPE.recipe },
 		},
 	}, '# Existing crosswalk\n');
@@ -109,6 +110,7 @@ function makeApp(seedPaths: string[]) {
 
 const OPTIONS = {
 	basePath: 'Mappings',
+	importSet: { id: 'iset-abc123' },
 	overwriteMode: 'replace' as const,
 	createFolders: true,
 	curiePrefix: 'xwalk',
@@ -116,6 +118,35 @@ const OPTIONS = {
 };
 
 describe('generateFromRecipe identity reconciliation', () => {
+	it('stamps fresh crosswalk edges and junction notes with one selected set', async () => {
+		const crosswalkVault = makeApp([]);
+		const crosswalkResult = await generateFromRecipe(crosswalkVault.app, parsed(), RECIPE, OPTIONS);
+		expect(crosswalkResult.errors).toEqual([]);
+		const crosswalkFm = yaml.load(/^---\n([\s\S]*?)\n---/.exec(crosswalkVault.files.get(NEW_PATH)!)![1]) as any;
+		expect(crosswalkFm.kind).toBe('crosswalk-edge');
+		expect(crosswalkFm._crosswalker.import_set).toEqual({ id: 'iset-abc123', scheme: 'endpoint-v1' });
+
+		const junctionRecipe: Recipe = {
+			recipe: 'junction-identity-test',
+			source: { ontology: 'cwk', levels: ['edge'] },
+			target: {
+				layout: [{ level: 'edge', mechanism: 'file', template: 'junction/{edge_id}.md', kind: 'junction-note' }],
+				also_emit: { frontmatter: { managed: {
+					subject: '{subject_id}', predicate: '{predicate_id}', object: '{object_id}',
+				} } },
+			},
+		};
+		const junctionVault = makeApp([]);
+		const junctionResult = await generateFromRecipe(junctionVault.app, parsed(), junctionRecipe, {
+			...OPTIONS, curiePrefix: 'cwk',
+		});
+		expect(junctionResult.errors).toEqual([]);
+		const junction = junctionVault.files.get('Mappings/junction/edge-1.md')!;
+		const junctionFm = yaml.load(/^---\n([\s\S]*?)\n---/.exec(junction)![1]) as any;
+		expect(junctionFm.kind).toBe('junction-note');
+		expect(junctionFm._crosswalker.import_set).toEqual({ id: 'iset-abc123', scheme: 'endpoint-v1' });
+	});
+
 	it('moves a crosswalk note whose rendered address changed instead of duplicating it', async () => {
 		const { app, files, renameFile } = makeApp([OLD_PATH]);
 

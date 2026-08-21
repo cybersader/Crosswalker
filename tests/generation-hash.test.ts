@@ -132,6 +132,17 @@ describe('computeConceptCid', () => {
 		expect(after).toBe(before);
 	});
 
+	it('is identical for stamped and unstamped notes because import_set is provenance, not identity', () => {
+		const scope = { title: 'Account management', family: 'AC' };
+		const unstamped = { curie: 'nist:AC-2', _crosswalker: {} };
+		const stamped = {
+			curie: 'nist:AC-2',
+			_crosswalker: { import_set: { id: 'iset-abc123', scheme: 'endpoint-v1' } },
+		};
+		const cid = (note: { curie: string }) => computeConceptCid({ curie: note.curie, scope });
+		expect(cid(stamped)).toBe(cid(unstamped));
+	});
+
 	it('does not change when only render()-time placement changes (recipe/layout is not part of the input at all)', () => {
 		// concept_cid is computed from (curie, scope) alone — render()'s Address
 		// (path/frontmatter/tags) never enters the hash, so two different

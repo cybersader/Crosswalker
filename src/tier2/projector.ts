@@ -411,20 +411,22 @@ function upsertConcept(db: any, file: TFile, fm: Record<string, any>): void {
 	const parentCurie = extractTier1Curie(fm.parent_curie);
 	const status = typeof fm.status === 'string' ? fm.status : 'active';
 	const sourceHash = hashFrontmatter(fm);
+	const importSetId = extractImportSetId(fm);
 	const importedAt = extractProducedAt(fm) ?? new Date().toISOString();
 	const modifiedAt = new Date(file.stat.mtime).toISOString();
 
 	db.exec({
 		sql: `
 			INSERT OR REPLACE INTO concepts
-				(ontology_id, curie, vault_path, source_hash, title, parent_curie, status, imported_at, modified_at)
-			VALUES ($ontology_id, $curie, $vault_path, $source_hash, $title, $parent_curie, $status, $imported_at, $modified_at)
+				(ontology_id, curie, vault_path, source_hash, import_set_id, title, parent_curie, status, imported_at, modified_at)
+			VALUES ($ontology_id, $curie, $vault_path, $source_hash, $import_set_id, $title, $parent_curie, $status, $imported_at, $modified_at)
 		`,
 		bind: {
 			$ontology_id: ontologyId,
 			$curie: curie,
 			$vault_path: file.path,
 			$source_hash: sourceHash,
+			$import_set_id: importSetId,
 			$title: title,
 			$parent_curie: parentCurie,
 			$status: status,
@@ -449,13 +451,14 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 	const objectCurie = extractTier1Curie(fm.object_curie);
 
 	const sourceHash = hashFrontmatter(fm);
+	const importSetId = extractImportSetId(fm);
 	const modifiedAt = new Date(file.stat.mtime).toISOString();
 
 	db.exec({
 		sql: `
 			INSERT OR REPLACE INTO junction_notes
-				(vault_path, curie, subject, subject_curie, predicate, object, object_curie, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, source_hash, modified_at)
-			VALUES ($vault_path, $curie, $subject, $subject_curie, $predicate, $object, $object_curie, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $source_hash, $modified_at)
+				(vault_path, curie, subject, subject_curie, predicate, object, object_curie, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, import_set_id, source_hash, modified_at)
+			VALUES ($vault_path, $curie, $subject, $subject_curie, $predicate, $object, $object_curie, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $import_set_id, $source_hash, $modified_at)
 		`,
 		bind: {
 			$vault_path: file.path,
@@ -473,6 +476,7 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 			$scope: stringOrNull(fm.scope),
 			$expires_at: stringOrNull(fm.expires_at),
 			$notes: stringOrNull(fm.notes),
+			$import_set_id: importSetId,
 			$source_hash: sourceHash,
 			$modified_at: modifiedAt,
 		},
@@ -493,14 +497,16 @@ function upsertMapping(
 	}
 
 	const sourceHash = hashFrontmatter(fm);
+	const importSetId = extractImportSetId(fm);
 
 	const mappingSetId = normalizeMappingSetId(fm.mapping_set_id);
 	db.exec({
 		sql: `
 			INSERT INTO mappings
-				(mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id, match_type, match_confidence, mapping_justification, mapping_provider, mapping_date, creator_id, review_status, source_path, source_hash)
-			VALUES ($mapping_set_id, $subject_id, $predicate_id, $predicate_modifier, $object_id, $match_type, $match_confidence, $mapping_justification, $mapping_provider, $mapping_date, $creator_id, $review_status, $source_path, $source_hash)
+				(import_set_id, mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id, match_type, match_confidence, mapping_justification, mapping_provider, mapping_date, creator_id, review_status, source_path, source_hash)
+			VALUES ($import_set_id, $mapping_set_id, $subject_id, $predicate_id, $predicate_modifier, $object_id, $match_type, $match_confidence, $mapping_justification, $mapping_provider, $mapping_date, $creator_id, $review_status, $source_path, $source_hash)
 			ON CONFLICT(source_path) DO UPDATE SET
+				import_set_id = excluded.import_set_id,
 				mapping_set_id = excluded.mapping_set_id,
 				subject_id = excluded.subject_id,
 				predicate_id = excluded.predicate_id,
@@ -516,6 +522,7 @@ function upsertMapping(
 				source_hash = excluded.source_hash
 		`,
 		bind: {
+			$import_set_id: importSetId,
 			$mapping_set_id: mappingSetId,
 			$subject_id: subjectId,
 			$predicate_id: predicateId,
@@ -648,6 +655,11 @@ function curiePrefix(value: unknown): string | null {
 function extractSourceVersion(fm: Record<string, any>): string {
 	const value = fm._crosswalker?.source_ref?.version;
 	return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Read the owning import set from provenance; legacy notes project null. */
+function extractImportSetId(fm: Record<string, any>): string | null {
+	return stringOrNull(fm._crosswalker?.import_set?.id);
 }
 
 /**
