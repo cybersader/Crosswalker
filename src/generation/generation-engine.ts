@@ -34,6 +34,7 @@ import {
 } from '../render';
 import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
+import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
 import { computeConceptCid, computeRecipeHash } from './hash';
 import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
@@ -324,6 +325,16 @@ export async function generateNotes(
 		// so the merge below mistakes the stale previous value for user content and
 		// keeps it forever - which silently inverts a predicate_modifier of NOT.
 		const declaredManagedKeys = computeDeclaredManagedKeys(recipe.target.also_emit?.frontmatter);
+		// One pass over the vault's markdown list, reading Obsidian's existing metadata
+		// cache. Lets every row below find its note by identity instead of by address.
+		const identityIndex = buildIdentityIndex(app);
+		if (identityIndex.collisions.length > 0) {
+			// Two notes claiming one concept is ambiguous. Choosing a winner silently is
+			// how a duplicate becomes permanent, so report and let the caller decide.
+			for (const c of identityIndex.collisions) {
+				result.errors.push({ row: 0, message: `Ambiguous identity ${c.curie} claimed by: ${c.paths.join(', ')}` });
+			}
+		}
 
 		// _crosswalker.recipe.hash: computed ONCE per generation run (the
 		// recipe's target doesn't change per-row) and threaded through every
@@ -444,9 +455,23 @@ export async function generateNotes(
 					// enrichment is on) the folder-note-relocated path by curie — see
 					// resolveWriteTarget's docstring (re-import identity, design §4).
 					const fullPath = normalizePath(noteData.path);
-					const target = resolveWriteTarget(app, fullPath, noteData.curie, enrichmentEnabled);
+					const target = resolveWriteTarget(app, fullPath, noteData.curie, enrichmentEnabled, identityIndex);
 					const existingFile = target.existingFile;
 					const writePath = target.writePath;
+
+					// The vault holds this concept at a stale address. Move it, so links
+					// pointing at it follow, rather than leaving a second copy behind.
+					// Skipped when overwriteMode is 'skip': that mode means leave existing
+					// notes entirely alone, and a move is still a change to the vault.
+					if (existingFile instanceof TFile && target.moveFrom && options.overwriteMode !== 'skip') {
+						const parent = getParentPath(writePath);
+						if (parent && options.createFolders) await ensureFolderOnce(parent);
+						await app.fileManager.renameFile(existingFile, writePath);
+						(result.moved ??= []).push({ curie: noteData.curie, from: target.moveFrom, to: writePath });
+						debug?.info('generation', 'identity-move', `Moved ${target.moveFrom} -> ${writePath}`, {
+							curie: noteData.curie, from: target.moveFrom, to: writePath,
+						});
+					}
 
 					if (existingFile instanceof TFile) {
 						if (options.overwriteMode === 'skip') {
@@ -642,9 +667,29 @@ function resolveWriteTarget(
 	siblingPath: string,
 	curie: string,
 	enrichmentEnabled: boolean,
-): { existingFile: TFile | null; writePath: string } {
+	identityIndex?: IdentityIndex,
+): { existingFile: TFile | null; writePath: string; moveFrom?: string } {
 	const direct = app.vault.getAbstractFileByPath(siblingPath);
 	if (direct instanceof TFile) return { existingFile: direct, writePath: siblingPath };
+
+	// Identity reconciliation (2026-08-21): the note is not at the address this
+	// recipe renders, but the vault may still hold this concept SOMEWHERE — under a
+	// previous layout, a renamed folder, or a destination the user chose. Finding it
+	// by curie is what turns "write a second note" into "move the one that exists".
+	// Checked before the folder-note guess below because it subsumes it: identity is
+	// a fact about the note, whereas a candidate path is only a guess.
+	const byIdentity = identityIndex?.get(curie) ?? null;
+	if (byIdentity) {
+		if (enrichmentEnabled) {
+			// Enrichment relocates concepts to their folder-note shape on purpose, so a
+			// note sitting there is where it belongs; moving it back would fight Pass 1.5.
+			const folderNotePath = folderNoteCandidatePath(siblingPath);
+			if (byIdentity.path === folderNotePath) {
+				return { existingFile: byIdentity, writePath: folderNotePath };
+			}
+		}
+		return { existingFile: byIdentity, writePath: siblingPath, moveFrom: byIdentity.path };
+	}
 	if (enrichmentEnabled) {
 		const candidatePath = folderNoteCandidatePath(siblingPath);
 		if (candidatePath !== siblingPath) {

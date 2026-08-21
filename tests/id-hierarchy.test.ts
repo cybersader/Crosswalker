@@ -68,6 +68,9 @@ describe('generateNotes — id → nested folder tree (end-to-end)', () => {
 		const folders = new Set<string>();
 		const app = {
 			vault: {
+				// generateNotes resolves existing notes by identity, which reads the
+				// vault markdown list. This double has no pre-existing notes.
+				getMarkdownFiles: () => [],
 				getAbstractFileByPath: (p: string) =>
 					folders.has(p) ? new TFolder(p) : files.has(p) ? new TFile(p) : null,
 				create: async (p: string, c: string) => { files.set(p, c); return new TFile(p); },

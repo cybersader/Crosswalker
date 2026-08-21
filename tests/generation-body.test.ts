@@ -19,6 +19,9 @@ function makeApp() {
 	};
 	const app = {
 		vault: {
+			// generateNotes resolves existing notes by identity, which reads the
+			// vault markdown list. This double has no pre-existing notes.
+			getMarkdownFiles: () => [],
 			getAbstractFileByPath,
 			create: async (path: string, content: string) => {
 				files.set(path, content);

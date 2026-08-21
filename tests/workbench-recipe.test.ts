@@ -690,6 +690,9 @@ describe('OPEN BUG (spec §7o): buildRecipe() drops mapping.enrichment', () => {
 		};
 		const app = {
 			vault: {
+				// generateNotes resolves existing notes by identity, which reads the
+				// vault markdown list. This double has no pre-existing notes.
+				getMarkdownFiles: () => [],
 				getAbstractFileByPath,
 				create: async (path: string, content: string) => { files.set(path, content); return new TFile(path); },
 				modify: async (file: { path: string }, content: string) => { files.set(file.path, content); },

@@ -349,6 +349,9 @@ describe('MappingWorkbench RecipeDocument integration', () => {
 		const folders = new Set<string>(['']);
 		const app = {
 			vault: {
+				// generateNotes resolves existing notes by identity, which reads the
+				// vault markdown list. This double has no pre-existing notes.
+				getMarkdownFiles: () => [],
 				getAbstractFileByPath(path: string) {
 					if (files.has(path)) return new TFile(path);
 					if (folders.has(path)) return new TFolder(path);

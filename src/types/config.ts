@@ -403,6 +403,14 @@ export interface GenerationResult {
 	skipped: string[];
 	errors: GenerationError[];
 	/**
+	 * Notes relocated by identity reconciliation (2026-08-21): the vault already
+	 * held this concept at a different address, so it was MOVED to the address the
+	 * recipe now renders rather than duplicated beside it. Moves go through
+	 * Obsidian's rename API, so wikilinks pointing at the note follow it.
+	 * Surfaced so a re-import that quietly rearranges a vault is never a mystery.
+	 */
+	moved?: Array<{ curie: string; from: string; to: string }>;
+	/**
 	 * Per-row render deviations (v0.1.6): rows that imported fine but didn't
 	 * fully fit the recipe's expected shape (skipped folder level, split/regex
 	 * fallback). Never blocks the import — surfaced so a "weird vault" is

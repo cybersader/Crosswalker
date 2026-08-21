@@ -72,6 +72,9 @@ describe('createFolderEnsurer', () => {
 		const created: string[] = [];
 		const app = {
 			vault: {
+				// generateNotes resolves existing notes by identity, which reads the
+				// vault markdown list. This double has no pre-existing notes.
+				getMarkdownFiles: () => [],
 				getAbstractFileByPath: (p: string) => (existing.has(p) ? ({ path: p } as any) : null),
 				createFolder: async (p: string) => {
 					// Mimic Obsidian: throw if the folder already exists. The
@@ -121,6 +124,9 @@ describe('generateNotes — concurrency parity + folder de-dup (end-to-end)', ()
 		const createFolderCalls: string[] = [];
 		const app = {
 			vault: {
+				// generateNotes resolves existing notes by identity, which reads the
+				// vault markdown list. Mirror the files this double already tracks.
+				getMarkdownFiles: () => [...files.keys()].map((k) => new TFile(k)),
 				getAbstractFileByPath: (p: string) =>
 					folders.has(p) ? new TFolder(p) : files.has(p) ? new TFile(p) : null,
 				create: async (p: string, c: string) => { files.set(p, c); return new TFile(p); },
