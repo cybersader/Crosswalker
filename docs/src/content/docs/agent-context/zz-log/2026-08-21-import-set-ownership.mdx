@@ -1,0 +1,86 @@
+---
+title: "The import set — who owns a note, settled"
+description: "Architect decision. Three features stalled on one unmodelled concept: a stable identity for 'the collection of notes one import owns.' The import set is that identity — minted once at first import, stamped into provenance, never derived from changeable attributes. It unblocks orphan reporting on every path, makes deletion safe to even discuss, and dissolves the release-isolation deadlock instead of mitigating it: identity schemes become per-set and fixed at mint, so no existing note's identity ever changes."
+tags: [decision, architecture, import-set, ownership, reconciliation, orphans, release-isolation, ch-43]
+date: 2026-08-21
+sidebar:
+  label: "08-21 · Import set = ownership"
+  order: -20260821.5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="How to read this">
+Funnel-shaped: section 1 is thirty seconds and stands alone. Stop wherever you have enough.
+</Aside>
+
+## 1. Thirty seconds
+
+Three separate features are stalled on the same missing idea: when Crosswalker looks at a note it made, it cannot say **which import owns it**. "Which notes did *this* import produce last time?" has no reliable answer, so orphan reporting stands down on two paths, deleting anything is off the table, and letting two releases of a crosswalk coexist deadlocked entirely.
+
+**The decision:** model the missing thing. An **import set** is the collection of notes one import owns, with its own identity — a short id **minted once** at first import, stamped into every note's provenance block, and carried forever. Never recomputed from the recipe, the destination, or the source, because all of those legitimately change. Re-imports *select* the set they refresh. Every ownership question — orphans, deletion, reconciliation scope — keys on it.
+
+One rule rides along and dissolves the release-isolation deadlock outright: **a set's identity scheme is fixed when the set is minted.** Coexisting releases are a *new* set whose notes get distinct identities from birth; no existing note's identity ever changes, so there is nothing to migrate.
+
+## 2. Two minutes — why ownership kept failing
+
+Every candidate ownership key already in the system fails the same way — it names something *reusable*, not something *owned*:
+
+| Candidate key | Why it fails as ownership |
+|---|---|
+| Recipe id (`recipe.recipe`) | A recipe is a reusable instruction. One recipe imports many files; two frameworks imported with one recipe would see each other's notes as orphans |
+| The wizard's config id | Every unnamed config shares the fallback `legacy-config` — one label across unrelated imports (verified: `generation-engine.ts:616` stands down on exactly this) |
+| Destination folder | A path — and this whole phase established that paths are guesses, not facts. Reconciliation exists precisely because destinations change |
+| `mapping_set_id` | Provenance of the *data* ("NIST published this collection"), not of the *act of importing it*. Pre-existing notes have none at all, and two imports of the same collection would collide |
+| Exact source bytes | Changes on every refresh — the refresh case is the one that matters most |
+
+The concrete damage, all verified this week: orphan detection stands down for enrichment runs and unnamed configs (`generation-engine.ts:611-628`); the recipe path has no orphan reporting at all; and the release-isolation attempt in R2 had to be held because it changed note identity, which reconciliation cannot follow — with the resulting duplication *silent* precisely because no ownership key existed to report it against.
+
+Three features, one hole. That is usually the sign the hole is the real work.
+
+## 3. The decision
+
+**An import set is a first-class thing with minted identity.**
+
+| Property | Ruling |
+|---|---|
+| Identity | A short unique id, **minted at first import**. Declared, not derived — deriving it from recipe/destination/source would re-import the path-trap: identity computed from changeable attributes changes when they do |
+| Storage | Stamped into `_crosswalker.import_set` on **every** note the run produces — including enrichment hubs, which is what fixes the enrichment stand-down. Markdown stays canonical: the vault's notes *are* the registry; anything else is derived convenience |
+| Selection on re-import | The wizard proposes the existing set for a recognized destination/recipe and the user confirms; the headless path names the set explicitly (the v0.1.7 **binding** — one pinned input selection — gains a reference to the set it refreshes). Ambiguity is a question put to the user, never a guess |
+| Ownership queries | `buildIdentityIndex(app, { importSetId })` replaces the recipe-id filter. Orphans = "identities this **set** held that this run did not produce." Works identically on both generation paths |
+| Deletion | Becomes discussable for the first time: "delete set X's orphans" and "delete set X entirely" are well-defined, scoped to notes stamped X **and** carrying provenance. Still confirm-gated; that part of the R1 ruling stands |
+| **Identity schemes are per-set, fixed at mint** | The scheme a set uses to mint note identities (endpoint-derived today; set-qualified later) is recorded on the set and never changes. Want the new scheme? Mint a new set. **An existing note's identity never changes, ever** — so reconciliation always works within a set, and migration is a non-concept |
+
+### How this dissolves release isolation (rather than mitigating it)
+
+The R2 deadlock: coexisting releases need assertions with distinct identities; changing identities strands every existing note. The deadlock assumed one global identity scheme that must be *switched*.
+
+With per-set schemes there is no switch. Importing a second release becomes a choice the importer makes: **refresh** the existing set (same scheme, reconciliation follows every note, release *replaces*) or **mint a new set** (whose notes are born with set-qualified identities, colliding with nothing, release *coexists*). Old sets keep their scheme forever. Nothing migrates because nothing changes.
+
+The generalizable rule, extending [§7 of the reconciliation log](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/): *identity schemes are versioned by set, not switched in place.*
+
+### The noun, tested
+
+Per [artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/), a new noun must show independent identity, lifecycle, authority, and consumers. Import set: minted id — yes; mint → refresh → delete — yes; **the ownership boundary for every destructive operation** — yes, that is its entire job; consumers — reconciliation, orphan reporting, deletion, the binding/replay work, and Ch 43's migration story, which is "refresh an import set with a new source release" said formally. It also stays distinct from its neighbors: a **Recipe** is reusable instructions, a **binding** is one pinned input, an **Execution Record** is one run event. The import set is the durable vault footprint that successive bindings refresh.
+
+## 4. Sequencing and cost
+
+This changes what gets written into notes (`_crosswalker.import_set`), so by the standing rule it lands **before further generation** — notes written without it need one regeneration to gain it, which the owner has already accepted as the alpha norm. It is additive: notes without the field stay valid; ownership features simply stand down for them exactly as they do today, so the degraded case is the status quo, not a new failure.
+
+Costs: a mint step in both import paths; the stamp in `buildProvenance`; the index filter; wizard copy for "refresh vs. new set"; and honest handling of one edge — a destination containing notes from *multiple* sets is a question for the user, not an error.
+
+**Owner call embedded here** (default chosen, reversible): the wizard proposes *refresh* when it recognizes an existing set at the destination, because refreshing is the overwhelmingly common intent and minting duplicate sets by accident is the failure to avoid.
+
+## 5. What this unblocks, in order
+
+1. **Orphan reporting everywhere** — both paths, enrichment included; both stand-downs retire
+2. **Release isolation ships un-held** — as refresh-vs-new-set, with zero migration
+3. **Delete-after-confirm** — first safe foundation for it
+4. **Ch 43** — the semantic-diff loop gets its container: diff happens *within* a set across refreshes
+
+## Related
+
+- [Re-import is identity reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/) — the sibling decision; §7's lesson is generalized here
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — the noun test this passes
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/) — the binding decisions this composes with
+- [Ch 43 — version migration](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) — the arc this is the substrate for
