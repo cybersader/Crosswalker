@@ -61,7 +61,7 @@ This also answers the open question "should Crosswalker move files in a user's v
 
 ## 4. What this unblocks and what it costs
 
-**Unblocks:** the P3 rebuild (mapping-set folders become trivial — the layout change is just new desired addresses; reconciliation moves the notes); the framework-update story ([Ch 43](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) — a new framework release is *also* just a changed identity set, so this is its substrate); and the org-rollout safety story, since duplicates-on-upgrade was a ranked blocker in [Ch 45](/crosswalker/agent-context/zz-challenges/45-org-rollout-readiness/).
+**Unblocks:** the P3 rebuild — *partly; see the correction in §7*; the framework-update story ([Ch 43](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) — a new framework release is *also* just a changed identity set, so this is its substrate); and the org-rollout safety story, since duplicates-on-upgrade was a ranked blocker in [Ch 45](/crosswalker/agent-context/zz-challenges/45-org-rollout-readiness/).
 
 **Costs:** an identity index (curie → file) built from the metadata cache per run — cheap, the cache is already in memory; a reconciliation preview in the import flow; and honest handling of the one genuinely hard case, **identity collisions** (two rows claiming one curie), which today produce a collision error and continue to.
 
@@ -84,6 +84,12 @@ The build exposed three safety preconditions the decision had not made explicit:
 - **Pruning must fail closed.** If Obsidian cannot provide readable metadata for a possible Crosswalker note, the [query database (Tier 2)](/crosswalker/concepts/system-architecture/) must preserve its prior rows rather than infer deletion. The current violation of this rule is recorded as a pre-alpha limit below.
 
 The accepted report-and-prune limits are recorded in [`CHANGELOG.md` `[Unreleased]`](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md#re-import-correctness-notes-now-follow-their-identity-2026-08-21); they do not change the decision or authorize Markdown deletion.
+
+### R2 built on the R1 foundation
+
+R2 adds explicit relationship identities and mapping-set provenance without reviving the parked path detector. Release isolation — giving each assertion an identity derived from its mapping set so two releases can coexist — was built and then deliberately held; see §7.
+
+Assertion identity therefore stays endpoint-derived, and all mapping sets continue to share one destination folder. Delivery details and the other accepted verification limits live only in [`CHANGELOG.md` `[Unreleased]`](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md#stable-relationship-identities-and-release-aware-mapping-sets-2026-08-21).
 
 ## 6. What happens to the parked branch
 
@@ -108,6 +114,20 @@ Sprint R1 landed the engine layer of this decision on 2026-08-21:
 **An ownership key that several imports share is not an ownership key.** Orphan detection asks "which identities did this import produce before, that it no longer produces?" That question is only answerable if the ownership key identifies exactly one import. Unnamed classic-wizard configs all fall back to a single shared identifier, so one framework's re-import could report another framework's notes as missing. Rather than guess, detection now stands down when ownership is ambiguous — including for enrichment-enabled runs, whose synthetic hub notes are not yet tracked as produced and would otherwise be flagged as orphans the moment they were created.
 
 The third is a design gap, not a coding error: **stable per-import identity is still unmodelled**, and it gates both full orphan coverage and any future delete-after-confirm flow. That is architect work, not a patch.
+
+## 7. Correction: this decision predicted one thing wrong
+
+§4 above claimed the P3 rebuild would be unblocked because "mapping-set folders become trivial — the layout change is just new desired addresses; reconciliation moves the notes." **Building it proved that wrong, and the reason is worth keeping.**
+
+Release isolation does not merely move a note to a new address. It changes the note's **identity**, because an assertion's identity is derived from its mapping set. And identity reconciliation can only follow a note whose identity is *stable* — that is the entire premise of this decision. So the two are in direct tension: the feature that lets releases coexist is precisely the feature reconciliation cannot bridge.
+
+The failure mode is the one this decision exists to prevent, arriving through a different door. Old notes keep their old identity, the import creates notes at the new identities, and the user gets duplicates — silently, because orphan reporting is inactive on that path (a reusable recipe id is not unambiguous import ownership).
+
+**What shipped instead:** assertion identity stays endpoint-derived and all mapping sets share one destination folder, exactly as before. `mapping_set_id` is still recorded on each note as provenance, which changes no identity and therefore migrates nobody. The accepted cost, restored from pre-P3 behavior: two assertions sharing endpoints collapse onto one note.
+
+**The generalizable lesson.** "Reconcile by identity, not by path" is right, but it carries a corollary this log did not state: *a change to identity itself is a migration, and no amount of reconciliation makes it free.* Address changes are cheap under this design. Identity changes are not, and they need an explicit transition mechanism — an alias, a declared predecessor, or a regeneration instruction — decided before the change ships, not after.
+
+Release isolation is therefore blocked on modelling per-import ownership, already recorded above as architect work. That is the same gap that keeps orphan reporting off the recipe path, which is a useful signal: two independent features stalled on one unmodelled concept usually means the concept is the real work.
 
 ## Related
 

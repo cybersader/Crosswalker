@@ -10,7 +10,7 @@
 export type LayoutEntry =
 	FolderLayoutEntry | FileLayoutEntry | HeadingLayoutEntry | TagLayoutEntry | WikilinkLayoutEntry;
 /**
- * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.
+ * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Closed filters: lower, upper, title, slug, tagsafe, fs-safe, truncate(N), trim, number, split(delimiter,index), regex(pattern), curie-prefix(prefix), plus first-position optional as a missing-value control. {var|optional} resolves a missing/null path to an empty value; ordinary missing variables still fail. {var|optional|curie-prefix(nist)} omits an absent identity and prefixes a present local value. Computation beyond filters escapes into the Function primitive (Ch 20).
  */
 export type Template = string;
 /**
@@ -389,7 +389,7 @@ export interface SectionBodyProjection {
  */
 export interface GraphEdge {
 	/**
-	 * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.
+	 * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Closed filters: lower, upper, title, slug, tagsafe, fs-safe, truncate(N), trim, number, split(delimiter,index), regex(pattern), curie-prefix(prefix), plus first-position optional as a missing-value control. {var|optional} resolves a missing/null path to an empty value; ordinary missing variables still fail. {var|optional|curie-prefix(nist)} omits an absent identity and prefixes a present local value. Computation beyond filters escapes into the Function primitive (Ch 20).
 	 */
 	from: string;
 	/**
@@ -397,7 +397,7 @@ export interface GraphEdge {
 	 */
 	via: string;
 	/**
-	 * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Filters via pipe: {var|lower}, {var|slug}, {var|tagsafe}, {var|fs-safe}, {var|truncate(N)}. Closed filter set; computation beyond filters escapes into the Function primitive (Ch 20). Examples: 'Frameworks/{catalog.name}', '{control.id}.md', 'framework/nist-800-53-r5/{family.id|lower}/{control.id|slug}'.
+	 * R2RML-style template with {var} interpolation. Variables come from the source level scope (e.g., {control.id}, {family.title}, {col}). Closed filters: lower, upper, title, slug, tagsafe, fs-safe, truncate(N), trim, number, split(delimiter,index), regex(pattern), curie-prefix(prefix), plus first-position optional as a missing-value control. {var|optional} resolves a missing/null path to an empty value; ordinary missing variables still fail. {var|optional|curie-prefix(nist)} omits an absent identity and prefixes a present local value. Computation beyond filters escapes into the Function primitive (Ch 20).
 	 */
 	to: string;
 }

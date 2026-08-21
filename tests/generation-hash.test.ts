@@ -8,6 +8,7 @@ import {
 	sha256Hex,
 	canonicalStringify,
 	computeConceptCid,
+	identityScopeForNoteKind,
 	computeRecipeHash,
 	toSha256Cid,
 } from '../src/generation/hash';
@@ -112,6 +113,23 @@ describe('computeConceptCid', () => {
 		const cidA = computeConceptCid({ curie: 'nist:AC-2', scope });
 		const cidB = computeConceptCid({ curie: 'nist:AC-3', scope });
 		expect(cidA).not.toBe(cidB);
+	});
+
+	it('keeps concept CIDs stable when mapping-only defaults are added to the render scope', () => {
+		const sourceScope = { title: 'Account management', family: 'AC' };
+		const normalizedRenderScope = {
+			...sourceScope,
+			mapping_set_id: '',
+			predicate_modifier: '',
+		};
+
+		const before = computeConceptCid({ curie: 'nist:AC-2', scope: sourceScope });
+		const after = computeConceptCid({
+			curie: 'nist:AC-2',
+			scope: identityScopeForNoteKind(undefined, sourceScope, normalizedRenderScope),
+		});
+
+		expect(after).toBe(before);
 	});
 
 	it('does not change when only render()-time placement changes (recipe/layout is not part of the input at all)', () => {

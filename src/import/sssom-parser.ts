@@ -33,6 +33,7 @@
  */
 
 import Papa, { type ParseError } from 'papaparse';
+import { normalizePredicateModifierInput } from '../utils/mapping-provenance';
 
 /** A single parsed SSSOM mapping row. SSSOM-shape; all standard cols + extras. */
 export interface SssomRow {
@@ -44,6 +45,7 @@ export interface SssomRow {
 	mapping_justification?: string;
 	confidence?: number;
 	mapping_set_id?: string;
+	predicate_modifier?: 'NOT';
 	mapping_provider?: string;
 	mapping_date?: string;
 	subject_source?: string;
@@ -132,7 +134,6 @@ export function parseSssomTsv(content: string): SssomParseResult {
 		skipEmptyLines: true,
 		dynamicTyping: false, // Keep all values as strings; we cast confidence ourselves.
 		transformHeader: (h) => h.trim(),
-		transform: (value) => (typeof value === 'string' ? value.trim() : value),
 	});
 
 	if (papaResult.errors.length > 0) {
@@ -177,6 +178,17 @@ export function parseSssomTsv(content: string): SssomParseResult {
 		// Copy all known optional columns + any extras.
 		for (const [key, value] of Object.entries(raw)) {
 			if (key === 'subject_id' || key === 'predicate_id' || key === 'object_id') continue;
+			if (key === 'predicate_modifier') {
+				if (value === undefined || value === null || value === '') continue;
+				try {
+					row.predicate_modifier = normalizePredicateModifierInput(value) || undefined;
+				} catch (error) {
+					result.errors.push(
+						`Row ${i + 1}: invalid predicate_modifier "${String(value)}": ${(error as Error).message}`,
+					);
+				}
+				continue;
+			}
 			if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) continue;
 			if (key === 'confidence' || key === 'match_confidence') {
 				const num = Number.parseFloat(String(value));

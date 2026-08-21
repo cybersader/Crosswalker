@@ -34,7 +34,7 @@ import type {
 	LevelNaming,
 } from './types';
 import { DEFAULT_MISSING, isConstantRef } from './types';
-import { parseStructuralTemplate } from './serialize';
+import { markDetectionBackedLink, parseStructuralTemplate } from './serialize';
 
 /** A detection that would carry structural destinations (folders + a file leaf). */
 type StructuralDetection = Extract<Detection, { kind: 'packed-hierarchy' | 'level-column-chain' }>;
@@ -380,13 +380,13 @@ function mapDestination(preset: PresetDestination, ctx: DestContext): Destinatio
 		case 'heading':
 			return { primitive: 'heading', hostRule: 'root', depth: preset.depth ?? 2 };
 		case 'link':
-			return {
+			return markDetectionBackedLink({
 				primitive: 'link',
 				key: ctx.linkKey ?? 'parent',
 				direction: preset.direction ?? 'parent-on-child',
 				...(ctx.predicate ? { predicate: ctx.predicate } : {}),
 				...(ctx.list ? { list: true } : {}),
-			};
+			});
 		case 'property':
 			return { primitive: 'property', key: ctx.propertyKey ?? ctx.column, ...(preset.list ? { list: true } : {}) };
 		case 'body':

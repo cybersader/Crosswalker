@@ -59,6 +59,7 @@
 import Papa from 'papaparse';
 import type { App } from 'obsidian';
 import { readVaultTree, type CrosswalkEdgeRow, type SkippedNote } from './vault-reader';
+import { normalizeMappingSetId, readStoredPredicateModifier } from '../utils/mapping-provenance';
 
 /**
  * STRM predicate_id → SSSOM/SKOS predicate. Reverse of SKOS_TO_STRM in
@@ -83,6 +84,7 @@ const SSSOM_COLUMNS = [
 	'subject_id',
 	'predicate_id',
 	'object_id',
+	'predicate_modifier',
 	'mapping_justification',
 	'confidence',
 	'subject_label',
@@ -174,6 +176,18 @@ export function crosswalkEdgesToSssomTsv(
 			continue;
 		}
 		const fm = edge.frontmatter;
+		let predicateModifier: '' | 'NOT';
+		try {
+			predicateModifier = Object.prototype.hasOwnProperty.call(fm, 'predicate_modifier')
+				? readStoredPredicateModifier(fm)
+				: edge.predicate_modifier ?? '';
+		} catch (error) {
+			skipped.push({
+				path: edge.path,
+				reason: error instanceof Error ? error.message : 'invalid explicit predicate_modifier',
+			});
+			continue;
+		}
 		const sssomPredicate = asOptionalString(fm.sssom_predicate) ?? STRM_TO_SKOS[edge.predicate_id] ?? 'skos:relatedMatch';
 		const confidence = resolveConfidence(fm, edge.match_confidence);
 
@@ -181,6 +195,7 @@ export function crosswalkEdgesToSssomTsv(
 			subject_id: edge.subject_id,
 			predicate_id: sssomPredicate,
 			object_id: edge.object_id,
+			predicate_modifier: predicateModifier,
 			mapping_justification: edge.mapping_justification ?? '',
 			confidence: confidence !== undefined ? String(confidence) : '',
 			subject_label: asOptionalString(fm.subject_label) ?? '',
@@ -188,7 +203,8 @@ export function crosswalkEdgesToSssomTsv(
 		});
 
 		tally(providerCounts, edge.mapping_provider);
-		tally(setIdCounts, asOptionalString(fm.mapping_set_id));
+		const mappingSetId = normalizeMappingSetId(edge.mapping_set_id ?? fm.mapping_set_id);
+		tally(setIdCounts, mappingSetId || undefined);
 		tally(subjectSourceCounts, asOptionalString(fm.source_framework) ?? curiePrefix(edge.subject_id));
 		tally(objectSourceCounts, asOptionalString(fm.target_framework) ?? curiePrefix(edge.object_id));
 	}
@@ -196,7 +212,9 @@ export function crosswalkEdgesToSssomTsv(
 	const subjectSource = options.subjectSource ?? mode(subjectSourceCounts);
 	const objectSource = options.objectSource ?? mode(objectSourceCounts);
 	const mappingProvider = options.mappingProvider ?? mode(providerCounts);
-	const mappingSetId = options.mappingSetId ?? mode(setIdCounts);
+	const mappingSetId = options.mappingSetId === undefined
+		? mode(setIdCounts)
+		: normalizeMappingSetId(options.mappingSetId) || undefined;
 
 	const headerLines: string[] = [];
 	if (subjectSource) headerLines.push(`# subject_source: "${subjectSource}"`);

@@ -30,7 +30,7 @@ import {
 	getBuiltInPreset,
 } from '../src/import/mapping/presets';
 import { instantiate } from '../src/import/mapping/instantiate';
-import { toRecipeRegions, fromRegions, fromRecipe } from '../src/import/mapping/serialize';
+import { collectScalarLinkEmissions, toRecipeRegions, fromRegions, fromRecipe } from '../src/import/mapping/serialize';
 import type { RecipeRegions } from '../src/import/mapping/serialize';
 import type { ImportMapping } from '../src/import/mapping/types';
 
@@ -312,6 +312,29 @@ describe('single-structural constraint (spec §7g)', () => {
 			],
 		};
 		expect(() => toRecipeRegions(oneStructuralManyMeta)).not.toThrow();
+	});
+});
+
+describe('scalar-link serialization trace', () => {
+	it('matches serialized templates, preserves order and excludes list-valued links', () => {
+		const mapping: ImportMapping = {
+			mappings: [
+				{ levels: [{ level: 'first', source: { column: 'parent_a' }, destinations: [{ primitive: 'link', key: 'parent', predicate: 'skos:broader', direction: 'parent-on-child' }], naming: 'part', missing: 'skip', materialize: false }] },
+				{ levels: [{ level: 'second', source: [{ column: 'prefix' }, { column: 'parent_b' }], join: ':', destinations: [{ primitive: 'link', key: 'parent', predicate: 'skos:broader', direction: 'parent-on-child' }], naming: 'part', missing: 'skip', materialize: false }] },
+				{ levels: [{ level: 'related', source: { column: 'related' }, destinations: [{ primitive: 'link', key: 'related', predicate: 'skos:related', direction: 'peer', list: true }], naming: 'part', missing: 'skip', materialize: false }] },
+			],
+		};
+		const trace = collectScalarLinkEmissions(mapping);
+		const regions = toRecipeRegions(mapping);
+		expect(trace).toHaveLength(2);
+		expect(trace[0]).toEqual(expect.objectContaining({
+			key: 'parent', template: '[[{parent_a}]]', sourceColumns: ['parent_a'],
+			predicate: 'skos:broader', mappingIndex: 0, levelIndex: 0, destinationIndex: 0,
+		}));
+		expect(trace[1]).toEqual(expect.objectContaining({
+			key: 'parent', sourceColumns: ['prefix', 'parent_b'], mappingIndex: 1,
+		}));
+		expect(trace[1].template).toBe(regions.also_emit?.frontmatter?.managed?.parent);
 	});
 });
 

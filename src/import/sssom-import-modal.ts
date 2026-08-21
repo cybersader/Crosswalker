@@ -163,12 +163,16 @@ export class SssomImportModal extends Modal {
 		if (this.detectedSource && this.detectedTarget) {
 			this.dlEntry(list, 'Source ontology', this.detectedSource);
 			this.dlEntry(list, 'Target ontology', this.detectedTarget);
-			this.dlEntry(list, 'Output folder', `_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}/`);
+			this.dlEntry(
+				list,
+				'Output organization',
+				`_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}/ with separate mapping-set subfolders`,
+			);
 		} else {
-			this.dlEntry(list, 'Ontology pair', '(could not detect — add subject_source/object_source to header)');
+			this.dlEntry(list, 'Ontology pair', '(could not detect; add subject_source/object_source to header)');
 		}
 		if (typeof result.header.mapping_set_id === 'string') {
-			this.dlEntry(list, 'Mapping set id', result.header.mapping_set_id);
+			this.dlEntry(list, 'Header mapping set id', `${result.header.mapping_set_id} (individual rows may override)`);
 		}
 		if (typeof result.header.mapping_provider === 'string') {
 			this.dlEntry(list, 'Mapping provider', result.header.mapping_provider);
@@ -235,7 +239,7 @@ export class SssomImportModal extends Modal {
 			}
 
 			new Notice(
-				`SSSOM import: ${gen.created.length} junction notes created in ${result.folder}` +
+				`SSSOM import: ${gen.created.length} junction notes created under ${result.folder} in mapping-set subfolders` +
 					(gen.errors.length > 0 ? ` (with ${gen.errors.length} warning(s))` : ''),
 				8000,
 			);

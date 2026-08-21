@@ -27,6 +27,9 @@ function makeMockApp(): { app: App; written: Map<string, string>; folders: Set<s
 	const folders = new Set<string>();
 	const app = {
 		vault: {
+			// generateFromRecipe builds its reconciliation index once before writing.
+			// This importer double starts with no pre-existing Markdown notes.
+			getMarkdownFiles: () => [],
 			adapter: {
 				exists: async (p: string) => written.has(p) || folders.has(p),
 				mkdir: async (p: string) => {
@@ -104,8 +107,10 @@ describe('importSssom — happy path with real fixture', () => {
 		const inFolder = writtenPaths.filter((p) => p.startsWith('_crosswalker/mappings/csf-to-iso27001/'));
 		expect(inFolder.length).toBe(11);
 
-		// One file should mention the first row's subject + object (slug-cased)
-		const firstFile = writtenPaths.find((p) => p.toLowerCase().includes('gv-oc-01'));
+		// One deterministic assertion note should contain the first row's endpoints.
+		const firstFile = writtenPaths.find((p) =>
+			(written.get(p) ?? '').includes('csf:GV.OC-01'),
+		);
 		expect(firstFile).toBeDefined();
 		const content = written.get(firstFile!) ?? '';
 		// YAML emitter quotes values containing colons — accept either form.
@@ -202,4 +207,71 @@ nist:AC-1\tskos:closeMatch\tiso:A.1`;
 		});
 		expect(result.folder).toBe('custom/folder/path');
 	});
+});
+
+
+describe('importSssom — mapping-set isolation and occurrences', () => {
+	const mixed = `# subject_source: "x"
+# object_source: "y"
+subject_id\tpredicate_id\tobject_id\tmapping_set_id\tsubject_label\tobject_label\tmapping_justification\tconfidence
+x:A\tskos:exactMatch\ty:B\tset:one\tA\tB\tsemapv:ManualMappingCuration\t1
+x:A\tskos:exactMatch\ty:B\tset:one\tA\tB\tsemapv:ManualMappingCuration\t1
+x:C\tskos:exactMatch\ty:D\tset:two\tC\tD\tsemapv:ManualMappingCuration\t1`;
+
+	/**
+	 * Release isolation is deliberately HELD (2026-08-21). Assertion identity stays
+	 * endpoint-derived, so a note keeps the identity it already had and reconciliation
+	 * can still follow it. The cost, restored from pre-P3 behavior and asserted here
+	 * so it is visible rather than discovered: two assertions sharing endpoints
+	 * collapse onto one note, and every mapping set shares the pair root.
+	 *
+	 * mapping_set_id is still recorded on the note as provenance. It simply does not
+	 * participate in identity, which is what makes it migration-free.
+	 */
+	it('writes endpoint-identified notes in one shared folder, collapsing duplicate endpoints', async () => {
+		const { app, written } = makeMockApp();
+		const result = await importSssom(app, mixed, null, null, { runTier2Projection: false });
+		expect(result.skipped).toBeUndefined();
+
+		const paths = [...written.keys()].filter((path) => path.endsWith('.md'));
+		// Three source rows, two distinct endpoint pairs -> two notes.
+		expect(new Set(paths).size).toBe(2);
+		// One shared destination folder, not one per mapping set.
+		expect(new Set(paths.map((path) => path.split('/').slice(0, -1).join('/'))).size).toBe(1);
+		// Endpoint-derived filenames, not mapping-set/assertion keys.
+		// Endpoint-derived and lowercased by the filename mechanism, e.g.
+		// _crosswalker/mappings/x-to-y/cw-x-a-y-b.md
+		expect(paths.every((path) => /\/cw-x-[a-d]-y-[a-d]\.md$/.test(path))).toBe(true);
+
+		// Provenance is still carried, it just is not part of identity.
+		const bodies = [...written.values()].join('\n');
+		expect(bodies).toContain('mapping_set_id');
+	});
+
+	/**
+	 * Endpoint-derived identity is order-independent by construction: the same rows in
+	 * any order produce the same note paths. Note what this does NOT claim — two rows
+	 * that differ only in metadata share endpoints, so they share one note and the
+	 * later write wins. Distinguishing them needs assertion-level identity, which is
+	 * exactly the held feature.
+	 */
+	it('produces the same note paths regardless of source row order', async () => {
+		const header = `# subject_source: "x"
+# object_source: "y"
+subject_id\tpredicate_id\tobject_id\tmapping_set_id\tmapping_justification`;
+		const first = 'x:A\tskos:exactMatch\ty:B\tset:one\tsemapv:ManualMappingCuration';
+		const second = 'x:A\tskos:exactMatch\ty:B\tset:one\tsemapv:LexicalMatching';
+		const a = makeMockApp();
+		const b = makeMockApp();
+		await importSssom(a.app, `${header}\n${first}\n${second}`, null, null, { runTier2Projection: false });
+		await importSssom(b.app, `${header}\n${second}\n${first}`, null, null, { runTier2Projection: false });
+		const paths = (written: Map<string, string>) => [...written.keys()].filter((path) => path.endsWith('.md')).sort();
+		expect(paths(a.written)).toEqual(paths(b.written));
+	});
+
+	/**
+	 * Removed with release isolation: the importer no longer isolates mapping sets by
+	 * folder, so several sets in one import share the pair root and are no longer a
+	 * conflict to reject. Restore this test alongside the feature.
+	 */
 });

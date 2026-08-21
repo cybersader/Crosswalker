@@ -41,8 +41,10 @@ export interface ConceptRow {
  * A crosswalk-edge row (subset of Tier 2 `mappings` table).
  */
 export interface MappingRow {
+	mapping_set_id: string | null;
 	subject_id: string;
 	predicate_id: string;
+	predicate_modifier: 'NOT' | null;
 	object_id: string;
 	match_type: string | null;
 	match_confidence: number | null;
@@ -119,27 +121,19 @@ function buildPredicateCharacteristicsSqlPlan(): PredicateCharacteristicsSqlPlan
 	};
 }
 
-// IMPORTANT — read before implementing P3 (predicate_modifier / the NOT modifier).
+// Effective traversal contains positive assertions only. Keep this predicate in
+// both branches: the stored direction and every symmetric/inverse direction
+// synthesized from predicate characteristics. Direct stored-assertion queries
+// remain separate and continue to return exact `predicate_modifier: NOT` rows.
 //
-// Both branches below select every row in `mappings` unconditionally. That is
-// correct TODAY because no negation exists: `predicate_modifier` is not yet a
-// column. The moment P3 adds it, this becomes a correctness bug — an assertion
-// saying "these two concepts are explicitly NOT equivalent" would be walked as
-// if it were a positive edge, and the reverse-direction branch below would
-// synthesize an inferred edge from it too. A dropped negation turns "not
-// equivalent" into "equivalent", which is worse than making no claim at all.
-//
-// P3 MUST therefore filter both branches, e.g. COALESCE(m.predicate_modifier,'')
-// <> 'NOT', and ship a test proving a negated row stays directly queryable while
-// being absent from closure in both directions. Stored-assertion queries such as
-// crosswalkBetween must keep returning the modifier so callers can see it.
-//
-// Verified 2026-08-21 with a throwaway probe: adding the column and inserting a
-// NOT-modified equivalence returned the object at depth 1 rather than nothing.
+// The exact empty-string comparison is intentional. The v3 schema stores an
+// absent positive modifier as '', rejects every value except '' or 'NOT', and
+// the projector refuses malformed explicit modifiers rather than coercing them.
 const EFFECTIVE_EDGES_CTE = `effective_edges(subject_id, predicate_id, object_id) AS (
 	SELECT m.subject_id, m.predicate_id, m.object_id
 	FROM mappings m
 	JOIN predicate_characteristics pc ON pc.predicate_id = m.predicate_id
+	WHERE m.predicate_modifier = ''
 
 	UNION
 
@@ -152,6 +146,7 @@ const EFFECTIVE_EDGES_CTE = `effective_edges(subject_id, predicate_id, object_id
 		m.subject_id
 	FROM mappings m
 	JOIN predicate_characteristics pc ON pc.predicate_id = m.predicate_id
+	WHERE m.predicate_modifier = ''
 )`;
 
 // ============================================================================
@@ -217,21 +212,23 @@ export function crosswalkBetween(
 
 	const sql = predicateId
 		? `
-			SELECT subject_id, predicate_id, object_id, match_type, match_confidence,
-			       mapping_justification, mapping_provider, source_path
+			SELECT mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id,
+			       match_type, match_confidence, mapping_justification, mapping_provider, source_path
 			FROM mappings
 			WHERE subject_id LIKE $subj
 			  AND object_id LIKE $obj
 			  AND predicate_id = $pred
-			ORDER BY subject_id, object_id
+			ORDER BY subject_id, object_id, predicate_id,
+			         mapping_set_id COLLATE BINARY, predicate_modifier COLLATE BINARY, source_path
 		`
 		: `
-			SELECT subject_id, predicate_id, object_id, match_type, match_confidence,
-			       mapping_justification, mapping_provider, source_path
+			SELECT mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id,
+			       match_type, match_confidence, mapping_justification, mapping_provider, source_path
 			FROM mappings
 			WHERE subject_id LIKE $subj
 			  AND object_id LIKE $obj
-			ORDER BY subject_id, object_id
+			ORDER BY subject_id, object_id, predicate_id,
+			         mapping_set_id COLLATE BINARY, predicate_modifier COLLATE BINARY, source_path
 		`;
 
 	const bind: Record<string, unknown> = { $subj: subjectLike, $obj: objectLike };
@@ -245,15 +242,17 @@ export function crosswalkBetween(
 	}) as unknown[][];
 
 	return rows.map((r) => ({
-		subject_id: String(r[0]),
-		predicate_id: String(r[1]),
-		object_id: String(r[2]),
-		match_type: r[3] === null || r[3] === undefined ? null : String(r[3]),
+		mapping_set_id: r[0] === null || r[0] === undefined || r[0] === '' ? null : String(r[0]),
+		subject_id: String(r[1]),
+		predicate_id: String(r[2]),
+		predicate_modifier: r[3] === 'NOT' ? 'NOT' : null,
+		object_id: String(r[4]),
+		match_type: r[5] === null || r[5] === undefined ? null : String(r[5]),
 		match_confidence:
-			r[4] === null || r[4] === undefined || r[4] === '' ? null : Number(r[4]),
-		mapping_justification: r[5] === null || r[5] === undefined ? null : String(r[5]),
-		mapping_provider: r[6] === null || r[6] === undefined ? null : String(r[6]),
-		source_path: String(r[7]),
+			r[6] === null || r[6] === undefined || r[6] === '' ? null : Number(r[6]),
+		mapping_justification: r[7] === null || r[7] === undefined ? null : String(r[7]),
+		mapping_provider: r[8] === null || r[8] === undefined ? null : String(r[8]),
+		source_path: String(r[9]),
 	}));
 }
 

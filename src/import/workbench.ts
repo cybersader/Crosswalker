@@ -41,7 +41,7 @@ import {
 	type Preset,
 } from './mapping/presets';
 import { instantiate } from './mapping/instantiate';
-import { toRecipeRegions, type RecipeRegions } from './mapping/serialize';
+import { collectScalarLinkEmissions, toRecipeRegions, type RecipeRegions } from './mapping/serialize';
 import type {
 	ImportMapping,
 	StructureMapping,
@@ -57,6 +57,7 @@ import type {
 import { toSourceRefs, isConstantRef } from './mapping/types';
 import { deriveFacetMemberships } from './mapping/facets';
 import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
+import { isTier1CuriePrefix } from '../validation/validator';
 import {
 	createFreshRecipeDocument,
 	loadRecipeDocument,
@@ -328,7 +329,7 @@ export class MappingWorkbench {
 			}
 			const completeDraft = patchRecipeDocument(fresh.document, {
 				mapping: this.mapping,
-				regions: this.buildFinalRegions(),
+				regions: this.buildFinalRegions(fresh.document.original.source.ontology),
 			});
 			this.recipeDocument = {
 				...fresh.document,
@@ -402,7 +403,7 @@ export class MappingWorkbench {
 	// =========================================================================
 
 	/** The recipe regions the preview and generation consume. */
-	buildFinalRegions(): RecipeRegions {
+	buildFinalRegions(sourceOntologyOverride?: string): RecipeRegions {
 		const base = toRecipeRegions(this.mapping);
 		const layout = base.layout.map((e) => ({ ...e }));
 		const tags = [...(base.also_emit?.tags ?? [])];
@@ -455,6 +456,39 @@ export class MappingWorkbench {
 					if (fileEntry) fileEntry.template = `{${col}}.md`;
 					else layout.push({ level: 'leaf', mechanism: 'file', template: `{${col}}.md` });
 					break;
+				}
+			}
+		}
+
+		if (!(Object.prototype.hasOwnProperty.call(managed, 'parent_curie'))) {
+			const finalParentTemplate = managed.parent;
+			if (finalParentTemplate) {
+				const activeParents = this.activeDetections().filter(
+					(detection): detection is Extract<Detection, { kind: 'parent-column' }> => detection.kind === 'parent-column',
+				);
+				const emission = collectScalarLinkEmissions(this.mapping)
+					.reverse()
+					.find((entry) =>
+						entry.key === 'parent'
+						&& entry.detectionBacked
+						&& entry.predicate === 'skos:broader'
+						&& entry.template === finalParentTemplate
+						&& entry.sourceColumns.length === 1
+						&& activeParents.some((detection) => detection.column === entry.sourceColumns[0]),
+					);
+				if (emission) {
+					const detection = activeParents.find((candidate) => candidate.column === emission.sourceColumns[0])!;
+					if (detection.parentIdentityMode === 'raw-curie') {
+						managed.parent_curie = `{${detection.column}|optional}`;
+					} else {
+						const ontology = sourceOntologyOverride ?? this.recipeDocument.original.source.ontology;
+						if (!isTier1CuriePrefix(ontology)) {
+							throw new Error(
+								'Cannot derive parent_curie: recipe source.ontology must be a lowercase CURIE prefix (letters, digits, _ or -; first character must be a letter).',
+							);
+						}
+						managed.parent_curie = `{${detection.column}|optional|curie-prefix(${ontology})}`;
+					}
 				}
 			}
 		}

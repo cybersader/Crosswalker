@@ -36,6 +36,9 @@ function comparableTuple(edge: CrosswalkEdgeRow): Record<string, unknown> {
 	return {
 		subject_id: edge.subject_id,
 		sssom_predicate: fm.sssom_predicate,
+		mapping_set_id: edge.mapping_set_id,
+		subject_id: edge.subject_id,
+		predicate_modifier: edge.predicate_modifier,
 		object_id: edge.object_id,
 		mapping_justification: edge.mapping_justification,
 		confidence: confidence !== undefined ? Math.round(confidence * 1000) / 1000 : undefined,
@@ -129,13 +132,26 @@ describe('crosswalkEdgesToSssomTsv — unit behavior', () => {
 		const withNeither = crosswalkEdgesToSssomTsv([baseEdge({ frontmatter: {} })]);
 		// no numeric confidence anywhere -> the confidence column is empty for that row
 		const dataLine = withNeither.tsv.split('\n').find((l) => l.startsWith('nist:AC-2'));
-		expect(dataLine?.split('\t')[4]).toBe('');
+		expect(dataLine?.split('\t')[5]).toBe('');
 	});
 
 	it('skips rows missing subject_id/object_id and reports them in `skipped`', () => {
 		const result = crosswalkEdgesToSssomTsv([baseEdge({ subject_id: '' })]);
 		expect(result.rowCount).toBe(0);
 		expect(result.skipped).toEqual([{ path: 'edges/a.md', reason: 'missing subject_id/object_id' }]);
+	});
+
+	it('emits predicate_modifier immediately after object_id and normalizes mapping-set IDs', () => {
+		const positive = baseEdge({ path: 'a.md', mapping_set_id: ' Set-A ' });
+		const negated = baseEdge({ path: 'b.md', subject_id: 'nist:AC-3', predicate_modifier: 'NOT', mapping_set_id: 'Set-A' });
+		const result = crosswalkEdgesToSssomTsv([positive, negated]);
+		const lines = result.tsv.trimEnd().split('\n');
+		const header = lines.find((line) => line.startsWith('subject_id'))!;
+		expect(header.split('\t').slice(0, 4)).toEqual(['subject_id', 'predicate_id', 'object_id', 'predicate_modifier']);
+		const data = lines.filter((line) => line.startsWith('nist:'));
+		expect(data[0].split('\t')[3]).toBe('');
+		expect(data[1].split('\t')[3]).toBe('NOT');
+		expect(result.tsv).toContain('# mapping_set_id: "Set-A"');
 	});
 
 	it('promotes the MODE of mapping_provider/mapping_set_id across rows into the header', () => {

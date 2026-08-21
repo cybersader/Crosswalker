@@ -25,6 +25,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { render, renderTemplate, type Recipe } from '../src/render';
 import { jsonToRows, parseWhere, applyWhere } from './lib/json-source';
+import { extractTier1Curie, isTier1CuriePrefix } from '../src/validation/validator';
 
 interface Args {
 	source: string;
@@ -331,8 +332,14 @@ function buildFrontmatter(
 	if (row.family_name) fm.family_name = row.family_name;
 	if (id) fm.control_id = id; // domain-specific; recipe-managed in real usage
 
-	// Hierarchy: parent wikilink if specified
-	if (row.parent) fm.parent = `[[${row.parent}]]`;
+	// Hierarchy: clickable parent address plus stable identity.
+	if (row.parent) {
+		fm.parent = `[[${row.parent}]]`;
+		if (!isTier1CuriePrefix(ontology)) {
+			throw new Error(`Ontology "${ontology}" is not a valid lowercase CURIE prefix`);
+		}
+		fm.parent_curie = extractTier1Curie(row.parent) ?? `${ontology}:${row.parent}`;
+	}
 
 	// Provenance
 	fm._crosswalker = {

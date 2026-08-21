@@ -140,3 +140,20 @@ describe('curiePrefix', () => {
 		expect(curiePrefix(input)).toBe(expected);
 	});
 });
+
+describe('parseSssomTsv — explicit predicate modifier', () => {
+	it('preserves exact NOT after outer trimming and omits empty positive cells', () => {
+		const result = parseSssomTsv(`subject_id\tpredicate_id\tobject_id\tpredicate_modifier
+x:A\tskos:exactMatch\tx:B\t${' NOT '}
+x:C\tskos:exactMatch\tx:D\t`);
+		expect(result.errors).toEqual([]);
+		expect(result.rows[0].predicate_modifier).toBe('NOT');
+		expect(result.rows[1].predicate_modifier).toBeUndefined();
+	});
+
+	it.each(['not', 'candidate', '   '])('rejects invalid explicit modifier %p', (modifier) => {
+		const result = parseSssomTsv(`subject_id\tpredicate_id\tobject_id\tpredicate_modifier
+x:A\tskos:exactMatch\tx:B\t${modifier}`);
+		expect(result.errors.join(' ')).toContain('predicate_modifier');
+	});
+});

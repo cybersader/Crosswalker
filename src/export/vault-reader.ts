@@ -31,6 +31,7 @@
 
 import type { App, TFile } from 'obsidian';
 import { parseYaml } from 'obsidian';
+import { normalizeMappingSetId, readStoredPredicateModifier } from '../utils/mapping-provenance';
 
 export type VaultNoteKind = 'concept' | 'crosswalk-edge' | 'junction-note' | 'hub' | 'facet';
 
@@ -50,6 +51,7 @@ export interface ConceptRow {
 	tags: string[];
 	/** Wikilink target(s), string or array (polyhierarchy) — verbatim from frontmatter. */
 	parent?: string | string[];
+	parent_curie?: string;
 	children: string[];
 	/** Full raw frontmatter (incl. recipe-specific domain fields), minus nothing — callers pick what they need. */
 	frontmatter: Record<string, unknown>;
@@ -63,6 +65,8 @@ export interface CrosswalkEdgeRow {
 	subject_id: string;
 	predicate_id: string;
 	object_id: string;
+	mapping_set_id?: string;
+	predicate_modifier?: 'NOT';
 	match_type?: string;
 	match_confidence?: number;
 	mapping_justification?: string;
@@ -80,8 +84,10 @@ export interface JunctionNoteRow {
 	path: string;
 	curie: string;
 	subject: string;
+	subject_curie?: string;
 	predicate: string;
 	object: string;
+	object_curie?: string;
 	coverage?: string;
 	reviewer?: string;
 	review_date?: string;
@@ -225,6 +231,16 @@ export async function readVaultTree(app: App, rootPath: string): Promise<ReadVau
 			const subject_id = asString(fm.subject_id);
 			const predicate_id = asString(fm.predicate_id);
 			const object_id = asString(fm.object_id);
+			let predicateModifier: '' | 'NOT';
+			try {
+				predicateModifier = readStoredPredicateModifier(fm);
+			} catch (error) {
+				result.skipped.push({
+					path: file.path,
+					reason: error instanceof Error ? error.message : 'invalid explicit predicate_modifier',
+				});
+				continue;
+			}
 			if (!subject_id || !predicate_id || !object_id) {
 				result.skipped.push({
 					path: file.path,
@@ -239,6 +255,11 @@ export async function readVaultTree(app: App, rootPath: string): Promise<ReadVau
 				subject_id,
 				predicate_id,
 				object_id,
+				mapping_set_id:
+					typeof fm.mapping_set_id === 'string'
+						? normalizeMappingSetId(fm.mapping_set_id) || undefined
+						: undefined,
+				predicate_modifier: predicateModifier || undefined,
 				match_type: asString(fm.match_type),
 				match_confidence: asNumber(fm.match_confidence),
 				mapping_justification: asString(fm.mapping_justification),
@@ -268,8 +289,10 @@ export async function readVaultTree(app: App, rootPath: string): Promise<ReadVau
 				path: file.path,
 				curie,
 				subject,
+				subject_curie: asString(fm.subject_curie),
 				predicate,
 				object,
+				object_curie: asString(fm.object_curie),
 				coverage: asString(fm.coverage),
 				reviewer: asString(fm.reviewer),
 				review_date: asString(fm.review_date),
@@ -305,6 +328,7 @@ export async function readVaultTree(app: App, rootPath: string): Promise<ReadVau
 			aliases: asStringArray(fm.aliases),
 			tags,
 			parent: Array.isArray(fm.parent) ? asStringArray(fm.parent) : asString(fm.parent),
+			parent_curie: asString(fm.parent_curie),
 			children: asStringArray(fm.children),
 			frontmatter: fm,
 		});

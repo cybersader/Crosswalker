@@ -1,6 +1,7 @@
 import { applyMigrations } from '../src/tier2/migrations';
 import {
 	closureFromConcept,
+	crosswalkBetween,
 	precomputeClosureForOntologyPair,
 	type ClosureEntry,
 } from '../src/tier2/queries';
@@ -187,6 +188,43 @@ describe('Tier 2 predicate-characteristic closure', () => {
 		expect(targets(closureFromConcept(db, 'example:A', 'is_broader_than', 2))).toEqual([
 			['example:B', 1],
 		]);
+	});
+
+	it('keeps negated equivalence directly queryable but excludes both closure directions and precompute', () => {
+		db.exec({
+			sql: `
+				INSERT INTO mappings
+					(mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id, source_path, source_hash)
+				VALUES ($set, $subject, $predicate, 'NOT', $object, $path, $hash)
+			`,
+			bind: {
+				$set: 'set:negation-proof',
+				$subject: 'example:A',
+				$predicate: 'is_equivalent_to',
+				$object: 'example:B',
+				$path: 'Mappings/negated-equivalence.md',
+				$hash: 'hash-negated-equivalence',
+			},
+		});
+
+		expect(crosswalkBetween(db, 'example', 'example', 'is_equivalent_to')).toEqual([
+			expect.objectContaining({
+				mapping_set_id: 'set:negation-proof',
+				subject_id: 'example:A',
+				predicate_modifier: 'NOT',
+				object_id: 'example:B',
+				source_path: 'Mappings/negated-equivalence.md',
+			}),
+		]);
+		expect(closureFromConcept(db, 'example:A', 'is_equivalent_to', 1)).toEqual([]);
+		expect(closureFromConcept(db, 'example:B', 'is_equivalent_to', 1)).toEqual([]);
+		db.exec('DELETE FROM closure_cache_state');
+		expect(
+			precomputeClosureForOntologyPair(db, 'example', 'example', 'is_equivalent_to', 1),
+		).toBe(0);
+		expect(queryRows(db, 'SELECT COUNT(*) FROM closure_cache_state')).toEqual([[0]]);
+		expect(queryRows(db, 'SELECT COUNT(*) FROM closure_cache')).toEqual([[0]]);
+		expect(queryRows(db, 'SELECT COUNT(*) FROM mappings')).toEqual([[1]]);
 	});
 
 	it('precomputes concepts that are subjects only through a derived inverse edge', () => {

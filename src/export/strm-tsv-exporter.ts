@@ -107,6 +107,13 @@ export function crosswalkEdgesToStrmTsv(edges: CrosswalkEdgeRow[], options: Strm
 			skipped.push({ path: edge.path, reason: 'missing subject_id/object_id' });
 			continue;
 		}
+		if (edge.predicate_modifier === 'NOT') {
+			skipped.push({
+				path: edge.path,
+				reason: 'explicit negation is not representable in OLIR/STRM TSV; use the crosswalk mapping file export',
+			});
+			continue;
+		}
 		const relationship = STRM_TO_OLIR[edge.predicate_id] ?? 'intersects with';
 		const strength =
 			edge.match_confidence !== undefined ? String(Math.round(edge.match_confidence * 10)) : '';

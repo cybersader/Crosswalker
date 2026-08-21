@@ -24,6 +24,8 @@
 
 import { App, TFile } from 'obsidian';
 import { DebugLog } from '../utils/debug';
+import { extractTier1Curie } from '../validation/validator';
+import { normalizeMappingSetId, readStoredPredicateModifier } from '../utils/mapping-provenance';
 
 /**
  * Result of a projection pass. Counts per Tier 2 table + skipped (files
@@ -160,9 +162,21 @@ export async function projectFromTier1(
 				if (fullProjection) markJunctionNoteSeen(db, file.path);
 				result.counts.junction_notes += 1;
 			} else if (kind === 'crosswalk-edge') {
-				// Crosswalk-edges span two ontologies — register both subject + object
+				// Crosswalk-edges span two ontologies — register both subject + object.
 				ensureOntologyForKind(db, fm, ontologiesSeen, file.path, 'crosswalk-edge');
-				upsertMapping(db, file, fm);
+				let predicateModifier: '' | 'NOT';
+				try {
+					predicateModifier = readStoredPredicateModifier(fm);
+				} catch (error) {
+					// Never retain a previously projected positive row after canonical
+					// Markdown becomes explicitly malformed at the modifier boundary.
+					db.exec({
+						sql: 'DELETE FROM mappings WHERE source_path = $source_path',
+						bind: { $source_path: file.path },
+					});
+					throw error;
+				}
+				upsertMapping(db, file, fm, predicateModifier);
 				if (fullProjection) markMappingSeen(db, file.path);
 				result.counts.mappings += 1;
 			} else {
@@ -394,7 +408,7 @@ function upsertConcept(db: any, file: TFile, fm: Record<string, any>): void {
 	}
 
 	const title = String(fm.title ?? '');
-	const parentCurie = extractParentCurie(fm.parent);
+	const parentCurie = extractTier1Curie(fm.parent_curie);
 	const status = typeof fm.status === 'string' ? fm.status : 'active';
 	const sourceHash = hashFrontmatter(fm);
 	const importedAt = extractProducedAt(fm) ?? new Date().toISOString();
@@ -431,6 +445,8 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 	if (!subject || !predicate || !object) {
 		throw new Error(`junction-note missing required subject/predicate/object`);
 	}
+	const subjectCurie = extractTier1Curie(fm.subject_curie);
+	const objectCurie = extractTier1Curie(fm.object_curie);
 
 	const sourceHash = hashFrontmatter(fm);
 	const modifiedAt = new Date(file.stat.mtime).toISOString();
@@ -438,15 +454,17 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 	db.exec({
 		sql: `
 			INSERT OR REPLACE INTO junction_notes
-				(vault_path, curie, subject, predicate, object, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, source_hash, modified_at)
-			VALUES ($vault_path, $curie, $subject, $predicate, $object, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $source_hash, $modified_at)
+				(vault_path, curie, subject, subject_curie, predicate, object, object_curie, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, source_hash, modified_at)
+			VALUES ($vault_path, $curie, $subject, $subject_curie, $predicate, $object, $object_curie, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $source_hash, $modified_at)
 		`,
 		bind: {
 			$vault_path: file.path,
 			$curie: curie,
 			$subject: subject,
+			$subject_curie: subjectCurie,
 			$predicate: predicate,
 			$object: object,
+			$object_curie: objectCurie,
 			$coverage: stringOrNull(fm.coverage),
 			$reviewer: stringOrNull(fm.reviewer),
 			$review_date: stringOrNull(fm.review_date),
@@ -461,7 +479,12 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 	});
 }
 
-function upsertMapping(db: any, file: TFile, fm: Record<string, any>): void {
+function upsertMapping(
+	db: any,
+	file: TFile,
+	fm: Record<string, any>,
+	predicateModifier: '' | 'NOT',
+): void {
 	const subjectId = String(fm.subject_id ?? '').trim();
 	const predicateId = String(fm.predicate_id ?? '').trim();
 	const objectId = String(fm.object_id ?? '').trim();
@@ -471,19 +494,32 @@ function upsertMapping(db: any, file: TFile, fm: Record<string, any>): void {
 
 	const sourceHash = hashFrontmatter(fm);
 
-	// Mappings is keyed on source_path (UNIQUE constraint) so re-running
-	// over the same .md file replaces in place. The auto-increment id
-	// rolls over for true new rows; in INSERT OR REPLACE mode SQLite
-	// re-uses the existing id when source_path matches.
+	const mappingSetId = normalizeMappingSetId(fm.mapping_set_id);
 	db.exec({
 		sql: `
-			INSERT OR REPLACE INTO mappings
-				(subject_id, predicate_id, object_id, match_type, match_confidence, mapping_justification, mapping_provider, mapping_date, creator_id, review_status, source_path, source_hash)
-			VALUES ($subject_id, $predicate_id, $object_id, $match_type, $match_confidence, $mapping_justification, $mapping_provider, $mapping_date, $creator_id, $review_status, $source_path, $source_hash)
+			INSERT INTO mappings
+				(mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id, match_type, match_confidence, mapping_justification, mapping_provider, mapping_date, creator_id, review_status, source_path, source_hash)
+			VALUES ($mapping_set_id, $subject_id, $predicate_id, $predicate_modifier, $object_id, $match_type, $match_confidence, $mapping_justification, $mapping_provider, $mapping_date, $creator_id, $review_status, $source_path, $source_hash)
+			ON CONFLICT(source_path) DO UPDATE SET
+				mapping_set_id = excluded.mapping_set_id,
+				subject_id = excluded.subject_id,
+				predicate_id = excluded.predicate_id,
+				predicate_modifier = excluded.predicate_modifier,
+				object_id = excluded.object_id,
+				match_type = excluded.match_type,
+				match_confidence = excluded.match_confidence,
+				mapping_justification = excluded.mapping_justification,
+				mapping_provider = excluded.mapping_provider,
+				mapping_date = excluded.mapping_date,
+				creator_id = excluded.creator_id,
+				review_status = excluded.review_status,
+				source_hash = excluded.source_hash
 		`,
 		bind: {
+			$mapping_set_id: mappingSetId,
 			$subject_id: subjectId,
 			$predicate_id: predicateId,
+			$predicate_modifier: predicateModifier,
 			$object_id: objectId,
 			$match_type: stringOrNull(fm.match_type),
 			$match_confidence: numberOrNull(fm.match_confidence),
@@ -496,6 +532,7 @@ function upsertMapping(db: any, file: TFile, fm: Record<string, any>): void {
 			$source_hash: sourceHash,
 		},
 	});
+
 }
 
 /**
@@ -528,18 +565,27 @@ function ensureOntologyForKind(
 	const importedAt = extractProducedAt(fm) ?? new Date().toISOString();
 	const basePath = derivePathPrefix(vaultPath);
 
+	const version = kind === 'concept' ? extractSourceVersion(fm) : '';
 	for (const id of ids) {
-		if (seen.has(id)) continue;
+		if (kind === 'crosswalk-edge' && seen.has(id)) continue;
 		db.exec({
 			sql: `
-				INSERT OR IGNORE INTO ontologies
+				INSERT INTO ontologies
 					(id, name, version, base_path, upstream_url, recipe_id, imported_at, control_count)
 				VALUES ($id, $name, $version, $base_path, $upstream_url, $recipe_id, $imported_at, 0)
+				ON CONFLICT(id) DO UPDATE SET
+					version = CASE
+						WHEN excluded.version = '' THEN ontologies.version
+						WHEN ontologies.version = '' THEN excluded.version
+						WHEN excluded.version COLLATE BINARY > ontologies.version COLLATE BINARY
+							THEN excluded.version
+						ELSE ontologies.version
+					END
 			`,
 			bind: {
 				$id: id,
 				$name: id,
-				$version: '',
+				$version: version,
 				$base_path: basePath,
 				$upstream_url: null,
 				$recipe_id: id,
@@ -599,20 +645,9 @@ function curiePrefix(value: unknown): string | null {
 	return value.slice(0, idx);
 }
 
-/**
- * Extract a parent CURIE if `fm.parent` is a CURIE-shaped string.
- * For wikilink-target form (`[[Frameworks/.../X]]`), returns null in v0.1.5
- * Phase 2 — wikilink resolution requires looking up target file's frontmatter
- * which is a future enhancement.
- */
-function extractParentCurie(parent: unknown): string | null {
-	if (typeof parent !== 'string') return null;
-	const trimmed = parent.trim();
-	// Bare CURIE shape: prefix:local
-	if (/^[a-z][a-z0-9_-]*:[A-Za-z0-9._\-()/]+$/.test(trimmed)) {
-		return trimmed;
-	}
-	return null;
+function extractSourceVersion(fm: Record<string, any>): string {
+	const value = fm._crosswalker?.source_ref?.version;
+	return typeof value === 'string' ? value.trim() : '';
 }
 
 /**

@@ -85,6 +85,8 @@ describe('RecipeDocument canonical preservation boundary', () => {
 				match_confidence: '0.95',
 				mapping_justification: 'Manual review',
 				mapping_provider: 'Portable test',
+				mapping_set_id: '',
+				predicate_modifier: '',
 				sssom_predicate: 'skos:exactMatch',
 			},
 		});

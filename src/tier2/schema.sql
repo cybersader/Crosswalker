@@ -1,6 +1,6 @@
 -- ================================================================
 -- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
--- Schema version: tier2-sqlite-v2
+-- Schema version: tier2-sqlite-v3
 --
 -- Per spec/tier1.schema.json + v0.1 schema spec §7.
 -- This file is the canonical DDL; the migrations module (migrations.ts)
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 CREATE TABLE IF NOT EXISTS ontologies (
   id              TEXT PRIMARY KEY,
   name            TEXT NOT NULL,
-  version         TEXT NOT NULL DEFAULT '',
+  version         TEXT NOT NULL DEFAULT '', -- BINARY-lexical representative of concept source versions
   base_path       TEXT NOT NULL,
   upstream_url    TEXT,
   recipe_id       TEXT NOT NULL,
@@ -62,24 +62,33 @@ CREATE INDEX IF NOT EXISTS idx_concepts_parent ON concepts(parent_curie);
 -- Mappings — one row per crosswalk-edge note (STRM predicate triple)
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS mappings (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  -- The triple (CURIEs from spec/tier1.schema.json $defs/curie)
-  subject_id      TEXT NOT NULL,
-  predicate_id    TEXT NOT NULL,           -- STRM enum (validated upstream)
-  object_id       TEXT NOT NULL,
-  -- SSSOM envelope
-  match_type      TEXT,
-  match_confidence REAL,
+  mapping_set_id        TEXT NOT NULL DEFAULT '',
+  subject_id            TEXT NOT NULL,
+  predicate_id          TEXT NOT NULL,
+  predicate_modifier    TEXT NOT NULL DEFAULT ''
+                          CHECK (predicate_modifier IN ('', 'NOT')),
+  object_id             TEXT NOT NULL,
+  match_type            TEXT,
+  match_confidence      REAL,
   mapping_justification TEXT,
-  mapping_provider TEXT,
-  mapping_date    TEXT,
-  creator_id      TEXT,
-  review_status   TEXT,
-  -- Provenance
-  source_path     TEXT NOT NULL UNIQUE,    -- the .md file that produced this row
-  source_hash     TEXT NOT NULL
+  mapping_provider      TEXT,
+  mapping_date          TEXT,
+  creator_id            TEXT,
+  review_status         TEXT,
+  source_path           TEXT NOT NULL UNIQUE,
+  source_hash           TEXT NOT NULL,
+  PRIMARY KEY (
+    mapping_set_id,
+    subject_id,
+    predicate_id,
+    predicate_modifier,
+    object_id,
+    source_path
+  )
 );
 
+CREATE INDEX IF NOT EXISTS idx_mappings_assertion
+  ON mappings(mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id);
 CREATE INDEX IF NOT EXISTS idx_mappings_pred_subj ON mappings(predicate_id, subject_id);
 CREATE INDEX IF NOT EXISTS idx_mappings_pred_obj  ON mappings(predicate_id, object_id);
 CREATE INDEX IF NOT EXISTS idx_mappings_subj      ON mappings(subject_id);
@@ -92,8 +101,10 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   vault_path      TEXT PRIMARY KEY,
   curie           TEXT NOT NULL,           -- 'cwk:jn-...'
   subject         TEXT NOT NULL,           -- wikilink target string
+  subject_curie   TEXT,                    -- stable subject identity
   predicate       TEXT NOT NULL,           -- open-string (NOT enum-constrained)
   object          TEXT NOT NULL,
+  object_curie    TEXT,                    -- stable object identity
   coverage        TEXT,                    -- full|partial|none|n/a
   reviewer        TEXT,
   review_date     TEXT,
@@ -109,6 +120,8 @@ CREATE TABLE IF NOT EXISTS junction_notes (
 
 CREATE INDEX IF NOT EXISTS idx_junction_subject ON junction_notes(subject);
 CREATE INDEX IF NOT EXISTS idx_junction_object  ON junction_notes(object);
+CREATE INDEX IF NOT EXISTS idx_junction_subject_curie ON junction_notes(subject_curie);
+CREATE INDEX IF NOT EXISTS idx_junction_object_curie  ON junction_notes(object_curie);
 CREATE INDEX IF NOT EXISTS idx_junction_status  ON junction_notes(status);
 
 -- ----------------------------------------------------------------

@@ -216,7 +216,12 @@ function deriveSignature(raw: RawRecipe): { signature: string[]; required: strin
 		for (const t of emit.tags ?? []) for (const c of templateColumns(t)) signature.add(c);
 		for (const a of emit.aliases ?? []) for (const c of templateColumns(a)) signature.add(c);
 		const managed = emit.frontmatter?.managed ?? {};
-		for (const tmpl of Object.values(managed)) for (const c of templateColumns(tmpl)) signature.add(c);
+		for (const [key, tmpl] of Object.entries(managed)) {
+			// Generation supplies these optional provenance defaults; their absence
+			// must not prevent recognition of legacy crosswalk source columns.
+			if (key === 'mapping_set_id' || key === 'predicate_modifier') continue;
+			for (const c of templateColumns(tmpl)) signature.add(c);
+		}
 		const managedLinks = emit.frontmatter?.managed_links ?? {};
 		for (const spec of Object.values(managedLinks)) {
 			for (const c of templateColumns(spec.template)) signature.add(c);

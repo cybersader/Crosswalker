@@ -25,8 +25,10 @@
         "managed": {
           "title": "{subject} -> {object}",
           "subject": "[[{subject}]]",
+          "subject_curie": "{subject_curie|optional}",
           "predicate": "{predicate}",
           "object": "[[{object}]]",
+          "object_curie": "{object_curie|optional}",
           "coverage": "{coverage}",
           "scope": "{scope}"
         },

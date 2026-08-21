@@ -38,6 +38,14 @@ import {
 	type SssomParseResult,
 	type SssomRow,
 } from './sssom-parser';
+import { sha256Hex } from '../generation/hash';
+import {
+	assertionBaseKey,
+	mappingOccurrenceContentKey,
+	mappingSetPathKey,
+	normalizeMappingSetId,
+	normalizePredicateModifierInput,
+} from '../utils/mapping-provenance';
 
 /** Options accepted by importSssom(). */
 export interface SssomImportOptions {
@@ -143,8 +151,81 @@ async function runImportSssom(
 	result.source = source;
 	result.target = target;
 
-	const folder = options.outputFolder ?? `_crosswalker/mappings/${source}-to-${target}`;
+	// ----- Phase 3: Preflight + build synthetic recipe + generate -----
+	const pairRoot = `_crosswalker/mappings/${source}-to-${target}`;
+	const folder = options.outputFolder ?? pairRoot;
 	result.folder = folder;
+	const normalizedHeaderId = normalizeMappingSetId(parsed.header.mapping_set_id);
+	const fallbackId = `urn:crosswalker:mapping-set:sha256:${sha256Hex(tsvContent)}`;
+	const destinationSets = new Map<string, string>();
+
+	const preparedRows = parsed.rows.map((row, index) => {
+		const record = rowToRecord(row);
+		const sssomPred = String(record.predicate_id ?? '');
+		const { strm, warning } = normalizePredicate(sssomPred);
+		if (warning) parsed.warnings.push(warning);
+		const mappingSetId = normalizeMappingSetId(record.mapping_set_id) || normalizedHeaderId || fallbackId;
+		const predicateModifier = normalizePredicateModifierInput(record.predicate_modifier);
+		const baseKey = assertionBaseKey({
+			subject_id: String(record.subject_id),
+			predicate_id: strm,
+			predicate_modifier: predicateModifier,
+			object_id: String(record.object_id),
+		});
+		return {
+			index,
+			record,
+			sssomPred,
+			strm,
+			mappingSetId,
+			setPathKey: mappingSetPathKey(mappingSetId),
+			predicateModifier,
+			baseKey,
+			occurrenceGroup: JSON.stringify([mappingSetId, baseKey]),
+			contentKey: mappingOccurrenceContentKey(record),
+		};
+	});
+
+	// Assign duplicate ordinals by canonical row content rather than input order.
+	// Paths therefore stay stable when metadata-distinct assertions are reordered;
+	// truly identical duplicates remain the indistinguishable 0001..N set.
+	const occurrenceByIndex = new Map<number, number>();
+	const groups = new Map<string, typeof preparedRows>();
+	for (const prepared of preparedRows) {
+		const group = groups.get(prepared.occurrenceGroup) ?? [];
+		group.push(prepared);
+		groups.set(prepared.occurrenceGroup, group);
+	}
+	for (const group of groups.values()) {
+		group.sort((a, b) => a.contentKey.localeCompare(b.contentKey) || a.index - b.index);
+		group.forEach((prepared, index) => occurrenceByIndex.set(prepared.index, index + 1));
+	}
+
+	const rowsForRecipe = preparedRows.map((prepared) => {
+		const occurrence = occurrenceByIndex.get(prepared.index)!;
+		// Shared pair root, as before P3. A per-mapping-set subfolder would change
+		// where existing notes live, and relocating them is only safe while their
+		// identity is unchanged — which release isolation deliberately breaks.
+		// Every mapping set shares the pair root while release isolation is held, so
+		// several sets in one import is expected rather than a collision.
+		return {
+			...prepared.record,
+			sssom_predicate: prepared.sssomPred,
+			predicate_id: prepared.strm,
+			mapping_provider: normalizeOptionalString(prepared.record.mapping_provider)
+				|| normalizeOptionalString(parsed.header.mapping_provider),
+			mapping_set_id: prepared.mappingSetId,
+			predicate_modifier: prepared.predicateModifier,
+		};
+	});
+
+	if (parsed.errors.length === 0) {
+		preflightMappingSetDestinations(app, destinationSets, parsed.errors);
+	}
+	if (parsed.errors.length > 0) {
+		result.skipped = 'parse-error';
+		return result;
+	}
 
 	debug?.info('sssom-import', 'pair-detected', `SSSOM ontology pair: ${source} → ${target}`, {
 		source,
@@ -153,36 +234,14 @@ async function runImportSssom(
 		rowCount: parsed.rows.length,
 	});
 
-	// ----- Phase 3: Build synthetic recipe + run generateFromRecipe -----
-	const recipe = buildSyntheticRecipe(source, target, folder);
-	// Inject set-level metadata from header into every row so managed-frontmatter
-	// templates referencing mapping_set_id / mapping_provider / mapping_date can
-	// resolve. SSSOM puts these at the mapping-set level, not per-row, so we
-	// fan them out here. Per-row values (if present) take precedence.
-	const setLevelDefaults: Record<string, unknown> = {
-		mapping_set_id: typeof parsed.header.mapping_set_id === 'string' ? parsed.header.mapping_set_id : '',
-		mapping_provider:
-			typeof parsed.header.mapping_provider === 'string' ? parsed.header.mapping_provider : '',
-		mapping_date: typeof parsed.header.mapping_date === 'string' ? parsed.header.mapping_date : '',
-	};
-	const rowsForRecipe = parsed.rows.map((row) => {
-		const record = rowToRecord(row);
-		// Normalize SSSOM/SKOS predicate → STRM for the Tier 1-validated `predicate_id`
-		// frontmatter field. Preserve the original SSSOM predicate as `sssom_predicate`.
-		const sssomPred = String(record.predicate_id ?? '');
-		const { strm, warning } = normalizePredicate(sssomPred);
-		if (warning) {
-			parsed.warnings.push(warning);
-		}
-		return {
-			...setLevelDefaults,
-			...record,
-			sssom_predicate: sssomPred,
-			predicate_id: strm,
-		};
-	});
+	const recipe = buildSyntheticRecipe(source, target);
+	const generatedColumns = [
+		'sssom_predicate',
+		'mapping_set_id',
+		'predicate_modifier',
+	];
 	const parsedData: ParsedData = {
-		columns: Array.from(new Set([...Object.keys(setLevelDefaults), 'sssom_predicate', ...collectAllColumns(parsed.rows)])),
+		columns: Array.from(new Set([...collectAllColumns(parsed.rows), ...generatedColumns])),
 		rows: rowsForRecipe,
 		rowCount: parsed.rows.length,
 	};
@@ -197,9 +256,9 @@ async function runImportSssom(
 			basePath: folder,
 			overwriteMode: options.overwriteMode ?? 'replace',
 			createFolders: true,
-			sourceFileName: typeof parsed.header.mapping_set_id === 'string' ? parsed.header.mapping_set_id : 'sssom-import',
+			sourceFileName: normalizedHeaderId || fallbackId,
 			strictValidation: true,
-			curieLocalPart: (row, _rowNum) => sssomEdgeCurie(row),
+			curieLocalPart: (row) => sssomEdgeCurie(row),
 			curiePrefix: 'sssom',
 			onProgress: options.onProgress,
 		},
@@ -252,7 +311,7 @@ async function runImportSssom(
  * mechanism so render() + frontmatter-merge + Tier 1 validation all
  * work unchanged.
  */
-function buildSyntheticRecipe(source: string, target: string, _folder: string): Recipe {
+function buildSyntheticRecipe(source: string, target: string): Recipe {
 	// Note: template is RELATIVE to options.basePath (which is `folder`); the
 	// generation engine joins them. Don't repeat `folder` here or paths
 	// double-prefix.
@@ -282,6 +341,7 @@ function buildSyntheticRecipe(source: string, target: string, _folder: string): 
 						mapping_justification: '{mapping_justification}',
 						mapping_provider: '{mapping_provider}',
 						mapping_set_id: '{mapping_set_id}',
+						predicate_modifier: '{predicate_modifier}',
 						source_framework: source,
 						target_framework: target,
 						// Preserve the original SSSOM predicate before STRM normalization
@@ -338,7 +398,43 @@ function normalizePredicate(sssomPredicate: string): { strm: string; warning?: s
 	};
 }
 
-/** Stable CURIE local-part for one SSSOM edge: cw-<subject>-<object>, sanitized. */
+function normalizeOptionalString(value: unknown): string {
+	return typeof value === 'string' ? value.trim() : '';
+}
+
+function preflightMappingSetDestinations(
+	app: App,
+	destinationSets: Map<string, string>,
+	errors: string[],
+): void {
+	const getMarkdownFiles = app.vault.getMarkdownFiles?.bind(app.vault);
+	if (!getMarkdownFiles) return;
+	const files = getMarkdownFiles();
+	for (const [leaf, expectedId] of destinationSets) {
+		const prefix = `${leaf.replace(/\/+$/, '')}/`;
+		for (const file of files) {
+			if (!file.path.startsWith(prefix)) continue;
+			const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+			if (!fm || fm.kind !== 'crosswalk-edge') continue;
+			const storedId = normalizeMappingSetId(fm.mapping_set_id);
+			if (storedId !== expectedId) {
+				errors.push(
+					`Destination ${leaf} contains crosswalk note ${file.path} with missing or different mapping_set_id.`,
+				);
+			}
+		}
+	}
+}
+
+/**
+ * Stable CURIE local-part for one SSSOM edge: cw-<subject>-<object>, sanitized.
+ *
+ * Endpoint-derived on purpose. A mapping-set-derived identity would let two
+ * releases of one crosswalk coexist, but it also changes the identity of every
+ * note already written, and identity reconciliation can only follow a note whose
+ * identity is stable. Release isolation is therefore deferred until per-import
+ * ownership is modelled; see the 2026-08-21 reconciliation decision log.
+ */
 function sssomEdgeCurie(row: Record<string, unknown>): string {
 	const subj = String(row.subject_id ?? 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');
 	const obj = String(row.object_id ?? 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');

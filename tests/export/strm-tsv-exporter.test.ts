@@ -74,6 +74,16 @@ describe('crosswalkEdgesToStrmTsv', () => {
 		expect(cols[5]).toBe('8');
 	});
 
+	it('skips explicit negation because OLIR/STRM TSV cannot represent it', () => {
+		const result = crosswalkEdgesToStrmTsv([edge({ predicate_modifier: 'NOT' })]);
+		expect(result.rowCount).toBe(0);
+		expect(result.skipped).toEqual([{
+			path: 'edges/a.md',
+			reason: 'explicit negation is not representable in OLIR/STRM TSV; use the crosswalk mapping file export',
+		}]);
+		expect(result.tsv).not.toContain('equal');
+	});
+
 	it('skips rows missing subject_id/object_id', () => {
 		const result = crosswalkEdgesToStrmTsv([edge({ subject_id: '' })]);
 		expect(result.rowCount).toBe(0);

@@ -11,6 +11,7 @@
  */
 
 import { render, type Recipe } from '../src/render';
+import evidenceJunctionRecipe from '../recipes/starter/evidence-junction-notes.json';
 
 describe('render() kind dispatch (v0.1.4)', () => {
 	const baseScope = {
@@ -157,4 +158,41 @@ describe('render() kind dispatch (v0.1.4)', () => {
 
 		expect(address.frontmatter.kind).toBeUndefined();
 	});
+});
+
+
+describe('evidence junction starter identity companions', () => {
+	const base = {
+		subject: 'Frameworks/NIST/AC-2',
+		predicate: 'evidences',
+		object: 'Evidence/Access review',
+		coverage: 'full',
+		scope: 'annual',
+	};
+
+	it('keeps clickable addresses and emits supplied stable identities in direction', () => {
+		const address = render(evidenceJunctionRecipe as Recipe, {
+			curie: 'cwk:jn-1',
+			scope: { ...base, subject_curie: 'nist:AC-2', object_curie: 'evidence:access-review' },
+		});
+		expect(address.frontmatter).toEqual(expect.objectContaining({
+			subject: '[[Frameworks/NIST/AC-2]]',
+			subject_curie: 'nist:AC-2',
+			predicate: 'evidences',
+			object: '[[Evidence/Access review]]',
+			object_curie: 'evidence:access-review',
+		}));
+	});
+
+	it.each([{}, { subject_curie: '', object_curie: '' }])(
+		'renders when optional identity columns are absent or empty',
+		(identityFields) => {
+			const address = render(evidenceJunctionRecipe as Recipe, {
+				curie: 'cwk:jn-2',
+				scope: { ...base, ...identityFields },
+			});
+			expect(address.frontmatter.subject_curie).toBeUndefined();
+			expect(address.frontmatter.object_curie).toBeUndefined();
+		},
+	);
 });

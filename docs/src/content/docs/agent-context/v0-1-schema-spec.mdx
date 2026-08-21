@@ -7,23 +7,13 @@ sidebar:
 tags: [schema, foundation, v0-1, architecture]
 ---
 
-import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
 
-:::caution[Freshness — verified 2026-07-25, with known drift]
-**Tier 2 cache addendum verified 2026-08-20:** the schema-version, closure-cache, and migration passages below were re-checked against `src/tier2/schema.sql`, `src/tier2/migrations.ts`, and `src/tier2/queries.ts`. The broader field-by-field verification remains dated 2026-07-25.
+:::tip[Current contract verification]
+**Status last verified:** 2026-08-21 — re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql`.
 
-**Status: verified current as of 2026-07-25 for the shipped contracts.** Every claim below was re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql` on that date. The framing sections (§1, §2, §8 invariants 1 through 5, §9, §10) and the §4 pointer to the machine-readable recipe contract are current; §4 already carries its own historical-sketch caution for the TypeScript/YAML sketch beneath it.
+The machine-readable contracts and canonical SQL remain authoritative. Sections §3 and §7 below summarize the shipped shapes. Historical TypeScript/YAML sketches are labeled as history and must not be used as implementation contracts.
 
-**Known drift — this page declares things the machine schemas do not ship.** Each item was verified, not assumed. Where this page and a machine schema disagree, **the machine schema is authoritative.** These gaps are open decisions in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) (Gate α: P1 through P6), so the body below is preserved as written rather than quietly edited:
-
-- **`predicate_modifier` / `NOT` (§6, §8 invariant 7).** §6 declares `is_equivalent_to_NOT` and an SSSOM `predicate_modifier: NOT`; §8 invariant 7 repeats it. `spec/tier1.schema.json` has no `predicate_modifier` property at all, and `crosswalk_edge_frontmatter.predicate_id` is a **closed enum** — a `_NOT` value is rejected, not accepted. `src/tier2/schema.sql` has no `predicate_modifier` column either (the §7 DDL block does). Tracked as register **P3**.
-- **Bi-temporal valid-time columns (§7).** The §7 DDL declares `valid_time_start` / `valid_time_end` on `mappings` plus `idx_mappings_valid_time`, annotated "v0.1 ships the columns". The shipped `src/tier2/schema.sql` ships **neither the columns nor the index**.
-- **Tier 2 DDL fields (§7).** The DDL block predates the shipped projector schema. Verified differences: the concept table is named **`concepts`** and keyed `(ontology_id, curie)` with `parent_curie`, not `controls` keyed `(ontology_id, control_id)` with `hierarchy_path` / `parent_control` / `superseded_by`; the shipped `mappings` SSSOM columns are `match_type` / `match_confidence` / `mapping_justification` / `mapping_provider` / `mapping_date` / `creator_id` / `review_status`, not `confidence` / `author_id` / `mapping_tool` / `comment`; the shipped `junction_notes` columns are `curie` / `subject` / `predicate` / `object` / `coverage` / `scope` / `notes` / `expires_at` with no foreign key, not `link_type` / `evidence` / `control` / `ontology_id` / `expires` / `evidence_type` / `method` / `responsible` / `collected` / `supersedes`; `closure_cache.confidence_min` and `PRAGMA journal_mode = WAL` are page-only; the reserved vector table is `concept_embeddings`, not `control_embeddings`.
-- **`_crosswalker` block shape (§3).** §3 declares `schema_version` / `source_file` / `import_date` / `recipe_id` / `ontology_id` / `ontology_version` / `control_id` / `history`. The shipped `$defs/provenance_block` is `spec_version` / `source_ref` / `produced_at` / `producer` / `recipe` / `concept_cid` (confirmed against the generated fixtures under `test-vault/Frameworks/NIST-mini/`).
-- **Junction-note 13-field shape (§5).** The shipped `$defs/junction_note_frontmatter` is `kind` / `curie` / `subject` / `predicate` / `object` / `coverage` / `confidence` / `scope` / `reviewer` / `review_date` / `status` / `expires_at` / `notes`, with `status` closed to `proposed | in_review | approved | deprecated`. §5's `link_type` / `evidence` / `control` / `ontology` names and its `implemented | partial | planned | alternative | not-applicable` status enum are not what validates.
-- **STRM predicate count (§6).** §6 lists 5 predicates and maps "Intersects With" onto `is_approximate_to`. The shipped `predicate_id` enum has **6** values: `is_equivalent_to`, `is_broader_than`, `is_narrower_than`, `is_approximate_to`, `intersects_with`, `no_relationship`.
-- **Absent identity and ordering fields.** Neither `mapping_set_id` nor any ordinal / source-order field exists in `spec/tier1.schema.json` or `src/tier2/schema.sql`, though both are discussed as available downstream. Tracked as register **P1** (ordinal) and **P3** (mapping-set identity).
-- **Stale forward-link rows (§1).** The two §7 rows in the "Where this spec is implemented" table still read 🚧; [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) closed ✅ on 2026-05-06 with all 6 phases done.
+The 2026-08-21 additive contract change closes the earlier P2/P3 gaps: explicit hierarchy/endpoint identities, mapping-set provenance, and `predicate_modifier: NOT` now validate and project. Source ordering remains a separate open P1 question in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/).
 :::
 
 ## §1 Why this page exists
@@ -50,8 +40,8 @@ Each schema section in this spec is implemented by specific [v0.1 implementation
 | §3 `_crosswalker` metadata block | [v0.1.3 — Generation engine integration](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) (provenance writer); [v0.1.1 — Type system + validation](/crosswalker/reference/roadmap/milestones/v0-1-1-types-and-validation/) (AJV) | ✅ Done |
 | §4 ImportRecipe + render() | [v0.1.2 — render() v1](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) (pure function); [v0.1.4 — Junction notes + crosswalk edges](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) (kind dispatch); [v0.1.4.5 — Streaming refactor](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) (AsyncIterable rows) | ✅ Done |
 | §5 Junction note 13-field schema | [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) (kind: junction-note dispatch); [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/) | ✅ Done |
-| §7 Tier 2 sidecar SQL schema | [v0.1.5 — Tier 2 sqlite-wasm sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (Phase 1 substrate; Phase 2 projector; Phase 3 query API + closure cache) | 🚧 Phase 1+2+3 done |
-| §7 Recursive-CTE closure cache | [v0.1.5 Phase 3](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — see [Ch 18 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) for the algorithmic patterns and engineering scale model | 🚧 In progress |
+| §7 Tier 2 sidecar SQL schema | [v0.1.5 — Tier 2 sqlite-wasm sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (substrate, projector, query API, and closure cache) | ✅ Done |
+| §7 Recursive-CTE closure cache | [v0.1.5 Phase 3](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — see [Ch 18 deliverable](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/) for the algorithmic patterns and engineering scale model | ✅ Done |
 | §8 Cross-schema invariants | All v0.1 milestones | Enforced via test harness |
 
 **Higher-level system view**: see the [system architecture page](/crosswalker/concepts/system-architecture/) for the 6-layer view (import / storage / projection / query / export / audit) showing how each schema fits the broader pipeline.
@@ -108,7 +98,7 @@ Historical decision logs (`zz-log/`) and research deliverables (`zz-research/`) 
                                    ▼
    TIER 2 — SQLITE SIDECAR (DERIVED, DELETABLE, REPRODUCIBLE)
    ┌──────────────────────────────────────────────────────────────────┐
-   │ tables: mappings · junction_notes · controls · ontologies        │
+   │ tables: mappings · junction_notes · concepts · ontologies        │
    │ indexes and closure cache for query acceleration                 │
    └──────────────────────────────────────────────────────────────────┘
 ```
@@ -119,104 +109,79 @@ Historical decision logs (`zz-log/`) and research deliverables (`zz-research/`) 
 - ImportRecipe remains adjacent intensional policy, not Tier 1 ontology/mapping content.
 - Every field in the Tier 2 SQL representation must be derivable from Tier 1 frontmatter.
 - Every Tier 1 frontmatter field that needs to be queryable in Tier 2 must be a flat scalar or a wikilink (no nested objects, no inline expressions). [Bases-queryable](/crosswalker/concepts/metadata-ecosystem/) constraint.
-- `_crosswalker` metadata is *additive* — it never overwrites user-authored frontmatter, only adds keys under `_crosswalker:`.
+- Managed ownership is declared: Crosswalker updates only recipe-managed top-level fields plus `_crosswalker`; `user_preserve` fields remain untouched.
 - Junction notes are generated member records, but users can edit them; v0.1 generation is non-destructive.
 - ImportRecipe may be bundled, imported, instantiated from a template, or edited through the workbench. Its canonical specification is preserved separately from implementation-only `ImportMapping`, `RecipeDocument`, `SavedConfig`, and draft state.
 
-## §3 `_crosswalker` metadata schema (per-note frontmatter)
+## §3 Tier 1 frontmatter contract (canonical Markdown records)
 
-Every note Crosswalker generates carries a `_crosswalker` frontmatter block. It is **additive only** — no other top-level frontmatter keys are touched.
+Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json). A recipe may manage declared top-level fields, while `user_preserve` fields remain user-owned. Every generated record also carries `_crosswalker` provenance (where the record came from).
 
-### TypeScript shape
+### `_crosswalker` provenance block
 
-```typescript
-interface CrosswalkerMetadata {
-  // Identity & provenance (mandatory)
-  schema_version: 'crosswalker-v1';   // pinned per StewardshipProfile commitment
-  source_file: string;                 // 'nist-800-53-r5.csv'
-  source_hash: string;                 // sha256 of source bytes (sha256:abc123...)
-  import_date: string;                 // ISO 8601 (2026-05-03T14:30:00Z)
-  recipe_id: string;                   // ImportRecipe.id (see §4)
+| Field | Required | Meaning |
+|---|---:|---|
+| `spec_version` | Yes | Tier 1 contract version used to write the record |
+| `source_ref` | Yes | Stable or human-readable source reference |
+| `produced_at` | Yes | ISO 8601 production timestamp |
+| `producer` | No | Producer name and version |
+| `recipe` | No | Recipe identifier and content hash used for this output |
+| `concept_cid` | No | Content identifier for the declared concept-identity scope; layout and mapping-only defaults do not enter a concept's scope |
 
-  // Ontology binding (mandatory for control notes)
-  ontology_id: string;                // 'nist-800-53-r5'
-  ontology_version: string;           // 'Rev 5 Update 1'
-  control_id?: string;                 // 'AC-2' (if this note is a control)
+### Concept-note fields
 
-  // Lifecycle (optional, written when relevant)
-  status?: 'active' | 'deprecated' | 'archived' | 'superseded';
-  previous_ids?: string[];             // ['AC-2(legacy)'] for ID-aliasing on rename
-  superseded_by?: string;              // wikilink target if status='superseded'
-  generated_by?: string;               // 'crosswalker-0.2.0' (tool version)
+A CURIE (a compact stable identifier such as `nist:AC-2`) identifies the concept independently of its vault path.
 
-  // History (optional, append-only)
-  history?: HistoryEvent[];
-}
+| Field | Required | Meaning |
+|---|---:|---|
+| `curie` | Yes | Stable concept identity |
+| `_crosswalker` | Yes | Provenance block above |
+| `title` | No | Display title |
+| `aliases` | No | Alternate names |
+| `tags` | No | Obsidian tag paths |
+| `parent` | No | Clickable parent wikilink, or wikilink array for display polyhierarchy |
+| `parent_curie` | No | Stable identity of the one canonical parent projected to Tier 2; it is never inferred from `parent` |
+| `children` | No | Optional child wikilinks |
 
-interface HistoryEvent {
-  event: 'imported' | 're-imported' | 'renamed' | 'superseded';
-  date: string;                        // ISO 8601
-  source?: string;                     // for imports: the source file
-  changes?: string[];                  // for re-imports: diff summary
-  note?: string;                       // free-text annotation
-}
-```
+### Junction-note fields
 
-### YAML on-disk shape (canonical)
+A junction note (one evidence relationship represented as its own note) keeps endpoint identity separate from endpoint address.
 
-```yaml
----
-# user-authored fields (never touched by Crosswalker)
-title: "Account Management (AC-2)"
-aliases: ["AC-2"]
+| Field | Required | Meaning |
+|---|---:|---|
+| `curie` | Yes | Stable junction-note identity |
+| `subject` | Yes | Clickable subject wikilink |
+| `predicate` | Yes | Relationship type |
+| `object` | Yes | Clickable object wikilink |
+| `_crosswalker` | Yes | Provenance block above |
+| `kind` | No | When present, fixed to `junction-note` |
+| `subject_curie` | No | Stable subject identity; never inferred from `subject` |
+| `object_curie` | No | Stable object identity; never inferred from `object` |
+| `coverage` | No | `full`, `partial`, `none`, or `n/a` |
+| `reviewer`, `review_date`, `status`, `confidence` | No | Review and lifecycle facts |
+| `scope`, `expires_at`, `notes`, `tags` | No | Scope, expiry, annotation, and Obsidian tags |
 
-# STRM predicate fields (the user-facing wire format — see §6)
-is_equivalent_to: ["[[ISO27001/A.5.16]]"]
-is_broader_than: ["[[CIS/IG1-5.1]]"]
+### Crosswalk-edge fields
 
-# Crosswalker-managed (additive only)
-_crosswalker:
-  schema_version: crosswalker-v1
-  source_file: nist-800-53-r5.csv
-  source_hash: sha256:a7b2f9c1e8d3...
-  import_date: 2026-05-03T14:30:00Z
-  recipe_id: nist-800-53-r5
-  ontology_id: nist-800-53-r5
-  ontology_version: "Rev 5 Update 1"
-  control_id: AC-2
-  status: active
-  generated_by: crosswalker-0.2.0
----
+A mapping set (one published collection of mapping assertions) gives repeated assertions and separate releases independent provenance. An assertion occurrence (one row from one mapping-set release) receives its own deterministic `curie`; the schema does not require every producer to use one particular CURIE algorithm.
 
-# AC-2 Account Management
+| Field | Required | Meaning |
+|---|---:|---|
+| `curie` | Yes | Stable identity of this assertion occurrence |
+| `subject_id` | Yes | Subject concept CURIE |
+| `predicate_id` | Yes | One of the 6 relationship predicates defined by `spec/tier1.schema.json § $defs.crosswalk_edge_frontmatter.properties.predicate_id` |
+| `object_id` | Yes | Object concept CURIE |
+| `_crosswalker` | Yes | Provenance block above |
+| `kind` | No | When present, fixed to `crosswalk-edge` |
+| `mapping_set_id` | No | Non-blank stable identifier for the mapping-set release; writers trim surrounding whitespace, then preserve case and content |
+| `predicate_modifier` | No | Predicate modifier (a flag changing assertion meaning). The only valid value is `NOT`; absence means a positive assertion |
+| `match_type`, `match_confidence` | No | SSSOM-shaped match classification and confidence |
+| `mapping_justification`, `mapping_provider`, `mapping_date` | No | Why, from where, and when the mapping was asserted |
+| `creator_id`, `review_status`, `tags` | No | Creator, review state, and Obsidian tags |
 
-[user-authored or generated body...]
-```
+### Additive compatibility
 
-### Mandatory vs optional fields
-
-| Field | Required for | Notes |
-|---|---|---|
-| `schema_version` | All `_crosswalker`-bearing notes | Enables migration on schema bumps |
-| `source_file` | All | Provenance |
-| `source_hash` | All | Re-import / staleness detection |
-| `import_date` | All | Audit trail |
-| `recipe_id` | All | Links to ImportRecipe |
-| `ontology_id` + `ontology_version` | Control notes & ontology-bound mapping notes | Optional for evidence-only notes |
-| `control_id` | Control notes only | The `predicate_id` namespace for STRM crosswalk fields |
-| `status` | Optional | Defaults to `active` if absent |
-| Other lifecycle fields | Optional | Written when state transitions occur |
-
-### Schema-version migration policy
-
-Per the [meta-schema lifecycle commitment](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/) ("Crosswalker eats own dog food"): every internal schema is versioned. When the schema bumps from `crosswalker-v1` to `crosswalker-v2`, a migration script:
-
-1. Reads all `_crosswalker:` blocks
-2. Detects the old `schema_version`
-3. Applies a per-version migration function (additive transform: add new fields with defaults; rename fields with aliasing entry in `previous_ids`; never destructive)
-4. Writes the new `_crosswalker:` block back, preserving non-Crosswalker frontmatter unchanged
-
-The migration is idempotent (re-running on already-migrated data is a no-op) and resumable (per-file state-tracked).
+All five 2026-08-21 fields are optional: `parent_curie`, `subject_curie`, `object_curie`, `mapping_set_id`, and `predicate_modifier`. Legacy Tier 1 records therefore continue to validate. Producers clear a declared managed field when its rendered source becomes empty, but never clear a `user_preserve` field.
 
 ## §4 Recipe Schema Contract and ImportRecipe specification
 
@@ -229,7 +194,7 @@ ImportRecipe is a concrete [Recipe](/crosswalker/concepts/terminology/#recipe) s
 | **Binding** | A Recipe reference plus concrete source identity and selected parameters. |
 | **Execution** | One application of a bound Recipe. Verified run facts belong in a later separate Execution Record, not in mutable Recipe intent. |
 
-:::tip[Current machine-readable contract — implemented 2026-07-21]
+:::tip[Current machine-readable contract — verified 2026-08-21]
 The authoritative v0.1 contract is [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), summarized in the [portable-recipe fidelity synthesis](/crosswalker/agent-context/zz-log/2026-07-21-portable-import-recipe-fidelity-synthesis/). It uses the settled closed grammar (`folder | file | heading | tag | wikilink`) plus `also_emit`, enrichment, graph edges, and optional query declarations.
 
 The active import workbench now retains the full validated canonical recipe through a lossless `RecipeDocument` boundary. This is **internal/in-memory fidelity**, not yet a durable user recipe library: save/open/export/share UI under `_crosswalker/recipes/import/` remains deferred.
@@ -241,6 +206,7 @@ Current additive fields include:
 - optional `source.version` as compatibility metadata, never stronger than verified run provenance;
 - ordered `target.also_emit.body` projections (`append | section` × `text | code | quote | list`);
 - typed managed scalar coercion through the closed `number` template filter;
+- omission-safe identity templates through first-position `optional` and empty-safe `curie-prefix(prefix)` controls;
 - deterministic normalized equality and canonical JSON serialization;
 - four validation layers: JSON Schema, recipe semantics, source compatibility, and editable-model portability.
 
@@ -616,7 +582,12 @@ Closes the [ICSB emitter-controls gap audit](/crosswalker/agent-context/zz-log/2
 
 **Backward compatibility**: purely additive (SchemaVer ADDITION). Recipes without these keys validate and render unchanged. Spec URI did NOT bump.
 
-## §5 Junction note 13-field schema (per evidence-link edge)
+## §5 Historical junction-note design sketch
+
+:::caution[Historical only]
+The current junction-note contract is the field table in §3 and [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json). This section preserves the earlier evidence-model design vocabulary and is not a validator reference.
+:::
+
 
 Per [Ch 07 resolution](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/): evidence links are **edge-as-note reified** — one markdown file per evidence→control relationship.
 
@@ -713,67 +684,22 @@ The composite filename (control + evidence) makes diff-on-rename easy and preven
 
 The 13-field schema is structurally isomorphic to OSCAL's `by-component` assembly per [Ch 07 deliverable](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/). The OSCAL export pipeline is straightforward field-rename. See [`reference/registry/oscal`](/crosswalker/reference/registry/oscal/) for the mapping table once the OSCAL mental-model doc lands.
 
-## §6 STRM + SSSOM hybrid wire format (crosswalk edges)
+## §6 Crosswalk assertion vocabulary and SSSOM provenance
 
-Per the [v0.1 stack-pivot §6](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/#6-sssom--strm-resolution--hybrid): user-facing wire format is **STRM-shaped**; SSSOM remains the **internal validation envelope**.
+A crosswalk assertion (one stated relationship between two concepts) stores its relationship in `predicate_id` and any explicit negation separately in `predicate_modifier`. The 6 allowed predicates are sourced from `spec/tier1.schema.json § $defs.crosswalk_edge_frontmatter.properties.predicate_id`:
 
-Crosswalk edges between ontology nodes are stored as **STRM predicate frontmatter on control notes** (not as separate junction notes — junction notes are *evidence* links, distinct from crosswalks).
+| `predicate_id` | Plain meaning |
+|---|---|
+| `is_equivalent_to` | The concepts have the same meaning for the mapping purpose |
+| `is_broader_than` | The subject covers more than the object |
+| `is_narrower_than` | The subject covers less than the object |
+| `is_approximate_to` | The concepts are similar but not equivalent |
+| `intersects_with` | The concepts overlap |
+| `no_relationship` | The source explicitly asserts no relationship |
 
-### STRM predicates (user-facing, frontmatter keys)
+`predicate_modifier` is absent for a positive assertion or exactly `NOT` for explicit negation. Negation is not encoded by inventing an `_NOT` predicate name. A negative equivalence therefore remains `predicate_id: is_equivalent_to` plus `predicate_modifier: NOT`.
 
-The 5 STRM relationships from NIST IR 8477:
-
-| Predicate | Frontmatter key | Semantics |
-|---|---|---|
-| Equal To | `is_equivalent_to` | A ≡ B (semantic equivalence) |
-| Subset Of | `is_narrower_than` | A ⊂ B (A is a special case of B) |
-| Superset Of | `is_broader_than` | A ⊃ B (A subsumes B) |
-| Intersects With | `is_approximate_to` | A ∩ B ≠ ∅ but A ≠ B |
-| No Relationship | `no_relationship` | A ⊥ B (used for explicit "not related" assertions) |
-
-Plus SSSOM `predicate_modifier`:
-- `is_equivalent_to_NOT: ["[[X]]"]` represents `predicate_modifier: NOT` — explicit negation per SSSOM spec
-
-### YAML on-disk shape (control note example)
-
-```yaml
----
-title: AC-2 Account Management
-
-# STRM predicate frontmatter (the user-facing wire format)
-is_equivalent_to: ["[[Frameworks/ISO-27001-2022/A.5.16]]"]
-is_broader_than: ["[[Frameworks/CIS-Controls-v8/IG1-5.1]]"]
-is_approximate_to:
-  - target: "[[Frameworks/MITRE-ATT&CK/T1078]]"
-    confidence: 0.7
-    mapping_justification: "semapv:ManualMappingCuration"
-
-_crosswalker:
-  schema_version: crosswalker-v1
-  ontology_id: nist-800-53-r5
-  control_id: AC-2
-  # ... rest
----
-```
-
-Two formats supported:
-1. **Simple wikilink array**: `is_equivalent_to: ["[[X]]", "[[Y]]"]` — when no per-edge metadata is needed (the 90% case).
-2. **Object array with metadata**: when an edge needs `confidence`, `mapping_justification`, `mapping_date`, etc.
-
-The object form is fully SSSOM-compatible; the simple wikilink form is the SSSOM minimal envelope (just the predicate triple).
-
-### TSV exports
-
-The plugin emits two TSV variants from the same source data:
-
-- **STRM-TSV (OLIR-template-shaped)**: columns match NIST IR 8278A r1 OLIR template (Source Document, Source Element, Relationship, Target Document, Target Element, Strength, Comments). Excel-friendly. **Default user-facing export.** Submittable to NIST OLIR directly.
-- **SSSOM-TSV**: columns match SSSOM spec (subject_id, predicate_id, object_id, mapping_justification, confidence, author_id, mapping_date, comment, etc.). Round-trip-compatible with `sssom-py`. Optional academic emission.
-
-Both come from the same in-memory representation; the SSSOM envelope is *always* validated internally even when the STRM-TSV export is what the user sees. This is the hybrid resolution — STRM-foreground, SSSOM-internal.
-
-### OSCAL JSON profile export
-
-The third export format. Structured per OSCAL's `profile` and `mapping` assemblies. Round-trip with NIST's OSCAL toolchain. Documentation in `reference/registry/oscal/` (TODO).
+SSSOM (the Simple Standard for Sharing Ontological Mappings) provenance is carried by `mapping_set_id`, `match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `mapping_date`, `creator_id`, and `review_status`. Direct SSSOM-style queries and export preserve mapping-set provenance and negation. STRM export omits negated assertions because STRM cannot represent that modifier without changing meaning.
 
 ## §7 Tier 2 sidecar SQL schema (sqlite-wasm projection)
 
@@ -781,230 +707,57 @@ The Tier 2 sidecar is a **deletable, recoverable projection** of Tier 1 frontmat
 
 **Recovery property** (load-bearing): if `.crosswalker.sqlite` is missing, corrupted, or stale, the projector rebuilds it from canonical Tier 1 on next vault load. This is what makes Tier 2 risk-free to bundle in v0.1.
 
-:::tip[Substrate choice — settled 2026-05-04]
-v0.1 substrate is `@sqlite.org/sqlite-wasm` + `sqlite-vec` (canonical, foundation-governed). [Challenge 24](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/) evaluated libSQL-WASM, Turso Cloud (Tier 3), and Turso Database / Limbo, and **rejected all three**. See the [Tier 2 substrate synthesis log](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) for the verdict + 5 explicit migration triggers locked in for re-evaluation. Key insight: vector layer (`sqlite-vec`) is *decoupled from substrate* — portable across canonical SQLite, libSQL, Limbo, Postgres+pgvector — which is what makes the v0.1 substrate choice modular rather than locked-in.
+:::tip[Substrate choice — verified 2026-08-21]
+v0.1 ships `@sqlite.org/sqlite-wasm` as the embedded query substrate. `sqlite-vec` remains a decoupled optional vector layer and is deferred; the next calendar-anchored packaging revisit is 2026-11-06. See the [Tier 2 substrate synthesis](/crosswalker/agent-context/zz-log/2026-05-04-tier-2-substrate-synthesis/) and [WASM-A pivot synthesis](/crosswalker/agent-context/zz-log/2026-05-06-wasm-a-pivot-synthesis/).
 :::
 
-### DDL
+### Current schema summary
 
-```sql
--- ================================================================
--- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
--- Schema version: tier2-sqlite-v2
--- ================================================================
+`src/tier2/schema.sql` is the canonical DDL. Tier 2 currently ships as `tier2-sqlite-v3`. The table below cites every stored column by table so additions are reviewable without copying a second SQL source that can drift.
 
-PRAGMA journal_mode = WAL;          -- or TRUNCATE on OPFS per Ch 18
-PRAGMA foreign_keys = ON;
-PRAGMA synchronous = NORMAL;
+| Table/view | Current columns | Purpose |
+|---|---|---|
+| `schema_meta` | `key`, `value` | Schema and projection metadata |
+| `ontologies` | `id`, `name`, `version`, `base_path`, `upstream_url`, `recipe_id`, `imported_at`, `control_count` | One represented ontology/import owner |
+| `concepts` | `ontology_id`, `curie`, `vault_path`, `source_hash`, `title`, `parent_curie`, `status`, `imported_at`, `modified_at` | Canonical concept projection with explicit parent identity |
+| `mappings` | `mapping_set_id`, `subject_id`, `predicate_id`, `predicate_modifier`, `object_id`, `match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `mapping_date`, `creator_id`, `review_status`, `source_path`, `source_hash` | One mapping occurrence with release provenance and explicit negation |
+| `junction_notes` | `vault_path`, `curie`, `subject`, `subject_curie`, `predicate`, `object`, `object_curie`, `coverage`, `reviewer`, `review_date`, `status`, `confidence`, `scope`, `expires_at`, `notes`, `source_hash`, `modified_at` | Evidence relationship with separate addresses and identities |
+| `junction_notes_with_freshness` | All junction columns plus computed `freshness` | Review-age view |
+| `closure_cache` | `subject_id`, `predicate_id`, `object_id`, `shortest_depth`, `computed_at` | Cached transitive answers |
+| `closure_cache_state` | `subject_id`, `predicate_id`, `computed_max_depth`, `computed_at` | Proof that a closure partition was computed through a depth, including empty results |
+| `concept_embeddings` | Reserved virtual-table shape | Optional future vector projection; not authoritative |
 
--- Schema versioning table
-CREATE TABLE IF NOT EXISTS schema_meta (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-INSERT OR REPLACE INTO schema_meta(key, value) VALUES
-  ('schema_version', 'tier2-sqlite-v2'),
-  ('projected_at', strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-  ('crosswalker_version', '0.2.0');
-
--- ================================================================
--- Ontologies: one row per ontology represented in canonical Tier 1 records
--- ================================================================
-CREATE TABLE IF NOT EXISTS ontologies (
-  id              TEXT PRIMARY KEY,         -- 'nist-800-53-r5'
-  name            TEXT NOT NULL,            -- 'NIST SP 800-53 Rev 5'
-  version         TEXT NOT NULL,            -- 'Rev 5 Update 1'
-  base_path       TEXT NOT NULL,            -- 'Frameworks/NIST-800-53-r5'
-  upstream_url    TEXT,
-  recipe_id       TEXT NOT NULL,            -- references ImportRecipe.id
-  imported_at     TEXT NOT NULL,            -- ISO 8601
-  control_count   INTEGER NOT NULL DEFAULT 0
-);
-
--- ================================================================
--- Controls: one row per control note (Tier 1 file with control_id)
--- ================================================================
-CREATE TABLE IF NOT EXISTS controls (
-  -- Composite key: ontology + control_id (for cross-ontology uniqueness)
-  ontology_id    TEXT NOT NULL,
-  control_id      TEXT NOT NULL,            -- 'AC-2'
-  -- Provenance
-  vault_path      TEXT NOT NULL UNIQUE,     -- 'Frameworks/NIST-800-53-r5/AC-2.md'
-  source_hash     TEXT NOT NULL,            -- sha256 of source row
-  -- Display
-  title           TEXT NOT NULL,            -- 'Account Management'
-  -- Hierarchy (denormalised)
-  hierarchy_path  TEXT,                     -- 'Access Control / Account Management'
-  parent_control  TEXT,                     -- for enhancements: 'AC-2' for 'AC-2(1)'
-  -- Lifecycle
-  status          TEXT NOT NULL DEFAULT 'active',
-                  -- CHECK: active | deprecated | archived | superseded
-  superseded_by   TEXT,                     -- vault_path of replacement
-  -- Timestamps
-  imported_at     TEXT NOT NULL,            -- ISO 8601
-  modified_at     TEXT NOT NULL,            -- ISO 8601 (last vault file mtime)
-  PRIMARY KEY (ontology_id, control_id),
-  FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
-);
-
--- ================================================================
--- Mappings: one row per crosswalk edge (STRM predicate triple)
--- This is the table Ch 18 §1.2 SQL examples query against.
--- ================================================================
-CREATE TABLE IF NOT EXISTS mappings (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  -- The triple
-  subject_id      TEXT NOT NULL,            -- composite: 'nist-800-53-r5/AC-2'
-  predicate_id    TEXT NOT NULL,            -- 'is_equivalent_to' (STRM predicate)
-  object_id       TEXT NOT NULL,            -- composite: 'iso-27001-2022/A.5.16'
-  -- SSSOM envelope (validation-internal)
-  confidence      REAL,                     -- 0.0 - 1.0
-  mapping_justification TEXT,               -- SEMAPV vocabulary
-  author_id       TEXT,                     -- pipe-delimited ORCIDs
-  mapping_date    TEXT,                     -- ISO 8601
-  mapping_tool    TEXT,
-  predicate_modifier TEXT,                  -- 'NOT' or NULL
-  comment         TEXT,
-  -- Bi-temporal (optional; v0.1 ships the columns, v1.0+ uses them)
-  valid_time_start TEXT,                    -- ISO 8601 — when mapping became true
-  valid_time_end   TEXT,                    -- ISO 8601 — when mapping ceased to be true
-  -- Provenance: which Tier 1 file this edge was extracted from
-  source_path     TEXT NOT NULL,            -- 'Frameworks/NIST-800-53-r5/AC-2.md'
-  source_hash     TEXT NOT NULL
-);
-
--- Covering indexes per Ch 18 §2.3 (recursive CTE workload)
-CREATE INDEX IF NOT EXISTS idx_mappings_pred_subj
-  ON mappings(predicate_id, subject_id);
-CREATE INDEX IF NOT EXISTS idx_mappings_pred_obj
-  ON mappings(predicate_id, object_id);
-CREATE INDEX IF NOT EXISTS idx_mappings_subj_pred
-  ON mappings(subject_id, predicate_id);
-CREATE INDEX IF NOT EXISTS idx_mappings_valid_time
-  ON mappings(valid_time_start, valid_time_end)
-  WHERE valid_time_start IS NOT NULL;
-
--- ================================================================
--- Junction notes: one row per evidence-link edge (per §5)
--- ================================================================
-CREATE TABLE IF NOT EXISTS junction_notes (
-  vault_path      TEXT PRIMARY KEY,         -- 'Junctions/nist-800-53-r5/AC-2--MFA-Policy.md'
-  -- The 5 mandatory fields
-  link_type       TEXT NOT NULL DEFAULT 'evidence_link',
-  evidence        TEXT NOT NULL,            -- wikilink target
-  control         TEXT NOT NULL,            -- wikilink target
-  ontology_id    TEXT NOT NULL,
-  status          TEXT NOT NULL,
-                  -- CHECK: implemented|partial|planned|alternative|not-applicable
-  -- The 8 optional fields
-  confidence      REAL,                     -- 0.0 - 1.0
-  evidence_type   TEXT,
-                  -- CHECK: policy-document|automated-scan|test-result|configuration
-                  --       |log-export|interview|architecture-review|attestation
-  method          TEXT,
-  reviewer        TEXT,                     -- wikilink to person note
-  review_date     TEXT,                     -- ISO 8601
-  responsible     TEXT,                     -- wikilink to person note
-  collected       TEXT,                     -- ISO 8601
-  expires         TEXT,                     -- ISO 8601
-  -- Optional review chain
-  supersedes      TEXT,                     -- vault_path of previous
-  -- Provenance
-  source_hash     TEXT NOT NULL,
-  modified_at     TEXT NOT NULL,
-  FOREIGN KEY (ontology_id) REFERENCES ontologies(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_junction_control ON junction_notes(control);
-CREATE INDEX IF NOT EXISTS idx_junction_evidence ON junction_notes(evidence);
-CREATE INDEX IF NOT EXISTS idx_junction_ontology_status
-  ON junction_notes(ontology_id, status);
-
--- ================================================================
--- Computed view: junction_notes with freshness
--- ================================================================
-CREATE VIEW IF NOT EXISTS junction_notes_with_freshness AS
-SELECT
-  jn.*,
-  CASE
-    WHEN jn.expires IS NULL AND jn.review_date IS NULL THEN 'not-set'
-    WHEN jn.expires IS NOT NULL AND jn.expires < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-      THEN 'expired'
-    WHEN jn.review_date IS NOT NULL
-         AND jn.review_date < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-180 days')
-      THEN 'stale'
-    ELSE 'fresh'
-  END AS freshness
-FROM junction_notes jn;
-
--- ================================================================
--- Closure cache (lazy materialization per Ch 18 §2.5)
--- Populated on demand by recursive-CTE queries.
--- ================================================================
-CREATE TABLE IF NOT EXISTS closure_cache (
-  subject_id      TEXT NOT NULL,
-  predicate_id    TEXT NOT NULL,
-  object_id       TEXT NOT NULL,
-  confidence_min  REAL,
-  shortest_depth  INTEGER NOT NULL,
-  computed_at     TEXT NOT NULL,            -- ISO 8601 (mtime check on invalidation)
-  PRIMARY KEY (subject_id, predicate_id, object_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_closure_obj_pred
-  ON closure_cache(object_id, predicate_id);
-
--- Proves that one (subject, predicate-filter) partition was fully computed
--- through the recorded depth, including valid empty closures.
-CREATE TABLE IF NOT EXISTS closure_cache_state (
-  subject_id         TEXT NOT NULL,
-  predicate_id       TEXT NOT NULL,
-  computed_max_depth INTEGER NOT NULL CHECK (computed_max_depth >= 0),
-  computed_at        TEXT NOT NULL,
-  PRIMARY KEY (subject_id, predicate_id)
-);
-
--- ================================================================
--- Vector embeddings for semantic similarity (sqlite-vec, optional)
--- Only populated if user enables the embedding feature.
--- ================================================================
--- This is a virtual table from the sqlite-vec extension:
--- CREATE VIRTUAL TABLE IF NOT EXISTS control_embeddings
---   USING vec0(embedding FLOAT[384]);
--- (Loading sqlite-vec is a v0.1+ optional add-on; defer concrete DDL.)
-```
+The mapping primary key includes `mapping_set_id`, the subject/predicate/modifier/object assertion, and `source_path`. Separate releases and duplicate source occurrences therefore do not overwrite one another. Endpoint indexes cover mapping subjects/objects and junction `subject_curie`/`object_curie`.
 
 ### Projection rules (Tier 1 → Tier 2)
 
-The projector (a TypeScript module in `packages/core/`) executes on vault load:
-
-1. **Detect missing/stale state**: if `.crosswalker.sqlite` doesn't exist, or `schema_meta.projected_at` is older than the vault's most recent Tier 1 mtime, reproject.
-2. **Derive represented ontologies**: aggregate ontology identity/version/base-path and recipe provenance from canonical Tier 1 records, then insert/upsert into `ontologies`. The projector does not treat ImportRecipe as Tier 1 knowledge.
-3. **Walk control notes**: for each `.md` file with `_crosswalker.control_id` set, insert/upsert into `controls`.
-4. **Extract crosswalk edges**: for each control note, parse STRM predicate frontmatter (`is_equivalent_to`, etc.) and insert one `mappings` row per wikilink target. Object form (with metadata) is parsed into the SSSOM envelope columns.
-5. **Walk junction notes**: for each `.md` file with `link_type: evidence_link`, insert/upsert into `junction_notes`.
-6. **Invalidate closure rows and coverage state atomically** if any `mappings` row changed.
-
-Projection is idempotent. Re-running on an unchanged vault is a no-op (mtime check + content hash).
+1. Read only notes with valid `_crosswalker` provenance; canonical Markdown remains the authority.
+2. Project concept `parent_curie` directly. Never derive it from the `parent` wikilink.
+3. Project junction `subject_curie` and `object_curie` directly. Never derive them from wikilink text.
+4. Normalize mapping-set identifiers and predicate modifiers through the shared provenance helpers, then store each mapping occurrence with its source path.
+5. Reconcile an ontology's displayed version deterministically across projected concepts using binary lexical order, so file traversal order cannot change the result.
+6. Exclude `predicate_modifier = 'NOT'` from effective graph edges, including symmetric and inverse expansion. Direct `crosswalkBetween()` queries retain negated rows and their provenance.
+7. Invalidate mapping-dependent closure rows and depth-coverage state together whenever mappings change.
+8. Prune unseen rows only during a complete `full` projection. Filters, projection errors, or unreadable-but-present frontmatter suppress pruning.
 
 ### Schema-version migration
 
-Tier 2 now ships `tier2-sqlite-v2`. Opening a sidecar with any other version, or an unversioned database carrying old tables, deliberately drops and recreates the derived schema before reprojection from canonical Tier 1. The v1 → v2 transition adds `closure_cache_state`; preserving the old row-only cache would retain ambiguous depth coverage.
+Tier 2 now ships `tier2-sqlite-v3`. Because Tier 2 is derived, opening any other schema version drops and recreates the sidecar, then reprojects canonical Tier 1 Markdown. v3 adds mapping occurrence provenance, explicit predicate modifiers, junction endpoint identities, and the indexes needed to query them. It preserves the v2 depth-safe closure-cache model.
 
 ## §8 Cross-schema invariants & constraints
 
-These are the rules the projector and the import wizard both have to respect:
+These are the rules the projector and import paths both respect:
 
-1. **Contracts stay distinct**: the Recipe Schema Contract governs ImportRecipe intent; the Tier 1 Schema Contract governs canonical member-record representations.
-2. **Tier 1 is canonical local managed authority**: every Tier 2 column has a Tier 1 source. No authoritative managed knowledge lives only in Tier 2.
-3. **Knowledge Set is conceptual, not a generalized schema claim**: ontology, MappingSet, and evidence-set aggregates may be represented through Tier 1 members, but v0.1 does not define one universal `KnowledgeSet` envelope.
-4. **Frontmatter is flat-scalar or wikilink**: enforces Bases-queryability of the Tier 1 path. Object-form metadata on STRM predicates is permitted because it round-trips through SSSOM; the projector flattens it into Tier 2 SSSOM-envelope columns.
-5. **`_crosswalker` is additive**: never overwrites user-authored top-level frontmatter.
-6. **Mandatory junction note fields**: `link_type`, `evidence`, `control`, `ontology`, `status`. Plugin generation refuses to create incomplete notes.
-7. **STRM predicates are the only crosswalk vocabulary**: user-facing crosswalk frontmatter keys MUST be one of the 5 STRM predicates (or their `_NOT` modifier form). SKOS predicates rejected as base vocab; SSSOM is internal validation only.
-8. **Version governed representations**: ImportRecipe, Tier 1 record regions, and Tier 2 SQL carry explicit versions for migration without implying that all are the same artifact role.
-9. **Composite IDs in Tier 2**: `subject_id` / `object_id` in `mappings` are ontology-qualified (`nist-800-53-r5/AC-2`) to enable cross-ontology queries without ID collision.
-10. **Source-hash provenance**: every projected row carries `source_hash` (sha256 of the originating Tier 1 byte content) so re-import detects changes byte-accurately.
+1. **Contracts stay distinct:** the Recipe Schema Contract governs ImportRecipe intent; the Tier 1 Schema Contract governs canonical member records.
+2. **Tier 1 is canonical local managed authority:** every Tier 2 column has a Tier 1 source. No authoritative managed knowledge lives only in Tier 2.
+3. **Knowledge Set is conceptual, not a universal envelope:** ontology, mapping-set, and evidence-set aggregates may be represented through Tier 1 members without one generalized aggregate schema.
+4. **Managed ownership is declared:** a producer may update or clear only recipe-declared managed fields and `_crosswalker` provenance. `user_preserve` fields remain untouched.
+5. **Identity is not address:** `parent_curie`, `subject_curie`, and `object_curie` are explicit stable identities; wikilinks remain clickable addresses and are never reverse-parsed into identity.
+6. **Mandatory junction fields:** `curie`, `subject`, `predicate`, `object`, and `_crosswalker` (source: `spec/tier1.schema.json § $defs.junction_note_frontmatter.required`).
+7. **Crosswalk vocabulary and negation are separate:** `predicate_id` has 6 allowed relationship values, while `predicate_modifier` is absent or `NOT` (source: `spec/tier1.schema.json § $defs.crosswalk_edge_frontmatter.properties`).
+8. **Mapping occurrences preserve release provenance:** `mapping_set_id` distinguishes published mapping collections; deterministic assertion CURIEs distinguish repeated occurrences without changing concept identity.
+9. **Graph traversal uses only positive assertions:** direct queries may return negated assertions, but closure, symmetric expansion, and inverse expansion exclude `NOT`.
+10. **Version-governed representations rebuild safely:** ImportRecipe, Tier 1 records, and Tier 2 SQL carry independent versions appropriate to their roles. Tier 2 can be discarded and regenerated.
 
 ## §9 Build sequence
 

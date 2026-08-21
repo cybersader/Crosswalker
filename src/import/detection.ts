@@ -22,6 +22,7 @@
  */
 
 import type { ParsedData, ColumnInfo } from '../types/config';
+import { isTier1Curie } from '../validation/validator';
 import { isEagerRows } from '../types/config';
 import type { VariadicConfig } from '../render/types';
 
@@ -138,6 +139,7 @@ export type Detection =
 			idColumn: string;
 			/** % of the column's sampled non-empty values found in the id column's value set. */
 			matchRate: number;
+			parentIdentityMode: 'raw-curie' | 'source-prefix';
 			sampleValues: string[];
 			proposal: EdgeProposal;
 	  }
@@ -721,11 +723,13 @@ function detectParentColumn(
 	for (const v of sample) if (idSet.has(v)) hits++;
 	const matchRate = hits / sample.length;
 	if (matchRate < PARENT_MATCH_MIN) return null;
+	const parentIdentityMode = sample.every(isTier1Curie) ? 'raw-curie' : 'source-prefix';
 	return {
 		kind: 'parent-column',
 		column: childColumn,
 		idColumn,
 		matchRate: round(matchRate),
+		parentIdentityMode,
 		sampleValues: sample.slice(0, SAMPLE_VALUES),
 		proposal: {
 			parentColumn: childColumn,

@@ -195,12 +195,32 @@ describe('parent-column', () => {
 		expect(parent).toBeDefined();
 		expect(parent!.idColumn).toBe('id');
 		expect(parent!.matchRate).toBe(1); // all 4 non-empty parent_id values are ids
+		expect(parent!.parentIdentityMode).toBe('source-prefix');
 		expect(parent!.proposal).toEqual({
 			parentColumn: 'parent_id',
 			idColumn: 'id',
 			frontmatterKey: 'parent',
 			predicate: 'skos:broader',
 		});
+	});
+
+	it('uses raw CURIE mode only when every value in the bounded 500-value sample is a CURIE', () => {
+		const rows = Array.from({ length: 502 }, (_, i) => ({
+			id: `x:${i}`,
+			parent_id: i === 0 ? '' : i === 501 ? 'LOCAL' : `x:${i - 1}`,
+		}));
+		const parent = detect(rows).find(
+			(d): d is Extract<Detection, { kind: 'parent-column' }> =>
+				d.kind === 'parent-column' && d.column === 'parent_id',
+		);
+		expect(parent?.parentIdentityMode).toBe('raw-curie');
+
+		rows[5].parent_id = 'LOCAL';
+		const contradicted = detect(rows).find(
+			(d): d is Extract<Detection, { kind: 'parent-column' }> =>
+				d.kind === 'parent-column' && d.column === 'parent_id',
+		);
+		expect(contradicted?.parentIdentityMode).toBe('source-prefix');
 	});
 
 	it('does NOT flag the decoy random-string column as a parent', () => {

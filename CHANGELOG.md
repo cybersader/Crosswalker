@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Stable relationship identities and release-aware mapping sets (2026-08-21)
+
+- **Relationships now survive a note rename because identity is stored separately from the clickable link.** Concept notes can carry `parent_curie`; junction notes can carry `subject_curie` and `object_curie`. A CURIE (a compact stable identifier) says what the endpoint is, while `parent`, `subject`, and `object` remain Obsidian wikilinks that say where the note currently lives. Projection uses only the explicit identity fields and never guesses identity from wikilink text.
+- **Crosswalk assertions now record which published mapping collection they came from.** `mapping_set_id` is valid Tier 1 data, is stored in the query index, and is generated deterministically when a source omits it.
+- **Release isolation is deliberately NOT shipped yet, and that is a change from an earlier plan.** Letting two releases of one crosswalk coexist requires giving each assertion a new identity derived from its mapping set. That would change the identity of every crosswalk note already written — and a re-import can only follow a note whose identity is *unchanged*. The result would be new notes created beside the old ones, with nothing saying so. Assertion identity therefore stays endpoint-derived, and all mapping sets share one destination folder, exactly as before. The cost, stated plainly: two assertions with the same endpoints still collapse onto one note. Recovering that needs per-import ownership to be modelled first, which is recorded as open architect work.
+- **Explicitly negated mappings remain visible without becoming graph edges.** `predicate_modifier: NOT` is now valid Tier 1 data and is stored in Tier 2. Direct crosswalk queries return the negated assertion with its mapping-set provenance; closure and inverse/symmetric edge expansion exclude it in both traversal directions. STRM export skips negated assertions because that format cannot represent them without changing their meaning.
+- **The derived query index now carries the same identity and release facts as Markdown.** Tier 2 advances to `tier2-sqlite-v3`, stores mapping-set and modifier provenance, indexes explicit junction endpoints, and deterministically reconciles ontology versions. Vault, SSSOM, and STRM exporters were updated; canonical NIST-mini fixtures now include `parent_curie`.
+- **Recipe templates can omit absent identity values safely.** First-position `optional` suppresses a missing or null variable, while `curie-prefix(prefix)` prefixes a present local identifier and leaves an empty value empty. Existing recipes remain valid.
+
+**Accepted pre-alpha limitations from verification:**
+
+| Limit | Practical effect |
+|---|---|
+| Pre-P3 SSSOM identities changed from endpoint-only to mapping-occurrence identities | An old endpoint-only SSSOM note cannot be matched to the new assertion identity by R1 reconciliation alone. The importer does not use forbidden path detection, so this one-time transition can leave the old note beside the new P3 note until an identity-alias or explicit migration policy is designed |
+| Concept content-identity stability is pinned at the identity-scope helper boundary, not through a `generateFromRecipe()` integration assertion | Current generation keeps mapping-only defaults out of concept identity, but the regression test would not catch every future production call-site bypass |
+| Raw-CURIE parent templates treat missing/null as optional but do not trim whitespace by themselves | A whitespace-only root parent can survive `{parent_id|optional}` and fail validation; `curie-prefix(prefix)` is empty-safe because it trims, but the raw-CURIE branch still needs an explicit trim/omit rule |
+| The classic wizard/workbench route does not yet normalize absent P3 columns in every generation path | A recognized crosswalk recipe can still fail when an input omits `mapping_set_id` or `predicate_modifier`; the native recipe/SSSOM path supplies safe defaults, but the older route does not yet do so end to end |
+
+[Decision foundation](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/).
+
 ### Re-import correctness: notes now follow their identity (2026-08-21)
 
 - **Changing an import's layout no longer creates a second copy of the same note.** Crosswalker now finds its own notes by their stable `curie` identity, moves an existing note through Obsidian's link-updating rename API when its destination changes, then merges the new managed content in place. Hand-written notes are structurally outside this lookup.

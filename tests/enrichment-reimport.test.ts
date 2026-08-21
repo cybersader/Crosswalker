@@ -37,6 +37,7 @@ function makeApp() {
 	};
 	const app = {
 		vault: {
+			getMarkdownFiles: () => [...files.keys()].map((path) => new TFile(path)),
 			getAbstractFileByPath,
 			create: async (path: string, content: string) => {
 				files.set(path, content);
@@ -58,6 +59,16 @@ function makeApp() {
 			},
 			delete: async (file: { path: string }) => {
 				files.delete(file.path);
+			},
+		},
+		fileManager: {
+			renameFile: async (file: TFile, newPath: string) => {
+				const content = files.get(file.path);
+				if (content !== undefined) {
+					files.delete(file.path);
+					files.set(newPath, content);
+				}
+				file.path = newPath;
 			},
 		},
 		metadataCache: {
@@ -492,8 +503,8 @@ describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 	it('recipe.hash CHANGES when the recipe target changes (layout, also_emit, or enrichment)', async () => {
 		const { app: appLayout, files: filesLayout } = makeApp();
 		await generateFromRecipe(appLayout, parsed(), RECIPE, OPTS);
-		await generateFromRecipe(appLayout, parsed(), RECIPE_WRAPPED_FOLDER, { ...OPTS, basePath: 'Frameworks2' });
 		const baseHash = crosswalkerBlock(filesLayout.get('Frameworks/T1078.md')!).recipeHash;
+		await generateFromRecipe(appLayout, parsed(), RECIPE_WRAPPED_FOLDER, { ...OPTS, basePath: 'Frameworks2' });
 		const layoutHash = crosswalkerBlock(filesLayout.get('Frameworks2/Wrapped/T1078.md')!).recipeHash;
 		expect(layoutHash).not.toBe(baseHash);
 

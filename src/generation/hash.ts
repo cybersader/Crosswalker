@@ -223,6 +223,22 @@ export interface ConceptIdentityRecord {
  * source row to two different vault layouts produce the SAME concept_cid.
  * Only a change to the row's own curie or attribute values changes it.
  */
+/**
+ * Select the source attributes that participate in a note identity.
+ *
+ * Crosswalk-edge identity includes the normalized mapping provenance fields
+ * used by its assertion identity. Concept and junction identities retain the
+ * exact source row they used before P3; an importer must not widen their hash
+ * scope merely because it added render-only defaults.
+ */
+export function identityScopeForNoteKind(
+	kind: unknown,
+	sourceScope: Record<string, unknown>,
+	normalizedRenderScope: Record<string, unknown>,
+): Record<string, unknown> {
+	return kind === 'crosswalk-edge' ? normalizedRenderScope : sourceScope;
+}
+
 export function computeConceptCid(record: ConceptIdentityRecord): string {
 	const canonical = canonicalStringify({ curie: record.curie, scope: record.scope });
 	return toSha256Cid(sha256Hex(canonical));

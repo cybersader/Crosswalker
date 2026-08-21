@@ -110,6 +110,10 @@
           ],
           "description": "Hierarchy: parent concept(s). Single string or array (polyhierarchy). Wikilink target form."
         },
+        "parent_curie": {
+          "$ref": "#/$defs/curie",
+          "description": "Stable identity of the canonical parent concept. The parent wikilink remains the clickable vault address. One canonical parent identity is projected; additional display parents may remain in parent."
+        },
         "children": {
           "type": "array",
           "items": { "$ref": "#/$defs/wikilink_target" },
@@ -136,12 +140,20 @@
         "curie": { "$ref": "#/$defs/curie", "description": "Junction note identity (typically auto-generated CWUUID-based CURIE)." },
         "kind": { "type": "string", "const": "junction-note", "description": "Discriminator: junction note vs concept note." },
         "subject": { "$ref": "#/$defs/wikilink_target", "description": "The concept being attested to (e.g., NIST AC-2)." },
+        "subject_curie": {
+          "$ref": "#/$defs/curie",
+          "description": "Stable identity of the subject concept/control being attested to. The subject wikilink remains the clickable vault address."
+        },
         "predicate": {
           "type": "string",
           "description": "Edge type. Examples: 'evidences', 'covers', 'partially_covers', 'attests', 'reviews'.",
           "minLength": 1
         },
         "object": { "$ref": "#/$defs/wikilink_target", "description": "The evidence document (policy, audit report, runbook, etc.)." },
+        "object_curie": {
+          "$ref": "#/$defs/curie",
+          "description": "Stable identity of the object evidence document. The object wikilink remains the clickable vault address."
+        },
         "coverage": {
           "type": "string",
           "enum": ["full", "partial", "none", "n/a"],
@@ -197,6 +209,17 @@
           "description": "Six Crosswalker predicates: the five set-theoretic STRM relationships from NIST IR 8477 (used by SCF/OSCAL) plus the Crosswalker extension is_approximate_to."
         },
         "object_id": { "$ref": "#/$defs/curie", "description": "Target-side concept CURIE (e.g., iso27001:A.9.2.1)." },
+        "mapping_set_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S",
+          "description": "Stable identifier of the mapping-set release containing this assertion. Writers trim surrounding whitespace; comparison otherwise preserves the string and case exactly."
+        },
+        "predicate_modifier": {
+          "type": "string",
+          "enum": ["NOT"],
+          "description": "Explicit negation of the stated predicate. Absent means positive; NOT means the stated predicate does not hold."
+        },
         "match_type": {
           "type": "string",
           "enum": ["exact", "close", "broad", "narrow", "related"],
@@ -259,6 +282,7 @@
       "aliases": ["AC-2", "Account Management"],
       "tags": ["framework/nist-800-53-r5/ac/ac-2"],
       "parent": "Frameworks/NIST 800-53 r5/AC/AC",
+      "parent_curie": "nist:AC",
       "children": [
         "Frameworks/NIST 800-53 r5/AC/AC-2(1)",
         "Frameworks/NIST 800-53 r5/AC/AC-2(2)"
@@ -282,8 +306,10 @@
       "curie": "cwk:jn-bdfd9a",
       "kind": "junction-note",
       "subject": "Frameworks/NIST 800-53 r5/AC/AC-2",
+      "subject_curie": "nist:AC-2",
       "predicate": "covers",
       "object": "Evidence/MFA-Policy-2026",
+      "object_curie": "evidence:MFA-Policy-2026",
       "coverage": "partial",
       "reviewer": "alice",
       "review_date": "2026-04-15T14:30:00Z",
@@ -303,6 +329,7 @@
       "subject_id": "nist:AC-2",
       "predicate_id": "is_equivalent_to",
       "object_id": "iso27001:A.9.2.1",
+      "mapping_set_id": "https://example.org/mapping-sets/nist-to-iso/2026-03",
       "match_type": "close",
       "match_confidence": 0.9,
       "mapping_justification": "semapv:ManualMappingCuration",

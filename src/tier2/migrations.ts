@@ -1,7 +1,7 @@
 /**
  * Tier 2 schema migrations.
  *
- * Tier 2 currently ships `tier2-sqlite-v2`. If a sidecar reports a different
+ * Tier 2 currently ships `tier2-sqlite-v3`. If a sidecar reports a different
  * schema_version (or no version at all), the simplest correct response
  * is to drop all tables and recreate from canonical Tier 1. The Tier 1
  * vault is the source of truth; the sidecar is a deletable projection.
@@ -13,10 +13,10 @@
  * risk-free to bundle in v0.1."
  */
 
-export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v2';
+export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v3';
 
 /**
- * The DDL for tier2-sqlite-v2. Imported as a string at build time
+ * The DDL for tier2-sqlite-v3. Imported as a string at build time
  * from src/tier2/schema.sql. esbuild's `text` loader handles `.sql`
  * imports as plain strings.
  *
@@ -24,7 +24,7 @@ export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v2';
  * default TS pipeline doesn't auto-load .sql; explicit constants
  * keep the build simple.
  */
-export const TIER2_DDL_V2 = `
+export const TIER2_DDL_V3 = `
 PRAGMA foreign_keys = ON;
 PRAGMA synchronous = NORMAL;
 
@@ -62,21 +62,33 @@ CREATE INDEX IF NOT EXISTS idx_concepts_curie ON concepts(curie);
 CREATE INDEX IF NOT EXISTS idx_concepts_parent ON concepts(parent_curie);
 
 CREATE TABLE IF NOT EXISTS mappings (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  subject_id      TEXT NOT NULL,
-  predicate_id    TEXT NOT NULL,
-  object_id       TEXT NOT NULL,
-  match_type      TEXT,
-  match_confidence REAL,
+  mapping_set_id        TEXT NOT NULL DEFAULT '',
+  subject_id            TEXT NOT NULL,
+  predicate_id          TEXT NOT NULL,
+  predicate_modifier    TEXT NOT NULL DEFAULT ''
+                          CHECK (predicate_modifier IN ('', 'NOT')),
+  object_id             TEXT NOT NULL,
+  match_type            TEXT,
+  match_confidence      REAL,
   mapping_justification TEXT,
-  mapping_provider TEXT,
-  mapping_date    TEXT,
-  creator_id      TEXT,
-  review_status   TEXT,
-  source_path     TEXT NOT NULL UNIQUE,
-  source_hash     TEXT NOT NULL
+  mapping_provider      TEXT,
+  mapping_date          TEXT,
+  creator_id            TEXT,
+  review_status         TEXT,
+  source_path           TEXT NOT NULL UNIQUE,
+  source_hash           TEXT NOT NULL,
+  PRIMARY KEY (
+    mapping_set_id,
+    subject_id,
+    predicate_id,
+    predicate_modifier,
+    object_id,
+    source_path
+  )
 );
 
+CREATE INDEX IF NOT EXISTS idx_mappings_assertion
+  ON mappings(mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id);
 CREATE INDEX IF NOT EXISTS idx_mappings_pred_subj ON mappings(predicate_id, subject_id);
 CREATE INDEX IF NOT EXISTS idx_mappings_pred_obj  ON mappings(predicate_id, object_id);
 CREATE INDEX IF NOT EXISTS idx_mappings_subj      ON mappings(subject_id);
@@ -86,8 +98,10 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   vault_path      TEXT PRIMARY KEY,
   curie           TEXT NOT NULL,
   subject         TEXT NOT NULL,
+  subject_curie   TEXT,
   predicate       TEXT NOT NULL,
   object          TEXT NOT NULL,
+  object_curie    TEXT,
   coverage        TEXT,
   reviewer        TEXT,
   review_date     TEXT,
@@ -102,6 +116,8 @@ CREATE TABLE IF NOT EXISTS junction_notes (
 
 CREATE INDEX IF NOT EXISTS idx_junction_subject ON junction_notes(subject);
 CREATE INDEX IF NOT EXISTS idx_junction_object  ON junction_notes(object);
+CREATE INDEX IF NOT EXISTS idx_junction_subject_curie ON junction_notes(subject_curie);
+CREATE INDEX IF NOT EXISTS idx_junction_object_curie  ON junction_notes(object_curie);
 CREATE INDEX IF NOT EXISTS idx_junction_status  ON junction_notes(status);
 
 CREATE VIEW IF NOT EXISTS junction_notes_with_freshness AS
@@ -187,8 +203,8 @@ export function applyMigrations(db: any): boolean {
 		DROP TABLE IF EXISTS schema_meta;
 	`);
 
-	// Apply the v2 DDL
-	db.exec(TIER2_DDL_V2);
+	// Apply the v3 DDL
+	db.exec(TIER2_DDL_V3);
 
 	// Stamp the version. Deliberately NOT `projected_at`: the tables were just
 	// emptied, so nothing has been projected. Recording a projection timestamp

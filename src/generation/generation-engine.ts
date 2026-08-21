@@ -36,7 +36,7 @@ import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
-import { computeConceptCid, computeRecipeHash } from './hash';
+import { computeConceptCid, computeRecipeHash, identityScopeForNoteKind } from './hash';
 import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
 import { validateTier1Frontmatter } from '../validation/validator';
 import {
@@ -50,6 +50,7 @@ import {
 	type HubNote,
 } from './enrich';
 import type { FacetMembership } from '../import/mapping/facets';
+import { normalizeMappingSetId, normalizePredicateModifierInput } from '../utils/mapping-provenance';
 
 // ============================================================================
 // Types
@@ -776,9 +777,31 @@ function buildNoteDataViaRender(
 
 	// 2. render() expects a SourceScope object — the row IS the scope (column
 	//    names map to template variables).
+	//
+	// Mapping-provenance defaults are normalized in exactly the same way
+	// generateFromRecipe does, and for the same reason: the bundled crosswalk
+	// recipes reference {mapping_set_id} and {predicate_modifier}, and render()
+	// throws on a variable it cannot resolve. Without this, importing a crosswalk
+	// source that predates those columns fails on EVERY row through the wizard,
+	// while the identical import succeeds through the recipe path. Supplying the
+	// empty default lets render omit the key entirely, which is the correct
+	// missing-value semantic for optional metadata.
+	//
+	// Scoped to crosswalk-edge recipes so nothing else gains fields it never had,
+	// and deliberately NOT fed into concept identity: see identityScopeForNoteKind.
+	const sourceScope = row as Record<string, unknown>;
+	const noteKind = recipe.target.layout.find((entry) => entry.mechanism === 'file')?.kind ?? 'concept';
+	const renderScope: Record<string, unknown> = noteKind === 'crosswalk-edge'
+		? {
+			...sourceScope,
+			mapping_set_id: normalizeMappingSetId(sourceScope.mapping_set_id),
+			predicate_modifier: normalizePredicateModifierInput(sourceScope.predicate_modifier),
+		}
+		: sourceScope;
+
 	let address;
 	try {
-		address = render(recipe, { curie, scope: row as Record<string, unknown> }, report);
+		address = render(recipe, { curie, scope: renderScope }, report);
 	} catch (err) {
 		if (err instanceof RenderError) {
 			throw new Error(`render() failed for row ${rowNum}: ${err.message}`);
@@ -846,7 +869,9 @@ function buildNoteDataViaRender(
 			sourceVersion: options.frameworkVersion ?? recipe.source?.version,
 			recipeId: provenanceRecipeId,
 			recipeHash,
-			conceptCid: computeConceptCid({ curie, scope: row as Record<string, unknown> }),
+			// Raw source scope on purpose: mapping-only defaults must never enter
+			// concept identity, or every concept's content hash shifts.
+			conceptCid: computeConceptCid({ curie, scope: sourceScope }),
 		},
 		PLUGIN_VERSION,
 	);
@@ -1750,8 +1775,22 @@ export async function generateFromRecipe(
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
 	// src/generation/hash.ts's doc comments for the exact field-set definition.
 	const recipeHash = computeRecipeHash(recipe.target);
+	// A recipe declares the note kind at its file leaf. Mapping-only render
+	// defaults must never widen concept or junction identity/source scopes.
+	const recipeNoteKind = recipe.target.layout.find((entry) => entry.mechanism === 'file')?.kind ?? 'concept';
 	// See generateNotes above: recipe declaration, not row output, decides ownership.
 	const declaredManagedKeys = computeDeclaredManagedKeys(recipe.target.also_emit?.frontmatter);
+	// Resolve existing notes by canonical identity before considering their current
+	// address. The index admits only notes with Crosswalker provenance, so a
+	// hand-written note elsewhere in the vault is never a relocation candidate.
+	const identityIndex = buildIdentityIndex(app);
+	const ambiguousCuries = new Set(identityIndex.collisions.map((collision) => collision.curie));
+	for (const collision of identityIndex.collisions) {
+		result.errors.push({
+			row: 0,
+			message: `Ambiguous identity ${collision.curie} claimed by: ${collision.paths.join(', ')}`,
+		});
+	}
 
 	debug?.info('generation', 'recipe-start', `generateFromRecipe: starting (${recipe.recipe})`, {
 		recipe: recipe.recipe,
@@ -1790,11 +1829,23 @@ export async function generateFromRecipe(
 		const rowNum = idx + 1;
 
 		try {
+			const sourceScope = row as Record<string, unknown>;
+			const scope: Record<string, unknown> = recipeNoteKind === 'crosswalk-edge'
+				? {
+					...sourceScope,
+					mapping_set_id: normalizeMappingSetId(sourceScope.mapping_set_id),
+					predicate_modifier: normalizePredicateModifierInput(sourceScope.predicate_modifier),
+				}
+				: sourceScope;
+
 			// 1. Build CURIE for this row
 			const localPart = options.curieLocalPart
-				? options.curieLocalPart(row, rowNum)
-				: defaultCurieLocalPart(row, rowNum);
+				? options.curieLocalPart(scope, rowNum)
+				: defaultCurieLocalPart(scope, rowNum);
 			const curie = `${curiePrefix}:${localPart}`;
+			// The index deliberately does not return an arbitrary winner for a
+			// collision. Refuse this row instead of making the duplicate permanent.
+			if (ambiguousCuries.has(curie)) return;
 
 			// 2. Render. The report collects per-row deviations (skipped folder
 			//    level, split/regex fallback) — the row still imports; the
@@ -1802,7 +1853,7 @@ export async function generateFromRecipe(
 			const renderReport: RenderReport = { notes: [] };
 			let address;
 			try {
-				address = render(recipe, { curie, scope: row as Record<string, unknown> }, renderReport);
+				address = render(recipe, { curie, scope }, renderReport);
 			} catch (err) {
 				if (err instanceof RenderError) {
 					result.errors.push({ row: rowNum, message: `render() failed: ${err.message}` });
@@ -1857,7 +1908,10 @@ export async function generateFromRecipe(
 					sourceVersion: options.sourceVersion ?? recipe.source?.version,
 					recipeId: recipe.recipe,
 					recipeHash,
-					conceptCid: computeConceptCid({ curie, scope: row as Record<string, unknown> }),
+					conceptCid: computeConceptCid({
+						curie,
+						scope: identityScopeForNoteKind(address.frontmatter.kind, sourceScope, scope),
+					}),
 				},
 				PLUGIN_VERSION,
 			);
@@ -1881,9 +1935,22 @@ export async function generateFromRecipe(
 			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND
 			//    (when enrichment is on) the folder-note-relocated path by curie —
 			//    see resolveWriteTarget's docstring (re-import identity, design §4).
-			const target = resolveWriteTarget(app, fullPath, curie, enrichmentEnabled);
+			const target = resolveWriteTarget(app, fullPath, curie, enrichmentEnabled, identityIndex);
 			const existingFile = target.existingFile;
 			const writePath = target.writePath;
+
+			// A move is part of replacement, never part of skip mode. Use Obsidian's
+			// rename API so links to the canonical note follow its new address.
+			if (existingFile instanceof TFile && target.moveFrom && options.overwriteMode !== 'skip') {
+				const parentPath = getParentPath(writePath);
+				if (parentPath && createFolders) await ensureFolderOnce(parentPath);
+				await app.fileManager.renameFile(existingFile, writePath);
+				(result.moved ??= []).push({ curie, from: target.moveFrom, to: writePath });
+				debug?.info('generation', 'identity-move', `Moved ${target.moveFrom} -> ${writePath}`, {
+					curie, from: target.moveFrom, to: writePath,
+				});
+			}
+
 			if (existingFile instanceof TFile) {
 				if (options.overwriteMode === 'skip') {
 					result.skipped.push(writePath);

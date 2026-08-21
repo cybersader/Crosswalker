@@ -20,6 +20,7 @@ import { facetTagColumns, buildParentPlacementPreview, toFolderNotePaths } from 
 import { BUILT_IN_PRESETS } from '../src/import/mapping/presets';
 import { findRecipeForOntologyName } from '../src/views/workspace-view-helpers';
 import { generateNotes, type GenerationOptions } from '../src/generation/generation-engine';
+import { render } from '../src/render';
 
 // A no-op DebugLog stub (the workbench only calls .info/.trace).
 const debug = {
@@ -120,6 +121,91 @@ describe('MappingWorkbench recipe assembly', () => {
 		// note body. As the PRIMARY body column it bridges with an empty heading
 		// (clean document body: H1 + prose, no '## description' section).
 		expect(wb.getLegacyBodyMappings()).toEqual([{ column: 'description', heading: '' }]);
+	});
+});
+
+describe('P2 stable parent identity pairing', () => {
+	const localRows = [
+		{ id: 'A1', parent_id: '', name: 'Root' },
+		{ id: 'A2', parent_id: 'A1', name: 'Child 2' },
+		{ id: 'A3', parent_id: 'A1', name: 'Child 3' },
+		{ id: 'A4', parent_id: 'A2', name: 'Child 4' },
+		{ id: 'A5', parent_id: 'A2', name: 'Child 5' },
+	];
+
+	function parentWorkbench(rows: Record<string, unknown>[], sourceOntology: string): MappingWorkbench {
+		const columns = Object.keys(rows[0]);
+		const parsedData: ParsedData = { columns, rows, rowCount: rows.length };
+		return new MappingWorkbench({
+			parsedData,
+			columnInfos: analyzeColumns(parsedData),
+			outputPath: 'Frameworks',
+			debug,
+			defaultPresetId: 'browsable-framework',
+			sourceOntology,
+			onChange: () => {},
+		});
+	}
+
+	it('pairs local parent IDs with the final link using the canonical ontology prefix', () => {
+		const wb = parentWorkbench(localRows, 'nist-mini');
+		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed;
+		expect(managed?.parent).toBe('[[{parent_id}]]');
+		expect(managed?.parent_curie).toBe('{parent_id|optional|curie-prefix(nist-mini)}');
+
+		const root = render({ recipe: 'p2-parent-test', source: { ontology: 'nist-mini' }, target: wb.buildFinalRegions() }, { curie: 'nist-mini:A1', scope: localRows[0] });
+		expect(root.frontmatter.parent).toBeUndefined();
+		expect(root.frontmatter.parent_curie).toBeUndefined();
+	});
+
+	it('uses raw CURIE identity without validating an unused ontology prefix', () => {
+		const rows = localRows.map((row) => ({
+			...row,
+			id: `x:${row.id}`,
+			parent_id: row.parent_id ? `x:${row.parent_id}` : '',
+		}));
+		const wb = parentWorkbench(rows, 'INVALID ONTOLOGY');
+		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed;
+		expect(managed?.parent_curie).toBe('{parent_id|optional}');
+	});
+
+	it('blocks prefix derivation for an invalid canonical ontology with the exact diagnostic', () => {
+		const wb = parentWorkbench(localRows, 'nist-mini');
+		expect(() => wb.buildFinalRegions('NIST.INVALID')).toThrow(
+			'Cannot derive parent_curie: recipe source.ontology must be a lowercase CURIE prefix (letters, digits, _ or -; first character must be a letter).',
+		);
+	});
+
+	it('does not attach automatic identity to a hand-made replacement parent link', () => {
+		const wb = parentWorkbench(localRows, 'nist-mini');
+		const parentLevel = wb.getMapping().mappings
+			.flatMap((mapping) => mapping.levels)
+			.find((level) => level.destinations.some((destination) => destination.primitive === 'link' && destination.key === 'parent'));
+		expect(parentLevel).toBeDefined();
+		parentLevel!.destinations = parentLevel!.destinations.map((destination) =>
+			destination.primitive === 'link' && destination.key === 'parent'
+				? { ...destination }
+				: destination,
+		);
+		const managed = wb.buildFinalRegions().also_emit?.frontmatter?.managed;
+		expect(managed?.parent).toBe('[[{parent_id}]]');
+		expect(managed?.parent_curie).toBeUndefined();
+	});
+
+	it('preserves an explicitly authored parent_curie template unchanged', () => {
+		const wb = parentWorkbench(localRows, 'nist-mini');
+		wb.getMapping().mappings.push({
+			levels: [{
+				level: 'explicit-parent-identity',
+				source: { column: 'id' },
+				filters: ['optional'],
+				destinations: [{ primitive: 'property', key: 'parent_curie' }],
+				naming: 'part',
+				missing: 'skip',
+				materialize: false,
+			}],
+		});
+		expect(wb.buildFinalRegions().also_emit?.frontmatter?.managed?.parent_curie).toBe('{id|optional}');
 	});
 });
 

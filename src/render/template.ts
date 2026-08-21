@@ -15,6 +15,7 @@
  */
 
 import type { SourceScope, RenderReport } from './types';
+import { isTier1CuriePrefix } from '../validation/validator';
 
 /** Context handed to filters so they can record deviations without throwing. */
 interface FilterCtx {
@@ -69,28 +70,31 @@ function evaluateExpression(
 	const parts = expr.split('|').map((s) => s.trim());
 	const varPath = parts[0];
 	const filters = parts.slice(1);
+	const optional = parseAndValidateLeadingOptional(filters, originalTemplate);
 
-	let value = resolvePath(varPath, scope, originalTemplate);
+	let value = resolvePath(varPath, scope, originalTemplate, optional);
 
 	const ctx: FilterCtx = { template: originalTemplate, report };
-	for (const filterExpr of filters) {
+	for (const filterExpr of optional ? filters.slice(1) : filters) {
 		value = applyFilter(filterExpr, value, ctx);
 	}
 
 	return value;
 }
 
-function resolvePath(path: string, scope: SourceScope, originalTemplate: string): unknown {
+function resolvePath(path: string, scope: SourceScope, originalTemplate: string, allowMissing: boolean): unknown {
 	const segments = path.split('.');
 	let cur: unknown = scope;
 
-	for (const seg of segments) {
+	for (let index = 0; index < segments.length; index++) {
+		const seg = segments[index];
 		if (cur == null || typeof cur !== 'object') {
 			throw new RenderError(
 				`Template variable "${path}" — segment "${seg}" hit non-object value while traversing in template "${originalTemplate}".`,
 			);
 		}
 		cur = (cur as Record<string, unknown>)[seg];
+		if ((cur === undefined || cur === null) && allowMissing && index === segments.length - 1) return '';
 	}
 
 	if (cur === undefined || cur === null) {
@@ -100,6 +104,26 @@ function resolvePath(path: string, scope: SourceScope, originalTemplate: string)
 	}
 
 	return cur;
+}
+
+function parseAndValidateLeadingOptional(filters: string[], originalTemplate: string): boolean {
+	const optionalIndexes: number[] = [];
+	for (let i = 0; i < filters.length; i++) {
+		const match = filters[i].match(/^([a-z][a-z0-9_-]*)(?:\(([^)]*)\))?$/);
+		if (match?.[1] === 'optional') {
+			if (match[2] !== undefined) {
+				throw new RenderError(`optional filter accepts no argument in template "${originalTemplate}".`);
+			}
+			optionalIndexes.push(i);
+		}
+	}
+	if (optionalIndexes.length > 1) {
+		throw new RenderError(`optional filter may appear only once in template "${originalTemplate}".`);
+	}
+	if (optionalIndexes.length === 1 && optionalIndexes[0] !== 0) {
+		throw new RenderError(`optional filter must be first in template "${originalTemplate}".`);
+	}
+	return optionalIndexes.length === 1;
 }
 
 const FILTERS: Record<string, (v: unknown, arg?: string, ctx?: FilterCtx) => unknown> = {
@@ -145,6 +169,15 @@ const FILTERS: Record<string, (v: unknown, arg?: string, ctx?: FilterCtx) => unk
 		return s.length > n ? s.slice(0, n) : s;
 	},
 	trim: (v) => String(v).trim(),
+	'curie-prefix': (value, arg) => {
+		if (arg === undefined || !isTier1CuriePrefix(arg)) {
+			throw new RenderError(
+				`curie-prefix filter requires a lowercase CURIE prefix, e.g. {var|curie-prefix(nist)}.`,
+			);
+		}
+		const local = String(value).trim();
+		return local === '' ? '' : `${arg}:${local}`;
+	},
 	number: (v) => {
 		const value = typeof v === 'number' ? v : Number(String(v).trim());
 		if (!Number.isFinite(value)) {
@@ -220,7 +253,7 @@ function applyFilter(filterExpr: string, value: unknown, ctx: FilterCtx): unknow
 	const fn = FILTERS[name];
 	if (!fn) {
 		throw new RenderError(
-			`Unknown filter "${name}" in template "${ctx.template}". Allowed filters: ${Object.keys(FILTERS).join(', ')}.`,
+			`Unknown filter "${name}" in template "${ctx.template}". Allowed filters: optional, ${Object.keys(FILTERS).join(', ')}.`,
 		);
 	}
 

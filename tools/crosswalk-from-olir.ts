@@ -221,6 +221,7 @@ function main(): void {
 
 	const olirRows = readOlir(resolve(a.source), a.sheets, a.headerRow);
 	const sourceHash = 'sha256-' + createHash('sha256').update(readFileSync(resolve(a.source))).digest('hex');
+	const mappingSetId = `urn:crosswalker:mapping-set:${a.subjectPrefix}:${a.objectPrefix}:${sourceHash}`;
 
 	if (a.clean && existsSync(a.target)) rmSync(a.target, { recursive: true, force: true });
 	mkdirSync(a.target, { recursive: true });
@@ -255,6 +256,8 @@ function main(): void {
 			mapping_justification: sssom.mapping_justification,
 			mapping_provider: a.provider,
 			match_confidence: sssom.confidence ?? '',
+			mapping_set_id: mappingSetId,
+			predicate_modifier: '',
 		};
 		const curie = `xwalk:${slug(sssom.subject_id)}--${slug(sssom.object_id)}`;
 		const address = render(recipe, { curie, scope });
@@ -302,7 +305,7 @@ function main(): void {
 		wrote++;
 	}
 
-	if (a.sssomOut) writeSssomTsv(sssomRows, { subjectPrefix: a.subjectPrefix, objectPrefix: a.objectPrefix, provider: a.provider, deterministic: a.deterministic }, resolve(a.sssomOut));
+	if (a.sssomOut) writeSssomTsv(sssomRows, { subjectPrefix: a.subjectPrefix, objectPrefix: a.objectPrefix, provider: a.provider, deterministic: a.deterministic, mappingSetId }, resolve(a.sssomOut));
 
 	console.log(`  source:   ${a.source.split('/').pop()}`);
 	console.log(`  edges:    ${a.subjectPrefix} → ${a.objectPrefix}`);

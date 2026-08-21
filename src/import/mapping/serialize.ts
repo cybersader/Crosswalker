@@ -155,6 +155,59 @@ interface OrderedEmission<T> {
 	sequence: number;
 }
 
+const DETECTION_BACKED_LINK = Symbol('crosswalker-detection-backed-link');
+
+export function markDetectionBackedLink<T extends Destination>(destination: T): T {
+	Object.defineProperty(destination, DETECTION_BACKED_LINK, { value: true });
+	return destination;
+}
+
+function isDetectionBackedLink(destination: Destination): boolean {
+	return (destination as Destination & { [DETECTION_BACKED_LINK]?: boolean })[DETECTION_BACKED_LINK] === true;
+}
+
+export interface ScalarLinkEmission {
+	key: string;
+	template: string;
+	sourceColumns: string[];
+	predicate?: string;
+	detectionBacked: boolean;
+	mappingIndex: number;
+	levelIndex: number;
+	destinationIndex: number;
+}
+
+export function collectScalarLinkEmissions(mapping: ImportMapping): ScalarLinkEmission[] {
+	const emissions: ScalarLinkEmission[] = [];
+	for (let mappingIndex = 0; mappingIndex < mapping.mappings.length; mappingIndex++) {
+		const structure = mapping.mappings[mappingIndex];
+		for (let levelIndex = 0; levelIndex < structure.levels.length; levelIndex++) {
+			const level = structure.levels[levelIndex];
+			for (let destinationIndex = 0; destinationIndex < level.destinations.length; destinationIndex++) {
+				const destination = level.destinations[destinationIndex];
+				if (destination.primitive !== 'link' || destination.list === true) continue;
+				emissions.push({
+					key: destination.key,
+					template: scalarLinkTemplate(level, destination),
+					sourceColumns: toSourceRefs(level.source).flatMap((ref) =>
+						isConstantRef(ref) ? [] : [ref.column],
+					),
+					...(destination.predicate ? { predicate: destination.predicate } : {}),
+					detectionBacked: isDetectionBackedLink(destination),
+					mappingIndex,
+					levelIndex,
+					destinationIndex,
+				});
+			}
+		}
+	}
+	return emissions;
+}
+
+function scalarLinkTemplate(rule: LevelRule, destination: Extract<Destination, { primitive: 'link' }>): string {
+	return `[[${buildName(rule.source, rule.delimiter, rule.join, rule.filters)}]]`;
+}
+
 export function toRecipeRegions(mapping: ImportMapping): RecipeRegions {
 	assertSingleStructural(mapping);
 	const layout: LayoutEntry[] = [];
@@ -259,7 +312,7 @@ function emitLevel(
 						...(dest.split && dest.split.length > 0 ? { split: [...dest.split] } : {}),
 					};
 				} else {
-					managed[dest.key] = `[[${name}]]`;
+					managed[dest.key] = scalarLinkTemplate(rule, dest);
 				}
 				break;
 			case 'alias':

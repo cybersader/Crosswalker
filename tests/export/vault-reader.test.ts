@@ -54,6 +54,7 @@ describe('vault-reader — readVaultTree over hand-crafted notes', () => {
 				aliases: ['AC-2'],
 				tags: ['framework/nist/ac-2'],
 				parent: '[[Frameworks/NIST/AC]]',
+				parent_curie: 'nist:AC',
 				children: ['[[AC-2(1)]]'],
 				control_family: 'Access Control',
 			}),
@@ -67,6 +68,8 @@ describe('vault-reader — readVaultTree over hand-crafted notes', () => {
 				subject_id: 'nist:AC-2',
 				predicate_id: 'is_equivalent_to',
 				object_id: 'iso27001:A.9.2.1',
+				mapping_set_id: '  Set-A  ',
+				predicate_modifier: 'NOT',
 				match_type: 'close',
 				match_confidence: 0.9,
 				mapping_justification: 'semapv:ManualMappingCuration',
@@ -80,8 +83,10 @@ describe('vault-reader — readVaultTree over hand-crafted notes', () => {
 				curie: 'cwk:jn-1',
 				kind: 'junction-note',
 				subject: '[[Frameworks/NIST/AC-2]]',
+				subject_curie: 'nist:AC-2',
 				predicate: 'covers',
 				object: '[[Evidence/MFA-Policy]]',
+				object_curie: 'org:mfa-policy',
 				coverage: 'partial',
 				status: 'approved',
 				confidence: 0.85,
@@ -112,6 +117,7 @@ describe('vault-reader — readVaultTree over hand-crafted notes', () => {
 		expect(concept.aliases).toEqual(['AC-2']);
 		expect(concept.tags).toEqual(['framework/nist/ac-2']);
 		expect(concept.parent).toBe('[[Frameworks/NIST/AC]]');
+		expect(concept.parent_curie).toBe('nist:AC');
 		expect(concept.children).toEqual(['[[AC-2(1)]]']);
 		expect(concept.frontmatter.control_family).toBe('Access Control');
 
@@ -122,11 +128,15 @@ describe('vault-reader — readVaultTree over hand-crafted notes', () => {
 		expect(edge.match_type).toBe('close');
 		expect(edge.match_confidence).toBe(0.9);
 		expect(edge.mapping_provider).toBe('NIST OLIR');
+		expect(edge.mapping_set_id).toBe('Set-A');
+		expect(edge.predicate_modifier).toBe('NOT');
 
 		const jn = tree.junctionNotes[0];
 		expect(jn.subject).toBe('[[Frameworks/NIST/AC-2]]');
+		expect(jn.subject_curie).toBe('nist:AC-2');
 		expect(jn.predicate).toBe('covers');
 		expect(jn.object).toBe('[[Evidence/MFA-Policy]]');
+		expect(jn.object_curie).toBe('org:mfa-policy');
 		expect(jn.coverage).toBe('partial');
 		expect(jn.confidence).toBe(0.85);
 
@@ -145,6 +155,17 @@ describe('vault-reader — readVaultTree over hand-crafted notes', () => {
 		expect(tree.concepts).toEqual([]);
 		expect(tree.skipped).toHaveLength(2);
 		expect(tree.skipped.map((s) => s.path).sort()).toEqual(['Notes/no-curie.md', 'Notes/no-frontmatter.md']);
+	});
+
+	it('skips a crosswalk note with malformed explicit negation instead of exposing it as positive', async () => {
+		const { app, written } = makeMockApp();
+		written.set('Mappings/bad.md', conceptNote({
+			curie: 'xwalk:bad', kind: 'crosswalk-edge', subject_id: 'x:A',
+			predicate_id: 'is_equivalent_to', predicate_modifier: '', object_id: 'x:B',
+		}));
+		const tree = await readVaultTree(app, 'Mappings');
+		expect(tree.crosswalkEdges).toEqual([]);
+		expect(tree.skipped).toEqual([{ path: 'Mappings/bad.md', reason: 'stored predicate_modifier must be absent or exact uppercase NOT' }]);
 	});
 
 	it('scopes to the given root folder only', async () => {

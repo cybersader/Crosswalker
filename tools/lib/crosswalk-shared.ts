@@ -8,6 +8,7 @@
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { normalizeMappingSetId } from '../../src/utils/mapping-provenance';
 
 export const SPEC_VERSION = 'https://crosswalker.dev/spec/tier1.schema.json';
 export const DETERMINISTIC_TIMESTAMP = '2026-05-04T00:00:00.000Z';
@@ -53,6 +54,7 @@ export interface SssomRow {
 	subject_id: string;
 	predicate_id: string; // SKOS (standard SSSOM)
 	object_id: string;
+	predicate_modifier?: 'NOT';
 	mapping_justification: string;
 	confidence?: number;
 }
@@ -99,25 +101,28 @@ export interface SssomTsvMeta {
 	objectPrefix: string;
 	provider: string;
 	deterministic: boolean;
+	mappingSetId: string;
 }
 
 export function writeSssomTsv(rows: SssomRow[], meta: SssomTsvMeta, outPath: string): void {
 	const date = meta.deterministic ? '2026-05-04' : new Date().toISOString().slice(0, 10);
+	const mappingSetId = normalizeMappingSetId(meta.mappingSetId);
+	if (!mappingSetId) throw new Error('SSSOM mappingSetId must be non-empty');
 	const header = [
 		'# curie_map:',
 		`#   ${meta.subjectPrefix}: "https://crosswalker.dev/ontology/${meta.subjectPrefix}/"`,
 		`#   ${meta.objectPrefix}: "https://crosswalker.dev/ontology/${meta.objectPrefix}/"`,
 		'#   skos: "http://www.w3.org/2004/02/skos/core#"',
 		'#   semapv: "https://w3id.org/semapv/vocab/"',
-		`# mapping_set_id: "https://crosswalker.dev/crosswalks/${meta.subjectPrefix}-to-${meta.objectPrefix}"`,
+		`# mapping_set_id: "${mappingSetId}"`,
 		`# subject_source: "${meta.subjectPrefix}"`,
 		`# object_source: "${meta.objectPrefix}"`,
 		`# mapping_provider: "${meta.provider}"`,
 		`# mapping_date: "${date}"`,
 	];
-	const cols = ['subject_id', 'predicate_id', 'object_id', 'mapping_justification', 'confidence'];
+	const cols = ['subject_id', 'predicate_id', 'object_id', 'predicate_modifier', 'mapping_justification', 'confidence'];
 	const body = rows.map((r) =>
-		[r.subject_id, r.predicate_id, r.object_id, r.mapping_justification, r.confidence ?? '']
+		[r.subject_id, r.predicate_id, r.object_id, r.predicate_modifier ?? '', r.mapping_justification, r.confidence ?? '']
 			.join('\t'),
 	);
 	mkdirSync(resolve(outPath, '..'), { recursive: true });

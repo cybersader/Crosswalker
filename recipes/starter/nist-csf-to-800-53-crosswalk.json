@@ -27,6 +27,8 @@
           "subject_id": "{subject_id}",
           "predicate_id": "{predicate_id}",
           "object_id": "{object_id}",
+          "mapping_set_id": "{mapping_set_id}",
+          "predicate_modifier": "{predicate_modifier}",
           "match_type": "{match_type}",
           "mapping_justification": "{mapping_justification}",
           "mapping_provider": "{mapping_provider}"

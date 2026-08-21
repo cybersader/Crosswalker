@@ -203,6 +203,7 @@ function main() {
 	for (const spec of a.melt) {
 		const col = normKey(spec.column);
 		const objPrefix = spec.objectPrefix;
+		const mappingSetId = `urn:crosswalker:mapping-set:${a.subjectPrefix}:${objPrefix}:${sourceHash}`;
 		const target = resolve(a.targetRoot, `${a.subjectPrefix}-to-${objPrefix}`);
 		if (a.clean && existsSync(target)) rmSync(target, { recursive: true });
 		mkdirSync(target, { recursive: true });
@@ -257,6 +258,8 @@ function main() {
 					mapping_justification: sssom.mapping_justification,
 					mapping_provider: a.provider,
 					match_confidence: '',
+					mapping_set_id: mappingSetId,
+					predicate_modifier: '',
 				};
 				const curie = `xwalk:${slug(subject_id)}--${slug(object_id)}`;
 				const address = render(recipe, { curie, scope });
@@ -298,7 +301,7 @@ function main() {
 
 		writeSssomTsv(
 			sssomRows,
-			{ subjectPrefix: a.subjectPrefix, objectPrefix: objPrefix, provider: a.provider, deterministic: a.deterministic },
+			{ subjectPrefix: a.subjectPrefix, objectPrefix: objPrefix, provider: a.provider, deterministic: a.deterministic, mappingSetId },
 			resolve(target, `_${a.subjectPrefix}-to-${objPrefix}.sssom.tsv`),
 		);
 		const inv = invalid ? ` · invalid ${invalid} (NOT written)` : '';

@@ -27,6 +27,27 @@ import tier1Schema from '../../spec/tier1.schema.json';
 import recipeSchema from '../../spec/recipe.schema.json';
 import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
 
+const tier1CuriePattern = (tier1Schema as { $defs?: { curie?: { pattern?: unknown } } }).$defs?.curie?.pattern;
+if (typeof tier1CuriePattern !== 'string' || tier1CuriePattern.length === 0) {
+	throw new Error('spec/tier1.schema.json is malformed: $defs.curie.pattern must be a non-empty string');
+}
+const TIER1_CURIE_RE = new RegExp(tier1CuriePattern);
+const TIER1_CURIE_PREFIX_RE = /^[a-z][a-z0-9_-]*$/;
+
+export function extractTier1Curie(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	const trimmed = value.trim();
+	return TIER1_CURIE_RE.test(trimmed) ? trimmed : null;
+}
+
+export function isTier1Curie(value: unknown): value is string {
+	return extractTier1Curie(value) !== null;
+}
+
+export function isTier1CuriePrefix(value: unknown): value is string {
+	return typeof value === 'string' && TIER1_CURIE_PREFIX_RE.test(value);
+}
+
 /** Validation result returned to call sites. */
 export interface ValidationResult {
 	valid: boolean;
