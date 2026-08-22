@@ -13,7 +13,7 @@ tags: [schema, foundation, v0-1, architecture]
 
 The machine-readable contracts and canonical SQL remain authoritative. Sections §3 and §7 below summarize the shipped shapes. Historical TypeScript/YAML sketches are labeled as history and must not be used as implementation contracts.
 
-The 2026-08-21 additive contract changes close the earlier P2/P3 gaps and add durable import ownership: explicit hierarchy/endpoint identities, mapping-set provenance, `predicate_modifier: NOT`, and `_crosswalker.import_set` now validate and project. Source ordering remains a separate open P1 question in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/).
+The 2026-08-21 additive contract changes close the earlier P2/P3 gaps and add durable import ownership: explicit hierarchy/endpoint identities, mapping-set provenance, `predicate_modifier: NOT`, and `_crosswalker.import_set` now validate and project. Import sets may keep endpoint-derived assertion identities or mint set-qualified identities for coexisting crosswalk releases. Source ordering remains a separate open P1 question in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/).
 :::
 
 ## §1 Why this page exists
@@ -126,8 +126,16 @@ Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schem
 | `produced_at` | Yes | ISO 8601 production timestamp |
 | `producer` | No | Producer name and version |
 | `recipe` | No | Recipe identifier and content hash used for this output |
-| `import_set` | No | Durable ownership stamp: `id` matches `^iset-[a-z0-9]{6}$`; `scheme` is fixed at mint. The closed scheme enum currently has exactly `endpoint-v1` (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set.properties.scheme.enum`) |
+| `import_set` | No | Durable ownership stamp: `id` matches `^iset-[a-z0-9]{6}$`; `scheme` is fixed at mint. The closed enum is `endpoint-v1 | set-qualified-v1` (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set.properties.scheme.enum`) |
 | `concept_cid` | No | Content identifier for the declared concept-identity scope; layout and mapping-only defaults do not enter a concept's scope |
+
+
+Crosswalk assertion identity (the stable name of one mapping note) follows the owning set's fixed scheme. Both values and forms below are defined by `spec/tier1.schema.json § $defs.provenance_block.properties.import_set.properties.scheme`:
+
+- `endpoint-v1`: `cw-<sanitized-subject>-<sanitized-object>`. This is the original form and remains byte-identical on refresh.
+- `set-qualified-v1`: `cwset-<import-set-id>-<sanitized-subject>-<sanitized-object>`. The `cwset-` marker makes the form visibly distinct; the minted set id lets equal endpoint pairs in different import sets coexist. Row order and mapping-set metadata do not enter either form.
+
+A refresh always reuses the stored scheme. Choosing coexistence mints a new import set whose assertions use `set-qualified-v1`; no existing note is migrated, moved, or re-identified. See the [import-set ownership decision](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/#how-this-dissolves-release-isolation-rather-than-mitigating-it).
 
 ### Concept-note fields
 

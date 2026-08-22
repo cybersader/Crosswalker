@@ -153,6 +153,18 @@ function tally(counts: Map<string, number>, value: string | undefined): void {
 }
 
 /**
+ * The import set that owns this note, read from its `_crosswalker` provenance stamp.
+ * Returns undefined for notes written before import sets shipped — those are treated
+ * as one unlabelled group rather than as a distinct release, so an all-legacy export
+ * still works unchanged.
+ */
+function readImportSetId(fm: Record<string, unknown>): string | undefined {
+	const provenance = fm._crosswalker as { import_set?: { id?: unknown } } | undefined;
+	const id = provenance?.import_set?.id;
+	return typeof id === 'string' && id !== '' ? id : undefined;
+}
+
+/**
  * Serialize a set of crosswalk-edge rows (already read from the vault, or
  * hand-assembled for a test) into an SSSOM TSV string. Pure — no vault I/O.
  * Rows are re-sorted by path first so output is deterministic regardless of
@@ -166,6 +178,8 @@ export function crosswalkEdgesToSssomTsv(
 	const rows: Record<string, string>[] = [];
 	const providerCounts = new Map<string, number>();
 	const setIdCounts = new Map<string, number>();
+	/** Distinct import sets seen across the exported rows; >1 means coexisting releases. */
+	const importSetCounts = new Map<string, number>();
 	const subjectSourceCounts = new Map<string, number>();
 	const objectSourceCounts = new Map<string, number>();
 
@@ -203,10 +217,29 @@ export function crosswalkEdgesToSssomTsv(
 		});
 
 		tally(providerCounts, edge.mapping_provider);
+		tally(importSetCounts, readImportSetId(fm));
 		const mappingSetId = normalizeMappingSetId(edge.mapping_set_id ?? fm.mapping_set_id);
 		tally(setIdCounts, mappingSetId || undefined);
 		tally(subjectSourceCounts, asOptionalString(fm.source_framework) ?? curiePrefix(edge.subject_id));
 		tally(objectSourceCounts, asOptionalString(fm.target_framework) ?? curiePrefix(edge.object_id));
+	}
+
+	// Refuse to conflate coexisting releases. Release isolation lets two versions of
+	// the same framework live side by side in one folder tree; exporting both into a
+	// single file stamps one header over rows that came from two different releases,
+	// producing an artifact that misrepresents its own contents while looking correct.
+	// The header would silently take whichever release contributed more rows.
+	//
+	// Keyed on the import set, not mapping_set_id: mapping_set_id describes the source
+	// labelling and one release can legitimately span several, so guarding on it would
+	// refuse valid exports. Two import sets are two releases by definition.
+	const distinctImportSets = [...importSetCounts.keys()].sort();
+	if (distinctImportSets.length > 1) {
+		throw new Error(
+			`Refusing to export ${distinctImportSets.length} coexisting releases into one SSSOM `
+			+ `file (import sets: ${distinctImportSets.join(', ')}). Each release is a separate `
+			+ `mapping set. Export one at a time by scoping to a single import set.`,
+		);
 	}
 
 	const subjectSource = options.subjectSource ?? mode(subjectSourceCounts);

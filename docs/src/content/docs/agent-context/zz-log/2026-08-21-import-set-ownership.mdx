@@ -79,10 +79,20 @@ Costs: a mint step in both import paths; the stamp in `buildProvenance`; the ind
 4. **Ch 43** — the semantic-diff loop gets its container: diff happens *within* a set across refreshes
 
 
-## 6. What shipped
+## 6. Prediction tested: no migration
 
-- Every newly emitted concept, junction note, crosswalk edge, facet hub, and synthetic level hub carries `_crosswalker.import_set.id` plus the schema-pinned `endpoint-v1` scheme. Legacy unstamped notes remain valid and outside every set.
+| Decision prediction | Sprint result |
+|---|---|
+| Fix the identity scheme per import set, then mint a new set when releases must coexist | Held. Existing `endpoint-v1` identities and paths remain byte-identical; a coexisting release receives `set-qualified-v1` identities from birth. |
+| No existing note needs migration | Held. The sprint added no migration operation: no old assertion is renamed, moved, deleted, or re-identified merely because the second scheme exists. Refresh still uses the selected set's stored scheme. |
+
+Nothing in the prediction proved wrong. The one accepted pre-alpha limitation is in selection, not identity: when several sets exist, the refresh picker identifies them only by random set id, note count, and scheme, without a source or release label.
+
+## 7. What shipped
+
+- Every newly emitted concept, junction note, crosswalk edge, facet hub, and synthetic level hub carries `_crosswalker.import_set.id` plus a schema-pinned scheme. Legacy unstamped notes remain valid and outside every set. Default imports keep `endpoint-v1`; a deliberately coexisting crosswalk release mints a new `set-qualified-v1` set whose assertion local-parts are `cwset-<import-set-id>-<sanitized-subject>-<sanitized-object>`.
 - Wizard and headless imports share destination discovery: zero sets mints, one defaults to refresh, and multiple sets block until a set or new import is selected. Explicit headless ids may refresh an empty destination.
+- The SSSOM preview offers keep-both without a new modal. Refresh reuses the existing set's fixed scheme; keep-both mints a set-qualified set, so no existing identity changes and no migration exists.
 - Orphan reporting is now import-set scoped on both generation paths, including enrichment runs. It remains report-only and fails closed on incomplete or errored runs; global identity reconciliation remains unchanged.
 - Tier 2 advances to `tier2-sqlite-v4` and projects nullable `import_set_id` on concepts, mappings, and junction notes. Concept CIDs remain independent of ownership provenance.
 

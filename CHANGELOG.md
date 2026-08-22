@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Two releases of one crosswalk can coexist without migration (2026-08-21)
+
+- **Two releases of the same framework crosswalk can now live in one vault at once.** The choice appears in the existing SSSOM import preview; no extra modal was added.
+
+| Choice | What it does |
+|---|---|
+| Refresh | Updates the selected import set (the notes owned by one import) using its existing identity scheme. Existing assertion identities and paths stay unchanged. |
+| Keep both as a new set | Mints a separate import set whose assertions use `set-qualified-v1`, so equal endpoint pairs from the two releases become different notes. |
+
+- **Adopting this requires no migration of existing notes.** Existing `endpoint-v1` sets keep the exact `cw-<subject>-<object>` assertion identities they already have. A coexisting set is born with `cwset-<import-set-id>-<sanitized-subject>-<sanitized-object>` identities; no old note is migrated, moved, or re-identified.
+- **Validation fails closed.** Discovery accepts every known scheme, rejects unknown schemes and mixed schemes within one set, and prevents refresh from changing a set's stored scheme. Row reordering does not change set-qualified identities.
+- **Exporting refuses to merge two coexisting releases into one file.** Because a release is a separate mapping set, exporting a folder that holds two of them would stamp one header over rows from both and silently misrepresent the file. The export now stops and names the import sets involved instead of guessing.
+- **The refresh picker identifies a release by what it owns.** A minted set id is deliberately meaningless, which is right for identity but useless for choosing which release to overwrite, so the picker also shows the note count and the folder the notes live in.
+- **Accepted pre-alpha limitation:** the picker still has no human-assigned source or release label (for example "NIST 800-53 r5"), so distinguishing two releases of the same framework in the same folder currently relies on note counts.
+
 ### Import-set ownership and orphan reporting everywhere (2026-08-21)
 
 - **Crosswalker now records which import owns each note; orphan reporting works everywhere.** Every new concept, junction note, crosswalk edge, facet hub, and synthetic level hub carries one minted `_crosswalker.import_set` id plus its fixed `endpoint-v1` identity scheme. The id is deliberately meaningless and is never derived from recipe, source, destination, or note identity.
@@ -22,7 +37,6 @@ The 0.1 design phase concluded 2026-05-04 and implementation began the same day.
 
 - **Relationships now survive a note rename because identity is stored separately from the clickable link.** Concept notes can carry `parent_curie`; junction notes can carry `subject_curie` and `object_curie`. A CURIE (a compact stable identifier) says what the endpoint is, while `parent`, `subject`, and `object` remain Obsidian wikilinks that say where the note currently lives. Projection uses only the explicit identity fields and never guesses identity from wikilink text.
 - **Crosswalk assertions now record which published mapping collection they came from.** `mapping_set_id` is valid Tier 1 data, is stored in the query index, and is generated deterministically when a source omits it.
-- **Release isolation is deliberately NOT shipped yet, and that is a change from an earlier plan.** Letting two releases of one crosswalk coexist requires giving each assertion a new identity derived from its mapping set. That would change the identity of every crosswalk note already written — and a re-import can only follow a note whose identity is *unchanged*. The result would be new notes created beside the old ones, with nothing saying so. Assertion identity therefore stays endpoint-derived, and all mapping sets share one destination folder, exactly as before. The cost, stated plainly: two assertions with the same endpoints still collapse onto one note. Per-import ownership is now modelled by import sets (the section above), but set-qualified identities and release isolation remain explicitly later work.
 - **Explicitly negated mappings remain visible without becoming graph edges.** `predicate_modifier: NOT` is now valid Tier 1 data and is stored in Tier 2. Direct crosswalk queries return the negated assertion with its mapping-set provenance; closure and inverse/symmetric edge expansion exclude it in both traversal directions. STRM export skips negated assertions because that format cannot represent them without changing their meaning.
 - **The derived query index now carries the same identity and release facts as Markdown.** Tier 2 advances to `tier2-sqlite-v3`, stores mapping-set and modifier provenance, indexes explicit junction endpoints, and deterministically reconciles ontology versions. Vault, SSSOM, and STRM exporters were updated; canonical NIST-mini fixtures now include `parent_curie`.
 - **Recipe templates can omit absent identity values safely.** First-position `optional` suppresses a missing or null variable, while `curie-prefix(prefix)` prefixes a present local identifier and leaves an empty value empty. Existing recipes remain valid.
