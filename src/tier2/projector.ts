@@ -229,6 +229,17 @@ export async function projectFromTier1(
 
 	result.durationMs = Date.now() - startMs;
 
+	// Stamp when the index was last rebuilt and how completely. A coverage
+	// report that cannot say how old its index is will eventually present a
+	// stale posture as the current one, which is the same silent-wrong-answer
+	// class as the closure-cache and empty-sidecar bugs. `partial` is recorded
+	// distinctly because a partial pass may legitimately not have seen every
+	// note, so a reader must not treat it as a full-vault statement.
+	recordProjectionStamp(db, {
+		mode: fullProjection ? 'full' : 'partial',
+		success: result.success,
+	});
+
 	options.debug?.info('tier2', 'projection-complete', 'projectFromTier1: complete', {
 		success: result.success,
 		counts: result.counts,
@@ -754,4 +765,81 @@ function numberOrNull(v: unknown): number | null {
 	if (v === undefined || v === null || v === '') return null;
 	const n = Number(v);
 	return Number.isFinite(n) ? n : null;
+}
+
+/** Keys written by `recordProjectionStamp`, read by `readProjectionStatus`. */
+const PROJECTION_STAMP_KEYS = {
+	at: 'last_projected_at',
+	mode: 'last_projection_mode',
+	ok: 'last_projection_success',
+} as const;
+
+/**
+ * Record when this projection ran, how complete it was, and whether it
+ * succeeded. Written to `schema_meta` rather than a new table because it is
+ * exactly three singleton facts about the index as a whole.
+ *
+ * Best-effort by design: failing to write a status stamp must never fail a
+ * projection that otherwise succeeded. A missing stamp is reported honestly as
+ * "unknown" downstream, which is the correct thing for a reader to see.
+ */
+function recordProjectionStamp(
+	db: any,
+	stamp: { mode: 'full' | 'partial'; success: boolean },
+): void {
+	try {
+		const rows: Array<[string, string]> = [
+			[PROJECTION_STAMP_KEYS.at, new Date().toISOString()],
+			[PROJECTION_STAMP_KEYS.mode, stamp.mode],
+			[PROJECTION_STAMP_KEYS.ok, stamp.success ? 'true' : 'false'],
+		];
+		for (const [key, value] of rows) {
+			db.exec({
+				sql: 'INSERT OR REPLACE INTO schema_meta(key, value) VALUES ($key, $value)',
+				bind: { $key: key, $value: value },
+			});
+		}
+	} catch {
+		// Intentionally swallowed — see the doc comment above.
+	}
+}
+
+/** What the index can say about its own freshness. */
+export interface ProjectionStatus {
+	/** ISO timestamp of the last projection, or null when never stamped. */
+	lastProjectedAt: string | null;
+	/** Whether that pass covered the whole vault. */
+	mode: 'full' | 'partial' | 'unknown';
+	/** Whether that pass completed without per-note errors. */
+	succeeded: boolean | null;
+}
+
+/**
+ * Read the projection stamp. Every field degrades to an explicit unknown
+ * rather than a plausible default, because a report claiming a freshness it
+ * cannot substantiate is worse than one admitting it does not know.
+ */
+export function readProjectionStatus(db: any): ProjectionStatus {
+	const read = (key: string): string | null => {
+		try {
+			const rows = db.exec({
+				sql: 'SELECT value FROM schema_meta WHERE key = $key LIMIT 1',
+				bind: { $key: key },
+				rowMode: 'array',
+				returnValue: 'resultRows',
+			}) as unknown[][];
+			const value = rows?.[0]?.[0];
+			return value === undefined || value === null ? null : String(value);
+		} catch {
+			return null;
+		}
+	};
+
+	const mode = read(PROJECTION_STAMP_KEYS.mode);
+	const ok = read(PROJECTION_STAMP_KEYS.ok);
+	return {
+		lastProjectedAt: read(PROJECTION_STAMP_KEYS.at),
+		mode: mode === 'full' || mode === 'partial' ? mode : 'unknown',
+		succeeded: ok === null ? null : ok === 'true',
+	};
 }
