@@ -296,11 +296,23 @@ Before committing, run the matching commands:
 
 | Files changed | Command |
 |---|---|
-| Any files | `bun run check:personal-data` |
+| Any files | **all five Static Checks gates** (see below) |
 | `src/**` | `bun run lint` + `bun run test` |
-| `docs/**` (any `.mdx`) | `cd docs && bun run build` |
+| `docs/**` (any `.mdx`) | the five gates. A full `cd docs && bun run build` is the expensive confirmation, and CI runs it authoritatively on every push |
 | `tools/fixtures/synthetic/**` (CSV changes) | `bun run fixtures` |
 | `spec/**` | `bun run fixtures` (regenerate) + verify `bun run build` |
+
+**Run all five, not a subset.** The `Static Checks` CI workflow runs exactly these, and a partial local pass reads as a green light while CI still fails:
+
+```
+bun run check:personal-data   # no paths, usernames, emails, secrets, AI attribution
+bun run check:mdx             # MDX parses
+bun run check:frontmatter     # required frontmatter fields present and well-formed
+bun run check:not-content     # inline HTML/SVG diagrams carry class="not-content"
+bun run check:log-labels      # zz-log sidebar labels lead with "MM-DD · " from the filename
+```
+
+They cost a few seconds combined. Running three of five is how a docs publish failed CI on 2026-08-21 for a sidebar label.
 
 ### Why this lives here (the design rule)
 
