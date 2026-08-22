@@ -175,8 +175,13 @@ describe('DebugLog — span helper', () => {
 	it('span() emits start + end events with duration_ms', async () => {
 		const state: MockVaultState = { lines: [], files: new Map() };
 		const d = new DebugLog(createMockApp(state), true);
+		// Sleep well above the asserted floor. A 10ms sleep asserted at >=10ms is
+		// flaky: setTimeout may fire a hair early and the duration is measured on a
+		// millisecond-resolution clock, so it lands on 9 often enough to fail a
+		// gate run for no real reason. The point is that duration_ms reflects the
+		// wrapped work's elapsed time, not that it equals the timer exactly.
 		await d.span('gen', 'render-row', async () => {
-			await new Promise((r) => setTimeout(r, 10));
+			await new Promise((r) => setTimeout(r, 30));
 		}, { row: 5 });
 		await flushQueue(d);
 		const events = parseLines(state.lines);
