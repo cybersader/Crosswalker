@@ -86,7 +86,18 @@ Costs: a mint step in both import paths; the stamp in `buildProvenance`; the ind
 | Fix the identity scheme per import set, then mint a new set when releases must coexist | Held. Existing `endpoint-v1` identities and paths remain byte-identical; a coexisting release receives `set-qualified-v1` identities from birth. |
 | No existing note needs migration | Held. The sprint added no migration operation: no old assertion is renamed, moved, deleted, or re-identified merely because the second scheme exists. Refresh still uses the selected set's stored scheme. |
 
-Nothing in the prediction proved wrong. The one accepted pre-alpha limitation is in selection, not identity: when several sets exist, the refresh picker identifies them only by random set id, note count, and scheme, without a source or release label.
+Nothing in the prediction proved wrong. The no-migration claim was not merely asserted: a property probe over 361 subject/object CURIE pairs, including the awkward ones, confirmed `endpoint-v1` local-parts are byte-identical before and after.
+
+What the prediction did not cover is that coexistence creates new ways to act on the *wrong* release. Reviewing the diff before it landed surfaced two, both now closed:
+
+| Gap | Why it mattered | Resolution |
+|---|---|---|
+| Export merged two coexisting releases into one file, stamping one header over rows from both | A well-formed file that misrepresents its own contents is worse than a failure, because nothing signals the error | Export refuses and names the import sets involved. Keyed on the import set, not `mapping_set_id`, since one release can legitimately span several source mapping sets |
+| The refresh picker listed sets by minted id alone | The ids are meaningless *by design*, which is right for identity and useless for a chooser. Choosing wrong overwrites a release | The picker shows note count and containing folder. The data was already on the set object |
+
+The pattern worth keeping: a meaningless identifier is correct for identity and wrong for selection. Anywhere a set id reaches a human choosing between sets, it needs describing facts alongside it.
+
+The remaining accepted pre-alpha limitation is narrower: there is still no human-assigned source or release label, so telling apart two releases of the same framework in one folder currently rests on note counts.
 
 ## 7. What shipped
 
