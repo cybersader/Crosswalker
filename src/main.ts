@@ -39,6 +39,8 @@ import { mergeFrontmatter, computeManagedKeys } from './generation/frontmatter-m
 import { buildProvenance } from './generation/provenance';
 import { generateNotes, generateFromRecipe } from './generation/generation-engine';
 import { openSidecar, clearSidecar, type SidecarHandle } from './tier2/sidecar';
+import { runEvidenceReportCommand } from './views/evidence-report-command';
+import { EvidenceLinkModal, listControlCandidates } from './views/evidence-link-modal';
 import { projectFromTier1, type ProjectionResult } from './tier2/projector';
 import {
 	getConceptsByOntology,
@@ -663,6 +665,44 @@ export default class CrosswalkerPlugin extends Plugin {
 			callback: () => {
 				new ConfigBrowserModal(this.app, this, 'browse').open();
 			}
+		});
+
+		// Create one evidence link. Exists because the only prior ways to make
+		// one were bulk import and hand-writing frontmatter, and the published
+		// example had subject and object inverted, which yields links that look
+		// correct and never count. Asking for "the control" and "the evidence"
+		// makes the load-bearing direction impossible to enter backwards.
+		this.addCommand({
+			id: 'link-evidence-to-control',
+			name: 'Link evidence to a control',
+			callback: () => {
+				// Pre-select the control when run from an open control note.
+				const active = this.app.workspace.getActiveFile();
+				const initialControl = active
+					? listControlCandidates(this.app).find((c) => c.path === active.path)
+					: undefined;
+				new EvidenceLinkModal({
+					app: this.app,
+					folder: this.settings.evidenceJunctionFolder,
+					initialControl,
+				}).open();
+			},
+		});
+
+		// Evidence coverage report. The gap question cannot be answered by a
+		// Bases view (a filter selects among notes that exist, and a control
+		// with no evidence has no note to select), so this command renders it
+		// from the query index into a note the user can keep and share.
+		this.addCommand({
+			id: 'evidence-coverage-report',
+			name: 'Evidence coverage report',
+			callback: async () => {
+				await runEvidenceReportCommand({
+					app: this.app,
+					openTier2: this.openTier2,
+					reportFolder: this.settings.evidenceReportFolder,
+				});
+			},
 		});
 
 		// v0.1.5: Tier 2 sidecar — clear command

@@ -79,6 +79,8 @@ export interface CrosswalkerSettings {
 	// ==========================================================================
 	enableTier2Projection: boolean;             // Auto-project Tier 1 → Tier 2 on vault load
 	tier2SidecarPath: string;                   // Vault-relative path; default '.crosswalker.sqlite'
+	evidenceReportFolder: string;               // Folder for generated coverage reports; default 'Reports'
+	evidenceJunctionFolder: string;             // Folder for evidence link notes; default 'Evidence/Junctions'
 
 	// ==========================================================================
 	// Debug (Phase 3.5 — wide-event NDJSON logger)
@@ -146,6 +148,8 @@ export const DEFAULT_SETTINGS: CrosswalkerSettings = {
 	// Tier 2 sidecar (v0.1.5)
 	enableTier2Projection: true,
 	tier2SidecarPath: '.crosswalker.sqlite',
+	evidenceReportFolder: 'Reports',
+	evidenceJunctionFolder: 'Evidence/Junctions',
 
 	// Debug (Phase 3.5)
 	enableDebugLog: false,

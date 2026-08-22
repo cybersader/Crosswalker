@@ -977,6 +977,40 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(details)
+			.setName('Evidence link folder')
+			.setDesc('Where evidence links are stored when created from the link command.')
+			.addText((text) => {
+				text
+					.setPlaceholder('Evidence/junctions')
+					.setValue(this.plugin.settings.evidenceJunctionFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.evidenceJunctionFolder = value || 'Evidence/Junctions';
+						await this.plugin.saveSettings();
+					});
+				new FolderSuggest(this.app, text.inputEl, async (value) => {
+					this.plugin.settings.evidenceJunctionFolder = value || 'Evidence/Junctions';
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(details)
+			.setName('Coverage report folder')
+			.setDesc('Where generated evidence coverage reports are written. Each report is rebuilt from scratch every time it runs.')
+			.addText((text) => {
+				text
+					.setPlaceholder('Reports')
+					.setValue(this.plugin.settings.evidenceReportFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.evidenceReportFolder = value || 'Reports';
+						await this.plugin.saveSettings();
+					});
+				new FolderSuggest(this.app, text.inputEl, async (value) => {
+					this.plugin.settings.evidenceReportFolder = value || 'Reports';
+					await this.plugin.saveSettings();
+				});
+			});
+
 		let refreshSidecar = () => {};
 		new Setting(details)
 			.setName('Query index file')
