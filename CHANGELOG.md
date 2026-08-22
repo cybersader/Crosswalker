@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Evidence coverage now reports gaps truthfully (2026-08-21)
+
+- **"Which controls have no evidence?" is answerable again, and the previous answers were wrong.** Three shipped surfaces claimed to answer it: a Bases view filtering a property no recipe emits (so it reported that nothing had evidence), a documented dashboard counting backlinks (so it reported that nearly everything did), and a reference recipe querying crosswalk fields that evidence links do not carry (so it matched nothing). All three produced confident, well-formatted output.
+- **The gap query moved to the query index, because it is not expressible as a vault filter.** A filter selects among notes that exist; a control with no evidence has no note to select, so an empty result looks identical to full coverage. No property name fixes that. The recipe schema now accepts `tier2` as an output target for exactly this class of question.
+- **The evidence link contract is fixed and documented.** `subject` is the control, `object` is the evidence, and the predicate is exactly `has_evidence`. The published example had it inverted, which yields zero coverage in every vault built from it. The bundled recipe now fixes the predicate rather than reading it from a spreadsheet column.
+- **Evidence is matched by stable identifier, not note name**, so renaming a control does not silently detach its evidence.
+- **A link counts only when approved, with coverage stated, and not expired or stale.** Partial coverage reports as partial, never as covered.
+- **Every link that does not count is explained.** Reports carry a set-aside count and a per-link reason (wrong predicate, unresolved identity, not approved, no coverage asserted, expired, stale), so a low score sends you to the data instead of to a panic. Nothing is silently reinterpreted.
+- **The evidence recipe is now registered**, so it is reachable from the import wizard instead of being an unused file.
+- **Not yet shipped:** no UI for creating an evidence link, no report surface calling these queries, and no freshness indicator on results. A manually reconciled evidence pilot is viable; automated audit-defensible coverage is not. See the [evidence closeout log](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-08-21-evidence-closeout/).
+
 ### Two releases of one crosswalk can coexist without migration (2026-08-21)
 
 - **Two releases of the same framework crosswalk can now live in one vault at once.** The choice appears in the existing SSSOM import preview; no extra modal was added.

@@ -432,7 +432,7 @@ interface QueryBlock {
   shape: 'table' | 'list' | 'pivot' | 'graph' | 'hierarchy' | 'timeline';
   primitives: TablePrimitives | ListPrimitives | PivotPrimitives
             | GraphPrimitives | HierarchyPrimitives | TimelinePrimitives;
-  output?: { target: 'bases' | 'codeblock' | 'note' | 'inline'; ... };
+  output?: { target: 'bases' | 'codeblock' | 'note' | 'inline' | 'tier2'; ... };
   view?: { limit?: number; sort?: Sort[]; groupBy?: GroupBy; ... };
   params?: Record<string, QueryParam>;   // Datasette-style :name params
   provenance?: { source: 'system' | 'user' | 'community'; ... };

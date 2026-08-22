@@ -94,19 +94,24 @@ Native database-like views built into Obsidian. Uses `.base` files (YAML format)
 
 **What Bases CAN do for Crosswalker:**
 ```yaml
-# Show all NIST 800-53 controls missing evidence links
+# Show approved evidence links, grouped by the control they satisfy
 filters:
   and:
-    - file.inFolder("Frameworks/NIST-800-53")
-    - 'file.backlinks.length == 0'
+    - 'kind == "junction-note"'
+    - 'predicate == "has_evidence"'
+    - 'status == "approved"'
 views:
   - type: table
-    name: "Controls without evidence"
+    name: "Approved evidence by control"
     order:
-      - file.name
-      - control_id
-      - control_name
+      - subject
+      - object
+      - coverage
+    summaries:
+      subject: Count
 ```
+
+**What Bases cannot do, and why it matters here:** the inverse question — *which controls have no evidence* — is not expressible as a filter. A filter selects among notes that exist, and a control with no evidence has no evidence note to select, so it simply never appears. Counting backlinks does not substitute: hierarchy links, index links, and framework crosswalks are all backlinks, so almost every control looks linked. An earlier version of this page used `file.backlinks.length == 0` for exactly this query; it was withdrawn on 2026-08-21 because it answers a different question than its label claimed. Coverage gaps are computed from the query index instead, where absence is expressible.
 
 **What Bases CANNOT do:**
 - "Show all controls where the linking evidence has `sufficient: true`"

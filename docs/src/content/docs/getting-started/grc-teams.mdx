@@ -8,6 +8,8 @@ tags: [grc, evidence-mapping, frameworks-mapping]
 
 Every GRC practitioner knows this pain: you have **evidence** (policies, procedures, audit findings, screenshots, technical configs) scattered across wikis, SharePoint, OneNote, and email. You have **[frameworks](/crosswalker/concepts/framework-standards/)** (NIST, CIS, MITRE, CRI, FFIEC) in massive spreadsheets. And you need to prove to [auditors](/crosswalker/concepts/institutional-landscape/#the-entities) that specific evidence satisfies specific controls.
 
+**Status last verified:** 2026-08-21 — verified against the shipped evidence recipe and coverage report.
+
 This is **evidence mapping** — the core work of compliance — and the tools are broken. Understanding [who owns what](/crosswalker/concepts/institutional-landscape/) in the ontology ecosystem helps explain why.
 
 **Built for GRC first; works for any structured framework or taxonomy.** Every example on this page is compliance, and the one-click imports that ship today are all compliance sources. Nothing in the note format is compliance-specific, though, and that works in your favor: the non-GRC structures your team already maintains — vendor questionnaires, internal control taxonomies, asset and service hierarchies, skills matrices — go through the same guided import, so they can live in the same vault and link to the same evidence instead of a separate tool. [Why the core stays domain-neutral](/crosswalker/concepts/what-makes-crosswalker-unique/#5-domain-neutral-core-grc-first-launch-surfaces).
@@ -68,18 +70,27 @@ Every framework control is a note you can open, read, and link to. No more hunti
 This is the breakthrough. When you link evidence to a control, you can attach **metadata about the relationship itself** — as a small evidence-link note whose properties describe the relationship:
 
 ```yaml
-# Evidence Links/MFA-Policy--implements--AC-2.md
+# Evidence Links/AC-2--has_evidence--MFA-Policy.md
 ---
 kind: junction-note
-subject: "[[MFA-Policy]]"
-predicate: implements
-object: "[[AC-2]]"
-status: implemented
+subject: "[[AC-2]]"
+subject_curie: nist-800-53:AC-2
+predicate: has_evidence
+object: "[[MFA-Policy]]"
+status: approved
 coverage: full
 reviewer: Alice
 review_date: 2026-03-15
 ---
 ```
+
+Three details carry weight, and getting them wrong is the difference between a coverage report that works and one that silently reports nothing:
+
+- **Direction.** `subject` is the **control**; `object` is the **evidence**. Read it aloud: "AC-2 has evidence: the MFA policy." Writing it the other way round produces links that look fine and count for nothing.
+- **`predicate: has_evidence`.** This exact value is what coverage counts. Other relationships between notes are perfectly legitimate, but they are not a claim that evidence satisfies a control, so they do not appear in coverage.
+- **`status: approved`.** Proposed and in-review links are not yet evidence. Only approved links count.
+
+`subject_curie` is the control's stable identifier. Fill it in wherever your spreadsheet has it: links are matched by that identifier rather than by note name, so renaming `AC-2.md` later does not quietly detach its evidence.
 
 A second link from the same policy to `IA-5` can carry `coverage: partial` and a gap note. Because every relationship is a note with plain properties, "show me all controls where evidence is *partial* and needs remediation" is one Bases filter — not a spreadsheet treasure hunt.
 
@@ -91,68 +102,88 @@ When an auditor asks "trace from CRI diagnostic statement through CSF to 800-53 
 
 ### Query your compliance posture
 
-Use [Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) for compliance dashboards:
-- "Which controls have **no evidence**?" — filter by backlink count = 0
+Two different tools answer two different kinds of question, and it is worth knowing which is which.
+
+[Obsidian Bases](/crosswalker/concepts/metadata-ecosystem/) answers questions **about links that exist**:
 - "Show all controls where evidence is **insufficient**" — filter by metadata
 - "What evidence was **last validated more than 90 days ago**?" — date filter
-- "How many controls in each family have evidence?" — group by folder
+- "Which evidence links are still awaiting **approval**?" — filter by status
 
-A dashboard is a plain `.base` file you drop in your vault. Save this as `Reports/Control-Coverage.base` and Obsidian renders three live views over the same control notes:
+**Crosswalker's coverage report** answers questions **about links that are missing**:
+- "Which controls have **no evidence**?"
+- "What share of each family is covered?"
+
+That split is not a limitation anyone chose; it is what the two tools can each honestly do. A Bases view filters the notes in your vault. A control with no evidence has no evidence note to filter, so there is nothing for a view to show — the control simply does not appear, and an empty result looks identical to a clean bill of health. Counting backlinks does not rescue it either, because hierarchy links, index links, and framework crosswalks are all backlinks, so nearly every control looks covered.
+
+Crosswalker therefore computes coverage from its own index, which can tell the difference between "no evidence" and "no row". The report also lists any evidence links it had to **set aside** and why — wrong direction, unapproved status, expired review — so a low score sends you to the data rather than to a panic.
+
+A dashboard is a plain `.base` file you drop in your vault. Save this as `Reports/Evidence-Links.base` and Obsidian renders live views over your **approved evidence links**:
 
 ```yaml
 filters:
   and:
-    - file.inFolder("Ontologies/NIST-800-53")
-    - 'file.ext == "md"'
-
-formulas:
-  evidence_count: 'file.backlinks.length'
+    - 'kind == "junction-note"'
+    - 'predicate == "has_evidence"'
 
 properties:
-  control_id:
+  subject:
     displayName: "Control"
-  family_name:
-    displayName: "Family"
-  last_validated:
-    displayName: "Last validated"
-  formula.evidence_count:
-    displayName: "Evidence count"
+  object:
+    displayName: "Evidence"
+  coverage:
+    displayName: "Coverage"
+  review_date:
+    displayName: "Last reviewed"
 
 views:
   - type: table
-    name: "Controls with no evidence"
+    name: "Approved evidence"
     filters:
       and:
-        - 'file.backlinks.isEmpty()'
+        - 'status == "approved"'
     order:
-      - control_id
-      - title
-      - family_name
+      - subject
+      - object
+      - coverage
+      - review_date
+    summaries:
+      subject: Count
+
+  - type: table
+    name: "Partial coverage — needs remediation"
+    filters:
+      and:
+        - 'status == "approved"'
+        - 'coverage == "partial"'
+    order:
+      - subject
+      - object
+      - notes
 
   - type: table
     name: "Evidence going stale"
     filters:
       and:
-        - 'last_validated < (today() - "90d")'
+        - 'review_date < (today() - "90d")'
     order:
-      - control_id
-      - title
-      - last_validated
+      - review_date
+      - subject
+      - object
 
   - type: table
-    name: "Coverage by family"
-    groupBy:
-      property: family_name
-      direction: ASC
+    name: "Awaiting approval"
+    filters:
+      and:
+        - 'status != "approved"'
     order:
-      - control_id
-      - title
-      - formula.evidence_count
-    summaries:
-      formula.evidence_count: Average
+      - subject
+      - object
+      - status
 ```
 
 Change a filter, get a different report. No formulas to re-drag, no rows to keep in sync.
+
+Every view above is a report on evidence you **have**. For the gap list — the controls with nothing attached — run the coverage report, which counts controls rather than filtering notes.
 
 ### Own your data
 

@@ -1,0 +1,105 @@
+---
+title: "The evidence closeout — a report that can say \"nothing\" and mean it"
+description: "Implements Challenge 45 §4.3. Withdraws the Bases evidence-gap view, which filtered a property no recipe emitted and therefore reported total non-coverage regardless of the vault. Moves the gap query to the SQL index, where a LEFT JOIN can report an absent relationship. Fixes the junction contract: subject is the control, object is the evidence, predicate is exactly has_evidence, matched by stable identity rather than wikilink text. Registers the evidence recipe. Corrects the GRC guide and the metadata-ecosystem page, both of which taught backlink counting. Adds tier2 to the recipe schema output targets."
+tags: [decision, evidence, coverage, bases, tier2, grc, ch-45]
+date: 2026-08-21
+sidebar:
+  label: "08-21 · Evidence closeout"
+  order: -20260821.1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Implements §4.3 of the [Challenge 45 synthesis](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/). Delivery detail is in `CHANGELOG.md`; this records the reasoning.
+
+## 1. What was wrong
+
+The question a compliance reader most needs answered is a negative one: *which controls have no evidence?* Three shipped surfaces claimed to answer it. None could.
+
+| Surface | What it did | What it reported |
+|---|---|---|
+| `orphan-controls-no-evidence` Bases view | Filtered control notes on `length(evidence) == 0` | No recipe has ever emitted an `evidence` property, so the filter matched **every** control. The view said "nothing has evidence" no matter what the vault contained. |
+| The GRC guide dashboard | `evidence_count: file.backlinks.length`, and a "Controls with no evidence" view on `file.backlinks.isEmpty()` | Hierarchy links, index links, and crosswalks are all backlinks, so nearly every control looked covered. The two errors point in **opposite** directions, which is worse than either alone. |
+| `orphan-controls.json` | Queried `subject_id` / `predicate_id` against `:hasEvidence` | Those are crosswalk-edge fields. Junction notes carry `subject` / `predicate` / `object`, and nothing emits `:hasEvidence`, so it matched nothing. |
+
+All three produced confident, well-formatted output. That is the actual severity: a coverage report is trusted precisely because it looks authoritative, and none of these failed loudly.
+
+## 2. Why it was not a naming bug
+
+The tempting reading is that someone picked the wrong property name. Renaming would not have helped.
+
+**A Bases filter selects among notes that exist.** "Controls with no evidence" is a claim about a relationship that is *absent*. There is no note for the filter to keep, so no property name produces the row. An empty result and a clean bill of health are indistinguishable.
+
+This is why the fix is a relocation, not a correction. The gap query moved to the SQL index, where a `LEFT JOIN` can emit a row for a concept with no match. Bases keeps the questions it can answer honestly: reports about the evidence that *is* there.
+
+<Aside type="note" title="The general rule">
+Any question of the form "X with no Y" belongs in the query index, not in a vault filter. The schema now says so at the contract level: `output.target` accepts `tier2`, described as required for anti-joins and aggregates.
+</Aside>
+
+## 3. What counts as evidence
+
+Deliberately strict, because the failure mode is someone concluding a control is satisfied when it is not. A junction counts only when all five hold:
+
+| Rule | Why |
+|---|---|
+| Predicate is exactly `has_evidence` | Other relationships are legitimate but are not a claim that evidence satisfies a control. |
+| Resolves to a concept by `subject_curie` | Matching by wikilink text is how a renamed note silently detaches its evidence. Identity, never text. |
+| `status` is `approved` | Proposed and in-review evidence is not evidence. |
+| `coverage` is `full` or `partial` | `none` and `n/a` are explicit statements that this artifact does *not* cover the control. |
+| Not expired or stale | Evidence has a shelf life. |
+
+`full` coverage reports as **covered**; `partial` reports as **partial**, which is deliberately not covered. Collapsing them is how a half-satisfied control gets reported as satisfied.
+
+Junctions with no review dates at all are admitted. Refusing them would zero out coverage for every team that has not yet adopted review dates, reporting a data-entry gap as a compliance gap.
+
+## 4. Strictness needs an escape hatch
+
+A strict rule with no explanation is unusable. A team whose junctions all point the wrong way would see "0 controls covered" with no way to discover they are one direction-flip from correct.
+
+So every junction that exists but does not count is **diagnosable**, with exactly one reason: `predicate-not-canonical`, `no-subject-identity`, `subject-not-a-known-concept`, `not-approved`, `coverage-not-asserted`, `expired`, `stale`. The summary carries an `excluded_junctions` count — the number that tells a reader how much data was set aside before the percentages above it were computed.
+
+Excluded junctions are never silently reinterpreted. A near-miss predicate is a data problem for a human to fix; guessing at intent is how a coverage number stops meaning anything.
+
+## 5. Direction is load-bearing
+
+The published GRC example read:
+
+```yaml
+subject: "[[MFA-Policy]]"
+predicate: implements
+object: "[[AC-2]]"
+```
+
+Read literally that says *the policy* has a property, so the control gets nothing. Every vault built from that example would report zero coverage. The corrected contract is `subject` = control, `object` = evidence, predicate `has_evidence` — "AC-2 has evidence: the MFA policy."
+
+The recipe now **fixes** the predicate rather than templating it from a source column. A per-row predicate would let a spreadsheet silently emit junctions that look right and never count.
+
+## 6. What shipped
+
+- `src/tier2/evidence-coverage.ts` — the anti-join, per-concept tallies, the aggregate summary, and the exclusion diagnostics. One shared SQL fragment defines validity, so a report and its own explanation cannot drift apart.
+- The false Bases template is **withdrawn**, with a test asserting it stays null and a comment explaining that no template can be correct under that id.
+- `evidence-junctions-by-control` replaces it — the positive report Bases can answer honestly.
+- The evidence recipe is corrected (direction, fixed predicate, identity guidance) and **registered**, so it is reachable from the import wizard.
+- `spec/recipe.schema.json` gains `tier2` as an `output.target` (additive, non-breaking).
+- The GRC guide and the metadata-ecosystem page no longer teach backlink counting.
+
+## 7. Still open
+
+This closes the correctness half of the evidence work. It does not close the workflow half:
+
+- No UI for creating an evidence link. Junctions arrive by bulk import or by hand.
+- No rendered report surface yet — the queries exist and are tested; nothing calls them from a command.
+- Projection status is not yet surfaced alongside results, so a stale index could present old posture as current ([Challenge 45 §4.3](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/#43-evidence-authority-and-reporting) requires this before the report is relied on).
+- [Challenge 44](/crosswalker/agent-context/zz-challenges/44-e2e-testing-strategy/) validation has not run.
+
+Until those land, the honest status is unchanged from Ch 45: a **manually reconciled** evidence pilot is viable; automated audit-defensible coverage is not.
+
+## 8. Related
+
+- [Challenge 45 synthesis — can Crosswalker be used at work yet?](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/)
+- [Challenge 45 research deliverable](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/)
+- [Evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)
+- [For GRC teams](/crosswalker/getting-started/grc-teams/)
+- [Metadata ecosystem](/crosswalker/concepts/metadata-ecosystem/)
+- [Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)
+- [Challenge 44 — E2E testing strategy](/crosswalker/agent-context/zz-challenges/44-e2e-testing-strategy/)

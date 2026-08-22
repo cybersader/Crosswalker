@@ -41,7 +41,7 @@ The deliverable was written 2026-08-19. Work landed after that date. Verified ag
 |---|---|
 | Replace-mode re-import destroys prose in ordinary generated bodies | **Stands.** Ordinary bodies are still rebuilt wholesale; only hub notes merge (`src/generation/generation-engine.ts`). |
 | The quick-start promised that anything the user wrote stays put | **Fixed.** That page now carries a per-mode table under a caution, so the docs no longer contradict the code. The behavior is unchanged — only the promise was wrong. |
-| The shipped evidence views do not implement the machine contract | **Stands.** The Base still checks `length(evidence) == 0` (`src/views/recipe-templates.ts`) against a recipe that emits no such property. |
+| The shipped evidence views do not implement the machine contract | **Fixed later the same day.** The false Base was withdrawn, the coverage query moved to the query index where absence is expressible, the junction recipe was corrected and registered, and the GRC guide no longer teaches backlink counting. See [the evidence closeout](/crosswalker/agent-context/zz-log/2026-08-21-evidence-closeout/). |
 | Tier 2 OPFS isolation between vaults is unproven | **Stands.** The sidecar still opens a non-namespaced filename with no vault qualification (`src/tier2/sidecar.ts`). |
 | Framework redistribution rights are unresolved | **Stands.** External to the code; needs legal/procurement. |
 | Concurrent regeneration has no cross-client lock | **Stands.** |
