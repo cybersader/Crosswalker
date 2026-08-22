@@ -14,6 +14,21 @@
  * `templates/coverage-matrix.base`. Comments live in the .base file shipped
  * by Phase 3's first-run write; the picker's inserted block is meant to be
  * concise inline content in a user's note.
+ *
+ * WITHDRAWN (2026-08-21, Challenge 45): `orphan-controls-no-evidence`.
+ *
+ * It filtered control notes on `length(evidence) == 0`. No recipe has ever
+ * emitted an `evidence` property, so the filter matched every control and the
+ * view reported total non-coverage regardless of the truth — a confident,
+ * well-formatted, wrong answer on exactly the question a compliance reader
+ * trusts most.
+ *
+ * The deeper reason it is not simply fixed: a Bases filter selects from the set
+ * of notes that exist. "Controls with no evidence" is a claim about a
+ * relationship that does NOT exist, so there is no row for the filter to keep.
+ * No property name would have rescued it. That query lives in Tier 2, where a
+ * LEFT JOIN can report absence — see `conceptsWithoutValidEvidence` in
+ * `src/tier2/evidence-coverage.ts`.
  */
 
 const TEMPLATES: Record<string, string> = {
@@ -69,17 +84,33 @@ views:
     summaries:
       file.name: Count`,
 
-	'orphan-controls-no-evidence': `filters:
+	// 'orphan-controls-no-evidence' is DELIBERATELY ABSENT. See the withdrawal
+	// note in this module's doc comment. Use conceptsWithoutValidEvidence() in
+	// src/tier2/evidence-coverage.ts instead; a Bases filter cannot express it.
+
+	// Positive evidence report. This is what Bases CAN answer honestly: it lists
+	// junction notes that exist and qualify. It deliberately does not attempt a
+	// count of controls, because the controls with no junction have no note here
+	// to count. Validity mirrors src/tier2/evidence-coverage.ts; the two must be
+	// changed together or a reader gets different answers from the same vault.
+	'evidence-junctions-by-control': `filters:
   and:
-    - file.inFolder("Frameworks/NIST-800-53")
-    - 'length(evidence) == 0'
+    - 'kind == "junction-note"'
+    - 'predicate == "has_evidence"'
+    - 'status == "approved"'
+    - or:
+        - 'coverage == "full"'
+        - 'coverage == "partial"'
 views:
   - type: table
-    name: "Orphan controls — no evidence"
+    name: "Approved evidence links by control"
     order:
-      - control_id
-      - control_name
-      - control_family`,
+      - subject
+      - object
+      - coverage
+      - review_date
+    summaries:
+      subject: Count`,
 
 	'controls-by-family-list': `filters:
   and:

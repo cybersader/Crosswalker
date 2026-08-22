@@ -90,6 +90,7 @@ import scf2026Flat from '../../recipes/import/scf-2026-flat.json';
 import nist80053Flat from '../../recipes/import/nist-800-53-flat.json';
 import criProfileV22 from '../../recipes/import/cri-profile-v2-2.json';
 import crosswalkEdge from '../../recipes/import/crosswalk-edge.json';
+import evidenceJunctionNotes from '../../recipes/starter/evidence-junction-notes.json';
 
 /** The Tier 1 shape a recipe's leaf layout entry produces (spec §7's `layout_entry.kind`). */
 export type RegistryRoutingKind = 'concept' | 'junction-note' | 'crosswalk-edge';
@@ -359,6 +360,17 @@ const DEFAULTS: Record<
 				'Crosswalk edges are meant to be browsed through the query/pivot layer (crosswalkerPivot Bases view), not through facet hub notes.',
 		},
 	},
+	'evidence-junction-notes': {
+		label: 'Evidence links (control to document)',
+		description:
+			'Bulk-import evidence links from a spreadsheet. Each row records one control, the document that evidences it, and how much of the control that document covers.',
+		suggestedFolder: 'Evidence/Junctions',
+		recommendedEnrichment: {
+			...NO_ENRICHMENT,
+			rationale:
+				'Evidence links are read through coverage reports, which count controls rather than junctions, so facet hub notes over the junctions themselves would not answer the question anyone asks.',
+		},
+	},
 };
 
 /** Build a registry entry from a bundled raw recipe. */
@@ -406,6 +418,7 @@ export const RECIPE_REGISTRY: RecipeRegistryEntry[] = [
 	toEntry(nist80053Flat),
 	toEntry(criProfileV22),
 	toEntry(crosswalkEdge),
+	toEntry(evidenceJunctionNotes),
 ];
 
 // ============================================================================

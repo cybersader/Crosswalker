@@ -465,11 +465,11 @@
     },
 
     "QueryOutput": {
-      "description": "Where the query result lands. 'bases' compiles to a Bases view; 'codeblock' renders via crosswalker-pivot processor (deferred per D2); 'note' writes a generated note; 'inline' embeds in a host note as a ````base` block.",
+      "description": "Where the query result lands. 'bases' compiles to a Bases view; 'codeblock' renders via crosswalker-pivot processor (deferred per D2); 'note' writes a generated note; 'inline' embeds in a host note as a ````base` block. 'tier2' means the query is answered by the SQL index and has no Bases form, which is required for anti-joins and aggregates: a Bases filter selects among notes that exist and therefore cannot report a relationship that is absent.",
       "type": "object",
       "required": ["target"],
       "properties": {
-        "target":   { "enum": ["bases", "codeblock", "note", "inline"] },
+        "target":   { "enum": ["bases", "codeblock", "note", "inline", "tier2"] },
         "path":     { "type": "string" },
         "view_id":  { "type": "string" },
         "embed_in": { "type": "string", "description": "If target=codeblock or inline, the host note path." }

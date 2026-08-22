@@ -2,44 +2,62 @@
   "$schema": "https://crosswalker.dev/spec/recipe.schema.json",
   "recipe": "orphan-controls-no-evidence",
   "spec_version": "https://crosswalker.dev/spec/recipe.schema.json",
-
-  "$comment": "v0.1.6 reference recipe demonstrating the LIST view shape (per Ch 30) + the anti-join verb (per Ch 29 Settled #14). Lists 800-53 controls that have NO evidence junction notes attached — the canonical 'compliance gap' query. The anti-join is expressed via the where filter referencing absence of an :hasEvidence edge.",
-
+  "$comment": "v0.1.6 reference recipe demonstrating the LIST view shape (per Ch 30) + the anti-join verb (per Ch 29 Settled #14). Lists concepts that have NO valid evidence junction attached - the canonical compliance-gap query. CORRECTED 2026-08-21 (Challenge 45): the previous version queried subject_id/predicate_id, which are crosswalk-edge fields that evidence junction notes do not carry, against predicate ':hasEvidence', which nothing emits. It therefore matched nothing and the gap list was silently wrong. Junction notes carry subject/subject_curie/predicate/object per spec tier1 junction_note_frontmatter. Matching is by subject_curie (stable identity), never by wikilink text, so renaming a control note does not detach its evidence. output.target is tier2 because this query is an anti-join: Bases filters among notes that exist and cannot emit a row for an absent relationship. The authoritative implementation is conceptsWithoutValidEvidence() in src/tier2/evidence-coverage.ts.",
   "source": {
     "ontology": "nist-800-53",
-    "levels": ["catalog", "family", "control"]
+    "levels": [
+      "catalog",
+      "family",
+      "control"
+    ]
   },
-
   "target": {
     "layout": [
-      { "level": "catalog", "mechanism": "folder", "template": "Frameworks/{catalog.name}" },
-      { "level": "family",  "mechanism": "folder", "template": "{family.id}" },
-      { "level": "control", "mechanism": "file",   "template": "{control.id}.md" }
+      {
+        "level": "catalog",
+        "mechanism": "folder",
+        "template": "Frameworks/{catalog.name}"
+      },
+      {
+        "level": "family",
+        "mechanism": "folder",
+        "template": "{family.id}"
+      },
+      {
+        "level": "control",
+        "mechanism": "file",
+        "template": "{control.id}.md"
+      }
     ],
     "also_emit": {
-      "tags": ["framework/nist-800-53/{family.id|lower}"],
+      "tags": [
+        "framework/nist-800-53/{family.id|lower}"
+      ],
       "frontmatter": {
         "managed": {
           "control_id": "{control.id}",
-          "family":     "{family.id}",
-          "framework":  "nist-800-53"
+          "family": "{family.id}",
+          "framework": "nist-800-53"
         },
-        "user_preserve": ["evidence_links", "review_status", "*notes*"]
+        "user_preserve": [
+          "evidence_links",
+          "review_status",
+          "*notes*"
+        ]
       }
     }
   },
-
   "query": {
     "version": "1.0.0",
     "id": "orphan-controls-no-evidence",
     "title": "Orphan controls (no evidence linked)",
-    "description": "List of 800-53 controls that have NO :hasEvidence junction notes. Anti-join semantics: KEEP control IF NOT EXISTS evidence-junction.",
+    "description": "Concepts with zero VALID evidence junctions. Valid means: predicate is exactly has_evidence, the junction resolves to the concept by subject_curie, status is approved, coverage is full or partial, and it is neither expired nor stale. Anti-join semantics: KEEP concept IF NOT EXISTS a valid junction.",
     "shape": "list",
     "primitives": {
       "from": "nist-800-53",
       "where": {
         "not": [
-          "$exists($filter($$.junction_notes, function($j) { $j.subject_id = $$.control_id and $j.predicate_id = ':hasEvidence' }))"
+          "$exists($filter($$.junction_notes, function($j) { $j.subject_curie = $$.curie and $j.predicate = 'has_evidence' and $j.status = 'approved' and ($j.coverage = 'full' or $j.coverage = 'partial') }))"
         ]
       },
       "item": {
@@ -47,16 +65,22 @@
         "format": "{control_id} ({family})"
       },
       "sort": [
-        { "by": "family",     "direction": "asc" },
-        { "by": "control_id", "direction": "asc" }
+        {
+          "by": "family",
+          "direction": "asc"
+        },
+        {
+          "by": "control_id",
+          "direction": "asc"
+        }
       ]
     },
     "view": {
       "limit": 1000,
-      "empty_label": "(All controls have evidence — no orphans)"
+      "empty_label": "(Every concept has valid evidence - no gaps)"
     },
     "output": {
-      "target": "bases"
+      "target": "tier2"
     },
     "provenance": {
       "source": "system",

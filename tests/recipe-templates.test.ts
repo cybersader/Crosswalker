@@ -6,12 +6,38 @@
 
 import { getRecipeTemplate, renderRecipeTemplate } from '../src/views/recipe-templates';
 
+describe('withdrawn templates stay withdrawn', () => {
+	it('offers no Bases template for the controls-without-evidence question', () => {
+		// Withdrawn 2026-08-21 (Challenge 45). It filtered `length(evidence) == 0`
+		// against a property no recipe emits, so it matched every control and
+		// reported total non-coverage no matter what the vault contained.
+		//
+		// This asserts null rather than asserting a corrected filter because the
+		// query is not expressible in Bases at all: a filter selects from notes
+		// that exist, and "no evidence" is a claim about a row that does not.
+		// Re-adding any template under this id would reintroduce a confidently
+		// wrong answer. The real query is conceptsWithoutValidEvidence() in
+		// src/tier2/evidence-coverage.ts.
+		expect(getRecipeTemplate('orphan-controls-no-evidence')).toBeNull();
+	});
+
+	it('keeps the positive evidence view aligned with the Tier 2 validity rule', () => {
+		// A Bases view and the SQL query answering from the same vault must not
+		// disagree about what counts. If Tier 2 tightens, this template moves too.
+		const template = getRecipeTemplate('evidence-junctions-by-control') ?? '';
+		expect(template).toContain('predicate == "has_evidence"');
+		expect(template).toContain('status == "approved"');
+		expect(template).toContain('coverage == "full"');
+		expect(template).toContain('coverage == "partial"');
+	});
+});
+
 describe('getRecipeTemplate — shipped catalog', () => {
 	const shippedIds = [
 		'nist-csf-coverage-matrix',
 		'nist-csf-to-mitre-coverage',
 		'crosswalk-density-by-framework',
-		'orphan-controls-no-evidence',
+		'evidence-junctions-by-control',
 		'controls-by-family-list',
 		'skos-hierarchy-narrower',
 	];
@@ -117,7 +143,7 @@ describe('renderRecipeTemplate — null handling', () => {
 			'nist-csf-coverage-matrix',
 			'nist-csf-to-mitre-coverage',
 			'crosswalk-density-by-framework',
-			'orphan-controls-no-evidence',
+			'evidence-junctions-by-control',
 			'controls-by-family-list',
 			'skos-hierarchy-narrower',
 		];

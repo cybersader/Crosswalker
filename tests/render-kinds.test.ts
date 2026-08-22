@@ -164,6 +164,8 @@ describe('render() kind dispatch (v0.1.4)', () => {
 describe('evidence junction starter identity companions', () => {
 	const base = {
 		subject: 'Frameworks/NIST/AC-2',
+		// A source column named `predicate` is still supplied, because real
+		// spreadsheets have one. The recipe must IGNORE it (see below).
 		predicate: 'evidences',
 		object: 'Evidence/Access review',
 		coverage: 'full',
@@ -178,7 +180,11 @@ describe('evidence junction starter identity companions', () => {
 		expect(address.frontmatter).toEqual(expect.objectContaining({
 			subject: '[[Frameworks/NIST/AC-2]]',
 			subject_curie: 'nist:AC-2',
-			predicate: 'evidences',
+			// Fixed by the recipe, NOT taken from the row's predicate column.
+			// Coverage counts only `has_evidence`, so honouring a per-row value
+			// would emit junctions that look right and never count toward any
+			// report (2026-08-21, Challenge 45).
+			predicate: 'has_evidence',
 			object: '[[Evidence/Access review]]',
 			object_curie: 'evidence:access-review',
 		}));

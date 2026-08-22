@@ -26,7 +26,7 @@
           "title": "{subject} -> {object}",
           "subject": "[[{subject}]]",
           "subject_curie": "{subject_curie|optional}",
-          "predicate": "{predicate}",
+          "predicate": "has_evidence",
           "object": "[[{object}]]",
           "object_curie": "{object_curie|optional}",
           "coverage": "{coverage}",
@@ -37,5 +37,5 @@
     }
   },
 
-  "$comment": "Starter recipe — bulk-import evidence-link junction notes from a CSV. Each row produces one (subject_concept, predicate, evidence_doc) triple. Generic over: any concept ontology (NIST 800-53 controls, MITRE ATT&CK techniques, CIS safeguards, ISO 27001 clauses, etc.) + any evidence-doc namespace (Evidence/, Audits/, Runbooks/, etc.). Reviewer + review_date + status + confidence are user_preserve so subsequent reviewer workflow (manual edits, review automation) is not clobbered on re-import. Predicate vocabulary is open string per Tier 1 schema (junction-note predicate is not in the STRM enum); recipe authors pick covers/evidences/attests/reviews/etc. per their workflow."
+  "$comment": "Starter recipe - bulk-import evidence-link junction notes from a CSV. Each row produces one (control, has_evidence, evidence_doc) triple. Generic over any concept ontology (NIST 800-53 controls, MITRE ATT&CK techniques, CIS safeguards, ISO 27001 clauses) and any evidence-doc namespace (Evidence/, Audits/, Runbooks/). DIRECTION IS LOAD-BEARING: subject is the CONTROL and object is the EVIDENCE ARTIFACT, so the note reads 'control has_evidence document'. The inverse reading ('document implements control') was published in the GRC guide and yields zero coverage, because the coverage query then finds an evidence document where it expects a concept; see the 2026-08-21 Challenge 45 synthesis. PREDICATE IS FIXED, not templated: coverage counts only has_evidence, so a per-row predicate column would silently produce junctions that exist but never count. Other relationship kinds are legitimate and belong in their own recipe. Map subject_curie to the control's stable CURIE wherever the source has it - matching is by identity, and a junction with only wikilink text detaches when the control note is renamed. reviewer/review_date/status/confidence/expires_at are user_preserve so the review workflow is not clobbered on re-import; note that status must reach 'approved' before a junction counts toward coverage."
 }

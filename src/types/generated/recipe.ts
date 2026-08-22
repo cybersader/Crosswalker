@@ -557,10 +557,10 @@ export interface TimelinePrimitives {
 	groupBy?: GroupBy;
 }
 /**
- * Where the query result lands. 'bases' compiles to a Bases view; 'codeblock' renders via crosswalker-pivot processor (deferred per D2); 'note' writes a generated note; 'inline' embeds in a host note as a ````base` block.
+ * Where the query result lands. 'bases' compiles to a Bases view; 'codeblock' renders via crosswalker-pivot processor (deferred per D2); 'note' writes a generated note; 'inline' embeds in a host note as a ````base` block. 'tier2' means the query is answered by the SQL index and has no Bases form, which is required for anti-joins and aggregates: a Bases filter selects among notes that exist and therefore cannot report a relationship that is absent.
  */
 export interface QueryOutput {
-	target: 'bases' | 'codeblock' | 'note' | 'inline';
+	target: 'bases' | 'codeblock' | 'note' | 'inline' | 'tier2';
 	path?: string;
 	view_id?: string;
 	/**
