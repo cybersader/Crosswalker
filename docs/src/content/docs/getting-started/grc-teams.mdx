@@ -84,7 +84,9 @@ review_date: 2026-03-15
 ---
 ```
 
-Three details carry weight, and getting them wrong is the difference between a coverage report that works and one that silently reports nothing:
+You do not have to write this by hand. Run **Link evidence to a control** from the command palette, or from an open control note to have that control pre-selected. It asks for the control and the evidence, fills in the rest, and the note it creates says whether the link counts yet.
+
+If you do write one by hand, three details carry weight, and getting them wrong is the difference between a coverage report that works and one that silently reports nothing:
 
 - **Direction.** `subject` is the **control**; `object` is the **evidence**. Read it aloud: "AC-2 has evidence: the MFA policy." Writing it the other way round produces links that look fine and count for nothing.
 - **`predicate: has_evidence`.** This exact value is what coverage counts. Other relationships between notes are perfectly legitimate, but they are not a claim that evidence satisfies a control, so they do not appear in coverage.
@@ -115,7 +117,9 @@ Two different tools answer two different kinds of question, and it is worth know
 
 That split is not a limitation anyone chose; it is what the two tools can each honestly do. A Bases view filters the notes in your vault. A control with no evidence has no evidence note to filter, so there is nothing for a view to show — the control simply does not appear, and an empty result looks identical to a clean bill of health. Counting backlinks does not rescue it either, because hierarchy links, index links, and framework crosswalks are all backlinks, so nearly every control looks covered.
 
-Crosswalker therefore computes coverage from its own index, which can tell the difference between "no evidence" and "no row". The report also lists any evidence links it had to **set aside** and why — wrong direction, unapproved status, expired review — so a low score sends you to the data rather than to a panic.
+Crosswalker therefore computes coverage from its own index, which can tell the difference between "no evidence" and "no row". Run **Evidence coverage report** from the command palette. It writes a note listing the controls with no valid evidence, the partially covered ones, and any evidence links it had to **set aside** and why: wrong direction, unapproved status, expired review. A low score sends you to the data rather than to a panic.
+
+The report also states when the index behind it was last rebuilt, and warns you if that rebuild was incomplete. It is regenerated from scratch each run, so keep your own notes elsewhere.
 
 A dashboard is a plain `.base` file you drop in your vault. Save this as `Reports/Evidence-Links.base` and Obsidian renders live views over your **approved evidence links**:
 

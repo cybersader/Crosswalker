@@ -83,18 +83,33 @@ The recipe now **fixes** the predicate rather than templating it from a source c
 - `spec/recipe.schema.json` gains `tier2` as an `output.target` (additive, non-breaking).
 - The GRC guide and the metadata-ecosystem page no longer teach backlink counting.
 
-## 7. Still open
+## 7. The workflow half, shipped the same day
 
-This closes the correctness half of the evidence work. It does not close the workflow half:
+The correctness work above left three gaps, all now closed:
 
-- No UI for creating an evidence link. Junctions arrive by bulk import or by hand.
-- No rendered report surface yet — the queries exist and are tested; nothing calls them from a command.
-- Projection status is not yet surfaced alongside results, so a stale index could present old posture as current ([Challenge 45 §4.3](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/#43-evidence-authority-and-reporting) requires this before the report is relied on).
+| Was open | Now |
+|---|---|
+| No UI for creating an evidence link | **Link evidence to a control** command. It asks for "the control" and "the evidence", never for a subject and an object, so the direction that decides whether coverage works cannot be entered backwards. The predicate is never asked about. |
+| Nothing called the queries from a command | **Evidence coverage report** command. Writes a note listing gaps, partial coverage, and set-aside links, regenerated wholesale each run. |
+| Projection status not surfaced | Projection now stamps when it ran and how completely. Every report quotes it, and warns when the index is partial, errored, or unstamped. |
+
+### What the round-trip caught
+
+The end-to-end test — build a link, parse it as real YAML, project it, query coverage — found that generated links carried no `curie`. Projection **rejects** a junction note without one, so every link the new command created would have been written to the vault, looked correct, and reached no report at all.
+
+Every unit test on both sides passed while that was true. It is the same shape as the original bug: two internally-coherent halves disagreeing about a contract at the seam. The round-trip is now the regression guard.
+
+Screenshotting the modal against a real vault caught a second one: it read the metadata cache during startup indexing, found nothing, and told the user their imported vault contained no controls. It now distinguishes "still indexing" from "nothing imported".
+
+## 8. Still open
+
 - [Challenge 44](/crosswalker/agent-context/zz-challenges/44-e2e-testing-strategy/) validation has not run.
+- No bulk review workflow: links are approved one note at a time.
+- The report is point-in-time. Nothing warns that an open report has gone stale behind you.
 
-Until those land, the honest status is unchanged from Ch 45: a **manually reconciled** evidence pilot is viable; automated audit-defensible coverage is not.
+The honest status is still the one Ch 45 set: the evidence loop is now complete and tested end to end, but **audit-defensible** coverage waits on Ch 44 validating it against a real corpus. What changed today is that a manually reconciled pilot no longer requires hand-writing frontmatter against a contract the docs got wrong.
 
-## 8. Related
+## 9. Related
 
 - [Challenge 45 synthesis — can Crosswalker be used at work yet?](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/)
 - [Challenge 45 research deliverable](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/)

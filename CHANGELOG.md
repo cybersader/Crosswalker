@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Evidence linking and coverage reporting are usable from the app (2026-08-21)
+
+- **New command: link evidence to a control.** Records that a document evidences a control, as a note you can review and update later. It asks for "the control" and "the evidence" rather than for a subject and an object, so the direction cannot be entered backwards, and it never asks about the predicate. Run it from an open control note and that control is pre-selected.
+- **New command: evidence coverage report.** Writes a note listing the controls with no valid evidence, the partially covered ones, and every link that was set aside with the reason why. Pick a framework when the vault holds more than one. The note is regenerated from scratch each run and says so.
+- **Reports state how fresh they are.** The index now records when it was last rebuilt and how completely, and every report quotes it. A report built from a partial, errored, or unstamped index says so rather than presenting old numbers as current posture.
+- **Every generated link explains whether it counts**, in the note itself, so the coverage rules are visible where the decision is made instead of only in documentation.
+- **Two folder settings added:** where coverage reports are written, and where evidence links are stored.
+
 ### Evidence coverage now reports gaps truthfully (2026-08-21)
 
 - **"Which controls have no evidence?" is answerable again, and the previous answers were wrong.** Three shipped surfaces claimed to answer it: a Bases view filtering a property no recipe emits (so it reported that nothing had evidence), a documented dashboard counting backlinks (so it reported that nearly everything did), and a reference recipe querying crosswalk fields that evidence links do not carry (so it matched nothing). All three produced confident, well-formatted output.
