@@ -1,0 +1,209 @@
+---
+title: "Can Crosswalker be used at work yet? — Challenge 45 synthesis"
+description: "Decision record for Challenge 45. Readiness is not one yes/no question; it splits into four operating levels. A controlled desktop pilot and a manually reconciled evidence pilot are viable now. Automated evidence-gap assurance, safe in-place framework refresh, sensitive multi-vault Tier 2 use, and team administration are not. Adopts the rollout boundary, the managed-body-region design for safe Replace, the canonical evidence-junction contract, the pinned-source update loop, and the scale gate. Records which deliverable findings were overtaken by work shipped after it was written."
+tags: [decision, synthesis, rollout, deployment, adoption, evidence, readiness, licensing, ch-45]
+date: 2026-08-21
+sidebar:
+  label: "Ch 45 synthesis · Org rollout readiness"
+  order: -20260821
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Decision record for [Challenge 45](/crosswalker/agent-context/zz-challenges/45-org-rollout-readiness/), synthesised from the [research deliverable](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/) (2026-08-19).
+
+## 1. The short answer
+
+**Yes, you can start using Crosswalker at work now — as a controlled desktop pilot. No, you cannot yet use it to answer "which controls have valid evidence?" in a way anyone should rely on.**
+
+A **controlled desktop pilot** means: one designated importer, one dedicated vault, pinned source versions, a new release-qualified folder per import, generated notes treated as read-only, `Skip existing` rather than `Replace`, reviewed promotion, and a restore drill you have actually run.
+
+Colleagues do **not** need Crosswalker installed. They can read the Markdown, follow the wikilinks, search, and use ordinary Obsidian Bases. They need the plugin only to import, to run Crosswalker commands, or to use the custom pivot view and Tier 2 queries.
+
+## 2. Readiness is four questions, not one
+
+The single most useful thing this pass produced is the refusal to answer "is it ready?" as one question. It splits cleanly:
+
+| Operating level | Status | Gated on |
+|---|---|---|
+| **Corpus navigation pilot** — import a framework, browse it, link to it | ✅ Viable now | Nothing. Pin the source and keep generated notes read-only. |
+| **Manually reconciled evidence pilot** — link evidence, check the result yourself | ✅ Viable now | Your acceptance that a human verifies each coverage claim. |
+| **Automated evidence-gap assurance** — trust a report that says "these controls have no evidence" | ❌ Not yet | The v0.1.6 evidence closeout, then Challenge 44 validation. |
+| **Maintained-framework / team rollout** — refresh in place, several writers | ❌ Not yet | Refresh safety, sidecar isolation, packaging, and recovery gates. |
+
+The first two are worth real work this month. The second two are honest roadmap items, not near-misses.
+
+## 3. What the deliverable got right, and what has since been overtaken
+
+The deliverable was written 2026-08-19. Work landed after that date. Verified against the tree at the time of this log:
+
+| Deliverable finding | Status on 2026-08-21 |
+|---|---|
+| Replace-mode re-import destroys prose in ordinary generated bodies | **Stands.** Ordinary bodies are still rebuilt wholesale; only hub notes merge (`src/generation/generation-engine.ts`). |
+| The quick-start promised that anything the user wrote stays put | **Fixed.** That page now carries a per-mode table under a caution, so the docs no longer contradict the code. The behavior is unchanged — only the promise was wrong. |
+| The shipped evidence views do not implement the machine contract | **Stands.** The Base still checks `length(evidence) == 0` (`src/views/recipe-templates.ts`) against a recipe that emits no such property. |
+| Tier 2 OPFS isolation between vaults is unproven | **Stands.** The sidecar still opens a non-namespaced filename with no vault qualification (`src/tier2/sidecar.ts`). |
+| Framework redistribution rights are unresolved | **Stands.** External to the code; needs legal/procurement. |
+| Concurrent regeneration has no cross-client lock | **Stands.** |
+| `mapping_set_id` is ratified but not implemented in Tier 1 or keyed in Tier 2 | **Overtaken.** Mapping-set provenance shipped, and release isolation shipped 2026-08-21. |
+| Only one mapping release may be active in a projection | **Overtaken.** Two releases of one crosswalk can now coexist, with no migration of existing notes. See the [import-set ownership log](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/). |
+
+<Aside type="note" title="Why this table exists">
+A deliverable is preserved verbatim, which means a fast-moving repository can overtake it within days. Publishing the synthesis without saying which findings moved would leave a document that reads as current and is not. Two of eight moved; the other six are live.
+</Aside>
+
+## 4. Adopted
+
+### 4.1 Rollout boundary
+
+| Decision | Adopted rule |
+|---|---|
+| Pilot now | One designated importer, one dedicated desktop vault. Collaborators consume Markdown, wikilinks, search, and ordinary Bases without installing Crosswalker. |
+| Generated content ownership | Generated framework trees are importer-owned and read-only. Evidence, analysis, and reports live outside generated bodies until managed body regions ship. |
+| Source versions | Pin exact source bytes, versions, hashes, recipe, build, destination, and expected counts. Disable refresh for the first six months unless a shorter owner-approved window is chosen. A legitimate pre-alpha mitigation, not maintained-framework support. |
+| Import destination | Every framework release goes to a new, empty, release-qualified folder. Never refresh a live annotated tree in place with current behavior. |
+| Promotion | Any row error, collision, interruption, count mismatch, schema failure, or unexpected diff fails the run. Discard the complete staging tree and rerun from empty. |
+| Rollback | A snapshot or commit is necessary but not sufficient. Promotion requires an exact-byte restore drill with recorded recovery time. |
+| Tier 2 scope | One dedicated Crosswalker vault until vault isolation and verified purge ship. |
+| Team topology | Local-only Git is the safest sensitive branch. An approved private Git remote is the preferred small-team branch. Active multiwriter network shares are rejected. |
+| Framework rights | Start with pinned NIST and MITRE sources whose exact terms and attribution are recorded. Restricted catalogs wait for legal/procurement approval of the exact fields and sharing path. |
+| Packaging | Internal Tier 2 packages contain `main.js`, `manifest.json`, `styles.css`, `sqlite3.mjs`, and `sqlite3.wasm`, plus archived build identity and hashes. The three-file release story is incomplete. |
+
+### 4.2 Safe Replace design
+
+A **managed body region** (marker-delimited generated Markdown that Crosswalker owns) is the adopted answer. Text outside the markers is user-owned.
+
+| Decision | Adopted behavior |
+|---|---|
+| Ownership boundary | Both generation entry points use one shared existing-note reader and body merger. Newly generated bodies are wrapped in stable managed-region comments. |
+| Replace | Replace regenerates only the managed region and preserves all text outside it. User edits inside the managed region remain replaceable. |
+| Legacy notes | Add markers automatically only when the unmarked existing body equals the fresh render after newline normalization. Otherwise leave the note unchanged and report a conflict. |
+| Frontmatter cache miss | Read the raw note and parse YAML when metadata-cache frontmatter is absent. Malformed YAML or a failed read blocks modification; it never degrades to an empty object. |
+| Test gate | Both entry points, cache misses, malformed YAML, marker corruption, idempotence, CRLF normalization, and legacy conflict behavior. A real-Obsidian `replace-preservation` E2E test is required. |
+
+This is the smallest design that keeps Replace useful without guessing which prose belongs to the user. The corrected quick-start must keep describing current behavior until this ships.
+
+### 4.3 Evidence authority and reporting
+
+A **junction note** is one Markdown note representing one reviewed relationship between a control and an evidence artifact.
+
+| Decision | Adopted rule |
+|---|---|
+| Authority | Junction notes are the sole evidence-link authority. Do not duplicate authoritative evidence state onto control notes. |
+| Direction | `subject` is the control; `object` is the evidence document or approved stub. |
+| Predicate | One canonical predicate: `has_evidence`. Others do not count toward coverage. |
+| Linked | A canonical junction exists and both endpoints resolve. This alone does not mean valid or covered. |
+| Valid evidence | The junction resolves, is approved, has `coverage: full` or `partial`, and is fresh under the review/expiry policy. |
+| Fully covered | At least one fresh, approved, resolved `coverage: full` junction exists. Partial evidence stays a separate state. |
+| Native Bases | Register and normalize the evidence-junction recipe. Bases may query qualifying junction notes for positive linked/valid reports. |
+| Negative and aggregate reports | Tier 2 left-joins all controls to qualifying junctions. `valid_count = 0` is the trustworthy orphan query. Family totals, percentages, and rankings stay in Tier 2. |
+| Staleness | A Tier 2-backed report must expose projection status, query version, source/build identity, and generation time. Stale data must not be presented as current posture. |
+| Migration | Inverse-direction, arbitrary-predicate, missing-review, expired, or broken legacy junctions are diagnosed and excluded, never silently reinterpreted. |
+
+Deliver in two narrow steps:
+
+1. Make the Markdown/Bases surface honest — register the starter, normalize direction and predicate, query junction notes directly for positive reports, correct the guide, withdraw the false orphan/backlink templates.
+2. Add the Tier 2 left join for zero-valid-evidence and aggregate coverage, then generate a disposable native Base report for collaborators.
+
+### 4.4 Update loop using shipped behavior
+
+| Step | Adopted operational rule |
+|---:|---|
+| 1 | Snapshot or commit the whole vault; keep the current generated tree and recovery material outside the staging path. |
+| 2 | Record the exact new upstream source, version, and hash. |
+| 3 | Reapply the bundled recipe or saved configuration manually; verify identifiers, mappings, destination. There is no shipped source/run replay. |
+| 4 | Import into a brand-new empty release folder. Use Stop on conflict as a guard, not as an atomic preflight. |
+| 5 | On any error, discard the new tree and rerun from empty. `error` mode can still leave partial writes. |
+| 6 | Compare added, removed, renamed, moved, and changed concepts manually. Transfer annotations and repair links manually. |
+| 7 | Project only the chosen active release into Tier 2; clear and rebuild after destructive changes. |
+| 8 | Promote only after count, schema, link, query, diff, and restore gates pass. |
+
+`Skip existing` is accepted only for known non-overlapping additions. It is not a refresh strategy. Current `Replace` is prohibited on annotated ordinary notes.
+
+### 4.5 Scale gate
+
+Scale is not a pilot blocker for one small organization and a few frameworks. It is a release-confidence gate. The full-corpus E2E test must separately record generation duration and peak memory, time until Obsidian metadata indexing settles, startup and link/graph responsiveness, Tier 2 projection duration, cold and warm timings for lookup and closure, and exact output counts with source lineage.
+
+Do not extrapolate transform-primitive benchmarks to vault writes or Tier 2 projection.
+
+## 5. Rejected
+
+| Rejected option or claim | Why |
+|---|---|
+| "Crosswalker is either organization-ready or not" | Readiness is use-case specific. See the four levels above. |
+| In-place refresh with `Skip existing` | Leaves changed records unchanged and removed records behind. |
+| In-place refresh with current `Replace` | Destroys ordinary body prose and may lose preserved YAML on a metadata-cache miss. |
+| Treating `error` mode as atomic preflight | Generation is row-level; non-conflicting rows may already be written. |
+| Backup-every-note as the primary Replace safety mechanism | Preserves recovery material but still destroys live prose, and adds vault, indexing, and retention burden. Later, as defense in depth only. |
+| Preflight refusal as the sole long-term body strategy | Safe, but blocks legitimate source-driven body updates whenever generated text changes. |
+| Three-way merge against stored baselines in this slice | Needs durable run binding, stable baselines, conflict semantics, storage lifecycle, and replay machinery that has not shipped. Revisit with Challenge 43 and v0.1.8. |
+| Generic backlinks as evidence coverage | Hierarchy and index links create false positives. |
+| A control-level `evidence` array as the authoritative model | Proves presence only. Cannot carry per-link approval, scope, reviewer, expiry, confidence, or coverage. |
+| Native Bases as a trustworthy anti-join or aggregate ranker | Bases can show qualifying positive rows but cannot reliably derive every control with zero valid junctions, nor rank groups by aggregate. |
+| The shipped orphan-controls recipe as trustworthy | It queries crosswalk-style fields rather than canonical junction fields. |
+| The pilot-local `evidences` predicate | Use one canonical product predicate, `has_evidence`, across schema, recipes, projection, queries, tests, and docs. |
+| SQL capacity as the first likely small-org wall | Roughly 2.8K Markdown files and 740 mappings sit far below the documented database envelope. Obsidian file, index, and UI work appears first. |
+| Team-wide plugin installation by default | Most collaborators need only Markdown and native Bases. Fewer installed writers reduce mixed-build and regeneration risk. |
+| Registry, recipe library, audit trail, mobile polish, and semantic migration as prerequisites for the first pilot | They gate broader self-service and audit-grade rollout, not a recoverable single-importer pilot. |
+| Active SMB/NFS or uncontrolled cloud folders for concurrent generation | No cross-client lock, compare-and-swap, transaction, or exact run undo. |
+| Generated control bodies as a safe annotation surface today | The shipped Replace path has no ordinary-body ownership boundary. |
+
+## 6. Cascade
+
+### Unblocks now
+
+| Destination | What is now decidable |
+|---|---|
+| Controlled organizational pilot | One importer can package, import, validate, promote, share Markdown/Bases, and restore a pinned NIST or MITRE corpus without waiting for the roadmap. |
+| v0.1.6 evidence closeout | Evidence authority, direction, predicate, validity states, the truthful Bases boundary, the Tier 2 anti-join, and migration diagnostics are specified. |
+| Replace-safety implementation | Managed regions, conservative legacy adoption, raw YAML fallback, conflict behavior, and the test matrix are specified for both entry points. |
+| [Challenge 44](/crosswalker/agent-context/zz-challenges/44-e2e-testing-strategy/) | Concrete acceptance surfaces exist: clean five-file install, full corpus, Replace preservation, evidence coverage, interruption recovery, Tier 2 isolation and purge, two-client promotion. |
+| [Challenge 43](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) | The side-by-side procedure defines the baseline that semantic diff, annotation transfer, stable identity, and replay must improve on. |
+| v0.1.7 portability | Source-byte/recipe/build/destination binding and repeatable replay are rollout exits, not pilot prerequisites. |
+| v0.1.8 audit trail | Execution records must retain expected-versus-written counts, failures, actor/build/source identity, restore result, retention, and redaction policy. |
+| v0.1-RC packaging | The release artifact is five runtime files with synchronized build identity, clean-install proof, rollback proof, and truthful mobile/Tier 2 claims. |
+
+### Newly blocks
+
+| Claim or rollout level | Blocked until |
+|---|---|
+| "Replace preserves user-authored note bodies" | Managed body regions and raw-file frontmatter fallback pass unit, integration, and real-Obsidian tests. |
+| Automated or audit-defensible evidence-gap reporting | Canonical junction workflow, Tier 2 coverage query, projection-status reporting, docs correction, and Challenge 44 validation. |
+| Safe in-place framework refresh | Source/run binding, semantic diff and migration, removed/renamed handling, and annotation transfer. |
+| Multiple sensitive Crosswalker vaults using Tier 2 | Vault-specific OPFS naming, two-vault isolation proof, verified purge, deletion reconciliation. |
+| Restricted-framework team sharing | Legal/procurement approval of the exact source version, fields, transformations, mappings, storage, and audience. |
+| External alpha or operational compliance reliance | Full-corpus performance, recovery, packaging, update, evidence, and sidecar gates. |
+
+## 7. What the owner still decides
+
+These change the branch, and no amount of engineering settles them:
+
+| Decision | Why it matters |
+|---|---|
+| Is the first goal corpus navigation, manually reconciled evidence analysis, or audit-defensible coverage? | Only the first two can proceed now. |
+| Is one designated importer acceptable for at least six months? | If not, cross-client locking and package parity become earlier blockers. |
+| Local-only Git, or an approved private remote? | Chooses the promotion, rollback, collaboration, and history-retention path. |
+| What data classification applies to evidence locators, reviewer roles, and relationship metadata? | Sensitive metadata may prohibit Tier 2, Git history, or remote storage even when source documents stay external. |
+| Which exact frameworks and crosswalks in the first 90 days? | Source rights and corpus size differ materially. |
+| Which NIST lineage is authoritative — the reproducible 1,196-record OSCAL conversion, or the available 1,189-record derivative? | Counts, hashes, completeness claims, and later refresh comparison must bind to one source of record. |
+| Is full normative control text required inside generated notes? | The current flat recipe emits identifier and title only; a body-emitting recipe changes scale and Replace requirements. |
+| Is a six-month pinned-source window acceptable? | An earlier mandatory refresh activates the unshipped migration blockers. |
+| Will auditors, regulators, clients, or management consume pilot output? | External reliance raises evidence correctness, provenance, retention, and audit-trail gates. |
+| What recovery-time objective must the restore drill meet? | "Restore works" is incomplete without an acceptable elapsed-time target. |
+
+## 8. Related
+
+- [Challenge 45 brief](/crosswalker/agent-context/zz-challenges/45-org-rollout-readiness/)
+- [Challenge 45 research deliverable](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/)
+- [Challenge 44 — E2E testing strategy](/crosswalker/agent-context/zz-challenges/44-e2e-testing-strategy/)
+- [Challenge 43 — version migration and semantic diff](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/)
+- [Re-import is identity reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/)
+- [The import set — per-import ownership](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/)
+- [Owner review queue](/crosswalker/agent-context/zz-log/2026-07-25-owner-review-queue/)
+- [Evidence-link edge model synthesis](/crosswalker/agent-context/zz-log/2026-04-10-evidence-link-edge-model-synthesis/)
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/)
+- [Tier 2 sidecar milestone](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/)
+- [Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)
+- [Portability milestone](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/)
+- [Audit trail milestone](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/)
+- [Bundle and ship milestone](/crosswalker/reference/roadmap/milestones/v0-1-rc-bundle-and-ship/)
