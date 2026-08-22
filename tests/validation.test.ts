@@ -75,6 +75,30 @@ describe('validateTier1Frontmatter', () => {
 		expect(result.valid).toBe(true);
 	});
 
+	it.each(['endpoint-v1', 'set-qualified-v1'] as const)(
+		'accepts the additive import-set scheme %s',
+		(scheme) => {
+			const result = validateTier1Frontmatter({
+				curie: scheme === 'endpoint-v1'
+					? 'sssom:cw-nist-AC-2-iso-A-9'
+					: 'sssom:cwset-iset-abc123-nist-AC-2-iso-A-9',
+				kind: 'crosswalk-edge',
+				subject_id: 'nist:AC-2',
+				predicate_id: 'is_equivalent_to',
+				object_id: 'iso27001:A.9',
+				_crosswalker: {
+					spec_version: 'https://crosswalker.dev/spec/tier1.schema.json',
+					source_ref: { file: 'mapping.tsv' },
+					produced_at: '2026-08-21T00:00:00Z',
+					import_set: { id: 'iset-abc123', scheme },
+				},
+			});
+
+			expect(result.valid).toBe(true);
+			expect(result.errors).toEqual([]);
+		},
+	);
+
 	it('rejects frontmatter missing the required curie field', () => {
 		const result = validateTier1Frontmatter({
 			title: 'Account Management',

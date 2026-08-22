@@ -1760,11 +1760,11 @@ export class ImportFlow {
 			this.importSetChoice = null;
 		}
 		const sets = discoverImportSets(this.app, normalized);
-		if (sets.length === 1 && this.importSetChoice !== 'new') {
+		if (sets.length === 1 && typeof this.importSetChoice !== 'string') {
 			this.importSetChoice = { id: sets[0].id };
 		} else if (sets.length > 1) {
 			const choice = this.importSetChoice;
-			if (choice && choice !== 'new' && !sets.some((set) => set.id === choice.id)) {
+			if (choice && typeof choice === 'object' && !sets.some((set) => set.id === choice.id)) {
 				this.importSetChoice = null;
 			}
 		} else if (sets.length === 0) {
@@ -1776,9 +1776,11 @@ export class ImportFlow {
 	private selectedImportSet(basePath: string): ImportSetOption | undefined {
 		const sets = this.importSetsForDestination(basePath);
 		if (sets.length === 0) return undefined;
-		if (sets.length === 1) return this.importSetChoice === 'new' ? 'new' : { id: sets[0].id };
+		if (sets.length === 1) {
+			return typeof this.importSetChoice === 'string' ? this.importSetChoice : { id: sets[0].id };
+		}
 		const choice = this.importSetChoice;
-		if (choice === 'new') return 'new';
+		if (typeof choice === 'string') return choice;
 		if (choice && sets.some((set) => set.id === choice.id)) return { id: choice.id };
 		throw new Error('Choose an import set to refresh, or choose to import as a new set.');
 	}

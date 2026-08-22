@@ -15,9 +15,9 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { App } from 'obsidian';
+import { parseYaml, type App } from 'obsidian';
 
-import { importSssom } from '../src/import/sssom-importer';
+import { importSssom, sssomEdgeCurie } from '../src/import/sssom-importer';
 
 const FIXTURE_PATH = join(__dirname, '..', 'tools', 'fixtures', 'synthetic', 'nist-csf-to-iso27001.sssom.tsv');
 
@@ -27,9 +27,13 @@ function makeMockApp(): { app: App; written: Map<string, string>; folders: Set<s
 	const folders = new Set<string>();
 	const app = {
 		vault: {
-			// generateFromRecipe builds its reconciliation index once before writing.
-			// This importer double starts with no pre-existing Markdown notes.
-			getMarkdownFiles: () => [],
+			getMarkdownFiles: () => [...written.keys()]
+				.filter((path) => path.endsWith('.md'))
+				.map((path) => ({
+					path,
+					basename: path.split('/').pop()?.replace(/\.md$/, '') ?? path,
+					extension: 'md',
+				})),
 			adapter: {
 				exists: async (p: string) => written.has(p) || folders.has(p),
 				mkdir: async (p: string) => {
@@ -53,6 +57,13 @@ function makeMockApp(): { app: App; written: Map<string, string>; folders: Set<s
 			read: async (file: any) => written.get(file.path) ?? '',
 			createFolder: async (p: string) => {
 				folders.add(p);
+			},
+		},
+		metadataCache: {
+			getFileCache: (file: { path: string }) => {
+				const content = written.get(file.path) ?? '';
+				const match = content.match(/^---\n([\s\S]*?)\n---/);
+				return { frontmatter: match ? parseYaml(match[1]) : undefined };
 			},
 		},
 		fileManager: {
@@ -252,8 +263,8 @@ x:C\tskos:exactMatch\ty:D\tset:two\tC\tD\tsemapv:ManualMappingCuration\t1`;
 	 * Endpoint-derived identity is order-independent by construction: the same rows in
 	 * any order produce the same note paths. Note what this does NOT claim — two rows
 	 * that differ only in metadata share endpoints, so they share one note and the
-	 * later write wins. Distinguishing them needs assertion-level identity, which is
-	 * exactly the held feature.
+	 * later write wins. set-qualified-v1 isolates releases from each other; it does
+	 * not turn metadata-distinct duplicates inside one release into separate assertions.
 	 */
 	it('produces the same note paths regardless of source row order', async () => {
 		const header = `# subject_source: "x"
@@ -269,9 +280,91 @@ subject_id\tpredicate_id\tobject_id\tmapping_set_id\tmapping_justification`;
 		expect(paths(a.written)).toEqual(paths(b.written));
 	});
 
-	/**
-	 * Removed with release isolation: the importer no longer isolates mapping sets by
-	 * folder, so several sets in one import share the pair root and are no longer a
-	 * conflict to reject. Restore this test alongside the feature.
-	 */
+	const releaseHeader = `# subject_source: "x"
+# object_source: "y"
+subject_id	predicate_id	object_id	mapping_set_id	subject_label	object_label	mapping_justification	confidence`;
+	const releaseRows = [
+		'x:A\tskos:exactMatch\ty:B\trelease:one\tA\tB\tsemapv:ManualMappingCuration\t1',
+		'x:C\tskos:closeMatch\ty:D\trelease:one\tC\tD\tsemapv:ManualMappingCuration\t0.8',
+	];
+
+	it('keeps endpoint-v1 identities byte-identical when refreshing an existing set', async () => {
+		expect(sssomEdgeCurie(
+			{ subject_id: 'x:A', object_id: 'y:B' },
+			{ id: 'iset-old111', scheme: 'endpoint-v1' },
+		)).toBe('cw-x-A-y-B');
+
+		const { app, written } = makeMockApp();
+		const options = {
+			runTier2Projection: false,
+			importSet: { id: 'iset-old111', scheme: 'endpoint-v1' } as const,
+		};
+		const first = await importSssom(app, `${releaseHeader}\n${releaseRows.join('\n')}`, null, null, options);
+		expect(first.generation?.success).toBe(true);
+		const before = [...written.keys()].filter((path) => path.endsWith('.md')).sort();
+
+		await importSssom(app, `${releaseHeader}\n${[...releaseRows].reverse().join('\n')}`, null, null, {
+			runTier2Projection: false,
+			importSet: { id: 'iset-old111' },
+		});
+		const after = [...written.keys()].filter((path) => path.endsWith('.md')).sort();
+
+		expect(after).toEqual(before);
+		expect(after).toEqual([
+			'_crosswalker/mappings/x-to-y/cw-x-a-y-b.md',
+			'_crosswalker/mappings/x-to-y/cw-x-c-y-d.md',
+		]);
+		expect(after.some((path) => path.includes('/cwset-'))).toBe(false);
+	});
+
+	it('lets two releases coexist as separate sets without changing the first set notes', async () => {
+		const { app, written } = makeMockApp();
+		const firstTsv = `${releaseHeader}\n${releaseRows.join('\n')}`;
+		const first = await importSssom(app, firstTsv, null, null, {
+			runTier2Projection: false,
+			importSet: { id: 'iset-old111', scheme: 'endpoint-v1' },
+		});
+		expect(first.generation?.success).toBe(true);
+		const firstSetBefore = new Map(
+			[...written].filter(([path]) => /\/cw-x-[ac]-y-[bd]\.md$/.test(path)),
+		);
+
+		expect(firstSetBefore.size).toBe(2);
+
+		const secondRows = releaseRows.map((row) => row.replace('release:one', 'release:two'));
+		const second = await importSssom(app, `${releaseHeader}\n${secondRows.join('\n')}`, null, null, {
+			runTier2Projection: false,
+			importSet: { id: 'iset-new222', scheme: 'set-qualified-v1' },
+		});
+		expect(second.generation?.success).toBe(true);
+
+		for (const [path, content] of firstSetBefore) expect(written.get(path)).toBe(content);
+		const allPaths = [...written.keys()].filter((path) => path.endsWith('.md')).sort();
+		expect(allPaths).toHaveLength(4);
+		expect(allPaths.filter((path) => path.includes('/cwset-iset-new222-'))).toHaveLength(2);
+		const secondSetBodies = allPaths
+			.filter((path) => path.includes('/cwset-iset-new222-'))
+			.map((path) => written.get(path) ?? '')
+			.join('\n');
+		expect(secondSetBodies).toContain('id: iset-new222');
+		expect(secondSetBodies).toContain('scheme: set-qualified-v1');
+	});
+
+	it('keeps set-qualified identities stable under source row reordering', async () => {
+		const a = makeMockApp();
+		const b = makeMockApp();
+		const options = {
+			runTier2Projection: false,
+			importSet: { id: 'iset-new222', scheme: 'set-qualified-v1' } as const,
+		};
+		await importSssom(a.app, `${releaseHeader}\n${releaseRows.join('\n')}`, null, null, options);
+		await importSssom(b.app, `${releaseHeader}\n${[...releaseRows].reverse().join('\n')}`, null, null, options);
+		const paths = (written: Map<string, string>) => [...written.keys()].filter((path) => path.endsWith('.md')).sort();
+
+		expect(paths(a.written)).toEqual(paths(b.written));
+		expect(paths(a.written)).toEqual([
+			'_crosswalker/mappings/x-to-y/cwset-iset-new222-x-a-y-b.md',
+			'_crosswalker/mappings/x-to-y/cwset-iset-new222-x-c-y-d.md',
+		]);
+	});
 });

@@ -26,12 +26,49 @@ import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import type CrosswalkerPlugin from '../main';
 import { detectOntologyPair, parseSssomTsv } from './sssom-parser';
 import { importSssom, type SssomImportResult } from './sssom-importer';
+import {
+	discoverImportSets,
+	type DiscoveredImportSet,
+	type ImportSetOption,
+} from '../generation/import-set';
 
 /** Source for the SSSOM TSV content. */
 type Source =
 	| { kind: 'vault-file'; path: string }
 	| { kind: 'paste'; content: string }
 	| { kind: 'none' };
+
+
+/**
+ * Human-readable label for one import set in a chooser.
+ *
+ * The minted id is intentionally meaningless — that is what keeps identity stable
+ * when recipes, destinations and sources change. But a user choosing WHICH release
+ * to refresh cannot act on `iset-8f3ka2`, and choosing wrong overwrites the wrong
+ * release. So the chooser shows the facts that distinguish sets in practice: how
+ * many notes it owns and where they live. The id stays visible because it is what
+ * appears in note frontmatter.
+ */
+export function describeImportSet(set: { id: string; noteCount: number; paths: string[]; scheme?: string }): string {
+	const folder = commonFolder(set.paths);
+	const where = folder ? ` in ${folder}` : '';
+	const noteWord = set.noteCount === 1 ? 'note' : 'notes';
+	return `${set.id} — ${set.noteCount} ${noteWord}${where}`;
+}
+
+/** Longest shared folder prefix of the given paths, or '' when they share none. */
+function commonFolder(paths: string[]): string {
+	if (paths.length === 0) return '';
+	const split = paths.map((path) => path.split('/').slice(0, -1));
+	const first = split[0] ?? [];
+	let shared = first.length;
+	for (const parts of split.slice(1)) {
+		let i = 0;
+		while (i < shared && i < parts.length && parts[i] === first[i]) i += 1;
+		shared = i;
+	}
+	return first.slice(0, shared).join('/');
+}
 
 export class SssomImportModal extends Modal {
 	private plugin: CrosswalkerPlugin;
@@ -42,6 +79,8 @@ export class SssomImportModal extends Modal {
 	private rowCount: number = 0;
 	private parseWarnings: string[] = [];
 	private parseErrors: string[] = [];
+	private importSetChoice: ImportSetOption | null = null;
+	private importSetChoiceBasePath: string = '';
 
 	constructor(app: App, plugin: CrosswalkerPlugin) {
 		super(app);
@@ -160,14 +199,17 @@ export class SssomImportModal extends Modal {
 		previewEl.createEl('h3', { text: 'Preview' });
 		const list = previewEl.createEl('dl');
 		this.dlEntry(list, 'Mapping rows', String(this.rowCount));
+		let importSetReady = true;
 		if (this.detectedSource && this.detectedTarget) {
 			this.dlEntry(list, 'Source ontology', this.detectedSource);
 			this.dlEntry(list, 'Target ontology', this.detectedTarget);
+			const outputFolder = `_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}`;
 			this.dlEntry(
 				list,
 				'Output organization',
-				`_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}/ with separate mapping-set subfolders`,
+				`${outputFolder}/ with one junction note per assertion`,
 			);
+			importSetReady = this.renderImportSetChoice(previewEl, outputFolder);
 		} else {
 			this.dlEntry(list, 'Ontology pair', '(could not detect; add subject_source/object_source to header)');
 		}
@@ -187,7 +229,125 @@ export class SssomImportModal extends Modal {
 			}
 		}
 
-		this.setImportButtonEnabled(this.rowCount > 0 && this.detectedSource !== null && this.detectedTarget !== null);
+		this.setImportButtonEnabled(
+			this.rowCount > 0
+			&& this.detectedSource !== null
+			&& this.detectedTarget !== null
+			&& importSetReady,
+		);
+	}
+
+	/** Inline refresh-vs-coexist choice for the detected crosswalk destination. */
+	private renderImportSetChoice(container: HTMLElement, basePath: string): boolean {
+		let sets: DiscoveredImportSet[];
+		try {
+			sets = this.importSetsForDestination(basePath);
+		} catch (error) {
+			container.createEl('p', {
+				text: error instanceof Error ? error.message : String(error),
+				cls: 'mod-warning',
+			});
+			return false;
+		}
+		if (sets.length === 0) return true;
+
+		const wrap = container.createDiv({ cls: 'crosswalker-import-set-review' });
+		wrap.createEl('h4', { text: 'Existing crosswalk import' });
+		if (sets.length === 1) {
+			const set = sets[0];
+			const importingNew = this.isNewSetChoice();
+			const line = wrap.createEl('p', { cls: 'setting-item-description' });
+			if (importingNew) {
+				line.setText(
+					'Importing as a new set with set-qualified identities. This release will sit alongside the existing release.',
+				);
+				const refresh = wrap.createEl('button', { text: `Refresh ${describeImportSet(set)} instead` });
+				refresh.addEventListener('click', () => {
+					this.importSetChoice = { id: set.id, scheme: set.scheme };
+					void this.refreshPreview();
+				});
+			} else {
+				line.setText(
+					`Refreshing ${set.id} (${set.noteCount} existing notes). This replaces that release while preserving its identities.`,
+				);
+				const fresh = wrap.createEl('button', { text: 'Keep both as a new set' });
+				fresh.addEventListener('click', () => {
+					this.importSetChoice = 'new-set-qualified';
+					void this.refreshPreview();
+				});
+			}
+			return true;
+		}
+
+		wrap.createEl('p', {
+			text: 'Choose a set to refresh and replace, or create a new set so this release can coexist with the existing releases.',
+			cls: 'mod-warning',
+		});
+		const list = wrap.createEl('ul');
+		for (const set of sets) {
+			list.createEl('li', { text: `${set.id}: ${set.noteCount} notes (${set.scheme})` });
+		}
+		new Setting(wrap)
+			.setName('Import set')
+			.setDesc('Refreshing preserves the selected set identity. A new set uses set-qualified identities.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('', 'Choose one');
+				for (const set of sets) dropdown.addOption(set.id, describeImportSet(set));
+				dropdown.addOption('__new__', 'Keep this release alongside them as a new set');
+				const choice = this.importSetChoice;
+				const value = this.isNewSetChoice()
+					? '__new__'
+					: (this.isExistingSetChoice(choice) ? choice.id : '');
+				dropdown.setValue(value).onChange((selected) => {
+					const selectedSet = sets.find((set) => set.id === selected);
+					this.importSetChoice = selected === '__new__'
+						? 'new-set-qualified'
+						: (selectedSet ? { id: selectedSet.id, scheme: selectedSet.scheme } : null);
+					void this.refreshPreview();
+				});
+			});
+		return this.importSetChoice !== null;
+	}
+
+	private importSetsForDestination(basePath: string): DiscoveredImportSet[] {
+		if (basePath !== this.importSetChoiceBasePath) {
+			this.importSetChoiceBasePath = basePath;
+			this.importSetChoice = null;
+		}
+		const sets = discoverImportSets(this.app, basePath);
+		if (sets.length === 1 && this.importSetChoice === null) {
+			this.importSetChoice = { id: sets[0].id, scheme: sets[0].scheme };
+		} else if (sets.length > 1) {
+			const choice = this.importSetChoice;
+			if (this.isExistingSetChoice(choice) && !sets.some((set) => set.id === choice.id)) {
+				this.importSetChoice = null;
+			}
+		} else if (sets.length === 0) {
+			this.importSetChoice = null;
+		}
+		return sets;
+	}
+
+	private selectedImportSet(): ImportSetOption | undefined {
+		if (!this.detectedSource || !this.detectedTarget) return undefined;
+		const basePath = `_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}`;
+		const sets = this.importSetsForDestination(basePath);
+		if (sets.length === 0) return undefined;
+		if (sets.length === 1) {
+			return this.isNewSetChoice()
+				? this.importSetChoice!
+				: { id: sets[0].id, scheme: sets[0].scheme };
+		}
+		if (this.importSetChoice) return this.importSetChoice;
+		throw new Error('Choose an import set to refresh, or choose to keep this release as a new set.');
+	}
+
+	private isNewSetChoice(): boolean {
+		return this.importSetChoice === 'new' || this.importSetChoice === 'new-set-qualified';
+	}
+
+	private isExistingSetChoice(choice: ImportSetOption | null = this.importSetChoice): choice is { id: string } {
+		return !!choice && typeof choice === 'object' && 'id' in choice;
 	}
 
 	private setImportButtonEnabled(enabled: boolean) {
@@ -206,6 +366,14 @@ export class SssomImportModal extends Modal {
 			return;
 		}
 
+		let importSet: ImportSetOption | undefined;
+		try {
+			importSet = this.selectedImportSet();
+		} catch (error) {
+			new Notice(error instanceof Error ? error.message : String(error));
+			return;
+		}
+
 		const progressNotice = new Notice('SSSOM import: starting…', 0);
 		try {
 			const result: SssomImportResult = await importSssom(
@@ -214,6 +382,7 @@ export class SssomImportModal extends Modal {
 				this.plugin.runProjection,
 				this.plugin.precomputeClosure,
 				{
+					importSet,
 					onProgress: (current, total, msg) => {
 						progressNotice.setMessage(`SSSOM import: ${msg} (${current}/${total})`);
 					},
@@ -239,7 +408,7 @@ export class SssomImportModal extends Modal {
 			}
 
 			new Notice(
-				`SSSOM import: ${gen.created.length} junction notes created under ${result.folder} in mapping-set subfolders` +
+				`SSSOM import: ${gen.created.length} junction notes created under ${result.folder}` +
 					(gen.errors.length > 0 ? ` (with ${gen.errors.length} warning(s))` : ''),
 				8000,
 			);

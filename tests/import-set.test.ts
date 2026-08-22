@@ -79,12 +79,15 @@ describe('import-set ownership discovery and selection', () => {
 		expect(resolveImportSet(app, 'Frameworks', 'new')).toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1',
 		});
+		expect(resolveImportSet(app, 'Frameworks', 'new-set-qualified')).toEqual({
+			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'set-qualified-v1',
+		});
 	});
 
 	it('reports every path when one set disagrees on scheme', () => {
 		const app = mockApp({
 			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
-			'Frameworks/B.md': { id: 'iset-abc123', scheme: 'future-v1' },
+			'Frameworks/B.md': { id: 'iset-abc123', scheme: 'set-qualified-v1' },
 		});
 		expect(() => discoverImportSets(app, 'Frameworks')).toThrow(ImportSetProvenanceError);
 		try {
@@ -95,6 +98,41 @@ describe('import-set ownership discovery and selection', () => {
 				'Frameworks/B.md',
 			]);
 		}
+	});
+
+	it('accepts a set whose fixed scheme is known but is not the default', () => {
+		const app = mockApp({
+			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'set-qualified-v1' },
+			'Frameworks/B.md': { id: 'iset-abc123', scheme: 'set-qualified-v1' },
+		});
+
+		expect(discoverImportSets(app, 'Frameworks')).toEqual([{
+			id: 'iset-abc123',
+			scheme: 'set-qualified-v1',
+			noteCount: 2,
+			paths: ['Frameworks/A.md', 'Frameworks/B.md'],
+		}]);
+		expect(resolveImportSet(app, 'Frameworks', { id: 'iset-abc123' })).toEqual({
+			id: 'iset-abc123', scheme: 'set-qualified-v1',
+		});
+	});
+
+	it('refuses to change an existing set scheme during refresh', () => {
+		const app = mockApp({
+			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
+		});
+
+		expect(() => resolveImportSet(app, 'Frameworks', {
+			id: 'iset-abc123', scheme: 'set-qualified-v1',
+		})).toThrow(/refresh cannot change/);
+	});
+
+
+	it('rejects a set whose single scheme is not in the closed enum', () => {
+		const app = mockApp({
+			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'future-v1' },
+		});
+		expect(() => discoverImportSets(app, 'Frameworks')).toThrow(/unsupported schemes/);
 	});
 
 	it('does not let malformed provenance for an unrelated set block an explicit refresh', () => {

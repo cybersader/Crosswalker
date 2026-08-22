@@ -10,15 +10,22 @@
 import { App, normalizePath } from 'obsidian';
 
 export const IMPORT_SET_ID_PATTERN = /^iset-[a-z0-9]{6}$/;
-export const CURRENT_IMPORT_SET_SCHEME = 'endpoint-v1' as const;
-export type ImportSetScheme = typeof CURRENT_IMPORT_SET_SCHEME;
+export const IMPORT_SET_SCHEMES = ['endpoint-v1', 'set-qualified-v1'] as const;
+export type ImportSetScheme = typeof IMPORT_SET_SCHEMES[number];
+
+/** Default for callers that do not deliberately choose a scheme. Kept at
+ * endpoint-v1 so every pre-existing import path preserves its identities. */
+export const CURRENT_IMPORT_SET_SCHEME: ImportSetScheme = 'endpoint-v1';
 
 export interface ImportSetReference {
 	id: string;
 	scheme: ImportSetScheme;
 }
 
-export type ImportSetOption = { id: string } | 'new';
+export type ImportSetOption =
+	| { id: string; scheme?: ImportSetScheme }
+	| 'new'
+	| 'new-set-qualified';
 
 export interface DiscoveredImportSet extends ImportSetReference {
 	noteCount: number;
@@ -58,8 +65,9 @@ export function discoverImportSets(app: App, basePath?: string): DiscoveredImpor
 
 /**
  * Apply the shared selection rules used by both generation entry points.
- * Explicit ids may name an empty/wiped set; with only one scheme today, an id
- * never observed in the vault safely starts with endpoint-v1.
+ * Explicit ids may name an empty/wiped set. A caller that knows the fixed
+ * scheme can carry it with the id; otherwise the backwards-compatible
+ * endpoint-v1 default applies. Existing notes always remain authoritative.
  */
 export function resolveImportSet(
 	app: App,
@@ -70,13 +78,25 @@ export function resolveImportSet(
 		return { id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME };
 	}
 
+	if (option === 'new-set-qualified') {
+		return { id: mintImportSetId(collectKnownIds(app)), scheme: 'set-qualified-v1' };
+	}
+
 	if (option && typeof option === 'object') {
 		assertImportSetId(option.id);
+		if (option.scheme !== undefined) assertImportSetScheme(option.scheme);
 		const observations = collectObservations(app, undefined, option.id);
 		const existing = buildDiscoveredSets(observations)[0];
-		return existing
-			? { id: existing.id, scheme: existing.scheme }
-			: { id: option.id, scheme: CURRENT_IMPORT_SET_SCHEME };
+		if (existing) {
+			if (option.scheme !== undefined && option.scheme !== existing.scheme) {
+				throw new ImportSetProvenanceError(
+					`Import set ${option.id} is fixed to ${existing.scheme}; refresh cannot change it to ${option.scheme}.`,
+					existing.paths,
+				);
+			}
+			return { id: existing.id, scheme: existing.scheme };
+		}
+		return { id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME };
 	}
 
 	const destinationSets = discoverImportSets(app, basePath);
@@ -145,7 +165,8 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 	const sets: DiscoveredImportSet[] = [];
 	for (const [id, group] of byId) {
 		const schemes = new Set(group.map((entry) => entry.scheme));
-		if (schemes.size !== 1 || !schemes.has(CURRENT_IMPORT_SET_SCHEME)) {
+		const scheme = schemes.size === 1 ? group[0].scheme : null;
+		if (schemes.size !== 1 || !isImportSetScheme(scheme)) {
 			const paths = group.map((entry) => entry.path).sort();
 			const details = group
 				.map((entry) => `${entry.path} (${entry.scheme ?? 'missing scheme'})`)
@@ -154,10 +175,20 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 			throw new ImportSetProvenanceError(`Import set ${id} has inconsistent or unsupported schemes: ${details}.`, paths);
 		}
 		const paths = group.map((entry) => entry.path).sort();
-		sets.push({ id, scheme: CURRENT_IMPORT_SET_SCHEME, noteCount: paths.length, paths });
+		sets.push({ id, scheme, noteCount: paths.length, paths });
 	}
 	sets.sort((a, b) => a.id.localeCompare(b.id));
 	return sets;
+}
+
+function isImportSetScheme(value: unknown): value is ImportSetScheme {
+	return typeof value === 'string' && (IMPORT_SET_SCHEMES as readonly string[]).includes(value);
+}
+
+function assertImportSetScheme(value: unknown): asserts value is ImportSetScheme {
+	if (!isImportSetScheme(value)) {
+		throw new Error(`Unsupported import set scheme: ${String(value)}.`);
+	}
 }
 
 function collectKnownIds(app: App): Set<string> {

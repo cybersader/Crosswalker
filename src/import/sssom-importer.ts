@@ -39,6 +39,7 @@ import {
 	type SssomRow,
 } from './sssom-parser';
 import { sha256Hex } from '../generation/hash';
+import type { ImportSetOption, ImportSetReference } from '../generation/import-set';
 import {
 	assertionBaseKey,
 	mappingOccurrenceContentKey,
@@ -58,6 +59,8 @@ export interface SssomImportOptions {
 	targetOntology?: string;
 	/** How to handle existing files. Default: 'replace' (idempotent re-imports). */
 	overwriteMode?: 'skip' | 'replace' | 'error';
+	/** Refresh an existing import set or deliberately mint a new one. */
+	importSet?: ImportSetOption;
 	/** Whether to trigger Tier 2 projection + closure precompute after generation.
 	 *  Default: true. Pass false in tests that don't have a sidecar handle. */
 	runTier2Projection?: boolean;
@@ -256,9 +259,10 @@ async function runImportSssom(
 			basePath: folder,
 			overwriteMode: options.overwriteMode ?? 'replace',
 			createFolders: true,
+			importSet: options.importSet,
 			sourceFileName: normalizedHeaderId || fallbackId,
 			strictValidation: true,
-			curieLocalPart: (row) => sssomEdgeCurie(row),
+			curieLocalPart: (row, _rowNum, importSet) => sssomEdgeCurie(row, importSet),
 			curiePrefix: 'sssom',
 			onProgress: options.onProgress,
 		},
@@ -323,7 +327,7 @@ function buildSyntheticRecipe(source: string, target: string): Recipe {
 				{
 					level: 'mapping',
 					mechanism: 'file',
-					template: 'cw-{subject_id|slug}-{object_id|slug}.md',
+					template: '{_crosswalker_curie_local_part|slug}.md',
 					kind: 'crosswalk-edge',
 				},
 			],
@@ -427,18 +431,27 @@ function preflightMappingSetDestinations(
 }
 
 /**
- * Stable CURIE local-part for one SSSOM edge: cw-<subject>-<object>, sanitized.
- *
- * Endpoint-derived on purpose. A mapping-set-derived identity would let two
- * releases of one crosswalk coexist, but it also changes the identity of every
- * note already written, and identity reconciliation can only follow a note whose
- * identity is stable. Release isolation is therefore deferred until per-import
- * ownership is modelled; see the 2026-08-21 reconciliation decision log.
+ * Stable CURIE local-part for one SSSOM edge, dispatched by the active set's
+ * scheme. endpoint-v1 remains byte-for-byte `cw-<subject>-<object>`.
+ * set-qualified-v1 is exactly
+ * `cwset-<import-set-id>-<sanitized-subject>-<sanitized-object>`: the `cwset-`
+ * marker makes it visibly distinct, the minted set id isolates releases, and
+ * endpoint sanitization keeps the deterministic result filesystem-safe.
  */
-function sssomEdgeCurie(row: Record<string, unknown>): string {
-	const subj = String(row.subject_id ?? 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');
-	const obj = String(row.object_id ?? 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');
-	return `cw-${subj}-${obj}`;
+export function sssomEdgeCurie(
+	row: Record<string, unknown>,
+	importSet: ImportSetReference,
+): string {
+	const subj = sanitizeCuriePart(row.subject_id);
+	const obj = sanitizeCuriePart(row.object_id);
+	if (importSet.scheme === 'endpoint-v1') return `cw-${subj}-${obj}`;
+	if (importSet.scheme === 'set-qualified-v1') return `cwset-${importSet.id}-${subj}-${obj}`;
+	const exhaustive: never = importSet.scheme;
+	throw new Error(`Unsupported import set scheme: ${String(exhaustive)}.`);
+}
+
+function sanitizeCuriePart(value: unknown): string {
+	return String(value ?? 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');
 }
 
 /** Convert a SssomRow to a plain Record for the generation engine. */

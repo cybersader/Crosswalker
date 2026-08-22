@@ -99,8 +99,8 @@
             },
             "scheme": {
               "type": "string",
-              "enum": ["endpoint-v1"],
-              "description": "Identity scheme fixed when the import set is minted. The closed enum has one shipped member in v0.1."
+              "enum": ["endpoint-v1", "set-qualified-v1"],
+              "description": "Identity scheme fixed when the import set is minted. endpoint-v1 identifies crosswalk assertions by endpoints. set-qualified-v1 uses cwset-<import-set-id>-<sanitized-subject>-<sanitized-object>, allowing assertions with the same endpoints in different sets to coexist without changing any existing identity."
             }
           }
         },

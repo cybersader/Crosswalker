@@ -1732,7 +1732,7 @@ export interface RecipeImportOptions {
 	 * non-concept kinds typically need a per-row identity (e.g., for a
 	 * crosswalk-edge: `cw-{subject}-{object}`).
 	 */
-	curieLocalPart?: (row: Record<string, unknown>, rowNum: number) => string;
+	curieLocalPart?: (row: Record<string, unknown>, rowNum: number, importSet: ImportSetReference) => string;
 	/** CURIE prefix override. Default: recipe.source.ontology slug. */
 	curiePrefix?: string;
 	/** Progress callback. */
@@ -1855,20 +1855,22 @@ export async function generateFromRecipe(
 
 			// 1. Build CURIE for this row
 			const localPart = options.curieLocalPart
-				? options.curieLocalPart(scope, rowNum)
+				? options.curieLocalPart(scope, rowNum, importSet)
 				: defaultCurieLocalPart(scope, rowNum);
 			const curie = `${curiePrefix}:${localPart}`;
 			// The index deliberately does not return an arbitrary winner for a
 			// collision. Refuse this row instead of making the duplicate permanent.
 			if (ambiguousCuries.has(curie)) return;
 
-			// 2. Render. The report collects per-row deviations (skipped folder
-			//    level, split/regex fallback) — the row still imports; the
-			//    deviation surfaces as a warning instead of silent weirdness.
+			// 2. Render. Expose the already-derived local part as a reserved,
+			//    render-only variable so a recipe can keep its file address aligned
+			//    with scheme-aware identity. It is deliberately excluded from the
+			//    source/identity scopes used for concept CID computation.
+			const renderScope = { ...scope, _crosswalker_curie_local_part: localPart };
 			const renderReport: RenderReport = { notes: [] };
 			let address;
 			try {
-				address = render(recipe, { curie, scope }, renderReport);
+				address = render(recipe, { curie, scope: renderScope }, renderReport);
 			} catch (err) {
 				if (err instanceof RenderError) {
 					result.errors.push({ row: rowNum, message: `render() failed: ${err.message}` });
