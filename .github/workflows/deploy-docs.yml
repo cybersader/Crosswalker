@@ -1,8 +1,20 @@
+# Docs pipeline: the deploy is gated on the Playwright suite passing against
+# the exact dist that will be deployed.
+#
+# Until 2026-08-24 this workflow built and deployed WITHOUT running any test.
+# The docs Playwright suite (36 tests) existed for months and was never invoked
+# by CI; the Ch 44 review caught it (the challenge brief itself wrongly claimed
+# it was enforced). Test-then-deploy on the same artifact is the fix: the tested
+# bytes are the shipped bytes.
 name: Deploy Documentation
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/deploy-docs.yml'
+  pull_request:
     paths:
       - 'docs/**'
       - '.github/workflows/deploy-docs.yml'
@@ -13,12 +25,13 @@ permissions:
   pages: write
   id-token: write
 
+# Per-ref grouping so a PR run can never cancel an in-flight main deploy.
 concurrency:
-  group: 'pages'
+  group: 'pages-${{ github.ref }}'
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,17 +50,37 @@ jobs:
         working-directory: docs
         run: bun install
 
+      - name: Install Playwright Chromium
+        working-directory: docs
+        run: bun x playwright install --with-deps chromium
+
       - name: Build docs
         working-directory: docs
         run: bun run build
 
-      - name: Upload artifact
+      # playwright.config.ts auto-starts `astro preview --port 14325`, which
+      # serves the dist/ built above — the suite tests the deployable artifact.
+      - name: Run Playwright suite
+        working-directory: docs
+        run: bun run test:local
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: docs/playwright-report
+          retention-days: 7
+
+      - name: Upload pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/dist
 
   deploy:
-    needs: build
+    needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

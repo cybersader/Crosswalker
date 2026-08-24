@@ -1,0 +1,47 @@
+# Nightly live-site checks (Ch 44 trigger model): the 4 deployment tests run
+# against the PUBLISHED site, not a local build. They catch what a pre-deploy
+# suite structurally cannot: Pages outages, broken asset serving, base-path or
+# CDN drift after deploy. Alerting, not blocking — a red night is a signal to
+# look, and scheduled-run failures notify the repo owner by default.
+name: Docs Live Checks
+
+on:
+  schedule:
+    # Off the :00 boundary deliberately; time is UTC.
+    - cron: '43 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: docs
+        run: bun install
+
+      - name: Install Playwright Chromium
+        working-directory: docs
+        run: bun x playwright install --with-deps chromium
+
+      # TEST_URL makes playwright.config.ts skip its local webServer and point
+      # the suite at the live origin instead.
+      - name: Run deployment checks against the live site
+        working-directory: docs
+        env:
+          TEST_URL: https://cybersader.github.io
+        run: bun run test:deploy
