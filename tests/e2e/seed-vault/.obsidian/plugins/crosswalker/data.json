@@ -1,0 +1,83 @@
+{
+  "savedConfigs": [
+    {
+      "schemaVersion": 1,
+      "id": "config_e2e_seed_nist",
+      "name": "NIST controls seed configuration",
+      "description": "Deterministic saved configuration used by the E2E config-browser visual spec.",
+      "createdAt": "2026-08-24T00:00:00.000Z",
+      "updatedAt": "2026-08-24T00:00:00.000Z",
+      "fingerprint": {
+        "columnNames": [
+          "Control Family",
+          "Control ID",
+          "Control Name",
+          "Description"
+        ],
+        "columnNamesNormalized": [
+          "control_family",
+          "control_id",
+          "control_name",
+          "description"
+        ],
+        "columnCount": 4,
+        "samplePatterns": [
+          {
+            "column": "Control ID",
+            "pattern": "^[A-Z]{2,3}-\\d+$",
+            "examples": [
+              "AC-1",
+              "AC-2",
+              "AU-1"
+            ]
+          }
+        ],
+        "sourceType": "csv",
+        "fileNamePattern": "*nist*control*"
+      },
+      "config": {
+        "name": "NIST controls seed import",
+        "version": "1.0",
+        "mapping": {
+          "hierarchy": [
+            {
+              "column": "Control Family",
+              "level": 1
+            },
+            {
+              "column": "Control ID",
+              "level": 2
+            }
+          ],
+          "frontmatter": [
+            {
+              "column": "Control ID",
+              "key": "control_id"
+            },
+            {
+              "column": "Control Name",
+              "key": "title"
+            }
+          ],
+          "links": [],
+          "body": [
+            {
+              "column": "Description",
+              "heading": "Description",
+              "format": "text"
+            }
+          ],
+          "filename": {
+            "template": "{{Control ID}}",
+            "sanitize": true
+          }
+        },
+        "output": {
+          "basePath": "Frameworks/E2E-config-browser-unused",
+          "createFolders": true,
+          "overwrite": "skip"
+        }
+      }
+    }
+  ]
+}

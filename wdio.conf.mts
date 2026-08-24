@@ -1,31 +1,23 @@
 import type { Options } from '@wdio/types';
 import path from 'path';
 import { killOrphanedTestProcesses } from './tests/e2e/helpers/process-hygiene';
-import { wipeGeneratedOutput } from './tests/e2e/helpers/vault-hygiene';
 
 /**
  * WebdriverIO + wdio-obsidian-service config.
  *
- * Drives real Obsidian against `test-vault/` with the Crosswalker plugin loaded.
- * Spec discovery: `tests/e2e/**\/*.spec.ts`.
+ * Drives real Obsidian against `tests/e2e/seed-vault/` with the Crosswalker
+ * plugin loaded. Spec discovery: `tests/e2e/**\/*.spec.ts`.
  *
  * Workflow:
- *   1. `onPrepare` hardening (added 2026-07-11, see
- *      `tests/e2e/helpers/{process-hygiene,vault-hygiene}.ts`):
- *        a. kill orphaned obsidian/chromedriver/esbuild processes left by a
- *           prior crashed run (safe on a shared tree — only touches
- *           processes whose recorded parent is no longer alive)
- *        b. wipe known e2e generated-output folders (`GraphTest-*`,
- *           `GraphDemo`) from the SOURCE test-vault/ before it gets copied
- *           into the sandbox, so specs never accumulate a backlog the way
- *           `Frameworks/` did (3,553 notes from historical runs — see
- *           `scripts/e2e-clean.mjs` for that one-shot cleanup)
- *        c. build the root plugin distribution; wdio-obsidian-service copies
- *           `main.js`, `manifest.json`, and `styles.css` from `plugins: ['.']`
- *           into its isolated vault, with one retry if the esbuild-service
- *           `goroutine`/deadlock flake signature is detected in the build output
- *   2. wdio-obsidian-service downloads (or reuses) Obsidian into `.obsidian-cache/`
- *   3. Each spec opens Obsidian against test-vault, runs assertions
+ *   1. `onPrepare` kills orphaned obsidian/chromedriver/esbuild processes left
+ *      by a prior crashed run, then builds the root plugin distribution with
+ *      one retry for the esbuild-service `goroutine`/deadlock flake.
+ *   2. wdio-obsidian-service copies the immutable seed into a temporary sandbox,
+ *      then installs `main.js`, `manifest.json`, and `styles.css` from
+ *      `plugins: ['.']` into that copy.
+ *   3. The Tier 2 hook augments the installed plugin with its two runtime assets.
+ *   4. Each spec runs against the isolated sandbox; the tracked seed is never
+ *      mutated by a test run.
  *
  * Verify locally: `bun run e2e`
  *
@@ -33,6 +25,15 @@ import { wipeGeneratedOutput } from './tests/e2e/helpers/vault-hygiene';
  */
 
 const REPO_ROOT = path.resolve('.');
+
+/**
+ * Purpose-built E2E seed: small deterministic state, zero duplicate canonical
+ * identities, no accumulated generated outputs, and no Tier 2 sidecar. Copying
+ * the development vault caused 42 of 52 triaged failures through unrelated
+ * identity collisions, metadata-indexing races, and renderer timeouts.
+ */
+const E2E_SEED_VAULT = path.resolve('./tests/e2e/seed-vault');
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Build the plugin, retrying once if the esbuild-service deadlock flake
@@ -80,7 +81,9 @@ export const config: Options.Testrunner = {
     browserVersion: 'latest',
     'wdio:obsidianOptions': {
       installerVersion: 'earliest', // matches manifest.json minAppVersion
-      vault: path.resolve('./test-vault'),
+      vault: E2E_SEED_VAULT,
+      // obsidian-launcher copies the seed first, then installs the production
+      // build from the repo root into the sandbox's plugin directory.
       plugins: ['.'],
     },
   }],
@@ -109,28 +112,16 @@ export const config: Options.Testrunner = {
       }
     }
 
-    // (b) vault hygiene — wipe known e2e generated-output folders from the
-    // SOURCE vault before wdio-obsidian-service copies it into a sandbox.
-    const vaultDir = path.resolve('./test-vault');
-    const wipeResult = wipeGeneratedOutput(['GraphTest-*', 'GraphDemo'], vaultDir);
-    if (wipeResult.matchedFolders.length > 0) {
-      console.log(
-        `[wdio.onPrepare] vault hygiene: matched folders [${wipeResult.matchedFolders.join(', ')}], ` +
-          `deleted ${wipeResult.deletedFiles.length} generated note(s), skipped ${wipeResult.skippedNonGenerated.length} non-generated file(s)`
-      );
-    }
-
-    // (c) build the plugin, with one retry on the esbuild deadlock flake.
+    // (b) build the plugin, with one retry on the esbuild deadlock flake.
+    // The immutable seed needs no source-vault cleanup.
     await buildPluginWithRetry();
   },
 
   /**
-   * v0.1.5 Tier 2: copy sqlite-vec-wasm-demo runtime artifacts into the
-   * isolated test vault's plugin folder. obsidian-launcher only copies
-   * main.js + manifest.json + styles.css (hardcoded list at
-   * obsidian-launcher/dist/chunk-DSNG7BMO.js:1535-1538), so we have to
-   * augment it for our extra runtime assets. Runs once after the
-   * Obsidian instance has set up the temp vault but before any test.
+   * v0.1.5 Tier 2: copy sqlite-wasm runtime artifacts into the isolated
+   * sandbox's plugin folder. obsidian-launcher deliberately installs only
+   * main.js + manifest.json + styles.css for local plugins, so the E2E harness
+   * augments that installed distribution before any test runs.
    */
   before: async function () {
     const fs = await import('node:fs/promises');
