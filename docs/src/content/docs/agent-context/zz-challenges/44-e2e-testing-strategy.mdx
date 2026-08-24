@@ -48,6 +48,21 @@ Additional facts a deliverable should not spend effort re-deriving:
 - Roughly 13 plugin specs are named `visual-*.spec.ts`. They write PNGs into `test-screenshots/`, which **agents read as images** to verify rendering. Nothing compares those PNGs to a stored baseline, so a purely visual regression that breaks no selector passes silently.
 - CI workflows today: `unit-tests.yml` (build + unit tests, path-filtered to `src/**` and `tests/**`), `deploy-docs.yml`, `release.yml`, and `static-checks.yml` (added 2026-08-19: personal-data, MDX, frontmatter, not-content, log-labels).
 
+### Measured 2026-08-22: the full plugin suite was timed, and it is substantially red
+
+The full plugin E2E suite ran end to end on the dev machine (first known complete run in months):
+
+| Measurement | Value |
+|---|---|
+| Wall clock, full serial run | **21 min 7 s** |
+| Peak memory | 1.05 GB |
+| Spec files | **15 passed, 16 failed** of 31 |
+| Test declarations | **75 passing, 52 failing** of 127 |
+
+The failure was verified **pre-existing**: a failing spec (`full-import-flow`) was re-run at commit `79b0ab20` (before that day's changes) and produced the identical three failures. Failures cluster on core behavior — `_crosswalker` provenance emission, `user_preserve` on re-import, re-import idempotency, sidecar projection/queries — plus several `visual-*` specs. Nothing has characterized how much is genuine regression versus test rot (stale selectors, drifted fixtures, changed copy).
+
+This changes the challenge's premise: the gap is not merely "E2E does not run in CI" — **the suite cannot be put into CI at all until it is triaged**, and the discipline "a milestone is not Done until E2E passes" has been silently unenforced for long enough for 41% of the suite to go red. A deliverable that recommends CI triggers without a credible get-to-green (or quarantine) path is answering the easy half.
+
 ## What to investigate
 
 ### 1. The CI coverage gap — what should run, when, and at what cost
