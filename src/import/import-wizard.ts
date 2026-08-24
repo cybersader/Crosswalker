@@ -1588,7 +1588,7 @@ export class ImportFlow {
 
 		// (a) Destination block — WHERE.
 		this.renderDestinationBlock(container);
-		this.renderImportSetReview(container, this.currentOutputPath());
+		void this.renderImportSetReview(container, this.currentOutputPath());
 
 		// (b) Shape-map recap table (moved here from step 4) — WHAT.
 		container.createEl('h4', { text: 'Your shape map' });
@@ -1688,20 +1688,26 @@ export class ImportFlow {
 	 * Inline ownership review. Zero sets stays silent and mints at generation;
 	 * one set defaults to refresh; several sets require an explicit choice.
 	 */
-	private renderImportSetReview(container: HTMLElement, basePath: string): void {
+	private async renderImportSetReview(container: HTMLElement, basePath: string): Promise<void> {
+		// Reserve this block before discovery yields so later review controls keep
+		// their intended order while cache-cold frontmatter is read asynchronously.
+		const wrap = container.createDiv();
 		let sets: DiscoveredImportSet[];
 		try {
-			sets = this.importSetsForDestination(basePath);
+			sets = await this.importSetsForDestination(basePath);
 		} catch (error) {
-			container.createEl('p', {
+			wrap.createEl('p', {
 				text: error instanceof Error ? error.message : String(error),
 				cls: 'crosswalker-warning',
 			});
 			return;
 		}
 
-		if (sets.length === 0) return;
-		const wrap = container.createEl('div', { cls: 'crosswalker-import-set-review' });
+		if (sets.length === 0) {
+			wrap.remove();
+			return;
+		}
+		wrap.addClass('crosswalker-import-set-review');
 
 		if (sets.length === 1) {
 			const set = sets[0];
@@ -1753,13 +1759,13 @@ export class ImportFlow {
 			});
 	}
 
-	private importSetsForDestination(basePath: string): DiscoveredImportSet[] {
+	private async importSetsForDestination(basePath: string): Promise<DiscoveredImportSet[]> {
 		const normalized = normalizePath(basePath || '');
 		if (normalized !== this.importSetChoiceBasePath) {
 			this.importSetChoiceBasePath = normalized;
 			this.importSetChoice = null;
 		}
-		const sets = discoverImportSets(this.app, normalized);
+		const sets = await discoverImportSets(this.app, normalized);
 		if (sets.length === 1 && typeof this.importSetChoice !== 'string') {
 			this.importSetChoice = { id: sets[0].id };
 		} else if (sets.length > 1) {
@@ -1773,8 +1779,8 @@ export class ImportFlow {
 		return sets;
 	}
 
-	private selectedImportSet(basePath: string): ImportSetOption | undefined {
-		const sets = this.importSetsForDestination(basePath);
+	private async selectedImportSet(basePath: string): Promise<ImportSetOption | undefined> {
+		const sets = await this.importSetsForDestination(basePath);
 		if (sets.length === 0) return undefined;
 		if (sets.length === 1) {
 			return typeof this.importSetChoice === 'string' ? this.importSetChoice : { id: sets[0].id };
@@ -1785,9 +1791,9 @@ export class ImportFlow {
 		throw new Error('Choose an import set to refresh, or choose to import as a new set.');
 	}
 
-	private validateImportSetSelection(basePath: string): boolean {
+	private async validateImportSetSelection(basePath: string): Promise<boolean> {
 		try {
-			this.selectedImportSet(basePath);
+			await this.selectedImportSet(basePath);
 			return true;
 		} catch (error) {
 			new Notice(error instanceof Error ? error.message : String(error));
@@ -2685,7 +2691,7 @@ export class ImportFlow {
 				});
 		}
 
-		this.renderImportSetReview(container, this.currentOutputPath());
+		void this.renderImportSetReview(container, this.currentOutputPath());
 
 		// Framework ID setting (for _crosswalker metadata)
 		new Setting(container)
@@ -3041,7 +3047,7 @@ export class ImportFlow {
 				}
 				return true;
 			case 3:
-				return !this.isWorkbenchMode() || this.validateImportSetSelection(this.currentOutputPath());
+				return !this.isWorkbenchMode() || await this.validateImportSetSelection(this.currentOutputPath());
 			default:
 				return true;
 		}
@@ -3158,7 +3164,7 @@ export class ImportFlow {
 			new Notice('No data to generate. Please go back and select a file.');
 			return;
 		}
-		if (!this.validateImportSetSelection(this.currentOutputPath())) return;
+		if (!await this.validateImportSetSelection(this.currentOutputPath())) return;
 
 		// Phase 3.5c: thread a fresh trace_id through the entire generation
 		// flow. Every wizard / generation / Tier 2 / view event that fires
@@ -3188,7 +3194,7 @@ export class ImportFlow {
 		const outputPath = this.currentOutputPath();
 		const options: GenerationOptions = {
 			basePath: outputPath,
-			importSet: this.selectedImportSet(outputPath),
+			importSet: await this.selectedImportSet(outputPath),
 			overwriteMode: this.overwriteMode,
 			createFolders: true,
 			frameworkId: this.frameworkId || undefined,

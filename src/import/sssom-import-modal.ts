@@ -209,7 +209,7 @@ export class SssomImportModal extends Modal {
 				'Output organization',
 				`${outputFolder}/ with one junction note per assertion`,
 			);
-			importSetReady = this.renderImportSetChoice(previewEl, outputFolder);
+			importSetReady = await this.renderImportSetChoice(previewEl, outputFolder);
 		} else {
 			this.dlEntry(list, 'Ontology pair', '(could not detect; add subject_source/object_source to header)');
 		}
@@ -238,10 +238,10 @@ export class SssomImportModal extends Modal {
 	}
 
 	/** Inline refresh-vs-coexist choice for the detected crosswalk destination. */
-	private renderImportSetChoice(container: HTMLElement, basePath: string): boolean {
+	private async renderImportSetChoice(container: HTMLElement, basePath: string): Promise<boolean> {
 		let sets: DiscoveredImportSet[];
 		try {
-			sets = this.importSetsForDestination(basePath);
+			sets = await this.importSetsForDestination(basePath);
 		} catch (error) {
 			container.createEl('p', {
 				text: error instanceof Error ? error.message : String(error),
@@ -309,12 +309,12 @@ export class SssomImportModal extends Modal {
 		return this.importSetChoice !== null;
 	}
 
-	private importSetsForDestination(basePath: string): DiscoveredImportSet[] {
+	private async importSetsForDestination(basePath: string): Promise<DiscoveredImportSet[]> {
 		if (basePath !== this.importSetChoiceBasePath) {
 			this.importSetChoiceBasePath = basePath;
 			this.importSetChoice = null;
 		}
-		const sets = discoverImportSets(this.app, basePath);
+		const sets = await discoverImportSets(this.app, basePath);
 		if (sets.length === 1 && this.importSetChoice === null) {
 			this.importSetChoice = { id: sets[0].id, scheme: sets[0].scheme };
 		} else if (sets.length > 1) {
@@ -328,10 +328,10 @@ export class SssomImportModal extends Modal {
 		return sets;
 	}
 
-	private selectedImportSet(): ImportSetOption | undefined {
+	private async selectedImportSet(): Promise<ImportSetOption | undefined> {
 		if (!this.detectedSource || !this.detectedTarget) return undefined;
 		const basePath = `_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}`;
-		const sets = this.importSetsForDestination(basePath);
+		const sets = await this.importSetsForDestination(basePath);
 		if (sets.length === 0) return undefined;
 		if (sets.length === 1) {
 			return this.isNewSetChoice()
@@ -368,7 +368,7 @@ export class SssomImportModal extends Modal {
 
 		let importSet: ImportSetOption | undefined;
 		try {
-			importSet = this.selectedImportSet();
+			importSet = await this.selectedImportSet();
 		} catch (error) {
 			new Notice(error instanceof Error ? error.message : String(error));
 			return;

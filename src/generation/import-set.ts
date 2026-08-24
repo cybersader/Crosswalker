@@ -3,11 +3,11 @@
  *
  * An import set is the collection of notes one import owns. Its id is minted,
  * never derived from a recipe, destination, or source: all three can change on
- * a legitimate refresh. Markdown provenance is the registry; discovery reads
- * Obsidian's metadata cache and never creates a parallel registry file.
+ * a legitimate refresh. Markdown provenance is the registry; discovery prefers
+ * Obsidian's metadata cache and reads cache-cold destination frontmatter directly.
  */
 
-import { App, normalizePath } from 'obsidian';
+import { App, normalizePath, parseYaml, TFile } from 'obsidian';
 
 export const IMPORT_SET_ID_PATTERN = /^iset-[a-z0-9]{6}$/;
 export const IMPORT_SET_SCHEMES = ['endpoint-v1', 'set-qualified-v1'] as const;
@@ -59,8 +59,8 @@ export class ImportSetProvenanceError extends Error {
  * Notes with no import_set stamp are legacy and deliberately stay outside all
  * sets. They remain valid and can never become orphans by inference.
  */
-export function discoverImportSets(app: App, basePath?: string): DiscoveredImportSet[] {
-	return buildDiscoveredSets(collectObservations(app, basePath));
+export async function discoverImportSets(app: App, basePath?: string): Promise<DiscoveredImportSet[]> {
+	return buildDiscoveredSets(await collectObservations(app, basePath));
 }
 
 /**
@@ -69,11 +69,11 @@ export function discoverImportSets(app: App, basePath?: string): DiscoveredImpor
  * scheme can carry it with the id; otherwise the backwards-compatible
  * endpoint-v1 default applies. Existing notes always remain authoritative.
  */
-export function resolveImportSet(
+export async function resolveImportSet(
 	app: App,
 	basePath: string,
 	option?: ImportSetOption,
-): ImportSetReference {
+): Promise<ImportSetReference> {
 	if (option === 'new') {
 		return { id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME };
 	}
@@ -85,7 +85,7 @@ export function resolveImportSet(
 	if (option && typeof option === 'object') {
 		assertImportSetId(option.id);
 		if (option.scheme !== undefined) assertImportSetScheme(option.scheme);
-		const observations = collectObservations(app, undefined, option.id);
+		const observations = await collectObservations(app, undefined, option.id);
 		const existing = buildDiscoveredSets(observations)[0];
 		if (existing) {
 			if (option.scheme !== undefined && option.scheme !== existing.scheme) {
@@ -99,7 +99,7 @@ export function resolveImportSet(
 		return { id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME };
 	}
 
-	const destinationSets = discoverImportSets(app, basePath);
+	const destinationSets = await discoverImportSets(app, basePath);
 	if (destinationSets.length === 1) {
 		return { id: destinationSets[0].id, scheme: destinationSets[0].scheme };
 	}
@@ -127,12 +127,18 @@ export function mintImportSetId(existingIds: ReadonlySet<string> = new Set()): s
 	throw new Error('Could not mint a unique import set id after 100 attempts.');
 }
 
-function collectObservations(app: App, basePath?: string, onlyId?: string): ImportSetObservation[] {
+async function collectObservations(app: App, basePath?: string, onlyId?: string): Promise<ImportSetObservation[]> {
 	const observations: ImportSetObservation[] = [];
 	for (const file of app.vault.getMarkdownFiles()) {
 		if (!isWithinDestination(file.path, basePath)) continue;
-		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!fm || typeof fm !== 'object') continue;
+		let fm = app.metadataCache.getFileCache(file)?.frontmatter;
+		if ((!fm || typeof fm !== 'object') && basePath !== undefined) {
+			// Cache lag is not evidence that a destination has no owned notes. Read only
+			// cache-cold files inside the destination so mint-vs-reuse stays correct
+			// without turning discovery into a whole-vault raw-content scan.
+			fm = await readRawFrontmatter(app, file);
+		}
+		if (!fm || typeof fm !== 'object' || Array.isArray(fm)) continue;
 		const provenance = (fm as Record<string, unknown>)._crosswalker;
 		if (!provenance || typeof provenance !== 'object') continue;
 		const raw = (provenance as Record<string, unknown>).import_set;
@@ -152,6 +158,24 @@ function collectObservations(app: App, basePath?: string, onlyId?: string): Impo
 		observations.push({ id, scheme, path: file.path });
 	}
 	return observations;
+}
+
+async function readRawFrontmatter(app: App, file: TFile): Promise<Record<string, unknown> | undefined> {
+	const content = await app.vault.cachedRead(file);
+	const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+	if (!match) return undefined;
+
+	try {
+		const parsed = parseYaml(match[1]);
+		if (parsed === null || parsed === undefined) return undefined;
+		if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+			throw new Error('frontmatter root must be a mapping');
+		}
+		return parsed as Record<string, unknown>;
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new ImportSetProvenanceError(`Invalid frontmatter YAML at ${file.path}: ${detail}.`, [file.path]);
+	}
 }
 
 function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredImportSet[] {
@@ -192,6 +216,8 @@ function assertImportSetScheme(value: unknown): asserts value is ImportSetScheme
 }
 
 function collectKnownIds(app: App): Set<string> {
+	// Collision avoidance may stay cache-only: a cold-cache miss creates only a
+	// negligibly unlikely random-id collision risk and cannot change set selection.
 	const ids = new Set<string>();
 	for (const file of app.vault.getMarkdownFiles()) {
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter;

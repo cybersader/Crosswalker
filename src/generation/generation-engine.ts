@@ -317,7 +317,7 @@ export async function generateNotes(
 		// Ownership is minted or selected once per run, before any note is written.
 		// Never derive this id from recipe/source/path: all are allowed to change on
 		// a legitimate refresh, while the import set must remain the same.
-		const importSet = resolveImportSet(app, options.basePath, options.importSet);
+		const importSet = await resolveImportSet(app, options.basePath, options.importSet);
 
 		// Ensure base folder exists
 		if (options.createFolders) {
@@ -1783,7 +1783,7 @@ export async function generateFromRecipe(
 	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
 	// Headless imports obey the same destination-discovery rules as the wizard.
 	// Callers can name a wiped/empty set explicitly or force a new mint.
-	const importSet = resolveImportSet(app, options.basePath, options.importSet);
+	const importSet = await resolveImportSet(app, options.basePath, options.importSet);
 	const ownedIdentityIndex = buildIdentityIndex(app, { importSetId: importSet.id });
 
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
