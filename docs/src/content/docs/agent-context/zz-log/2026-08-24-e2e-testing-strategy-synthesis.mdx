@@ -1,0 +1,91 @@
+---
+title: "Repair determinism, then enforce — Challenge 44 synthesis"
+description: "Decision record for Challenge 44. Adopts all five deliverable verdicts: keep the Playwright/WebdriverIO split, adopt visual regression narrowly with explicit maintenance budgets, stay serial until isolation then remeasure, tiered CI per surface, and a ranked get-to-green path led by a purpose-built minimal seed vault. Records the two facts the challenge itself surfaced: the plugin E2E suite was 41% red and nobody knew because it never ran in CI, and the docs Playwright suite was not running in CI either, contrary to the brief. Also names the recurring product-bug pattern the triage confirmed: metadata-cache lag treated as absence, three times in one week."
+tags: [decision, synthesis, testing, e2e, ci, visual-regression, ch-44]
+date: 2026-08-24
+sidebar:
+  label: "08-24 · E2E strategy synthesis"
+  order: -20260824
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Decision record for [Challenge 44](/crosswalker/agent-context/zz-challenges/archive/44-e2e-testing-strategy/), synthesised from the [research deliverable](/crosswalker/agent-context/zz-research/2026-08-24-challenge-44-e2e-testing-strategy/) and the [E2E failure triage](/crosswalker/agent-context/zz-research/2026-08-24-challenge-44-e2e-testing-strategy/) that preceded it. All five verdicts are **adopted**; execution began the same day.
+
+## 1. What the challenge actually found
+
+The challenge was filed to answer "what should run in CI, and is visual regression worth it." Running it surfaced two facts more important than either question:
+
+| Discovery | How it surfaced |
+|---|---|
+| **The plugin E2E suite was 41% red and nobody knew.** 16 of 31 spec files, 52 of 127 declarations, failing — verified pre-existing, invisible because plugin E2E never ran in CI and nobody had run the full suite locally in months. | The first full timed run (21 min 7 s, 1.05 GB peak), taken to give this challenge a real cost number. |
+| **Docs Playwright was not running in CI either**, despite the challenge brief stating it was. `deploy-docs.yml` built and deployed untested; no workflow invoked Playwright. | The fresh deliverable agent, explicitly warned that the brief's author was the orchestrating agent, attacked the brief's "measured facts" and won on this one. |
+
+The second discovery is a working demonstration of why the fresh-agent challenge convention exists: the orchestrating agent had written that fact into the brief in good faith, and a reviewer with no history was the one who checked it.
+
+## 2. The triage that reframed everything
+
+A dedicated triage pass classified all 52 failing declarations before any strategy was written:
+
+| Verdict | Count | Meaning |
+|---|---:|---|
+| Harness/environment | 42 | The run copies the accumulated 11,198-note dev vault (19 duplicate identity claims) and asserts before Obsidian finishes indexing it. |
+| Test rot | 6 | Stale assertions: a schema-v2 expectation two migrations old, YAML quoting style, generic `.modal` selectors. |
+| Genuine regression | 1 | Import-set discovery treated metadata-cache lag as absence; immediate re-import minted a new id. **Fixed same day.** |
+| Unclear | 3 | Need one clean, instrumented run each on the future seed vault. |
+
+The product was in far better shape than "41% red" suggested. The suite substrate was the patient.
+
+<Aside type="caution" title="A pattern worth a review check">
+The one genuine regression was the **third bug in one week with the identical root cause: treating metadata-cache lag as absence.** The evidence-link modal told an imported vault it had no controls; the Tier 2 projector needed a fail-closed guard for unreadable frontmatter; import-set discovery minted a new id because a just-written file was cache-cold. Any code that reads `metadataCache.getFileCache()` and treats null as "does not exist" is now suspect on sight.
+</Aside>
+
+## 3. Adopted (all five verdicts)
+
+| Question | Adopted verdict | Key reasoning |
+|---|---|---|
+| CI per surface | **Tiered enforcement.** Docs: full Playwright suite blocking on PR/main, deploy gated behind it, nightly live-site checks. Plugin: 5–10 min smoke slice on PR/main, full serial suite nightly and at release — staged behind harness repair, with a per-declaration quarantine contract. | Full plugin suite ≈ 35–55 hosted-runner minutes; public repo, so latency and flake triage are the constraints, not cash. "Continue-on-error" must never reach the release job. |
+| Visual regression | **Adopt narrowly.** 4 canonical docs baselines now; 4–8 element-level plugin baselines only after isolation; explicit maintenance budgets, with the rule that exceeding budget cuts baselines rather than normalizing blind updates. Agent-read screenshots stay — for semantic judgment, which diffing cannot do; diffing catches the sub-pixel drift agents will not notice. | Several `visual-*` failures were selector/staleness failures, not rendering failures. A baseline system would have compared the wrong screen and blessed it. Deterministic state selection is a prerequisite of image comparison. |
+| Framework split | **Keep it.** Unify the operating contract instead: one quarantine manifest, one lane naming scheme, canonical artifact names, one release prerequisite consuming both results. | Migrating the plugin to Playwright Electron rebuilds Obsidian download/cache/sandbox/vault management and `executeObsidian` — 1–3 focused weeks — while fixing zero current failures, and would destroy the ability to distinguish translation defects from product defects in a red suite. |
+| Serial vs parallel | **Stay serial until isolation, then remeasure.** If a clean serial run lands at ~15–20 hosted minutes, keep `maxInstances: 1`; only above ~25–30 try two separate CI jobs before two instances on one runner. | Parallelism now would run the contamination faster. The 21-minute number includes indexing an oversized vault and 180-second timeout cascades; a clean seed may make the question moot. |
+| Sequencing | **The ranked list below**, with exit conditions per step. | A full-suite run is confirmation, not diagnosis. |
+
+## 4. Rejected
+
+| Rejected | Why |
+|---|---|
+| Plugin migration to Playwright Electron | See framework split above. |
+| Docs migration to WebdriverIO | Heavier runner for a static-site problem Playwright already solves. |
+| Full Electron suite on every push | Poor feedback economics for a solo, batched workflow. |
+| `maxInstances > 1` now | Parallelizes non-determinism. |
+| Baselining every `visual-*` journey | Baseline churn until the suite is ignored — the normal death of visual suites. |
+| Visual-regression SaaS | Cost and complexity before a small in-repo set proves value. |
+| Beta/mobile/broad version matrix before v0.1-RC | Disproportionate setup cost; first make latest-stable and the declared minimum honest. |
+| CI on the shared dev workstation | Couples release confidence to local display state and resource contention — a lesson this repo has now learned repeatedly. |
+| Preserving `minAppVersion: 1.0.0` untested | A compatibility claim is not a historical artifact. Test it or raise it. |
+
+## 5. The ranked path, and what started immediately
+
+| Rank | Change | Status |
+|---:|---|---|
+| 1 | Purpose-built minimal E2E seed vault replacing the 11k-note dev-vault copy | **Started 2026-08-24** (build phase; validation runs staged under host coordination) |
+| 2 | Readiness barriers + per-spec state reset (sidecar deleted, not closed) | Queued behind 1 |
+| 3 | Repair the 6 rotted tests + the visual-helper defect; the one product regression | **Regression fixed and pushed 2026-08-24**; rot repairs queued with 2 |
+| 4 | Run the 3 unclear specs singly, instrumented, on the clean seed | Blocked on 1 |
+| 5 | Rerun by dependency order, then full serial as confirmation | Blocked on 1–4 |
+| 6 | Docs Playwright CI: PR/main blocking, deploy gated, nightly live checks | **Landed 2026-08-24** (`deploy-docs.yml` reworked; `docs-nightly.yml` added) |
+| 7 | Plugin smoke CI + full nightly telemetry | Blocked on 1–3 and one proving run on a hosted runner |
+| 8 | Full plugin E2E as release prerequisite | Blocked on green or zero release-critical quarantine |
+
+## 6. What this challenge changes about the discipline
+
+"A milestone is not Done until E2E passes" was policy enforced by memory, and it silently failed for months. The adopted replacement is structural: enforcement lives in CI triggers and a quarantine contract where **quarantined is never counted as passing**, and every quarantined declaration carries its verdict, evidence link, removal condition, and expiry. Local discipline remains for judgment (agent-read screenshots); machines hold the line on everything a machine can hold.
+
+## 7. Related
+
+- [Challenge 44 brief (archived)](/crosswalker/agent-context/zz-challenges/archive/44-e2e-testing-strategy/)
+- [Challenge 44 research deliverable](/crosswalker/agent-context/zz-research/2026-08-24-challenge-44-e2e-testing-strategy/)
+- [Challenge 45 synthesis — org rollout readiness](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/) — handed this challenge its acceptance surfaces
+- [The evidence closeout](/crosswalker/agent-context/zz-log/2026-08-21-evidence-closeout/) — first two instances of the cache-lag-as-absence pattern
+- [Import set = ownership](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/) — the identity semantics the fixed regression protects
+- [Bases query layer milestone](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/)

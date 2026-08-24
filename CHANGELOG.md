@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Re-import keeps its identity, and the docs site is tested before it ships (2026-08-24)
+
+- **An immediate re-import no longer changes which import set owns the notes.** Discovery of the existing set read only Obsidian's metadata cache and treated a not-yet-indexed file as absent, so importing twice in quick succession minted a fresh set id and broke re-import idempotency. Discovery now reads cache-cold files inside the destination directly, and malformed frontmatter fails with the file path instead of silently reading as "no set here". Found as the single genuine product regression in a full triage of the E2E suite's 52 failing declarations.
+- **The documentation site is now tested before every deploy.** The docs Playwright suite existed for months without any workflow invoking it; the deploy shipped untested builds. Deploys are now gated on the full suite passing against the exact build artifact being deployed, the suite runs on docs pull requests, and a nightly job checks the live published site for outages and asset drift.
+- **The E2E strategy is decided and recorded.** Keep WebdriverIO for the plugin and Playwright for docs; adopt visual regression narrowly with explicit maintenance budgets; stay serial until the harness is isolated; stage plugin CI behind a get-to-green path led by a purpose-built minimal seed vault, since 42 of the 52 failures were harness contamination rather than product defects. See the [Ch 44 synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-08-24-e2e-testing-strategy-synthesis/).
+
 ### Evidence linking and coverage reporting are usable from the app (2026-08-21)
 
 - **New command: link evidence to a control.** Records that a document evidences a control, as a note you can review and update later. It asks for "the control" and "the evidence" rather than for a subject and an object, so the direction cannot be entered backwards, and it never asks about the predicate. Run it from an open control note and that control is pre-selected.
