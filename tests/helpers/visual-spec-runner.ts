@@ -68,10 +68,17 @@ export async function captureCommandResult(
 	screenshotName: string,
 	options: { pauseMs?: number } = {},
 ): Promise<string> {
-	await browser.executeObsidian(({ app }) => {
-		// @ts-expect-error — internal commands API
-		app.commands.executeCommandById(commandId);
-	});
+	// `commandId` MUST be passed as a serialized argument. The renderer callback
+	// is stringified and evaluated inside Obsidian, so a closure reference to an
+	// outer variable is simply undefined there — the command never ran, and the
+	// spec's failure said nothing about the product (triage 2026-08-24 §5.4).
+	await browser.executeObsidian(
+		({ app }, id: string) => {
+			// @ts-expect-error — internal commands API
+			app.commands.executeCommandById(id);
+		},
+		commandId,
+	);
 	return captureScreenshot(screenshotName, options);
 }
 

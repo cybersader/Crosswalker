@@ -18,6 +18,7 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+import { readFrontmatterFromDisk, requireFrontmatterIndexed } from './helpers/vault-readiness';
 
 const TEST_VAULT_DIR = 'Frameworks/v0-1-3-test';
 
@@ -58,14 +59,20 @@ describe('Crosswalker plugin — full import flow (v0.1.3)', function () {
 
 	before(async () => {
 		// Clean up any existing test output from prior runs
-		await browser.executeObsidian(async ({ app }, dir) => {
+		// CONDITION: the destination is gone from the vault index, not "we slept
+		// 200ms after asking for a trash".
+		const cleaned = await browser.executeObsidian(async ({ app }, dir) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			const folder = app.vault.getAbstractFileByPath(dir);
 			if (folder) {
 				// @ts-expect-error - using internal trash API; safe in test vault
 				await app.vault.trash(folder, false);
 			}
+			const deadline = Date.now() + 5000;
+			while (app.vault.getAbstractFileByPath(dir) && Date.now() < deadline) await sleep(50);
+			return !app.vault.getAbstractFileByPath(dir);
 		}, TEST_VAULT_DIR);
-		await browser.pause(200);
+		expect(cleaned).toBe(true);
 	});
 
 	it('imports a 3-row dataset to expected vault paths', async () => {
@@ -112,19 +119,18 @@ describe('Crosswalker plugin — full import flow (v0.1.3)', function () {
 	});
 
 	it('emits spec-conformant _crosswalker provenance block in generated frontmatter', async () => {
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const file = app.vault.getAbstractFileByPath(`${dir}/AC/AC-2.md`);
-			if (!file) return null;
-			// @ts-expect-error - cache.frontmatter is the parsed YAML
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, TEST_VAULT_DIR);
+		// WRITER CONTRACT → read the generated file, not the metadata cache
+		// (triage 2026-08-24 §5.2). A `null` cache entry here previously read as
+		// "generation produced no frontmatter" when the file on disk was correct
+		// and merely not indexed yet.
+		const fm = await readFrontmatterFromDisk(`${TEST_VAULT_DIR}/AC/AC-2.md`) as Record<string, any> | null;
 
 		expect(fm).toBeTruthy();
-		expect(fm.curie).toBe('v0-1-3-engine-test:AC-2');
-		expect(fm.title).toBe('Account Management');
-		expect(fm.family_id).toBe('AC');
+		expect(fm!.curie).toBe('v0-1-3-engine-test:AC-2');
+		expect(fm!.title).toBe('Account Management');
+		expect(fm!.family_id).toBe('AC');
 
-		const prov = fm._crosswalker as Record<string, unknown>;
+		const prov = fm!._crosswalker as Record<string, unknown>;
 		expect(prov.spec_version).toBe('https://crosswalker.dev/spec/tier1.schema.json');
 		const sourceRef = prov.source_ref as Record<string, unknown>;
 		expect(sourceRef.file).toBe('test.csv');
@@ -145,7 +151,15 @@ describe('Crosswalker plugin — full import flow (v0.1.3)', function () {
 			});
 		}, TEST_VAULT_DIR);
 
-		await browser.pause(300); // allow metadata cache to update
+		// CONDITION: the user's edit is visible in the metadata cache before the
+		// re-import runs. The merge path consults existing frontmatter, so this
+		// is a genuine precondition of the behavior under test — not a
+		// convenience sleep.
+		await requireFrontmatterIndexed({
+			pathPrefixes: `${TEST_VAULT_DIR}/AC/AC-2.md`,
+			expectedCount: 1,
+			requireKeys: ['reviewer', 'review_date'],
+		});
 
 		// Re-run the import (replace mode → should merge, not overwrite)
 		await browser.executeObsidian(
@@ -161,23 +175,17 @@ describe('Crosswalker plugin — full import flow (v0.1.3)', function () {
 			},
 		);
 
-		await browser.pause(200);
-
-		// Verify the user-added keys survived the re-import
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const file = app.vault.getAbstractFileByPath(`${dir}/AC/AC-2.md`);
-			if (!file) return null;
-			// @ts-expect-error
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, TEST_VAULT_DIR);
+		// Verify the user-added keys survived the re-import — again from disk,
+		// which is where the merge result actually lands.
+		const fm = await readFrontmatterFromDisk(`${TEST_VAULT_DIR}/AC/AC-2.md`) as Record<string, any> | null;
 
 		expect(fm).toBeTruthy();
 		// Managed keys: still set
-		expect(fm.title).toBe('Account Management');
-		expect(fm.curie).toBe('v0-1-3-engine-test:AC-2');
+		expect(fm!.title).toBe('Account Management');
+		expect(fm!.curie).toBe('v0-1-3-engine-test:AC-2');
 		// User-edited keys: preserved
-		expect(fm.reviewer).toBe('alice');
-		expect(fm.review_date).toBe('2026-05-05');
+		expect(fm!.reviewer).toBe('alice');
+		expect(fm!.review_date).toBe('2026-05-05');
 	});
 
 	it('re-import is idempotent — running twice with no user edits produces no diff', async () => {
@@ -203,8 +211,8 @@ describe('Crosswalker plugin — full import flow (v0.1.3)', function () {
 			},
 		);
 
-		await browser.pause(200);
-
+		// `runImport` resolves only after its writes complete, and the read below
+		// goes straight to the file, so there is nothing left to wait for here.
 		const afterContent = await browser.executeObsidian(async ({ app }, dir) => {
 			const file = app.vault.getAbstractFileByPath(`${dir}/AC/AC-1.md`);
 			if (!file) return null;

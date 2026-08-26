@@ -16,6 +16,7 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+import { readFrontmatterMatching } from './helpers/vault-readiness';
 
 const TEST_VAULT_DIR = 'Frameworks/v0-1-4-5-streaming-test';
 
@@ -50,14 +51,20 @@ describe('Crosswalker plugin — v0.1.4.5 streaming refactor', function () {
 	this.timeout(120000);
 
 	before(async () => {
-		await browser.executeObsidian(async ({ app }, dir) => {
+		// CONDITION: the destination is gone from the vault index before we
+		// import into it, so `created.length` counts only this run's writes.
+		const cleaned = await browser.executeObsidian(async ({ app }, dir) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			const folder = app.vault.getAbstractFileByPath(dir);
 			if (folder) {
 				// @ts-expect-error - internal trash API
 				await app.vault.trash(folder, false);
 			}
+			const deadline = Date.now() + 5000;
+			while (app.vault.getAbstractFileByPath(dir) && Date.now() < deadline) await sleep(50);
+			return !app.vault.getAbstractFileByPath(dir);
 		}, TEST_VAULT_DIR);
-		await browser.pause(200);
+		expect(cleaned).toBe(true);
 	});
 
 	it('imports rows from an AsyncIterable<Row> source via runImportFromRecipe', async () => {
@@ -145,20 +152,22 @@ describe('Crosswalker plugin — v0.1.4.5 streaming refactor', function () {
 	});
 
 	it('emits correct frontmatter for a streamed row', async () => {
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const file = app.vault
-				.getMarkdownFiles()
-				.find((f) => f.path.startsWith(dir + '/') && f.path.includes('STREAM-0042'));
-			if (!file) return null;
-			// @ts-expect-error - getFileCache
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, TEST_VAULT_DIR);
+		// WRITER CONTRACT → read the file, not the metadata cache (triage
+		// 2026-08-24 §5.2). The artifact under test is the bytes the streaming
+		// writer produced; going through `getFileCache()` turned an indexing
+		// delay into a reported generation failure, because a `null` cache entry
+		// means "not indexed yet" as often as it means "no frontmatter".
+		// Same lookup the cache-based version used (first note under the
+		// destination whose path contains the row id), just read from disk.
+		const found = await readFrontmatterMatching(TEST_VAULT_DIR, 'STREAM-0042');
 
-		expect(fm).toBeTruthy();
-		expect(fm.curie).toBe('cw-stream:STREAM-0042');
-		expect(fm.title).toBe('Streaming concept 42');
-		expect(String(fm.sequence)).toBe('42');
-		expect(fm._crosswalker.spec_version).toBe('https://crosswalker.dev/spec/tier1.schema.json');
+		expect(found.path).toBeTruthy();
+		expect(found.frontmatter).toBeTruthy();
+		const frontmatter = found.frontmatter as Record<string, any>;
+		expect(frontmatter.curie).toBe('cw-stream:STREAM-0042');
+		expect(frontmatter.title).toBe('Streaming concept 42');
+		expect(String(frontmatter.sequence)).toBe('42');
+		expect(frontmatter._crosswalker.spec_version).toBe('https://crosswalker.dev/spec/tier1.schema.json');
 	});
 
 	it('eager-array form still works (backwards compatibility)', async () => {

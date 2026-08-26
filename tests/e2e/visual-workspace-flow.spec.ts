@@ -26,8 +26,13 @@ import { browser } from '@wdio/globals';
 import { expect } from 'expect';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { clearAllDrafts, closeCrosswalkerLeaves, closeImportWizard } from './helpers/wizard-modal';
+import { waitForVaultIndexed } from './helpers/vault-readiness';
 
 const OUT = path.resolve('test-screenshots');
+
+/** The destination this spec generates into, and must NOT start out owning. */
+const GENERATED_DEST = 'Frameworks/NIST-CSF-2.0';
 
 /** A NIST CSF 2.0 CPRT-shaped CSV — matches the bundled
  *  nist-csf-2-cprt-hierarchical recipe (same fixture as visual-workbench.spec.ts),
@@ -49,7 +54,38 @@ describe('Visual — Crosswalker workspace view hosts the full import flow (spec
 
 	before(async () => {
 		mkdirSync(OUT, { recursive: true });
-		await browser.pause(6000);
+
+		// -- Per-spec isolation (triage 2026-08-24, rank 2). The load-bearing
+		// assertion here is that the home screen REDISCOVERS `Frameworks/NIST-CSF-2.0`
+		// after generation. If a previous run left that folder behind, the
+		// assertion passes without the refresh path ever working; if a previous
+		// spec left a wizard modal or a workspace leaf open, `noModal` and the
+		// view mount are reading someone else's state.
+		await closeImportWizard();
+		await clearAllDrafts();
+		await closeCrosswalkerLeaves();
+
+		// CONDITION: the destination is absent from the vault index before we start.
+		const removed = await browser.executeObsidian(async ({ app }, dest) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const folder = app.vault.getAbstractFileByPath(dest);
+			if (folder) {
+				// @ts-expect-error — internal trash API
+				await app.vault.trash(folder, false);
+			}
+			const deadline = Date.now() + 8000;
+			while (app.vault.getAbstractFileByPath(dest) && Date.now() < deadline) await sleep(50);
+			return !app.vault.getAbstractFileByPath(dest);
+		}, GENERATED_DEST);
+		expect(removed).toBe(true);
+
+		// CONDITION: Obsidian has indexed every note. Replaces `pause(6000)`,
+		// which was sized for the retired 11k-note development vault.
+		const indexed = await waitForVaultIndexed();
+		if (!indexed.ready) {
+			console.warn(`[view] vault index incomplete: ${indexed.pending}/${indexed.total} pending after ${indexed.waitedMs}ms`);
+		}
+
 		await browser.executeObsidian(async ({ app }) => {
 			// @ts-expect-error — internal plugins API
 			const plugin = app.plugins.plugins['crosswalker'];

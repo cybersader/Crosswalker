@@ -14,6 +14,18 @@ import { browser } from '@wdio/globals';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import * as XLSX from 'xlsx';
+import { closeImportWizard, requireImportWizard, clearAllDrafts } from './helpers/wizard-modal';
+import { waitForVaultIndexed } from './helpers/vault-readiness';
+
+/**
+ * Selector for the live wizard. Every query below is scoped to this element
+ * rather than to the first generic `.modal` in the document — three of this
+ * spec's declarations failed because that first modal was a stale leftover from
+ * an earlier open/close cycle (triage 2026-08-24 §4 B3–B5). `requireImportWizard()`
+ * guarantees at most one connected wizard before each declaration, so a bare
+ * `querySelector` on this class is unambiguous.
+ */
+const WIZARD = '.crosswalker-wizard-modal';
 
 const OUT = path.resolve('test-screenshots');
 
@@ -42,7 +54,16 @@ const STIX_JSON = JSON.stringify({
   ],
 });
 
-/** Open the wizard, inject a file, optionally tweak Step-1 controls, click Next. */
+/** Open a FRESH wizard, inject a file, tweak Step-1 controls, advance to Step 2.
+ *
+ *  Every wait here is on a condition rather than a fixed sleep:
+ *    - the wizard modal + its file input (handled by `requireImportWizard`);
+ *    - the sheet `<select>` / the two JSON text inputs, which only exist after
+ *      the change handler has re-rendered Step 1;
+ *    - the step indicator reading "Step 2", which is how the wizard reports
+ *      that parse + Step-2 render finished. The old code slept 1500ms and then
+ *      read whatever heading happened to be there.
+ */
 async function driveWizard(args: {
   b64?: string;
   text?: string;
@@ -51,13 +72,25 @@ async function driveWizard(args: {
   iterator?: string;
   where?: string;
 }): Promise<string> {
-  return browser.executeObsidian(async ({ app }, a) => {
-    // @ts-expect-error - commands is untyped on App
-    app.commands.executeCommandById('crosswalker:import-structured-data');
-    await new Promise((r) => setTimeout(r, 400));
-
-    const modal = document.querySelector('.modal');
+  await requireImportWizard();
+  return browser.executeObsidian(async (_obs, a) => {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const modal = document.querySelector(a.wizard);
     if (!modal) return 'NO_MODAL';
+    const until = async <T>(probe: () => T | null | undefined, ms: number): Promise<T | null> => {
+      const t0 = Date.now();
+      for (;;) {
+        const value = probe();
+        if (value) return value;
+        if (Date.now() - t0 >= ms) return null;
+        await sleep(100);
+      }
+    };
+    const stepNumber = (): number => {
+      const text = modal.querySelector('.crosswalker-step-indicator')?.textContent ?? '';
+      return Number(/^Step (\d+)/.exec(text.trim())?.[1] ?? -1);
+    };
+
     const input = modal.querySelector('input[type=file]') as HTMLInputElement | null;
     if (!input) return 'NO_FILE_INPUT';
 
@@ -74,17 +107,24 @@ async function driveWizard(args: {
     dt.items.add(file);
     input.files = dt.files;
     input.dispatchEvent(new Event('change'));
-    await new Promise((r) => setTimeout(r, 600)); // sheet-list load + re-render
 
     if (a.sheet) {
-      const dd = modal.querySelector('select') as HTMLSelectElement | null;
+      // CONDITION: the sheet list has loaded and Step 1 re-rendered its picker.
+      const dd = await until(() => modal.querySelector('select') as HTMLSelectElement | null, 8000);
       if (!dd) return 'NO_SHEET_DROPDOWN';
       dd.value = a.sheet;
       dd.dispatchEvent(new Event('change'));
     }
     if (a.iterator !== undefined || a.where !== undefined) {
-      const texts = Array.from(modal.querySelectorAll('input[type=text]')) as HTMLInputElement[];
-      if (texts.length < 2) return 'NO_JSON_INPUTS(' + texts.length + ')';
+      // CONDITION: both JSON controls (iterator + filter) exist.
+      const texts = await until(() => {
+        const found = Array.from(modal.querySelectorAll('input[type=text]')) as HTMLInputElement[];
+        return found.length >= 2 ? found : null;
+      }, 8000);
+      if (!texts) {
+        const seen = modal.querySelectorAll('input[type=text]').length;
+        return 'NO_JSON_INPUTS(' + seen + ')';
+      }
       if (a.iterator !== undefined) {
         texts[0].value = a.iterator;
         texts[0].dispatchEvent(new Event('input'));
@@ -98,36 +138,50 @@ async function driveWizard(args: {
     const next = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
     if (!next) return 'NO_NEXT_BUTTON';
     (next as HTMLButtonElement).click();
-    await new Promise((r) => setTimeout(r, 1500)); // parse + step-2 render
 
-    const heading = modal.querySelector('h2, h3')?.textContent ?? '';
-    return 'STEP: ' + heading;
-  }, args);
+    // CONDITION: the wizard reports Step 2 (parse finished, columns rendered).
+    const reached = await until(() => (stepNumber() >= 2 ? stepNumber() : null), 15_000);
+    if (!reached) {
+      return 'STUCK_ON_STEP_' + stepNumber() + ': ' + (modal.querySelector('h3')?.textContent ?? '').trim();
+    }
+    return 'STEP ' + reached + ': ' + (modal.querySelector('h3')?.textContent ?? '').trim();
+  }, { ...args, wizard: WIZARD });
 }
 
+/** Close the wizard and prove it left the DOM before the next declaration opens one. */
 async function closeModal(): Promise<void> {
-  await browser.executeObsidian(async () => {
-    document.querySelector<HTMLElement>('.modal-close-button')?.click();
-    await new Promise((r) => setTimeout(r, 300));
-  });
+  const result = await closeImportWizard();
+  if (!result.closed) {
+    throw new Error(`wizard modal did not close: ${result.remaining} still connected after ${result.waitedMs}ms`);
+  }
 }
 
 /** After driveWizard() lands on Step 2: advance to Step 4, set the output
- *  path, click Generate, and report what landed in the vault. */
+ *  path, click Generate, and report what landed in the vault.
+ *
+ *  Waits on the step indicator between clicks and on the wizard actually
+ *  closing after Generate (its success path), instead of 600/2500ms sleeps. */
 async function finishWizard(outputPath: string): Promise<string> {
   return browser.executeObsidian(async ({ app }, a) => {
-    const modal = document.querySelector('.modal');
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const modal = document.querySelector(a.wizard);
     if (!modal) return 'NO_MODAL';
-    const clickNext = async () => {
+    const stepNumber = (): number => {
+      const text = modal.querySelector('.crosswalker-step-indicator')?.textContent ?? '';
+      return Number(/^Step (\d+)/.exec(text.trim())?.[1] ?? -1);
+    };
+    const advanceTo = async (target: number): Promise<boolean> => {
       const next = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
       if (!next) return false;
       (next as HTMLButtonElement).click();
-      await new Promise((r) => setTimeout(r, 600));
-      return true;
+      const deadline = Date.now() + 15_000;
+      while (stepNumber() < target && Date.now() < deadline) await sleep(100);
+      return stepNumber() >= target;
     };
-    // Step 2 → 3 → 4
-    if (!(await clickNext())) return 'NO_NEXT_ON_STEP2';
-    if (!(await clickNext())) return 'NO_NEXT_ON_STEP3';
+
+    // Step 2 → 3 → 4, each confirmed by the wizard's own step indicator.
+    if (!(await advanceTo(3))) return 'NO_NEXT_ON_STEP2(at step ' + stepNumber() + ')';
+    if (!(await advanceTo(4))) return 'NO_NEXT_ON_STEP3(at step ' + stepNumber() + ')';
 
     // Step 4: first text input is the output path
     const pathInput = modal.querySelector('input[type=text]') as HTMLInputElement | null;
@@ -138,22 +192,36 @@ async function finishWizard(outputPath: string): Promise<string> {
     const gen = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Generate'));
     if (!gen) return 'NO_GENERATE_BUTTON';
     (gen as HTMLButtonElement).click();
-    await new Promise((r) => setTimeout(r, 2500));
+
+    // CONDITION: generation finished. The wizard closes itself on success, so
+    // "no connected wizard modal" is the product's own completion signal.
+    const closedBy = Date.now() + 30_000;
+    while (document.querySelector(a.wizard) && Date.now() < closedBy) await sleep(200);
 
     // Count what landed — recursively, since smart defaults may nest notes
     // into hierarchy folders (e.g. the sample workbook's family column).
-    const names: string[] = [];
-    const walk = (f: unknown) => {
-      // @ts-expect-error - TFolder/TFile shape probing
-      for (const c of f?.children ?? []) {
-        if (c.children) walk(c);
-        else if (c.name?.endsWith('.md')) names.push(c.path.slice(a.outputPath.length + 1));
-      }
+    const collect = (): string[] => {
+      const names: string[] = [];
+      const walk = (f: unknown) => {
+        // @ts-expect-error - TFolder/TFile shape probing
+        for (const c of f?.children ?? []) {
+          if (c.children) walk(c);
+          else if (c.name?.endsWith('.md')) names.push(c.path.slice(a.outputPath.length + 1));
+        }
+      };
+      walk(app.vault.getAbstractFileByPath(a.outputPath));
+      return names.sort();
     };
-    walk(app.vault.getAbstractFileByPath(a.outputPath));
-    names.sort();
+    // CONDITION: the destination folder is present in the vault index with at
+    // least one note. Vault-index visibility lags the write by a tick.
+    const listedBy = Date.now() + 10_000;
+    let names = collect();
+    while (names.length === 0 && Date.now() < listedBy) {
+      await sleep(150);
+      names = collect();
+    }
     return 'CREATED ' + names.length + ': ' + names.join(', ');
-  }, { outputPath });
+  }, { outputPath, wizard: WIZARD });
 }
 
 async function cleanupFolder(outputPath: string): Promise<void> {
@@ -171,7 +239,21 @@ describe('Visual — import wizard XLSX + JSON paths', function () {
 
   before(async () => {
     mkdirSync(OUT, { recursive: true });
-    await browser.pause(3000);
+    // Deterministic starting state instead of a 3s "let it settle" sleep:
+    // no leftover wizard, no drafts from another spec, and Obsidian's metadata
+    // cache actually resolved for every note in the seed vault.
+    await closeImportWizard();
+    await clearAllDrafts();
+    const indexed = await waitForVaultIndexed();
+    if (!indexed.ready) {
+      console.warn(`[wizard-formats] vault index incomplete: ${indexed.pending}/${indexed.total} pending after ${indexed.waitedMs}ms`);
+    }
+  });
+
+  afterEach(async () => {
+    // Never hand the next declaration an open modal — that is exactly how the
+    // first-generic-`.modal` failures compounded down the file.
+    await closeImportWizard();
   });
 
   it('JSON record picker — nested lists render as cards, primary list ranked first', async () => {
@@ -184,22 +266,27 @@ describe('Visual — import wizard XLSX + JSON paths', function () {
         documents: [{ doc_identifier: 'CSF', name: 'CSF 2.0', version: '2.0', website: 'x' }],
       } },
     });
-    const r = await browser.executeObsidian(async ({ app }, json) => {
-      // @ts-expect-error untyped commands
-      app.commands.executeCommandById('crosswalker:import-structured-data');
-      await new Promise((res) => setTimeout(res, 400));
-      const modal = document.querySelector('.modal');
+    await requireImportWizard();
+    const r = await browser.executeObsidian(async (_obs, a) => {
+      const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+      const modal = document.querySelector(a.wizard);
       if (!modal) return 'NO_MODAL';
-      const input = modal.querySelector('input[type=file]') as HTMLInputElement;
+      const input = modal.querySelector('input[type=file]') as HTMLInputElement | null;
+      if (!input) return 'NO_FILE_INPUT';
       const dt = new DataTransfer();
-      dt.items.add(new File([json], 'cprt.json'));
+      dt.items.add(new File([a.json], 'cprt.json'));
       input.files = dt.files;
       input.dispatchEvent(new Event('change'));
-      await new Promise((res) => setTimeout(res, 700)); // structure detect + re-render
+      // CONDITION: structure detection ran and Step 1 re-rendered its picker
+      // cards. Replaces a fixed 700ms sleep.
+      const deadline = Date.now() + 10_000;
+      while (modal.querySelectorAll('.crosswalker-json-pick').length === 0 && Date.now() < deadline) {
+        await sleep(100);
+      }
       const selected = modal.querySelector('.crosswalker-json-pick-selected .crosswalker-json-pick-label')?.textContent ?? '';
       const cards = modal.querySelectorAll('.crosswalker-json-pick').length;
       return `cards=${cards} selected=${selected.trim()}`;
-    }, cprt);
+    }, { json: cprt, wizard: WIZARD });
     console.log('[wizard] json-picker → ' + r);
     await browser.saveScreenshot(path.join(OUT, 'wizard-json-picker.png'));
     await closeModal();

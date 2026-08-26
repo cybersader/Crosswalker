@@ -20,6 +20,7 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+import { requireFrontmatterIndexed, resetTier2Sidecar } from './helpers/vault-readiness';
 
 const TEST_DIR = 'Frameworks/v0-1-5-phase-3-test';
 const CROSSWALK_DIR = 'Crosswalks/v0-1-5-phase-3-test';
@@ -96,8 +97,10 @@ describe('Crosswalker plugin — v0.1.5 Phase 3 query API + closure cache', func
 	this.timeout(120000);
 
 	before(async () => {
-		// Clean prior output + reset Tier 2 handle
-		await browser.executeObsidian(async ({ app }, dirs) => {
+		// Clean prior output. CONDITION: both destinations are gone from the vault
+		// index before the fixtures are written.
+		const stillPresent = await browser.executeObsidian(async ({ app }, dirs) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			for (const dir of dirs) {
 				const folder = app.vault.getAbstractFileByPath(dir);
 				if (folder) {
@@ -105,14 +108,20 @@ describe('Crosswalker plugin — v0.1.5 Phase 3 query API + closure cache', func
 					await app.vault.trash(folder, false);
 				}
 			}
-			// @ts-expect-error - internal plugin lookup
-			const plugin = app.plugins.plugins['crosswalker'];
-			if (plugin.tier2Handle) {
-				await plugin.tier2Handle.close();
-				plugin.tier2Handle = null;
-			}
+			const deadline = Date.now() + 5000;
+			while (dirs.some((dir) => app.vault.getAbstractFileByPath(dir)) && Date.now() < deadline) await sleep(50);
+			return dirs.filter((dir) => app.vault.getAbstractFileByPath(dir));
 		}, [TEST_DIR, CROSSWALK_DIR]);
-		await browser.pause(200);
+		expect(stillPresent).toEqual([]);
+
+		// Deterministic Tier 2 starting state: empty tables AND an empty closure
+		// cache (triage 2026-08-24 §5.3). "closure_cache is empty before the first
+		// closure call" is a precondition this spec asserts, so it must be
+		// established rather than inherited from whatever ran before.
+		const reset = await resetTier2Sidecar();
+		expect(reset.errors).toEqual([]);
+		expect(reset.counts.closure_cache).toBe(0);
+		expect(reset.counts.closure_cache_state).toBe(0);
 
 		// Import fixtures via the v0.1.4 native-recipe path
 		await browser.executeObsidian(
@@ -141,14 +150,23 @@ describe('Crosswalker plugin — v0.1.5 Phase 3 query API + closure cache', func
 				crosswalkDir: CROSSWALK_DIR,
 			},
 		);
-		await browser.pause(500); // metadataCache index
+		// CONDITION: all 9 fixture notes are indexed with readable `_crosswalker`
+		// frontmatter. The projector fails the whole pass closed on any file it
+		// cannot read from the cache, and every query assertion below is downstream
+		// of that pass — an unmet barrier here made them all vacuous.
+		await requireFrontmatterIndexed({ pathPrefixes: TEST_DIR, expectedCount: 4, requireKeys: ['_crosswalker'] });
+		await requireFrontmatterIndexed({ pathPrefixes: CROSSWALK_DIR, expectedCount: 5, requireKeys: ['_crosswalker'] });
 
-		// Project Tier 1 → Tier 2
-		await browser.executeObsidian(async ({ app }) => {
+		// Project Tier 1 → Tier 2, and fail loudly here rather than in six
+		// downstream declarations if the projection did not succeed.
+		const projection = await browser.executeObsidian(async ({ app }) => {
 			// @ts-expect-error
 			const plugin = app.plugins.plugins['crosswalker'];
 			return plugin.runProjection();
 		});
+		if (!projection?.success) {
+			throw new Error(`setup projection failed: ${JSON.stringify(projection?.errors ?? projection).slice(0, 1000)}`);
+		}
 	});
 
 	// -------------------------------------------------------------------------

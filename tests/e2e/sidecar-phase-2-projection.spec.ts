@@ -14,6 +14,7 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+import { requireFrontmatterIndexed, resetTier2Sidecar } from './helpers/vault-readiness';
 
 const TEST_DIR = 'Frameworks/v0-1-5-phase-2-test';
 const CROSSWALK_DIR = 'Crosswalks/v0-1-5-phase-2-test';
@@ -122,8 +123,10 @@ describe('Crosswalker plugin — v0.1.5 Phase 2 projector', function () {
 	this.timeout(120000);
 
 	before(async () => {
-		// Clean prior test output + clear sidecar so projection starts fresh
-		await browser.executeObsidian(async ({ app }, dirs) => {
+		// Clean prior test output. CONDITION: the folders are gone from the vault
+		// index before we import, so the fixture counts below mean this run only.
+		const stillPresent = await browser.executeObsidian(async ({ app }, dirs) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			for (const dir of dirs) {
 				const folder = app.vault.getAbstractFileByPath(dir);
 				if (folder) {
@@ -131,20 +134,22 @@ describe('Crosswalker plugin — v0.1.5 Phase 2 projector', function () {
 					await app.vault.trash(folder, false);
 				}
 			}
+			const deadline = Date.now() + 5000;
+			while (dirs.some((dir) => app.vault.getAbstractFileByPath(dir)) && Date.now() < deadline) await sleep(50);
+			return dirs.filter((dir) => app.vault.getAbstractFileByPath(dir));
 		}, [TEST_DIR, CROSSWALK_DIR, JUNCTION_DIR]);
-		await browser.pause(200);
+		expect(stillPresent).toEqual([]);
 
-		// Clear Tier 2 sidecar so projector starts empty
-		await browser.executeObsidian(async ({ app }) => {
-			// @ts-expect-error - internal plugin lookup
-			const plugin = app.plugins.plugins['crosswalker'];
-			// Close + delete sidecar; next openTier2() recreates fresh
-			if (plugin.tier2Handle) {
-				await plugin.tier2Handle.close();
-				plugin.tier2Handle = null;
-			}
-		});
-		await browser.pause(200);
+		// Start from an EMPTY Tier 2 database, not just a closed handle (triage
+		// 2026-08-24 §5.3). The old hook nulled `plugin.tier2Handle` and stopped
+		// there, so the exact-count assertions below ran against rows another
+		// spec had projected. See resetTier2Sidecar() for why the file itself
+		// cannot simply be deleted (OPFS sahpool VFS).
+		const reset = await resetTier2Sidecar();
+		expect(reset.errors).toEqual([]);
+		expect(reset.counts.concepts).toBe(0);
+		expect(reset.counts.mappings).toBe(0);
+		expect(reset.counts.junction_notes).toBe(0);
 
 		// Import the three fixtures via runImportFromRecipe
 		await browser.executeObsidian(
@@ -183,8 +188,14 @@ describe('Crosswalker plugin — v0.1.5 Phase 2 projector', function () {
 			},
 		);
 
-		// Allow metadataCache to index the new files
-		await browser.pause(500);
+		// CONDITION: every fixture note exists AND has readable frontmatter with a
+		// `_crosswalker` block. `src/tier2/projector.ts` fails the whole full
+		// projection closed when any Markdown file has no metadata-cache entry,
+		// so a 500ms sleep here is what turned six downstream declarations into
+		// "zero rows" results that said nothing about the projector.
+		await requireFrontmatterIndexed({ pathPrefixes: TEST_DIR, expectedCount: 3, requireKeys: ['_crosswalker'] });
+		await requireFrontmatterIndexed({ pathPrefixes: CROSSWALK_DIR, expectedCount: 3, requireKeys: ['_crosswalker'] });
+		await requireFrontmatterIndexed({ pathPrefixes: JUNCTION_DIR, expectedCount: 2, requireKeys: ['_crosswalker'] });
 	});
 
 	it('plugin.runProjection() returns a result with counts', async () => {
@@ -347,7 +358,20 @@ describe('Crosswalker plugin — v0.1.5 Phase 2 projector', function () {
 			if (existing) await app.vault.trash(existing, false);
 			await app.vault.create(path, '# Just a note\n\nNot a Crosswalker file.\n');
 		});
-		await browser.pause(300); // metadataCache index
+		// CONDITION: the new plain note has a metadata-cache entry. The projector
+		// fails closed on files it cannot read from the cache, so without this
+		// the declaration could report a projection failure instead of a skip.
+		const indexed = await browser.executeObsidian(async ({ app }, path) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const deadline = Date.now() + 15_000;
+			for (;;) {
+				const file = app.vault.getMarkdownFiles().find((candidate) => candidate.path === path);
+				if (file && app.metadataCache.getFileCache(file) !== null) return true;
+				if (Date.now() >= deadline) return false;
+				await sleep(100);
+			}
+		}, 'phase-2-not-crosswalker.md');
+		expect(indexed).toBe(true);
 
 		// Re-run projection
 		const result = await browser.executeObsidian(async ({ app }) => {

@@ -17,6 +17,7 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+import { readFrontmatterMatching, requireFrontmatterIndexed, resetTier2Sidecar } from './helpers/vault-readiness';
 
 const TEST_TSV = `# subject_source: "csf"
 # object_source: "iso27001"
@@ -36,21 +37,28 @@ describe('Crosswalker plugin — v0.1.6 Phase 2 SSSOM import (E2E)', function ()
 	this.timeout(120000);
 
 	before(async () => {
-		// Clean any prior import output + reset Tier 2 handle so closure cache starts empty.
-		await browser.executeObsidian(async ({ app }, folder) => {
+		// Clean any prior import output. CONDITION: the folder is gone from the
+		// vault index, so the 5-file count assertions describe this run only.
+		const cleaned = await browser.executeObsidian(async ({ app }, folder) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			const f = app.vault.getAbstractFileByPath(folder);
 			if (f) {
 				// @ts-expect-error - internal trash API
 				await app.vault.trash(f, false);
 			}
-			// @ts-expect-error - internal plugin lookup
-			const plugin = app.plugins.plugins['crosswalker'];
-			if (plugin.tier2Handle) {
-				await plugin.tier2Handle.close();
-				plugin.tier2Handle = null;
-			}
+			const deadline = Date.now() + 5000;
+			while (app.vault.getAbstractFileByPath(folder) && Date.now() < deadline) await sleep(50);
+			return !app.vault.getAbstractFileByPath(folder);
 		}, FOLDER);
-		await browser.pause(300);
+		expect(cleaned).toBe(true);
+
+		// Empty Tier 2 tables AND closure cache (triage 2026-08-24 §5.3). The old
+		// hook only closed the handle, so "closure cache populated" could be
+		// satisfied by another spec's rows.
+		const reset = await resetTier2Sidecar();
+		expect(reset.errors).toEqual([]);
+		expect(reset.counts.mappings).toBe(0);
+		expect(reset.counts.closure_cache).toBe(0);
 	});
 
 	it('command crosswalker:import-sssom is registered', async () => {
@@ -189,17 +197,12 @@ describe('Crosswalker plugin — v0.1.6 Phase 2 SSSOM import (E2E)', function ()
 				strictValidation: true,
 			});
 
-			// Run Tier 2 projection so mappings table populates from the new junction notes
-			await plugin.runProjection();
-
-			// Eagerly precompute closure for this pair
-			const closureRows = await plugin.precomputeClosure(source, target);
-
 			return {
 				createdCount: generated.created.length,
 				success: generated.success,
 				errors: generated.errors,
-				closureRows,
+				source,
+				target,
 				folder,
 			};
 		}, TEST_TSV);
@@ -207,6 +210,27 @@ describe('Crosswalker plugin — v0.1.6 Phase 2 SSSOM import (E2E)', function ()
 		expect(result.success).toBe(true);
 		expect(result.createdCount).toBe(5);
 		expect(result.errors).toEqual([]);
+
+		// CONDITION: all five new edge notes are indexed with readable
+		// `_crosswalker` frontmatter BEFORE projection. Projection and the eager
+		// closure precompute used to run in the same renderer callback as the
+		// write, so the projector — which fails closed on an unreadable file —
+		// was routinely asked to read notes Obsidian had not indexed yet, and the
+		// three downstream declarations reported zero rows (triage §5.2).
+		await requireFrontmatterIndexed({ pathPrefixes: FOLDER, expectedCount: 5, requireKeys: ['_crosswalker'] });
+
+		const projected = await browser.executeObsidian(async ({ app }, args) => {
+			// @ts-expect-error
+			const plugin = app.plugins.plugins['crosswalker'];
+			const projection = await plugin.runProjection();
+			// Eagerly precompute closure for this pair.
+			const closureRows = await plugin.precomputeClosure(args.source, args.target);
+			return { success: projection?.success, errors: projection?.errors ?? [], closureRows };
+		}, { source: result.source, target: result.target });
+
+		if (!projected.success) {
+			throw new Error(`projection after SSSOM import failed: ${JSON.stringify(projected.errors).slice(0, 1000)}`);
+		}
 	});
 
 	it('5 junction-edge files exist under _crosswalker/mappings/csf-to-iso27001/', async () => {
@@ -220,26 +244,18 @@ describe('Crosswalker plugin — v0.1.6 Phase 2 SSSOM import (E2E)', function ()
 	});
 
 	it('STRM predicate normalization landed in frontmatter (skos:closeMatch → is_approximate_to)', async () => {
-		const fmCheck = await browser.executeObsidian(async ({ app }, folder) => {
-			const f = app.vault.getAbstractFileByPath(folder);
-			// @ts-expect-error
-			const child = f.children.find((c) => c.path.includes('gv-oc-01'));
-			if (!child) return { found: false };
-			// @ts-expect-error
-			const cache = app.metadataCache.getFileCache(child);
-			return {
-				found: true,
-				predicate_id: cache?.frontmatter?.predicate_id,
-				sssom_predicate: cache?.frontmatter?.sssom_predicate,
-				subject_id: cache?.frontmatter?.subject_id,
-			};
-		}, FOLDER);
+		// WRITER CONTRACT → read the note from disk (triage §5.2). The previous
+		// cache lookup returned `null` and the declaration reported it as an
+		// SSSOM normalization failure without ever inspecting the file.
+		const found = await readFrontmatterMatching(FOLDER, 'gv-oc-01');
 
-		expect(fmCheck.found).toBe(true);
+		expect(found.path).toBeTruthy();
+		expect(found.frontmatter).toBeTruthy();
+		const fm = found.frontmatter as Record<string, any>;
 		// csf:GV.OC-01 had skos:closeMatch in TSV — normalized to STRM is_approximate_to
-		expect(fmCheck.predicate_id).toBe('is_approximate_to');
-		expect(fmCheck.sssom_predicate).toBe('skos:closeMatch');
-		expect(fmCheck.subject_id).toBe('csf:GV.OC-01');
+		expect(fm.predicate_id).toBe('is_approximate_to');
+		expect(fm.sssom_predicate).toBe('skos:closeMatch');
+		expect(fm.subject_id).toBe('csf:GV.OC-01');
 	});
 
 	it('Tier 2 mappings table populated; queryCrosswalk returns 5 rows', async () => {

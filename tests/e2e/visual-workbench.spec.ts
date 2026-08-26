@@ -22,8 +22,26 @@ import { browser } from '@wdio/globals';
 import { expect } from 'expect';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { closeImportWizard, requireImportWizard, clearAllDrafts } from './helpers/wizard-modal';
+import { waitForVaultIndexed } from './helpers/vault-readiness';
 
 const OUT = path.resolve('test-screenshots');
+
+/**
+ * The live wizard modal. `src/import/import-wizard.ts` stamps this class on the
+ * modal element in `onOpen()`, so it identifies the Crosswalker wizard
+ * specifically — unlike the bare `.modal` this spec used to reach for, which is
+ * the first modal in the document and after two open/close cycles can be a
+ * stale leftover (triage 2026-08-24 §4 B6: the third declaration reported
+ * `NO_NEXT_BUTTON` before touching any workbench behavior).
+ *
+ * Safe as a bare `querySelector` because `requireImportWizard()` proves the
+ * previous wizard is gone before opening the next one.
+ */
+const WIZARD = '.crosswalker-wizard-modal';
+// Callbacks that already take a params object receive it as `a.wizard`; ones
+// that take no params inline the same literal (a serialized renderer callback
+// cannot close over an outer const).
 
 /** Capture the current focused state in dark mode, then restore the prior theme. */
 async function saveDarkScreenshot(fileName: string): Promise<void> {
@@ -75,8 +93,16 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 
 	before(async () => {
 		mkdirSync(OUT, { recursive: true });
-		// Let the (heavy) test vault finish its initial index before driving UI.
-		await browser.pause(6000);
+		// Deterministic starting state. The old `browser.pause(6000)` was sized
+		// for the 11k-note development vault and still asserted nothing; wait on
+		// the real condition (every note has a metadata-cache entry) and clear
+		// the UI state an earlier spec may have left behind.
+		await closeImportWizard();
+		await clearAllDrafts();
+		const indexed = await waitForVaultIndexed();
+		if (!indexed.ready) {
+			console.warn(`[workbench] vault index incomplete: ${indexed.pending}/${indexed.total} pending after ${indexed.waitedMs}ms`);
+		}
 		// Enable the beta workbench on the live plugin. Also disable the config
 		// suggestion + draft features so the step-1 → step-2 advance is deterministic:
 		// a vault with saved configs would otherwise show a suggestion banner after
@@ -91,10 +117,16 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		});
 	});
 
+	afterEach(async () => {
+		// Never leave a wizard open for the next declaration — the compounding
+		// stale-modal state is what made declarations 2 and 3 unreadable.
+		await closeImportWizard();
+	});
+
 	after(async () => {
 		// Close modal + restore the changed settings to their defaults.
+		await closeImportWizard();
 		await browser.executeObsidian(async ({ app }) => {
-			document.querySelector<HTMLElement>('.modal-close-button')?.click();
 			// @ts-expect-error — internal plugins API
 			const plugin = app.plugins.plugins['crosswalker'];
 			if (plugin) {
@@ -122,7 +154,11 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			'PR.AA,Identity Management,category,"Access to physical and logical assets is limited to authorized users."',
 		].join('\n');
 
-		const info = await browser.executeObsidian(async ({ app }, csv) => {
+		// Opens a FRESH wizard: closes any predecessor, proves it left the DOM,
+		// then waits for a visible `.crosswalker-wizard-modal` with a file input.
+		await requireImportWizard();
+		const info = await browser.executeObsidian(async (_obs, a) => {
+			const csv = a.csv;
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			const waitFor = async (sel: string, ms: number) => {
 				const t0 = Date.now();
@@ -133,15 +169,9 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 				}
 				return null;
 			};
-			// Close any leftover modal first.
-			document.querySelector<HTMLElement>('.modal-close-button')?.click();
-			await sleep(300);
-
-			// @ts-expect-error — commands API is untyped
-			app.commands.executeCommandById('crosswalker:import-structured-data');
-			const modal = await waitFor('.modal', 8000);
+			const modal = document.querySelector(a.wizard);
 			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
-			const input = (await waitFor('.modal input[type=file]', 8000)) as HTMLInputElement | null;
+			const input = modal.querySelector('input[type=file]') as HTMLInputElement | null;
 			if (!input) return { ok: false as const, reason: 'NO_FILE_INPUT' };
 			const dt = new DataTransfer();
 			dt.items.add(new File([csv], 'nist-csf-2-cprt.csv'));
@@ -172,7 +202,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 				),
 				summary: modal.querySelector('.crosswalker-recognized-summary')?.textContent ?? '',
 			};
-		}, CPRT_CSV);
+		}, { csv: CPRT_CSV, wizard: WIZARD });
 		console.log('[recognized] card → ' + JSON.stringify(info));
 		await browser.saveScreenshot(path.join(OUT, 'wb-08-recognized.png'));
 		expect(info.ok).toBe(true);
@@ -189,7 +219,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		// VETTED "Built-in" — NOT the workbench's preset-drift "Custom".
 		const review = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const };
 			const primary = Array.from(modal.querySelectorAll('.crosswalker-recognized-actions button')).find(
 				(b) => b.textContent?.includes('Import with this configuration'),
@@ -235,7 +265,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		// portable identity becomes a deterministic custom recipe with ancestry.
 		const customized = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
 			const back = Array.from(modal.querySelectorAll('button')).find(
 				(button) => button.textContent?.trim() === 'Back',
@@ -273,11 +303,10 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			expect(customized.badge).toContain('Custom');
 		}
 
-		// Close the modal so the next spec opens a clean wizard.
-		await browser.executeObsidian(async () => {
-			document.querySelector<HTMLElement>('.modal-close-button')?.click();
-		});
-		await browser.pause(400);
+		// Close the wizard and PROVE it left the DOM before the next declaration
+		// opens one — a click plus a 400ms sleep guaranteed neither.
+		const closed = await closeImportWizard();
+		expect(closed.closed).toBe(true);
 	});
 
 	it('preserves recognized crosswalk-edge kind through review and generation', async () => {
@@ -285,7 +314,9 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 			'subject_id,strm_predicate,object_id,subject_group,object_group,source_framework,target_framework,match_confidence,mapping_justification,mapping_provider,sssom_predicate',
 			'e2e:RECIPE-FIDELITY-001,is_equivalent_to,e2e:TARGET-001,Portable source,Portable target,E2E source,E2E target,0.95,Manual review,Portable E2E,skos:exactMatch',
 		].join('\n');
-		const result = await browser.executeObsidian(async ({ app }, source) => {
+		await requireImportWizard();
+		const result = await browser.executeObsidian(async ({ app }, a) => {
+			const source = a.source;
 			const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 			const waitFor = async (selector: string, timeout: number) => {
 				const started = Date.now();
@@ -296,10 +327,8 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 				}
 				return null;
 			};
-			// @ts-expect-error — commands API is untyped
-			app.commands.executeCommandById('crosswalker:import-structured-data');
-			const modal = await waitFor('.modal', 8000);
-			const input = await waitFor('.modal input[type=file]', 8000) as HTMLInputElement | null;
+			const modal = document.querySelector(a.wizard);
+			const input = modal?.querySelector('input[type=file]') as HTMLInputElement | null;
 			if (!modal || !input) return { ok: false as const, reason: 'NO_WIZARD' };
 			const transfer = new DataTransfer();
 			transfer.items.add(new File([source], 'portable-crosswalk.csv'));
@@ -378,7 +407,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 				createdPaths,
 				candidates: candidates.slice(0, 20).map((file: { path: string }) => file.path),
 			};
-		}, csv);
+		}, { source: csv, wizard: WIZARD });
 		console.log('[recipe-fidelity] edge → ' + JSON.stringify(result));
 		expect(result.ok).toBe(true);
 		if (result.ok) {
@@ -390,7 +419,9 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 
 	it('drives the CSV to the workbench Step 2 and screenshots the three zones', async () => {
 		// -- Stage A: open wizard → inject CSV → advance to the workbench.
-		const openInfo = await browser.executeObsidian(async ({ app }, csv) => {
+		await requireImportWizard();
+		const openInfo = await browser.executeObsidian(async ({ app }, a) => {
+			const csv = a.csv;
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			const waitFor = async (sel: string, ms: number) => {
 				const t0 = Date.now();
@@ -404,15 +435,12 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 
 			// @ts-expect-error — commands API is untyped
 			const cmdExists = !!app.commands.commands['crosswalker:import-structured-data'];
-			// @ts-expect-error — commands API is untyped
-			app.commands.executeCommandById('crosswalker:import-structured-data');
 
-			const modal = await waitFor('.modal', 8000);
+			// requireImportWizard() already opened it and waited for the file
+			// input (Step 1 content renders after loadAvailableDrafts() resolves).
+			const modal = document.querySelector(a.wizard);
 			if (!modal) return { stage: 'open', ok: false, cmdExists, reason: 'NO_MODAL' };
-
-			// Step 1 content renders after loadAvailableDrafts() resolves, so the
-			// file input appears a beat after the modal shell — poll for it.
-			const input = (await waitFor('.modal input[type=file]', 8000)) as HTMLInputElement | null;
+			const input = modal.querySelector('input[type=file]') as HTMLInputElement | null;
 			if (!input) return { stage: 'open', ok: false, cmdExists, reason: 'NO_FILE_INPUT' };
 			const dt = new DataTransfer();
 			dt.items.add(new File([csv], 'attack-mini.csv'));
@@ -432,14 +460,14 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 				reason: wb ? 'OK' : 'NO_WORKBENCH',
 				h3: modal.querySelector('h3')?.textContent ?? '',
 			};
-		}, ATTACK_CSV);
+		}, { csv: ATTACK_CSV, wizard: WIZARD });
 		console.log('[workbench] open → ' + JSON.stringify(openInfo));
 		await browser.saveScreenshot(path.join(OUT, 'wb-01-step2-overview.png'));
 		expect(openInfo.ok).toBe(true);
 
 		// -- Stage B: overview assertions (three zones + technique_id badge).
 		const overview = await browser.executeObsidian(() => {
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const };
 			const source = modal.querySelector('.crosswalker-wb-source');
 			const details = source?.querySelector(
@@ -647,7 +675,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		// Native WebdriverIO input is required here: Obsidian Scope does not treat a
 		// synthetic KeyboardEvent as equivalent to a user pressing Escape.
 		const evidenceEscapeSetup = await browser.executeObsidian(() => {
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			const badge = modal?.querySelector(
 				'.crosswalker-wb-badge[data-column="tactic"][data-detection-key^="level-column-chain:"]',
 			) as HTMLButtonElement | null;
@@ -675,7 +703,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 
 		const evidence = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
 			const findChainBadge = () => modal.querySelector(
 				'.crosswalker-wb-badge[data-column="tactic"][data-detection-key^="level-column-chain:"]',
@@ -856,7 +884,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 
 		const chooser = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
 			const trigger = () => modal.querySelector(
 				'.crosswalker-wb-addmapping-trigger',
@@ -1042,7 +1070,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		// -- Stage E: expand a mapping + "Arrange levels" → matrix w/ tail row.
 		const matrix = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const };
 			const toggle = modal.querySelector('.crosswalker-wb-mapcard-toggle') as HTMLButtonElement | null;
 			if (!toggle) return { ok: false as const, reason: 'NO_TOGGLE' };
@@ -1120,7 +1148,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		// -- Stage E: live preview rail → folder tree containing T1055.
 		const preview = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const };
 			const rail = modal.querySelector('.crosswalker-wb-preview');
 			rail?.scrollIntoView({ block: 'start' });
@@ -1146,7 +1174,7 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 		//    NO workbench re-render.
 		const review = await browser.executeObsidian(async () => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const };
 			const next = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
 			if (!next) return { ok: false as const, reason: 'NO_NEXT' };
@@ -1185,13 +1213,13 @@ describe('Visual — Shape workbench (beta) in wizard Step 2', function () {
 
 		const genInfo = await browser.executeObsidian(async ({ app }) => {
 			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-			const modal = document.querySelector('.modal');
+			const modal = document.querySelector('.crosswalker-wizard-modal');
 			if (!modal) return { ok: false as const, reason: 'NO_MODAL' };
 			// Step 3 → Step 4 (Generate screen).
 			const next = Array.from(modal.querySelectorAll('button')).find((b) => b.textContent?.includes('Next'));
 			if (next) { (next as HTMLButtonElement).click(); await sleep(600); }
 			// Click Generate.
-			const gen = Array.from(document.querySelectorAll('.modal button')).find((b) => b.textContent?.trim() === 'Generate');
+			const gen = Array.from(document.querySelectorAll('.crosswalker-wizard-modal button')).find((b) => b.textContent?.trim() === 'Generate');
 			if (!gen) return { ok: false as const, reason: 'NO_GENERATE' };
 			(gen as HTMLButtonElement).click();
 			// Wait for generation to finish (modal closes on success).

@@ -15,6 +15,7 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+import { readFrontmatterMatching, requireFrontmatterIndexed } from './helpers/vault-readiness';
 
 const CROSSWALK_DIR = 'Crosswalks/v0-1-4-test';
 const JUNCTION_DIR = 'Evidence/v0-1-4-junctions';
@@ -152,7 +153,10 @@ describe('Crosswalker plugin — v0.1.4 junction notes + crosswalk edges', funct
 
 	before(async () => {
 		// Clean both test output dirs
-		await browser.executeObsidian(async ({ app }, dirs) => {
+		// CONDITION: both destinations are gone from the vault index before the
+		// declarations start counting what they create.
+		const cleaned = await browser.executeObsidian(async ({ app }, dirs) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			for (const dir of dirs) {
 				const folder = app.vault.getAbstractFileByPath(dir);
 				if (folder) {
@@ -160,8 +164,11 @@ describe('Crosswalker plugin — v0.1.4 junction notes + crosswalk edges', funct
 					await app.vault.trash(folder, false);
 				}
 			}
+			const deadline = Date.now() + 5000;
+			while (dirs.some((dir) => app.vault.getAbstractFileByPath(dir)) && Date.now() < deadline) await sleep(50);
+			return dirs.filter((dir) => app.vault.getAbstractFileByPath(dir));
 		}, [CROSSWALK_DIR, JUNCTION_DIR]);
-		await browser.pause(200);
+		expect(cleaned).toEqual([]);
 	});
 
 	it('imports crosswalk-edge rows via runImportFromRecipe to expected paths', async () => {
@@ -205,16 +212,14 @@ describe('Crosswalker plugin — v0.1.4 junction notes + crosswalk edges', funct
 	});
 
 	it('emits kind: crosswalk-edge and STRM-valid predicate_id in frontmatter', async () => {
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const file = app.vault
-				.getMarkdownFiles()
-				.find((f) => f.path.startsWith(dir + '/') && f.path.includes('pr-ac-01'));
-			if (!file) return null;
-			// @ts-expect-error - getFileCache
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, CROSSWALK_DIR);
+		// WRITER CONTRACT → read the file (triage 2026-08-24 §5.2). The previous
+		// cache read returned `null` in an incompletely indexed vault and the
+		// spec reported that as a generation defect.
+		const found = await readFrontmatterMatching(CROSSWALK_DIR, 'pr-ac-01');
+		expect(found.path).toBeTruthy();
+		expect(found.frontmatter).toBeTruthy();
+		const fm = found.frontmatter as Record<string, any>;
 
-		expect(fm).toBeTruthy();
 		expect(fm.kind).toBe('crosswalk-edge');
 		expect(fm.subject_id).toBe('nist-csf:PR.AC-01');
 		expect(fm.predicate_id).toBe('is_equivalent_to');
@@ -284,17 +289,12 @@ describe('Crosswalker plugin — v0.1.4 junction notes + crosswalk edges', funct
 		expect(result.success).toBe(true);
 		expect(result.created.length).toBe(2);
 
-		// Verify junction-note frontmatter
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const file = app.vault
-				.getMarkdownFiles()
-				.find((f) => f.path.startsWith(dir + '/') && f.path.includes('ac-2'));
-			if (!file) return null;
-			// @ts-expect-error - getFileCache
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, JUNCTION_DIR);
+		// Verify junction-note frontmatter — writer contract, read from disk.
+		const found = await readFrontmatterMatching(JUNCTION_DIR, 'ac-2');
+		expect(found.path).toBeTruthy();
+		expect(found.frontmatter).toBeTruthy();
+		const fm = found.frontmatter as Record<string, any>;
 
-		expect(fm).toBeTruthy();
 		expect(fm.kind).toBe('junction-note');
 		expect(fm.predicate).toBe('covers');
 		expect(fm.coverage).toBe('partial');
@@ -302,19 +302,29 @@ describe('Crosswalker plugin — v0.1.4 junction notes + crosswalk edges', funct
 
 	it('preserves user-edited keys on crosswalk-edge re-import (Ch 22 §8.4 user_preserve)', async () => {
 		// User adds review_status + creator_id to one of the crosswalk files
-		await browser.executeObsidian(async ({ app }, dir) => {
+		const editedPath = await browser.executeObsidian(async ({ app }, dir) => {
 			const file = app.vault
 				.getMarkdownFiles()
 				.find((f) => f.path.startsWith(dir + '/') && f.path.includes('pr-ac-01'));
-			if (!file) return;
+			if (!file) return null;
 			await app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
 				fm.review_status = 'approved';
 				fm.creator_id = '0000-0001-2345-6789';
 				fm.notes = 'Validated against NIST OLIR ID:0024';
 			});
+			return file.path;
 		}, CROSSWALK_DIR);
+		expect(editedPath).toBeTruthy();
 
-		await browser.pause(300);
+		// CONDITION: that one edited note's `review_status` is visible in the
+		// metadata cache before the re-import runs. The user_preserve merge reads
+		// the note's existing frontmatter, so this is a real precondition of the
+		// behavior under test — unlike the fixed 300ms sleep it replaces.
+		await requireFrontmatterIndexed({
+			pathPrefixes: editedPath as string,
+			expectedCount: 1,
+			requireKeys: ['review_status', 'creator_id', 'notes'],
+		});
 
 		// Re-import — managed keys should overwrite, user_preserve keys must survive
 		await browser.executeObsidian(
@@ -336,16 +346,11 @@ describe('Crosswalker plugin — v0.1.4 junction notes + crosswalk edges', funct
 			},
 		);
 
-		await browser.pause(300);
-
-		const fmAfter = await browser.executeObsidian(({ app }, dir) => {
-			const file = app.vault
-				.getMarkdownFiles()
-				.find((f) => f.path.startsWith(dir + '/') && f.path.includes('pr-ac-01'));
-			if (!file) return null;
-			// @ts-expect-error - getFileCache
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, CROSSWALK_DIR);
+		// Merge result is on disk; read it there rather than waiting on the cache.
+		const after = await readFrontmatterMatching(CROSSWALK_DIR, 'pr-ac-01');
+		expect(after.path).toBeTruthy();
+		expect(after.frontmatter).toBeTruthy();
+		const fmAfter = after.frontmatter as Record<string, any>;
 
 		// User keys preserved
 		expect(fmAfter.review_status).toBe('approved');

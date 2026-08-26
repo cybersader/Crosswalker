@@ -25,6 +25,7 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+import { readFrontmatterFromDisk, requireFrontmatterIndexed, resetTier2Sidecar } from './helpers/vault-readiness';
 import { readFileSync } from 'node:fs';
 import { resolve as pathResolve } from 'node:path';
 import Papa from 'papaparse';
@@ -115,8 +116,10 @@ describe('Crosswalker plugin — realistic framework fixtures (integration)', fu
 	const crosswalk = loadFixtureCsv('csf-to-800-53-crosswalk.csv');
 
 	before(async () => {
-		// Clean prior test output + reset Tier 2 handle
-		await browser.executeObsidian(async ({ app }, dirs) => {
+		// Clean prior test output. CONDITION: every destination is gone from the
+		// vault index before the imports start.
+		const stillPresent = await browser.executeObsidian(async ({ app }, dirs) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 			for (const dir of dirs) {
 				const folder = app.vault.getAbstractFileByPath(dir);
 				if (folder) {
@@ -124,14 +127,19 @@ describe('Crosswalker plugin — realistic framework fixtures (integration)', fu
 					await app.vault.trash(folder, false);
 				}
 			}
-			// @ts-expect-error - internal plugin lookup
-			const plugin = app.plugins.plugins['crosswalker'];
-			if (plugin.tier2Handle) {
-				await plugin.tier2Handle.close();
-				plugin.tier2Handle = null;
-			}
+			const deadline = Date.now() + 8000;
+			while (dirs.some((dir) => app.vault.getAbstractFileByPath(dir)) && Date.now() < deadline) await sleep(50);
+			return dirs.filter((dir) => app.vault.getAbstractFileByPath(dir));
 		}, [NIST_DIR, CSF_DIR, ISO_DIR, MITRE_DIR, CROSSWALK_DIR]);
-		await browser.pause(300);
+		expect(stillPresent).toEqual([]);
+
+		// Empty Tier 2 tables, not just a closed handle (triage 2026-08-24 §5.3).
+		// The projection declaration asserts absolute counts, so stale rows from
+		// an earlier spec would either mask a failure or fake a pass.
+		const reset = await resetTier2Sidecar();
+		expect(reset.errors).toEqual([]);
+		expect(reset.counts.concepts).toBe(0);
+		expect(reset.counts.mappings).toBe(0);
 	});
 
 	// -------------------------------------------------------------------------
@@ -173,19 +181,13 @@ describe('Crosswalker plugin — realistic framework fixtures (integration)', fu
 		// preserve hyphens AND parens in filenames; actual filename is
 		// AC-2(1).md. The CURIE pattern admits this shape. (fs-safe filter
 		// behavior with hyphens is a separate investigation; not blocking.)
-		await browser.pause(500); // allow metadataCache to index
-
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const target = `${dir}/AC-2(1).md`;
-			const file = app.vault.getAbstractFileByPath(target);
-			if (!file) return null;
-			// @ts-expect-error - getFileCache
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, NIST_DIR);
+		// WRITER CONTRACT → read the generated note from disk (triage §5.2); no
+		// indexing wait is needed at all for this class of assertion.
+		const fm = await readFrontmatterFromDisk(`${NIST_DIR}/AC-2(1).md`) as Record<string, any> | null;
 
 		expect(fm).toBeTruthy();
-		expect(fm.curie).toBe('nist:AC-2(1)');
-		expect(fm.title).toContain('Automated System Account Management');
+		expect(fm!.curie).toBe('nist:AC-2(1)');
+		expect(fm!.title).toContain('Automated System Account Management');
 		// Validation strict mode passed → CURIE pattern admits parens
 	});
 
@@ -224,16 +226,11 @@ describe('Crosswalker plugin — realistic framework fixtures (integration)', fu
 
 		// Verify dotted-CURIE survived: GV.OC-01 → filename keeps hyphen +
 		// dots, so actual filename is GV.OC-01.md
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const target = `${dir}/GV.OC-01.md`;
-			const file = app.vault.getAbstractFileByPath(target);
-			if (!file) return null;
-			// @ts-expect-error
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, CSF_DIR);
+		// WRITER CONTRACT → read from disk, not the metadata cache (triage §5.2).
+		const fm = await readFrontmatterFromDisk(`${CSF_DIR}/GV.OC-01.md`) as Record<string, any> | null;
 
 		expect(fm).toBeTruthy();
-		expect(fm.curie).toBe('nist-csf:GV.OC-01');
+		expect(fm!.curie).toBe('nist-csf:GV.OC-01');
 	});
 
 	// -------------------------------------------------------------------------
@@ -270,16 +267,11 @@ describe('Crosswalker plugin — realistic framework fixtures (integration)', fu
 		expect(result.created.length).toBe(iso.rows.length); // 15
 
 		// Verify dotted CURIE: A.5.1 → fs-safe filename A.5.1.md (dots survive)
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const target = `${dir}/A.5.1.md`;
-			const file = app.vault.getAbstractFileByPath(target);
-			if (!file) return null;
-			// @ts-expect-error
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, ISO_DIR);
+		// WRITER CONTRACT → read from disk, not the metadata cache (triage §5.2).
+		const fm = await readFrontmatterFromDisk(`${ISO_DIR}/A.5.1.md`) as Record<string, any> | null;
 
 		expect(fm).toBeTruthy();
-		expect(fm.curie).toBe('iso27001:A.5.1');
+		expect(fm!.curie).toBe('iso27001:A.5.1');
 	});
 
 	// -------------------------------------------------------------------------
@@ -316,16 +308,11 @@ describe('Crosswalker plugin — realistic framework fixtures (integration)', fu
 		expect(result.created.length).toBe(mitre.rows.length); // 19
 
 		// Verify dotted CURIE: T1078.001 → fs-safe filename T1078.001.md
-		const fm = await browser.executeObsidian(({ app }, dir) => {
-			const target = `${dir}/T1078.001.md`;
-			const file = app.vault.getAbstractFileByPath(target);
-			if (!file) return null;
-			// @ts-expect-error
-			return app.metadataCache.getFileCache(file)?.frontmatter ?? null;
-		}, MITRE_DIR);
+		// WRITER CONTRACT → read from disk, not the metadata cache (triage §5.2).
+		const fm = await readFrontmatterFromDisk(`${MITRE_DIR}/T1078.001.md`) as Record<string, any> | null;
 
 		expect(fm).toBeTruthy();
-		expect(fm.curie).toBe('mitre-attack:T1078.001');
+		expect(fm!.curie).toBe('mitre-attack:T1078.001');
 	});
 
 	// -------------------------------------------------------------------------
@@ -366,6 +353,17 @@ describe('Crosswalker plugin — realistic framework fixtures (integration)', fu
 	// 6. Multi-framework projection — Tier 2 populated for ALL ontologies
 	// -------------------------------------------------------------------------
 	it('projects all frameworks into Tier 2; ontologies table populated for each', async () => {
+		// CONDITION: every note written by declarations 1-5 is indexed with
+		// readable `_crosswalker` frontmatter. `src/tier2/projector.ts` fails the
+		// entire full projection closed on the first file it cannot read, which is
+		// how this declaration and the four downstream of it all reported empty
+		// results in the 2026-08-22 run (triage §5.2).
+		await requireFrontmatterIndexed({ pathPrefixes: NIST_DIR, expectedCount: nist.rows.length, requireKeys: ['_crosswalker'] });
+		await requireFrontmatterIndexed({ pathPrefixes: CSF_DIR, expectedCount: csf.rows.length, requireKeys: ['_crosswalker'] });
+		await requireFrontmatterIndexed({ pathPrefixes: ISO_DIR, expectedCount: iso.rows.length, requireKeys: ['_crosswalker'] });
+		await requireFrontmatterIndexed({ pathPrefixes: MITRE_DIR, expectedCount: mitre.rows.length, requireKeys: ['_crosswalker'] });
+		await requireFrontmatterIndexed({ pathPrefixes: CROSSWALK_DIR, expectedCount: crosswalk.rows.length, requireKeys: ['_crosswalker'] });
+
 		const result = await browser.executeObsidian(async ({ app }) => {
 			// @ts-expect-error
 			const plugin = app.plugins.plugins['crosswalker'];

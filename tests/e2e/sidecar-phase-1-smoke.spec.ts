@@ -8,7 +8,8 @@
  *   4. sqlite_version() returns a real version string (smoke check that
  *      the runtime is fully initialized — sqlite-vec deferred per Ch 24
  *      §5 Q4, revisit by 2026-11-06)
- *   5. Schema migrations applied (schema_meta has tier2-sqlite-v2)
+ *   5. Schema migrations applied (schema_meta reaches the CURRENT authoritative
+ *      version, `TIER2_SCHEMA_VERSION` from src/tier2/migrations.ts)
  *   6. clear-tier-2-sidecar command exists and registers
  *
  * NOT a milestone gate (that's the bigger sidecar.spec.ts in Phase 5).
@@ -17,6 +18,11 @@
 
 import { browser } from '@wdio/globals';
 import { expect } from 'expect';
+// Compare against the exported constant, never a hard-coded literal. The old
+// `tier2-sqlite-v2` expectation survived two schema migrations and reported
+// test rot as a substrate failure (triage 2026-08-24 §4 B2). migrations.ts has
+// no imports of its own, so pulling it in Node-side costs nothing.
+import { TIER2_SCHEMA_VERSION } from '../../src/tier2/migrations';
 
 describe('Crosswalker plugin — v0.1.5 Phase 1 substrate scaffolding (smoke)', function () {
 	this.timeout(120000);
@@ -79,7 +85,7 @@ describe('Crosswalker plugin — v0.1.5 Phase 1 substrate scaffolding (smoke)', 
 		expect(Number(value)).toBe(1);
 	});
 
-	it('schema migrations applied — schema_meta has tier2-sqlite-v2', async () => {
+	it('schema migrations applied — schema_meta reports the current authoritative version', async () => {
 		const version = await browser.executeObsidian(async ({ app }) => {
 			// @ts-expect-error - internal plugin lookup
 			const plugin = app.plugins.plugins['crosswalker'];
@@ -92,7 +98,8 @@ describe('Crosswalker plugin — v0.1.5 Phase 1 substrate scaffolding (smoke)', 
 			return rows[0]?.[0] ?? null;
 		});
 
-		expect(version).toBe('tier2-sqlite-v2');
+		// The assertion is "migration reaches the current version", not "v2 forever".
+		expect(version).toBe(TIER2_SCHEMA_VERSION);
 	});
 
 	it('all expected tables exist after migration', async () => {
