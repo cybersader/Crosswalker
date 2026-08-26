@@ -1,9 +1,17 @@
 {
+  "$comment": "PURPOSE AND SHAPE: This recipe projects stable identity and queryable facets into properties while keeping long-form prose in the Markdown body. title and control_id remain properties; curie is emitted automatically from the ontology plus identifier. The body starts with the control name, then places normative control text and discussion in separate readable sections. RIGHTS: NIST SP 800-53 Rev. 5 is a public-domain United States Government work. Corpus provenance and rights posture: https://cybersader.github.io/crosswalker/reference/framework-corpus/. KNOWN GAP — related is intentionally not emitted because the current recipe grammar cannot produce a clean, faithful result: (1) template filters operate on a scalar and cannot split/map/reject every list item; (2) managed frontmatter templates cannot turn a CSV scalar into a CURIE array; (3) managed_links can split only into wikilinks and cannot normalize each item by stripping the terminal period, rejecting the [None] sentinel, or prefixing each identifier as nist-800-53:<id>; (4) body projections cannot expand the list into per-item resolving wikilinks, and Tier 2 concept projection does not turn arbitrary related properties into mappings traversed by closure. Emitting half-broken links such as [[SC-37.]] or [[[None]]] would be worse than omitting them until the schema supports a portable per-item transform and relationship projection.",
   "recipe": "nist-800-53-r5-flat",
-  "source": { "ontology": "nist-800-53", "levels": ["control"] },
+  "source": {
+    "ontology": "nist-800-53",
+    "levels": ["control"]
+  },
   "target": {
     "layout": [
-      { "level": "control", "mechanism": "file", "template": "{identifier|fs-safe}.md" }
+      {
+        "level": "control",
+        "mechanism": "file",
+        "template": "{identifier|fs-safe}.md"
+      }
     ],
     "also_emit": {
       "frontmatter": {
@@ -12,7 +20,28 @@
           "control_id": "{identifier}"
         },
         "user_preserve": ["reviewer", "status", "notes"]
-      }
+      },
+      "body": [
+        {
+          "template": "# {name}",
+          "position": "append",
+          "format": "text"
+        },
+        {
+          "template": "{control_text|trim}",
+          "position": "section",
+          "heading": "Control",
+          "heading_depth": 2,
+          "format": "text"
+        },
+        {
+          "template": "{discussion|trim}",
+          "position": "section",
+          "heading": "Discussion",
+          "heading_depth": 2,
+          "format": "text"
+        }
+      ]
     }
   }
 }
