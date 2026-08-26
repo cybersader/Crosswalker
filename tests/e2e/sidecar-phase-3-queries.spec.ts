@@ -318,7 +318,12 @@ describe('Crosswalker plugin — v0.1.5 Phase 3 query API + closure cache', func
 				sql: `
 					SELECT subject_id, predicate_id, object_id, shortest_depth
 					FROM closure_cache
-					WHERE subject_id = 'p3:A' AND predicate_id = 'is_equivalent_to'
+					-- predicate_id here is the PHYSICAL cache key, which carries the
+					-- closure-semantics version (cachePredicateKey() in src/tier2/queries.ts),
+					-- not the bare logical predicate. Filtering on the bare value found zero
+					-- rows against a correctly populated cache and read as a substrate
+					-- failure. Match the suffix so a version bump cannot rot this again.
+					WHERE subject_id = 'p3:A' AND predicate_id LIKE '%|is_equivalent_to'
 					ORDER BY shortest_depth, object_id
 				`,
 				rowMode: 'array',
@@ -336,7 +341,9 @@ describe('Crosswalker plugin — v0.1.5 Phase 3 query API + closure cache', func
 		// All cached rows have subject_id = p3:A (the starting concept)
 		for (const r of cacheRows) {
 			expect(r.subject).toBe('p3:A');
-			expect(r.predicate).toBe('is_equivalent_to');
+			// Physical cache key, not the logical predicate: it is version-prefixed
+			// so a semantics change cannot silently reuse stale closure rows.
+			expect(r.predicate).toMatch(/\|is_equivalent_to$/);
 		}
 	});
 
