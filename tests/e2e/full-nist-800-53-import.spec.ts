@@ -70,7 +70,7 @@ async function timed<T>(name: string, operation: () => Promise<T>): Promise<T> {
 describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale proof', function () {
 	this.timeout(10 * 60_000);
 
-	it('imports, indexes, projects, queries, measures, and screenshots all 1,189 records', async () => {
+	it('imports, indexes, and proves bodies, headings and related links across all 1,189 records', async () => {
 		const specStarted = Date.now();
 		mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -192,6 +192,15 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 			const wordCounts: number[] = [];
 			const characterCounts: number[] = [];
 			let enhancementBody = '';
+			// `related` proof (2026-08-26). Three failure modes the per-item chain
+			// exists to prevent, counted across all 1,189 notes rather than sampled:
+			// a dangling `[[SC-37.]]` (terminal period kept), a literal `[[[None]]]`
+			// (sentinel not rejected), and a "## Related controls" heading on a
+			// control that has no relations (empty region not omitted).
+			const relatedLinkArtifacts: string[] = [];
+			const relatedSentinels: string[] = [];
+			const emptyRelatedSections: string[] = [];
+			let relatedLinkTotal = 0;
 
 			for (const row of args.rows) {
 				const notePath = `${args.destination}/${row.identifier}.md`;
@@ -206,6 +215,21 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 				if (!body.includes('## Control') || (row.discussion.trim() !== '' && !body.includes('## Discussion'))) missingSections.push(notePath);
 				wordCounts.push(body.match(/\S+/g)?.length ?? 0);
 				characterCounts.push(body.length);
+
+				const links = body.match(/\[\[[^\]]*\]\]/g) ?? [];
+				relatedLinkTotal += links.length;
+				for (const link of links) {
+					const target = link.slice(2, -2);
+					if (target.trim() === '' || /[.\s]$/.test(target)) relatedLinkArtifacts.push(`${notePath}: ${link}`);
+					if (target.includes('None')) relatedSentinels.push(`${notePath}: ${link}`);
+				}
+				const hasRelated = body.includes('## Related controls');
+				const expectsRelated = row.related
+					.split(',')
+					.map((piece) => piece.trim().replace(/[.\s]+$/, ''))
+					.some((piece) => piece !== '' && piece !== '[None]');
+				if (hasRelated !== expectsRelated) emptyRelatedSections.push(notePath);
+
 				if (row.identifier === 'AC-2(1)') enhancementBody = body;
 			}
 
@@ -215,6 +239,10 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 				emptyBodies,
 				missingControlText,
 				missingSections,
+				relatedLinkArtifacts,
+				relatedSentinels,
+				emptyRelatedSections,
+				relatedLinkTotal,
 				enhancementBody,
 				wordCountTotal: sum(wordCounts),
 				wordCountAverage: sum(wordCounts) / wordCounts.length,
@@ -231,9 +259,65 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 		expect(bodyProof.missingControlText).toEqual([]);
 		expect(bodyProof.missingSections).toEqual([]);
 		const enhancementSource = corpus.rows.find((row) => row.identifier === 'AC-2(1)')!;
-		expect(bodyProof.enhancementBody).toContain('# Account Management | Automated System Account Management');
+		// The note's first line is now recipe-owned. `target.auto_heading` (schema
+		// SchemaVer 1.8.0) is set to `{name}` in recipes/import/nist-800-53-flat.json,
+		// so the note opens on the descriptive control name instead of restating the
+		// identifier its own filename already carries -- the redundancy this asserted
+		// before. This assertion is deliberately changed alongside that recipe edit:
+		// the previous `startsWith('# AC-2(1)')` was correct only while the engine,
+		// not the recipe, owned the heading.
+		//
+		// The expected heading is derived from the corpus row rather than hardcoded,
+		// and the second assertion states the actual point: whatever the heading is,
+		// it is not the identifier again.
+		const enhancementHeading = `# ${enhancementSource.name.trim()}`;
+		expect(bodyProof.enhancementBody.split('\n')[0]).toBe(enhancementHeading);
+		expect(enhancementHeading).not.toContain('AC-2(1)');
+		expect(bodyProof.enhancementBody).toContain('## Control');
 		expect(bodyProof.enhancementBody).toContain(enhancementSource.control_text.trim());
 		expect(bodyProof.enhancementBody).toContain(enhancementSource.discussion.trim());
+
+		// `related` is emitted from one chain into two sinks: the `related_curies`
+		// CURIE array (queryable) and the "## Related controls" body links (clickable).
+		// Both were blocked until the engine could transform each item of a list.
+		expect(bodyProof.relatedLinkArtifacts).toEqual([]);
+		expect(bodyProof.relatedSentinels).toEqual([]);
+		expect(bodyProof.emptyRelatedSections).toEqual([]);
+		// NIST prose carries no `[[` of its own (verified across all 1,189 rows), so
+		// every wikilink in the corpus is one this chain emitted.
+		expect(bodyProof.relatedLinkTotal).toBe(3397);
+		metric('related_body_links_total', bodyProof.relatedLinkTotal);
+
+		// Negative control. AC-2(1)'s `related` cell is the literal `[None]` sentinel
+		// that 541 of the 1,189 rows carry. `reject` empties it, the empty-list rule
+		// omits the property, and omit_if_empty omits the section — so this note gets
+		// neither, rather than the `[[[None]]]` that made this column unemittable.
+		expect(enhancementSource.related.trim()).toBe('[None]');
+		expect(bodyProof.enhancementBody).not.toContain('## Related controls');
+		expect(enhancement!.related_curies).toBeUndefined();
+
+		// Positive control. AC-1's cell ends in a terminal period, which 646 rows do;
+		// `trim(.)` strips it, so the last link is `[[SI-12]]` and not `[[SI-12.]]`.
+		const policySource = corpus.rows.find((row) => row.identifier === 'AC-1')!;
+		const policyRelated = policySource.related
+			.split(',')
+			.map((piece) => piece.trim().replace(/[.\s]+$/, ''))
+			.filter((piece) => piece !== '' && piece !== '[None]');
+		expect(policySource.related.trim().endsWith('.')).toBe(true);
+		expect(policyRelated.length).toBeGreaterThan(1);
+		const policyBody = await browser.executeObsidian(async ({ app, obsidian }, notePath) => {
+			const file = app.vault.getAbstractFileByPath(notePath);
+			if (!file || !(file instanceof obsidian.TFile)) return '';
+			return await app.vault.read(file);
+		}, `${DESTINATION}/AC-1.md`);
+		expect(policyBody).toContain('## Related controls');
+		for (const relatedId of policyRelated) {
+			expect(policyBody).toContain(`- [[${relatedId}]]`);
+		}
+		const policyFm = await readFrontmatterFromDisk(`${DESTINATION}/AC-1.md`) as Record<string, any> | null;
+		expect(policyFm!.related_curies).toEqual(
+			policyRelated.map((relatedId) => `${ONTOLOGY}:${relatedId}`),
+		);
 		metric('body_word_count_total', bodyProof.wordCountTotal);
 		metric('body_words_per_note_average', bodyProof.wordCountAverage.toFixed(2));
 		metric('body_words_per_note_min', bodyProof.wordCountMin);
@@ -243,6 +327,197 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 		metric('body_characters_per_note_min', bodyProof.characterCountMin);
 		metric('body_characters_per_note_max', bodyProof.characterCountMax);
 
+
+		metric('total_spec_ms', Date.now() - specStarted);
+	});
+
+	/**
+ 	 * Force the reading-view preview to render its whole document.
+ 	 *
+ 	 * Obsidian renders preview sections lazily, driven by an IntersectionObserver.
+ 	 * Measured on 2026-08-27: after the 1,189-note import the Obsidian renderer
+ 	 * stops producing frames -- `browser.execute` still returns, but every
+ 	 * `saveScreenshot` times out and `.markdown-preview-view` stays EMPTY
+ 	 * (previewCount=1, zero h1, zero h2). With no frames there are no
+ 	 * intersection callbacks, so the lazy renderer never fires. `rerender(true)`
+ 	 * asks Obsidian to rebuild the document synchronously instead of waiting for
+ 	 * visibility, which makes the DOM assertions below meaningful even while the
+ 	 * compositor is stalled. It does NOT fix screenshot capture, which needs a
+ 	 * real frame; the captures are soft for exactly that reason.
+ 	 */
+	async function forcePreviewRender(): Promise<void> {
+		try {
+			await browser.executeObsidian(async ({ app }) => {
+				const view = app.workspace.getActiveViewOfType(
+					// @ts-expect-error - MarkdownView is on the obsidian module at runtime
+					(window as any).require('obsidian').MarkdownView,
+				);
+				// @ts-expect-error - previewMode is undocumented internal API
+				const preview = view?.previewMode;
+				if (preview?.rerender) preview.rerender(true);
+				for (const element of document.querySelectorAll<HTMLElement>('.markdown-preview-section')) {
+					element.style.contentVisibility = 'visible';
+				}
+			});
+		} catch {
+			// Diagnostic nudge only -- never fail the proof on it.
+		}
+	}
+
+	// Visual capture is a SEPARATE test on purpose, matching the staging the CSF
+	// 2.0 and MITRE scale proofs already use: a chromedriver renderer stall while
+	// capturing must not invalidate the 1,189-note corpus proof above.
+	//
+	// Readiness is a `browser.pause` plus a bounded poll, NOT a `waitUntil` gated
+	// on `[data-property-key="control_id"]`. That gate was the pre-existing reason
+	// this capture never produced evidence: whether the properties panel renders
+	// in READING view is an Obsidian display setting, not a fact about the
+	// generated note, so the condition could never become true regardless of what
+	// the import produced. Properties-panel presence is now recorded as a metric
+	// instead of gating the capture. The MITRE spec, which captures successfully,
+	// already uses the pause approach.
+	//
+	// The CONTENT assertions below stay hard -- the rendered H1 must be the
+	// descriptive control name, and every "Related controls" item must be a
+	// RESOLVED internal link. Only the readiness mechanism changed.
+	it('captures the recipe-owned heading and the resolved related links', async () => {
+		const corpus = loadCorpus();
+		const enhancementSource = corpus.rows.find((row) => row.identifier === 'AC-2(1)')!;
+		const policySource = corpus.rows.find((row) => row.identifier === 'AC-1')!;
+		const policyRelated = policySource.related
+			.split(',')
+			.map((piece) => piece.trim().replace(/[.\s]+$/, ''))
+			.filter((piece) => piece !== '' && piece !== '[None]');
+
+		const shot = async (stage: string, name: string): Promise<void> => {
+			try {
+				await browser.saveScreenshot(path.join(SCREENSHOT_DIR, name));
+				metric(`capture_${stage}`, 'ok');
+			} catch (error) {
+				metric(`capture_${stage}`, `FAILED:${error instanceof Error ? error.message.slice(0, 60) : 'unknown'}`);
+			}
+		};
+
+		// Stage 0 -- liveness probe. A bare screenshot with no prior `execute`
+		// distinguishes "the renderer is wedged" from "the readiness condition was
+		// unsatisfiable", which the 2026-08-26 runs could not tell apart.
+		await browser.pause(2000);
+		await shot('0_liveness', 'nist-stage-0-liveness.png');
+
+		// Stage A -- AC-2(1): proves the recipe-owned H1. `target.auto_heading` is
+		// `{name}`, so line 1 must be the descriptive control name, NOT the
+		// identifier the filename already carries.
+		await browser.executeObsidian(async ({ app, obsidian }, notePath) => {
+			const file = app.vault.getAbstractFileByPath(notePath);
+			if (!file || !(file instanceof obsidian.TFile)) throw new Error(`missing note ${notePath}`);
+			await app.workspace.getLeaf(false).openFile(file, { state: { mode: 'preview' }, active: true });
+		}, `${DESTINATION}/AC-2(1).md`);
+		await forcePreviewRender();
+		await browser.pause(3000);
+
+		const headingRender = await browser.execute(() => {
+			const previews = [...document.querySelectorAll<HTMLElement>('.markdown-preview-view')];
+			const h1s: string[] = [];
+			for (const preview of previews) {
+				preview.scrollTop = 0;
+				for (const heading of preview.querySelectorAll<HTMLElement>('h1')) h1s.push(heading.innerText.trim());
+			}
+			return {
+				previewCount: previews.length,
+				h1Texts: h1s,
+				hasControlIdProperty: document.querySelector('[data-property-key="control_id"]') !== null,
+				h2Texts: previews.flatMap((preview) =>
+					[...preview.querySelectorAll<HTMLElement>('h2')].map((heading) => heading.innerText.trim())),
+			};
+		});
+		metric('ac_2_1_preview_count', headingRender.previewCount);
+		metric('ac_2_1_properties_panel_in_reading_view', String(headingRender.hasControlIdProperty));
+		metric('ac_2_1_rendered_h2_sections', JSON.stringify(headingRender.h2Texts));
+		// HARD assertion: the RENDERED first heading is the descriptive control name
+		// and is not a restatement of the identifier the filename already carries.
+		expect(headingRender.h1Texts).toContain(enhancementSource.name.trim());
+		expect(enhancementSource.name.trim()).not.toContain('AC-2(1)');
+		// The body sections must still be the ones the recipe authored.
+		expect(headingRender.h2Texts).toContain('Control');
+		expect(headingRender.h2Texts).toContain('Discussion');
+		// AC-2(1) is the `[None]` negative control: no related section at all.
+		expect(headingRender.h2Texts).not.toContain('Related controls');
+		await shot('a_heading', 'nist-body-ac-2-1.png');
+
+		// Stage B -- AC-1: proves the `related` chain renders as RESOLVED internal
+		// links. Obsidian marks a link that points nowhere `is-unresolved`, so a
+		// link that renders but targets no note fails here.
+		await browser.executeObsidian(async ({ app, obsidian }, notePath) => {
+			const file = app.vault.getAbstractFileByPath(notePath);
+			if (!file || !(file instanceof obsidian.TFile)) throw new Error(`missing note ${notePath}`);
+			await app.workspace.getLeaf(false).openFile(file, { state: { mode: 'preview' }, active: true });
+		}, `${DESTINATION}/AC-1.md`);
+		await forcePreviewRender();
+		await browser.pause(3000);
+
+		const relatedRender = await browser.execute(() => {
+			const previews = [...document.querySelectorAll<HTMLElement>('.markdown-preview-view')];
+			for (const preview of previews) {
+				const headings = [...preview.querySelectorAll<HTMLElement>('h2')];
+				const related = headings.find((heading) => heading.innerText.trim() === 'Related controls');
+				if (!related) continue;
+				let list: HTMLElement | null = related.nextElementSibling as HTMLElement | null;
+				while (list && list.tagName !== 'UL' && list.tagName !== 'H2') list = list.nextElementSibling as HTMLElement | null;
+				if (!list || list.tagName !== 'UL') continue;
+				const anchors = [...list.querySelectorAll<HTMLElement>('a.internal-link')];
+				related.scrollIntoView({ block: 'start' });
+				return {
+					found: true,
+					internalLinks: anchors.length,
+					unresolved: anchors.filter((anchor) => anchor.classList.contains('is-unresolved')).length,
+					listItems: list.querySelectorAll('li').length,
+					linkTexts: anchors.map((anchor) => anchor.innerText.trim()),
+				};
+			}
+			return { found: false, internalLinks: 0, unresolved: 0, listItems: 0, linkTexts: [] as string[] };
+		});
+		metric('ac_1_related_section_rendered', String(relatedRender.found));
+		metric('ac_1_related_internal_links_rendered', relatedRender.internalLinks);
+		metric('ac_1_related_unresolved_links', relatedRender.unresolved);
+		expect(policyRelated.length).toBeGreaterThan(1);
+		expect(relatedRender.found).toBe(true);
+		expect(relatedRender.listItems).toBe(policyRelated.length);
+		// Every item is an internal link, and none of them is unresolved. A link
+		// that renders but points nowhere is the failure this proof exists to catch.
+		expect(relatedRender.internalLinks).toBe(policyRelated.length);
+		expect(relatedRender.unresolved).toBe(0);
+		expect(relatedRender.linkTexts).toEqual(policyRelated);
+		await shot('b_related_links', 'nist-body-ac-1-related-links.png');
+
+		// Stage C -- framework tree. LAST and SOFT: expanding the explorer over
+		// ~1,189 generated nav items is a known renderer-stall risk, and this
+		// capture is context, not proof. revealLeaf() and
+		// file-explorer:reveal-active-file are deliberately NOT called.
+		try {
+			await browser.executeObsidian(async ({ app }) => {
+				// @ts-expect-error - internal split API
+				app.workspace.leftSplit.expand();
+			});
+			await browser.pause(3000);
+			metric('file_explorer_expand', 'ok');
+		} catch (error) {
+			metric('file_explorer_expand', `FAILED:${error instanceof Error ? error.message.slice(0, 60) : 'unknown'}`);
+		}
+		await shot('c_framework_tree', 'full-nist-framework-tree.png');
+	});
+
+	// Tier 2 projection runs LAST, after the visual capture, and that ordering is
+	// load-bearing rather than cosmetic. Measured on 2026-08-27: projecting 1,189
+	// concepts (~18.6 s of sqlite-wasm work inside the Obsidian renderer process)
+	// leaves the renderer unable to service any further WebDriver command --
+	// `Timed out receiving message from renderer` on every subsequent screenshot
+	// and `browser.execute`, for minutes, with no recovery. That is what cost the
+	// captures on 2026-08-26 and was misattributed to revealLeaf(), which had
+	// already been removed. Nothing about this projection depends on the captures,
+	// and nothing about the captures depends on the projection, so running the
+	// visual stage first costs nothing and preserves the evidence. Every
+	// assertion below is unchanged from when it lived in the first test.
+	it('projects into Tier 2 and serves concept queries', async () => {
 		const projection = await timed('tier2_projection_wall_ms', () => browser.executeObsidian(async ({ app }) => {
 			// @ts-expect-error - Crosswalker E2E API
 			const plugin = app.plugins.plugins['crosswalker'];
@@ -268,56 +543,5 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 			return plugin.queryConcepts(ontology);
 		}, ONTOLOGY));
 		expect(conceptsWarm.length).toBe(EXPECTED_RECORD_COUNT);
-
-		const sampleNotePath = `${DESTINATION}/AC-2(1).md`;
-		const opened = await browser.executeObsidian(async ({ app, obsidian }, notePath) => {
-			const file = app.vault.getAbstractFileByPath(notePath);
-			if (!file || !(file instanceof obsidian.TFile)) return false;
-			const leaf = app.workspace.getLeaf(false);
-			await leaf.openFile(file, { state: { mode: 'preview' }, active: true });
-			app.workspace.revealLeaf(leaf);
-			// @ts-expect-error - internal split API
-			app.workspace.leftSplit.expand();
-			// @ts-expect-error - command registry API
-			app.commands.executeCommandById('file-explorer:reveal-active-file');
-			return true;
-		}, sampleNotePath);
-		expect(opened).toBe(true);
-
-		await browser.waitUntil(async () => browser.execute((notePath) => {
-			const titles = [...document.querySelectorAll<HTMLElement>('.nav-file-title[data-path]')];
-			const target = titles.find((element) => element.dataset.path === notePath);
-			if (!target) return false;
-			target.scrollIntoView({ block: 'center' });
-			return true;
-		}, sampleNotePath), {
-			timeout: 15_000,
-			timeoutMsg: 'generated NIST note was not revealed in the file explorer',
-		});
-		await browser.waitUntil(async () => browser.execute(() => document.querySelectorAll('.notice').length === 0), {
-			timeout: 15_000,
-			timeoutMsg: 'startup notices did not clear before visual evidence capture',
-		});
-		await browser.saveScreenshot(path.join(SCREENSHOT_DIR, 'full-nist-framework-tree.png'));
-
-		await browser.waitUntil(async () => browser.execute(() => {
-			const property = document.querySelector<HTMLElement>('[data-property-key="control_id"]');
-			const previews = [...document.querySelectorAll<HTMLElement>('.markdown-preview-view')];
-			const preview = previews.find((candidate) => {
-				const text = candidate.innerText;
-				return text.includes('Account Management | Automated System Account Management')
-					&& text.includes('Control')
-					&& text.includes('Discussion');
-			});
-			if (!property || !preview) return false;
-			preview.scrollTop = 0;
-			return true;
-		}), {
-			timeout: 15_000,
-			timeoutMsg: 'opened control note did not render readable body sections with its properties',
-		});
-		await browser.saveScreenshot(path.join(SCREENSHOT_DIR, 'nist-body-ac-2-1.png'));
-
-		metric('total_spec_ms', Date.now() - specStarted);
 	});
 });

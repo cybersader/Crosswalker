@@ -84,6 +84,15 @@
 export interface PartRef {
 	/** Source column name. May be a dotted JSON path (e.g. `external_references.0.external_id`). */
 	column: string;
+	/**
+	 * Set when `column` is a LITERAL key rather than a path (contract R1.5). A
+	 * dotted column name (`CRI Profile v2.2 Diagnostic Statement`) round-trips as
+	 * `{['...']}`; a dotted path with no flag round-trips dotted, so a nested
+	 * traversal is never silently converted into a literal lookup. Optional and
+	 * unset on every pre-existing mapping, so round-trip deep-equality for the
+	 * current corpus is unchanged.
+	 */
+	literal?: true;
 	/** Which split piece(s) of the column to use. Omit for the whole value. */
 	part?: number | [number, number];
 }

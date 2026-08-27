@@ -257,9 +257,22 @@ describe('recipe-registry — real-world corpus confusion table (pinned regressi
 	});
 
 	it('does NOT confidently match a CIS "Change Log" sheet (real near-miss that used to false-positive at threshold 75)', () => {
-		// Real shape: the Change Log workbook renames Asset Class/Security Function to
-		// "... v8.1", so 6 of 8 signature columns match (75) — a genuine full-catalog
-		// column rename, not the actual safeguard catalog.
+		// Real shape: the Change Log workbook renames Asset Class/Security Function/
+		// Description to "... v8.1", so 6 of `cis-controls-v8-flat`'s 9 signature
+		// columns match — a genuine full-catalog column rename, not the safeguard
+		// catalog itself.
+		//
+		// SCORE REPINNED 2026-08-26: 75 -> 67. `Description` moved from a managed
+		// property to an `also_emit.body` section in the Wave 2 content rewrite, and
+		// `deriveSignature` now counts body columns (they are source-shape facts, not
+		// rendering choices), so this recipe's signature legitimately grew from 8
+		// columns to 9 and 6/9 = 67. The invariant this test exists for is unchanged
+		// and now holds with more margin. The `ranked[0]` assertion below is a real
+		// REGRESSION FIX, not a repin: while body columns were missing,
+		// `cis-controls-v8-controls` had shrunk to a 2-column signature and scored
+		// 100 here — the exact confident false positive the 90 threshold was tuned to
+		// prevent. All four Change Log sheets in the local corpus false-positived
+		// that way; none do now.
 		const cols = [
 			'CIS Control',
 			'CIS Safeguard',
@@ -273,7 +286,7 @@ describe('recipe-registry — real-world corpus confusion table (pinned regressi
 		];
 		const ranked = findRecognizedRecipes(cols);
 		expect(ranked[0]?.entry.id).toBe('cis-controls-v8-flat');
-		expect(ranked[0]?.score).toBe(75);
+		expect(ranked[0]?.score).toBe(67);
 		expect(bestRecognizedRecipe(cols)).toBeNull();
 	});
 
@@ -284,36 +297,168 @@ describe('recipe-registry — real-world corpus confusion table (pinned regressi
 		expect(best?.score).toBe(100);
 	});
 
-	it('surfaces (but does not confidently match) the real sp800-53ar5-assessment-procedures.csv shape', () => {
+	it('does not surface the real sp800-53ar5-assessment-procedures.csv shape at all', () => {
 		// A genuinely different NIST export (assessment procedures, not the control
-		// catalog) that shares only `identifier` with the 800-53 recipe's signature.
+		// catalog). Verbatim header of Frameworks/sp800-53ar5-assessment-procedures.csv.
+		//
+		// REPINNED 2026-08-26 (was: ranked[0] = nist-800-53-r5-flat at 50). This test
+		// and "returns a partial score" are mutually incompatible under ANY uniform
+		// signature rule, so one had to move; this is the one whose exact number was
+		// incidental. The 800-53 recipe consumes four columns (identifier, name,
+		// control_text, discussion — the last two as body sections since Wave 2), and
+		// this sheet supplies one of them, so 1/4 = 25, below CANDIDATE_FLOOR.
+		//
+		// REPINNED AGAIN 2026-08-26, same reason, one column later (was 25). The
+		// recipe now also consumes `related` — as a `related_curies` CURIE array and
+		// as the "## Related controls" body links, both unblocked by the per-item
+		// transformation capability. That makes the signature five columns, and this
+		// sheet still supplies exactly one, so 1/5 = 20. The number moved; the two
+		// invariants this test exists for did not, and now hold with MORE margin
+		// (20 is further below the 40 floor than 25 was).
+		//
+		// Dropping out of the candidate list is the better answer, not a loss: none of
+		// `name`, `control_text` or `discussion` carries an `optional` filter, so
+		// pointing this recipe at this sheet fails EVERY row with a render error.
+		// Offering it as an informational "maybe" was offering a recipe that cannot
+		// run. The two invariants that matter are unchanged: the assessment export is
+		// not confidently matched, and it is not mistaken for the control catalog.
 		const cols = ['family', 'identifier', 'sort-as', 'control-name', 'assessment-objective', 'EXAMINE', 'INTERVIEW', 'TEST'];
 		expect(bestRecognizedRecipe(cols)).toBeNull();
-		const ranked = findRecognizedRecipes(cols);
-		expect(ranked[0]?.entry.id).toBe('nist-800-53-r5-flat');
-		expect(ranked[0]?.score).toBe(50);
+		expect(matchScore(entry('nist-800-53-r5-flat'), cols)).toBe(20);
+		expect(findRecognizedRecipes(cols)).toEqual([]);
 	});
 
 	it('confidently matches a full SCF 2026 export (true positive, 100)', () => {
+		// FIXTURE REPINNED 2026-08-26. The previous 5-column list was a hand-typed
+		// EXCERPT, so when the recipe's signature grew (Wave 2 added four managed
+		// properties and twelve body sections; deriveSignature now counts body
+		// columns) the excerpt silently matched 2 of 19 and this recipe vanished from
+		// the results — a fixture defect, not a matcher regression. Replaced with the
+		// verbatim leading header block of the "SCF 2026.1" sheet in
+		// Frameworks/Secure.Controls.Framework.SCF.-.2026.1.1.xlsx: 26 of that sheet's
+		// 369 columns, chosen because they contain every column the recipe reads. The
+		// remaining ~343 are authoritative-source mapping columns the recipe ignores
+		// and that cannot move the score (matchScore only counts signature columns).
+		//
+		// Header text is verbatim including the embedded newlines Excel stores in
+		// these cells; normalizeColumn maps "\n" and " " to the same "_", which is why
+		// "PPTDF\nApplicability" matches the recipe's `{PPTDF Applicability}`. Column
+		// NAMES only, no framework content: the SCF workbook is CC BY-ND, local-only.
 		const cols = [
 			'SCF Domain',
 			'SCF Control',
 			'SCF #',
-			'Secure Controls Framework (SCF) Control Description',
-			'NIST 800-53 R5',
+			'Secure Controls Framework (SCF)\nControl Description',
+			'Conformity Validation\nCadence',
+			'Evidence Request List (ERL) #',
+			'Possible Solutions & Considerations\nMicro-Small Business (<10 staff)\nBLS Firm Size Classes 1-2',
+			'Possible Solutions & Considerations\nSmall Business (10-49 staff)\nBLS Firm Size Classes 3-4',
+			'Possible Solutions & Considerations\nMedium Business (50-249 staff)\nBLS Firm Size Classes 5-6',
+			'Possible Solutions & Considerations\nLarge Business (250-999 staff)\nBLS Firm Size Classes 7-8',
+			'Possible Solutions & Considerations\nEnterprise (> 1,000 staff)\nBLS Firm Size Class 9',
+			'SCF Control Question',
+			'Relative Control Weighting',
+			'PPTDF\nApplicability',
+			'NIST CSF\nFunction Grouping',
+			'SCRM Focus\n\nTIER 1\nSTRATEGIC',
+			'SCRM Focus\n\nTIER 2\nOPERATIONAL',
+			'SCRM Focus\n\nTIER 3\nTACTICAL',
+			'SCR-CMM Level 0\nNot Performed',
+			'SCR-CMM Level 1\nPerformed Informally',
+			'SCR-CMM Level 2\nPlanned & Tracked',
+			'SCR-CMM Level 3\nWell Defined',
+			'SCR-CMM Level 4\nQuantitatively Controlled',
+			'SCR-CMM Level 5\nContinuously Improving',
+			'SCF\nCommunity Derived',
+			'SCF\nSCRMS',
 		];
 		const best = bestRecognizedRecipe(cols);
 		expect(best?.entry.id).toBe('scf-2026-flat');
 		expect(best?.score).toBe(100);
 	});
 
-	it('does NOT confidently match a narrower SCF subset sheet missing the Domain column (real near-miss)', () => {
-		// Real shape: the "Data Privacy Mgmt Principles" sheet carries Control/#/
-		// Description but not Domain — 3 of 4 signature columns (75).
-		const cols = ['SCF Control', 'SCF #', 'Secure Controls Framework (SCF) Control Description', 'NIST CSF 2.0'];
-		const ranked = findRecognizedRecipes(cols);
-		expect(ranked[0]?.entry.id).toBe('scf-2026-flat');
-		expect(ranked[0]?.score).toBe(75);
+	it('does NOT surface a narrower SCF subset sheet missing the Domain column (real near-miss)', () => {
+		// FIXTURE REPINNED 2026-08-26, same excerpt defect as the test above: the
+		// previous 4-column list was hand-typed. This is the verbatim header row of
+		// the "Data Privacy Mgmt Principles" sheet of the same workbook (all 38
+		// columns, so nothing that could raise the score is hidden).
+		//
+		// SCORE MOVED 75 -> 16, and the recipe now falls below CANDIDATE_FLOOR rather
+		// than ranking first. Both follow from the same fact: the sheet supplies 3 of
+		// the 19 columns the recipe consumes (SCF Control, SCF #, and the control
+		// description), and none of the other 16 carries an `optional` filter, so this
+		// recipe would fail every row of this sheet with a render error. "Not offered
+		// at all" is the correct answer for a source the recipe cannot run against;
+		// the old 75 was an artifact of comparing against a 4-column signature.
+		//
+		// The pinned invariant is unchanged and now holds with far more margin: a
+		// narrower SCF subset must never be auto-selected as a full SCF import.
+		const cols = [
+			'#',
+			'Principle Name',
+			'SCF Data Privacy Management Principle (SCF-DPMP) Description',
+			'SCF Control',
+			'SCF #',
+			'Secure Controls Framework (SCF)\nControl Description',
+			'AICPA\nTSC 2017:2022 (used for SOC 2)',
+			'APEC\nPrivacy Framework\n2015',
+			'GAPP',
+			'ISO\n27701 \n2025',
+			'ISO\n29100\n2024',
+			'NIST Privacy Framework\n1.0',
+			'NIST\n800-53\nR5',
+			'NIST\n800-53B R5\n(privacy)',
+			'NIST\nCSF\n2.0',
+			'OECD\nPrivacy Principles',
+			'US\nData Privacy Framework (DPF)',
+			'US\nFIPPS',
+			'US\nHIPAA Administrative Simplification\n2013',
+			'US - AK\nPIPA',
+			'US - CA\nCCPA\n2025',
+			'US - CO\nColorado Privacy Act',
+			'US - IL\nBIPA',
+			'US - IL\nIPA',
+			'US - IL\nPIPA',
+			'US - NV\nSB220',
+			'US - OR\nCPA',
+			'US - TN\nTennessee Information Protection Act',
+			'US - TX\nBC521',
+			'US - VA\nCDPA\n2025',
+			'US - VT\nAct 171 of 2018',
+			'EMEA\nEU\nGDPR',
+			'EMEA\nSaudi Arabia\nPersonal Data Protection Law (PDPL)',
+			'APAC\nAustralia\nPrivacy Act',
+			'APAC\nAustralian Privacy Principles',
+			'APAC\nIndia\nDPDPA 2023',
+			'APAC\nNew Zealand Privacy Act of 2020',
+			'Americas\nCanada\nPIPEDA',
+		];
+		expect(matchScore(entry('scf-2026-flat'), cols)).toBe(16);
+		expect(findRecognizedRecipes(cols)).toEqual([]);
 		expect(bestRecognizedRecipe(cols)).toBeNull();
+	});
+
+	it('counts also_emit.body columns in the signature (the Wave 2 regression this table caught)', () => {
+		// Pins the rule directly rather than only through its consequences: where a
+		// recipe puts a column's prose (a YAML property vs a `## Description` body
+		// section) is a rendering choice, but whether the source CARRIES that column
+		// is a source-shape fact, and only the second is the matcher's business.
+		// Wave 2 moved prose out of `managed` into `also_emit.body` in five recipes;
+		// before this rule they silently left the match signature and
+		// cis-controls-v8-controls fell to two columns.
+		expect(entry('cis-controls-v8-controls').signatureColumns).toContain('Description');
+		expect(entry('nist-800-53-r5-flat').signatureColumns).toEqual(
+			expect.arrayContaining(['control_text', 'discussion']),
+		);
+		expect(entry('nist-csf-2-flat').signatureColumns).toContain('Implementation Examples');
+		expect(entry('mitre-attack-technique-flat').signatureColumns).toEqual(
+			expect.arrayContaining(['description', 'detection', 'system requirements']),
+		);
+
+		// And the counterpart rule: an `optional` column still counts. Discounting
+		// optional columns was measured against the local corpus and REJECTED (it
+		// collapses the MITRE signature to 3 and auto-matches six unrelated ATT&CK
+		// sheets); see the module doc comment in recipe-registry.ts.
+		expect(entry('mitre-attack-technique-flat').signatureColumns).toContain('platforms');
 	});
 });

@@ -1,11 +1,12 @@
 {
-  "$comment": "PURPOSE AND SHAPE: This recipe projects stable identity and queryable facets into properties while keeping long-form prose in the Markdown body. title and control_id remain properties; curie is emitted automatically from the ontology plus identifier. The body starts with the control name, then places normative control text and discussion in separate readable sections. RIGHTS: NIST SP 800-53 Rev. 5 is a public-domain United States Government work. Corpus provenance and rights posture: https://cybersader.github.io/crosswalker/reference/framework-corpus/. KNOWN GAP — related is intentionally not emitted because the current recipe grammar cannot produce a clean, faithful result: (1) template filters operate on a scalar and cannot split/map/reject every list item; (2) managed frontmatter templates cannot turn a CSV scalar into a CURIE array; (3) managed_links can split only into wikilinks and cannot normalize each item by stripping the terminal period, rejecting the [None] sentinel, or prefixing each identifier as nist-800-53:<id>; (4) body projections cannot expand the list into per-item resolving wikilinks, and Tier 2 concept projection does not turn arbitrary related properties into mappings traversed by closure. Emitting half-broken links such as [[SC-37.]] or [[[None]]] would be worse than omitting them until the schema supports a portable per-item transform and relationship projection.",
+  "$comment": "PURPOSE AND SHAPE: This recipe projects stable identity and queryable facets into properties while keeping long-form prose in the Markdown body. title and control_id remain properties; curie is emitted automatically from the ontology plus identifier. The note opens on the descriptive control name and then gives the normative control text and discussion in separate readable sections. The opening heading is set explicitly through target.auto_heading (schema SchemaVer 1.8.0); without it the engine prepends an H1 derived from the note identifier, so the note would open by restating the identifier its own filename already carries. Naming the heading {name} spends that first line on something the filename does not say, and target.auto_heading is resolved by both generation paths, so the outcome does not depend on whether the import ran through the wizard or the recipe path. RIGHTS: NIST SP 800-53 Rev. 5 is a public-domain United States Government work. Corpus provenance and rights posture: https://cybersader.github.io/crosswalker/reference/framework-corpus/. RELATED: the source's `related` column is a comma-delimited list of control identifiers, and it is emitted twice from one chain shape, mirroring this project's curie-plus-wikilink convention (parent_curie is the queryable half, parent the clickable half). `related_curies` is a managed property carrying nist-800-53:<id> CURIEs, which is the form a Bases filter and a future mapping projection can both read; the '## Related controls' body section carries the same identifiers as one resolving [[wikilink]] per line, which is where Obsidian's backlinks and graph read them and where a 28-item list stays legible (in the property panel it would not be). Both chains are split(,) then trim(.) then reject(^\\[None\\]$): split trims each piece, trim(.) removes the terminal period the catalog puts on the last item of 646 rows, and reject drops the literal [None] sentinel that 541 rows carry, after which the empty-list rule omits the property and omit_if_empty omits the section, so a control with no relations gets neither. Every one of the 285 distinct related identifiers is an `identifier` of another row in this same file, and the flat layout names every note by that identifier, so all 3,397 emitted links resolve (646 of the 1,189 controls carry relations; the largest carries 51). This was previously recorded as a blocking gap on four counts (filters were scalar-only; managed frontmatter could not produce an array; managed_links could only wrap pieces in [[...]] and could not normalize or reject an item; body projections could not expand a list into per-item links). The 2026-08-26 per-item transformation capability closes all four — filters now lift over a list automatically, so the same chain feeds either sink. KNOWN GAP — the remaining half of that gap stands: Tier 2 projects `parent_curie` into the concepts table and nothing else, so `related_curies` is queryable in Bases and in the vault but is NOT traversed by Tier 2 closure. Making an arbitrary relationship property a closure-traversable edge is a relationship-projection feature, not a template-grammar one, and is deliberately still open.",
   "recipe": "nist-800-53-r5-flat",
   "source": {
     "ontology": "nist-800-53",
     "levels": ["control"]
   },
   "target": {
+    "auto_heading": "{name}",
     "layout": [
       {
         "level": "control",
@@ -17,16 +18,12 @@
       "frontmatter": {
         "managed": {
           "title": "{name}",
-          "control_id": "{identifier}"
+          "control_id": "{identifier}",
+          "related_curies": "{related|optional|split(,)|trim(.)|reject(^\\[None\\]$)|curie-prefix(nist-800-53)}"
         },
         "user_preserve": ["reviewer", "status", "notes"]
       },
       "body": [
-        {
-          "template": "# {name}",
-          "position": "append",
-          "format": "text"
-        },
         {
           "template": "{control_text|trim}",
           "position": "section",
@@ -40,6 +37,13 @@
           "heading": "Discussion",
           "heading_depth": 2,
           "format": "text"
+        },
+        {
+          "template": "{related|optional|split(,)|trim(.)|reject(^\\[None\\]$)|wikilink}",
+          "position": "section",
+          "heading": "Related controls",
+          "heading_depth": 2,
+          "format": "list"
         }
       ]
     }

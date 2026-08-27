@@ -1,4 +1,5 @@
 {
+  "$comment": "PURPOSE AND SHAPE: The nested sibling of nist-csf-2-cprt over the same NIST CPRT export of CSF 2.0 ($.response.elements.elements[*]). Same source, same identity, different destination: the function and category prefixes of each element_identifier become folders and the element itself becomes a file inside them, so 'GV.OC-01' lands at GV/GV.OC/GV.OC-01.md. Layout is unchanged by this revision. PROPERTIES: csf_id (the identity), function and category (the same two prefixes, emitted alongside the folders so Bases can group and filter without parsing paths — the dual-emit pattern), and level (element_type, the discriminator). curie is emitted automatically from source.ontology plus the identifier and is deliberately not declared here. title is deliberately NOT emitted: CPRT leaves it empty on every subcategory, which is the element type this nesting is built for, so it would be a blank property on almost every note. BODY: the element's text field as a single '## Description' section. PROPERTIES-VS-BODY RATIONALE: text was previously a frontmatter 'description' value, and it is the only prose this source carries — 23 to 212 characters for a subcategory, up to 271 for a category. Moving it into the body is the point of this revision: a full sentence in YAML is truncated in Obsidian's property panel, awkward to escape, and invisible to body search, whereas identity and short facets are exactly what Bases tabulates and what the Tier 2 projection indexes, so they stay in frontmatter. The heading is the literal 'Description' because the schema does not admit templated headings (spec/recipe.schema.json, body_entry.heading) and one recipe emits several element types. No H1 is emitted: Obsidian already renders the note title, so a heading repeating the identifier is noise. omit_if_empty (the default) keeps the section off the 225 'sort' elements and the 12 categories whose text is empty. RIGHTS: NIST Cybersecurity Framework 2.0 is a public-domain United States Government work and the CPRT export can be re-downloaded from https://csrc.nist.gov/projects/cprt. Recipe, sample output, and screenshots of generated content may all be committed. Corpus provenance and rights posture: https://cybersader.github.io/crosswalker/reference/framework-corpus/. SOURCE NOTE (pre-existing layout behaviour, unchanged here): the two folder templates split the SAME identifier, so only subcategory-shaped ids nest cleanly. A function element ('GV') lands at GV/GV/GV.md and a category element ('GV.OC') at GV/GV.OC/GV.OC.md, because splitting 'GV' on '.' and on '-' both return 'GV'. That is a layout question, out of scope for a content revision. KNOWN GAP 1 — implementation examples cannot be attached to the subcategory they belong to. CPRT ships them as separate elements plus a SIBLING array, $.response.elements.relationships[*] (1,566 edges across four predicates: projection, external_reference, incorporated_into, moved_to). One iterator yields exactly one row array (src/import/parsers/json-source-core.ts), and the recipe grammar has no join, so each example becomes its own standalone note ('GV.OC-01.001') rather than a section under its subcategory. The workbook-sourced nist-csf-2-flat recipe can carry the examples only because that source denormalizes them into a cell on the subcategory row. KNOWN GAP 2 — the export's external_reference edges (408 of them) are the same cross-framework mapping content as the workbook's Informative References column. Nothing here emits them, deliberately: they are mapping assertions between two ontologies and belong in a crosswalk / mapping-set import (see recipes/import/crosswalks), not flattened onto the concept note, and the grammar has no per-item split-and-map that could turn them into clean links or CURIEs anyway. KNOWN GAP 3 (pre-existing, not introduced here) — the grammar has no row predicate (spec/recipe.schema.json declares no filter/where/only_if key at any level; source.levels names layout levels, it does not select rows), so the 225 'sort' ordering keys and the 2 'party' elements become notes too, in folders derived from their own ids.",
   "recipe": "nist-csf-2-cprt-hierarchical",
   "source": { "ontology": "nist-csf-2", "levels": ["function", "category", "subcategory"] },
   "target": {
@@ -13,11 +14,19 @@
           "csf_id": "{element_identifier}",
           "function": "{element_identifier|split(.,0)}",
           "category": "{element_identifier|split(-,0)}",
-          "level": "{element_type}",
-          "description": "{text|trim}"
+          "level": "{element_type}"
         },
         "user_preserve": ["reviewer", "status", "notes"]
-      }
+      },
+      "body": [
+        {
+          "template": "{text|trim}",
+          "position": "section",
+          "heading": "Description",
+          "heading_depth": 2,
+          "format": "text"
+        }
+      ]
     }
   }
 }

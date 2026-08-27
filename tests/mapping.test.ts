@@ -764,7 +764,16 @@ describe('corpus — real recipes reconstruct + re-serialize equivalently', () =
 		const mapping = fromRecipe(mitreRecipe as unknown as { target: RecipeRegions });
 		const structural = mapping.mappings[0];
 		expect(structural.levels[0].destinations).toEqual([{ primitive: 'name' }]);
-		expect(structural.levels[0].source).toEqual({ column: 'external_references.0.external_id' });
+		// REPINNED 2026-08-26 (was `external_references.0.external_id`). The recipe was
+		// deliberately retargeted from a STIX bundle shape to the tracked
+		// Frameworks/enterprise-attack-v16.1.xlsx `techniques` sheet, whose id column is
+		// `ID`. No STIX bundle is tracked by this project, so the old binding could never
+		// have matched a file the repo actually has; the xlsx binding is E2E-verified on
+		// all 656 techniques (tests/e2e/full-mitre-attack-import.spec.ts) and documented
+		// at length in that recipe's $comment. Only the source COLUMN moved: the layout
+		// mechanism, the one-file-per-technique shape, and the T1548.md filenames are
+		// unchanged, which is why the round-trip half of this test never went red.
+		expect(structural.levels[0].source).toEqual({ column: 'ID' });
 		assertReSerializesEquivalent(mitreRecipe as unknown as { target: RecipeRegions });
 	});
 

@@ -1,5 +1,5 @@
 import type { RenderedBodyRegion, RenderReport, SourceScope } from './types';
-import { renderTemplate } from './template';
+import { renderTemplateValue, RenderError } from './template';
 
 export type BodyFormat = 'text' | 'code' | 'quote' | 'list';
 
@@ -25,11 +25,28 @@ export function renderBodyProjection(
 	scope: SourceScope,
 	report?: RenderReport,
 ): RenderedBodyRegion | null {
-	const rendered = renderTemplate(projection.template, scope, report);
-	const empty = rendered.trim() === '';
-	if (empty && (projection.omit_if_empty ?? true)) return null;
+	const format = projection.format ?? 'text';
+	const value = renderTemplateValue(projection.template, scope, report);
 
-	const content = formatBodyValue(rendered, projection.format ?? 'text');
+	let content: string;
+	if (Array.isArray(value)) {
+		// A per-item chain landed here. `format: 'list'` is the only sink that
+		// can carry a list; anything else is L3 (lists never silently stringify).
+		if (format !== 'list') {
+			throw new RenderError(
+				`Body projection template "${projection.template}" produced a list of ${value.length} value(s), which format "${format}" cannot carry; add |join(<sep>) or set format: "list".`,
+			);
+		}
+		const items = value.map((item) => String(item).trim()).filter((item) => item !== '');
+		if (items.length === 0 && (projection.omit_if_empty ?? true)) return null;
+		content = items.map((item) => `- ${item}`).join('\n');
+	} else {
+		const rendered = typeof value === 'string' ? value : String(value);
+		const empty = rendered.trim() === '';
+		if (empty && (projection.omit_if_empty ?? true)) return null;
+		content = formatBodyValue(rendered, format);
+	}
+
 	if (projection.position === 'section') {
 		return {
 			position: 'section',

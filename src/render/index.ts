@@ -88,6 +88,17 @@ export interface Recipe {
 			body?: BodyProjection[];
 		};
 		graph_edges?: Array<{ from: string; via: string; to: string }>;
+		/**
+		 * Engine automatic-H1 control (schema `target.auto_heading`, SchemaVer
+		 * 1.8.0). A template string sets the heading text (rendered against row
+		 * scope); `false` suppresses the heading; absent keeps the historical
+		 * engine behaviour byte-for-byte. render() ignores it — it is consumed by
+		 * resolveAutoHeadingText() in src/generation/generation-engine.ts, which
+		 * both generation paths call. It lives on `target` (not `also_emit`) so
+		 * patchOwnedRegions' wholesale `also_emit` replacement preserves it
+		 * through a workbench round trip for free.
+		 */
+		auto_heading?: string | false;
 		linkStyle?: 'absolute' | 'shortest';
 		/** Batch-scope Pass 1.5 enrichment (schema `enrichment`, SchemaVer 1.3.0).
 		 *  render() ignores it — it is consumed by the post-render enrichment pass
@@ -207,14 +218,32 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 				// literal broken link on every root note (13 across the goldens
 				// when this was found). Skipping IS the correct missing-value
 				// semantic for metadata, not a deviation — no report note.
+				// The `'[[]]'` guard remains for recipes still written as
+				// `"[[{parent|optional}]]"`; `{parent|optional|wikilink}` never
+				// produces an empty link in the first place.
 				if (v === '' || v === '[[]]') continue;
+				// A chain that yields a list emits a YAML array; an empty list
+				// omits the key, matching the `v === ''` rule above (an empty
+				// managed array would still overwrite a user's value on re-import).
+				if (Array.isArray(v) && v.length === 0) continue;
 				address.frontmatter[k] = v;
 			}
 		}
 		if (alsoEmit.frontmatter?.managed_links) {
 			for (const [k, spec] of Object.entries(alsoEmit.frontmatter.managed_links)) {
-				const raw = renderTemplate(spec.template, identity.scope, report);
-				const links = splitLinkValues(raw, spec.split).map((v) => `[[${v}]]`);
+				const value = renderTemplateValue(spec.template, identity.scope, report);
+				// A chain that yields a list is used directly (per-item cleaning,
+				// rejection and link decoration already happened in the chain).
+				// Anything else takes today's exact path behind an explicit
+				// String() coercion, so numeric cells stay byte-identical.
+				const links = Array.isArray(value)
+					? value
+							.map((v) => {
+								const s = String(v);
+								return /^\[\[[\s\S]*\]\]$/.test(s) ? s : `[[${s}]]`;
+							})
+							.filter((s) => s !== '[[]]')
+					: splitLinkValues(String(value), spec.split).map((v) => `[[${v}]]`);
 				// Omit the key entirely when the cell is empty — an empty managed
 				// array would still overwrite a user's value on re-import.
 				if (links.length > 0) address.frontmatter[k] = links;

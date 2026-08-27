@@ -8,6 +8,7 @@ import {
 } from './mapping/serialize';
 import type { ImportMapping } from './mapping/types';
 import { DEFAULT_MISSING } from './mapping/types';
+import { interpolationColumn, parseTemplateSegments } from '../render/template';
 
 export const CURRENT_RECIPE_SPEC = 'https://crosswalker.dev/spec/recipe.schema.json' as const;
 
@@ -490,9 +491,12 @@ function patchOwnedRegions(
 
 function referencedColumns(recipe: CrosswalkerImportRecipe): string[] {
 	const columns = new Set<string>();
+	// Shared tokenizer (contract R0) — a quoted literal key (`{['A.B']}`) is ONE
+	// column named `A.B`, matching what render() and the match signature see.
 	const collect = (template: string): void => {
-		for (const match of template.matchAll(/\{([^}]+)\}/g)) {
-			const column = match[1].split('|')[0].trim();
+		for (const segment of parseTemplateSegments(template)) {
+			if (segment.kind !== 'interp') continue;
+			const column = interpolationColumn(segment.interp).column;
 			if (column) columns.add(column);
 		}
 	};

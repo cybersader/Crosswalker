@@ -253,6 +253,7 @@ export interface EffectiveRecipeTarget {
 	layout: unknown;
 	also_emit?: unknown;
 	enrichment?: unknown;
+	auto_heading?: unknown;
 }
 
 /**
@@ -272,6 +273,9 @@ export interface EffectiveRecipeTarget {
  *                    metadata and rendered body regions)
  *   - `enrichment` — Pass 1.5 children-lists/facet-hubs/level-hubs config
  *                    (post-render batch shape)
+ *   - `auto_heading` — the recipe's control over the note's automatic H1
+ *                    (schema SchemaVer 1.8.0). It materially changes emitted
+ *                    body text, so it belongs here.
  *
  * Deliberately EXCLUDED:
  *   - `recipe.recipe` (the id/name) and `recipe.source` — informational,
@@ -290,6 +294,13 @@ export function computeRecipeHash(target: EffectiveRecipeTarget): string {
 		layout: target.layout,
 		also_emit: target.also_emit ?? null,
 		enrichment: target.enrichment ?? null,
+		// Deliberately NOT `?? null` (unlike the two above). canonicalStringify
+		// drops undefined-valued keys, so a recipe WITHOUT auto_heading hashes
+		// byte-identically to its pre-1.8.0 self. Coercing absent to null would
+		// inject "auto_heading":null into every canonical string, change every
+		// already-written _crosswalker.recipe.hash, and make every existing
+		// generated note look recipe-drifted on its next re-import.
+		auto_heading: target.auto_heading,
 	});
 	return toSha256Cid(sha256Hex(canonical));
 }

@@ -38,6 +38,8 @@ export type RenderNoteCode =
 	| 'split-no-delimiter' // split() found no delimiter in the value
 	| 'split-index-missing' // split() index past the number of pieces → empty string
 	| 'regex-no-match' // regex() matched nothing → empty string
+	| 'literal-key-shadowed' // a dotted path read BOTH as a literal column name and as nested traversal; the column won
+	| 'list-items-dropped' // a filter blanked one or more items of a list, and they were elided (contract §2 L2)
 	| 'variadic-overflow-truncated'; // variadic split produced more segments than max_depth → extras dropped (full id still in the filename)
 
 /**

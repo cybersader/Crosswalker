@@ -38,8 +38,20 @@ describe('stable identity fields', () => {
 		expect(() => renderTemplate('{missing}', {})).toThrow(RenderError);
 		expect(() => renderTemplate('{missing|lower|optional}', {})).toThrow('optional filter must be first');
 		expect(renderTemplate('{parent.id|optional}', { parent: {} })).toBe('');
-		expect(() => renderTemplate('{parent.id|optional}', { parent: null })).toThrow('hit non-object value');
-		expect(() => renderTemplate('{parent.id|optional}', {})).toThrow('hit non-object value');
+		// REPIN (2026-08-26 template-engine contract §1.1 + acceptance 1.8/1.9).
+		// `optional`'s missing-value shortcut used to fire ONLY on the last
+		// segment, so a missing or non-object INTERMEDIATE still threw even
+		// though the author had explicitly opted in — the compounding defect
+		// that stopped `{CRI Profile v2.2 Diagnostic Statement|optional}` from
+		// rescuing the CRI recipe. It now fires at every segment. Strictly more
+		// permissive, and only where `optional` was written.
+		expect(renderTemplate('{parent.id|optional}', { parent: null })).toBe('');
+		expect(renderTemplate('{parent.id|optional}', {})).toBe('');
+		expect(renderTemplate('{a.b.c|optional}', { a: 'a string, not an object' })).toBe('');
+		// The opt-in stays opt-in: without `optional`, a non-object intermediate
+		// still throws with the same message (contract acceptance 1.10).
+		expect(() => renderTemplate('{parent.id}', { parent: null })).toThrow('hit non-object value');
+		expect(() => renderTemplate('{a.b}', { a: 'str' })).toThrow('hit non-object value');
 	});
 
 	it('keeps import-set provenance additive but validates both pinned fields when present', () => {

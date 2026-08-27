@@ -1,4 +1,5 @@
 {
+  "$comment": "PURPOSE AND SHAPE: One note per CIS Safeguard. Frontmatter carries stable identity and short queryable facets; the Markdown body carries the safeguard's normative prose. PROPERTIES: title (the safeguard's short name), safeguard_id (the source's own dotted identifier), control (the parent control number, and the join key onto the companion cis-controls-v8-controls recipe), asset_class and security_function (six-value enumerations the source supplies, ideal Bases group-by facets), and ig1/ig2/ig3 (implementation-group membership marks). curie is emitted automatically from source.ontology plus the identifier and is deliberately not declared here. BODY: the source's Description column is the safeguard's normative text (median ~210, longest ~940 characters) and is projected as a single '## Safeguard' section. PROPERTIES-VS-BODY RATIONALE: multi-sentence normative prose in YAML is unreadable in Obsidian's property panel, awkward to escape, and invisible to body search; short enumerable facets are the opposite, so they stay in frontmatter where Bases can tabulate them and the Tier 2 projection can index them. No H1 is emitted: Obsidian already renders the note title, so a heading that repeats the identifier or the title is noise. SOURCE NOTE: the workbook stores CIS Safeguard as a NUMBER, so safeguard 4.10 is the float 4.1 and String()-ing it silently collides with safeguard 4.1. The XLSX reader's raw:false formatted-text mode (src/import/parsers/xlsx-parser.ts, header comment) is what preserves 4.10; any CSV re-export of this sheet must preserve the displayed text or identity collides. RIGHTS — RESTRICTED: CIS Controls v8.1.2 is published under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International, and its workbook stays local-only under the gitignored Frameworks/ corpus. This recipe is a method — column names, templates, and section headings, containing no CIS content — so the recipe file itself may be committed. Generated notes, sample output, screenshots showing CIS content, and any excerpt of CIS Description or Title text MUST NOT be committed or published. Corpus provenance and rights posture: https://cybersader.github.io/crosswalker/reference/framework-corpus/. KNOWN GAP 1 — the safeguard-to-parent-control relationship is emitted only as the scalar facet control, never as a resolvable wikilink or CURIE. A link would have to be [[1]] against a control note whose filename is bare its number, and the destination folder is chosen at import time and is invisible to the recipe, so the link would be ambiguous or dangling depending on where the companion recipe wrote. Half-resolving links are worse than none; this waits on relationship projection in the grammar. KNOWN GAP 2 — implementation-group membership arrives as an 'x'/empty mark and the closed filter set (src/render/template.ts FILTERS) has no boolean coercion, so ig1/ig2/ig3 land as the string 'x' or an empty string and Bases must filter them as strings rather than checkboxes. KNOWN GAP 3 — the workbook keeps control rows and safeguard rows in ONE sheet, distinguished only by whether CIS Safeguard is blank, and the grammar has no row predicate (spec/recipe.schema.json declares no filter/where/only_if key at any level; source.levels only names layout levels, it does not select rows). That is why this recipe and cis-controls-v8-controls exist as a pair, and why each must be pointed at a pre-filtered row selection: fed the whole sheet, this recipe would render the 18 control rows to an empty filename.",
   "recipe": "cis-controls-v8-flat",
   "source": { "ontology": "cis-v8", "levels": ["safeguard"] },
   "target": {
@@ -18,7 +19,16 @@
           "ig3": "{IG3|trim}"
         },
         "user_preserve": ["reviewer", "status", "notes"]
-      }
+      },
+      "body": [
+        {
+          "template": "{Description|trim}",
+          "position": "section",
+          "heading": "Safeguard",
+          "heading_depth": 2,
+          "format": "text"
+        }
+      ]
     }
   }
 }

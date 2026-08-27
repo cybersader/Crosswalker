@@ -41,6 +41,12 @@ import type {
 	Enrichment,
 } from './types';
 import { destinationRank, toSourceRefs, isConstantRef, DEFAULT_MISSING } from './types';
+import {
+	interpolationColumn,
+	parseTemplateSegments,
+	pathTextFor,
+	type Interpolation,
+} from '../../render/template';
 
 // ============================================================================
 // Recipe region shapes (structural subset of spec/recipe.schema.json)
@@ -440,13 +446,17 @@ export function buildName(
 			// Literal — emitted as-is (a constant carries no split/filter).
 			pieces.push(ref.constant);
 		} else if (ref.part === undefined) {
-			pieces.push(`{${withFilters(ref.column, filters)}}`);
+			pieces.push(`{${withFilters(pathTextFor(ref.column, ref.literal), filters)}}`);
 		} else if (typeof ref.part === 'number') {
-			pieces.push(`{${withFilters(`${ref.column}|split(${delimiter},${ref.part})`, filters)}}`);
+			pieces.push(
+				`{${withFilters(`${pathTextFor(ref.column, ref.literal)}|split(${delimiter},${ref.part})`, filters)}}`,
+			);
 		} else {
 			const [i, j] = ref.part;
 			for (let k = i; k <= j; k++) {
-				pieces.push(`{${withFilters(`${ref.column}|split(${delimiter},${k})`, filters)}}`);
+				pieces.push(
+					`{${withFilters(`${pathTextFor(ref.column, ref.literal)}|split(${delimiter},${k})`, filters)}}`,
+				);
 			}
 		}
 	}
@@ -670,12 +680,14 @@ export interface ParsedSource {
 
 interface ParsedInterp {
 	column: string;
+	/** True when the column was written as a quoted literal key (`{['A.B']}`). */
+	literal?: boolean;
 	part?: number;
 	delimiter?: string;
 	filters: string[];
 }
 
-type Segment = { kind: 'lit'; text: string } | { kind: 'interp'; body: string };
+type Segment = { kind: 'lit'; text: string } | { kind: 'interp'; interp: Interpolation };
 
 /**
  * Parse a structural template (folder / file-name-without-.md / heading / plain
@@ -685,7 +697,9 @@ type Segment = { kind: 'lit'; text: string } | { kind: 'interp'; body: string };
  */
 export function parseStructuralTemplate(template: string): ParsedSource {
 	const segments = parseTemplate(template);
-	const interps = segments.filter((s): s is { kind: 'interp'; body: string } => s.kind === 'interp');
+	const interps = segments.filter(
+		(s): s is { kind: 'interp'; interp: Interpolation } => s.kind === 'interp',
+	);
 	const separators = segments.filter((s): s is { kind: 'lit'; text: string } => s.kind === 'lit').map((s) => s.text);
 
 	if (interps.length === 0) {
@@ -696,14 +710,14 @@ export function parseStructuralTemplate(template: string): ParsedSource {
 		return { source: { constant: template }, filters: [] };
 	}
 
-	const parsedInterps = interps.map((s) => parseInterp(s.body));
+	const parsedInterps = interps.map((s) => parseInterp(s.interp));
 	const sep = separators.length > 0 ? separators[separators.length - 1] : undefined;
 
 	// Single interpolation → single part or whole column. Preserve any literal
 	// prefix/suffix as ConstantRefs so `cw-{edge_id|slug}` round-trips exactly.
 	if (parsedInterps.length === 1) {
 		const p = parsedInterps[0];
-		const ref: PartRef = p.part === undefined ? { column: p.column } : { column: p.column, part: p.part };
+		const ref: PartRef = partRefFor(p);
 		const source = segments.length === 1
 			? ref
 			: segments.map((segment) => segment.kind === 'lit'
@@ -731,7 +745,7 @@ export function parseStructuralTemplate(template: string): ParsedSource {
 		const first = parsedInterps[0].part as number;
 		const last = parsedInterps[parsedInterps.length - 1].part as number;
 		return {
-			source: { column: parsedInterps[0].column, part: [first, last] },
+			source: partRefFor(parsedInterps[0], [first, last]),
 			delimiter,
 			join: sep,
 			filters: parsedInterps[0].filters,
@@ -748,46 +762,57 @@ export function parseStructuralTemplate(template: string): ParsedSource {
 		: [];
 	const source: LevelSource = segments.map((segment) => {
 		if (segment.kind === 'lit') return { constant: segment.text };
-		const parsed = parseInterp(segment.body);
-		return parsed.part === undefined
-			? { column: parsed.column }
-			: { column: parsed.column, part: parsed.part };
+		const parsed = parseInterp(segment.interp);
+		return partRefFor(parsed);
 	});
 	return { source, delimiter, join: '', filters: sharedFilters };
 }
 
-/** Split a template into ordered literal + interpolation segments. */
+/**
+ * Split a template into ordered literal + interpolation segments.
+ * Thin wrapper over the shared tokenizer (contract R0).
+ */
 function parseTemplate(template: string): Segment[] {
-	const segments: Segment[] = [];
-	const re = /\{([^}]*)\}/g;
-	let last = 0;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(template)) !== null) {
-		if (m.index > last) segments.push({ kind: 'lit', text: template.slice(last, m.index) });
-		segments.push({ kind: 'interp', body: m[1] });
-		last = re.lastIndex;
-	}
-	if (last < template.length) segments.push({ kind: 'lit', text: template.slice(last) });
-	return segments;
+	return parseTemplateSegments(template).map((segment) =>
+		segment.kind === 'lit'
+			? { kind: 'lit' as const, text: segment.text }
+			: { kind: 'interp' as const, interp: segment.interp },
+	);
 }
 
-/** Parse one interpolation body (`col|split(.,0)|fs-safe`) into its parts. */
-function parseInterp(body: string): ParsedInterp {
-	const tokens = body.split('|');
-	const column = tokens[0];
+/** Build a PartRef from a parsed interpolation, carrying the R1.5 literal flag. */
+function partRefFor(parsed: ParsedInterp, part?: number | [number, number]): PartRef {
+	const chosen = part ?? parsed.part;
+	const ref: PartRef = chosen === undefined ? { column: parsed.column } : { column: parsed.column, part: chosen };
+	if (parsed.literal) ref.literal = true;
+	return ref;
+}
+
+/**
+ * Parse one interpolation (`col|split(.,0)|fs-safe`) into its mapping parts.
+ *
+ * R1.5 — a segment written `['A.B']` sets `literal: true` and yields the
+ * UNQUOTED name, so `buildName` can re-quote it. A dotted path written bare
+ * (`external_references.0.external_id`) keeps its raw text and no flag, so a
+ * nested traversal is never silently converted into a literal lookup.
+ */
+function parseInterp(interp: Interpolation): ParsedInterp {
+	const { column, literal } = interpolationColumn(interp);
 	let part: number | undefined;
 	let delimiter: string | undefined;
 	const filters: string[] = [];
-	for (const tk of tokens.slice(1)) {
-		const sp = /^split\((.),(\d+)\)$/.exec(tk);
+	for (const call of interp.filters) {
+		const sp = call.name === 'split' && call.arg !== undefined ? /^(.),(\d+)$/.exec(call.arg) : null;
 		if (sp) {
 			delimiter = sp[1];
 			part = Number(sp[2]);
 		} else {
-			filters.push(tk);
+			filters.push(call.raw);
 		}
 	}
-	return { column, part, delimiter, filters };
+	// Non-literal columns keep the raw (untrimmed) path text so re-serialization
+	// is byte-exact against the pre-tokenizer behaviour.
+	return { column: literal ? column : interp.rawPath, literal, part, delimiter, filters };
 }
 
 /** Parse a tag template (`namespace/{col|tagsafe}`) → namespace + source (tagsafe stripped). */
@@ -825,7 +850,9 @@ function inferNaming(source: LevelSource): LevelNaming {
 /** Canonical signature of a parsed source for metadata re-grouping. */
 function sourceSignature(parsed: ParsedSource): string {
 	const refs = toSourceRefs(parsed.source).map((r) =>
-		isConstantRef(r) ? { constant: r.constant } : { column: r.column, part: r.part ?? null },
+		isConstantRef(r)
+			? { constant: r.constant }
+			: { column: r.column, part: r.part ?? null, literal: r.literal ?? null },
 	);
 	return JSON.stringify({ refs, delimiter: parsed.delimiter ?? null, filters: parsed.filters });
 }

@@ -25,6 +25,20 @@
  * as its REQUIRED columns. A source that carries a recipe's required + most of its
  * signature columns almost certainly IS that export. See `matchScore`.
  *
+ * EVERY region that consumes a column counts: layout, tags, aliases, managed
+ * properties, managed links, AND `also_emit.body` projections. The body region was
+ * missing until 2026-08-26; see the comment in `deriveSignature` for why leaving it
+ * out is a correctness bug rather than a tuning choice, and for the corpus numbers.
+ *
+ * Columns behind a leading `optional` filter are deliberately NOT discounted in the
+ * denominator. Discounting them was considered and REJECTED on measurement: the
+ * MITRE recipe marks 16 of its 19 columns `optional`, so excluding them collapses
+ * its signature to 3 (`ID`, `name`, `description`) and every other sheet in the
+ * ATT&CK workbook (tactics, software, groups, campaigns, mitigations, datasources)
+ * plus `tools/fixtures/synthetic/nist-mini.csv` auto-matches it at 100 — 14 new
+ * false positives across the corpus, against 0 for the rule as written. `optional`
+ * declares what render() may skip, not what identifies a source.
+ *
  * THRESHOLD TUNING (2026-07-11, against the real-world corpus)
  * --------------------------------------------------------------
  * `CONFIDENT_MATCH_THRESHOLD` was raised from 75 to 90 after running the matcher
@@ -77,6 +91,7 @@
 
 import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
 import { canonicalToMapping } from './recipe-document';
+import { interpolationColumn, parseTemplateSegments } from '../render/template';
 import type { ImportMapping } from './mapping/types';
 
 // Bundled import recipes — esbuild inlines these JSON modules into main.js.
@@ -181,13 +196,17 @@ const CANDIDATE_FLOOR = 40;
 // Signature extraction (pure)
 // ============================================================================
 
-/** Extract the `{column}` tokens a template references (text before the first `|`). */
+/**
+ * Extract the `{column}` tokens a template references (the path, before the
+ * first filter). Thin wrapper over the shared tokenizer (contract R0) so a
+ * quoted literal key (`{['A.B']}`) counts as ONE column named `A.B`, not two
+ * dotted segments — the match signature and render() can no longer diverge.
+ */
 function templateColumns(template: string): string[] {
 	const out: string[] = [];
-	const re = /\{([^}]+)\}/g;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(template)) !== null) {
-		const token = m[1].split('|')[0].trim();
+	for (const segment of parseTemplateSegments(template)) {
+		if (segment.kind !== 'interp') continue;
+		const token = interpolationColumn(segment.interp).column;
 		if (token) out.push(token);
 	}
 	return out;
@@ -226,6 +245,20 @@ function deriveSignature(raw: RawRecipe): { signature: string[]; required: strin
 		const managedLinks = emit.frontmatter?.managed_links ?? {};
 		for (const spec of Object.values(managedLinks)) {
 			for (const c of templateColumns(spec.template)) signature.add(c);
+		}
+		// Body projections consume source columns exactly as properties do. Where a
+		// recipe author puts a column's prose (a YAML property vs a `## Description`
+		// section) is a RENDERING choice; whether the source carries that column is a
+		// SOURCE-SHAPE fact, and only the second is the matcher's business. Omitting
+		// body columns made recognition depend on the first, which is how the Wave 2
+		// prose-into-body rewrites silently shrank five signatures. Measured against
+		// the local Frameworks/ corpus (357 parseable sheets, 2026-08-26): with body
+		// columns OUT, four CIS "Change Log" sheets auto-matched
+		// `cis-controls-v8-controls` at 100 (its signature had fallen to 2 columns);
+		// with them IN, the corpus yields 8 confident matches and ZERO false
+		// positives. See the `also_emit.body` note under THE MATCH SIGNATURE above.
+		for (const body of emit.body ?? []) {
+			for (const c of templateColumns(body.template)) signature.add(c);
 		}
 	}
 
@@ -293,7 +326,7 @@ const DEFAULTS: Record<
 			facetNotes: 'notes',
 			facetField: 'tactic',
 			rationale:
-				'Grouping techniques by tactic (kill-chain phase) is the single most useful ATT&CK facet. Not turned on: the bundled recipe does not yet capture a tactic column (STIX `kill_chain_phases.0.phase_name`), and a technique can carry more than one tactic while the closed template grammar can only take the first. Children lists are also NOT recommended: sub-technique ids (T1055.011) share a prefix with their parent (T1055), but the closed filter set has no "only if a delimiter is present" conditional, so a naive split would give every top-level technique a self-referential parent link.',
+				'Grouping techniques by tactic (kill-chain phase) is the single most useful ATT&CK facet. Facet hub notes stay off, but the reasoning below is no longer why: as of 2026-08-26 the recipe binds the ATT&CK xlsx, which ships explicit clean `tactics` and `sub-technique of` columns, so the recipe now emits a `tactics` property and a real `parent` wikilink (453 of 656 techniques). The former blockers -- no tactic column in the STIX shape, and a naive prefix split self-referencing top-level techniques -- no longer apply. What still argues against hub notes is that a technique can carry several tactics and the grammar has no split-into-plain-array, so `tactics` lands as a comma-joined scalar rather than a facetable list.',
 		},
 	},
 	'cis-controls-v8-controls': {

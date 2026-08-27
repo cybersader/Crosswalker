@@ -1,0 +1,102 @@
+---
+title: "Challenge 46: The transform engine and the shapes of data"
+description: "The recipe grammar keeps failing at the same seam: it can address a scalar in a row, and almost nothing else. Six frameworks in one sprint hit five distinct expressive gaps. State the problem at the level of DATA SHAPES rather than file formats, and design the transform layer that follows from that statement."
+tags: [research, transform-engine, recipe-grammar, nested-vs-tabular, etl, ch-46]
+date: 2026-08-26
+sidebar:
+  label: "Ch 46 · Transform engine shapes"
+  order: 46
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Why this exists
+
+On 2026-08-26 six framework recipes were rewritten in one sprint to emit real content instead of empty stubs. Every one of them hit the transform grammar's ceiling, and each author independently reported the limitation as a blocker rather than working around it. The gaps were not variations of one bug; they were five different shapes of the same absence.
+
+<Aside type="caution" title="Do not answer this as a filter wishlist">
+The tempting deliverable is a list of filters to add: `splitMap()`, `after()`, `literalKey()`. That is the anti-pattern this challenge exists to avoid. The owner's framing, stated 2026-08-26: **the real problem is nested versus tabular data, not "support JSON and CSV."** Adding one filter per encountered problem produces a closed enumeration that grows forever and never covers the case nobody has hit yet.
+</Aside>
+
+## The measured evidence
+
+Every item below is a real failure against a real source, recorded during the Wave 2 sprint. None is hypothetical.
+
+| # | Gap | Where it bit | Consequence |
+|---|---|---|---|
+| 1 | **A key cannot be addressed literally.** Variable paths split on `.` unconditionally, so a column whose *name* contains a dot is unreachable. | CRI Profile: `CRI Profile v2.2 Diagnostic Statement` | 472 notes shipped with completely empty bodies. |
+| 2 | **No per-item transformation over a collection.** The only splitter force-wraps every item in `[[...]]`; it cannot clean an item, drop an item, or emit a plain list. | NIST `related` (`AC-3, AC-5, … SC-37.` — trailing period, literal `[None]`); ATT&CK `tactics`/`platforms`/`data_sources`; CSF `Informative References` | Relationship and facet columns emitted as flat strings or omitted entirely. Closure returns zero intra-framework edges. |
+| 3 | **No substring extraction.** Filter arguments may not contain `)`, so capture groups are unwritable; `\|` is reserved by the parser. "Everything after the first colon" cannot be expressed. | CSF outcome statements repeat their own identifier: `GV.OC-01: The organizational mission…` | The identifier appears three times per note. |
+| 4 | **No row predicate.** A recipe cannot say which rows of its source it applies to. | CSF (46 banner rows collapse onto one path); both CIS recipes (one sheet, two row-kinds); both CPRT recipes (227 non-concept elements) | **Four of nine recipes cannot be pointed at their own source file** without manual pre-filtering. |
+| 5 | **No join across row collections.** One iterator yields exactly one row array. | ATT&CK mitigations (separate sheet + 18,570-row relationship sheet); CPRT implementation examples (sibling `relationships` array, 1,566 edges) | Content that exists in the source cannot reach the note. |
+
+## The shape-level statement
+
+A first attempt, offered to be argued with rather than adopted:
+
+> The grammar can address **one scalar within one row of one flat collection.** Every gap above is an instance of a shape it cannot address: a key that is not a path, a collection within a cell, a substring within a value, a subset of rows, or a relationship between two collections.
+
+The deliverable should either sharpen this statement or replace it with a better one, and then derive the design from it.
+
+## What to investigate
+
+### 1. What are the shapes, actually?
+
+Enumerate the data shapes an ontology-import engine must handle — not the formats. Tabular rows, nested documents, collections-within-cells, multi-collection sources with joins, recursive hierarchies, graphs. For each: does Crosswalker meet it today, and what does meeting it require? The answer should hold for a source nobody in this project has seen.
+
+### 2. Where does transformation belong?
+
+Crosswalker has [three tiers](/crosswalker/concepts/system-architecture/) and a [closed 5-mechanism recipe grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/). Transformation currently happens in template filters at render time. Argue where it *should* happen: still in templates, in a distinct transform stage between parse and render, or pushed to the producer under [schema-as-primitive](/crosswalker/concepts/etl-and-import/) — where anyone emitting valid Tier 1 is a first-class producer and the bundled engine is convenience.
+
+That last option is the interesting one and must be engaged seriously: if the answer is "hard shapes are the producer's problem", say so explicitly and state what the bundled engine then owes a user who has only a spreadsheet.
+
+### 3. Borrow rather than invent
+
+The prior art is substantial and the project has already surveyed adjacent ground ([Ch 36 query language](/crosswalker/agent-context/zz-research/2026-05-09-challenge-36-query-language-rerun/) rejected inventing a fourth language). Examine JSONata (already a committed dependency of the recipe schema), jq, YARRRML/RML, dbt, Morph-KGC, and SPARQL-Generate. State what each gets right about shapes, and whether Crosswalker should adopt, embed, or decline. **A recommendation to invent a new expression language must clear a high bar and explain why the existing ones fail.**
+
+### 4. The modularity constraint
+
+The owner's stated requirement is *maximum modularity and malleability*, and [commitment 5](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) makes the recipe schema runtime-agnostic — recipes must remain executable by an external Python producer or an agent, not only by the bundled TypeScript engine. Any design that only works inside the plugin violates a settled commitment. Show how yours survives that.
+
+### 5. Migration, and the harder requirement: room to be wrong
+
+Nine bundled recipes and an unknown number of user recipes exist. State the migration path, whether the change is additive or breaking, and whether the recipe schema `$id` needs a major bump.
+
+But the owner's binding constraint (2026-08-26) is stronger than one-time migration:
+
+> *"If we can't solve it thoroughly enough at this go-around, then it's fine to expand later. We just need to make sure that our system is resilient and that updates aren't going to be breaking updates."*
+
+So the design is judged on **whether the NEXT expansion can be additive**, not only on whether this one is. A grammar that covers four shapes today and requires a breaking change to admit a fifth has failed this criterion even if it ships cleanly. Show the extension point. Name a shape your design does not cover, then demonstrate how it would be added later without invalidating a single recipe written against the earlier version.
+
+This pairs with the owner's stated working style — *shift left*: do the thinking before the code, not as a series of corrective patches afterwards. A design that defers its hard decisions into "we'll see when we get there" is the thing being ruled out here.
+
+## Anti-patterns for this challenge
+
+| Do not | Why |
+|---|---|
+| Deliver a list of filters to add | The whole point. Filters are instances; shapes are the problem. |
+| Solve only the five measured gaps | They are evidence that the model is wrong, not a to-do list. A design that closes exactly five holes will meet a sixth next sprint. |
+| Invent a new expression language without engaging JSONata, jq, and RML | Ch 36 already rejected the fourth-language anti-pattern for queries; the same reasoning applies here. |
+| Propose a design that only runs inside the plugin | Violates the runtime-agnostic commitment. |
+| Ignore the tactical fix already shipped | Literal key access, per-item transformation, and configurable auto-heading landed 2026-08-26 as an unblock. Say whether they are a step toward your design or debt to unwind. |
+| Treat this as a pure refactor | The corpus is real: 1,468-row SCF, 656-technique ATT&CK, 472-row CRI, 1,189-control NIST. Cost at that scale is part of the answer. |
+
+## Success criteria
+
+1. A **shape taxonomy** with Crosswalker's current coverage marked against it.
+2. A **verdict on where transformation belongs**, engaging the schema-as-primitive option honestly.
+3. A **concrete grammar or mechanism proposal**, worked against at least four of the five measured gaps above, using the real dirty values quoted in this brief.
+4. An **adopt/embed/decline verdict on existing languages**, JSONata specifically, since it is already a dependency.
+5. A **migration path** for the nine bundled recipes, with a breaking/additive call on the schema.
+6. An explicit statement of **what the design does NOT solve**, because a proposal claiming to cover every shape is not credible.
+
+A deliverable fails if it enumerates filters, if it ignores the runtime-agnostic commitment, or if it proposes a new language without arguing against the existing ones.
+
+## Related
+
+- [Wave 2 verification](/crosswalker/agent-context/zz-log/) — the measured gaps, per framework
+- [ETL and import: schema-as-primitive](/crosswalker/concepts/etl-and-import/)
+- [Ch 22 target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — the closed 5-mechanism grammar this would extend
+- [Ch 23 bundle engine language synthesis](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) — commitment 5, runtime-agnostic recipe schema
+- [Ch 36 query language rerun](/crosswalker/agent-context/zz-research/2026-05-09-challenge-36-query-language-rerun/) — the precedent for refusing to invent a language
+- [System architecture](/crosswalker/concepts/system-architecture/)

@@ -31,6 +31,7 @@ import {
 	type Recipe,
 	type RenderedBodyRegion,
 	type RenderReport,
+	type SourceScope,
 } from '../render';
 import { legacyConfigToRecipe } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
@@ -861,7 +862,19 @@ function buildNoteDataViaRender(
 	const titleText = mapping.filename?.template ? deriveTitleText(row, mapping, filenameStem) : '';
 	const managedBody = renderedBodyRegionsToMarkdown(address.body);
 	const bodyContent = [managedBody, legacy.body].filter((part) => part.trim() !== '').join('\n\n');
-	const body = composeDocumentBody(titleText, bodyContent);
+	//     `target.auto_heading` lets the recipe choose that heading's text or
+	//     suppress it; absent, resolveAutoHeadingText returns titleText and the
+	//     conditional below is byte-for-byte what it always was.
+	let headingText: string | null;
+	try {
+		headingText = resolveAutoHeadingText(recipe, renderScope, titleText, report);
+	} catch (err) {
+		if (err instanceof RenderError) {
+			throw new Error(`target.auto_heading failed for row ${rowNum}: ${err.message}`);
+		}
+		throw err;
+	}
+	const body = composeDocumentBody(headingText, bodyContent);
 
 	// 6. Always write a fresh _crosswalker provenance block per
 	//    spec/tier1.schema.json. Captures the source ref + producer +
@@ -967,12 +980,48 @@ export function renderedBodyRegionsToMarkdown(regions: RenderedBodyRegion[]): st
 }
 
 /**
+ * Resolve the engine's automatic heading text for one row.
+ *
+ * `recipe.target.auto_heading` (schema SchemaVer 1.8.0) is the recipe's control
+ * over the note's first line:
+ *
+ *   - a template string -> render it against the row scope (full template
+ *                          grammar, so `{name}` / `{title|trim}` both work)
+ *   - `false`           -> suppress the heading entirely; returns null
+ *   - absent            -> the caller's `fallbackTitle`, i.e. today's behaviour
+ *
+ * BOTH generation paths call this and each keeps its own, deliberately
+ * different, emission conditional: the wizard path (composeDocumentBody) emits
+ * only when body content exists; the recipe path (buildDefaultBody) emits
+ * unconditionally. Threading the option through one path only is how a
+ * "removed" heading comes back from the other.
+ *
+ * Throws RenderError when the template references a missing variable without
+ * `|optional`; callers record that as a per-row error and continue.
+ *
+ * Deterministic (no timestamps). Exported for tests.
+ */
+export function resolveAutoHeadingText(
+	recipe: { target: { auto_heading?: string | false } },
+	scope: SourceScope,
+	fallbackTitle: string,
+	report?: RenderReport,
+): string | null {
+	const cfg = recipe.target.auto_heading;
+	if (cfg === false) return null;
+	if (typeof cfg === 'string') return renderTemplate(cfg, scope, report).trim();
+	return fallbackTitle;                       // absent -> today's behaviour
+}
+
+/**
  * Assemble a document-style note body: an H1 title, a blank line, then the
  * body content. Returns the body unchanged when there is no content OR no
- * title (a frontmatter-only note gets no forced heading). Deterministic (no
- * timestamps). Exported for tests.
+ * title (a frontmatter-only note gets no forced heading), and when the heading
+ * is null (the recipe set `auto_heading: false`, or its template rendered
+ * empty). Deterministic (no timestamps). Exported for tests.
  */
-export function composeDocumentBody(titleText: string, body: string): string {
+export function composeDocumentBody(titleText: string | null, body: string): string {
+	if (titleText === null) return body;
 	if (body.trim() === '' || titleText.trim() === '') return body;
 	return `# ${titleText}\n\n${body}`;
 }
@@ -2008,7 +2057,25 @@ export async function generateFromRecipe(
 
 			// 9. Body — deterministic H1 plus the canonical regions already
 			// evaluated by pure render(). Generation only assembles Markdown.
-			const body = buildDefaultBody(frontmatter, address);
+			// The H1 is `target.auto_heading`-controlled; absent, the historical
+			// unconditional `# <title>` branch is preserved exactly.
+			const headingReport: RenderReport = { notes: [] };
+			let body: string;
+			try {
+				body = buildDefaultBody(frontmatter, address, recipe, renderScope, headingReport);
+			} catch (bodyErr) {
+				if (bodyErr instanceof RenderError) {
+					result.errors.push({ row: rowNum, message: `target.auto_heading failed: ${bodyErr.message}` });
+					return;
+				}
+				throw bodyErr;
+			}
+			if (headingReport.notes.length > 0) {
+				result.warnings ??= [];
+				for (const note of headingReport.notes) {
+					result.warnings.push({ row: rowNum, message: note.detail });
+				}
+			}
 
 			// 10. Write
 			const content = buildNoteContent(frontmatter, body);
@@ -2355,14 +2422,36 @@ function stripFrontmatterBlock(text: string): string {
 	return afterFence === -1 ? '' : normalized.slice(afterFence + 1);
 }
 
-/** Default body for native-recipe-rendered notes: H1 plus rendered regions. */
-function buildDefaultBody(
+/**
+ * Default body for native-recipe-rendered notes: H1 plus rendered regions.
+ *
+ * The H1 is `recipe.target.auto_heading`-controlled (SchemaVer 1.8.0). With the
+ * key absent this is byte-for-byte the historical function: an UNCONDITIONAL
+ * `# <title>`, emitted even when the body is empty — deliberately unlike the
+ * wizard path's conditional. `false`, or a template that renders empty, drops
+ * the heading and emits the managed body alone (never a bare `# `).
+ *
+ * Exported for tests (and used by tests/helpers/golden-vault.ts so the golden
+ * harness cannot drift from the writer).
+ */
+export function buildDefaultBody(
 	frontmatter: Record<string, any>,
-	address: ReturnType<typeof render>,
+	address: Pick<ReturnType<typeof render>, 'body'>,
+	recipe: { target: { auto_heading?: string | false } },
+	scope: SourceScope,
+	report?: RenderReport,
 ): string {
-	const title = frontmatter.title ?? frontmatter.curie ?? 'Untitled';
+	const fallbackTitle = String(frontmatter.title ?? frontmatter.curie ?? 'Untitled');
+	const heading = resolveAutoHeadingText(recipe, scope, fallbackTitle, report);
 	const managedBody = renderedBodyRegionsToMarkdown(address.body);
-	return managedBody === '' ? `# ${title}\n` : `# ${title}\n\n${managedBody}\n`;
+	// An empty render only suppresses when a template was actually configured.
+	// The absent case keeps the historical branch even for a pathologically
+	// empty fallback title, so no already-generated vault shifts.
+	const configured = typeof recipe.target.auto_heading === 'string';
+	if (heading === null || (configured && heading.trim() === '')) {
+		return managedBody === '' ? '' : `${managedBody}\n`;
+	}
+	return managedBody === '' ? `# ${heading}\n` : `# ${heading}\n\n${managedBody}\n`;
 }
 
 /**

@@ -34,6 +34,7 @@ import {
 	buildNoteContent,
 	normalizeTagList,
 	normalizeAliasList,
+	buildDefaultBody,
 } from '../../src/generation/generation-engine';
 import {
 	enrich,
@@ -142,6 +143,8 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 		frontmatter: Record<string, unknown>;
 		facets: FacetMembership[];
 		conceptCid: string;
+		/** Row scope, kept so buildDefaultBody can render target.auto_heading. */
+		scope: Record<string, unknown>;
 	}
 	const records: Record0[] = [];
 	parsed.rows.forEach((row, i) => {
@@ -167,7 +170,14 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 		// concept_cid hashes (curie, row) — the PRE-render identity, never the
 		// Address render() produced from it (see computeConceptCid's doc comment).
 		const conceptCid = computeConceptCid({ curie, scope: row as Record<string, unknown> });
-		records.push({ path, curie, frontmatter, facets: deriveFacetMemberships(mapping, row), conceptCid });
+		records.push({
+			path,
+			curie,
+			frontmatter,
+			facets: deriveFacetMemberships(mapping, row),
+			conceptCid,
+			scope: row as Record<string, unknown>,
+		});
 	});
 
 	// Pass 1.5 — batch enrichment (children lists + facet hubs + edge count).
@@ -217,7 +227,7 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 		const children = enrichment.childrenByPath.get(finalPath);
 		if (children) r.frontmatter.children = children;
 		attachProvenance(r.frontmatter, r.conceptCid);
-		let body = defaultBody(r.frontmatter);
+		let body = buildDefaultBody(r.frontmatter, { body: [] }, recipe, r.scope);
 		// Level hubs (hosted case): this concept note also hosts its own
 		// folder's index — append the managed "Contents" section (mirrors
 		// generation-engine's applyEnrichment combined patch, step 1).
@@ -254,12 +264,6 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 /** Minimal path normalize (mirrors obsidian.normalizePath for the shapes we emit). */
 function normalizeVaultPath(path: string): string {
 	return path.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
-}
-
-/** Default note body: H1 title (title ?? curie). Mirrors buildDefaultBody. */
-function defaultBody(frontmatter: Record<string, unknown>): string {
-	const title = frontmatter.title ?? frontmatter.curie ?? 'Untitled';
-	return `# ${String(title)}\n`;
 }
 
 /** Per-row CURIE local part (mirrors defaultCurieLocalPart's candidate chain). */
