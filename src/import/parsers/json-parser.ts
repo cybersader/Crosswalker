@@ -60,6 +60,13 @@ export async function parseJSONFile(file: File, options: JSONParseOptions = {}):
 		rowCount: result.rows.length,
 		filteredOut: result.filteredOut,
 		skippedNonObjects: result.skippedNonObjects,
+		// Ch 46 source contract 4.2: `source.joins` locates a secondary
+		// collection in a SIBLING ARRAY OF THIS SAME DOCUMENT. Lazy on purpose,
+		// so an import declaring no join never retains the parsed document.
+		container: {
+			kind: 'json',
+			readDocument: async () => JSON.parse(await file.text()) as unknown,
+		},
 	};
 }
 

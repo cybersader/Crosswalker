@@ -5,6 +5,35 @@
  */
 
 /**
+ * Optional JSONata predicate over one source row. A row for which it is false never becomes a note. MUST evaluate to a boolean; anything else is an error naming the row and the expression, never a silent skip. Every field name it references must exist in the source collection, and a predicate that admits zero rows from a non-empty source is an error. Restricted subset: field references, string/number/true/false/null literals, array literals, the operators = != < <= > >= in and or &, and the functions $not $exists $trim $lowercase $uppercase $string $number. Regular expressions, lambdas and dynamic field access are rejected, so an external producer in another language can reimplement the same predicate exactly. Values are compared as the parser produced them (spreadsheet cells are strings), so numeric intent must be explicit: $number(count) > 5. Runs BEFORE identity, CURIE minting, concept_cid and render(). Participates in the recipe hash because it changes which notes exist. Absent means every row becomes a note (behaviour before SchemaVer 1.9.0).
+ */
+export type RowPredicate = string;
+/**
+ * One named secondary collection, indexed by a key expression, whose matched rows bind under the alias on every primary row that matches. Keyed lookup enrichment only, never relational algebra: one primary stream plus N independent bounded indexes, fixed depth, no nested joins. A two-hop join (A to B to C) is deliberately not expressible: hop 2's key would depend on hop 1's result set, which is join composing with join. Denormalize in the producer instead.
+ */
+export type KeyedLookupEnrichment1 = SingleMatchJoin | MultiMatchJoin;
+/**
+ * Where the secondary collection lives, INSIDE THE SAME SOURCE BYTES: another sheet of the same workbook, or a sibling array of the same JSON document. Exactly one of sheet or iterator. A single-collection source such as CSV has no second collection to name and is rejected.
+ */
+export type SecondaryCollection = SecondarySheet | SecondaryIterator;
+/**
+ * With cardinality 'one', optional: narrows the bound object to these fields; omitted binds the whole matched row. With cardinality 'many', REQUIRED and must name exactly one field: the list binds that field's value from each match. A list of objects is deliberately not offered because template path traversal does not lift over arrays, and the template grammar is frozen. Every named field must exist somewhere in the secondary collection.
+ *
+ * @minItems 1
+ */
+export type SelectedSecondaryFields = [string, ...string[]];
+/**
+ * Where the secondary collection lives, INSIDE THE SAME SOURCE BYTES: another sheet of the same workbook, or a sibling array of the same JSON document. Exactly one of sheet or iterator. A single-collection source such as CSV has no second collection to name and is rejected.
+ */
+export type SecondaryCollection1 = SecondarySheet1 | SecondaryIterator1;
+/**
+ * With cardinality 'one', optional: narrows the bound object to these fields; omitted binds the whole matched row. With cardinality 'many', REQUIRED and must name exactly one field: the list binds that field's value from each match. A list of objects is deliberately not offered because template path traversal does not lift over arrays, and the template grammar is frozen. Every named field must exist somewhere in the secondary collection.
+ *
+ * @minItems 1
+ * @maxItems 1
+ */
+export type SelectedSecondaryFields1 = [string];
+/**
  * One entry of the recipe.target.layout array. Specifies how a single source level lands in the target vault. The layout array is ordered: outer source levels appear first, leaf-bearing entry appears last (typically mechanism: 'file' or 'heading' for the leaf-as-document case). Per Ch 22, the leaf entry MAY declare a `kind` to produce non-concept Tier 1 shapes (junction notes for evidence links, crosswalk edges for ontology mappings); intermediate entries treat `kind` as ignored. Default `kind` is 'concept'.
  */
 export type LayoutEntry =
@@ -202,6 +231,100 @@ export interface SourceDeclaration {
 	 * @minItems 1
 	 */
 	levels: [string, ...string[]];
+	where?: RowPredicate;
+	joins?: KeyedLookupEnrichment;
+}
+/**
+ * Optional named secondary collections, each indexed by a key expression, whose matched rows become addressable on the primary row under the alias. The object key IS the alias. An alias never merges into the row's own namespace and never shadows a source column: the row gains exactly one new key, so a joined field is reached by the dotted traversal and ['literal key'] quoting that already exist and the template grammar needs no change. Runs AFTER source.where and BEFORE identity, CURIE minting, concept_cid and render(). Participates in the recipe hash because it changes what a row is and therefore what the notes assert. The primary collection is still consumed row by row; only the secondary collection is held in memory. Absent means no secondary collections (behaviour before SchemaVer 1.9.0).
+ */
+export interface KeyedLookupEnrichment {
+	[k: string]: KeyedLookupEnrichment1;
+}
+export interface SingleMatchJoin {
+	from: SecondaryCollection;
+	on: KeyMatch;
+	cardinality: 'one';
+	select?: SelectedSecondaryFields;
+}
+export interface SecondarySheet {
+	/**
+	 * Name of another sheet in the same workbook.
+	 */
+	sheet: string;
+	/**
+	 * 0-based index of the header row on that sheet, skipping banner rows above it. Sheets in one workbook differ in banner depth. Applies to sheet only; declaring it beside iterator is an error rather than a silently ignored key.
+	 */
+	header_row?: number;
+	/**
+	 * Optional JSONata predicate over the SECONDARY rows, with exactly the contract of source.where: same restricted subset, must return a boolean, every referenced field must exist in the secondary collection, and admitting zero rows is an error. This is how one shared relationship table is narrowed to a single predicate before it is indexed. Fixed depth: there is no nested joins here.
+	 */
+	where?: string;
+}
+export interface SecondaryIterator {
+	/**
+	 * Iterator path locating a sibling array of the same JSON document, e.g. $.response.elements.relationships[*]. Same closed grammar as the primary iterator: dotted keys plus [*] fan-out.
+	 */
+	iterator: string;
+	/**
+	 * Optional JSONata predicate over the SECONDARY rows, with exactly the contract of source.where: same restricted subset, must return a boolean, every referenced field must exist in the secondary collection, and admitting zero rows is an error. This is how one shared relationship table is narrowed to a single predicate before it is indexed. Fixed depth: there is no nested joins here.
+	 */
+	where?: string;
+}
+/**
+ * The key both sides are matched on. Both expressions use the same restricted JSONata subset as source.where and are normalized identically (trimmed string coercion, the same coercion the parsers apply to scalar cells). A composite key is written with &, e.g. `source ID` & '|' & `mapping type`. A key expression that yields nothing, or an empty string, or a non-scalar, is an error naming the row: absence of a RELATION is data, absence of the KEY is a defect.
+ */
+export interface KeyMatch {
+	/**
+	 * Key expression over the primary row, evaluated at lookup time.
+	 */
+	primary: string;
+	/**
+	 * Key expression over a secondary row, evaluated once per secondary row at index-build time.
+	 */
+	secondary: string;
+}
+export interface MultiMatchJoin {
+	from: SecondaryCollection1;
+	on: KeyMatch1;
+	cardinality: 'many';
+	select: SelectedSecondaryFields1;
+}
+export interface SecondarySheet1 {
+	/**
+	 * Name of another sheet in the same workbook.
+	 */
+	sheet: string;
+	/**
+	 * 0-based index of the header row on that sheet, skipping banner rows above it. Sheets in one workbook differ in banner depth. Applies to sheet only; declaring it beside iterator is an error rather than a silently ignored key.
+	 */
+	header_row?: number;
+	/**
+	 * Optional JSONata predicate over the SECONDARY rows, with exactly the contract of source.where: same restricted subset, must return a boolean, every referenced field must exist in the secondary collection, and admitting zero rows is an error. This is how one shared relationship table is narrowed to a single predicate before it is indexed. Fixed depth: there is no nested joins here.
+	 */
+	where?: string;
+}
+export interface SecondaryIterator1 {
+	/**
+	 * Iterator path locating a sibling array of the same JSON document, e.g. $.response.elements.relationships[*]. Same closed grammar as the primary iterator: dotted keys plus [*] fan-out.
+	 */
+	iterator: string;
+	/**
+	 * Optional JSONata predicate over the SECONDARY rows, with exactly the contract of source.where: same restricted subset, must return a boolean, every referenced field must exist in the secondary collection, and admitting zero rows is an error. This is how one shared relationship table is narrowed to a single predicate before it is indexed. Fixed depth: there is no nested joins here.
+	 */
+	where?: string;
+}
+/**
+ * The key both sides are matched on. Both expressions use the same restricted JSONata subset as source.where and are normalized identically (trimmed string coercion, the same coercion the parsers apply to scalar cells). A composite key is written with &, e.g. `source ID` & '|' & `mapping type`. A key expression that yields nothing, or an empty string, or a non-scalar, is an error naming the row: absence of a RELATION is data, absence of the KEY is a defect.
+ */
+export interface KeyMatch1 {
+	/**
+	 * Key expression over the primary row, evaluated at lookup time.
+	 */
+	primary: string;
+	/**
+	 * Key expression over a secondary row, evaluated once per secondary row at index-build time.
+	 */
+	secondary: string;
 }
 /**
  * How the recipe projects source data into Tier 1 vault structure. The render() function consumes this object plus a concept-identity record and produces an Address (path + wikilink target + tags + aliases + frontmatter). Pass 1 is vault-independent (deterministic, hashable); Pass 2 (link minimizer) is opt-in via linkStyle: shortest.

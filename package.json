@@ -73,6 +73,7 @@
 	},
 	"dependencies": {
 		"@sqlite.org/sqlite-wasm": "^3.53.0-build1",
+		"jsonata": "^2.2.2",
 		"papaparse": "^5.4.1",
 		"xlsx": "^0.18.5"
 	}

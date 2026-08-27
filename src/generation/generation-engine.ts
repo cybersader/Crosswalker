@@ -39,6 +39,7 @@ import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
 import { resolveImportSet, type ImportSetOption, type ImportSetReference } from './import-set';
 import { computeConceptCid, computeRecipeHash, identityScopeForNoteKind } from './hash';
+import { prepareSourceStage, SourceStageError, type SourceStage } from '../source';
 import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
 import { validateTier1Frontmatter } from '../validation/validator';
 import {
@@ -365,7 +366,9 @@ export async function generateNotes(
 		// _crosswalker.recipe.hash: computed ONCE per generation run (the
 		// recipe's target doesn't change per-row) and threaded through every
 		// buildProvenance call this run makes — see src/generation/hash.ts.
-		const recipeHash = computeRecipeHash(recipe.target);
+		// `recipe.source` is passed at every call site so one recipe hashes to
+		// one value no matter which code path computed it.
+		const recipeHash = computeRecipeHash(recipe.target, recipe.source);
 
 		// Track paths emitted in THIS generation pass to detect collisions
 		// (two source rows rendering to the same vault path).
@@ -400,11 +403,46 @@ export async function generateNotes(
 		const limit = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
 		let completed = 0;
 
+		// SOURCE STAGE, same spec-owned position as in generateFromRecipe. The
+		// wizard/workbench path accepts a full recipe through `recipeOverride`,
+		// so a declared predicate reaches here too. Ignoring it on this path
+		// would be exactly the silent, shape-dependent degradation the whole
+		// loudness contract exists to prevent. A legacy config carries no source
+		// shaping, so this path is unchanged for every wizard import.
+		let sourceStage: SourceStage;
+		try {
+			sourceStage = await prepareSourceStage(parsedData, recipe.source);
+		} catch (stageErr) {
+			if (!(stageErr instanceof SourceStageError)) throw stageErr;
+			result.errors.push({ row: stageErr.row ?? 0, message: stageErr.message, declaration: stageErr.declaration });
+			result.success = false;
+			result.duration = Date.now() - startTime;
+			debug?.error('generation', 'source-stage-preflight-failed', stageErr.message, {
+				declaration: stageErr.declaration,
+				expression: stageErr.expression,
+			});
+			return result;
+		}
+		let sourceStageFailure: SourceStageError | null = null;
+		const captureSourceStageFailure = (stageErr: unknown): void => {
+			if (!(stageErr instanceof SourceStageError)) throw stageErr;
+			sourceStageFailure = stageErr;
+			result.errors.push({ row: stageErr.row ?? 0, message: stageErr.message, declaration: stageErr.declaration });
+			result.success = false;
+			debug?.error('generation', 'source-stage-failed', stageErr.message, {
+				declaration: stageErr.declaration,
+				expression: stageErr.expression,
+				row: stageErr.row,
+			});
+		};
+
 		await forEachConcurrent(
-			parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>,
+			sourceStage.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>,
 			limit,
 			async (row, idx) => {
-				const rowNum = idx + 1; // 1-indexed for user display
+				// The SOURCE row number, identical to `idx + 1` whenever no
+				// source shaping is declared.
+				const rowNum = sourceStage.sourceRowNumber(row, idx); // 1-indexed for user display
 				try {
 					// v0.1.3: build path + base frontmatter via render(); body/link
 					// content still comes from the existing column-role logic for
@@ -594,13 +632,23 @@ export async function generateNotes(
 					}
 				}
 			},
-		);
+		).catch(captureSourceStageFailure);
+
+		// G3 — a predicate that admits nothing from a non-empty collection is an
+		// error, checked at end of stream, after zero writes have happened.
+		if (!sourceStageFailure) {
+			try {
+				sourceStage.finalize();
+			} catch (stageErr) {
+				captureSourceStageFailure(stageErr);
+			}
+		}
 
 		// Pass 1.5 — batch enrichment patch phase (post-stream), same phase
 		// generateFromRecipe runs. See applyEnrichment for the exact semantics
 		// (children lists + facet hub notes + edgeCount, re-import-safe merge).
 		let enrichmentComplete = true;
-		if (enrichmentEnabled && enrichRecords.length > 0) {
+		if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
 			try {
 				await applyEnrichment(
 					app,
@@ -632,7 +680,11 @@ export async function generateNotes(
 		// Membership is import-set-only: legacy unstamped notes are outside the set,
 		// and enrichment hubs are included because applyEnrichment records their
 		// curies at the same point that it stamps their ownership provenance.
-		const rowCountComplete = parsedData.rowCount < 0 || completed === parsedData.rowCount;
+		// Rows the source stage excluded were still seen and decided, so they count
+		// toward "the whole source was processed". `excludedCount` is 0 whenever no
+		// source shaping is declared.
+		const rowCountComplete =
+			parsedData.rowCount < 0 || completed + sourceStage.excludedCount === parsedData.rowCount;
 		if (result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete) {
 			const orphans = ownedIdentityIndex.curies()
 				.filter((curie) => !producedCuries.has(curie))
@@ -1837,7 +1889,9 @@ export async function generateFromRecipe(
 
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
 	// src/generation/hash.ts's doc comments for the exact field-set definition.
-	const recipeHash = computeRecipeHash(recipe.target);
+	// `recipe.source` participates only through its shaping declarations; a
+	// recipe declaring none hashes byte-identically to its pre-1.9.0 self.
+	const recipeHash = computeRecipeHash(recipe.target, recipe.source);
 	// A recipe declares the note kind at its file leaf. Mapping-only render
 	// defaults must never widen concept or junction identity/source scopes.
 	const recipeNoteKind = recipe.target.layout.find((entry) => entry.mechanism === 'file')?.kind ?? 'concept';
@@ -1861,6 +1915,35 @@ export async function generateFromRecipe(
 		strict,
 		ontologyId,
 	});
+
+	// SOURCE STAGE (Ch 46 source contract §2). Spec-owned position: source
+	// shaping runs BEFORE identity, curie minting, concept_cid and render(),
+	// because it decides what a row IS and therefore which notes exist.
+	//
+	// Preflight (expression parse, permitted-subset walk, G2 reference check)
+	// happens inside prepareSourceStage, deliberately BEFORE the first folder is
+	// created, so the common typo produces zero writes and one clear error.
+	//
+	// A recipe declaring no source shaping gets its own `parsedData.rows`
+	// reference back untouched and never enters the jsonata module at all.
+	let sourceStage: SourceStage;
+	try {
+		sourceStage = await prepareSourceStage(parsedData, recipe.source);
+	} catch (stageErr) {
+		if (stageErr instanceof SourceStageError) {
+			// Preflight failure. row 0 matches the existing `Ambiguous identity`
+			// convention above.
+			result.errors.push({ row: stageErr.row ?? 0, message: stageErr.message, declaration: stageErr.declaration });
+			result.success = false;
+			result.duration = Date.now() - startTime;
+			debug?.error('generation', 'source-stage-preflight-failed', stageErr.message, {
+				declaration: stageErr.declaration,
+				expression: stageErr.expression,
+			});
+			return result;
+		}
+		throw stageErr;
+	}
 
 	if (createFolders && options.basePath) {
 		await ensureFolderExists(app, options.basePath);
@@ -1886,11 +1969,34 @@ export async function generateFromRecipe(
 	const limit = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
 	let completed = 0;
 
+	// A source-stage failure raised per row is thrown out of the ITERATOR, not
+	// inside the worker's try/catch below. That is deliberate: it aborts the
+	// run, which is the contract. Skipping a row is the banned behaviour, and a
+	// "skip" that logs a warning is still a vault that quietly lost rows.
+	//
+	// Captured through `.catch` rather than by wrapping the row loop in a try
+	// block, so the loop below keeps its indentation and its diff.
+	let sourceStageFailure: SourceStageError | null = null;
+	const captureSourceStageFailure = (stageErr: unknown): void => {
+		if (!(stageErr instanceof SourceStageError)) throw stageErr;
+		sourceStageFailure = stageErr;
+		result.errors.push({ row: stageErr.row ?? 0, message: stageErr.message, declaration: stageErr.declaration });
+		result.success = false;
+		debug?.error('generation', 'source-stage-failed', stageErr.message, {
+			declaration: stageErr.declaration,
+			expression: stageErr.expression,
+			row: stageErr.row,
+		});
+	};
+
 	await forEachConcurrent(
-		parsedData.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>,
+		sourceStage.rows as Iterable<Record<string, any>> | AsyncIterable<Record<string, any>>,
 		limit,
 		async (row, idx) => {
-		const rowNum = idx + 1;
+		// The SOURCE row number, not the post-filter position: an error must
+		// name the row the user can find in their spreadsheet. Identical to
+		// `idx + 1` whenever no source shaping is declared.
+		const rowNum = sourceStage.sourceRowNumber(row, idx);
 
 		try {
 			const sourceScope = row as Record<string, unknown>;
@@ -2104,14 +2210,37 @@ export async function generateFromRecipe(
 			}
 		}
 		},
-	);
+	).catch(captureSourceStageFailure);
+
+	// G3 — a predicate that admits nothing from a non-empty collection is an
+	// error, checked at end of stream. Safe there: zero admitted rows means zero
+	// writes have happened, so no rollback is needed.
+	if (!sourceStageFailure) {
+		try {
+			sourceStage.finalize();
+		} catch (stageErr) {
+			captureSourceStageFailure(stageErr);
+		}
+	}
+
+	if (sourceStage.active && !sourceStageFailure) {
+		debug?.info('generation', 'source-stage-applied', `source stage admitted ${completed} of ${sourceStage.examinedCount} source rows`, {
+			examined: sourceStage.examinedCount,
+			excluded: sourceStage.excludedCount,
+			joins: sourceStage.joins.map((join) => ({
+				alias: join.alias,
+				indexedRows: join.indexedRowCount,
+				distinctKeys: join.distinctKeyCount,
+			})),
+		});
+	}
 
 	// Pass 1.5 — batch enrichment patch phase (post-stream). Derives parent→children
 	// + facet hubs from the collected records (never re-reads the vault for the
 	// derivation), then writes children onto parents and materializes hub notes via
 	// the same managed-merge path so re-imports stay idempotent + user-safe.
 	let enrichmentComplete = true;
-	if (enrichmentEnabled && enrichRecords.length > 0) {
+	if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
 		try {
 			await applyEnrichment(
 				app,
@@ -2136,7 +2265,13 @@ export async function generateFromRecipe(
 
 	// Same fail-closed orphan guard as the wizard path: only a complete run with
 	// zero errors can prove that a formerly-owned identity is absent from source.
-	const rowCountComplete = parsedData.rowCount < 0 || completed === parsedData.rowCount;
+	// Rows the source stage excluded were still seen and still decided. They
+	// count toward "the whole source was processed", so orphan detection stays
+	// available for a filtered import: a note whose row is now excluded is a
+	// genuine orphan and must be reported as one. `excludedCount` is 0 whenever
+	// no source shaping is declared, leaving this expression exactly as it was.
+	const rowCountComplete =
+		parsedData.rowCount < 0 || completed + sourceStage.excludedCount === parsedData.rowCount;
 	if (result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete) {
 		const orphans = ownedIdentityIndex.curies()
 			.filter((curie) => !producedCuries.has(curie))
@@ -2207,7 +2342,7 @@ async function applyEnrichment(
 	// Hub/facet notes are synthetic (no source row → no concept identity), so
 	// they carry recipe.hash but never concept_cid — see the two buildProvenance
 	// calls below. Computed once per applyEnrichment call (one per generation run).
-	const recipeHash = computeRecipeHash(recipe.target);
+	const recipeHash = computeRecipeHash(recipe.target, recipe.source);
 	const enrichment = enrich(
 		records.map((r) => ({
 			path: r.path,

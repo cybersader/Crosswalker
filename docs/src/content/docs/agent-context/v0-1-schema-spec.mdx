@@ -9,7 +9,7 @@ tags: [schema, foundation, v0-1, architecture]
 
 
 :::tip[Current contract verification]
-**Status last verified:** 2026-08-21 — re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql`.
+**Status last verified:** 2026-08-27 — re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql`.
 
 The machine-readable contracts and canonical SQL remain authoritative. Sections §3 and §7 below summarize the shipped shapes. Historical TypeScript/YAML sketches are labeled as history and must not be used as implementation contracts.
 
@@ -590,6 +590,102 @@ Closes the [ICSB emitter-controls gap audit](/crosswalker/agent-context/zz-log/2
 **`waypoint_marker: true`** — additionally appends the `%% Waypoint %%` trigger comment to every folder-note/hub note this import generates, so the [Waypoint community plugin](https://github.com/IdreesInc/Waypoint) can *also* track notes a user later adds to that folder by hand. Idempotent (never duplicates or strips a `%% Begin Waypoint %%` block Waypoint has already expanded). Additive, not a replacement — Crosswalker's own generated section stays the primary, always-on mechanism (Waypoint's directory-scan approach can't reconstruct the curated, edge-derived grouping Crosswalker's own model produces). Default `false`; the workbench only offers the toggle when a Waypoint-style plugin is detected enabled.
 
 **Backward compatibility**: purely additive (SchemaVer ADDITION). Recipes without these keys validate and render unchanged. Spec URI did NOT bump.
+
+### §4.10 `source.where` row predicate (added 2026-08-27 — SchemaVer 1.9.0; additive)
+
+The first declaration on `source` that shapes the **collection** rather than a value. Per the [Ch 46 transform-shapes framing](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/): value-shaping (literal keys, per-item mapping, substrings) stays in templates, which already ship it; deciding **which rows exist, and what a row is** extends the source contract instead.
+
+```jsonc
+"source": {
+  "ontology": "nist-csf-2",
+  "levels": ["subcategory"],
+  "where": "Subcategory != ''"
+}
+```
+
+| Property | Value |
+|---|---|
+| Type | `string`, `minLength: 1`, `maxLength: 512` (source: `spec/recipe.schema.json` § `source.where`) |
+| Language | JSONata, restricted to a closed subset (below) |
+| Evaluated against | one source row, exactly as the parser produced it. Spreadsheet cells are strings, so numeric intent must be explicit: `$number(count) > 5`, never `count > 5` |
+| Position in the pipeline | `where` → identity → CURIE mint → `concept_cid` → `render()` → Tier 1 validate → write. **Spec-owned, never recipe-owned** |
+| Recipe hash | participates, because it changes which notes exist. A recipe omitting it hashes byte-identically to its pre-1.9.0 self |
+| Absent | every row becomes a note, exactly as before |
+
+**Permitted subset** (source: `src/source/expression.ts` § `PERMITTED_FUNCTIONS` and the AST walk): field references (bare, backtick-quoted, dotted), string/number/`true`/`false`/`null` literals, array literals, `=` `!=` `<` `<=` `>` `>=`, `in`, `and`, `or`, `&`, grouping parentheses, and 7 functions — `$not` `$exists` `$trim` `$lowercase` `$uppercase` `$string` `$number`.
+
+**Rejected at preflight, by name**: regular expressions and every regex-taking function, lambdas and the higher-order functions that need them, `$eval` / `$lookup` / `$merge` / `$$`, the `~>` chain, `^(...)` sort, `{...}` object constructors, `**` descendants, conditionals, multi-expression blocks, and `:=`. Regex is the load-bearing ban: JavaScript regex and Python `re` disagree, and a producer in another language must be able to evaluate the same predicate and get the same rows.
+
+**The loudness contract** is the reason this declaration is worth a schema change rather than a preprocessing step. Three guards, because one is measurably not enough:
+
+| Guard | Catches | When |
+|---|---|---|
+| Result must be a strict boolean | `where: "Subcategory"` (returns `''`), `where: "Typo"` (returns nothing), any non-predicate | per row |
+| Every referenced name exists in the collection | `Typo != ''` — the case the boolean check cannot see | preflight, before any write |
+| Admitting zero rows from a non-empty source | a correct column compared against a literal that never occurs | end of stream, before any write has happened |
+
+The middle guard exists because of a measured fact: JSONata's comparison operators absorb an undefined operand, so a typo'd column name returns a perfectly good boolean `false` for **every** row. A return-type check passes it, the import admits nothing, and nothing is reported. The rule the guard encodes is the same one the join design states for keys: *absence of a field on a row is data; absence of a field from the collection is a defect.* Heterogeneous JSON is why the check is a union over the collection rather than a per-row requirement.
+
+A per-row failure **aborts the run**. It never skips the row: a skip that logs a warning is still a vault that quietly lost rows.
+
+**Cross-runtime behaviour is pinned as data**, not prose: [`spec/conformance/source-expressions.json`](https://github.com/cybersader/crosswalker/blob/main/spec/conformance/source-expressions.json) records what every permitted construct evaluates to, including the undefined-absorption case above, so a Python producer can be checked against the same file the plugin runs.
+
+**Backward compatibility**: purely additive (SchemaVer ADDITION). Recipes without the key validate, render, and hash unchanged. Spec URI did NOT bump.
+
+### §4.11 `source.joins` keyed lookup enrichment (added 2026-08-27 — SchemaVer 1.9.0; additive)
+
+The second collection-shaping declaration, and the one that decides **what a row is**. Keyed lookup enrichment only: one primary stream plus N independent, bounded lookup indexes. Not relational algebra.
+
+```jsonc
+"source": {
+  "ontology": "mitre-attack",
+  "levels": ["technique"],
+  "joins": {
+    "mitigations": {
+      "from": { "sheet": "relationships", "where": "`mapping type` = 'mitigates'" },
+      "on":   { "primary": "ID", "secondary": "`source ID`" },
+      "cardinality": "many",
+      "select": ["target ID"]
+    }
+  }
+}
+```
+
+The object key is the **alias**, constrained to `^[a-z][a-z0-9_]*$` so it is addressable as a bare template segment with no quoting (source: `spec/recipe.schema.json` § `source.joins.propertyNames`).
+
+| Field | Contract |
+|---|---|
+| `from.sheet` + optional `from.header_row` | another sheet of the **same workbook**. XOR with `iterator` |
+| `from.iterator` | a sibling array of the **same JSON document**, same closed iterator grammar as the primary |
+| `from.where` | optional predicate over the **secondary** rows, with exactly the §4.10 contract: same subset, same three guards, same errors. Fixed depth — there is no nested `joins` |
+| `on.primary` / `on.secondary` | key expressions, same restricted subset, normalized identically with a trimmed string coercion. Composite keys use `&` |
+| `cardinality` | **required, no default.** `"first"` does not exist |
+| `select` | optional field subset for `one`; **required and exactly one field** for `many` |
+
+**Both secondary forms live inside the same source bytes.** The `source` block's own scope excludes where the bytes come from, so a join naming a second file would break that rule and single-file portability with it. A CSV source is one collection and has nothing to name: declaring a join over one is refused with the format reason.
+
+**Cardinality is an assertion about the data, not a preference** (source: `src/source/joins.ts`):
+
+| | zero matches | one match | two or more |
+|---|---|---|---|
+| `"one"` | alias absent from the row | alias = the matched row, or the `select` subset of it | error naming row, alias, key and count |
+| `"many"` | alias absent from the row | list of length 1 | list, in **secondary-collection order** |
+
+Zero matches leaves the alias **absent** rather than empty in both modes, so the existing `|optional` filter handles a miss identically either way. A single match under `"many"` stays a list, because output shape must never depend on how many rows happened to match.
+
+`"many"` binds a **list of scalars**, never a list of objects, and that is a deliberate consequence of the frozen template grammar: path traversal does not lift over arrays (source: `src/render/template.ts`), so a list of objects would require extending the grammar. Instead, a `many` list lands directly in `also_emit.frontmatter.managed` as a YAML array, in `managed_links`, or in a body projection with `format: "list"`.
+
+**Collision policy: never shadow, never merge, never auto-rename.** A joined row gains exactly **one** key — the alias — and its value is the match. Nothing enters the primary row's own namespace, so a secondary column can never overwrite a primary one. An alias equal to an existing column, or to a reserved render-scope name, is refused at preflight. The consequence is the point: `source.joins` requires **zero** template-grammar change, because the alias is an ordinary nested value reached by the dotted traversal and the `['literal key']` quoting that already shipped in SchemaVer 1.7.0 — `{mitigation.['Mitigation Name']}` composes at any depth.
+
+**Loudness, mirroring §4.10**: a key expression that yields nothing, an empty string after trimming, or a non-scalar is an error naming the row. **No match is not an error** — absence of a relation is data, absence of the key is a defect. A secondary collection that is empty, or that `from.where` narrows to nothing, is an error: an index that can never match is a defect.
+
+**Order in the pipeline**: `where` → `joins` → identity → CURIE mint → `concept_cid` → `render()`. `where` runs first so it stays a pure function of the source row, so a discarded row costs no lookup, and so inner-join semantics cannot arrive through `where: "$exists(alias)"` — at the time `where` runs, no alias exists, and the reference preflight rejects the name. A joined value therefore participates in `concept_cid`, which is correct: the alias is part of what the concept asserts.
+
+**Streaming and cost**: the primary collection is still consumed row by row; only the secondary is materialized. Measured against ATT&CK's `relationships` at 18,570 rows, the index builds in ~25 ms, and a 200,000-row primary import against it never holds more than one primary row at a time. Retained memory is a function of the secondary only.
+
+**Two-hop is out of scope, permanently.** ATT&CK's mitigation *prose* lives two hops away (`technique → relationships → mitigations`), and hop 2's key depends on hop 1's result set — a join composing with a join, which is the relational algebra this design excludes by name. A technique note gains mitigation **identifiers**; names and prose are producer work. An honest half-close beats a silent one.
+
+**Backward compatibility**: purely additive (SchemaVer ADDITION). Recipes without the key validate, render, and hash unchanged. Spec URI did NOT bump.
 
 ## §5 Historical junction-note design sketch
 

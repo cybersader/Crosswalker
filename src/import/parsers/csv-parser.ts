@@ -89,7 +89,12 @@ export async function parseCSV(
 				resolve({
 					columns: headers,
 					rows: rows,
-					rowCount: rows.length
+					rowCount: rows.length,
+					// A CSV file IS one collection: there is no second thing for
+					// `source.joins` to name. Declared, not omitted, so the source
+					// stage refuses a join with the format reason rather than a
+					// vague "no container" (Ch 46 source contract 4.2).
+					container: { kind: 'flat' },
 				});
 			},
 
@@ -179,7 +184,12 @@ export async function parseCSVFile(
 				resolve({
 					columns: headers,
 					rows: rows,
-					rowCount: rows.length
+					rowCount: rows.length,
+					// A CSV file IS one collection: there is no second thing for
+					// `source.joins` to name. Declared, not omitted, so the source
+					// stage refuses a join with the format reason rather than a
+					// vague "no container" (Ch 46 source contract 4.2).
+					container: { kind: 'flat' },
 				});
 			},
 
@@ -403,6 +413,7 @@ export function parseCSVFileStream(
 		columns,                  // populated lazily once first row arrives
 		rows,                     // AsyncIterable
 		rowCount: -1,             // unknown until parse completes
+		container: { kind: 'flat' },
 	};
 }
 

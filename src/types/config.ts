@@ -214,7 +214,46 @@ export interface ParsedData {
 	sheetName?: string;
 	/** Total row count if known. -1 (or undefined) if streaming and count is unknown. */
 	rowCount: number;
+	/**
+	 * The container the PRIMARY collection was read out of, so `source.joins`
+	 * can locate a secondary collection inside the SAME source bytes (Ch 46
+	 * source contract 4.2). Absent means no container was recorded, and a
+	 * recipe declaring `joins` against it fails loud rather than silently
+	 * finding nothing.
+	 *
+	 * Every accessor is LAZY and async on purpose: a parser attaches a handle,
+	 * never a retained workbook or document. A run that declares no join never
+	 * calls one, so it pays no memory for this field — which is what makes the
+	 * declaration additive in the memory story as well as in the schema.
+	 */
+	container?: SourceContainer;
 }
+
+/**
+ * Where a secondary collection can live (Ch 46 source contract 4.2).
+ *
+ * Both forms are INSIDE THE SAME SOURCE BYTES. The `source` block's stated
+ * scope is "out-of-scope: where the source bytes come from"; a join naming a
+ * second file would break that rule and single-file portability with it.
+ *
+ * `flat` is not a gap to be filled later. A CSV file IS one collection: there
+ * is no second thing to name, so `joins` over one is a recipe defect and is
+ * reported as one (acceptance case C10).
+ */
+export type SourceContainer =
+	| { kind: 'flat' }
+	| {
+		kind: 'workbook';
+		/** Sheet names, for selection and for the "available sheets" error detail. */
+		sheetNames: string[];
+		/** Read one sheet as rows, skipping `headerRow` banner rows above the header. */
+		readSheet(sheet: string, headerRow: number): Promise<Record<string, unknown>[]>;
+	}
+	| {
+		kind: 'json';
+		/** Re-read the document root. Called at most once per join declaration. */
+		readDocument(): Promise<unknown>;
+	};
 
 export interface ColumnInfo {
 	name: string;
@@ -439,4 +478,10 @@ export interface GenerationError {
 	row: number;
 	column?: string;
 	message: string;
+	/**
+	 * Recipe declaration path that produced this error, e.g. `source.where`.
+	 * Additive (Ch 46 source contract §7): only source-stage failures set it,
+	 * every existing producer of a GenerationError leaves it absent.
+	 */
+	declaration?: string;
 }

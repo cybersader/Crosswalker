@@ -134,7 +134,7 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 	// generation-engine.ts's generateNotes/generateFromRecipe/applyEnrichment,
 	// which each compute it once per generation run) — see
 	// src/generation/hash.ts's doc comments for the exact field-set definition.
-	const recipeHash = computeRecipeHash(recipe.target);
+	const recipeHash = computeRecipeHash(recipe.target, recipe.source);
 
 	// Pass 1 — render each row into a note record (frontmatter minus provenance).
 	interface Record0 {

@@ -223,7 +223,7 @@ export function patchRecipeDocument(
 			...(normalized.metadata ?? {}),
 			based_on: {
 				recipe: original.recipe,
-				hash: computeRecipeHash(original.target),
+				hash: computeRecipeHash(original.target, original.source),
 				spec_version: original.spec_version ?? CURRENT_RECIPE_SPEC,
 			},
 		};

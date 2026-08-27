@@ -1,0 +1,385 @@
+{
+	"$comment": "Conformance cases for the Crosswalker source-expression subset (Ch 46 source contract §6.2, §10 D1-D6). Engine-agnostic DATA: no TypeScript, no test-framework matchers, so a jsonata-python port can run it unchanged. expect.kind is one of: value | undefined | parse_error | eval_error | rejected_by_subset. 'value'/'undefined'/'eval_error' describe ENGINE semantics (what JSONata itself does). 'rejected_by_subset' describes SITE POLICY (what the permitted subset admits) and is checked without evaluating.",
+	"spec_version": "1.9.0",
+	"engine": { "package": "jsonata", "minimum_version": "2.2.1", "measured_against": "2.2.2" },
+	"inputs": {
+		"csf_banner": { "ID": "GV.OC", "Function": "GOVERN", "Category": "Organizational Context", "Subcategory": "" },
+		"csf_subcategory": { "ID": "GV.OC-01", "Function": "GOVERN", "Category": "Organizational Context", "Subcategory": "The organizational mission is understood" },
+		"cis_control": { "CIS Control": "1", "CIS Safeguard": "", "Title": "Inventory of Enterprise Assets" },
+		"cis_safeguard": { "CIS Control": "1 ", "CIS Safeguard": " 1.1 ", "Title": "Establish and Maintain Detailed Asset Inventory" },
+		"cprt_sort": { "element_identifier": "sort-3", "element_type": "sort", "title": "" },
+		"cprt_subcategory": { "element_identifier": "GV.OC-01", "element_type": "subcategory", "title": "" },
+		"nested": { "id": "T1548", "Name": "Abuse Elevation Control Mechanism", "count": "7", "meta": { "tier": "2" } }
+	},
+	"cases": [
+		{
+			"id": "missing-name-compares-false",
+			"$comment": "THE MOST VALUABLE CASE IN THIS FILE (contract §10 D3). A typo'd column name does NOT yield undefined: JSONata's comparison operators absorb an undefined operand and return a perfectly good boolean false, for every row. That is why the loudness contract needs the G2 reference preflight and not merely a return-type check. If a port returns undefined here instead, that port's silence behaviour differs and G2 must be re-derived for it.",
+			"expression": "Typo != ''",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": false }
+		},
+		{
+			"id": "missing-name-equals-empty-also-false",
+			"$comment": "Both polarities are false, so no amount of flipping the comparison surfaces the typo.",
+			"expression": "Typo = ''",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": false }
+		},
+		{
+			"id": "missing-name-bare-is-undefined",
+			"expression": "Typo",
+			"input": "csf_banner",
+			"expect": { "kind": "undefined" }
+		},
+		{
+			"id": "missing-name-exists-is-false",
+			"expression": "$exists(Typo)",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": false }
+		},
+
+		{
+			"id": "path-bare-name",
+			"expression": "Subcategory != ''",
+			"input": "csf_subcategory",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "path-bare-name-banner-row-excluded",
+			"$comment": "CSF 2.0 workbook: 46 banner rows interleaved with 185 subcategory rows.",
+			"expression": "Subcategory != ''",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": false }
+		},
+		{
+			"id": "path-backtick-quoted-name",
+			"$comment": "Framework workbooks have spaces in nearly every column name.",
+			"expression": "`CIS Safeguard` != ''",
+			"input": "cis_safeguard",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "path-dotted-traversal",
+			"expression": "meta.tier = '2'",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "path-context-head",
+			"expression": "$.Subcategory = ''",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": true }
+		},
+
+		{
+			"id": "literal-string",
+			"expression": "element_type = 'sort'",
+			"input": "cprt_sort",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "literal-number",
+			"expression": "$number(count) = 7",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "literal-true",
+			"expression": "true",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "literal-false",
+			"expression": "false",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": false }
+		},
+		{
+			"id": "literal-null-comparison",
+			"expression": "Subcategory != null",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "literal-array-membership",
+			"expression": "element_type in ['sort', 'party']",
+			"input": "cprt_sort",
+			"expect": { "kind": "value", "value": true }
+		},
+
+		{
+			"id": "operator-eq",
+			"expression": "Function = 'GOVERN'",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "operator-neq",
+			"expression": "Function != 'GOVERN'",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": false }
+		},
+		{
+			"id": "operator-lt",
+			"$comment": "Spreadsheet cells arrive as strings, so this is a string comparison unless $number() is explicit.",
+			"expression": "$number(count) < 8",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "operator-lte",
+			"expression": "$number(count) <= 7",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "operator-gt",
+			"expression": "$number(count) > 5",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "operator-gte",
+			"expression": "$number(count) >= 7",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "operator-and",
+			"expression": "element_type = 'subcategory' and element_identifier != ''",
+			"input": "cprt_subcategory",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "operator-or",
+			"expression": "element_type = 'sort' or element_type = 'party'",
+			"input": "cprt_sort",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "operator-concat",
+			"expression": "Function & '.' & Category = 'GOVERN.Organizational Context'",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "grouping-parentheses",
+			"$comment": "Grouping parens are essential for and/or precedence. They parse to a single-expression block, which the subset admits; a multi-expression block '( ... ; ... )' does not.",
+			"expression": "element_type = 'sort' and (title = '' or title = null)",
+			"input": "cprt_sort",
+			"expect": { "kind": "value", "value": true }
+		},
+
+		{
+			"id": "function-not",
+			"expression": "$not(element_type in ['sort', 'party'])",
+			"input": "cprt_subcategory",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "function-exists",
+			"expression": "$exists(Subcategory)",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "function-trim",
+			"$comment": "The CIS workbook carries '1 ' with a trailing space on control rows, which is why the shipped recipes already trim.",
+			"expression": "$trim(`CIS Safeguard`) = '1.1'",
+			"input": "cis_safeguard",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "function-trim-blank-control-row",
+			"expression": "$trim(`CIS Safeguard`) = ''",
+			"input": "cis_control",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "function-lowercase",
+			"expression": "$lowercase(Name) = 'abuse elevation control mechanism'",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "function-uppercase",
+			"expression": "$uppercase(Function) = 'GOVERN'",
+			"input": "csf_banner",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "function-string",
+			"expression": "$string(count) = '7'",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+		{
+			"id": "function-number",
+			"expression": "$number(count) > 6",
+			"input": "nested",
+			"expect": { "kind": "value", "value": true }
+		},
+
+		{
+			"id": "eval-error-uncastable-number",
+			"expression": "$number(Name) > 1",
+			"input": "nested",
+			"expect": { "kind": "eval_error", "code": "D3030" }
+		},
+		{
+			"id": "parse-error-truncated",
+			"expression": "Subcategory = ",
+			"input": "csf_banner",
+			"expect": { "kind": "parse_error", "code": "S0207" }
+		},
+		{
+			"id": "parse-error-unclosed-string",
+			"expression": "Subcategory = 'x",
+			"input": "csf_banner",
+			"expect": { "kind": "parse_error", "code": "S0101" }
+		},
+
+		{
+			"id": "rejected-regex-literal",
+			"$comment": "Regex is banned at every source expression site. JS regex and Python re disagree, and that is where cross-runtime parity dies.",
+			"expression": "$match(Name, /Abuse/)",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-replace",
+			"expression": "$replace(Name, 'a', 'b') = 'x'",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-contains",
+			"expression": "$contains(Name, 'Abuse')",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-lambda",
+			"expression": "$exists(function($x) { $x })",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-map",
+			"expression": "$exists($map([1, 2], $string))",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-filter",
+			"expression": "$exists($filter([1, 2], $string))",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-reduce",
+			"expression": "$exists($reduce([1, 2], $string))",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-sift",
+			"expression": "$exists($sift($string))",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-each",
+			"expression": "$exists($each(meta, $string))",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-eval",
+			"expression": "$eval('1+1') = 2",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-lookup",
+			"$comment": "Dynamic field access defeats the G2 reference preflight, which is the guard the whole loudness design rests on.",
+			"expression": "$lookup($, 'Name') = 'x'",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-function-merge",
+			"expression": "$exists($merge([meta]))",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-root-variable",
+			"expression": "$$.Name = 'x'",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-chain-operator",
+			"expression": "(Name ~> $lowercase()) = 'x'",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-sort-operator",
+			"expression": "$exists(meta^(tier))",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-object-constructor",
+			"expression": "$exists({ 'k': Name })",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-descendant-wildcard",
+			"expression": "**.tier = '2'",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-wildcard",
+			"expression": "$exists(meta.*)",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-conditional",
+			"expression": "Name = 'x' ? true : false",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-block-sequence",
+			"expression": "(Name; true)",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-variable-assignment",
+			"expression": "($x := Name; $x = 'y')",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-path-predicate",
+			"expression": "meta[tier = '2'].tier = '2'",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		},
+		{
+			"id": "rejected-unlisted-function",
+			"expression": "$sum([1, 2]) > 1",
+			"input": "nested",
+			"expect": { "kind": "rejected_by_subset" }
+		}
+	]
+}

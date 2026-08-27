@@ -4,7 +4,7 @@
   "title": "Crosswalker Import Recipe",
   "description": "The shape of an import recipe. A recipe is the deterministic, declarative spec that tells a Crosswalker producer how to project a source ontology onto a Tier 1 vault. Closed grammar of five mechanisms (folder/file/heading/tag/wikilink) × ordered layout × cross-cutting also_emit × optional graph_edges. Per Ch 22 target-structure synthesis (2026-05-04). Engine implementations (the plugin's bundled TypeScript engine, an external Python CLI, an AI agent) all consume this same schema; recipe semantics are runtime-agnostic.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.8.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design; 1.3.0 (2026-07-10, v0.1.6) added the optional `target.also_emit.frontmatter.managed_links` (list-valued managed wikilink arrays, for multi-value link columns) and the optional `target.enrichment` block (batch-scope Pass 1.5 enrichment: children lists, facet hub notes, parent-note placement) per the 2026-07-10 batch-enrichment design; 1.4.0 (2026-07-11) added the optional `target.enrichment.level_hubs` (hierarchy hub/MOC index notes, one per folder level) and `target.enrichment.waypoint_marker` (opt-in `%% Waypoint %%` marker on generated folder-note/hub notes) per the 2026-07-11 ICSB emitter-controls gap audit; 1.5.0 (2026-07-21) added optional display metadata with structured `based_on` ancestry, optional source compatibility version, and ordered `target.also_emit.body` projections. 1.6.0 (2026-08-21) added the optional and curie-prefix(prefix) template filters for omission-safe stable identity fields. 1.7.0 (2026-08-26) extended $defs/template only (no structural change): ['segment'] literal-key quoting at any path position, `optional` widened to fire at every path segment, list-valued interpolations with automatic per-item filter lifting, the split(delimiter)/join(separator)/reject(pattern)/wikilink/trim(chars) filter forms, and balanced-paren + backslash lexing of filter arguments, per the 2026-08-26 template-engine contract. 1.8.0 (2026-08-26) added the optional `target.auto_heading` (a template string sets the automatic H1 text, `false` suppresses it, omitted preserves prior behaviour byte-for-byte including the recipe-path/wizard-path conditional difference) per the same 2026-08-26 template-engine contract. All existing recipes without these keys continue to validate.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. SchemaVer 1.9.0. Additive history: 1.1.0 (2026-05-09, v0.1.6) added the optional `query:` block per Ch 31; 1.2.0 (2026-07-05) added the optional `variadic` folder-expansion block on layout_entry per the variadic-split design; 1.3.0 (2026-07-10, v0.1.6) added the optional `target.also_emit.frontmatter.managed_links` (list-valued managed wikilink arrays, for multi-value link columns) and the optional `target.enrichment` block (batch-scope Pass 1.5 enrichment: children lists, facet hub notes, parent-note placement) per the 2026-07-10 batch-enrichment design; 1.4.0 (2026-07-11) added the optional `target.enrichment.level_hubs` (hierarchy hub/MOC index notes, one per folder level) and `target.enrichment.waypoint_marker` (opt-in `%% Waypoint %%` marker on generated folder-note/hub notes) per the 2026-07-11 ICSB emitter-controls gap audit; 1.5.0 (2026-07-21) added optional display metadata with structured `based_on` ancestry, optional source compatibility version, and ordered `target.also_emit.body` projections. 1.6.0 (2026-08-21) added the optional and curie-prefix(prefix) template filters for omission-safe stable identity fields. 1.7.0 (2026-08-26) extended $defs/template only (no structural change): ['segment'] literal-key quoting at any path position, `optional` widened to fire at every path segment, list-valued interpolations with automatic per-item filter lifting, the split(delimiter)/join(separator)/reject(pattern)/wikilink/trim(chars) filter forms, and balanced-paren + backslash lexing of filter arguments, per the 2026-08-26 template-engine contract. 1.8.0 (2026-08-26) added the optional `target.auto_heading` (a template string sets the automatic H1 text, `false` suppresses it, omitted preserves prior behaviour byte-for-byte including the recipe-path/wizard-path conditional difference) per the same 2026-08-26 template-engine contract. 1.9.0 (2026-08-27) added the optional `source.where` (a JSONata row predicate over the raw source row, evaluated before identity/CURIE/concept_cid/render, loud on a non-boolean result, on an unknown field reference, and on admitting zero rows; participates in the recipe hash because it changes which notes exist) per the 2026-08-27 Ch 46 source contract. `source.joins` (optional named secondary collections located inside the same source bytes, indexed by a key expression, binding under an alias that never merges into or shadows the primary row namespace; loud on an undefined, empty or non-scalar key, legitimately empty on no match; participates in the recipe hash for the same reason) landed in the same 1.9.0 step. All existing recipes without these keys continue to validate.",
 
   "$defs": {
     "mechanism": {
@@ -313,6 +313,126 @@
       }
     },
 
+    "source_join": {
+      "type": "object",
+      "title": "Keyed lookup enrichment",
+      "description": "One named secondary collection, indexed by a key expression, whose matched rows bind under the alias on every primary row that matches. Keyed lookup enrichment only, never relational algebra: one primary stream plus N independent bounded indexes, fixed depth, no nested joins. A two-hop join (A to B to C) is deliberately not expressible: hop 2's key would depend on hop 1's result set, which is join composing with join. Denormalize in the producer instead.",
+      "required": [
+        "from",
+        "on",
+        "cardinality"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "object",
+          "title": "Secondary collection",
+          "description": "Where the secondary collection lives, INSIDE THE SAME SOURCE BYTES: another sheet of the same workbook, or a sibling array of the same JSON document. Exactly one of sheet or iterator. A single-collection source such as CSV has no second collection to name and is rejected.",
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "sheet"
+              ]
+            },
+            {
+              "required": [
+                "iterator"
+              ]
+            }
+          ],
+          "properties": {
+            "sheet": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Name of another sheet in the same workbook."
+            },
+            "header_row": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0-based index of the header row on that sheet, skipping banner rows above it. Sheets in one workbook differ in banner depth. Applies to sheet only; declaring it beside iterator is an error rather than a silently ignored key."
+            },
+            "iterator": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Iterator path locating a sibling array of the same JSON document, e.g. $.response.elements.relationships[*]. Same closed grammar as the primary iterator: dotted keys plus [*] fan-out."
+            },
+            "where": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "description": "Optional JSONata predicate over the SECONDARY rows, with exactly the contract of source.where: same restricted subset, must return a boolean, every referenced field must exist in the secondary collection, and admitting zero rows is an error. This is how one shared relationship table is narrowed to a single predicate before it is indexed. Fixed depth: there is no nested joins here."
+            }
+          }
+        },
+        "on": {
+          "type": "object",
+          "title": "Key match",
+          "description": "The key both sides are matched on. Both expressions use the same restricted JSONata subset as source.where and are normalized identically (trimmed string coercion, the same coercion the parsers apply to scalar cells). A composite key is written with &, e.g. `source ID` & '|' & `mapping type`. A key expression that yields nothing, or an empty string, or a non-scalar, is an error naming the row: absence of a RELATION is data, absence of the KEY is a defect.",
+          "required": [
+            "primary",
+            "secondary"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "primary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "description": "Key expression over the primary row, evaluated at lookup time."
+            },
+            "secondary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "description": "Key expression over a secondary row, evaluated once per secondary row at index-build time."
+            }
+          }
+        },
+        "cardinality": {
+          "enum": [
+            "one",
+            "many"
+          ],
+          "title": "Match cardinality",
+          "description": "Required, with no default, because cardinality is an assertion about the data rather than a preference: a default would make a wrong assumption invisible. There is no 'first': silently picking one of several matches would make output depend on source row order. 'one' binds the matched row as an object and is an error if two or more rows match. 'many' binds a LIST OF SCALARS, one per match, in secondary-collection order, and stays a list even when exactly one row matches. In BOTH modes, zero matches leaves the alias absent from the row rather than empty, so {alias.field|optional} handles a miss identically either way."
+        },
+        "select": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "title": "Selected secondary fields",
+          "description": "With cardinality 'one', optional: narrows the bound object to these fields; omitted binds the whole matched row. With cardinality 'many', REQUIRED and must name exactly one field: the list binds that field's value from each match. A list of objects is deliberately not offered because template path traversal does not lift over arrays, and the template grammar is frozen. Every named field must exist somewhere in the secondary collection."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "cardinality": {
+                "const": "many"
+              }
+            },
+            "required": [
+              "cardinality"
+            ]
+          },
+          "then": {
+            "required": [
+              "select"
+            ],
+            "properties": {
+              "select": {
+                "maxItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
     "OntologyRef": {
       "description": "Either an ontology id (e.g. 'nist_csf_2_0') or a CURIE prefix (e.g. 'csf:'). Per Ch 31a query-block schema.",
       "type": "string",
@@ -751,6 +871,50 @@
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 },
           "description": "Ordered sequence of source-level identifiers, outer to inner. The recipe.target.layout array must declare a layout_entry for each level (or fewer, if some levels are flattened by the layout). Examples for NIST 800-53 r5: ['catalog', 'family', 'control', 'enhancement']. For a biology taxonomy: ['domain', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']."
+        },
+        "where": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "title": "Row predicate",
+          "description": "Optional JSONata predicate over one source row. A row for which it is false never becomes a note. MUST evaluate to a boolean; anything else is an error naming the row and the expression, never a silent skip. Every field name it references must exist in the source collection, and a predicate that admits zero rows from a non-empty source is an error. Restricted subset: field references, string/number/true/false/null literals, array literals, the operators = != < <= > >= in and or &, and the functions $not $exists $trim $lowercase $uppercase $string $number. Regular expressions, lambdas and dynamic field access are rejected, so an external producer in another language can reimplement the same predicate exactly. Values are compared as the parser produced them (spreadsheet cells are strings), so numeric intent must be explicit: $number(count) > 5. Runs BEFORE identity, CURIE minting, concept_cid and render(). Participates in the recipe hash because it changes which notes exist. Absent means every row becomes a note (behaviour before SchemaVer 1.9.0).",
+          "examples": [
+            "Subcategory != ''",
+            "$trim(`CIS Safeguard`) != ''",
+            "element_type = 'subcategory'",
+            "$not(element_type in ['sort', 'party'])"
+          ]
+        },
+        "joins": {
+          "type": "object",
+          "title": "Keyed lookup enrichment",
+          "description": "Optional named secondary collections, each indexed by a key expression, whose matched rows become addressable on the primary row under the alias. The object key IS the alias. An alias never merges into the row's own namespace and never shadows a source column: the row gains exactly one new key, so a joined field is reached by the dotted traversal and ['literal key'] quoting that already exist and the template grammar needs no change. Runs AFTER source.where and BEFORE identity, CURIE minting, concept_cid and render(). Participates in the recipe hash because it changes what a row is and therefore what the notes assert. The primary collection is still consumed row by row; only the secondary collection is held in memory. Absent means no secondary collections (behaviour before SchemaVer 1.9.0).",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Alias. Lowercase letters, digits and underscores, starting with a letter, so it is addressable as a bare template segment with no quoting."
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/source_join"
+          },
+          "examples": [
+            {
+              "mitigations": {
+                "from": {
+                  "sheet": "relationships",
+                  "where": "`mapping type` = 'mitigates'"
+                },
+                "on": {
+                  "primary": "ID",
+                  "secondary": "`source ID`"
+                },
+                "cardinality": "many",
+                "select": [
+                  "target ID"
+                ]
+              }
+            }
+          ]
         }
       }
     },

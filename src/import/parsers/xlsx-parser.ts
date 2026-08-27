@@ -59,21 +59,7 @@ export async function parseXLSXFile(file: File, options: XLSXParseOptions = {}):
 	}
 	if (!sheetName) throw new Error('Workbook contains no sheets.');
 
-	const ws = wb.Sheets[sheetName];
-	const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
-		range: options.headerRow ?? 0,
-		defval: '',
-		blankrows: false,
-		raw: false, // formatted text — see header comment
-	});
-
-	const rows: Record<string, string>[] = rawRows.map((r) => {
-		const row: Record<string, string> = {};
-		for (const [k, val] of Object.entries(r)) {
-			row[normKey(k)] = val === null || val === undefined ? '' : String(val).trim();
-		}
-		return row;
-	});
+	const rows = readSheetRows(wb, sheetName, options.headerRow ?? 0);
 
 	// Column order from the first row's keys; union in any stragglers (sparse
 	// sheets can omit trailing empty cells per row).
@@ -88,5 +74,47 @@ export async function parseXLSXFile(file: File, options: XLSXParseOptions = {}):
 		}
 	}
 
-	return { columns, rows, rowCount: rows.length, sheetName };
+	return {
+		columns,
+		rows,
+		rowCount: rows.length,
+		sheetName,
+		// Ch 46 source contract 4.2: `source.joins` locates a secondary
+		// collection in ANOTHER SHEET OF THIS SAME WORKBOOK. The handle is lazy
+		// on purpose: the workbook is re-read only if a join is actually
+		// declared, so an import that declares none pays nothing in retained
+		// memory for the possibility.
+		container: {
+			kind: 'workbook',
+			sheetNames: wb.SheetNames,
+			readSheet: async (sheet: string, headerRow: number) => {
+				const secondaryWorkbook = await readWorkbook(file);
+				return readSheetRows(secondaryWorkbook, sheet, headerRow);
+			},
+		},
+	};
+}
+
+/**
+ * One sheet to rows, with the workbook contract this file exists to hold:
+ * `raw: false` formatted-text fidelity and header-key normalization. Shared by
+ * the primary parse and by a `source.joins` secondary read so both sides of a
+ * join see cells the same way.
+ */
+function readSheetRows(wb: XLSX.WorkBook, sheetName: string, headerRow: number): Record<string, string>[] {
+	const ws = wb.Sheets[sheetName];
+	if (!ws) throw new Error(`Sheet "${sheetName}" not found. Available sheets: ${wb.SheetNames.join(', ')}`);
+	const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+		range: headerRow,
+		defval: '',
+		blankrows: false,
+		raw: false, // formatted text — see header comment
+	});
+	return rawRows.map((r) => {
+		const row: Record<string, string> = {};
+		for (const [k, val] of Object.entries(r)) {
+			row[normKey(k)] = val === null || val === undefined ? '' : String(val).trim();
+		}
+		return row;
+	});
 }

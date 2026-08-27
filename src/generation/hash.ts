@@ -257,6 +257,24 @@ export interface EffectiveRecipeTarget {
 }
 
 /**
+ * The `recipe.source` fields hashed into `_crosswalker.recipe.hash` — the
+ * source-shaping declarations (Ch 46 source contract §8).
+ *
+ * `recipe.source` as a whole is still excluded as informational; only the
+ * declarations that change WHICH NOTES EXIST enter the hash. `ontology`,
+ * `version` and `levels` stay out: renaming an ontology does not change what
+ * the recipe produces.
+ *
+ * `joins` enters for the same reason: it changes what a row IS, and therefore
+ * what the notes assert. `canonicalStringify` drops undefined-valued keys, so a
+ * recipe declaring neither hashes byte-identically to its pre-1.9.0 self.
+ */
+export interface EffectiveRecipeSource {
+	where?: unknown;
+	joins?: unknown;
+}
+
+/**
  * Compute `_crosswalker.recipe.hash`.
  *
  * LOAD-BEARING FIELD-SET DEFINITION — this is what "the same recipe" means
@@ -277,10 +295,18 @@ export interface EffectiveRecipeTarget {
  *                    (schema SchemaVer 1.8.0). It materially changes emitted
  *                    body text, so it belongs here.
  *
+ * ...plus the source-shaping declarations of `recipe.source` (SchemaVer
+ * 1.9.0, Ch 46 source contract §8):
+ *
+ *   - `source.where` — the row predicate. It changes WHICH NOTES EXIST, which
+ *                    is exactly what this hash is supposed to track.
+ *   - `source.joins` — keyed lookup enrichment. It changes what a row IS, so
+ *                    a note's content and its concept_cid depend on it.
+ *
  * Deliberately EXCLUDED:
- *   - `recipe.recipe` (the id/name) and `recipe.source` — informational,
- *     renaming a recipe without touching its target doesn't change what it
- *     produces.
+ *   - `recipe.recipe` (the id/name) and the rest of `recipe.source`
+ *     (`ontology`, `version`, `levels`) — informational, renaming a recipe or
+ *     its ontology without touching what it produces doesn't change the hash.
  *   - `graph_edges` and `linkStyle` — both schema-reserved and unwired in
  *     v0.1 (render() never reads them; see src/render/index.ts's Recipe
  *     type comments). Add them here the moment either starts affecting
@@ -289,8 +315,18 @@ export interface EffectiveRecipeTarget {
  *   - Anything session-specific — a Recipe object has no wall-clock or
  *     run-specific fields to begin with.
  */
-export function computeRecipeHash(target: EffectiveRecipeTarget): string {
-	const canonical = canonicalStringify({
+export function computeRecipeHash(target: EffectiveRecipeTarget, source?: EffectiveRecipeSource): string {
+	return toSha256Cid(sha256Hex(recipeHashCanonicalInput(target, source)));
+}
+
+/**
+ * The canonical string `computeRecipeHash` digests. Exported so the
+ * byte-identical guarantee can be asserted on the STRING, not just on the
+ * digest (acceptance case A2) — a test that only compares digests cannot tell
+ * you why they diverged. The field set lives here, once.
+ */
+export function recipeHashCanonicalInput(target: EffectiveRecipeTarget, source?: EffectiveRecipeSource): string {
+	return canonicalStringify({
 		layout: target.layout,
 		also_emit: target.also_emit ?? null,
 		enrichment: target.enrichment ?? null,
@@ -301,6 +337,12 @@ export function computeRecipeHash(target: EffectiveRecipeTarget): string {
 		// already-written _crosswalker.recipe.hash, and make every existing
 		// generated note look recipe-drifted on its next re-import.
 		auto_heading: target.auto_heading,
+		// Same rule, same reason (Ch 46 source contract §8). Source shaping
+		// changes WHICH NOTES EXIST, so it must enter the hash — but a recipe
+		// that declares none must hash byte-identically to its pre-1.9.0 self,
+		// down to the canonical string. NEVER `?? null` here.
+		// tests/source-hash-stability.test.ts pins all 13 shipped recipes.
+		source_where: source?.where,
+		source_joins: source?.joins,
 	});
-	return toSha256Cid(sha256Hex(canonical));
 }

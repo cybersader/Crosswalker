@@ -71,7 +71,71 @@ function prepareForCodegen(schema: SchemaObject, filename: string): SchemaObject
 	delete layout.properties;
 	delete layout.allOf;
 
+	expandSourceJoinForCodegen(defs);
+
 	return prepared;
+}
+
+/**
+ * Same treatment, same reason, for $defs/source_join: its `if cardinality=many
+ * then select is required and has exactly one item` collapses to `unknown` in
+ * json-schema-to-typescript, which would erase the whole join surface from the
+ * generated types. Expand it into the equivalent two-way oneOf so TypeScript
+ * sees the discriminated union the JSON Schema semantics already describe.
+ * Runtime validation still uses the canonical schema unchanged.
+ */
+function expandSourceJoinForCodegen(defs: SchemaObject | undefined): void {
+	const join = defs?.source_join as SchemaObject | undefined;
+	if (!join?.properties || !join.allOf) {
+		throw new Error('recipe.schema.json source_join shape changed; update codegen adapter.');
+	}
+	const properties = join.properties as SchemaObject;
+	const required = join.required as string[];
+
+	// `from`'s own `oneOf: [required sheet | required iterator]` collapses the
+	// same way. Expanding it also lets the generated type carry the runtime rule
+	// that header_row belongs to a sheet and never to an iterator.
+	const from = properties.from as SchemaObject;
+	const fromProps = from.properties as SchemaObject;
+	from.oneOf = [
+		{
+			type: 'object',
+			title: 'Secondary sheet',
+			required: ['sheet'],
+			additionalProperties: false,
+			properties: { sheet: fromProps.sheet, header_row: fromProps.header_row, where: fromProps.where },
+		},
+		{
+			type: 'object',
+			title: 'Secondary iterator',
+			required: ['iterator'],
+			additionalProperties: false,
+			properties: { iterator: fromProps.iterator, where: fromProps.where },
+		},
+	];
+	delete from.type;
+	delete from.additionalProperties;
+	delete from.properties;
+
+	const variant = (cardinality: 'one' | 'many'): SchemaObject => {
+		const props = JSON.parse(JSON.stringify(properties)) as SchemaObject;
+		props.cardinality = { type: 'string', const: cardinality };
+		if (cardinality === 'many') props.select = { ...(props.select as SchemaObject), maxItems: 1 };
+		return {
+			type: 'object',
+			title: cardinality === 'one' ? 'Single-match join' : 'Multi-match join',
+			required: cardinality === 'many' ? [...required, 'select'] : [...required],
+			additionalProperties: false,
+			properties: props,
+		};
+	};
+
+	join.oneOf = [variant('one'), variant('many')];
+	delete join.type;
+	delete join.required;
+	delete join.additionalProperties;
+	delete join.properties;
+	delete join.allOf;
 }
 
 /** Fail generation if contract-critical recipe surfaces disappear from output. */
@@ -95,6 +159,10 @@ function assertRecipeTypeCoverage(ts: string): void {
 		'query?: QueryBlock;',
 		'graph_edges?: GraphEdge[];',
 		"linkStyle?: 'absolute' | 'shortest';",
+		'where?: RowPredicate;',
+		'joins?: KeyedLookupEnrichment;',
+		"cardinality: 'one'",
+		"cardinality: 'many'",
 	];
 	const missing = required.filter((needle) => !ts.includes(needle));
 	if (missing.length > 0) {

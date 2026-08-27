@@ -58,7 +58,37 @@ export interface Recipe {
 		description?: string;
 		based_on?: { recipe: string; hash?: string; spec_version?: string };
 	};
-	source?: { ontology?: string; version?: string; levels?: string[] };
+	source?: {
+		ontology?: string;
+		version?: string;
+		levels?: string[];
+		/**
+		 * Optional JSONata row predicate (schema SchemaVer 1.9.0, Ch 46 source
+		 * contract §3). A row for which it is false never becomes a note. Runs
+		 * BEFORE identity, curie minting, concept_cid and render(), and enters
+		 * the recipe hash because it changes which notes exist. render() itself
+		 * never reads it: by the time render() runs, the row already survived.
+		 */
+		where?: string;
+		/**
+		 * Optional keyed lookup enrichment (schema SchemaVer 1.9.0, Ch 46 source
+		 * contract 4). Each alias names a secondary collection inside the SAME
+		 * source bytes, indexed by a key expression; a matching row binds under
+		 * the alias and nowhere else. Runs after `where`, before identity, and
+		 * enters the recipe hash for the same reason `where` does.
+		 *
+		 * render() needs no knowledge of it: by the time render() runs the alias
+		 * is an ordinary nested value on the row, reached by traversal that
+		 * already existed. That is the whole point of the no-merge collision
+		 * policy.
+		 */
+		joins?: Record<string, {
+			from: { sheet?: string; header_row?: number; iterator?: string; where?: string };
+			on: { primary: string; secondary: string };
+			cardinality: 'one' | 'many';
+			select?: string[];
+		}>;
+	};
 	target: {
 		layout: Array<{
 			level: string;
