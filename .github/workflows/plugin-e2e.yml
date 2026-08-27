@@ -1,0 +1,94 @@
+# Deliberately manual-only and temporary. Nobody has yet proved this Electron
+# lane on a GitHub-hosted runner; making an unproven runner blocking would teach
+# maintainers to ignore a red check. After one hosted workflow_dispatch run
+# passes, promote the smoke job to the adopted PR/main blocking trigger model.
+name: Plugin E2E smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # These values mirror wdio.conf.mts and are part of the Obsidian download
+  # cache identity together with runner OS and the dependency lockfile.
+  OBSIDIAN_APP_VERSION: latest
+  OBSIDIAN_INSTALLER_VERSION: earliest
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Cache Obsidian downloads
+        uses: actions/cache@v4
+        with:
+          path: .obsidian-cache
+          key: >-
+            obsidian-${{ runner.os }}-app-${{ env.OBSIDIAN_APP_VERSION }}-installer-${{ env.OBSIDIAN_INSTALLER_VERSION }}-${{ hashFiles('bun.lock') }}
+
+      # wdio-obsidian-service's sample CI uses Xvfb plus a real window manager.
+      # Electron sometimes launches under bare Xvfb, but Obsidian UI behavior is
+      # not reliable without the window manager, so keep both pieces.
+      - name: Setup virtual graphics
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -q xvfb herbstluftwm dzen2 x11-xserver-utils
+          echo 'DISPLAY=:99' >> "$GITHUB_ENV"
+          Xvfb :99 -screen 0 1280x1024x24 +extension GLX -noreset > /tmp/xvfb.log 2>&1 &
+          sleep 1
+          DISPLAY=:99 herbstluftwm > /tmp/herbstluftwm.log 2>&1 &
+          sleep 1
+
+      # wdio.conf.mts builds the exact plugin distribution installed into the
+      # sandbox. tee keeps a diagnostic log while pipefail preserves WDIO's exit.
+      - name: Run vertical smoke journey
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p .e2e-artifacts
+          bun run e2e -- --spec tests/e2e/smoke-ci.spec.ts 2>&1 | tee .e2e-artifacts/wdio.log
+
+      - name: Collect display logs on failure
+        if: failure()
+        run: |
+          mkdir -p .e2e-artifacts
+          cp /tmp/xvfb.log /tmp/herbstluftwm.log .e2e-artifacts/ 2>/dev/null || true
+
+      - name: Upload E2E diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-e2e-failure-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            test-screenshots/
+            test-results/
+            .e2e-artifacts/
+            main.js
+            manifest.json
+            styles.css
+            sqlite3.mjs
+            sqlite3.wasm
