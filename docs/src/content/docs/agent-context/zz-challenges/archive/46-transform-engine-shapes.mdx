@@ -10,8 +10,14 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="note" title="Framing pass settled 2026-08-27">
-The placement and language questions are settled in the [framing synthesis](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/), informed by the [transformation-language prior-art survey](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-a-transformation-prior-art/) and [transformation-placement survey](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-b-transformation-placement/). Challenge 46 remains active: concrete grammar, migration path, worked examples, and the non-breaking-extension proof are still open.
+<Aside type="tip" title="Resolved 2026-08-27">
+This challenge ran, was framed, and shipped, all on 2026-08-27. Read the two pre-read deliverables ([transformation-language prior art](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-a-transformation-prior-art/), [transformation placement](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-b-transformation-placement/)) for the survey work, the [framing synthesis](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/) for where transformation belongs and which language, and the [delivery record](/crosswalker/agent-context/zz-log/2026-08-27-source-contract-delivered/) for what shipped, what it proved, and what it deliberately does not solve. All six success criteria below are met.
+
+**Headline:** transformation is not one thing, so it does not get one home. Value-shaping stays in templates, which already ship it; deciding which rows exist and what a row is extends the source contract through optional `source.where` and `source.joins`. Five previously-blocked recipes now read their own unmodified source files.
+
+**The most reusable thing this challenge produced was not the feature.** The pre-committed loudness rule did not work as written: measured against jsonata 2.2.2, a misspelled column in `Typo != ''` returns boolean `false` rather than `undefined`, because comparison operators absorb undefined operands. The strict-boolean check passed and every row silently dropped. Three guards replaced it, on the principle that **absence of a field on a row is data, absence from the collection is a defect**. See the [delivery record](/crosswalker/agent-context/zz-log/2026-08-27-source-contract-delivered/).
+
+**Re-run this brief if** the single-workbook boundary stops holding — a source needs cross-file joins, import-time aggregation, or recursive graph expansion inside the bundled engine rather than at a producer.
 </Aside>
 
 ## Why this exists

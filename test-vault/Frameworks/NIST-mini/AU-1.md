@@ -26,6 +26,7 @@ _crosswalker:
     id: nist-mini-fixture-flat
     hash: (synthetic — no real recipe)
 ---
+<!-- crosswalker:body:start v=1 -->
 # Policy and Procedures
 
 ## Description
@@ -35,3 +36,4 @@ Develop, document, and disseminate audit and accountability policy and procedure
 ## Context
 
 - Family: AU — Audit and Accountability
+<!-- crosswalker:body:end -->

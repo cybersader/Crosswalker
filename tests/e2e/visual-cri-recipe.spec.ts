@@ -253,9 +253,22 @@ describe('Visual — the CRI Profile v2.2 recipe (restricted source)', function 
 			const proseNotVerbatim: string[] = [];
 			const sectionBodyEmpty: string[] = [];
 			const headingNotFirstLine: string[] = [];
+			const missingRegion: string[] = [];
 			const headingNotThePath: string[] = [];
 			const bodyCharacterCounts: number[] = [];
 
+			// The note body now opens with the managed-region boundary (2026-08-27
+			// managed body regions). Structural claims about "the first line" are
+			// claims about the first line INSIDE the region, so read through it.
+			// Falls back to the raw body when no region is present, so a note that
+			// somehow lost its boundary is still checked rather than skipped.
+			const regionOf = (text: string): string => {
+				const s = text.indexOf('<!-- crosswalker:body:start');
+				const e = text.indexOf('<!-- crosswalker:body:end -->');
+				if (s === -1 || e === -1) return text;
+				const nl = text.indexOf('\n', s);
+				return nl === -1 ? text : text.slice(nl + 1, e);
+			};
 			for (const row of args.rows) {
 				const notePath = `${args.destination}/${row.id}.md`;
 				const file = app.vault.getAbstractFileByPath(notePath);
@@ -272,7 +285,8 @@ describe('Visual — the CRI Profile v2.2 recipe (restricted source)', function 
 				if (!normalizeEol(body).includes(normalizeEol(row.prose))) proseNotVerbatim.push(notePath);
 				// auto_heading proof, by structure not content: line 1 is an H1 and its text equals
 				// the source path column. Only the boolean result is retained.
-				const firstLine = body.split('\n')[0];
+				if (body.indexOf('<!-- crosswalker:body:start') === -1) missingRegion.push(notePath);
+				const firstLine = regionOf(body).split('\n')[0];
 				if (!firstLine.startsWith('# ')) headingNotFirstLine.push(notePath);
 				if (firstLine.slice(2).trim() !== normalizeEol(row.pathText).trim()) headingNotThePath.push(notePath);
 				bodyCharacterCounts.push(body.length);
@@ -296,7 +310,7 @@ describe('Visual — the CRI Profile v2.2 recipe (restricted source)', function 
 
 			return {
 				missingFiles, emptyBodies, missingProseSection, proseNotVerbatim, sectionBodyEmpty,
-				headingNotFirstLine, headingNotThePath, dsMissingTier, nonDsHasTier,
+				headingNotFirstLine, headingNotThePath, missingRegion, dsMissingTier, nonDsHasTier,
 				bodyCharacterMin: bodyCharacterCounts.length ? Math.min(...bodyCharacterCounts) : 0,
 			};
 		}, {
@@ -319,6 +333,7 @@ describe('Visual — the CRI Profile v2.2 recipe (restricted source)', function 
 		expect(proof.proseNotVerbatim).toEqual([]);
 		// auto_heading: every note opens on an H1 whose text is the source path.
 		expect(proof.headingNotFirstLine).toEqual([]);
+		expect(proof.missingRegion).toEqual([]);
 		expect(proof.headingNotThePath).toEqual([]);
 		expect(proof.dsMissingTier).toEqual([]);
 		expect(proof.nonDsHasTier).toEqual([]);

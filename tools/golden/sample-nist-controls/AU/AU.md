@@ -22,7 +22,7 @@ _crosswalker:
 
 # AU
 
-<!-- crosswalker:children:start -->
+<!-- crosswalker:children:start v=1 -->
 ## Contents
 - [[AU-1]]
 - [[AU-2]]

@@ -24,7 +24,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { render, renderTemplate, type Recipe } from '../src/render';
-import { jsonToRows, parseWhere, applyWhere } from './lib/json-source';
+import { wrapManagedBody } from '../src/generation/managed-body';
+import { jsonToRows } from './lib/json-source';
+import { prepareSourceStage, shorthandToSourceExpression, SourceStageError } from '../src/source';
 import { extractTier1Curie, isTier1CuriePrefix } from '../src/validation/validator';
 
 interface Args {
@@ -253,7 +255,7 @@ function readXlsx(absPath: string, sheet: string | undefined, headerRow: number)
  * survive so recipe templates can use dotted paths
  * ({external_references.0.external_id}).
  */
-function readJson(absPath: string, iterator: string | undefined, where: string | undefined): CsvRow[] {
+function readJson(absPath: string, iterator: string | undefined): CsvRow[] {
 	if (!existsSync(absPath)) {
 		console.error(`Source JSON not found: ${absPath}`);
 		process.exit(1);
@@ -261,16 +263,13 @@ function readJson(absPath: string, iterator: string | undefined, where: string |
 	const text = readFileSync(absPath, 'utf8');
 	let result;
 	try {
-		result = jsonToRows(text, iterator, where);
+		result = jsonToRows(text, iterator);
 	} catch (e) {
 		console.error(`JSON source error: ${(e as Error).message}`);
 		process.exit(1);
 	}
 	if (result.skippedNonObjects > 0) {
 		console.warn(`  skipped:  ${result.skippedNonObjects} non-object item(s) yielded by the iterator`);
-	}
-	if (result.filteredOut > 0) {
-		console.log(`  filtered: ${result.filteredOut} row(s) excluded by --where "${where}"`);
 	}
 	// Top-level scalars are strings (coerced above); nested values intentionally
 	// remain objects/arrays for dotted template access — CsvRow's index signature
@@ -279,27 +278,55 @@ function readJson(absPath: string, iterator: string | undefined, where: string |
 }
 
 /** Dispatch on file extension: .xlsx/.xls -> workbook reader, .json -> iterator reader, else CSV. */
-function readSource(absPath: string, args: Args): CsvRow[] {
+async function readSource(absPath: string, args: Args): Promise<CsvRow[]> {
 	const lower = absPath.toLowerCase();
-	if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-		return applyWhereToRows(readXlsx(absPath, args.sheet, args.headerRow), args.where);
-	}
-	if (lower.endsWith('.json')) {
-		// readJson applies --where itself (inside jsonToRows, pre-coercion).
-		return readJson(absPath, args.iterator, args.where);
-	}
-	return applyWhereToRows(readCsv(absPath), args.where);
+	const rows = lower.endsWith('.xlsx') || lower.endsWith('.xls')
+		? readXlsx(absPath, args.sheet, args.headerRow)
+		: lower.endsWith('.json')
+			? readJson(absPath, args.iterator)
+			: readCsv(absPath);
+	return applyWhereToRows(rows, args.where);
 }
 
-/** `--where` is format-agnostic row filtering — apply it to flat-table readers
- *  (CSV/XLSX) too, e.g. selecting CIS control-level rows ('CIS Safeguard=' →
- *  rows where the safeguard cell is empty). The JSON path filters pre-coercion
- *  inside jsonToRows; here rows are already flat string maps. */
-function applyWhereToRows(rows: CsvRow[], where: string | undefined): CsvRow[] {
+/**
+ * `--where` runs through the SAME predicate the plugin runs (`source.where`),
+ * translated from the comma shorthand by `src/source/shorthand.ts`.
+ *
+ * Before 2026-08-27 this tool and the plugin each carried their own silent
+ * filter: a typo'd column returned zero rows (`=`) or every row (`!=`) with no
+ * diagnostic. Repointed here so there is ONE contract, guarded by G1 (strict
+ * boolean), G2 (referenced names must exist) and G3 (a predicate that admits
+ * nothing is an error). A filter naming a column the source does not have now
+ * fails loudly instead of quietly producing the wrong fixture.
+ */
+async function applyWhereToRows(rows: CsvRow[], where: string | undefined): Promise<CsvRow[]> {
 	if (!where) return rows;
-	const kept = applyWhere(rows, parseWhere(where)) as CsvRow[];
-	if (kept.length !== rows.length) {
-		console.log(`  filtered: ${rows.length - kept.length} row(s) excluded by --where "${where}"`);
+	let expression: string | undefined;
+	try {
+		expression = shorthandToSourceExpression(where);
+	} catch (e) {
+		console.error(`--where: ${(e as Error).message}`);
+		process.exit(1);
+	}
+	if (!expression) return rows;
+	const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+	const kept: CsvRow[] = [];
+	try {
+		const stage = await prepareSourceStage(
+			{ columns, rows: rows as unknown as Record<string, unknown>[], rowCount: rows.length },
+			{ where: expression },
+		);
+		for await (const row of stage.rows as AsyncIterable<Record<string, unknown>>) {
+			kept.push(row as unknown as CsvRow);
+		}
+		stage.finalize();
+		if (stage.excludedCount > 0) {
+			console.log(`  filtered: ${stage.excludedCount} row(s) excluded by --where "${where}"`);
+		}
+	} catch (e) {
+		const detail = e instanceof SourceStageError ? e.message : (e as Error).message;
+		console.error(`--where failed: ${detail}`);
+		process.exit(1);
 	}
 	return kept;
 }
@@ -425,7 +452,7 @@ function buildBody(row: CsvRow, frontmatter: Record<string, unknown>): string {
 	return lines.join('\n');
 }
 
-function main(): void {
+async function main(): Promise<void> {
 	const args = parseArgs(process.argv.slice(2));
 
 	const sourceAbs = resolve(REPO_ROOT, args.source);
@@ -451,7 +478,7 @@ function main(): void {
 
 	mkdirSync(targetAbs, { recursive: true });
 
-	const rows = readSource(sourceAbs, args);
+	const rows = await readSource(sourceAbs, args);
 	// Column mapping (config-driven ingestion hook): alias a real framework's
 	// columns onto the canonical roles the generator expects, without hard-coding.
 	// e.g. 800-53's `identifier`/`control_text` -> `id`/`description`. This map is
@@ -511,7 +538,9 @@ function main(): void {
 			const outPath = join(targetAbs, address.primary.path);
 			mkdirSync(dirname(outPath), { recursive: true });
 			const title = String(fm.title ?? curie);
-			writeFileSync(outPath, frontmatterToYaml(fm) + `# ${title}\n`);
+			// Same envelope the engine writes, so a fixture is a note the engine
+			// would recognise and safely re-import.
+			writeFileSync(outPath, frontmatterToYaml(fm) + wrapManagedBody(`# ${title}\n`));
 			written++;
 		}
 		if (skipped > 0) console.log(`  skipped:  ${skipped} rows (no id / unrenderable)`);
@@ -527,7 +556,7 @@ function main(): void {
 			const filename = `${slugifyForFilesystem(id)}.md`;
 			const outPath = join(targetAbs, filename);
 			mkdirSync(dirname(outPath), { recursive: true });
-			writeFileSync(outPath, frontmatterToYaml(fm) + body);
+			writeFileSync(outPath, frontmatterToYaml(fm) + wrapManagedBody(body));
 			written++;
 		}
 	}
@@ -556,4 +585,4 @@ function main(): void {
 	console.log(`  done.`);
 }
 
-main();
+void main();

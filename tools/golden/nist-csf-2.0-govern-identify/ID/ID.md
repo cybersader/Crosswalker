@@ -18,9 +18,11 @@ _crosswalker:
   concept_cid: sha256-2ef8563594149e75a2f8dba75fe66f5f314c61b5d67d226ecb35dbb0006cc3c8
 ---
 
+<!-- crosswalker:body:start v=1 -->
 # nist-csf-2-0-govern-identify:ID
+<!-- crosswalker:body:end -->
 
-<!-- crosswalker:children:start -->
+<!-- crosswalker:children:start v=1 -->
 ## Contents
 - [[ID.AM]]
 - [[ID.AM-01]]

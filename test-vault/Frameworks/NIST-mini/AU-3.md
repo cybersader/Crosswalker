@@ -26,6 +26,7 @@ _crosswalker:
     id: nist-mini-fixture-flat
     hash: (synthetic — no real recipe)
 ---
+<!-- crosswalker:body:start v=1 -->
 # Content of Audit Records
 
 ## Description
@@ -35,3 +36,4 @@ Ensure that audit records contain information that establishes what type of even
 ## Context
 
 - Family: AU — Audit and Accountability
+<!-- crosswalker:body:end -->

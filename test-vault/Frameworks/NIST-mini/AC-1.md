@@ -26,6 +26,7 @@ _crosswalker:
     id: nist-mini-fixture-flat
     hash: (synthetic — no real recipe)
 ---
+<!-- crosswalker:body:start v=1 -->
 # Policy and Procedures
 
 ## Description
@@ -35,3 +36,4 @@ Develop, document, and disseminate access control policy and procedures to facil
 ## Context
 
 - Family: AC — Access Control
+<!-- crosswalker:body:end -->

@@ -16,4 +16,6 @@ _crosswalker:
   concept_cid: sha256-30d91215ede4abbe41f54901c15912859a7d455e5504bc4e19228f0f453e9bbd
 ---
 
+<!-- crosswalker:body:start v=1 -->
 # nist-csf-2-0-govern-identify:ID.RA-01
+<!-- crosswalker:body:end -->

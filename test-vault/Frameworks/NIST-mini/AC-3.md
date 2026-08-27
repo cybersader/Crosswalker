@@ -26,6 +26,7 @@ _crosswalker:
     id: nist-mini-fixture-flat
     hash: (synthetic — no real recipe)
 ---
+<!-- crosswalker:body:start v=1 -->
 # Access Enforcement
 
 ## Description
@@ -35,3 +36,4 @@ Enforce approved authorizations for logical access to information and system res
 ## Context
 
 - Family: AC — Access Control
+<!-- crosswalker:body:end -->

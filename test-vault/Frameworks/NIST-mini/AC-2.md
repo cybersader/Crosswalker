@@ -26,6 +26,7 @@ _crosswalker:
     id: nist-mini-fixture-flat
     hash: (synthetic — no real recipe)
 ---
+<!-- crosswalker:body:start v=1 -->
 # Account Management
 
 ## Description
@@ -35,3 +36,4 @@ Define and document the types of accounts allowed and prohibited by the system; 
 ## Context
 
 - Family: AC — Access Control
+<!-- crosswalker:body:end -->

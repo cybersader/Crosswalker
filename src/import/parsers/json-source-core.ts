@@ -139,68 +139,12 @@ export function toSourceRows(items: unknown[]): JsonRowsResult {
 	return { rows, skippedNonObjects };
 }
 
-export interface WhereClause {
-	path: string;
-	value: string;
-	negate: boolean;
-}
-
-/**
- * Parse `--where "type=attack-pattern,revoked!=true"` — comma-separated
- * clauses ANDed together; each is `<dotted.path>=<value>` or
- * `<dotted.path>!=<value>`. Values are compared as strings (rows are
- * coerced). A missing field never `=`-matches, and always `!=`-matches —
- * so `revoked!=true` keeps rows where `revoked` is absent OR "false".
- */
-export function parseWhere(spec: string): WhereClause[] {
-	const clauses: WhereClause[] = [];
-	for (const part of spec.split(',')) {
-		const clause = part.trim();
-		if (!clause) continue;
-		const negIdx = clause.indexOf('!=');
-		const eqIdx = clause.indexOf('=');
-		if (negIdx >= 0 && (eqIdx === -1 || negIdx <= eqIdx)) {
-			clauses.push({ path: clause.slice(0, negIdx).trim(), value: clause.slice(negIdx + 2).trim(), negate: true });
-		} else if (eqIdx > 0) {
-			clauses.push({ path: clause.slice(0, eqIdx).trim(), value: clause.slice(eqIdx + 1).trim(), negate: false });
-		} else {
-			throw new Error(`Malformed --where clause "${clause}" — expected <path>=<value> or <path>!=<value>.`);
-		}
-		const added = clauses[clauses.length - 1];
-		if (!added.path) throw new Error(`Malformed --where clause "${clause}" — empty path.`);
-	}
-	return clauses;
-}
-
-function resolveDotted(row: Record<string, unknown>, path: string): unknown {
-	let v: unknown = row;
-	for (const seg of path.split('.')) {
-		if (v === null || v === undefined || typeof v !== 'object') return undefined;
-		v = (v as Record<string, unknown>)[seg];
-	}
-	return v;
-}
-
-export function applyWhere(
-	rows: Array<Record<string, unknown>>,
-	clauses: WhereClause[],
-): Array<Record<string, unknown>> {
-	if (clauses.length === 0) return rows;
-	return rows.filter((row) =>
-		clauses.every((c) => {
-			const v = resolveDotted(row, c.path);
-			const matches = v !== undefined && v !== null && String(v) === c.value;
-			return c.negate ? !matches : matches;
-		}),
-	);
-}
-
 /**
  * Parse a JSON source document into rows. When `iterator` is omitted: a
  * top-level array iterates directly (the degenerate case); a top-level
  * object throws with its keys listed, prompting an explicit --iterator.
  */
-export function jsonToRows(jsonText: string, iterator?: string, where?: string): JsonRowsResult & { filteredOut: number } {
+export function jsonToRows(jsonText: string, iterator?: string): JsonRowsResult {
 	const root: unknown = JSON.parse(jsonText);
 	let effective = iterator?.trim();
 	if (!effective) {
@@ -214,8 +158,5 @@ export function jsonToRows(jsonText: string, iterator?: string, where?: string):
 		}
 	}
 	const items = iterateJsonPath(root, effective);
-	const { rows, skippedNonObjects } = toSourceRows(items);
-	const clauses = where ? parseWhere(where) : [];
-	const filtered = applyWhere(rows, clauses);
-	return { rows: filtered, skippedNonObjects, filteredOut: rows.length - filtered.length };
+	return toSourceRows(items);
 }

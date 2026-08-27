@@ -23,7 +23,7 @@ _crosswalker:
 
 # mitre-attack-persistence-subset
 
-<!-- crosswalker:children:start -->
+<!-- crosswalker:children:start v=1 -->
 ## Contents
 - [[T1078]]
 - [[T1098]]

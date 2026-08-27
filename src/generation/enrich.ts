@@ -71,6 +71,7 @@
  * result (move files, patch parents, write hubs) through the vault/merge path.
  */
 
+import { replaceRegion, scanRegions, wrapRegion } from './managed-body';
 import type { RecipeEnrichment } from '../render';
 import type { FacetMembership } from '../import/mapping/facets';
 
@@ -794,8 +795,20 @@ export function mergeHubBody(existingBody: string, freshBody: string): string {
 // Level-hub managed body sections + the Waypoint marker (re-import safety)
 // ---------------------------------------------------------------------------
 
-const CHILDREN_SECTION_START = '<!-- crosswalker:children:start -->';
-const CHILDREN_SECTION_END = '<!-- crosswalker:children:end -->';
+/**
+ * The `children` region: Pass 1.5's half of the managed-body contract
+ * (src/generation/managed-body.ts). Different writer, different time, different
+ * inputs from the `body` region — Pass 1.5 runs after the whole stream and has
+ * no row scope, so it cannot re-render `body`; the row write does not yet know
+ * the children, so it cannot render `children`. One region would force one of
+ * them to reconstruct the other by parsing it back out, which is exactly the
+ * guess the design removes.
+ *
+ * These markers shipped in v0.1.6 WITHOUT a version stamp. `v=` absent means
+ * v=1 under the closed grammar, so every already-generated note in every real
+ * vault is a valid v1 region with zero migration; emission adds `v=1` from now
+ * on.
+ */
 
 /**
  * Build a level hub's managed "Contents" section: a heading + a bullet list of
@@ -818,13 +831,12 @@ export function buildManagedChildrenSection(
 	extraGroups: { label: string; links: string[] }[] = [],
 ): string {
 	const list = links.length > 0 ? links.map((l) => `- ${l}`).join('\n') : '*(nothing yet)*';
-	let out = `${CHILDREN_SECTION_START}\n## ${heading}\n${list}\n`;
+	let inner = `## ${heading}\n${list}\n`;
 	for (const g of extraGroups) {
 		if (g.links.length === 0) continue;
-		out += `\n**${g.label}:**\n${g.links.map((l) => `- ${l}`).join('\n')}\n`;
+		inner += `\n**${g.label}:**\n${g.links.map((l) => `- ${l}`).join('\n')}\n`;
 	}
-	out += `${CHILDREN_SECTION_END}\n`;
-	return out;
+	return `${wrapRegion('children', inner)}\n`;
 }
 
 /**
@@ -838,27 +850,23 @@ export function buildManagedChildrenSection(
  * still applies via the caller; this function only handles the block itself).
  */
 export function mergeManagedChildrenSection(existingBody: string, freshSection: string): string {
-	// Leading blank lines carry no meaning (e.g. `stripFrontmatterBlock` always
-	// leaves one — the blank-line separator `buildNoteContent` puts between the
-	// closing `---` and the body) — strip them so a merge never drifts the
-	// body's leading whitespace across successive re-imports.
+	const block = freshSection.replace(/\n+$/, '');
+	const scan = scanRegions(existingBody);
+	if (scan.ok && scan.spans.length > 0) {
+		// Byte-preserving: everything outside the region keeps its exact bytes —
+		// line endings, trailing whitespace, blank-line runs. Since 2026-08-27 this
+		// function also runs over bodies that carry a `body` region and the user's
+		// own prose, so normalising here would silently rewrite a user's file.
+		return replaceRegion(existingBody, scan.spans, 'children', block);
+	}
+	// No regions at all (an unmarked legacy hub), or markers this build cannot
+	// read. Append rather than guess. Leading blank lines carry no meaning here
+	// (the blank-line separator `buildNoteContent` puts between the closing `---`
+	// and the body), so a merge never drifts the leading whitespace across
+	// successive re-imports.
 	const normalized = existingBody.replace(/\r\n/g, '\n').replace(/^\n+/, '');
-	const startIdx = normalized.indexOf(CHILDREN_SECTION_START);
-	if (startIdx === -1) {
-		const trimmed = normalized.replace(/\n+$/, '');
-		return trimmed ? `${trimmed}\n\n${freshSection}` : freshSection;
-	}
-	const endIdx = normalized.indexOf(CHILDREN_SECTION_END, startIdx);
-	if (endIdx === -1) {
-		// Malformed (a start marker with no matching end) — treat as no managed
-		// block rather than guess where it should have ended.
-		const trimmed = normalized.replace(/\n+$/, '');
-		return `${trimmed}\n\n${freshSection}`;
-	}
-	const before = normalized.slice(0, startIdx).replace(/\n+$/, '');
-	const after = normalized.slice(endIdx + CHILDREN_SECTION_END.length).replace(/^\n+/, '');
-	const rebuilt = before ? `${before}\n\n${freshSection}` : freshSection;
-	return after ? `${rebuilt}\n${after}` : rebuilt;
+	const trimmed = normalized.replace(/\n+$/, '');
+	return trimmed ? `${trimmed}\n\n${freshSection}` : freshSection;
 }
 
 /**

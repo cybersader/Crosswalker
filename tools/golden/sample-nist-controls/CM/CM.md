@@ -21,7 +21,7 @@ _crosswalker:
 
 # CM
 
-<!-- crosswalker:children:start -->
+<!-- crosswalker:children:start v=1 -->
 ## Contents
 - [[CM-1]]
 - [[CM-2]]

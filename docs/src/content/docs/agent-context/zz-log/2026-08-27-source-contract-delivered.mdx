@@ -1,0 +1,183 @@
+---
+title: "The source contract shipped — Challenge 46 delivered"
+description: "Delivery record closing Challenge 46. source.where and source.joins landed as optional declarations on the source contract, JSONata is confined to those two sites, and the template filter grammar stayed frozen. Five previously-blocked recipes now read their own unmodified source files, proved by removing the hand prefilter rather than by trusting the recipes. Records the finding worth more than the feature: the loudness rule did not work as written, because a misspelled column in a JSONata comparison returns boolean false rather than undefined, and the three guards that replaced it."
+tags: [decision, synthesis, delivery, transform-engine, source-contract, jsonata, recipe-grammar, ch-46]
+date: 2026-08-27
+sidebar:
+  label: "08-27 · Source contract delivered"
+  order: -20260827.5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Delivery record for [Challenge 46](/crosswalker/agent-context/zz-challenges/archive/46-transform-engine-shapes/). The [framing synthesis](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/) settled *where* transformation belongs and *which* language, earlier the same day; this log records what was built against those verdicts, what it proved on the real corpus, and the one place the verdict was wrong.
+
+**The challenge is closed.** All six of its success criteria are met, and the brief is archived.
+
+## 1. The headline, in one line
+
+**A recipe can now be pointed at the file you actually download.** Before this, five of the shipped recipes required a human to open the workbook, delete the rows that were not theirs, and save a new file — a step that lived in nobody's documentation and in no recipe.
+
+## 2. What shipped
+
+| Piece | What it is |
+|---|---|
+| `source.where` | An optional one-line predicate over a source row. A row for which it is false never becomes a note. |
+| `source.joins` | Optional keyed lookup-enrichment. Names a second sheet of the same workbook or a second array of the same JSON document, matches on a key, and binds the match under an alias the recipe chooses. Not relational algebra: one primary stream plus N bounded lookup indexes. |
+| JSONata, at those two sites only | The predicate and the join key expressions. Nothing else in the codebase may call it; a single choke point (`src/source/expression.ts`) owns compilation, the permitted subset, and the guardrails. |
+| The template filter grammar | **Frozen and unchanged.** Joined fields bind under a fresh alias namespace, reached by the dotted traversal and literal-key quoting that already shipped, so the join required zero template change by construction rather than by discipline. |
+| `SourceStageError` | The error type. The framing verdict named it `RenderError`; these run *before* `render()`, so the name was wrong and the [framing log flagged it](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/) rather than silently keeping it. The behaviour is binding; the identifier was not. |
+| Schema | Additive. SchemaVer 1.9.0, no `$id` bump, fixture regeneration clean. |
+
+**Ordering is spec-owned, not recipe-owned:** `where`, then `joins`, then identity, CURIE minting, `concept_cid`, `render()`. A recipe never states an opinion about stage order, which is the whole reason a future declaration can be inserted later without contradicting a recipe written today.
+
+Both declarations enter the recipe hash, because they change which notes exist. A recipe that declares neither hashes byte-identically to its pre-1.9.0 self — the same drop-the-undefined-key mechanism `auto_heading` already relies on, pinned by a golden file across all thirteen shipped recipes.
+
+## 3. The proof: five recipes, their own unmodified source files
+
+Tested by *removing* the hand prefilter, not by trusting the recipes. Each case asserts the unfiltered row count going in, the note count coming out, and the exact set of generated basenames against an independently computed expectation. All figures are from real Obsidian E2E runs against the real corpus (source: `tests/e2e/ch46-unfiltered-source.spec.ts` and `tests/e2e/ch46-unfiltered-cprt.spec.ts`).
+
+| Recipe | Source | Rows in | Notes out | Excluded | Scaffolding leaked |
+|---|---|---:|---:|---:|---:|
+| `nist-csf-2` | CSF 2.0 workbook sheet | 231 | **185** | 46 banner rows | 0 |
+| `cis-controls-v8` | one CIS sheet | 171 | **153** | 18 control rows | 0 |
+| `cis-controls-v8-controls` | the same sheet | 171 | **18** | 153 safeguard rows | 0 |
+| `nist-csf-2-cprt` | CPRT JSON export | 906 | **679** | 227 machinery elements | 0 |
+| `nist-csf-2-cprt-hierarchical` | the same export | 906 | **679** | 227 machinery elements | 0 |
+
+Supporting structure, verified independently of the recipes:
+
+- **CSF**: 46 of 231 rows carry an empty subcategory. Those are the rows that used to render to the empty filename `.md` and collide with each other. Zero empty-named notes were written.
+- **CIS**: the two recipes are an exact partition of one sheet. 153 + 18 = 171, zero overlap, zero loss, no safeguard identifier in the control set and no control identifier in the safeguard set. This is the case that proves the design: **two recipes, one sheet, two different answers to "what is a row"**, expressed in the recipes rather than in an undocumented manual step.
+- **CPRT**: the 227 excluded elements are 225 `sort` plus 2 `party`. None appears among the 679 written basenames. Kept census: 6 function, 34 category, 185 subcategory, 363 implementation_example, 91 withdraw_reason.
+- The two CPRT cases deliberately use **different generation entry points**, so both code paths the source stage was wired into are proved rather than one inferred from the other.
+
+No regression anywhere else: recipes declaring neither declaration produce identical output, and every default-suite failure present in the working tree fails identically at the pre-change commit.
+
+## 4. The finding worth more than the feature: the loudness rule did not work as written
+
+<Aside type="danger" title="The stated mitigation would have shipped the exact bug it was written to forbid">
+The framing verdict's rule 1 was: *a `where` expression must evaluate to a boolean; `undefined` or any non-boolean is an error, never "false, skip the row."* It assumed a misspelled column name yields `undefined`, which the strict-boolean check then catches.
+
+**Measured against jsonata 2.2.2, that assumption is false.** JSONata's comparison and logic operators *absorb* an undefined operand and return `false`. So a typo'd column in `Typo != ''` returns a perfectly good boolean `false` — for **every** row. The strict-boolean check passes, the import admits zero rows, writes zero notes, and reports success.
+</Aside>
+
+The measurement, against a row holding a `Subcategory` and a `CIS Safeguard` key:
+
+| Expression | Result |
+|---|---|
+| `Subcategory != ''` | boolean `false` (correct) |
+| `Typo != ''` | boolean `false` — a valid boolean, from a column that does not exist |
+| `Typo = ''` | boolean `false` — **both polarities false** |
+| `Typo and true` | boolean `false` |
+| `Typo` | `undefined` |
+| `$exists(Typo)` | boolean `false` |
+
+Only the bare-name form produces the `undefined` the verdict expected, and a bare name is not a predicate anyone writes. Every realistic typo lands in the absorbing case.
+
+That is [this codebase's signature bug](/crosswalker/agent-context/zz-log/2026-08-24-e2e-testing-strategy-synthesis/) — reading absence as a legitimate empty answer, three times in one week — arriving through the very rule pre-committed to stop it.
+
+### The three guards that replaced it
+
+The verdict's *behaviour* was binding and was honoured. Its *mechanism* was insufficient and was strengthened in the open, rather than reinterpreted.
+
+| Guard | What it checks | Catches |
+|---|---|---|
+| **G1** | The result is a strict `boolean` | `where: "Subcategory"` (returns the empty string), `where: "Typo"` (returns `undefined`), any non-predicate expression. The verdict's original rule, kept. |
+| **G2** | Every field name in the expression exists in the collection's real key universe, walked out of the compiled JSONata syntax tree at preflight, before a single row is read | `Typo != ''` — the case G1 misses entirely. **The load-bearing guard.** |
+| **G3** | A predicate that admits zero rows from a non-empty collection fails the run | Any residual silent-empty case, including a correct field name compared against a literal that matches nothing. Safe at end-of-stream, because zero admitted rows means zero writes have occurred. |
+
+### The principle, which is the reusable part
+
+> **Absence of a field on a row is data. Absence of a field from the collection is a defect.**
+
+The verdict already stated this rule for join keys — a key that finds no match is legitimate, a key that is *undefined* is not — and stopped one step short of applying it to the predicate. Generalised, it settles every "is this empty or is this broken?" question in an import pipeline, and it is why G2 samples rather than requires on heterogeneous JSON: the CPRT export genuinely leaves `title` empty on every subcategory and absent on some element kinds. That is real data, and the guard must not reject it.
+
+It composes with the codebase's other absence rule, [cache lag is not absence](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/): the same failure shape, one layer down.
+
+### It behaves, on the real 231-row sheet
+
+Tested deliberately, in-process and end to end in Obsidian:
+
+| Case | `where` | Result |
+|---|---|---|
+| Misspelled column | `Subcatgory != ''` | Run fails, **0 notes**, names the unknown field plus the real column list |
+| Wrong case | `subcategory != ''` | Run fails, **0 notes**, same guard, case-sensitive |
+| Real column, literal matching nothing | `Subcategory = 'no-such-value'` | Run fails, **0 notes**, reports examining 231 rows and admitting 0 |
+| Non-boolean expression | `Subcategory` | Run fails, names row 1 and the actual type |
+| Correct predicate | `Subcategory != ''` | 185 notes |
+
+Every failing case reports failure, names the declaration that caused it, and writes zero notes. The headline risk — a typo that silently drops every row while reporting success — does not occur.
+
+A per-row source-stage failure **aborts the run**. It does not skip the row. A skip that logs a warning is still a vault that quietly lost data.
+
+### What the guards deliberately cannot do
+
+G3 fires only at zero admitted rows. A correct column compared against a wrong literal that happens to match a *subset* is not detectable by any of the three, and is not claimed to be. Stated here so nobody later reads the guards as broader than they are.
+
+## 5. Two accepted limitations
+
+### The ATT&CK two-hop mitigations join is permanently producer work
+
+MITRE keeps mitigations in a 44-row sheet, joined to techniques through an 18,570-row relationship sheet: technique, then relationships, then mitigations. **Two hops.**
+
+Hop two's key depends on hop one's *result set*, not on the primary row. That is a join operator composing with another join operator — relational algebra, which the framing verdict excludes by name — and admitting it would drag in join ordering, intermediate cardinality, and a memory story for the intermediate result.
+
+**Ruling: out of scope for `source.joins`, in v1 and permanently under this design.** Hop one is squarely inside the model and shipped, so the ATT&CK gap is honestly **half-closed**: a technique note gains the *identifiers* of its mitigations, ready for `managed_links`. It cannot gain mitigation names or prose. The recipe says exactly that in its own comment. An honest half-close beats a silent one.
+
+Cost of hop one, measured rather than assumed: the 18,570-row index builds in roughly 25 to 35 ms, and the primary collection still streams.
+
+### The bundle grew more than the dependency was priced at
+
+Measured with an esbuild metafile before and after, not estimated (source: `.workspace/2026-08-27-ch46-verification.md`, bundle-delta section).
+
+| Production `main.js` | raw | gzipped |
+|---|---:|---:|
+| Before | 2,044,688 | 461,523 |
+| After | 2,319,659 | 512,726 |
+| **Delta** | **+274,971 (+13.4%)** | **+51,203 (+11.1%)** |
+
+The dependency was priced at the published minified figure, **24,045 bytes gzipped**. It did not cost that, because the esbuild config sets no `minify` option, so the build bundles the unminified 298 KB source file rather than the published minified one:
+
+| jsonata alone | raw | gzipped |
+|---|---:|---:|
+| as bundled today | 241,226 | **38,253** |
+| with minification enabled | 82,755 | **26,013** |
+
+So the library costs roughly 38 KB gzipped instead of the roughly 24 KB priced, and about 12 KB of that overage is recoverable by a one-line build-policy change that lands it within about 2 KB of the accepted figure. The remainder of the whole-bundle delta is the new source-stage modules plus the enlarged bundled schema and the five edited recipes.
+
+**Not done here, deliberately.** Enabling minification changes every byte of `main.js` for the whole plugin; it is a build-policy decision for the owner, not a verification-time change, and the owner has accepted it as not urgent. Recorded so the number is greppable when it is taken up.
+
+## 6. The six success criteria, and where each is met
+
+| # | Criterion | Where |
+|---|---|---|
+| 1 | Shape taxonomy with current coverage marked | [Deliverable B](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-b-transformation-placement/), plus the value-shaping and collection-shaping split in the [framing synthesis](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/) |
+| 2 | Verdict on where transformation belongs, engaging schema-as-primitive honestly | Framing synthesis, including what the bundled engine owes a user who has only a spreadsheet, and what it deliberately does not |
+| 3 | Concrete mechanism worked against the measured gaps with the real dirty values | `source.where` and `source.joins`, shipped and proved against CSF, both CIS tiers, and both CPRT recipes (section 3 above) |
+| 4 | Adopt, embed, or decline verdict on existing languages, JSONata specifically | Adopt JSONata narrowly, at two declaration sites, with a deliberately tiny permitted subset. jq declined on payload. No new language invented |
+| 5 | Migration path with a breaking or additive call | Additive. SchemaVer 1.9.0, no `$id` bump, thirteen recipe hashes pinned byte-identical. Five recipes moved hash deliberately, which is *correct* drift: the earlier import included rows the new one excludes |
+| 6 | Explicit statement of what the design does **not** solve | Section 5 above, plus the frozen-grammar consequence: `cardinality: "many"` binds a list of scalars, never a list of objects, because template traversal does not lift over arrays and lifting it would have meant unfreezing the grammar |
+
+The non-breaking-extension requirement was answered with a named seventh shape — unpivot, which already exists in this repository as a bespoke script outside the recipe grammar — and a mechanical account of how it lands later as a third named declaration at a spec-assigned position without invalidating any 1.9.0 recipe. **Insertion is additive only because stage order is spec-owned rather than recipe-owned.** That is the extension point, and it is the thing to protect in review.
+
+## 7. Follow-ups this delivery does not close
+
+| Item | State |
+|---|---|
+| The incumbent headless `--where` in the JSON source parser still documents *"a missing field never `=`-matches"* — silent drop on typo, the exact banned behaviour | Untouched. Two row predicates with opposite silence contracts now ship in one plugin. Needs an owner decision: reimplement it over `source.where`, or explicitly deprecate it |
+| `source.joins` has no real-corpus end-to-end exercise | No shipped recipe declares `joins`. Unit coverage is thorough (streaming lock-step, index cost, cardinality), but the first real join will land unproven at corpus scale |
+| The two generation entry points disagree about when preflight runs | The recipe path writes nothing before preflight; the wizard path creates the destination folder first, so a typo'd predicate leaves an empty folder behind. Nothing is lost or wrong on either path, but the "zero writes" property holds on only one. One-statement fix, pinned by assertions so a change is noticed |
+| Mobile behaviour of jsonata | Structural check only — no Node builtins are reached. No Capacitor WebView was available to smoke-test it |
+
+## Related
+
+- [Challenge 46 brief (archived)](/crosswalker/agent-context/zz-challenges/archive/46-transform-engine-shapes/) — the five measured gaps that started this
+- [Transform-shapes framing synthesis](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/) — the verdicts this delivery was built against
+- [Deliverable A: transformation language prior art](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-a-transformation-prior-art/)
+- [Deliverable B: where transformation belongs](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-b-transformation-placement/)
+- [v0.1 schema spec](/crosswalker/agent-context/v0-1-schema-spec/) — the `source.where` and `source.joins` field reference
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — the schema-as-primitive pillar that keeps external producers first-class
+- [Ch 22 target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — the closed-grammar precedent this extends without breaking
+- [Ch 44 E2E strategy synthesis](/crosswalker/agent-context/zz-log/2026-08-24-e2e-testing-strategy-synthesis/) — the absence-read-as-answer pattern, one layer down
+- [Import-set ownership](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/) — cache lag is not absence

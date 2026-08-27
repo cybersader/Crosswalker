@@ -135,7 +135,7 @@ describe('parseJSONFile', () => {
 		expect(result.columns).toEqual(['id', 'name']);
 	});
 
-	it('applies an iterator + where (the STIX shape)', async () => {
+	it('applies an iterator and does NOT filter (row filtering is source.where now)', async () => {
 		const file = makeJsonFile({
 			objects: [
 				{ type: 'attack-pattern', id: 'T1', revoked: false },
@@ -143,13 +143,13 @@ describe('parseJSONFile', () => {
 				{ type: 'relationship', id: 'R1' },
 			],
 		});
-		const result = await parseJSONFile(file, {
-			iterator: '$.objects[*]',
-			where: 'type=attack-pattern,revoked!=true',
-		});
-		expect(result.rowCount).toBe(1);
+		const result = await parseJSONFile(file, { iterator: '$.objects[*]' });
+		// The parser no longer carries a row predicate at all. The wizard field's
+		// comma shorthand now translates into `source.where` and runs at generation
+		// under G1/G2/G3 (2026-08-27 contract §11); the same filter is asserted
+		// end-to-end in tests/source-shorthand.test.ts.
+		expect(result.rowCount).toBe(3);
 		expect((result.rows as Record<string, unknown>[])[0].id).toBe('T1');
-		expect(result.filteredOut).toBe(2);
 	});
 
 	it('errors listing available keys when the iterator path is wrong', async () => {

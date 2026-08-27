@@ -10,8 +10,6 @@
 import {
 	iterateJsonPath,
 	toSourceRows,
-	parseWhere,
-	applyWhere,
 	jsonToRows,
 } from '../tools/lib/json-source';
 
@@ -93,40 +91,21 @@ describe('toSourceRows', () => {
 	});
 });
 
-describe('parseWhere / applyWhere', () => {
-	const rows = [
-		{ type: 'attack-pattern', revoked: 'false', meta: { tier: 'one' } },
-		{ type: 'attack-pattern', revoked: 'true' },
-		{ type: 'relationship' },
-	];
-
-	it('filters by equality', () => {
-		expect(applyWhere(rows, parseWhere('type=attack-pattern'))).toHaveLength(2);
-	});
-
-	it('ANDs comma-separated clauses; != keeps rows where the field is absent', () => {
-		const out = applyWhere(rows, parseWhere('type=attack-pattern,revoked!=true'));
-		expect(out).toEqual([rows[0]]);
-		// `relationship` row has no `revoked` at all — != alone keeps it:
-		expect(applyWhere(rows, parseWhere('revoked!=true'))).toHaveLength(2);
-	});
-
-	it('a missing field never =-matches', () => {
-		expect(applyWhere(rows, parseWhere('nonexistent=x'))).toHaveLength(0);
-	});
-
-	it('resolves dotted paths into nested values', () => {
-		expect(applyWhere(rows, parseWhere('meta.tier=one'))).toEqual([rows[0]]);
-	});
-
-	it('rejects malformed clauses', () => {
-		expect(() => parseWhere('no-equals-here')).toThrow(/Malformed --where/);
-		expect(() => parseWhere('=value')).toThrow(/Malformed --where/);
-	});
-});
+/*
+ * The `parseWhere` / `applyWhere` describe block was DELETED WITH THE CODE IT
+ * COVERED (2026-08-27 contract §11). Those functions were the silent row
+ * predicate: a missing field never `=`-matched and always `!=`-matched, with no
+ * diagnostic, so a typo'd column returned zero rows or every row.
+ *
+ * The block did not merely cover the defect, it PINNED it:
+ * `applyWhere(rows, parseWhere('nonexistent=x'))` was asserted to return 0 rows.
+ * That assertion must not be carried forward. The shorthand the wizard field
+ * accepts now translates into `source.where` — see tests/source-shorthand.test.ts
+ * for the translator and tests/source-where.test.ts for the three guards.
+ */
 
 describe('jsonToRows (end-to-end)', () => {
-	it('iterates + coerces + filters a STIX-shaped document', () => {
+	it('iterates + coerces a STIX-shaped document (filtering is source.where now)', () => {
 		const doc = JSON.stringify({
 			objects: [
 				{ type: 'attack-pattern', id: 'ap-1', revoked: false },
@@ -134,9 +113,12 @@ describe('jsonToRows (end-to-end)', () => {
 				{ type: 'relationship', id: 'rel-1' },
 			],
 		});
-		const { rows, filteredOut } = jsonToRows(doc, '$.objects[*]', 'type=attack-pattern,revoked!=true');
-		expect(rows).toEqual([{ type: 'attack-pattern', id: 'ap-1', revoked: 'false' }]);
-		expect(filteredOut).toBe(2);
+		const { rows } = jsonToRows(doc, '$.objects[*]');
+		expect(rows).toEqual([
+			{ type: 'attack-pattern', id: 'ap-1', revoked: 'false' },
+			{ type: 'attack-pattern', id: 'ap-2', revoked: 'true' },
+			{ type: 'relationship', id: 'rel-1' },
+		]);
 	});
 
 	it('defaults to iterating a top-level array when no iterator is given', () => {

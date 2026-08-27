@@ -21,7 +21,7 @@ _crosswalker:
 
 # folder-note-ragged-subset
 
-<!-- crosswalker:children:start -->
+<!-- crosswalker:children:start v=1 -->
 ## Contents
 - [[X1000]]
 - [[X2000]]

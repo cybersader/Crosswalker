@@ -270,8 +270,16 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 		// The expected heading is derived from the corpus row rather than hardcoded,
 		// and the second assertion states the actual point: whatever the heading is,
 		// it is not the identifier again.
+		//
+		// Since the 2026-08-27 managed body regions slice the body opens with the
+		// region boundary, so the heading is line 1 INSIDE the region rather than
+		// line 1 of the file body. Both lines are pinned: the boundary must be
+		// present, and the note must still open on the descriptive control name.
 		const enhancementHeading = `# ${enhancementSource.name.trim()}`;
-		expect(bodyProof.enhancementBody.split('\n')[0]).toBe(enhancementHeading);
+		const enhancementLines = bodyProof.enhancementBody.split('\n');
+		expect(enhancementLines[0]).toBe('<!-- crosswalker:body:start v=1 -->');
+		expect(enhancementLines[1]).toBe(enhancementHeading);
+		expect(bodyProof.enhancementBody.trimEnd().endsWith('<!-- crosswalker:body:end -->')).toBe(true);
 		expect(enhancementHeading).not.toContain('AC-2(1)');
 		expect(bodyProof.enhancementBody).toContain('## Control');
 		expect(bodyProof.enhancementBody).toContain(enhancementSource.control_text.trim());
@@ -455,15 +463,79 @@ describeScale('Crosswalker plugin — full NIST SP 800-53 Rev. 5 import scale pr
 		await forcePreviewRender();
 		await browser.pause(3000);
 
+		// Diagnostic BEFORE the assertion, so a failure says which of the two things
+		// happened: the renderer produced nothing at all (the documented post-import
+		// stall, in which case every count below is 0), or it produced the document
+		// but not this section (which would be a real content regression).
+		const previewState = await browser.execute(() => {
+			const previews = [...document.querySelectorAll<HTMLElement>('.markdown-preview-view')];
+			const h1 = previews.flatMap((p) => [...p.querySelectorAll<HTMLElement>('h1')]);
+			const h2 = previews.flatMap((p) => [...p.querySelectorAll<HTMLElement>('h2')]);
+			return {
+				previewCount: previews.length,
+				h1Count: h1.length,
+				h2Count: h2.length,
+				h2Texts: h2.map((h) => h.innerText.trim()),
+				textLength: previews.reduce((n, p) => n + p.innerText.length, 0),
+				commentLeak: previews.some((p) => p.innerText.includes('crosswalker:body:')),
+			};
+		});
+		metric('ac_1_preview_count', previewState.previewCount);
+		metric('ac_1_preview_h1_count', previewState.h1Count);
+		metric('ac_1_preview_h2_count', previewState.h2Count);
+		metric('ac_1_preview_h2_texts', JSON.stringify(previewState.h2Texts));
+		metric('ac_1_preview_text_length', previewState.textLength);
+		metric('ac_1_preview_marker_leaked_as_text', String(previewState.commentLeak));
+		const relatedShape = await browser.execute(() => {
+			const previews = [...document.querySelectorAll<HTMLElement>('.markdown-preview-view')];
+			for (const preview of previews) {
+				const h2 = [...preview.querySelectorAll<HTMLElement>('h2')]
+					.find((h) => h.innerText.trim() === 'Related controls');
+				if (!h2) continue;
+				const sibs: string[] = [];
+				let n: Element | null = h2.nextElementSibling;
+				for (let i = 0; i < 6 && n; i += 1) { sibs.push(n.tagName); n = n.nextElementSibling; }
+				const parent = h2.parentElement;
+				const parentSibs: string[] = [];
+				let m: Element | null = parent?.nextElementSibling ?? null;
+				for (let i = 0; i < 4 && m; i += 1) { parentSibs.push(`${m.tagName}.${m.className}`); m = m.nextElementSibling; }
+				return {
+					parent: `${parent?.tagName}.${parent?.className}`,
+					siblings: sibs,
+					parentSiblings: parentSibs,
+					ulTotal: preview.querySelectorAll('ul').length,
+					internalLinkTotal: preview.querySelectorAll('a.internal-link').length,
+				};
+			}
+			return null;
+		});
+		metric('ac_1_related_h2_shape', JSON.stringify(relatedShape));
+		// Whatever else happens, the region markers must never render as visible text.
+		expect(previewState.commentLeak).toBe(false);
+
 		const relatedRender = await browser.execute(() => {
 			const previews = [...document.querySelectorAll<HTMLElement>('.markdown-preview-view')];
 			for (const preview of previews) {
 				const headings = [...preview.querySelectorAll<HTMLElement>('h2')];
 				const related = headings.find((heading) => heading.innerText.trim() === 'Related controls');
 				if (!related) continue;
-				let list: HTMLElement | null = related.nextElementSibling as HTMLElement | null;
-				while (list && list.tagName !== 'UL' && list.tagName !== 'H2') list = list.nextElementSibling as HTMLElement | null;
-				if (!list || list.tagName !== 'UL') continue;
+				// Obsidian's reading view wraps each top-level block in its own
+				// `div.el-*`, so the H2's own nextElementSibling is ALWAYS null and the
+				// old walk could never find the list. Walk the WRAPPER's siblings and
+				// look for the UL inside one. (Measured 2026-08-27: parent `DIV.el-h2`,
+				// h2 siblings `[]`.)
+				const block = (related.closest('.markdown-preview-section > *') as HTMLElement | null)
+					?? (related.parentElement as HTMLElement | null)
+					?? related;
+				let list: HTMLElement | null = null;
+				let cursor: HTMLElement | null = block.nextElementSibling as HTMLElement | null;
+				for (let i = 0; i < 6 && cursor && !list; i += 1) {
+					if (cursor.tagName === 'UL') list = cursor;
+					else if (cursor.querySelector('ul')) list = cursor.querySelector('ul');
+					else if (cursor.querySelector('h2')) break;
+					cursor = cursor.nextElementSibling as HTMLElement | null;
+				}
+				if (!list) continue;
 				const anchors = [...list.querySelectorAll<HTMLElement>('a.internal-link')];
 				related.scrollIntoView({ block: 'start' });
 				return {

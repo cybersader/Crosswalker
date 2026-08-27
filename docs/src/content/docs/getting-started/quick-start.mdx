@@ -70,18 +70,48 @@ Support the management of system accounts using automated mechanisms.
 
 The `_crosswalker` block is how a re-import recognizes its own notes, so it updates them rather than creating duplicates. See the [generation engine](/crosswalker/features/generation-engine/) for exactly what lands in each note.
 
-:::caution[What a re-import preserves, and what it does not]
-This depends entirely on the **existing-file mode** you choose in the import wizard.
+:::note[What a re-import preserves, and what it does not]
+**You can write in a generated note.** Crosswalker owns a marked-off region of the
+body and rebuilds only that. Everything you type outside it survives a re-import
+exactly as you left it.
+
+The region is delimited by two comment lines, invisible when you read the note and
+visible while you edit it:
+
+```markdown
+<!-- crosswalker:body:start v=1 -->
+# Automated System Account Management
+...imported content, rebuilt on every import...
+<!-- crosswalker:body:end -->
+
+Our implementation: SSO provisioning via Okta.
+Evidence: ticket SEC-4192.
+```
+
+Write **below the end marker** (or above the start marker). Text you put *inside*
+the region is Crosswalker's to rebuild, and will be replaced.
+
+What each existing-file mode does:
 
 | Mode | Effect on a note that already exists |
 |---|---|
 | **Skip existing** (the default) | The note is left completely untouched. Nothing you wrote is at risk |
-| **Replace** | The note is **rebuilt from the source row**. Frontmatter keys you added are merged back, but **anything you typed into the note body is overwritten and not recoverable** |
+| **Replace** | Frontmatter keys you added are merged back, and only the marked region of the body is rebuilt. Every byte outside it is preserved |
 | **Error** | The import stops rather than touching the existing note |
 
-So: keep your own writing — evidence links, analysis, commentary — in **separate notes** that link to the generated ones, not inside the generated notes themselves. Generated folders are best treated as importer-owned and disposable.
+**Notes from before this feature**, which have no markers yet, are adopted the
+first time you re-import them: if the body still matches what the import would
+generate, Crosswalker adds the two marker lines and changes nothing else. If the
+body has been edited, Crosswalker **leaves the file completely alone** and lists
+it on the results screen as a note it could not safely update. It never guesses.
 
-Verified against `src/generation/generation-engine.ts` on 2026-08-19: in Replace mode the note content is rebuilt and written without reading the existing body.
+The same rule covers a note whose markers have been damaged, or one written by a
+newer version of Crosswalker: the file is not modified at all, and the import
+continues with the rest.
+
+Status last verified: 2026-08-27 — verified against `src/generation/managed-body.ts`,
+`src/generation/existing-note.ts`, and the `tests/e2e/replace-preservation.spec.ts`
+run in real Obsidian.
 :::
 
 ## Where the settings are

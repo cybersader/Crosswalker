@@ -471,6 +471,26 @@ export interface GenerationResult {
 	 * (spec §7k). Undefined when enrichment did not run.
 	 */
 	edgeCount?: number;
+	/**
+	 * Notes this run refused to modify because it could not prove what it would be
+	 * doing to them. Never data loss: the file on disk is untouched. Surfaced so a
+	 * re-import that silently skips notes is never a mystery.
+	 *
+	 * Distinct from `errors` (the row failed to produce a note) and from
+	 * `warnings` (the note was written with a deviation). A conflict means a good
+	 * note was produced and DELIBERATELY not written.
+	 */
+	conflicts?: Array<{ path: string; curie?: string; code: string; detail: string }>;
+	/**
+	 * Source rows the declared `source.where` predicate excluded (Ch 46 source
+	 * contract; 2026-08-27 contract §11.4). Surfaced so "200 rows in, 40 notes
+	 * out" is never a mystery: the wizard previously showed a "(N filtered out)"
+	 * notice at parse time, and the predicate has since moved to generation.
+	 *
+	 * Undefined when no source shaping was declared, so a plain import says
+	 * nothing about filtering rather than claiming zero.
+	 */
+	filteredOut?: number;
 	duration: number;
 }
 

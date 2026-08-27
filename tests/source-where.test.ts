@@ -408,6 +408,11 @@ describe('generateFromRecipe honours the source stage', () => {
 		expect(result.created).toHaveLength(185);
 		expect(files.size).toBe(185);
 		expect([...files.keys()].some((p) => p.endsWith('/.md'))).toBe(false);
+		// What the predicate dropped is reported, not left to a debug log. The
+		// wizard used to show this at parse time; the predicate moved to
+		// generation, so the count has to travel with the result or "231 rows in,
+		// 185 notes out" becomes a mystery the user cannot resolve.
+		expect(result.filteredOut).toBe(46);
 	});
 
 	it('B5 — a typo writes ZERO files and reports one preflight error', async () => {
@@ -483,6 +488,7 @@ describe('generateFromRecipe honours the source stage', () => {
 		);
 		expect(result.errors).toEqual([]);
 		expect(files.size).toBe(185);
+		expect(result.filteredOut).toBe(46);
 	});
 
 	it('the wizard/workbench path is equally loud about a typo', async () => {

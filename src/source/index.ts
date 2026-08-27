@@ -54,6 +54,7 @@ export {
 	type CompiledSourceExpression,
 } from './expression';
 export { evaluateWherePredicate, assertAdmittedSomething, WHERE_DECLARATION } from './where';
+export { shorthandToSourceExpression } from './shorthand';
 export { prepareJoins, applyJoins, ALIAS_PATTERN, RESERVED_ALIASES } from './joins';
 export type {
 	JoinDeclaration,

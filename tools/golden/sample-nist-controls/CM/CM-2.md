@@ -22,4 +22,6 @@ _crosswalker:
   concept_cid: sha256-101f0d388abd7e362a464b89610e1642bdc1cb084ff1fcd21f9c213bf9b9656d
 ---
 
+<!-- crosswalker:body:start v=1 -->
 # sample-nist-controls:row-11
+<!-- crosswalker:body:end -->

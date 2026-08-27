@@ -184,6 +184,11 @@ export function parseYaml(text: string): unknown {
       const content = line.slice(indent);
       const m = content.match(/^([^:]+):\s?(.*)$/);
       if (!m) {
+        // Real YAML rejects a line that is neither a mapping entry nor a list
+        // item. The mock must reject it too: src/generation/existing-note.ts
+        // treats a parse failure as a CONFLICT (do not modify this note), and a
+        // lenient mock would let that fail-closed path pass untested.
+        if (!isListLine(content)) throw new Error(`bad indentation / unexpected token: ${JSON.stringify(line)}`);
         idx++;
         continue;
       }

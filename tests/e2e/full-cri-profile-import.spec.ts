@@ -195,11 +195,24 @@ describeScale('Crosswalker plugin — CRI Profile v2.2 flat recipe corpus proof 
 			const missingProseSection: string[] = [];
 			const proseNotVerbatim: string[] = [];
 			const headingNotFirstLine: string[] = [];
+			const missingRegion: string[] = [];
 			const headingNotThePath: string[] = [];
 			const bodyCharacterCounts: number[] = [];
 			const frontmatterKeyUnion = new Set<string>();
 			const frontmatterKeyCounts: Record<string, number> = {};
 
+			// The note body now opens with the managed-region boundary (2026-08-27
+			// managed body regions). Structural claims about "the first line" are
+			// claims about the first line INSIDE the region, so read through it.
+			// Falls back to the raw body when no region is present, so a note that
+			// somehow lost its boundary is still checked rather than skipped.
+			const regionOf = (text: string): string => {
+				const s = text.indexOf('<!-- crosswalker:body:start');
+				const e = text.indexOf('<!-- crosswalker:body:end -->');
+				if (s === -1 || e === -1) return text;
+				const nl = text.indexOf('\n', s);
+				return nl === -1 ? text : text.slice(nl + 1, e);
+			};
 			for (const row of args.rows) {
 				const notePath = `${args.destination}/${row.profileId}.md`;
 				const file = app.vault.getAbstractFileByPath(notePath);
@@ -225,7 +238,8 @@ describeScale('Crosswalker plugin — CRI Profile v2.2 flat recipe corpus proof 
 				if (!normalizeEol(body).includes(normalizeEol(row.prose))) proseNotVerbatim.push(notePath);
 				// auto_heading proof, by structure not content: line 1 is an H1 and
 				// its text equals the source path column.
-				const firstLine = body.split('\n')[0];
+				if (body.indexOf('<!-- crosswalker:body:start') === -1) missingRegion.push(notePath);
+				const firstLine = regionOf(body).split('\n')[0];
 				if (!firstLine.startsWith('# ')) headingNotFirstLine.push(notePath);
 				if (firstLine.slice(2).trim() !== normalizeEol(row.pathText).trim()) headingNotThePath.push(notePath);
 				bodyCharacterCounts.push(body.length);
@@ -241,7 +255,7 @@ describeScale('Crosswalker plugin — CRI Profile v2.2 flat recipe corpus proof 
 			const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);
 			return {
 				missingFiles, emptyBodies, missingProseSection, proseNotVerbatim,
-				headingNotFirstLine, headingNotThePath,
+				headingNotFirstLine, headingNotThePath, missingRegion,
 				frontmatterKeys: Array.from(frontmatterKeyUnion).sort(),
 				frontmatterKeyCounts,
 				bodyCharacterMin: Math.min(...bodyCharacterCounts),
@@ -265,6 +279,9 @@ describeScale('Crosswalker plugin — CRI Profile v2.2 flat recipe corpus proof 
 		expect(proof.proseNotVerbatim.length).toBe(0);
 		// auto_heading: every note opens on an H1 whose text is the source path.
 		expect(proof.headingNotFirstLine.length).toBe(0);
+		// Every generated note carries the managed-body boundary, or a person's
+		// prose in it would be unprotected on the next re-import.
+		expect(proof.missingRegion).toEqual([]);
 		expect(proof.headingNotThePath.length).toBe(0);
 
 		metric('bodyless_note_count', proof.emptyBodies.length);

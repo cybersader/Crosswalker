@@ -180,6 +180,18 @@ describeScale('Crosswalker plugin — NIST CSF 2.0 flat recipe corpus proof', fu
 			let exampleNoteBody = '';
 			let notesWithExamples = 0;
 
+			// The note body now opens with the managed-region boundary (2026-08-27
+			// managed body regions). Structural claims about "the first line" are
+			// claims about the first line INSIDE the region, so read through it.
+			// Falls back to the raw body when no region is present, so a note that
+			// somehow lost its boundary is still checked rather than skipped.
+			const regionOf = (text: string): string => {
+				const s = text.indexOf('<!-- crosswalker:body:start');
+				const e = text.indexOf('<!-- crosswalker:body:end -->');
+				if (s === -1 || e === -1) return text;
+				const nl = text.indexOf('\n', s);
+				return nl === -1 ? text : text.slice(nl + 1, e);
+			};
 			for (const row of args.rows) {
 				const id = row['Subcategory'].split(':')[0];
 				const notePath = `${args.destination}/${id}.md`;
@@ -189,7 +201,7 @@ describeScale('Crosswalker plugin — NIST CSF 2.0 flat recipe corpus proof', fu
 				if (body.length === 0) emptyBodies.push(notePath);
 				if (!body.includes(row['Subcategory'].trim())) missingOutcomeProse.push(notePath);
 				if (!body.includes('## Outcome')) missingOutcomeHeading.push(notePath);
-				const marker = body.split('\n')[0].replace(/[^#\s].*$/, '').trim() || body.split('\n')[0].slice(0, 12);
+				const marker = regionOf(body).split('\n')[0].replace(/[^#\s].*$/, '').trim() || regionOf(body).split('\n')[0].slice(0, 12);
 				firstLines[marker] = (firstLines[marker] ?? 0) + 1;
 				if (body.includes('## Implementation examples')) notesWithExamples++;
 				wordCounts.push(body.match(/\S+/g)?.length ?? 0);
@@ -199,7 +211,7 @@ describeScale('Crosswalker plugin — NIST CSF 2.0 flat recipe corpus proof', fu
 			return {
 				missingFiles, emptyBodies, missingOutcomeProse, missingOutcomeHeading,
 				firstLineMarkers: firstLines,
-				exampleFirstLine: exampleNoteBody.split('\n')[0],
+				exampleFirstLine: regionOf(exampleNoteBody).split('\n')[0],
 				notesWithExamples,
 				wordCountAverage: sum(wordCounts) / wordCounts.length,
 				wordCountMin: Math.min(...wordCounts),

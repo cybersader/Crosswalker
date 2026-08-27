@@ -44,7 +44,6 @@ import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './sou
 import { validateTier1Frontmatter } from '../validation/validator';
 import {
 	enrich,
-	mergeHubBody,
 	folderNoteCandidatePath,
 	buildManagedChildrenSection,
 	mergeManagedChildrenSection,
@@ -52,6 +51,8 @@ import {
 	type EnrichNote,
 	type HubNote,
 } from './enrich';
+import { wrapManagedBody, scanRegions } from './managed-body';
+import { mergeExistingNote, readExistingNote, ExistingNoteReadError } from './existing-note';
 import type { FacetMembership } from '../import/mapping/facets';
 import { normalizeMappingSetId, normalizePredicateModifierInput } from '../utils/mapping-provenance';
 
@@ -557,30 +558,36 @@ export async function generateNotes(
 							result.success = false;
 							return;
 						}
-						// 'replace' mode — merge with existing frontmatter so
-						// user-edited keys (reviewer, status, etc.) survive
-						// re-import. Per Ch 22 §8.4 managed/user_preserve split.
-						try {
-							const existingFm = await readExistingFrontmatter(app, existingFile);
-							if (existingFm && Object.keys(existingFm).length > 0) {
-								// M2 (2026-07-12 pre-merge review): mirror generateFromRecipe's
-								// user_preserve read (~line 1724) — this call previously
-								// hardcoded `[]`, so a recipe-declared user_preserve key was
-								// silently overwritten on re-import through the wizard path.
-								const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
-								const managedKeys = computeManagedKeys(noteData.frontmatter, userPreserve, declaredManagedKeys);
-								noteData.frontmatter = mergeFrontmatter(
-									existingFm,
-									noteData.frontmatter,
-									managedKeys,
-								);
-							}
-						} catch (mergeErr) {
-							debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${writePath}; using new frontmatter as-is`, {
-								path: writePath,
-								error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
-							});
+					}
+
+					// 'replace' mode — ONE shared reader and merger decides what an
+					// existing note becomes (src/generation/existing-note.ts). It merges
+					// frontmatter on the managed/user_preserve split (Ch 22 §8.4) AND
+					// rebuilds only the managed body region, so anything the user typed
+					// outside it survives byte-for-byte. A note it cannot understand is a
+					// per-note conflict: the file is not modified at all, and the run
+					// continues. `generateFromRecipe` calls the same function; a fix that
+					// lands on one path only is how a "removed" behaviour comes back.
+					let bodyToWrite: string;
+					if (existingFile instanceof TFile) {
+						const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
+						const managedKeys = computeManagedKeys(noteData.frontmatter, userPreserve, declaredManagedKeys);
+						const outcome = await mergeExistingNote({
+							app,
+							file: existingFile,
+							freshFrontmatter: noteData.frontmatter,
+							managedKeys,
+							freshManagedBody: noteData.body,
+							kind: 'note',
+						});
+						if (!outcome.ok) {
+							recordConflict(result, debug, writePath, noteData.curie, outcome.code, outcome.detail);
+							return;
 						}
+						noteData.frontmatter = outcome.frontmatter;
+						bodyToWrite = outcome.body;
+					} else {
+						bodyToWrite = wrapManagedBody(noteData.body);
 					}
 
 					// Ensure parent folder exists (de-duplicated across concurrent rows)
@@ -590,7 +597,7 @@ export async function generateNotes(
 					}
 
 					// Build file content
-					const content = buildNoteContent(noteData.frontmatter, noteData.body);
+					const content = buildNoteContent(noteData.frontmatter, bodyToWrite);
 
 					// Create or update file
 					if (existingFile instanceof TFile) {
@@ -615,7 +622,11 @@ export async function generateNotes(
 							curie: noteData.curie,
 							frontmatter: { ...noteData.frontmatter },
 							facets,
-							body: noteData.body,
+							// The body AS ACTUALLY WRITTEN, never the fresh render. Pass 1.5
+							// writes this back (applyEnrichment step 1); pushing the unmerged
+							// render here would destroy exactly the prose the row write just
+							// preserved, silently undoing this whole slice.
+							body: bodyToWrite,
 						});
 					}
 				} catch (rowError) {
@@ -683,6 +694,10 @@ export async function generateNotes(
 		// Rows the source stage excluded were still seen and decided, so they count
 		// toward "the whole source was processed". `excludedCount` is 0 whenever no
 		// source shaping is declared.
+		// Report what the predicate dropped. The wizard used to show this at parse
+		// time; `source.where` runs at generation now, so the count travels here.
+		if (sourceStage.active) result.filteredOut = sourceStage.excludedCount;
+
 		const rowCountComplete =
 			parsedData.rowCount < 0 || completed + sourceStage.excludedCount === parsedData.rowCount;
 		if (result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete) {
@@ -727,23 +742,24 @@ export async function generateNotes(
 // ============================================================================
 
 /**
- * Read existing frontmatter for a file via Obsidian's metadata cache.
- * Returns an empty object if the file has no frontmatter or the cache hasn't
- * indexed it yet. Errors during retrieval surface as exceptions.
+ * Record a per-note conflict: a good note was produced and DELIBERATELY not
+ * written, because the engine could not prove what modifying the file would do.
+ *
+ * Never `result.success = false`, never an abort. Aborting a 1,200-row import at
+ * row 900 leaves a half-written tree, which Ch 45 §4.4 step 5 already names as
+ * the bad shape. "Fail closed" means the FILE, not the RUN; the run-level abort
+ * is `overwriteMode: 'error'` and always was.
  */
-async function readExistingFrontmatter(app: App, file: TFile): Promise<Record<string, unknown>> {
-	const cache = app.metadataCache.getFileCache(file);
-	const fm = cache?.frontmatter;
-	if (!fm || typeof fm !== 'object') return {};
-
-	// Strip Obsidian's internal `position` key from the result. The metadata
-	// cache attaches it to track where in the file the frontmatter lives;
-	// it's not part of the user-visible YAML.
-	const result: Record<string, unknown> = {};
-	for (const [k, v] of Object.entries(fm)) {
-		if (k !== 'position') result[k] = v;
-	}
-	return result;
+function recordConflict(
+	result: GenerationResult,
+	debug: DebugLog | undefined,
+	path: string,
+	curie: string | undefined,
+	code: string,
+	detail: string,
+): void {
+	(result.conflicts ??= []).push({ path, curie, code, detail });
+	debug?.warn('generation', 'note-conflict', `Left ${path} unchanged: ${code}`, { path, curie, code, detail });
 }
 
 /**
@@ -2137,22 +2153,6 @@ export async function generateFromRecipe(
 					result.success = false;
 					return;
 				}
-				// 'replace' — merge with existing
-				try {
-					const existingFm = await readExistingFrontmatter(app, existingFile);
-					if (existingFm && Object.keys(existingFm).length > 0) {
-						const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
-						const managedKeys = computeManagedKeys(frontmatter, userPreserve, declaredManagedKeys);
-						const merged = mergeFrontmatter(existingFm, frontmatter, managedKeys);
-						Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
-						Object.assign(frontmatter, merged);
-					}
-				} catch (mergeErr) {
-					debug?.warn('generation', 'frontmatter-merge-failed', `Frontmatter merge failed at ${writePath}; using new frontmatter as-is`, {
-						path: writePath,
-						error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
-					});
-				}
 			}
 
 			// 8. Ensure parent folder
@@ -2161,14 +2161,16 @@ export async function generateFromRecipe(
 				await ensureFolderOnce(parentPath);
 			}
 
-			// 9. Body — deterministic H1 plus the canonical regions already
+			// 9. Managed body — deterministic H1 plus the canonical regions already
 			// evaluated by pure render(). Generation only assembles Markdown.
 			// The H1 is `target.auto_heading`-controlled; absent, the historical
-			// unconditional `# <title>` branch is preserved exactly.
+			// unconditional `# <title>` branch is preserved exactly. Built BEFORE the
+			// existing-note merge (it is that merge's input), which is why step 9 now
+			// precedes what used to be step 7's frontmatter merge.
 			const headingReport: RenderReport = { notes: [] };
-			let body: string;
+			let managedBody: string;
 			try {
-				body = buildDefaultBody(frontmatter, address, recipe, renderScope, headingReport);
+				managedBody = buildDefaultBody(frontmatter, address, recipe, renderScope, headingReport);
 			} catch (bodyErr) {
 				if (bodyErr instanceof RenderError) {
 					result.errors.push({ row: rowNum, message: `target.auto_heading failed: ${bodyErr.message}` });
@@ -2181,6 +2183,35 @@ export async function generateFromRecipe(
 				for (const note of headingReport.notes) {
 					result.warnings.push({ row: rowNum, message: note.detail });
 				}
+			}
+
+			// 9b. 'replace' — THE SAME shared reader and merger `generateNotes` calls
+			// (src/generation/existing-note.ts). Frontmatter merges on the
+			// managed/user_preserve split; only the managed body region is rebuilt, so
+			// user prose outside it survives byte-for-byte. A note whose markers or
+			// properties cannot be understood is a per-note conflict: file untouched,
+			// run continues.
+			let body: string;
+			if (existingFile instanceof TFile) {
+				const userPreserve = recipe.target.also_emit?.frontmatter?.user_preserve ?? [];
+				const managedKeys = computeManagedKeys(frontmatter, userPreserve, declaredManagedKeys);
+				const outcome = await mergeExistingNote({
+					app,
+					file: existingFile,
+					freshFrontmatter: frontmatter,
+					managedKeys,
+					freshManagedBody: managedBody,
+					kind: 'note',
+				});
+				if (!outcome.ok) {
+					recordConflict(result, debug, writePath, curie, outcome.code, outcome.detail);
+					return;
+				}
+				Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
+				Object.assign(frontmatter, outcome.frontmatter);
+				body = outcome.body;
+			} else {
+				body = wrapManagedBody(managedBody);
 			}
 
 			// 10. Write
@@ -2197,6 +2228,9 @@ export async function generateFromRecipe(
 				const facets = options.facetsForRow
 					? options.facetsForRow(row as Record<string, unknown>, rowNum)
 					: facetMembershipsFromTags(address.tags);
+				// `body` is the body AS ACTUALLY WRITTEN (merged when the note existed),
+				// never the fresh render — Pass 1.5 writes this back, so the unmerged
+				// render here would destroy the prose the row write just preserved.
 				enrichRecords.push({ path: writePath, renderedPath: fullPath, curie, frontmatter: { ...frontmatter }, facets, body });
 			}
 		} catch (rowError) {
@@ -2224,6 +2258,9 @@ export async function generateFromRecipe(
 	}
 
 	if (sourceStage.active && !sourceStageFailure) {
+		// Same reporting as the wizard path: what the predicate dropped is a
+		// user-visible number, not a debug-log-only one.
+		result.filteredOut = sourceStage.excludedCount;
 		debug?.info('generation', 'source-stage-applied', `source stage admitted ${completed} of ${sourceStage.examinedCount} source rows`, {
 			examined: sourceStage.examinedCount,
 			excluded: sourceStage.excludedCount,
@@ -2465,25 +2502,29 @@ async function applyEnrichment(
 
 		const existing = app.vault.getAbstractFileByPath(fullPath);
 		if (existing instanceof TFile) {
-			// Re-import: regenerate managed members, preserve user frontmatter + prose.
-			try {
-				const existingFm = await readExistingFrontmatter(app, existing);
-				if (existingFm && Object.keys(existingFm).length > 0) {
-					const managedKeys = computeManagedKeys(frontmatter, userPreserve);
-					const merged = mergeFrontmatter(existingFm, frontmatter, managedKeys);
-					Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
-					Object.assign(frontmatter, merged);
-				}
-				const existingText = await app.vault.read(existing);
-				body = mergeHubBody(stripFrontmatterBlock(existingText), hub.body);
-			} catch (mergeErr) {
-				debug?.warn('generation', 'hub-merge-failed', `Hub merge failed at ${fullPath}; using fresh content`, {
-					path: fullPath,
-					error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
-				});
+			// Re-import through the SAME shared merger the row writes use. `kind:
+			// 'facet-hub'` selects adopt-by-replay: `mergeHubBody` was already
+			// non-destructive, so an equality rule would REGRESS a working path and
+			// stop hubs updating. A facet hub therefore never conflicts on its body,
+			// only on unreadable properties or corrupt markers.
+			const outcome = await mergeExistingNote({
+				app,
+				file: existing,
+				freshFrontmatter: frontmatter,
+				managedKeys: computeManagedKeys(frontmatter, userPreserve),
+				freshManagedBody: hub.body,
+				kind: 'facet-hub',
+			});
+			if (!outcome.ok) {
+				recordConflict(result, debug, fullPath, hubCurie ?? undefined, outcome.code, outcome.detail);
+				continue;
 			}
+			Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
+			Object.assign(frontmatter, outcome.frontmatter);
+			body = outcome.body;
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
+			body = wrapManagedBody(hub.body);
 			const parentPath = getParentPath(fullPath);
 			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
 			await app.vault.create(fullPath, buildNoteContent(frontmatter, body));
@@ -2513,28 +2554,44 @@ async function applyEnrichment(
 		if (existing instanceof TFile) {
 			// Re-import: regenerate the managed Contents section, preserve user
 			// frontmatter + any prose outside it (title, notes, etc.).
+			//
+			// A synthetic level hub gets NO `body` region in v1 (contract §2.3): it
+			// has no row render, and its entire managed content IS `children`. So it
+			// merges through the children region alone, not through mergeExistingNote.
+			// The frontmatter read is still the fail-closed one: a cache miss must
+			// never look like "this note has no properties".
+			let existingNote: { frontmatter: Record<string, unknown>; body: string };
 			try {
-				const existingFm = await readExistingFrontmatter(app, existing);
-				if (existingFm && Object.keys(existingFm).length > 0) {
+				existingNote = await readExistingNote(app, existing);
+			} catch (readErr) {
+				const detail = readErr instanceof ExistingNoteReadError ? readErr.detail : String(readErr);
+				recordConflict(result, debug, fullPath, hubCurie ?? undefined, 'frontmatter-unreadable', detail);
+				continue;
+			}
+			const scan = scanRegions(existingNote.body);
+			if (!scan.ok) {
+				recordConflict(result, debug, fullPath, hubCurie ?? undefined, scan.code, scan.detail);
+				continue;
+			}
+			if (Object.keys(existingNote.frontmatter).length > 0) {
+				try {
 					const managedKeys = computeManagedKeys(frontmatter, userPreserve);
-					const merged = mergeFrontmatter(existingFm, frontmatter, managedKeys);
+					const merged = mergeFrontmatter(existingNote.frontmatter, frontmatter, managedKeys);
 					Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
 					Object.assign(frontmatter, merged);
+				} catch (mergeErr) {
+					recordConflict(result, debug, fullPath, hubCurie ?? undefined, 'frontmatter-merge-failed',
+						mergeErr instanceof Error ? mergeErr.message : String(mergeErr));
+					continue;
 				}
-				const existingText = await app.vault.read(existing);
-				// hub.facetLinks: the ROOT hub only (enrich.ts's computeLevelHubs) —
-				// re-derive the same "Facets" extraGroup a fresh import would build,
-				// so a re-import doesn't silently drop it (the merge rebuilds the
-				// managed section from these fields, never by re-parsing `body`).
-				const facetGroup = hub.facetLinks ? [{ label: 'Facets', links: hub.facetLinks }] : [];
-				const freshSection = buildManagedChildrenSection('Contents', hub.childrenLinks ?? [], facetGroup);
-				body = mergeManagedChildrenSection(stripFrontmatterBlock(existingText), freshSection);
-			} catch (mergeErr) {
-				debug?.warn('generation', 'level-hub-merge-failed', `Level hub merge failed at ${fullPath}; using fresh content`, {
-					path: fullPath,
-					error: mergeErr instanceof Error ? mergeErr.message : String(mergeErr),
-				});
 			}
+			// hub.facetLinks: the ROOT hub only (enrich.ts's computeLevelHubs) —
+			// re-derive the same "Facets" extraGroup a fresh import would build,
+			// so a re-import doesn't silently drop it (the merge rebuilds the
+			// managed section from these fields, never by re-parsing `body`).
+			const facetGroup = hub.facetLinks ? [{ label: 'Facets', links: hub.facetLinks }] : [];
+			const freshSection = buildManagedChildrenSection('Contents', hub.childrenLinks ?? [], facetGroup);
+			body = mergeManagedChildrenSection(existingNote.body, freshSection);
 			if (config.waypoint_marker) body = ensureWaypointMarker(body);
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
@@ -2545,16 +2602,6 @@ async function applyEnrichment(
 			result.created.push(fullPath);
 		}
 	}
-}
-
-/** Strip a leading `---\n…\n---` frontmatter block, returning the body text. */
-function stripFrontmatterBlock(text: string): string {
-	const normalized = text.replace(/\r\n/g, '\n');
-	if (!normalized.startsWith('---\n')) return normalized;
-	const end = normalized.indexOf('\n---', 3);
-	if (end === -1) return normalized;
-	const afterFence = normalized.indexOf('\n', end + 1);
-	return afterFence === -1 ? '' : normalized.slice(afterFence + 1);
 }
 
 /**

@@ -179,9 +179,16 @@ describe('Pass 1.5 re-import — end-to-end via generateFromRecipe', () => {
 		// User edits the hub note: adds prose below the H1 + a hand-added frontmatter key.
 		const hubPath = 'Frameworks/Persistence.md';
 		const original = files.get(hubPath)!;
+		// Prose goes BELOW the managed region's end marker. Since 2026-08-27 a hub
+		// note's managed content lives inside `crosswalker:body`, which retires
+		// mergeHubBody's "first H1 is managed, everything after it is prose"
+		// formatting heuristic (contract §2.2 item 4). The marker is visible while
+		// editing, invisible while reading: that asymmetry is what makes the
+		// boundary something a user can respect.
 		const edited = original
-			.replace('# Persistence', '# Persistence\n\nMy tradecraft notes on persistence.')
+			.replace('<!-- crosswalker:body:end -->', '<!-- crosswalker:body:end -->\n\nMy tradecraft notes on persistence.')
 			.replace('kind: facet', 'kind: facet\nreviewer: alice');
+		expect(edited).toContain('<!-- crosswalker:body:end -->\n\nMy tradecraft notes');
 		files.set(hubPath, edited);
 
 		// Re-import.

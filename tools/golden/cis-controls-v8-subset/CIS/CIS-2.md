@@ -17,4 +17,6 @@ _crosswalker:
   concept_cid: sha256-7efd69ebd21ff7f9f8c5a48b23fd448beb3fae2f4ad6bea76f60a534a19b4af6
 ---
 
+<!-- crosswalker:body:start v=1 -->
 # cis-controls-v8-subset:CIS-2
+<!-- crosswalker:body:end -->

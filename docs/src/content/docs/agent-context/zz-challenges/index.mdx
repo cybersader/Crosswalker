@@ -32,8 +32,8 @@ Every agent that works on a project accumulates context bias — it starts agree
 
 | Bucket | Count | Where the briefs live | Sidebar group |
 |---|---|---|---|
-| **Open** | 23 | this folder (`zz-challenges/`) | listed under **Challenges** in ascending Ch order |
-| **Resolved and archived** | 21 | [`zz-challenges/archive/`](/crosswalker/agent-context/zz-challenges/archive/) | the **Archived** group at the bottom |
+| **Open** | 21 | this folder (`zz-challenges/`) | listed under **Challenges** in ascending Ch order |
+| **Resolved and archived** | 24 | [`zz-challenges/archive/`](/crosswalker/agent-context/zz-challenges/archive/) | the **Archived** group at the bottom |
 
 A challenge is **open** while its brief sits in this folder — regardless of whether a deliverable has already landed. It becomes **archived** only when a dated [`zz-log/`](/crosswalker/agent-context/zz-log/) synthesis entry records the verdict and the brief is moved to `archive/` with a resolution callout. Folder membership is the source of truth; this page mirrors it.
 
@@ -41,7 +41,7 @@ Every open brief carries a `Status: OPEN` callout at the top saying whether a re
 
 **Numbering note**: Ch 17 was never filed. It was floated in the [2026-05-02 research-wave log](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/) (reactive/incremental computation; LinkML scope) and parked pending user signal, so the sequence skips from 16 to 18.
 
-## Open (23)
+## Open (21)
 
 | Ch | Challenge | Filed | Research status |
 |---|---|---|---|
@@ -66,8 +66,6 @@ Every open brief carries a `Status: OPEN` callout at the top saying whether a re
 | 41 | [Is internal audit a spine element or a lens?](/crosswalker/agent-context/zz-challenges/41-audit-role-and-naming/) | 2026-06-01 | Not run — depends on Ch 39/40 |
 | 42 | [Variable-depth hierarchy generation](/crosswalker/agent-context/zz-challenges/42-variable-depth-hierarchy-generation/) | 2026-06-14 | Not run — follow-on to Ch 22 |
 | 43 | [Version migration — the semantic-diff loop](/crosswalker/agent-context/zz-challenges/43-version-migration-semantic-diff/) | 2026-07-11 | Not run — Act 2 of the lifecycle arc |
-| 44 | [E2E testing strategy](/crosswalker/agent-context/zz-challenges/archive/44-e2e-testing-strategy/) | 2026-08-19 | ✅ Resolved 2026-08-24 → [deliverable](/crosswalker/agent-context/zz-research/2026-08-24-challenge-44-e2e-testing-strategy/) · [synthesis](/crosswalker/agent-context/zz-log/2026-08-24-e2e-testing-strategy-synthesis/) |
-| 45 | [Org rollout readiness](/crosswalker/agent-context/zz-challenges/archive/45-org-rollout-readiness/) | 2026-08-19 | ✅ Resolved 2026-08-21 → [deliverable](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/) · [synthesis](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/) |
 
 ### Why these batches were filed
 
@@ -91,7 +89,9 @@ Every open brief carries a `Status: OPEN` callout at the top saying whether a re
 
 **2026-07-11 (Ch 43)** — Act 2 of the five-act lifecycle arc ("your ontology updates and your world survives"). The match-pass / impact-pass / review / apply sketch is architect-drafted, not stress-tested against how NIST, MITRE, and CIS actually ship version deltas.
 
-## Resolved and archived (21)
+**2026-08-26 (Ch 46)** — filed after six framework recipes were rewritten in one sprint and every one of them hit the transform grammar's ceiling. Framed deliberately at the level of *data shapes* rather than file formats, to rule out the filter-wishlist answer. Framed and shipped 2026-08-27; the brief is archived below.
+
+## Resolved and archived (24)
 
 Briefs resolved by a research deliverable **and** a corresponding decision log. Each is preserved verbatim (still re-runnable) and carries a resolution callout pointing at the resolving log. They live in [`zz-challenges/archive/`](/crosswalker/agent-context/zz-challenges/archive/).
 
@@ -118,6 +118,9 @@ Briefs resolved by a research deliverable **and** a corresponding decision log. 
 | 25 | [Two-mode import architecture and streaming](/crosswalker/agent-context/zz-challenges/archive/25-two-mode-architecture-and-streaming/) | 2026-05-05 | Both modes supported: bundled projector (Mode 1) and direct Tier 1 emission (Mode 2); no Tier 0.5 intermediate schema. Filed and resolved the same session |
 | 26 | [Transform engine depth + input formats](/crosswalker/agent-context/zz-challenges/archive/26-transform-engine-depth-and-input-formats/) | 2026-05-05 | In-plugin transform stops at v0.3 (closed 7-filter set + JSONata 2.x); JSONaut / ChunkyCSV stay external Mode 1 feeders; JSONL ships as a v0.2 input format. Filed and resolved the same session |
 | 38 | [Query state location + folder-note pattern](/crosswalker/agent-context/zz-challenges/archive/38-query-state-location-and-folder-note-pattern/) | 2026-05-18 | Layout B+ (`_crosswalker/queries/<slug>/index.md` + explicit `![[<slug>/view.base]]` embed); literal folder-note magic-embed rejected — see [synthesis log](/crosswalker/agent-context/zz-log/2026-05-18-query-state-location-synthesis/) |
+| 44 | [E2E testing strategy](/crosswalker/agent-context/zz-challenges/archive/44-e2e-testing-strategy/) | 2026-08-24 | Keep the Playwright/WebdriverIO split; adopt visual regression narrowly with maintenance budgets; stay serial until the harness is isolated; tiered CI per surface — see [deliverable](/crosswalker/agent-context/zz-research/2026-08-24-challenge-44-e2e-testing-strategy/) · [synthesis](/crosswalker/agent-context/zz-log/2026-08-24-e2e-testing-strategy-synthesis/) |
+| 45 | [Org rollout readiness](/crosswalker/agent-context/zz-challenges/archive/45-org-rollout-readiness/) | 2026-08-21 | A controlled desktop pilot is viable now; automated audit-defensible evidence-gap reporting is not — see [deliverable](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/) · [synthesis](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/) |
+| 46 | [The transform engine and the shapes of data](/crosswalker/agent-context/zz-challenges/archive/46-transform-engine-shapes/) | 2026-08-27 | Transformation is not one thing, so it does not get one home: value-shaping stays in templates, collection-shaping extends the source contract through optional `source.where` and `source.joins`, JSONata adopted only at those sites, template grammar frozen — see [framing](/crosswalker/agent-context/zz-log/2026-08-27-transform-shapes-framing-synthesis/) · [delivery](/crosswalker/agent-context/zz-log/2026-08-27-source-contract-delivered/) |
 
 ## Related
 

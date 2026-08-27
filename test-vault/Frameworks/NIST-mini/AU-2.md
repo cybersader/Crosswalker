@@ -26,6 +26,7 @@ _crosswalker:
     id: nist-mini-fixture-flat
     hash: (synthetic — no real recipe)
 ---
+<!-- crosswalker:body:start v=1 -->
 # Event Logging
 
 ## Description
@@ -35,3 +36,4 @@ Identify the types of events that the system is capable of logging in support of
 ## Context
 
 - Family: AU — Audit and Accountability
+<!-- crosswalker:body:end -->

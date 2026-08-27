@@ -19,9 +19,11 @@ _crosswalker:
   concept_cid: sha256-ff75f03732069f1463ecf518df373e0b9fb0596fd45607ab987fc11bc94cd52e
 ---
 
+<!-- crosswalker:body:start v=1 -->
 # nist-csf-2-0-govern-identify:GV
+<!-- crosswalker:body:end -->
 
-<!-- crosswalker:children:start -->
+<!-- crosswalker:children:start v=1 -->
 ## Contents
 - [[GV.OC]]
 - [[GV.OC-01]]

@@ -12,6 +12,8 @@ import {
 	type PreviewRowNotes,
 } from '../render';
 import { legacyConfigToRecipe } from '../generation/legacy-recipe-shim';
+import { describeConflict } from '../generation/managed-body';
+import { shorthandToSourceExpression } from '../source';
 import { findMatchingConfigs, ConfigMatch } from '../config/config-manager';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
 import { VaultImportFilePicker } from '../ui/vault-file-picker';
@@ -3135,9 +3137,13 @@ export class ImportFlow {
 
 				new Notice(`Parsed ${this.parsedData.rowCount} rows with ${this.parsedData.columns.length} columns from sheet "${this.parsedData.sheetName}".`);
 			} else if (this.sourceType === 'json') {
+				// No `where` here any more: the row filter is `source.where` now, and
+				// it runs at generation under G1/G2/G3 (2026-08-27 contract §11). The
+				// wizard therefore previews the WHOLE record list, and a filter that
+				// names a column the source does not have fails loudly at preflight
+				// instead of silently yielding zero rows or all of them.
 				const jsonResult = await parseJSONFile(this.sourceFile, {
 					iterator: this.jsonIterator,
-					where: this.jsonWhere,
 				});
 				this.parsedData = jsonResult;
 				this.columnInfos = analyzeColumns(this.parsedData);
@@ -3147,12 +3153,10 @@ export class ImportFlow {
 					columnCount: jsonResult.columns.length,
 					iterator: this.jsonIterator,
 					where: this.jsonWhere,
-					filteredOut: jsonResult.filteredOut,
 					skippedNonObjects: jsonResult.skippedNonObjects
 				});
 
-				const filtered = jsonResult.filteredOut > 0 ? ` (${jsonResult.filteredOut} filtered out)` : '';
-				new Notice(`Parsed ${jsonResult.rowCount} rows with ${jsonResult.columns.length} columns${filtered}.`);
+				new Notice(`Parsed ${jsonResult.rowCount} rows with ${jsonResult.columns.length} columns.`);
 			}
 
 			this.applySmartDefaults();
@@ -3268,6 +3272,19 @@ export class ImportFlow {
 				options.recipeOverride = this.workbench.buildRecipe();
 			}
 
+			// The wizard's filter field keeps its comma shorthand, but it now writes
+			// `source.where`. One predicate for CSV, XLSX and JSON alike, guarded and
+			// portable with the recipe, instead of a JSON-only silent one.
+			if (this.jsonWhere) {
+				const where = shorthandToSourceExpression(this.jsonWhere);
+				if (where && options.recipeOverride) {
+					options.recipeOverride = {
+						...options.recipeOverride,
+						source: { ...options.recipeOverride.source, where },
+					};
+				}
+			}
+
 			// Run generation
 			const result = await generateNotes(
 				this.app,
@@ -3300,6 +3317,10 @@ export class ImportFlow {
 				if (result.errors.length > 0) {
 					const first = result.errors[0];
 					new Notice(`⚠️ ${result.errors.length} row(s) failed — first error: ${typeof first === 'string' ? first : (first as { message?: string }).message ?? JSON.stringify(first)}`, 10000);
+				}
+				if (result.conflicts && result.conflicts.length > 0) {
+					const n = result.conflicts.length;
+					new Notice(`⚠️ ${n} ${n === 1 ? 'note was' : 'notes were'} left unchanged because Crosswalker could not safely update ${n === 1 ? 'it' : 'them'}. See the results screen.`, 10000);
 				}
 				if (result.created.length === 0 && result.skipped.length === 0 && result.errors.length === 0) {
 					// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Note title" and "In the vault" quote literal UI labels
@@ -3366,7 +3387,14 @@ export class ImportFlow {
 	/**
 	 * Render generation results (errors/warnings) in the modal
 	 */
-	renderGenerationResults(result: { success: boolean; created: string[]; skipped: string[]; errors: { row: number; message: string }[] }) {
+	renderGenerationResults(result: {
+		success: boolean;
+		created: string[];
+		skipped: string[];
+		errors: { row: number; message: string }[];
+		conflicts?: Array<{ path: string; code: string; detail: string }>;
+		filteredOut?: number;
+	}) {
 		const contentEl = this.host.containerEl;
 		contentEl.empty();
 
@@ -3380,6 +3408,22 @@ export class ImportFlow {
 		}
 		if (result.errors.length > 0) {
 			summary.createEl('p', { text: `❌ Errors: ${result.errors.length}` });
+		}
+		// What the row filter dropped. Without this, a filter that quietly matched
+		// nothing looks identical to a source that was simply small.
+		if (result.filteredOut !== undefined && result.filteredOut > 0) {
+			summary.createEl('p', {
+				text: `🔍 Filtered out: ${result.filteredOut} ${result.filteredOut === 1 ? 'row' : 'rows'} did not match the filter.`,
+			});
+		}
+		// A conflict carries the same weight as an error on this screen. A note
+		// Crosswalker refused to touch is never data loss, but a refusal that only
+		// reaches a log is a silent failure wearing a different hat.
+		const conflicts = result.conflicts ?? [];
+		if (conflicts.length > 0) {
+			summary.createEl('p', {
+				text: `⚠️ ${conflicts.length} ${conflicts.length === 1 ? 'note was' : 'notes were'} left unchanged because Crosswalker could not safely update ${conflicts.length === 1 ? 'it' : 'them'}.`,
+			});
 		}
 
 		// Error details
@@ -3398,6 +3442,24 @@ export class ImportFlow {
 				errorList.createEl('p', {
 					text: `... and ${result.errors.length - 20} more errors`,
 					cls: 'setting-item-description'
+				});
+			}
+		}
+
+		// Conflict details
+		if (conflicts.length > 0) {
+			contentEl.createEl('h4', { text: 'Notes left unchanged' });
+			const list = contentEl.createEl('div', { cls: 'crosswalker-error-list' });
+			for (const conflict of conflicts.slice(0, 20)) {
+				list.createEl('p', {
+					text: `${conflict.path}: ${describeConflict(conflict.code, conflict.detail)}`,
+					cls: 'crosswalker-error-item',
+				});
+			}
+			if (conflicts.length > 20) {
+				list.createEl('p', {
+					text: `... and ${conflicts.length - 20} more`,
+					cls: 'setting-item-description',
 				});
 			}
 		}

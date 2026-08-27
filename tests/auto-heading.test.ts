@@ -32,6 +32,7 @@ import { validateRecipe } from '../src/validation/validator';
 import { loadRecipeDocument, patchRecipeDocument } from '../src/import/recipe-document';
 import type { CrosswalkerImportRecipe } from '../src/types/generated/recipe';
 import type { ImportRecipe, ParsedData } from '../src/types/config';
+import { managedBodyOfNote } from './helpers/managed-region';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const yaml = require('js-yaml') as { load: (s: string) => unknown };
@@ -118,12 +119,14 @@ function wizardOptions(recipeOverride: Recipe): GenerationOptions {
 	};
 }
 
-/** Strip the YAML frontmatter block, returning the note body. */
+/**
+ * The MANAGED body content — frontmatter stripped, then the `crosswalker:body`
+ * region unwrapped. `auto_heading` owns what goes INSIDE that region, so every
+ * assertion below is unchanged; `managedBodyOfNote` throws when the region is
+ * missing, so a lost wrapper fails rather than silently passing.
+ */
 function bodyOf(note: string): string {
-	const normalized = note.replace(/\r\n/g, '\n');
-	if (!normalized.startsWith('---\n')) return normalized;
-	const closing = normalized.indexOf('\n---\n', 4);
-	return closing < 0 ? normalized : normalized.slice(closing + 5);
+	return note === '' ? '' : managedBodyOfNote(note);
 }
 
 /** Run the WIZARD path (generateNotes) and return the note body. */

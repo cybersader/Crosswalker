@@ -36,6 +36,7 @@ import {
 	normalizeAliasList,
 	buildDefaultBody,
 } from '../../src/generation/generation-engine';
+import { wrapManagedBody } from '../../src/generation/managed-body';
 import {
 	enrich,
 	buildManagedChildrenSection,
@@ -227,7 +228,11 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 		const children = enrichment.childrenByPath.get(finalPath);
 		if (children) r.frontmatter.children = children;
 		attachProvenance(r.frontmatter, r.conceptCid);
-		let body = buildDefaultBody(r.frontmatter, { body: [] }, recipe, r.scope);
+		// The engine wraps every row-written body in its `body` region before it
+		// reaches buildNoteContent. The harness must call the SAME wrapper or the
+		// golden drifts from the writer, which is the exact drift this file exists
+		// to prevent.
+		let body = wrapManagedBody(buildDefaultBody(r.frontmatter, { body: [] }, recipe, r.scope));
 		// Level hubs (hosted case): this concept note also hosts its own
 		// folder's index — append the managed "Contents" section (mirrors
 		// generation-engine's applyEnrichment combined patch, step 1).
@@ -242,7 +247,7 @@ export async function buildVaultDetailed(csvPath: string): Promise<BuiltVault> {
 	// Facet hub notes.
 	for (const hub of enrichment.hubs) {
 		attachProvenance(hub.frontmatter);
-		vault.set(hub.path, buildNoteContent(hub.frontmatter, hub.body));
+		vault.set(hub.path, buildNoteContent(hub.frontmatter, wrapManagedBody(hub.body)));
 	}
 
 	// Level (hierarchy MOC) hub notes — synthetic, path already full (no

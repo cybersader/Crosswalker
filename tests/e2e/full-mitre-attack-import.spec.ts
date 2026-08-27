@@ -196,6 +196,18 @@ describeScale('Crosswalker plugin — MITRE ATT&CK technique recipe corpus proof
 			let notesWithDetection = 0;
 			let sampleBody = '';
 
+			// The note body now opens with the managed-region boundary (2026-08-27
+			// managed body regions). Structural claims about "the first line" are
+			// claims about the first line INSIDE the region, so read through it.
+			// Falls back to the raw body when no region is present, so a note that
+			// somehow lost its boundary is still checked rather than skipped.
+			const regionOf = (text: string): string => {
+				const s = text.indexOf('<!-- crosswalker:body:start');
+				const e = text.indexOf('<!-- crosswalker:body:end -->');
+				if (s === -1 || e === -1) return text;
+				const nl = text.indexOf('\n', s);
+				return nl === -1 ? text : text.slice(nl + 1, e);
+			};
 			for (const row of args.rows) {
 				const notePath = `${args.destination}/${row['ID']}.md`;
 				const file = app.vault.getAbstractFileByPath(notePath);
@@ -207,7 +219,7 @@ describeScale('Crosswalker plugin — MITRE ATT&CK technique recipe corpus proof
 				if (fragment.length > 0 && !body.includes(fragment)) missingDescriptionProse.push(notePath);
 				if (!body.includes(args.notice)) missingNotice.push(notePath);
 				if (body.includes('## Detection')) notesWithDetection++;
-				const firstLine = body.split('\n')[0];
+				const firstLine = regionOf(body).split('\n')[0];
 				const marker = firstLine.startsWith('#') ? firstLine.replace(/\s[\s\S]*$/, '') : '(no leading heading)';
 				firstLineMarkers[marker] = (firstLineMarkers[marker] ?? 0) + 1;
 				wordCounts.push(body.match(/\S+/g)?.length ?? 0);
@@ -217,7 +229,7 @@ describeScale('Crosswalker plugin — MITRE ATT&CK technique recipe corpus proof
 			return {
 				missingFiles, emptyBodies, missingDescriptionProse, missingNotice,
 				firstLineMarkers,
-				sampleFirstLine: sampleBody.split('\n')[0],
+				sampleFirstLine: regionOf(sampleBody).split('\n')[0],
 				notesWithDetection,
 				wordCountAverage: sum(wordCounts) / wordCounts.length,
 				wordCountMin: Math.min(...wordCounts),

@@ -20,4 +20,6 @@ _crosswalker:
   concept_cid: sha256-aec40f4c577e076fa376596740c1208a1b8d01b03661b90b86f75ca3c1c5f4a8
 ---
 
+<!-- crosswalker:body:start v=1 -->
 # nist-csf-2-0-govern-identify:GV.RM
+<!-- crosswalker:body:end -->

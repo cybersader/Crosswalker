@@ -12,8 +12,14 @@
  *   $.catalog.groups[*].controls[*]       OSCAL catalogs (multi-fan flattens)
  *   (leave empty)                         document root is itself an array
  *
- * Where examples (comma-ANDed `=` / `!=` on dotted paths):
- *   type=attack-pattern,revoked!=true,x_mitre_deprecated!=true
+ * ROW FILTERING LIVES IN `source.where`, NOT HERE (2026-08-27 contract §11).
+ * The parser used to carry its own silent predicate whose documented behaviour
+ * was "a missing field never `=`-matches, and always `!=`-matches" — so a typo'd
+ * column returned zero rows or every row with no diagnostic. That implementation
+ * is deleted. The wizard field keeps its comma shorthand and now translates it
+ * through `src/source/shorthand.ts` into `source.where`, which is guarded by G1
+ * (strict boolean), G2 (referenced names must exist) and G3 (a predicate that
+ * admits nothing is an error) and travels with the recipe.
  */
 
 import { ParsedData } from '../../types/config';
@@ -22,13 +28,9 @@ import { jsonToRows } from './json-source-core';
 export interface JSONParseOptions {
 	/** Iterator path locating the row array (e.g. "$.objects[*]"). Empty → root array. */
 	iterator?: string;
-	/** Comma-ANDed row filters ("type=attack-pattern,revoked!=true"). */
-	where?: string;
 }
 
 export interface JSONParseResult extends ParsedData {
-	/** Rows excluded by the `where` clauses (so the wizard can report it). */
-	filteredOut: number;
 	/** Non-object items the iterator yielded and skipped. */
 	skippedNonObjects: number;
 }
@@ -40,7 +42,7 @@ export interface JSONParseResult extends ParsedData {
  */
 export async function parseJSONFile(file: File, options: JSONParseOptions = {}): Promise<JSONParseResult> {
 	const text = await file.text();
-	const result = jsonToRows(text, options.iterator || undefined, options.where || undefined);
+	const result = jsonToRows(text, options.iterator || undefined);
 
 	// Column order = first appearance across rows (JSON objects can be sparse).
 	const columns: string[] = [];
@@ -58,7 +60,6 @@ export async function parseJSONFile(file: File, options: JSONParseOptions = {}):
 		columns,
 		rows: result.rows,
 		rowCount: result.rows.length,
-		filteredOut: result.filteredOut,
 		skippedNonObjects: result.skippedNonObjects,
 		// Ch 46 source contract 4.2: `source.joins` locates a secondary
 		// collection in a SIBLING ARRAY OF THIS SAME DOCUMENT. Lazy on purpose,
