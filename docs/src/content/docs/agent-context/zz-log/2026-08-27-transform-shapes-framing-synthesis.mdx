@@ -1,0 +1,138 @@
+---
+title: "Transformation has two shapes — Challenge 46 framing synthesis"
+description: "Framing decision for Challenge 46, not its full resolution. Value-shaping stays in templates; collection-shaping extends the source contract through optional source.where and source.joins declarations. JSONata is adopted only at those new declaration sites under a fail-loud contract, while the current template list algebra is frozen."
+tags: [decision, synthesis, transform-engine, source-contract, jsonata, recipe-grammar, ch-46-framing]
+date: 2026-08-27
+sidebar:
+  label: "08-27 · Transform shapes framing"
+  order: -20260827
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="Framing settled; Challenge 46 remains open">
+This log settles the two framing questions in [Challenge 46](/crosswalker/agent-context/zz-challenges/46-transform-engine-shapes/): where transformation belongs and which existing expression language to use. It does **not** complete the challenge. Concrete schema syntax, migration, worked examples, the CPRT sibling-array case study, and the full non-breaking-extension proof remain worker-tier work against these verdicts.
+</Aside>
+
+The decision synthesizes the [transformation-language prior-art survey](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-a-transformation-prior-art/) and the [transformation-placement survey](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-b-transformation-placement/).
+
+## 1. The two verdicts
+
+| Question | Adopted | Rejected |
+|---|---|---|
+| Where transformation belongs | **Split by operation shape.** Value-shaping stays in templates. Collection-shaping extends `source` through optional `source.where` and `source.joins`. | One general transform stage; templates as the universal transform engine; producer-only handling before the bundled engine covers a complete single-workbook path. |
+| Which language | **JSONata, narrowly**, only for the new source declaration sites. | jq as a second schema language; a new Crosswalker expression language; continued growth of the template filter grammar. |
+
+The load-bearing principle is that **transformation is not one thing, so it does not get one home**.
+
+## 2. Why the split is structural, not stylistic
+
+The placement survey found the decisive implementation fact:
+
+> `ParsedData` holds one collection, and generation renders and discards one row at a time.
+
+By template evaluation, sibling sheets and sibling arrays are already gone. A cross-sheet join is therefore impossible at template time. More filters can reshape values inside the current row, but they cannot recover a second collection discarded before `render()`. Option A, transformation only in templates, could never close all five measured gaps.
+
+That produces two different operation classes:
+
+| Operation class | Measured gaps | Permanent home |
+|---|---|---|
+| **Value-shaping** (reshape one value of one row) | Literal keys, per-item transformation over a cell collection, substring extraction | **Templates.** Render-time, per-row, deterministic, and streaming-friendly. |
+| **Collection-shaping** (change which rows exist or what a row is) | Row subset, cross-collection join | **The `source` contract.** These operations must run while the necessary collection context still exists. |
+
+The tactical literal-key and list-algebra work is therefore not debt. It is the permanent value-shaping layer.
+
+## 3. Verdict 1: extend `source`; do not create a transform stage
+
+Recipes gain two optional declarations:
+
+- `source.where`: a row predicate. A row for which it evaluates to false never becomes a note.
+- `source.joins`: **keyed lookup-enrichment only**. Named secondary collections, such as other sheets in the same workbook or sibling arrays in the same document, are indexed by a key expression. Matched fields become addressable on the primary row.
+
+`source.joins` is **not relational algebra**. The bounded model is one primary stream plus N lookup indexes. Filtering preserves streaming. A lookup join uses memory proportional to the secondary collection while the primary collection continues to stream.
+
+A general transform stage was rejected because it would introduce the [fourth-language anti-pattern](/crosswalker/agent-context/zz-research/2026-05-09-challenge-36-query-language-rerun/) structurally: first a source model, then an execution model, then eventually a transform IDE. Closed source declarations preserve the [Ch 22 closed-grammar principle](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/): membership grows additively through named capabilities, not through an open-ended language stage.
+
+### What the bundled engine owes
+
+The [schema-as-primitive pillar](/crosswalker/concepts/etl-and-import/) keeps external producers first-class, but it does not excuse the bundled engine from serving the launch user with one workbook and no Python. The boundary is:
+
+> Single-file import with row selection, value shaping (including lists), and keyed enrichment across sheets of the same workbook, deterministic and streaming at the measured scales (1,468×369 proven).
+
+The plugin deliberately does not owe cross-file joins, import-time aggregation or pivoting, or recursive graph expansion. Those remain producer-side normalization into valid Tier 1 or Tier 2 query-time work.
+
+### Ordering and compatibility
+
+**Source declarations execute before identity, CURIE minting, hashing, and render.** They define what a row is. They also participate in the recipe hash because they change which notes exist.
+
+Both declarations are optional. Omission preserves today's behavior byte-for-byte. That is the architectural additive-evolution construction; concrete schema syntax and the full non-breaking-extension proof remain open implementation deliverables.
+
+## 4. Verdict 2: adopt JSONata narrowly
+
+JSONata is already the recipe schema's only permitted string-typed expression language. jq would add a second expression language to one schema before its approximately 1.06 MB WASM payload and asset-loading complexity disqualify it for the mobile-first bundled engine.
+
+**JSONata powers only the new declaration sites:**
+
+- the `source.where` predicate;
+- join key expressions within `source.joins`.
+
+The template filter grammar is **frozen at its current five-form list algebra**. Templates remain a small, closed addressing-and-formatting grammar. Computation belongs at a JSONata declaration site. Work beyond one workbook belongs to a producer. This gives each expressiveness tier a stated ceiling and avoids inventing a Crosswalker language by filter accretion.
+
+## 5. The loudness contract
+
+JSONata's silent missing-path behavior is unsafe for imports. This codebase had three bugs in one week from the same failure shape: cache lag was interpreted as absence, including a real-vault evidence modal failure recorded in [the evidence closeout](/crosswalker/agent-context/zz-log/2026-08-21-evidence-closeout/) and a re-import identity failure corrected by the [import-set ownership fix](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/). A typo or unavailable path must never silently become “skip this row.”
+
+Every implementation is bound by this four-point contract:
+
+1. A `source.where` expression MUST evaluate to a boolean. `undefined` or any non-boolean is a **RenderError naming the row and the expression** — never "false, skip the row." Silently dropping rows on a typo'd column name is this codebase's signature bug, pre-committed.
+2. A join key that evaluates to `undefined` fails loud the same way; a key that finds **no match** is a legitimate empty result (absence of a relation is data; absence of the *key* is a defect).
+3. Crosswalker owns a conformance fixture suite for the JSONata subset it uses, run against both the JS engine and any port a producer relies on. The runtime-agnostic commitment survives only if parity is *tested*, not assumed.
+4. Guardrails per the survey's security notes: JSONata ≥ 2.2.1, evaluation timeout, depth limits.
+
+<Aside type="caution" title="One naming inconsistency to resolve at implementation">
+The verdict binds the error type as `RenderError`, but source declarations execute
+**before** `render()` by the ordering rule above, so that name will be wrong in the
+code. The binding part is the behaviour, not the identifier: a non-boolean `where`
+result or an undefined join key must fail loudly, naming the row and the expression,
+and must never degrade to "skip this row". Implementation should introduce a
+correctly-named error for the source stage and say so in its commit. Flagged by the
+worker that published this log rather than silently corrected.
+</Aside>
+
+## 6. What is locked and what remains open
+
+| Status | Item |
+|---|---|
+| **Locked** | Value-shaping remains in templates. |
+| **Locked** | Collection-shaping extends `source`, not a general transform stage. |
+| **Locked** | Optional `source.where` and keyed lookup-only `source.joins`. |
+| **Locked** | Source declarations run before identity, CURIE minting, hashing, and render, and participate in the recipe hash. |
+| **Locked** | JSONata only at the new source declaration sites. |
+| **Locked** | Current template list algebra is frozen. |
+| **Locked** | Four-point fail-loud and runtime-conformance contract. |
+| **Open** | Concrete JSON Schema syntax and semantics for both declarations. |
+| **Open** | Migration path for bundled and unknown user recipes. |
+| **Open** | Worked examples against the measured gaps, including the CPRT sibling-array case. |
+| **Open** | Full proof that this implementation admits the next source shape without breaking earlier recipes. |
+
+If implementation discovers a fact that contradicts a verdict, such as a lookup join failing to preserve streaming in the real parser, the work returns to an architect decision rather than bending the boundary in code.
+
+## 7. Reconciliation with settled architecture
+
+| Settled commitment | Reconciliation |
+|---|---|
+| [Schema-as-primitive](/crosswalker/concepts/etl-and-import/) | External producers still handle shapes beyond the single-workbook boundary and may emit valid Tier 1 directly. |
+| [Closed target-structure grammar](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) | The new capability is expressed as closed optional source declarations, not an open transform stage or target-language expansion. |
+| [Runtime-agnostic recipe schema](/crosswalker/agent-context/zz-log/2026-05-04-bundle-engine-language-synthesis/) | JSONata is already the sole permitted expression language; conformance fixtures make cross-runtime parity a tested contract. |
+| Mobile-first TypeScript engine | JSONata's small pure-JS implementation fits the bundled engine; jq-WASM does not. Lookup indexes are bounded to secondary collections. |
+| Additive evolution | Existing recipes omit both declarations and preserve current behavior. Future source capabilities extend the same optional declaration seam. |
+
+## Related
+
+- [Challenge 46 brief](/crosswalker/agent-context/zz-challenges/46-transform-engine-shapes/)
+- [Deliverable A: transformation language prior art](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-a-transformation-prior-art/)
+- [Deliverable B: transformation placement](/crosswalker/agent-context/zz-research/2026-08-27-challenge-46-deliverable-b-transformation-placement/)
+- [Challenge 36 query-language rerun](/crosswalker/agent-context/zz-research/2026-05-09-challenge-36-query-language-rerun/) — fourth-language precedent
+- [Challenge 22 target-structure synthesis](/crosswalker/agent-context/zz-log/2026-05-04-target-structure-synthesis/) — closed-grammar precedent
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — schema-as-primitive pillar
+- [The evidence closeout](/crosswalker/agent-context/zz-log/2026-08-21-evidence-closeout/) — cache lag read as absence in the shipped evidence flow
