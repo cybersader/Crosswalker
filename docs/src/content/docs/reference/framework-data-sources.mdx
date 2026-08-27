@@ -1,180 +1,239 @@
 ---
 title: Framework data sources
-description: Source files, sheet names, column mappings, and ID formats for each supported framework.
+description: Canonical acquisition, licence, workbook binding, recipe, row-count, and import-gotcha reference for sources Crosswalker recognizes.
 sidebar:
   order: 10
 tags: [frameworks, import-transforms, frameworks-nist, frameworks-mitre]
 ---
 
-This reference documents the specific data sources, sheet structures, and transformation requirements for each framework that Crosswalker's Python tool supports (and the plugin will support).
+Crosswalker ships recognized-source imports for the framework files below today. This page is the canonical technical reference for obtaining each source, choosing the matching [recipe](/crosswalker/concepts/terminology/#recipe), selecting the exact worksheet and header row, checking the real record count, and avoiding imports that look successful but are wrong.
 
-## NIST SP 800-53 Rev 5
+**Status last verified:** 2026-08-27 — verified against real imports of each source
 
-**Source**: [sp800-53r5-control-catalog.xlsx](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final)
+The bundled recipes live in the [Crosswalker plugin repository](https://github.com/cybersader/crosswalker/tree/main/recipes/import). Community recipes and contribution guidance live in [crosswalker-recipes](https://github.com/cybersader/crosswalker-recipes). Framework content is not bundled: obtain each source from its publisher and confirm that the publisher's terms fit your use.
 
-### Sheets
+## Silent-failure checklist
 
-| Sheet | Purpose | Header Row |
-|-------|---------|-----------|
-| SP 800-53 Revision 5 | Control catalog | 0 |
+> [!danger] Check these before trusting an import
+> These failures can produce plausible row counts, valid-looking notes, or no error at all.
+>
+> 1. **CIS float collapse:** safeguard identifiers are numeric cells. A raw-value reader turns `4.10` into the float `4.1`, colliding with safeguard `4.1`. One note disappears silently. Crosswalker reads formatted cell values to keep the identifiers distinct.
+> 2. **CRI header index:** the CRI v2.2 header is at row **index 2**. Index 1 still returns the correct 472 rows, but names every column `__EMPTY`, so a row-count-only check falsely passes.
+> 3. **NIST line counting:** the NIST SP 800-53 CSV has about 2,605 physical lines because control text contains embedded newlines, but it has **1,189 records**. `wc -l` does not measure CSV records.
+> 4. **Row prefilters:** the CSF workbook has 46 banner rows; the two CIS recipes share one sheet containing two row kinds; and the two CPRT recipes encounter 227 non-concept elements. Filter to the row kind the recipe expects before generation. The current recipe grammar has no general row predicate, so pointing these recipes directly at their full source collection can silently collapse rows onto empty or duplicate paths.
+> 5. **SCF width and volume:** the SCF workbook is 369 columns wide. Naive automation can throw `RangeError` while enumerating a row. Its practical scale pressure is about 9 MB of generated body text, not its 1,468-row count.
 
-### Key columns
+## Verified source bindings
 
-| Column | Example | Role |
-|--------|---------|------|
-| Control Identifier | `AC-2` | Primary ID |
-| Control (or Enhancement) Name | `Account Management` | Display name |
-| Control Text | (long text) | Body content |
-| Discussion | (long text) | Body content |
-| Related Controls | `AC-3, AC-5, IA-4` | Links (array-contains matching) |
-| Control Family | `Access Control` | Hierarchy level 1 |
+| Framework | Source collection | Exact sheet | Header row index | Parsed rows | Bundled recipe |
+|---|---|---|---:|---:|---|
+| NIST SP 800-53 Rev. 5 | CSV lineage | CSV header | 0 | **1,189 records** | `nist-800-53-flat` |
+| NIST CSF 2.0 | Core workbook | `CSF 2.0` | **1** | 231 total: **185 subcategory rows** + 46 banner rows | `nist-csf-2-flat` |
+| NIST CSF 2.0 | CPRT JSON | element collection | n/a | 227 non-concept elements require filtering | `nist-csf-2-cprt`, `nist-csf-2-cprt-hierarchical` |
+| MITRE ATT&CK Enterprise | Excel export | `techniques` | 0 | **656** | `mitre-attack-technique-flat` |
+| CIS Controls v8.1.2 | Controls workbook | `Controls v8.1.2` | 0 | **171**: 153 safeguards + 18 controls | `cis-controls-v8-flat`, `cis-controls-v8-controls` |
+| CRI Profile v2.2 | Profile workbook | `CRI Profile v2.2 Structure` | **2** | **472**: F 7 / C 28 / S 119 / DS 318 | `cri-profile-v2-2-flat` |
+| Secure Controls Framework 2026.1 | SCF workbook | `SCF 2026.1` | 0 | **1,468 × 369 columns** | `scf-2026-flat` |
 
-### ID format
+## Licence posture
+
+This is a practical pointer, not legal advice and not a replacement for the publisher's terms. Importing a file for your own use, redistributing the source, and sharing generated notes are different acts. Confirm the terms for the exact version, fields, audience, and use involved.
+
+| Source | Practical posture |
+|---|---|
+| NIST publications | NIST describes its US Government works as generally not subject to US copyright; check the [NIST copyright policy](https://www.nist.gov/oism/copyrights) and any third-party notices in the specific publication. |
+| MITRE ATT&CK | MITRE permits use subject to its [ATT&CK terms of use](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/), including attribution requirements. The bundled recipe carries the MITRE notice into generated notes. |
+| CIS Controls | The publisher applies restrictive terms, including CC BY-NC-ND language. Registration is required to obtain the workbook. Confirm whether sharing generated notes is permitted for your situation. |
+| CRI Profile | CRI's [Profile FAQ](https://cyberriskinstitute.org/the-profile/profile-faq/) describes restrictive CC BY-NC-ND terms. Confirm whether sharing generated notes is permitted for your situation. |
+| Secure Controls Framework | SCF publishes CC BY-ND language plus separate terms governing use and derivatives. Read the [SCF terms and conditions](https://securecontrolsframework.com/terms-and-conditions) and confirm your intended use. |
+
+## NIST SP 800-53 Rev. 5
+
+**Obtain it:** [NIST SP 800-53 Rev. 5, Update 1](https://csrc.nist.gov/pubs/sp/800/53/r5/upd1/final). NIST publishes spreadsheet/CSV material alongside the publication. Machine-readable OSCAL is also available from [usnistgov/oscal-content](https://github.com/usnistgov/oscal-content/tree/v1.4.0/nist.gov/SP800-53/rev5/json), but it is a different lineage and can produce different counts and hashes.
+
+**Bundled recipe:** `nist-800-53-flat`, from the [bundled import recipes](https://github.com/cybersader/crosswalker/tree/main/recipes/import). It reads the CSV lineage and produces one flat note per control or enhancement.
+
+### Exact binding and result
+
+| Item | Verified value |
+|---|---|
+| Source shape | CSV with header at index 0 |
+| Records | **1,189** |
+| Physical lines | About 2,605 because quoted control text contains embedded newlines |
+| Key columns | Control Identifier; Control (or Enhancement) Name; Control Text; Discussion; Related Controls; Control Family |
+| Result | 1,189 notes; related controls become a queryable property and body wikilinks |
+
+### Identifier format
 
 Pattern: `[A-Z]{2}-\d+(\(\d+\))?`
-- Family: `AC`, `AU`, `CA`, etc.
+
+- Family: `AC`, `AU`, `CA`
 - Control: `AC-1`, `AC-2`
-- Enhancement: `AC-2(1)`, `AC-2(2)`
+- Enhancement: `AC-2(1)`, `AC-2(13)`
+
+### Gotchas
+
+- **Do not count records with `wc -l`.** Embedded newlines explain the gap between about 2,605 physical lines and 1,189 CSV records.
+- **Preserve enhancement parentheses.** A custom filename transform that strips rather than sanitizes punctuation can make `AC-2(1)` and `AC-2(13)` collide.
+- **Clean the related-controls field.** Empty rows can carry `[None]`, and identifiers can have trailing punctuation. Without cleanup, links such as `[[SC-37.]]` and `[[[None]]]` render but do not resolve.
+- **No row prefilter is needed** for this lineage: every record represents a control or enhancement.
 
 ### Assessment procedures
 
-**Source**: [sp800-53ar5-assessment-procedures.xlsx](https://csrc.nist.gov/pubs/sp/800/53/a/r5/final)
+**Source:** [SP 800-53A Rev. 5 assessment procedures](https://csrc.nist.gov/pubs/sp/800/53/a/r5/final)
 
-Assessment IDs need normalization to merge with controls:
-```
-AC-01_ODP[01]  →  AC-1    (strip leading zero, remove suffix)
+Assessment identifiers need normalization before joining to controls:
+
+```text
+AC-01_ODP[01]  →  AC-1
 Pattern: /^([A-Za-z]+)-0?(\d+)/
 ```
 
 ## NIST CSF 2.0
 
-**Source**: [csf2.xlsx](https://www.nist.gov/cyberframework)
+**Obtain it:** [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework). The core workbook and a [Cybersecurity and Privacy Reference Tool (CPRT)](https://csrc.nist.gov/projects/cprt) export have different shapes and are not interchangeable.
 
-### Key columns
+**Bundled recipes:**
 
-| Column | Example | Role |
-|--------|---------|------|
-| Function | `GOVERN` | Hierarchy level 1 |
-| Category | `Organizational Context` | Hierarchy level 2 |
-| Subcategory | `GV.OC-01` | Primary ID |
-| Implementation Examples | (text) | Body content |
+| Recipe | Reads | Output |
+|---|---|---|
+| `nist-csf-2-flat` | Core workbook, sheet `CSF 2.0` | One note per subcategory |
+| `nist-csf-2-cprt` | CPRT JSON | Flat element notes |
+| `nist-csf-2-cprt-hierarchical` | CPRT JSON | Function/category hierarchy |
 
-### ID format
+### Exact workbook binding and result
 
-Pattern: `[A-Z]{2}\.[A-Z]{2}-\d{2}`
-- Function prefix: `GV`, `ID`, `PR`, `DE`, `RS`, `RC`
-- Category: `GV.OC`, `ID.AM`, `PR.AC`
-- Subcategory: `GV.OC-01`, `ID.AM-01`
+| Item | Verified value |
+|---|---|
+| Sheet | `CSF 2.0` |
+| Header row | **Index 1**; row 0 is a banner |
+| Parsed rows | 231 total |
+| Importable subcategory rows | **185** |
+| Banner rows | **46** |
+| Withdrawal markers | **79 of the 185 subcategory rows** |
+| Key columns | Function; Category; Subcategory; Implementation Examples; Informative References |
 
-## CIS Controls v8
+Identifier pattern: `[A-Z]{2}\.[A-Z]{2}-\d{2}`, for example `GV.OC-01`.
 
-**Source**: [CIS_Controls_Version_8.1_6_24_2024.xlsx](https://www.cisecurity.org/controls/v8)
+### Gotchas
 
-### Sheets
-
-| Sheet | Purpose |
-|-------|---------|
-| Controls V8 | Control and safeguard catalog |
-
-### Key columns
-
-| Column | Example | Role |
-|--------|---------|------|
-| CIS Control | `1` | Hierarchy level 1 |
-| CIS Safeguard | `1.1` | Primary ID |
-| Title | `Establish and Maintain Detailed Enterprise Asset Inventory` | Display name |
-| Description | (text) | Body content |
-| Asset Type | `Devices` | Frontmatter |
-| Security Function | `Identify` | Frontmatter |
-| IG1 / IG2 / IG3 | `TRUE` / `FALSE` | Frontmatter (implementation groups) |
-
-### ID format
-
-Pattern: `\d+\.\d+`
-- Control: `1`, `2`, `3` (18 total)
-- Safeguard: `1.1`, `1.2`, `3.5` (153 total)
-
-### Special transform: Preamble extraction
-
-CIS data includes control-level descriptions as "preamble" rows before the safeguards. The extraction algorithm:
-1. Detect rows where the safeguard field matches the control number (e.g., safeguard `1` for control `1`)
-2. Extract the title and description from these preamble rows
-3. Attach them as metadata to the control folder note
-4. Remove preamble rows from the safeguard list
-
-## CRI Profile v2.0
-
-**Source**: [Final-CRI-Profile-v2.0-Public-CRI.xlsx](https://cyberriskinstitute.org/the-profile/)
-
-### Sheets
-
-| Sheet | Header Row | Purpose |
-|-------|-----------|---------|
-| CRI Profile v2.0 Structure | 2 | Core hierarchy |
-| Diagnostic Statements by Tag | 3 | Tag-based grouping |
-| NIST CSF v2 Mapping | 3 | Crosswalk |
-| FFIEC CAT to Profile Mapping | 3 | Crosswalk |
-| FFIEC AIO Mapping | 3 | Crosswalk |
-| FFIEC BCM Mapping | 3 | Crosswalk |
-| CISA CPG 1.0.1 Mapping | 3 | Crosswalk |
-| NIST Ransomware Profile | 3 | Crosswalk |
-
-### Key columns (Structure sheet)
-
-| Column | Example | Role |
-|--------|---------|------|
-| Outline Id | `GV.OC-01.01` | Alternative ID |
-| Level | `4` | Hierarchy depth |
-| Profile Id | `GV.OC-01` | Primary ID |
-| Category / Subcategory | `Organizational Context` | Hierarchy |
-| Diagnostic Statement | (text) | Body content |
-
-### Special transform: Tag aggregation
-
-CRI diagnostic statements have subject tags (`#access_management`, `#data_protection`, etc.) that need aggregation:
-
-1. Group diagnostic statements by `Profile Id`
-2. Collect all unique tags across grouped rows
-3. Prefix tags with `cri/` namespace: `#access_management` → `#cri/access_management`
-4. Merge aggregated tags back to the structure sheet
-
-### Hierarchical forward-fill
-
-The Structure sheet uses merged cells for Function/Category levels. Requires [hierarchical forward-fill](/crosswalker/agent-context/helper-functions/#hierarchical_ffilldataframe-columns) with columns `["Function", "Category", "Subcategory"]`.
+- **The workbook needs a row prefilter.** Keep rows with a non-empty `Subcategory`. Otherwise the 46 banner rows resolve to empty filenames and collide.
+- **Both CPRT recipes need a row prefilter.** The CPRT collection includes **227 non-concept elements** that must not be generated as concept notes.
+- **Withdrawal markers are real rows.** Of 185 subcategory rows, 79 are withdrawal markers. If you count only active outcomes, the total is 106.
+- **Merged-cell hierarchy columns are empty on subcategory rows.** The bundled flat recipe derives function and category from the subcategory identifier rather than trusting those cells.
+- **Outcome text repeats the identifier.** Removing the leading `GV.OC-01:`-style prefix needs a substring transform not currently available in the recipe grammar.
+- **Informative References is intentionally omitted.** It contains newline-separated mappings whose labels and identifiers need per-item cleanup before they can become reliable links.
 
 ## MITRE ATT&CK Enterprise
 
-**Source**: [enterprise-attack-v16.1.xlsx](https://attack.mitre.org/resources/attack-data-and-tools/)
+**Obtain it:** [ATT&CK data and tools](https://attack.mitre.org/resources/attack-data-and-tools/). The bundled recipe reads the Excel export, not the STIX bundle.
 
-### Sheets
+**Bundled recipe:** `mitre-attack-technique-flat`, which produces one note per technique or sub-technique.
 
-| Sheet | Purpose |
-|-------|---------|
-| techniques | Technique catalog |
+### Exact binding and result
 
-### Key columns
+| Item | Verified value |
+|---|---|
+| Sheet | `techniques` |
+| Header row | Index 0 |
+| Rows | **656** |
+| Columns | 23 |
+| Version compatibility checked | Column set identical between v15.1 and v16.1 |
+| Key columns | ID; name; description; tactics; platforms; is sub-technique; url |
 
-| Column | Example | Role |
-|--------|---------|------|
-| ID | `T1059` | Primary ID |
-| name | `Command and Scripting Interpreter` | Display name |
-| description | (text) | Body content |
-| tactics | `execution` | Hierarchy / tags |
-| platforms | `Windows, Linux, macOS` | Frontmatter |
-| is sub-technique | `TRUE` / `FALSE` | Hierarchy indicator |
-| url | `https://attack.mitre.org/techniques/T1059` | Frontmatter |
+Identifier pattern: `T\d{4}(\.\d{3})?`, for example `T1059` and `T1059.001`.
 
-### ID format
+The recipe emits tactics, platforms, and data sources as arrays; adds parent links for sub-techniques; and carries MITRE's notice into every generated note.
 
-Pattern: `T\d{4}(\.\d{3})?`
-- Technique: `T1059`, `T1548`
-- Sub-technique: `T1059.001`, `T1059.003`
+### Gotchas
 
-### Hierarchy
+- **Choose the Excel recipe for the Excel file.** A STIX bundle has a different shape and needs another recipe.
+- **Citation markers remain inline.** Text such as `(Citation: TechNet How UAC Works)` is part of the exported prose and is preserved.
+- **Mitigations are not imported.** They require a join through a separate relationships sheet, which this recipe does not perform.
+- **Contributor and date fields are omitted.** Contributor delimiters are ambiguous, and source dates are not normalized ISO values.
 
-ATT&CK uses Tactic → Technique → Sub-technique. The `tactics` column contains the parent tactic(s). Sub-techniques are identified by the `is sub-technique` flag and dot notation in the ID.
+## CIS Controls v8.1.2
+
+**Obtain it:** [CIS Controls](https://www.cisecurity.org/controls). Registration is required. Crosswalker does not distribute the workbook.
+
+**Bundled recipes:**
+
+| Recipe | Required row kind | Result |
+|---|---|---|
+| `cis-controls-v8-flat` | Safeguard rows | 153 safeguard notes |
+| `cis-controls-v8-controls` | Control rows | 18 control notes |
+
+### Exact binding
+
+| Item | Verified value |
+|---|---|
+| Sheet | `Controls v8.1.2` |
+| Header row | Index 0 |
+| Rows | **171 = 153 safeguards + 18 controls** |
+| Columns | 9 |
+| Key columns | CIS Control; CIS Safeguard; Title; Description; Asset Type; Security Function; IG1; IG2; IG3 |
+
+Safeguard identifiers follow `\d+\.\d+`, for example `1.1`, `3.5`, and `4.10`.
+
+### Gotchas
+
+> [!danger] Numeric identifier collapse
+> The workbook stores safeguard identifiers as numbers. A parser reading raw values turns `4.10` into the float `4.1`, so it collides with safeguard `4.1`. The import then creates 152 distinct safeguard identifiers instead of 153, with no error. Crosswalker reads formatted values to preserve both.
+
+- **Both recipes need opposite row prefilters.** The safeguard recipe must keep safeguard rows; the control recipe must keep control rows. Running either recipe over all 171 rows creates empty or duplicate paths.
+- **The control descriptions are their own row kind.** They are not safeguards and should not be inferred from the safeguard rows.
+
+## CRI Profile v2.2
+
+**Obtain it:** [Cyber Risk Institute Profile](https://cyberriskinstitute.org/the-profile/). Registration is required. Crosswalker does not distribute the workbook.
+
+**Bundled recipe:** `cri-profile-v2-2-flat`, which produces one note for each function, category, subcategory, and diagnostic statement row.
+
+### Exact binding and result
+
+| Item | Verified value |
+|---|---|
+| Sheet | `CRI Profile v2.2 Structure` |
+| Header row | **Index 2**; row 0 is a banner and row 1 is blank |
+| Rows | **472**: 7 functions, 28 categories, 119 subcategories, 318 diagnostic statements |
+| Columns | 11 |
+| Result | 472 notes; `tier_1` through `tier_4` appear only on the 318 diagnostic-statement rows |
+
+### Gotchas
+
+> [!danger] A correct row count can hide the wrong header
+> Header index 1 still returns 472 rows, but every column is named `__EMPTY`, `__EMPTY_1`, and so on. Use **index 2** and verify column names, not just the row count.
+
+- **Dots in column names require literal key access.** Older Crosswalker builds split names such as `CRI Profile v2.2 Diagnostic Statement` on every dot, producing 472 bodyless notes without an error. This was fixed in the plugin on 2026-08-26. If CRI notes have empty bodies, update Crosswalker and re-import.
+- **Seven rows contain embedded CRLF line endings.** Crosswalker writes LF. Normalize line endings before byte-for-byte content comparisons.
+- **Other CRI mapping sheets were not part of the 2026-08-27 verification pass.** Use the publisher's current workbook labels rather than the old v2.0 sheet list previously shown on this page.
+
+## Secure Controls Framework 2026.1
+
+**Obtain it:** [SCF download](https://securecontrolsframework.com/scf-download/). Crosswalker does not distribute the workbook.
+
+**Bundled recipe:** `scf-2026-flat`, which produces one note per SCF control.
+
+### Exact binding and result
+
+| Item | Verified value |
+|---|---|
+| Sheet | `SCF 2026.1` |
+| Header row | Index 0 |
+| Rows | **1,468** |
+| Columns | **369** |
+| Generated body volume | About **9 MB** |
+
+### Gotchas
+
+- **Prune before passing rows through narrow automation bridges.** Enumerating all 369 properties can throw `RangeError: Too many properties to enumerate` in naive tooling. Keep the columns the recipe references.
+- **Body volume is the scale pressure.** The 1,468-row count is ordinary; about 9 MB of generated prose is what makes indexing and downstream processing noticeably heavier.
+- **`control_weighting` is numeric.** Preserve it as a number so Obsidian Bases can sort and filter it numerically.
 
 ## MITRE D3FEND
+
+> [!note] Verification status
+> This section was preserved from the earlier reference. D3FEND was not part of the 2026-08-27 real-import verification pass, and it is not one of the current bundled recognized-source recipes.
 
 **Source**: [d3fend.csv](https://d3fend.mitre.org/resources/)
 
@@ -196,6 +255,9 @@ D3FEND has a deeply nested ontology with merged cells across multiple levels. Re
 Full mappings file (`d3fend-full-mappings.csv`) and D3FEND-to-NIST mapping (`d3fend_to_nist80053.csv`) provide crosswalk data for linking to ATT&CK techniques and NIST controls.
 
 ## MITRE ENGAGE
+
+> [!note] Verification status
+> This section was preserved from the earlier reference. ENGAGE was not part of the 2026-08-27 real-import verification pass, and it is not one of the current bundled recognized-source recipes.
 
 **Source**: [Engage-Data-V1.0.xlsx](https://engage.mitre.org/)
 
@@ -223,6 +285,9 @@ ENGAGE requires a three-level merge to build the full hierarchy:
 
 ## Crosswalk data sources
 
+> [!note] Verification status
+> This section was preserved from the earlier reference and was not part of the 2026-08-27 real-import verification pass. Confirm current source labels and publisher terms before relying on it.
+
 Crosswalks between frameworks require separate mapping files:
 
 | Crosswalk | Source |
@@ -232,16 +297,19 @@ Crosswalks between frameworks require separate mapping files:
 | NIST 800-53 ↔ ATT&CK | [Center for Threat-Informed Defense](https://github.com/center-for-threat-informed-defense/attack-control-framework-mappings) |
 | ATT&CK ↔ D3FEND | [d3fend.mitre.org mapping data](https://d3fend.mitre.org/resources/) |
 | CSF 2.0 ↔ CIS v8 | [CIS Controls Mapping to CSF 2.0](https://www.cisecurity.org/controls/v8) |
-| D3FEND ↔ NIST 800-53 | D3FEND semantic mappings (d3fend_to_nist80053.csv) |
+| D3FEND ↔ NIST 800-53 | D3FEND semantic mappings (`d3fend_to_nist80053.csv`) |
 
 See [framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) for matching methods and configuration details.
 
 ---
 
-## Resources
+## Related
 
-### Related pages
-- [Framework standards & tools](/crosswalker/concepts/framework-standards/) — links to all framework sources
+- [Crosswalker recipes](https://github.com/cybersader/crosswalker-recipes) — contribute and maintain community recipes
+- [Bundled import recipes](https://github.com/cybersader/crosswalker/tree/main/recipes/import) — the recipes shipped with the plugin
+- [Framework corpus](/crosswalker/reference/framework-corpus/) — broader GRC source directory and licence-tier framing
+- [ETL and import](/crosswalker/concepts/etl-and-import/) — how structured records become vault notes
+- [Framework standards and tools](/crosswalker/concepts/framework-standards/) — links to framework publishers and related tooling
 - [Framework crosswalks](/crosswalker/agent-context/framework-crosswalks/) — crosswalk configuration
 - [Helper functions](/crosswalker/agent-context/helper-functions/) — transform implementations
-- [Config schema design](/crosswalker/agent-context/config-schema-design/) — FrameworkConfig structure
+- [Config schema design](/crosswalker/agent-context/config-schema-design/) — recipe configuration history

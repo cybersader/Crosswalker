@@ -559,6 +559,20 @@ export class ImportFlow {
 			cls: 'setting-item-description'
 		});
 
+		// "I do not have the file yet" is the first place a new user stops, and the
+		// answer is not in the vault: which publisher page, which of several exports,
+		// which sheet. Several sources also fail SILENTLY when imported raw (a
+		// spreadsheet coerces safeguard 4.10 to 4.1 and one note vanishes with no
+		// error), so the moment before choosing a file is the only place a warning
+		// can still change what the user does.
+		const help = container.createEl('p', { cls: 'setting-item-description' });
+		help.appendText('Need a source file, or not sure which export to use? ');
+		help.createEl('a', {
+			text: 'Framework data sources',
+			href: 'https://cybersader.github.io/crosswalker/reference/framework-data-sources/',
+		});
+		help.appendText(' lists where to get each framework, which sheet to use, and the import gotchas.');
+
 		// Primary: pick from the vault. Obsidian's explorer hides csv/xlsx/json
 		// unless "Detect all file extensions" is on, so the vault picker must
 		// not depend on the explorer at all.

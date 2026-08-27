@@ -121,6 +121,10 @@ _crosswalker:
 
 All configuration (output path, key naming, array handling, link syntax, matching sensitivity) lives in **Settings > Crosswalker**.
 
+## Framework files and recipes
+
+Need a NIST, CIS, MITRE, CRI, or SCF source file? Start with the [framework data sources guide](https://cybersader.github.io/crosswalker/reference/framework-data-sources/) for publisher links, licence cautions, and import gotchas. The [Crosswalker recipes repository](https://github.com/cybersader/crosswalker-recipes) is where contributors can propose recipes for additional structured sources; the recipes shipped with the plugin remain in [`recipes/import/`](https://github.com/cybersader/crosswalker/tree/main/recipes/import).
+
 ## Roadmap
 
 Architecture decisions come first, features are built on that foundation. Full roadmap with linked rationale: **[docs/roadmap](https://cybersader.github.io/crosswalker/reference/roadmap/)**

@@ -154,6 +154,7 @@ Built on the Foundation spec. This phase expands both source-format breadth and 
 - [x] **XLSX parser** — sheet picker + header-row offset, shipped 2026-06-12
 - [x] **JSON parser** — iterator path + row filter + record picker, shipped 2026-06-12
 - [ ] **JSONL (newline-delimited JSON) parser** — not yet supported
+- [ ] **Source fetch automation** — background acquisition helpers for known publisher files. Before this can ship, define a per-framework rights model because fetching a restricted workbook on a user's behalf is a different act from telling the user where it lives, and define a staleness/pinning story so automation does not silently replace the exact source version a recipe or replay expects
 - [ ] **Remote acquisition** — acquire supported sources over explicit remote references without merging acquisition policy into ImportRecipe transformation/layout semantics
 - [ ] **Content-hash pinning** — bind runs to exact acquired bytes; detect upstream drift before refresh or replay
 - [ ] **Cache, refresh, and offline replay** — retain verified source bytes and metadata so users can refresh deliberately or reproduce a prior run without network access

@@ -4,13 +4,13 @@ description: Import your first framework into Obsidian in a few minutes — open
 tags: [getting-started, import]
 ---
 
-You need Crosswalker [installed and enabled](/crosswalker/getting-started/installation/) and a framework file to import: a CSV, XLSX, or JSON export of controls, requirements, or techniques.
+You need Crosswalker [installed and enabled](/crosswalker/getting-started/installation/) and a framework file to import: a CSV, XLSX, or JSON export of controls, requirements, or techniques. If you do not have the file yet, use the [framework data sources guide](/crosswalker/reference/framework-data-sources/) to find the publisher download, matching bundled recipe, licence caution, and exact import binding.
 
 ## Import your first framework
 
 1. **Open the Crosswalker workspace tab.** Click the network-shaped ribbon icon, click the status bar count, or run **Crosswalker: Import structured data** from the command palette (`Ctrl/Cmd + P`). You can also right-click a CSV, XLSX, or JSON file in the file explorer and choose **Import into vault with Crosswalker**, which skips straight to configuring it.
 
-2. **Pick your file.** For example, a NIST 800-53 controls export. Large CSVs stream in, so multi-megabyte files are fine. For XLSX you also pick the worksheet and header row; for JSON you pick which list of records to import.
+2. **Pick your file.** For example, a NIST 800-53 controls export. Large CSVs stream in, so multi-megabyte files are fine. For XLSX you also pick the worksheet and header row; for JSON you pick which list of records to import. Before trusting a recognized-source import, check its [verified sheet, header row, count, and silent-failure gotchas](/crosswalker/reference/framework-data-sources/#silent-failure-checklist).
 
 3. **Take the fast path if it's offered.** When your file's columns match a framework Crosswalker already knows (NIST CSF 2.0, NIST 800-53, MITRE ATT&CK, CIS Controls v8, the Secure Controls Framework, CRI Profile, and crosswalk files), a **Recognized source** card appears with a summary of what it found. Choose **Import with this configuration** to accept it, or **Customize** to adjust it first.
 
@@ -98,6 +98,7 @@ Everything configurable lives in **Settings > Crosswalker**: the output folder, 
 ## Related
 
 - [Installation](/crosswalker/getting-started/installation/)
+- [Framework data sources](/crosswalker/reference/framework-data-sources/) — publisher downloads, licence posture, bundled recipes, and import gotchas
 - [Settings reference](/crosswalker/reference/settings/)
 - [Generation engine](/crosswalker/features/generation-engine/)
 - [Terminology](/crosswalker/concepts/terminology/)

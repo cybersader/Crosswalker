@@ -46,6 +46,8 @@ This reframe collapses several open architectural questions (build vs buy, DSL c
 
 Crosswalker's contract is **shape-level, not format-level**: the engine consumes an **iterable of records** — an array of objects, each a `{column: value}` map. **It doesn't have to be tabular** — values can be nested objects/arrays, addressable via dotted paths in recipe templates (`{family.title}`, `{a.b.c}`). In practice that's a **CSV**, an **XLSX sheet**, or a **JSON array of (optionally nested) records**. *(Native **XML / RDF / OWL** isn't v0.1 — pre-convert it to JSON or CSV via the [bridge tooling](/crosswalker/examples/extraction-tooling/); native parsing is deferred to v0.2+.)* That's the minimum structure Crosswalker can parse — its **input floor**.
 
+Clearing that floor does not guarantee a correct import. Publisher workbooks can contain banner rows, misleading header offsets, numeric identifiers that collapse, embedded newlines, or hundreds of columns. For supported sources, check the [silent-failure checklist](/crosswalker/reference/framework-data-sources/#silent-failure-checklist) before treating a plausible row count as proof.
+
 <Aside type="danger" title="You can't feed it raw documents — it needs to be a structured format">
 <span style="display:inline-flex; align-items:center; gap:.35rem; vertical-align:middle; margin-right:.4rem;"><span style="background:#d23; color:#fff; font-weight:800; font-size:.62em; padding:.16rem .4rem; border-radius:4px; letter-spacing:.06em;">PDF</span><span style="color:#d23; font-weight:900; font-size:1.05em; line-height:1;">✗</span></span> A **PDF** — or a web page, a scanned image, a folder of policy `.docx` files, a raw API blob — has **no record structure yet**: nothing to iterate, no columns to map to recipe templates. It needs a **bridge step** first (see [extraction & ETL tooling](/crosswalker/examples/extraction-tooling/)). Crosswalker is deliberately **not** a document parser or scraper — it's an ingestion *target*. Keeping the floor at "structured records" is what keeps the engine small, streaming, and reproducible.
 </Aside>
@@ -483,6 +485,7 @@ See the [2026-05-04 import engine design log](/crosswalker/agent-context/zz-log/
 - [What makes Crosswalker unique](/crosswalker/concepts/what-makes-crosswalker-unique/) — Spec / Library / Integrations pillar that this page activates
 - [Embedded vs server substrates](/crosswalker/concepts/embedded-vs-server-substrates/) — Tier 2 sidecar projection from Tier 1
 - [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — re-import semantics + provenance
+- [Framework data sources](/crosswalker/reference/framework-data-sources/) — real source bindings and silent-wrong-import gotchas
 - [Terminology](/crosswalker/concepts/terminology/) — definitions: Tier 1, recipe, render(), CURIE, ParsedData (Path A only), provenance
 
 **Agent context:**

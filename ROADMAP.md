@@ -121,6 +121,7 @@ Expand source-format breadth and acquisition while preserving exact-source repla
 - [ ] Complete import wizard UI (redesigned around recipe schema)
 - [x] XLSX parser (sheet picker + header-row offset, shipped 2026-06-12) + JSON parser (iterator path + row filter + record picker, shipped 2026-06-12)
 - [ ] JSONL (newline-delimited JSON) parser — not yet supported
+- [ ] Source fetch automation — background acquisition helpers for known publisher files. Before this can ship, define a per-framework rights model because fetching a restricted workbook on a user's behalf is a different act from telling the user where it lives, and define a staleness/pinning story so automation does not silently replace the exact source version a recipe or replay expects
 - [ ] Remote acquisition through explicit source references, kept separate from ImportRecipe transformation/layout policy
 - [ ] Content-hash pinning with upstream source-drift diagnostics
 - [ ] Verified source cache, deliberate refresh, and offline replay
