@@ -89,7 +89,7 @@ For each system below, score the same Challenge 10 axes (graph fit, tabular fit,
 - **CRDT layer for the deferred live-edit team mode** — Yjs / Automerge / Loro
 - **WASM bundle optimization strategies** — tree-shaking, code-splitting, on-demand loading. Concrete plan, not vague gestures
 - **LLM/NL-query architecture** — where does the LLM live? Sidecar API? In-browser? Local? How does it bind to whichever engine is at Tier 2?
-- **Datalog vs recursive CTE for the *core* SSSOM chain-rule derivation** — overlaps with [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/); coordinate but don't duplicate
+- **Datalog vs recursive CTE for the *core* SSSOM chain-rule derivation** — overlaps with [Challenge 12](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/); coordinate but don't duplicate
 
 ### 3. Verify Challenge 10's empirical claims
 
@@ -112,19 +112,19 @@ For each system below, score the same Challenge 10 axes (graph fit, tabular fit,
 - Actual benchmarks against representative GRC data — separate work item, see [Challenge 02](/crosswalker/agent-context/zz-challenges/02-architecture-at-scale/)
 - Specific UI design for the query-builder layer
 - Implementation details of any chosen engine
-- The Datalog vs SQL fork for the *core derivation engine* — see [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/) for that narrower question
-- The audit-trail attestation primitives — see [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)
+- The Datalog vs SQL fork for the *core derivation engine* — see [Challenge 12](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/) for that narrower question
+- The audit-trail attestation primitives — see [Challenge 13](/crosswalker/agent-context/zz-challenges/archive/13-modern-attestation-primitives/)
 
 ## Relationship to prior challenges
 
-- **Supersedes** the engine-selection portion of [Challenge 10](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/). Challenge 10's broader 3-tier architecture (materialized folders → embedded engine → server) stands; this challenge re-decides *which* embedded engine and *which* server stack
-- **Coordinates with [Challenge 12](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/)** — Challenge 12 is narrower (Datalog vs SQL for chain rules specifically); Challenge 11 is broader (the whole engine survey)
-- **Independent of [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)** — different layer of the architecture
+- **Supersedes** the engine-selection portion of [Challenge 10](/crosswalker/agent-context/zz-challenges/archive/10-graph-to-tabular-bridging-engine/). Challenge 10's broader 3-tier architecture (materialized folders → embedded engine → server) stands; this challenge re-decides *which* embedded engine and *which* server stack
+- **Coordinates with [Challenge 12](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/)** — Challenge 12 is narrower (Datalog vs SQL for chain rules specifically); Challenge 11 is broader (the whole engine survey)
+- **Independent of [Challenge 13](/crosswalker/agent-context/zz-challenges/archive/13-modern-attestation-primitives/)** — different layer of the architecture
 
 ## Related
 
-- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/) — predecessor; engine shortlist this challenge expands
-- [Challenge 12: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/) — sibling; narrow fork-in-the-road
+- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/archive/10-graph-to-tabular-bridging-engine/) — predecessor; engine shortlist this challenge expands
+- [Challenge 12: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/) — sibling; narrow fork-in-the-road
 - [05-02 Direction log §3.1 Challenge 10 gap inventory](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#31-challenge-10-has-substantive-gaps) — the source of this challenge's scope
 - [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
 - [Ch 10 deliverable: Graph→tabular bridging engine](/crosswalker/agent-context/zz-research/2026-05-02-challenge-10-graph-tabular/) — full predecessor research this challenge expands

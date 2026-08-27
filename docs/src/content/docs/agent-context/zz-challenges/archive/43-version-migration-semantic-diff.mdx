@@ -10,9 +10,11 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-:::note[Status: OPEN — no research pass has run yet]
-This brief is unresolved and awaiting a fresh-agent research pass. Findings land as a deliverable in [`zz-research/`](/crosswalker/agent-context/zz-research/) plus a dated synthesis entry in [`zz-log/`](/crosswalker/agent-context/zz-log/); the brief then moves to [the archive](/crosswalker/agent-context/zz-challenges/archive/).
-:::
+<Aside type="tip" title="Resolved 2026-08-27 — framing settled; implementation remains open">
+The evidence pass and architect verdicts settled the two framing questions. Read [deliverable A: empirical release-diff evidence](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-a-release-diff-evidence/), [deliverable B: existing migration machinery](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-b-existing-machinery/), and the [release change is re-attestation synthesis](/crosswalker/agent-context/zz-log/2026-08-27-release-change-is-reattestation-synthesis/).
+
+**Verdict:** ordinary source releases are a re-attestation problem first; structural transitions are crosswalks between release ontologies. Before-state lives on the attestation, not in Tier 2 history. Concrete schema syntax, content-hash normalization, successor-review UI, and Execution Record serialization remain worker-tier implementation work. The `previous_ids` correction below remains visible as provenance for the premise the evidence overturned.
+</Aside>
 
 :::caution[Two different "version" problems — do not conflate them]
 Crosswalker already has a migration policy for **its own** `_crosswalker` frontmatter schema (`crosswalker-v1` → `crosswalker-v2`, see [the schema-version migration policy](/crosswalker/agent-context/v0-1-schema-spec/#schema-version-migration-policy)) — additive transforms, `previous_ids` aliasing, idempotent, resumable. **That is not this challenge.** This challenge is about the **source ontology** changing — NIST publishes CSF 2.0, MITRE bumps ATT&CK, CIS ships Controls v8 — while concepts already live in a user's vault with evidence links, `user_preserve` fields, and crosswalk edges hanging off them. Keep the two axes distinct throughout the brief; conflating them is the single most likely way to produce a useless deliverable.

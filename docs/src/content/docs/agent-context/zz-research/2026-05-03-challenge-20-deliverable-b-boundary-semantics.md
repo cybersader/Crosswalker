@@ -16,7 +16,7 @@ Fresh-agent research deliverable produced 2026-05-03 in response to [Challenge 2
 
 ## Preamble: Method, Sources, and an Honesty Note
 
-This report responds to challenge **20-import-primitive-formal-foundation** in the Crosswalker `agent-context/zz-challenges/` series. Direct programmatic fetches against `cybersader.github.io/crosswalker/agent-context/zz-challenges/20-import-primitive-formal-foundation/` and the surrounding site, and against the underlying GitHub repo, returned permission errors in the tooling available for this task. I therefore could not crawl the specific challenge body, the full challenge index, or any internal architecture/principles documents that may exist on the site or in the repo.
+This report responds to challenge **20-import-primitive-formal-foundation** in the Crosswalker `agent-context/zz-challenges/` series. Direct programmatic fetches against `cybersader.github.io/crosswalker/agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/` and the surrounding site, and against the underlying GitHub repo, returned permission errors in the tooling available for this task. I therefore could not crawl the specific challenge body, the full challenge index, or any internal architecture/principles documents that may exist on the site or in the repo.
 
 What I do have, with high confidence, from public material:
 
@@ -551,7 +551,7 @@ The migration is monotonic: at no point does an existing vault stop working.
 
 ## Closing Position
 
-The temptation, when faced with an `agent-context/zz-challenges/20-import-primitive-formal-foundation/`, is to draft a JSON schema for an import record and call it foundational. That is engineering, not foundation. A formal foundation, in the sense the challenge title implies, is a *theory* under which the engineering is forced.
+The temptation, when faced with an `agent-context/zz-challenges/archive/20-import-primitive-formal-foundation/`, is to draft a JSON schema for an import record and call it foundational. That is engineering, not foundation. A formal foundation, in the sense the challenge title implies, is a *theory* under which the engineering is forced.
 
 The theory I propose is simple and uncompromising:
 

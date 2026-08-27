@@ -9,7 +9,7 @@ sidebar:
 ---
 
 :::tip[Origin and lifecycle]
-This is a fresh-agent research deliverable produced 2026-05-02 in response to [Challenge 08: Git history audit-trail tenability](/crosswalker/agent-context/zz-challenges/08-git-history-audit-trail-tenability/). It was summarized in [05-02 §2.1](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#21-challenge-08--git-history-as-a-compliance-audit-trail-verdict-augment-not-replace) and the Tier 1 audit-trail commitment is **deferred** pending the [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) follow-on (modern attestation primitives — Sigstore, in-toto, SLSA, OpenTimestamps, VCs). Preserved verbatim; not edited after publication.
+This is a fresh-agent research deliverable produced 2026-05-02 in response to [Challenge 08: Git history audit-trail tenability](/crosswalker/agent-context/zz-challenges/archive/08-git-history-audit-trail-tenability/). It was summarized in [05-02 §2.1](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#21-challenge-08--git-history-as-a-compliance-audit-trail-verdict-augment-not-replace) and the Tier 1 audit-trail commitment is **deferred** pending the [Challenge 13](/crosswalker/agent-context/zz-challenges/archive/13-modern-attestation-primitives/) follow-on (modern attestation primitives — Sigstore, in-toto, SLSA, OpenTimestamps, VCs). Preserved verbatim; not edited after publication.
 :::
 
 # Crosswalker Challenge 08: Is Git History a Tenable Compliance Audit Trail?

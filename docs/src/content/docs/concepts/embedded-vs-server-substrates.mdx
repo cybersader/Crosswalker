@@ -53,10 +53,10 @@ Yes. Embedded DBs exist across every major data model. Here's the landscape, gro
 | Engine | File shape | Notes |
 |---|---|---|
 | **[SQLite](https://sqlite.org/wasm/doc/trunk/index.md)** (`@sqlite.org/sqlite-wasm`) | Single-file `.sqlite` / `.db` | Canonical. Foundation-governed. ✅ **Tier 2 v0.1 commitment.** Per [Ch 18](/crosswalker/agent-context/zz-research/2026-05-02-challenge-18-tier-2-lite-rule-subset/), comfortably to ~100K mappings |
-| **libSQL** (Turso) | Single-file (claims SQLite compat) | SQLite soft-fork; native vector + replication. **Under evaluation** — see [Ch 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
+| **libSQL** (Turso) | Single-file (claims SQLite compat) | SQLite soft-fork; native vector + replication. **Under evaluation** — see [Ch 24](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/) |
 | **DuckDB(-WASM)** | Single-file `.duckdb` | Analytical/columnar instead of OLTP. Was in the [third-wave Tier 2 stack](/crosswalker/agent-context/zz-research/2026-05-02-challenge-11-deliverable-a-engine-survey/); deferred from v0.1 per the [stack pivot](/crosswalker/agent-context/zz-log/2026-05-02-v0-1-initial-stack-pivot/) (kept as researched back-pocket) |
 | **Stoolap** | Single-file | Modern Go-based embedded SQL DB; column-store + row-store hybrid; HTAP (transactional + analytical in one engine); built for embedded use via Go API. Long-horizon track via [Ch 12b](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/) — interesting if Crosswalker outgrows recursive-CTE patterns on `sqlite-wasm` and wants single-file analytical performance without DuckDB's bundle weight |
-| **Turso Database / Limbo** | Single-file (Rust rewrite of SQLite) | Pre-1.0; experimental. Long-horizon track via [Ch 24 Q3](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
+| **Turso Database / Limbo** | Single-file (Rust rewrite of SQLite) | Pre-1.0; experimental. Long-horizon track via [Ch 24 Q3](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/) |
 
 ### Graph — RDF / triplestore
 
@@ -111,7 +111,7 @@ Yes. Embedded DBs exist across every major data model. Here's the landscape, gro
 | **chromadb (embedded mode)** | Directory of files | Python embedded vector DB; can run in-process |
 | **FAISS** | Single binary index file | In-process similarity search library; not really a DB, more an index |
 | **hnswlib** | Single binary index file | Same; index library |
-| **libSQL native vectors** | Lives inside libSQL single-file | Native vector type built into libSQL fork; the strongest specific case for migrating to libSQL per [Ch 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/) |
+| **libSQL native vectors** | Lives inside libSQL single-file | Native vector type built into libSQL fork; the strongest specific case for migrating to libSQL per [Ch 24](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/) |
 
 ### Datalog / rule engines
 
@@ -205,7 +205,7 @@ These are *not* blockers for v0.1. Git remains the v0.1 audit-trail substrate. T
 
 The ChunkyCSV / JSONaut / SEACOW / folder-tag-sync portfolio (the project owner's prior tools — see [ETL and import § broader portfolio context](/crosswalker/concepts/etl-and-import/#where-this-came-from--broader-portfolio-context)) is essentially the same observation applied to ETL, knowledge organization, and tag/folder semantics. Crosswalker's Tier 1 is the same observation applied to ontology storage: human-readable files with structured metadata, no server, no lock-in.
 
-This is why the libSQL question ([Ch 24](/crosswalker/agent-context/zz-challenges/24-turso-libsql-evaluation/)) is high-stakes despite the substrate being "another single-file SQLite-shaped thing" — single-vendor governance is exactly the dimension SQLite optimized away.
+This is why the libSQL question ([Ch 24](/crosswalker/agent-context/zz-challenges/archive/24-turso-libsql-evaluation/)) is high-stakes despite the substrate being "another single-file SQLite-shaped thing" — single-vendor governance is exactly the dimension SQLite optimized away.
 
 ## Related
 

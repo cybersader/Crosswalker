@@ -9,7 +9,7 @@ sidebar:
 ---
 
 :::tip[Origin and lifecycle]
-Fresh-agent research deliverable produced 2026-05-02 in response to [Challenge 12: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-challenges/12-datalog-vs-sql-sssom-chain-rules/). Summarized in [05-02 §2.5](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#25-challenge-12--datalog-vs-sql-for-sssom-chain-rules-2-deliverables). Critical read in [05-02 §3.5](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#35-critical-read-of-ch-12). Companion long-horizon report at [Ch 12 deliverable B](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/). Preserved verbatim; not edited after publication.
+Fresh-agent research deliverable produced 2026-05-02 in response to [Challenge 12: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-challenges/archive/12-datalog-vs-sql-sssom-chain-rules/). Summarized in [05-02 §2.5](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#25-challenge-12--datalog-vs-sql-for-sssom-chain-rules-2-deliverables). Critical read in [05-02 §3.5](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#35-critical-read-of-ch-12). Companion long-horizon report at [Ch 12 deliverable B](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-b-beyond-engine-landscape/). Preserved verbatim; not edited after publication.
 :::
 
 # Datalog vs SQL for SSSOM Chain Rules: A Research Report for the Crosswalker Project

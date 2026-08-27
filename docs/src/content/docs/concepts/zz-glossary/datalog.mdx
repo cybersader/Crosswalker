@@ -28,7 +28,7 @@ The alternative is plain SQL with `WITH RECURSIVE` (a "recursive CTE"). Both can
 2. **Aggregation inside recursion** — Datalog rules can compute `min(confidence_a, confidence_b)` *as part of* the rule. Recursive CTEs handle this but with awkward window functions.
 3. **Magic-set rewriting** — modern Datalog engines (Nemo, CozoDB) automatically optimize chain queries by working backward from what you asked for. Recursive CTEs don't do this; they materialize the full transitive frontier.
 
-For Crosswalker at scale (10⁶+ mappings with branching factor over 5), the difference is real. At small scale (≤10⁵ mappings) recursive CTE is fine — which is why [Tier 2-Lite](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/) drops Datalog and uses recursive CTE instead.
+For Crosswalker at scale (10⁶+ mappings with branching factor over 5), the difference is real. At small scale (≤10⁵ mappings) recursive CTE is fine — which is why [Tier 2-Lite](/crosswalker/agent-context/zz-challenges/archive/18-tier-2-lite-sssom-rule-subset/) drops Datalog and uses recursive CTE instead.
 
 ## Engine choice: Nemo
 
@@ -74,7 +74,7 @@ Datalog is reserved for **derivation rules** — the place where its expressivit
 ## Further reading
 
 - [Ch 12 deliverable A: Datalog vs SQL for SSSOM chain rules](/crosswalker/agent-context/zz-research/2026-05-02-challenge-12-deliverable-a-datalog-vs-sql/) — the full evaluation that picked Nemo
-- [Ch 18: Tier 2-Lite SSSOM rule subset and scale ceiling](/crosswalker/agent-context/zz-challenges/18-tier-2-lite-sssom-rule-subset/) — defines which rules survive without Datalog
+- [Ch 18: Tier 2-Lite SSSOM rule subset and scale ceiling](/crosswalker/agent-context/zz-challenges/archive/18-tier-2-lite-sssom-rule-subset/) — defines which rules survive without Datalog
 - [Third-wave architectural shifts log §2](/crosswalker/agent-context/zz-log/2026-05-02-direction-third-wave-architectural-shifts/#2-ch-14--tier-2-stack-confirmed-and-extended) — where Nemo was confirmed in the Tier 2 stack
 - [Nemo (TU Dresden)](https://github.com/knowsys/nemo) — the Rust Datalog engine Crosswalker uses
 - [Datalog Wikipedia](https://en.wikipedia.org/wiki/Datalog) — academic background

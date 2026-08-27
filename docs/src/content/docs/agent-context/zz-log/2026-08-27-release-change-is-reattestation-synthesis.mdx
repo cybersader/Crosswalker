@@ -1,0 +1,210 @@
+---
+title: "Release change is re-attestation — Challenge 43 synthesis"
+description: "Challenge 43 assumed source releases primarily rename concepts and strand attached work; measured release pairs inverted that premise. Ordinary releases preserve identifiers while changing meaning underneath them, so re-attestation is primary, migration is derived, before-state lives on each attestation, and structural transitions reuse crosswalk machinery rather than creating a new lineage subsystem."
+tags: [decision, synthesis, version-migration, re-attestation, semantic-diff, lineage, evidence, ch-43-resolution, ready-for-implementation]
+date: 2026-08-27
+sidebar:
+  label: "08-27 · Release change is re-attestation"
+  order: -20260827.6
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="Challenge 43 resolved; implementation remains worker-tier">
+This log resolves [Challenge 43](/crosswalker/agent-context/zz-challenges/archive/43-version-migration-semantic-diff/) using [deliverable A: empirical release-diff evidence](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-a-release-diff-evidence/) and [deliverable B: existing migration machinery](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-b-existing-machinery/). The framing is settled. Schema syntax, hash-normalization details, successor-review UI, and Execution Record serialization remain implementation work against these verdicts.
+</Aside>
+
+## 1. Thirty seconds
+
+**The evidence inverted the premise.** Challenge 43 assumed a source release usually renames concepts and strands the work attached to them. The measured ordinary releases did the opposite: every old identifier survived while content and classifications changed underneath those stable identifiers.
+
+That changes the product ordering:
+
+| Question | Verdict |
+|---|---|
+| What Crosswalker protects first | **The attestation** (a human-approved claim that one thing supports, satisfies, or maps to another), not the vault address or note body. |
+| Primary problem | **Re-attestation.** Detect when the subject a human approved has changed, then stop the claim from counting as valid until it is reviewed again. |
+| Derived problem | **Diff-and-migrate.** Needed when identity genuinely changes through rename, split, merge, withdrawal, or replacement. |
+| Durable before-state | On the attestation as the reviewed subject identity and content fingerprint: `reviewed_against: { curie, cid }`. |
+| Concept history in v0.1 | **None.** Tier 2 stays rebuildable; an import's identity-level change set belongs in the already-planned **Execution Record**. |
+| Lineage model | A version transition **is a crosswalk between two release ontologies**. Add `superseded_by`; do not build `previous_ids`. |
+
+The failure this ordering prevents is a green coverage report over claims whose subjects changed after approval. With an auditor as the reader, that is the most consequential form of Crosswalker's recurring worst failure class: a silent wrong answer presented as current.
+
+## 2. The measured release evidence
+
+The direct and reconstructable pairs show that identifier survival and semantic stability are different variables.
+
+| Release pair | Identifier survival | What changed under surviving identities | Split / merge result |
+|---|---:|---|---:|
+| MITRE ATT&CK Enterprise 15.1 → 16.1 | **1,584 / 1,584 (100%)** | 68 / 1,584 (4.3%) had material primary-description drift; MITRE classified **376 / 1,584 (23.7%)** surviving objects as changed; 98 / 637 (15.4%) surviving techniques changed platform and/or data-source membership | 0 observed |
+| CIS Controls 8.1 → 8.1.2 | **171 / 171 (100%)** | 11 / 171 (6.4%) had material prose drift; 4 / 171 (2.3%) changed classification | 0 observed |
+| CIS Controls 8.0 → 8.1 | **171 / 171 (100%)** | 35 / 171 (20.5%) had material prose drift; **88 / 171 (51.5%)** changed asset class and/or security function | 0 observed |
+| NIST SP 800-53 Rev. 4 Appendix J → Rev. 5 | Structural-transition subset | 26 old privacy controls produced 54 lineage edges to 45 targets; 8 targets received material from multiple old controls | **15 / 26 (57.7%)** old controls split across multiple destinations |
+
+Sources and methods are preserved in [deliverable A § Distribution first](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-a-release-diff-evidence/#distribution-first).
+
+Two regimes emerge:
+
+1. **Ordinary release:** identifiers survive, but prose, metadata, relations, or classifications drift. Nothing breaks visibly. That is the danger.
+2. **Structural transition:** one-to-one identity fails. Splits and merges become dominant enough that no flat alias field can represent the change honestly.
+
+Splits were absent in the ordinary ATT&CK and CIS pairs. They were the majority shape in NIST Appendix J. Split frequency is therefore a property of the **release regime**, not a global constant.
+
+## 3. Verdict 1 — re-attestation first
+
+An **attestation** is the reviewable claim. An evidence junction says that an artifact supports a concept; a crosswalk assertion says that one concept maps to another. Both are attestations because a person or producer asserts a relation whose validity can change when either endpoint changes.
+
+The shipped substrate already preserves everything except the claim's validity:
+
+| Shipped substrate | Why the user's work already survives | Code evidence |
+|---|---|---|
+| Identity reconciliation | A stable CURIE finds the same generated note regardless of path; an address change becomes an Obsidian rename rather than a duplicate. | `src/generation/identity-index.ts:73-123`; `src/generation/generation-engine.ts:784-824,2128-2145` |
+| Managed frontmatter | Unmanaged keys and `user_preserve` values survive Replace. | `src/generation/frontmatter-merge.ts:34-105,108-153` |
+| Managed body regions | Replace regenerates only Crosswalker's marked region and preserves every byte outside it. | `src/generation/managed-body.ts:206-369,464-565`; `src/generation/existing-note.ts:120-203` |
+| Stable attachment | Evidence coverage joins by `subject_curie`, not wikilink text. | `src/tier2/evidence-coverage.ts:137-169` |
+| Current content fingerprint | Generation computes `concept_cid` from canonical concept identity scope and writes the current value into provenance. | `src/generation/hash.ts:188-245`; `src/generation/generation-engine.ts:945-966,2088-2106` |
+
+The managed-body delivery is recorded in [the source-contract delivery log](/crosswalker/agent-context/zz-log/2026-08-27-source-contract-delivered/); the identity decision is [re-import is identity reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/).
+
+Nothing is lost in the ordinary regime:
+
+- the note survives;
+- the user's prose survives;
+- preserved properties survive;
+- links still resolve;
+- the attestation remains present.
+
+**What is silently invalidated is the claim.** “This evidence satisfies AC-2” was approved against one meaning of AC-2. If AC-2 retains its CURIE but its content fingerprint changes, the link can remain perfectly healthy while the approval is no longer justified.
+
+### The re-attestation contract
+
+1. At approval, the attestation records its subject's identity and content fingerprint: `reviewed_against: { curie, cid }`.
+2. Re-import recomputes the subject's current `concept_cid`.
+3. Coverage compares the reviewed CID with the current CID.
+4. A mismatch adds freshness reason `subject-changed`.
+5. The attestation still counts as **present**, but stops counting as **valid** until a human re-reviews and approves it against the new CID.
+6. The coverage report lists the attestation and its exclusion reason, following the diagnostic pattern already established by [the evidence closeout](/crosswalker/agent-context/zz-log/2026-08-21-evidence-closeout/).
+
+Freshness therefore has three drivers:
+
+| Driver | Example |
+|---|---|
+| Time since review | `stale` |
+| Explicit validity date | `expired` |
+| Subject content | `subject-changed` |
+
+Only fresh, approved attestations count as valid coverage. Diff tooling can explain or route the review, but it cannot replace the review decision.
+
+## 4. The honest cost of source updates
+
+A content fingerprint is intentionally sensitive. Any byte-level change can flip it, including changes a reviewer would call cosmetic.
+
+The mitigation is **normalization before comparison** over the measured cosmetic classes:
+
+- whitespace;
+- punctuation;
+- citation markers.
+
+That suppresses most of the roughly 4% cosmetic class measured in the evidence pass without pretending to decide materiality automatically. The remaining judgment stays human.
+
+At ATT&CK's measured 23.7% publisher-classified change rate, a vault with 200 attestations should expect roughly **47**, operationally **about 50**, re-reviews per release. That is not overhead invented by Crosswalker. It is the true cost of asserting that evidence still satisfies requirements after the requirements changed, made visible instead of hidden behind stable identifiers.
+
+A later “trivial diff” classifier may auto-clear near-identical changes. That is additive. It must not weaken the default rule that changed content invalidates the prior approval until a review policy says otherwise.
+
+## 5. Verdict 2 — before-state lives on the attestation
+
+The common question is not “what did every concept used to say?” It is “did the thing I approved change?” That needs one durable fingerprint at the point where the approval was made.
+
+| Candidate home | Verdict | Reason |
+|---|---|---|
+| Attestation in Tier 1 | **Adopt** | `reviewed_against: { curie, cid }` is canonical Markdown, portable, emittable by any producer, and survives a Tier 2 clear-and-rebuild. The thing that cares retains the state from the moment it cared. |
+| Concept history in Tier 2 | **Reject for v0.1** | Tier 2 is a deletable, reproducible projection. History stored only there disappears on clear-and-rebuild, violating the durable-before-state requirement. Current Tier 2 upserts one current row and retains no prior snapshot (`src/tier2/schema.sql:24-122`; `src/tier2/projector.ts:414-552`). |
+| New standalone diff artifact | **Reject** | It does not clear the [artifact-roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) bar for independent identity, lifecycle, authority, and consumers. |
+| Planned v0.1.8 Execution Record | **Adopt as the aggregate home** | The [Execution Record](/crosswalker/concepts/artifact-roles-and-authority/#planned-administrative-envelopes) already has authority for what one run did. Its identity-level change set can record which CURIEs changed CID, vanished, or appeared without inventing another artifact noun. |
+
+**No concept history is retained in v0.1.** Teams that need the old text retain the source snapshots already required by the pilot guidance. Crosswalker retains only the fingerprint needed to know that the approved subject changed. The planned Execution Record becomes the reviewable “what happened in this import”; it does not become the authority for ontology truth.
+
+## 6. The essence-level result — a version transition is a crosswalk
+
+A structural transition is not a special migration object. It is a mapping between two release ontologies:
+
+| Transition shape | Crosswalk cardinality |
+|---|---|
+| Rename or direct replacement | one-to-one |
+| Split | one-to-many |
+| Merge | many-to-one |
+| Redistribution | many-to-many |
+
+Crosswalker's mapping sets, set-qualified assertion identities, endpoint CURIEs, provenance, SSSOM import/export, and closure machinery already model these cardinalities. The additive extension is one predicate value: **`superseded_by`**. The relationship remains an ordinary mapping assertion with provenance; it does not become concept-local history.
+
+### Consequences
+
+- **Publisher lineage becomes an ordinary mapping-set import.** NIST CSF markers such as `[Withdrawn: Incorporated into …]` and ATT&CK STIX lifecycle relationships are parsed into a release-to-release mapping set rather than handled by a special migration subsystem.
+- **Erased lineage stays honestly absent.** ATT&CK's Excel export drops lifecycle facts carried by STIX. When the downloaded format does not contain a successor relation, Crosswalker must not infer one. The output is an orphan report plus a dangling-attestation report: “AC-2 has no successor known; 3 attestations point at it.”
+- **Users and agents may author lineage.** A human- or agent-authored mapping set can assert successors when the publisher does not, carrying provenance for who made the assertion and from what evidence.
+- **Re-attestation can walk successor edges.** An attestation whose subject is orphaned may surface `subject-superseded` with candidate successors; a human decides whether to move, duplicate, split, or retire the attestation.
+- **`previous_ids` stays unbuilt.** The archived brief preserves the correction that it never shipped. A flat field is one-directional, cannot express many-to-many lineage, and pollutes current concept identity with historical relations that belong on edges.
+
+The [import-set ownership decision](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/) supplies the ownership boundary, while the mapping set supplies the publisher or reviewer assertion about lineage. They are different roles and remain separate.
+
+## 7. The two regimes are declared by how the user imports
+
+| Regime | User declaration | Result |
+|---|---|---|
+| **Ordinary release** — stable identities, content drift | Import with the same `source.ontology` id and **Replace** | Reconcile in place by CURIE. Compare attestation CID to current CID. `subject-changed` drives re-review. No lineage mapping is required. |
+| **Structural transition** — splits, merges, renames, withdrawals | Import under a **new** `source.ontology` id, such as `nist-800-53-r5`, into a new folder side by side | Old concepts become orphans and their attestations dangle until a release-to-release mapping set supplies `superseded_by` edges or the user resolves them manually. |
+
+This is not automatic regime inference. The ontology id and Replace-versus-side-by-side choice are the declaration. Where publisher evidence is incomplete, Crosswalker reports uncertainty instead of switching regimes or guessing successors.
+
+## 8. Additive-evolution proof
+
+The verdict requires three optional additions and one artifact already planned:
+
+| Addition | Extension point | Behavior when absent |
+|---|---|---|
+| Attestation before-state | Optional `reviewed_against` object | Existing attestations retain today's behavior; no historical CID comparison is available. |
+| Content freshness | Optional freshness reason `subject-changed` | Existing time-driven freshness behavior remains unchanged. |
+| Release lineage | Additive predicate value `superseded_by` | Existing mapping predicates and mapping sets remain unchanged. |
+| Import change set | Planned v0.1.8 Execution Record | Current generation result and provenance behavior remain unchanged until that artifact ships. |
+
+No existing note, recipe, predicate, identity scheme, or Tier 2 row must change merely because these extensions exist. External producers remain first-class because the durable additions live in schema-governed Tier 1 and the runtime-agnostic mapping contract.
+
+### Deliberately uncovered case
+
+**Meaning changes while text does not.** A concept can retain identical bytes while a referenced definition, external term, or dependency changes underneath it. A content fingerprint over the concept alone cannot detect that.
+
+The additive landing point is another freshness reason driven by a dependency edge. It does not require breaking the attestation shape or rewriting data already written against this version; it extends the same freshness-reason seam with dependency-aware invalidation later.
+
+## 9. What is locked, rejected, and still open
+
+| Status | Item |
+|---|---|
+| **Locked** | Re-attestation is primary; diff-and-migrate is derived. |
+| **Locked** | The attestation is the unit that stores reviewed subject identity and CID. |
+| **Locked** | Content change adds a freshness reason and blocks validity until re-review. |
+| **Locked** | No concept history in Tier 2 for v0.1. |
+| **Locked** | The Execution Record is the aggregate home for an import's identity-level change set. |
+| **Locked** | Structural lineage is a crosswalk between release ontologies using `superseded_by`. |
+| **Rejected** | `previous_ids` and other flat concept-local lineage fields. |
+| **Rejected** | A separate migration/diff artifact noun. |
+| **Open, worker-tier** | Exact schema placement and final spelling of the attestation field. The verdict uses `reviewed_against: { curie, cid }`; its final paragraph explicitly leaves field naming undecided. |
+| **Open, worker-tier** | Exact content-normalization algorithm. Whitespace, punctuation, and citation markers are the locked cosmetic classes; canonicalization details remain unspecified. |
+| **Open, worker-tier** | Successor-walk UI, materiality assistance, and Execution Record serialization. |
+
+<Aside type="caution" title="Two boundaries are intentionally not smoothed over">
+The architect verdict names `reviewed_against: { curie, cid }` and also says final field naming is not decided. This log preserves the named shape as the decision-language contract while leaving exact schema spelling and placement to implementation. Likewise, normalization over whitespace, punctuation, and citation markers is required, but the exact algorithm is not yet specified. An implementation that discovers either choice changes the verdict rather than merely spelling it must stop and return to architecture.
+</Aside>
+
+## Related
+
+- [Challenge 43 brief — archived](/crosswalker/agent-context/zz-challenges/archive/43-version-migration-semantic-diff/)
+- [Deliverable A — empirical release-diff evidence](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-a-release-diff-evidence/)
+- [Deliverable B — existing migration machinery](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-b-existing-machinery/)
+- [The evidence closeout](/crosswalker/agent-context/zz-log/2026-08-21-evidence-closeout/) — validity rules and per-attestation exclusion diagnostics
+- [The import set — who owns a note](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/) — durable ownership boundary for refresh and orphans
+- [Re-import is identity reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/) — stable CURIE reconciliation and identity-preserving moves
+- [The source contract shipped](/crosswalker/agent-context/zz-log/2026-08-27-source-contract-delivered/) — managed body regions preserve user prose across Replace
+- [Artifact roles and authority](/crosswalker/concepts/artifact-roles-and-authority/) — why Tier 2 history and a new diff artifact were rejected
+- [v0.1.8 audit trail](/crosswalker/reference/roadmap/milestones/v0-1-8-audit-trail/) — planned Execution Record implementation home
+- [Ontology evolution](/crosswalker/concepts/ontology-evolution/) — prior version-maintenance framing this evidence revises

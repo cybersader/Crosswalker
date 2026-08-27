@@ -9,7 +9,7 @@ sidebar:
 ---
 
 :::tip[Origin and lifecycle]
-Fresh-agent research deliverable produced 2026-05-02 in response to [Challenge 13: Modern attestation primitives](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/). Summarized in [05-02 §2.6](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#26-challenge-13--modern-attestation-primitives-confirms-ch-08-adds-in-toto). Critical read in [05-02 §3.6](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#36-critical-read-of-ch-13). Preserved verbatim; not edited after publication.
+Fresh-agent research deliverable produced 2026-05-02 in response to [Challenge 13: Modern attestation primitives](/crosswalker/agent-context/zz-challenges/archive/13-modern-attestation-primitives/). Summarized in [05-02 §2.6](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#26-challenge-13--modern-attestation-primitives-confirms-ch-08-adds-in-toto). Critical read in [05-02 §3.6](/crosswalker/agent-context/zz-log/2026-05-02-direction-research-wave-and-roadmap-reshape/#36-critical-read-of-ch-13). Preserved verbatim; not edited after publication.
 :::
 
 # Challenge 13: Modern Attestation Primitives — Research Report

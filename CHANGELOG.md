@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Architecture: release change is re-attestation first (2026-08-27)
+
+- **Challenge 43's framing is settled; no runtime behavior ships in this entry.** Measured ATT&CK and CIS releases preserved every old identifier while changing content and classifications underneath them, so ordinary release handling is re-attestation first: an attestation retains the subject CID it was approved against and stops counting as valid when that CID changes. Structural transitions remain the derived case and reuse release-to-release crosswalks with `superseded_by`; no Tier 2 concept history, standalone diff artifact, or `previous_ids` field is added. See the [synthesis](https://cybersader.github.io/crosswalker/agent-context/zz-log/2026-08-27-release-change-is-reattestation-synthesis/).
+
 ### You can write in a generated note, and a re-import will not destroy it (2026-08-27)
 
 - **Re-importing with Replace no longer rebuilds the whole note body.** Crosswalker now owns a marked-off region of the body and rebuilds only that. An implementation note, an evidence pointer, or an audit remark you typed below it survives byte for byte, including line endings and trailing whitespace. This is the single change that turns a framework you can browse into a framework you can annotate, and it retires the rollout guidance that told people to treat generated notes as read-only and keep their own writing in separate files.

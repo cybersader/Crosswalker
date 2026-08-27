@@ -23,7 +23,7 @@ The Crosswalker [pairwise + pivot crosswalk commitment](/crosswalker/agent-conte
 1. **Datalog** — Native fit. The OxO2 paper (EMBL-EBI, 2025; arXiv 2506.04286) implements SSSOM chain rules in Nemo (Datalog). RCE2 (the rule OxO2 most-uses) is a textbook Datalog rule. Cleaner provenance via Datalog's native rule-firing trace
 2. **Recursive CTE** — Broader engine support (every SQL DB has it). Challenge 10's deliverable picked this path. Less expressive than Datalog for variable-depth traversal with provenance
 
-This is a **direct fork in the road**. The choice ripples into the Tier 2/3 engine selection ([Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)) and into the audit-trail story (a clean `derivation_path` field per derived edge requires the engine to expose its rule-firing trace).
+This is a **direct fork in the road**. The choice ripples into the Tier 2/3 engine selection ([Challenge 11](/crosswalker/agent-context/zz-challenges/archive/11-tier-2-3-engine-deep-survey/)) and into the audit-trail story (a clean `derivation_path` field per derived edge requires the engine to expose its rule-firing trace).
 
 ## What to investigate
 
@@ -60,7 +60,7 @@ Constrain by what engines run in the deployment shapes Challenge 11 will pick:
 
 ### 4. Provenance and audit-trail implications
 
-Challenge 08 (and the eventual [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/) follow-on) require every derived edge to carry an auditable `derivation_path`:
+Challenge 08 (and the eventual [Challenge 13](/crosswalker/agent-context/zz-challenges/archive/13-modern-attestation-primitives/) follow-on) require every derived edge to carry an auditable `derivation_path`:
 - Which input edges contributed?
 - Which chain rule fired?
 - What was the inherited confidence / staleness?
@@ -94,20 +94,20 @@ Datalog engines often natively expose this (OxO2 records "derived under rule X" 
 
 ## Out of scope
 
-- Specific Datalog engine selection (Nemo vs Soufflé vs Datomic) — covered by [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)
+- Specific Datalog engine selection (Nemo vs Soufflé vs Datomic) — covered by [Challenge 11](/crosswalker/agent-context/zz-challenges/archive/11-tier-2-3-engine-deep-survey/)
 - Tier 1 materialized-folder generator design (uses whichever engine wins; Tier 1 doesn't run derivation queries directly)
 - Real-data benchmarks (Challenge 02 territory)
 
 ## Relationship to prior challenges
 
-- **Narrows from [Challenge 10](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/)**: Ch 10 picked recursive CTE without considering Datalog seriously
-- **Coordinates with [Challenge 11](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/)**: Ch 11 picks the engine; Ch 12 picks the *paradigm* the engine must support
-- **Independent of [Challenge 13](/crosswalker/agent-context/zz-challenges/13-modern-attestation-primitives/)**: different layer
+- **Narrows from [Challenge 10](/crosswalker/agent-context/zz-challenges/archive/10-graph-to-tabular-bridging-engine/)**: Ch 10 picked recursive CTE without considering Datalog seriously
+- **Coordinates with [Challenge 11](/crosswalker/agent-context/zz-challenges/archive/11-tier-2-3-engine-deep-survey/)**: Ch 11 picks the engine; Ch 12 picks the *paradigm* the engine must support
+- **Independent of [Challenge 13](/crosswalker/agent-context/zz-challenges/archive/13-modern-attestation-primitives/)**: different layer
 
 ## Related
 
-- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/10-graph-to-tabular-bridging-engine/) — predecessor; recursive-CTE-only treatment
-- [Challenge 11: Tier 2/3 engine deep survey](/crosswalker/agent-context/zz-challenges/11-tier-2-3-engine-deep-survey/) — coordinates
+- [Challenge 10: Graph→tabular bridging engine](/crosswalker/agent-context/zz-challenges/archive/10-graph-to-tabular-bridging-engine/) — predecessor; recursive-CTE-only treatment
+- [Challenge 11: Tier 2/3 engine deep survey](/crosswalker/agent-context/zz-challenges/archive/11-tier-2-3-engine-deep-survey/) — coordinates
 - [05-01 §2.1 pairwise + optional inheritable pivot](/crosswalker/agent-context/zz-log/2026-05-01-foundation-commitments-and-followon-research/#21-pairwise--optional-inheritable-pivot-challenge-06-resolution) — the commitment that requires a derivation engine
 - SSSOM chain-rules document and the OxO2 paper (arXiv 2506.04286) — primary external references
 - [Roadmap: Foundation](/crosswalker/reference/roadmap/#foundation--get-the-architecture-right)
