@@ -135,7 +135,7 @@ The reset fix was reviewed by an agent whose only instruction was to prove it wr
 
 | Item | State |
 |---|---|
-| A close that fails is now reported, but the wider ordering is unguarded | A projection running when the reset fires still dies on a closed handle and surfaces its error separately from the reset's success notice. Not corruption, since the file is deleted and the next open rebuilds, but two messages that read as contradictory |
+| Other operations still hold the database across an await | The evidence report and the housekeeping rebaseline both keep a `db` reference across a modal, so a reset during either would meet the same class of problem the projection race just fixed. Pre-existing, unreached by this change, and the reason the abort signal was built as a general mechanism rather than a projection-specific flag |
 | The seeded-vault assumption elsewhere | `first-run.spec.ts` closes the empty-vault path specifically. Other fixtures carry other unexamined assumptions. Listed here as a question to ask, not a fix to make |
 | `reference/settings.mdx` says the index file lives "relative to the vault root" | It does not. It lives in browser-managed storage outside the vault. The settings UI string says the same thing. A copy fix on both surfaces, not scheduled |
 

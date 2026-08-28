@@ -177,9 +177,46 @@ export default class CrosswalkerPlugin extends Plugin {
 	 * an unchanged vault produces the same Tier 2 state. Per
 	 * [system architecture Layer 3](https://cybersader.github.io/crosswalker/concepts/system-architecture/#layer-3--projection-t1--t2).
 	 */
+	/**
+	 * The projection currently running, if any, so a reset can wait for it to
+	 * let go of the database instead of deleting the file out from under it.
+	 */
+	private tier2InFlightProjection: Promise<ProjectionResult> | null = null;
+	/**
+	 * Set while the sidecar is being torn down. Read by the projector at each
+	 * yield point, and checked before a new projection starts.
+	 */
+	private tier2TeardownInProgress = false;
+
 	runProjection = async (): Promise<ProjectionResult> => {
-		const handle = await this.openTier2();
-		return projectFromTier1(this.app, handle.db, { debug: this.debug, projectionMode: 'full' });
+		if (this.tier2TeardownInProgress) {
+			// A reset is deleting the database right now. Starting here would do
+			// up to a full yield-interval of work against a file that is about to
+			// disappear, so decline before opening anything.
+			return {
+				success: true,
+				aborted: true,
+				counts: { concepts: 0, mappings: 0, junction_notes: 0, ontologies: 0, skipped: 0, errors: 0 },
+				errors: [],
+				durationMs: 0,
+			};
+		}
+		const run = (async (): Promise<ProjectionResult> => {
+			const handle = await this.openTier2();
+			return projectFromTier1(this.app, handle.db, {
+				debug: this.debug,
+				projectionMode: 'full',
+				shouldAbort: () => this.tier2TeardownInProgress,
+			});
+		})();
+		// Published so the reset can await it. Cleared only if still ours, so a
+		// slower run cannot wipe a newer one out of the slot.
+		this.tier2InFlightProjection = run;
+		try {
+			return await run;
+		} finally {
+			if (this.tier2InFlightProjection === run) this.tier2InFlightProjection = null;
+		}
 	};
 
 	/**
@@ -731,7 +768,19 @@ export default class CrosswalkerPlugin extends Plugin {
 			id: 'clear-tier-2-sidecar',
 			name: 'Maintenance: reset search data',
 			callback: async () => {
+				// Signal before anything else, then wait. A projection holds the
+				// database across many cooperative yields, so without this the
+				// reset could close and delete the file mid-run and the projector
+				// would resume against a dead handle -- surfacing an error next to
+				// the reset's own success notice, for a user who did nothing
+				// wrong. Signalling without waiting would only narrow the window;
+				// awaiting closes it. The wait is bounded by one yield interval.
+				this.tier2TeardownInProgress = true;
 				try {
+					if (this.tier2InFlightProjection) {
+						// Its failure, if any, belongs to whoever started it.
+						await this.tier2InFlightProjection.catch(() => undefined);
+					}
 					// Close and drop the handle BEFORE deleting. Unlinking a file
 					// that still has an open sahpool access handle is undefined
 					// behavior, and a surviving handle would keep answering queries
@@ -766,6 +815,11 @@ export default class CrosswalkerPlugin extends Plugin {
 					const msg = err instanceof Error ? err.message : String(err);
 					new Notice(`Failed to clear the fast query index: ${msg}`);
 					this.debug?.error('tier2', 'clear-failed', 'Tier 2 sidecar clear failed', { error: msg });
+				} finally {
+					// Must run on every path. Leaving this set would make the
+					// plugin refuse to project for the rest of the session, and
+					// the index would silently never rebuild.
+					this.tier2TeardownInProgress = false;
 				}
 			},
 		});
@@ -1128,6 +1182,10 @@ export default class CrosswalkerPlugin extends Plugin {
 				const result = await this.runProjection();
 				this.debug.info('tier2', 'auto-projection-complete', 'Tier 2 auto-projection: complete', {
 					success: result.success,
+					// An aborted pass is a success that saw only part of the vault.
+					// Recorded so a short run with low counts is not later read as
+					// evidence that the vault is nearly empty.
+					aborted: result.aborted === true,
 					counts: result.counts,
 					durationMs: result.durationMs,
 				});

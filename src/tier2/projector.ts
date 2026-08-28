@@ -44,6 +44,16 @@ export interface ProjectionResult {
 	};
 	errors: Array<{ vault_path: string; message: string }>;
 	durationMs: number;
+	/**
+	 * True when the run stopped early because `shouldAbort` asked it to.
+	 *
+	 * An abort is not a failure, so `success` stays true and `errors` stays
+	 * empty: nothing went wrong, the work was simply called off. It IS however
+	 * an incomplete pass, so callers must not read its counts as a statement
+	 * about the whole vault, and this run deliberately prunes nothing and
+	 * records itself as `partial` coverage.
+	 */
+	aborted?: boolean;
 }
 
 export interface ProjectionOptions {
@@ -62,6 +72,17 @@ export interface ProjectionOptions {
 	 * filter is never compatible with a full projection.
 	 */
 	projectionMode?: 'full' | 'partial';
+	/**
+	 * Cooperative cancellation, polled at each yield point.
+	 *
+	 * A projection holds the sidecar `db` across many yields, so anything that
+	 * closes or deletes that database mid-run leaves this loop executing
+	 * against a dead handle. Returning `true` here makes the loop stop at a
+	 * known-safe boundary and report `aborted`, instead of the caller having to
+	 * race it and then explain the resulting exception to a user who did
+	 * nothing wrong.
+	 */
+	shouldAbort?: () => boolean;
 }
 
 /**
@@ -119,6 +140,13 @@ export async function projectFromTier1(
 		// Cooperative yield every N files
 		if (i % yieldEvery === 0) {
 			await new Promise<void>((r) => setTimeout(r, 0));
+			// Checked immediately after the yield, because the yield is the only
+			// point where anything else can run -- and therefore the only point
+			// where the database under us can be closed or deleted.
+			if (options.shouldAbort?.()) {
+				result.aborted = true;
+				break;
+			}
 		}
 
 		try {
@@ -198,7 +226,10 @@ export async function projectFromTier1(
 	}
 
 	let prunedRows = 0;
-	if (fullProjection) {
+	// An aborted pass saw only some of the vault, so pruning "unseen" rows here
+	// would delete rows for files it simply never reached. Coverage, not intent,
+	// is what licenses a prune: a full run that stopped early is a partial run.
+	if (fullProjection && !result.aborted) {
 		try {
 			if (result.errors.length === 0) {
 				for (const ontologyId of ontologiesSeen) markOntologySeen(db, ontologyId);
@@ -236,8 +267,12 @@ export async function projectFromTier1(
 	// class as the closure-cache and empty-sidecar bugs. `partial` is recorded
 	// distinctly because a partial pass may legitimately not have seen every
 	// note, so a reader must not treat it as a full-vault statement.
+	// An aborted run is recorded as `partial` whatever it set out to be, for the
+	// same reason it does not prune: it cannot speak for notes it never read,
+	// and a stamp claiming full coverage is exactly how a stale posture gets
+	// presented as the current one.
 	recordProjectionStamp(db, {
-		mode: fullProjection ? 'full' : 'partial',
+		mode: fullProjection && !result.aborted ? 'full' : 'partial',
 		success: result.success,
 	});
 
