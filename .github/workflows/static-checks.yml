@@ -43,3 +43,10 @@ jobs:
 
       - name: Log labels
         run: bun run check:log-labels
+
+      # Resolves every internal doc link against the filesystem. Astro builds
+      # and deploys pages full of broken internal links without complaint, so
+      # this is the only thing standing between an archived/renamed page and a
+      # silent 404 for anyone who follows a link to it.
+      - name: Internal doc links
+        run: bun run check:links

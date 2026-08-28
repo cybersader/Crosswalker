@@ -296,13 +296,13 @@ Before committing, run the matching commands:
 
 | Files changed | Command |
 |---|---|
-| Any files | **all five Static Checks gates** (see below) |
+| Any files | **all six Static Checks gates** (see below) |
 | `src/**` | `bun run lint` + `bun run test` |
-| `docs/**` (any `.mdx`) | the five gates. A full `cd docs && bun run build` is the expensive confirmation, and CI runs it authoritatively on every push |
+| `docs/**` (any `.mdx`) | the six gates. A full `cd docs && bun run build` is the expensive confirmation, and CI runs it authoritatively on every push |
 | `tools/fixtures/synthetic/**` (CSV changes) | `bun run fixtures` |
 | `spec/**` | `bun run fixtures` (regenerate) + verify `bun run build` |
 
-**Run all five, not a subset.** The `Static Checks` CI workflow runs exactly these, and a partial local pass reads as a green light while CI still fails:
+**Run all six, not a subset.** The `Static Checks` CI workflow runs exactly these, and a partial local pass reads as a green light while CI still fails:
 
 ```
 bun run check:personal-data   # no paths, usernames, emails, secrets, AI attribution
@@ -310,9 +310,12 @@ bun run check:mdx             # MDX parses
 bun run check:frontmatter     # required frontmatter fields present and well-formed
 bun run check:not-content     # inline HTML/SVG diagrams carry class="not-content"
 bun run check:log-labels      # zz-log sidebar labels lead with "MM-DD · " from the filename
+bun run check:links           # every internal doc link resolves to a real page
 ```
 
 They cost a few seconds combined. Running three of five is how a docs publish failed CI on 2026-08-21 for a sidebar label.
+
+`check:links` was added 2026-08-28 after a sweep found 68 files linking to challenge briefs that had been archived out from under them. Astro deploys broken internal links without complaint, so every one was a silent 404 and the site built green throughout. It knows about the routes `starlight-blog` and `starlight-tags` generate; if a route-generating plugin is added or re-prefixed in `docs/astro.config.mjs`, update `GENERATED_ROUTE_PREFIXES` in `scripts/check-links.mjs` in the same change.
 
 ### Why this lives here (the design rule)
 
