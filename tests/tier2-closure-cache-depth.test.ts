@@ -55,7 +55,7 @@ function createTestDb(): TestDb {
 
 const PREDICATE = 'is_broader_than';
 const OTHER_PREDICATE = 'is_narrower_than';
-const CACHE_PREFIX = 'predicate-characteristics-v1|';
+const CACHE_PREFIX = 'predicate-characteristics-v2|';
 const CHAIN = [
 	['example:A', 'example:B'],
 	['example:B', 'example:C'],

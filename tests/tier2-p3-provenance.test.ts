@@ -52,7 +52,10 @@ describe('Tier 2 v4 import-set, identity, and mapping-set provenance', () => {
 	afterEach(() => db.close());
 
 	it('installs the v4 ownership columns, composed occurrence key, and identity indexes', () => {
-		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v4');
+		// Version moved to v5 when the review-baseline columns landed (Ch 43).
+		// The v4 ownership guarantees this test covers are unaffected: every
+		// version bump drops and rebuilds, so they are re-asserted below.
+		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v5');
 		for (const table of ['concepts', 'mappings', 'junction_notes']) {
 			expect(rows(db, `SELECT name FROM pragma_table_info('${table}') ORDER BY cid`)).toContainEqual(['import_set_id']);
 		}

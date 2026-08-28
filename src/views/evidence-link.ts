@@ -23,6 +23,8 @@
  */
 
 import { CANONICAL_EVIDENCE_PREDICATE } from '../tier2/evidence-coverage';
+import { buildProvenance } from '../generation/provenance';
+import type { ImportSetReference } from '../generation/import-set';
 
 /** How much of the control this evidence covers. */
 export type EvidenceCoverage = 'full' | 'partial' | 'none';
@@ -35,6 +37,15 @@ export interface EvidenceLinkInput {
 	controlPath: string;
 	/** The control's stable identifier, read from its frontmatter. */
 	controlCurie: string | null;
+	/**
+	 * The control's review-normalized content fingerprint
+	 * (`_crosswalker.review_cid`), read from its frontmatter at approval time.
+	 *
+	 * Null when the control carries none — a producer that did not compute one,
+	 * or a hand-written control note. Null is NOT a claim that the control is
+	 * unchanged; the link is written without a baseline and reported as such.
+	 */
+	controlReviewCid?: string | null;
 	/** Vault path of the evidence document. */
 	evidencePath: string;
 	coverage: EvidenceCoverage;
@@ -46,6 +57,12 @@ export interface EvidenceLinkInput {
 	reviewDate?: string;
 	/** Folder that holds junction notes. */
 	folder: string;
+	/** Optional: the vault file the evidence came from, for provenance. */
+	sourceFile?: string;
+	/** Optional: the import set this link belongs to, when created inside one. */
+	importSet?: ImportSetReference;
+	/** Plugin version stamped into provenance; defaults when a caller omits it. */
+	pluginVersion?: string;
 }
 
 export interface EvidenceLinkNote {
@@ -71,6 +88,31 @@ function fileSafe(value: string): string {
  */
 function curieSafe(value: string): string {
 	return value.replace(/[^A-Za-z0-9._\-()]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+/**
+ * Emit a nested plain object as indented YAML lines. Deliberately minimal: the
+ * provenance block is machine-built from known-safe values, so this handles
+ * objects, arrays of scalars, strings, numbers and booleans, and nothing else.
+ */
+function yamlBlock(value: Record<string, unknown>, depth: number): string[] {
+	const pad = '  '.repeat(depth);
+	const out: string[] = [];
+	for (const [key, v] of Object.entries(value)) {
+		if (v === undefined || v === null) continue;
+		if (Array.isArray(v)) {
+			out.push(`${pad}${key}:`);
+			for (const item of v) out.push(`${pad}  - ${yamlString(String(item))}`);
+		} else if (typeof v === 'object') {
+			out.push(`${pad}${key}:`);
+			out.push(...yamlBlock(v as Record<string, unknown>, depth + 1));
+		} else if (typeof v === 'string') {
+			out.push(`${pad}${key}: ${yamlString(v)}`);
+		} else {
+			out.push(`${pad}${key}: ${String(v)}`);
+		}
+	}
+	return out;
 }
 
 /** Quote a YAML scalar, escaping any embedded quotes. */
@@ -102,6 +144,32 @@ export function evidenceLinkCurie(controlPath: string, evidencePath: string): st
 }
 
 /**
+ * The `reviewed_against` block for one approval, or null when there is nothing
+ * honest to record.
+ *
+ * ONE helper, used by every stamping path (the link modal, any future
+ * approve/re-approve command, and bulk import), so no path can quietly skip it
+ * and no path can invent its own rule about half-records.
+ *
+ * A record carrying only one of the two sub-fields is a HALF-FACT, and
+ * half-facts are how "not recorded" becomes "not true": a fingerprint with no
+ * curie cannot say which subject it was taken from after a rename, and a curie
+ * with no fingerprint cannot be compared to anything. Both or neither.
+ *
+ * Absence is a named, reported state (`unrecorded`), never an assertion that
+ * the subject changed and never a silent exemption from checking. See the Ch 43
+ * re-attestation contract §2, and `project_cache_lag_is_not_absence` — three
+ * bugs in one week from reading "not recorded" as "not true".
+ */
+export function reviewedAgainstFor(
+	subjectCurie: string | null | undefined,
+	subjectReviewCid: string | null | undefined,
+): { curie: string; review_cid: string } | null {
+	if (!subjectCurie || !subjectReviewCid) return null;
+	return { curie: subjectCurie, review_cid: subjectReviewCid };
+}
+
+/**
  * Build the junction note.
  *
  * `subject_curie` is omitted rather than guessed when the control note has no
@@ -113,6 +181,7 @@ export function evidenceLinkCurie(controlPath: string, evidencePath: string): st
 export function buildEvidenceLink(input: EvidenceLinkInput): EvidenceLinkNote {
 	const control = basename(input.controlPath);
 	const evidence = basename(input.evidencePath);
+	const reviewedAgainst = reviewedAgainstFor(input.controlCurie, input.controlReviewCid);
 
 	const lines: string[] = ['---'];
 	lines.push(`curie: ${evidenceLinkCurie(input.controlPath, input.evidencePath)}`);
@@ -127,7 +196,35 @@ export function buildEvidenceLink(input: EvidenceLinkInput): EvidenceLinkNote {
 	if (input.scope) lines.push(`scope: ${yamlString(input.scope)}`);
 	if (input.reviewer) lines.push(`reviewer: ${yamlString(input.reviewer)}`);
 	if (input.reviewDate) lines.push(`review_date: ${input.reviewDate}`);
+	// The review baseline: WHAT the approver read, so a later upstream edit to
+	// the control can invalidate this claim instead of silently outliving it.
+	// Only an approval records one; a proposed link has not been reviewed, so
+	// there is nothing to record until the approving path stamps it.
+	if (input.status === 'approved' && reviewedAgainst) {
+		lines.push('reviewed_against:');
+		lines.push(`  curie: ${yamlString(reviewedAgainst.curie)}`);
+		lines.push(`  review_cid: ${reviewedAgainst.review_cid}`);
+	}
 	lines.push('tags: [evidence/junction]');
+
+	// A junction note WITHOUT `_crosswalker` is invisible to the whole product:
+	// spec/tier1.schema.json requires the block on a junction note, and
+	// src/tier2/projector.ts skips any note lacking it as "not produced by
+	// Crosswalker". Until 2026-08-28 this builder emitted none, so every link
+	// created through the modal was silently absent from coverage reports --
+	// present in the vault, counted by nothing.
+	//
+	// It went unnoticed because the round-trip test that was written to prove the
+	// loop closes injected `fm._crosswalker` by hand before projecting, so it
+	// exercised a note shape the product never produces. A test that repairs its
+	// own input cannot detect a missing output.
+	const provenance = buildProvenance(
+		{ sourceFile: input.sourceFile, importSet: input.importSet },
+		input.pluginVersion ?? '0.0.0',
+	);
+	lines.push('_crosswalker:');
+	for (const line of yamlBlock(provenance, 1)) lines.push(line);
+
 	lines.push('---');
 	lines.push('');
 	lines.push(`# ${control} has evidence: ${evidence}`);
@@ -153,6 +250,19 @@ export function buildEvidenceLink(input: EvidenceLinkInput): EvidenceLinkNote {
 		lines.push(
 			`> [!note] Counted\n`
 			+ `> This link counts as \`${input.coverage}\` coverage of the control.`,
+		);
+	}
+
+	// Say what this note can and cannot do about upstream change, at the moment
+	// the reader is looking at it. An approved link with no baseline still
+	// counts; what it cannot do is notice that the control text moved under it.
+	if (input.status === 'approved' && !reviewedAgainst) {
+		lines.push('');
+		lines.push(
+			'> [!warning] No review baseline\n'
+			+ '> This control has no content fingerprint, so Crosswalker cannot tell you later if it changes. '
+			+ 'This link still counts toward coverage. Re-import the control with a current version of Crosswalker, '
+			+ 'then re-approve this link to record a baseline.',
 		);
 	}
 	lines.push('');

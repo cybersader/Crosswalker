@@ -167,7 +167,7 @@ describe('Tier 2 predicate-characteristic closure', () => {
 		db.exec(`
 			INSERT INTO closure_cache_state
 				(subject_id, predicate_id, computed_max_depth, computed_at)
-			VALUES ('example:A', 'predicate-characteristics-v1|unknown', 99, 'old')
+			VALUES ('example:A', 'predicate-characteristics-v2|unknown', 99, 'old')
 		`);
 
 		expect(() => closureFromConcept(db, 'example:A', 'unknown', 1)).toThrow(
@@ -227,6 +227,56 @@ describe('Tier 2 predicate-characteristic closure', () => {
 		expect(queryRows(db, 'SELECT COUNT(*) FROM mappings')).toEqual([[1]]);
 	});
 
+	// The characteristics table is an INPUT to every cached closure result, so
+	// the physical cache key carries a version of it. Ch 43 added the lineage
+	// pair and moved that version to v2; a partition written under v1 must be
+	// ignored rather than reused. A cache key that does not cover its own inputs
+	// is the exact bug fixed on 2026-08-20, and the only reason this is cheap to
+	// get right is that the cache is rebuildable.
+	it('does not reuse a closure partition written under the previous semantics version', () => {
+		insertMapping(db, 'example:A', 'is_broader_than', 'example:B', 'version-1');
+
+		// A stale v1 partition claiming a target that does not exist. If the
+		// version were still part of the key by name only, this would be returned.
+		db.exec(`
+			INSERT INTO closure_cache_state
+				(subject_id, predicate_id, computed_max_depth, computed_at)
+			VALUES ('example:A', 'predicate-characteristics-v1|is_broader_than', 9, 'old')
+		`);
+		db.exec(`
+			INSERT INTO closure_cache
+				(subject_id, predicate_id, object_id, shortest_depth, computed_at)
+			VALUES ('example:A', 'predicate-characteristics-v1|is_broader_than', 'example:STALE', 1, 'old')
+		`);
+
+		expect(targets(closureFromConcept(db, 'example:A', 'is_broader_than', 5))).toEqual([
+			['example:B', 1],
+		]);
+		expect(
+			queryRows(
+				db,
+				`SELECT predicate_id FROM closure_cache_state
+				 WHERE subject_id = 'example:A' ORDER BY predicate_id`,
+			),
+		).toEqual([
+			['predicate-characteristics-v1|is_broader_than'],
+			['predicate-characteristics-v2|is_broader_than'],
+		]);
+	});
+
+	// Lineage rides the same recursive CTE as every other transitive predicate.
+	// No bespoke traversal exists, and this is the assertion that says so.
+	it('walks lineage chains through the ordinary closure machinery', () => {
+		insertMapping(db, 'r4:AC-2', 'superseded_by', 'r5:AC-2', 'lineage-1');
+		insertMapping(db, 'r5:AC-2', 'superseded_by', 'r6:PT-1', 'lineage-2');
+
+		expect(targets(closureFromConcept(db, 'r4:AC-2', 'superseded_by', 5))).toEqual([
+			['r5:AC-2', 1],
+			['r6:PT-1', 2],
+		]);
+		expect(closureFromConcept(db, 'r6:PT-1', 'superseded_by', 5)).toEqual([]);
+	});
+
 	it('precomputes concepts that are subjects only through a derived inverse edge', () => {
 		insertMapping(db, 'source:A', 'is_broader_than', 'target:B', 'inverse-subject');
 
@@ -239,6 +289,6 @@ describe('Tier 2 predicate-characteristic closure', () => {
 				`SELECT subject_id, predicate_id FROM closure_cache_state
 				 WHERE subject_id = 'target:B'`,
 			),
-		).toEqual([['target:B', 'predicate-characteristics-v1|is_narrower_than']]);
+		).toEqual([['target:B', 'predicate-characteristics-v2|is_narrower_than']]);
 	});
 });

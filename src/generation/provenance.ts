@@ -40,6 +40,14 @@ export interface ProvenanceInput {
 	importSet?: ImportSetReference;
 	/** Optional: the canonical concept identity content hash */
 	conceptCid?: string;
+	/**
+	 * Optional: the review-normalized content fingerprint (Ch 43). Same identity
+	 * record as `conceptCid`, with cosmetic string differences folded away, so an
+	 * attestation can tell a rewritten control from a re-typeset one. Optional on
+	 * purpose: a producer that does not compute one emits nothing, and an absent
+	 * fingerprint is never read as evidence of change.
+	 */
+	reviewCid?: string;
 }
 
 const PRODUCER_NAME = 'crosswalker-plugin';
@@ -80,6 +88,10 @@ export function buildProvenance(input: ProvenanceInput, pluginVersion: string): 
 
 	if (input.conceptCid) {
 		block.concept_cid = input.conceptCid;
+	}
+
+	if (input.reviewCid) {
+		block.review_cid = input.reviewCid;
 	}
 
 	return block;

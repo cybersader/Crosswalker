@@ -4,7 +4,7 @@
   "title": "Crosswalker Tier 1",
   "description": "The canonical contract for a Crosswalker vault. Tier 1 is the load-bearing primitive: any producer (the bundled engine, an external Python script, an AI agent, an MCP server, hand-written notes) that emits files conforming to this schema produces a valid Crosswalker vault. Validation surface covers YAML frontmatter shape only — folder layout and Markdown body are recipe-defined and out of scope here. See https://crosswalker.dev/spec/recipe.schema.json for recipe shape.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. Discrimination by `kind` field: kind='junction-note' must match junction-note shape; kind='crosswalk-edge' must match crosswalk-edge shape; absent kind (or any other value) must match concept-note shape. Uses allOf+if/then so AJV can produce specific error messages from the matching branch.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. Discrimination by `kind` field: kind='junction-note' must match junction-note shape; kind='crosswalk-edge' must match crosswalk-edge shape; absent kind (or any other value) must match concept-note shape. Uses allOf+if/then so AJV can produce specific error messages from the matching branch. SchemaVer 1.2.0. Additive history: 1.1.0 (2026-08-28, Ch 43) added the optional `reviewed_against` block on junction_note_frontmatter (the control fingerprint an attestation was approved against) and the optional `review_cid` on provenance_block (the concept-side current value); 1.2.0 (2026-08-28, Ch 43) widened the crosswalk_edge_frontmatter predicate_id enum with the release-lineage pair `superseded_by` / `supersedes`. Both steps are property/enum widenings only: every document that validated before still validates, so the $id is unchanged.",
 
   "$defs": {
     "curie": {
@@ -107,6 +107,10 @@
         "concept_cid": {
           "$ref": "#/$defs/sha256_cid",
           "description": "Content identifier of the canonical concept-identity record. Same across recipes that produce different vault layouts from identical source data."
+        },
+        "review_cid": {
+          "$ref": "#/$defs/sha256_cid",
+          "description": "Normalized content fingerprint of this concept, computed over the same identity record as concept_cid but with the review-normalization rule applied to every string value. Cosmetically-different content (citation markers, curly quotes, collapsed whitespace, markdown link destinations) hashes identically here and differently in concept_cid. Optional; absent means the producer did not compute one, which is NOT a claim that the content is unchanged."
         }
       }
     },
@@ -179,6 +183,16 @@
         },
         "reviewer": { "type": "string", "description": "Who reviewed this evidence link (display name, ORCID, or email)." },
         "review_date": { "$ref": "#/$defs/iso8601_datetime", "description": "When the review happened." },
+        "reviewed_against": {
+          "type": "object",
+          "description": "The subject state a human approved this attestation against. Written only when a human approves; a producer must never fabricate it. Absent means no baseline was recorded, which is NOT a claim that the subject is unchanged.",
+          "required": ["curie", "review_cid"],
+          "additionalProperties": false,
+          "properties": {
+            "curie": { "$ref": "#/$defs/curie", "description": "Identity of the subject as reviewed. Records WHICH subject the fingerprint was taken from, so a later rename or re-point is detectable." },
+            "review_cid": { "$ref": "#/$defs/sha256_cid", "description": "Normalized content fingerprint of the subject at approval time. Compared against the current _crosswalker.review_cid of the subject; a difference means the reviewed content changed and the attestation needs re-review." }
+          }
+        },
         "status": {
           "type": "string",
           "enum": ["proposed", "in_review", "approved", "deprecated"],
@@ -222,9 +236,11 @@
             "is_narrower_than",
             "is_approximate_to",
             "intersects_with",
-            "no_relationship"
+            "no_relationship",
+            "superseded_by",
+            "supersedes"
           ],
-          "description": "Six Crosswalker predicates: the five set-theoretic STRM relationships from NIST IR 8477 (used by SCF/OSCAL) plus the Crosswalker extension is_approximate_to."
+          "description": "Eight Crosswalker predicates: the five set-theoretic STRM relationships from NIST IR 8477 (used by SCF/OSCAL), the Crosswalker extension is_approximate_to, and the release-lineage pair superseded_by / supersedes. Lineage is modelled as an ordinary crosswalk assertion between two release ontologies, so a rename is one edge, a split is N edges sharing subject_id, and a merge is N edges sharing object_id. Direction: subject_id superseded_by object_id means the subject is the OLD concept and the object is its replacement. Lineage predicates are NOT set-theoretic and must never be coerced into an OLIR/STRM relationship on export."
         },
         "object_id": { "$ref": "#/$defs/curie", "description": "Target-side concept CURIE (e.g., iso27001:A.9.2.1)." },
         "mapping_set_id": {

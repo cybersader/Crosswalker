@@ -105,6 +105,7 @@ import scf2026Flat from '../../recipes/import/scf-2026-flat.json';
 import nist80053Flat from '../../recipes/import/nist-800-53-flat.json';
 import criProfileV22 from '../../recipes/import/cri-profile-v2-2.json';
 import crosswalkEdge from '../../recipes/import/crosswalk-edge.json';
+import nistCsf2WithdrawalLineage from '../../recipes/import/nist-csf-2-withdrawal-lineage.json';
 import evidenceJunctionNotes from '../../recipes/starter/evidence-junction-notes.json';
 
 /** The Tier 1 shape a recipe's leaf layout entry produces (spec §7's `layout_entry.kind`). */
@@ -393,6 +394,17 @@ const DEFAULTS: Record<
 				'Crosswalk edges are meant to be browsed through the query/pivot layer (crosswalkerPivot Bases view), not through facet hub notes.',
 		},
 	},
+	'nist-csf-2-withdrawal-lineage': {
+		label: 'NIST CSF 2.0 withdrawal lineage',
+		description:
+			'Each withdrawn CSF v1.1 subcategory becomes an edge to the CSF 2.0 subcategory that replaced it, one edge per replacement.',
+		suggestedFolder: '_crosswalker/mappings',
+		recommendedEnrichment: {
+			...NO_ENRICHMENT,
+			rationale:
+				'Lineage edges answer "what replaced this control", which the review report asks by walking the edges. Facet hub notes over the edges themselves would not answer it.',
+		},
+	},
 	'evidence-junction-notes': {
 		label: 'Evidence links (control to document)',
 		description:
@@ -451,6 +463,7 @@ export const RECIPE_REGISTRY: RecipeRegistryEntry[] = [
 	toEntry(nist80053Flat),
 	toEntry(criProfileV22),
 	toEntry(crosswalkEdge),
+	toEntry(nistCsf2WithdrawalLineage),
 	toEntry(evidenceJunctionNotes),
 ];
 

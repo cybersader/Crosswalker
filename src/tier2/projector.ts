@@ -429,8 +429,8 @@ function upsertConcept(db: any, file: TFile, fm: Record<string, any>): void {
 	db.exec({
 		sql: `
 			INSERT OR REPLACE INTO concepts
-				(ontology_id, curie, vault_path, source_hash, import_set_id, title, parent_curie, status, imported_at, modified_at)
-			VALUES ($ontology_id, $curie, $vault_path, $source_hash, $import_set_id, $title, $parent_curie, $status, $imported_at, $modified_at)
+				(ontology_id, curie, vault_path, source_hash, import_set_id, title, review_cid, parent_curie, status, imported_at, modified_at)
+			VALUES ($ontology_id, $curie, $vault_path, $source_hash, $import_set_id, $title, $review_cid, $parent_curie, $status, $imported_at, $modified_at)
 		`,
 		bind: {
 			$ontology_id: ontologyId,
@@ -439,6 +439,7 @@ function upsertConcept(db: any, file: TFile, fm: Record<string, any>): void {
 			$source_hash: sourceHash,
 			$import_set_id: importSetId,
 			$title: title,
+			$review_cid: stringOrNull(fm._crosswalker?.review_cid),
 			$parent_curie: parentCurie,
 			$status: status,
 			$imported_at: importedAt,
@@ -465,11 +466,25 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 	const importSetId = extractImportSetId(fm);
 	const modifiedAt = new Date(file.stat.mtime).toISOString();
 
+	// The review baseline is read as a PAIR (Ch 43 re-attestation §1.1). If
+	// either half is missing, both columns bind NULL: a half-record in Tier 1 is
+	// a half-fact, and a half-fact must never become a half-comparison here. The
+	// result is the named `unrecorded` state, which still counts toward
+	// coverage -- absence of a baseline is not evidence that the subject changed.
+	const reviewedAgainst = fm.reviewed_against;
+	const reviewedAgainstCurie = reviewedAgainst && typeof reviewedAgainst === 'object'
+		? stringOrNull((reviewedAgainst as Record<string, unknown>).curie)
+		: null;
+	const reviewedAgainstCid = reviewedAgainst && typeof reviewedAgainst === 'object'
+		? stringOrNull((reviewedAgainst as Record<string, unknown>).review_cid)
+		: null;
+	const baselineComplete = reviewedAgainstCurie !== null && reviewedAgainstCid !== null;
+
 	db.exec({
 		sql: `
 			INSERT OR REPLACE INTO junction_notes
-				(vault_path, curie, subject, subject_curie, predicate, object, object_curie, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, import_set_id, source_hash, modified_at)
-			VALUES ($vault_path, $curie, $subject, $subject_curie, $predicate, $object, $object_curie, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $import_set_id, $source_hash, $modified_at)
+				(vault_path, curie, subject, subject_curie, predicate, object, object_curie, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, reviewed_against_curie, reviewed_against_cid, import_set_id, source_hash, modified_at)
+			VALUES ($vault_path, $curie, $subject, $subject_curie, $predicate, $object, $object_curie, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $reviewed_against_curie, $reviewed_against_cid, $import_set_id, $source_hash, $modified_at)
 		`,
 		bind: {
 			$vault_path: file.path,
@@ -487,6 +502,8 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 			$scope: stringOrNull(fm.scope),
 			$expires_at: stringOrNull(fm.expires_at),
 			$notes: stringOrNull(fm.notes),
+			$reviewed_against_curie: baselineComplete ? reviewedAgainstCurie : null,
+			$reviewed_against_cid: baselineComplete ? reviewedAgainstCid : null,
 			$import_set_id: importSetId,
 			$source_hash: sourceHash,
 			$modified_at: modifiedAt,

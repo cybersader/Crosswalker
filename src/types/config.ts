@@ -491,6 +491,18 @@ export interface GenerationResult {
 	 * nothing about filtering rather than claiming zero.
 	 */
 	filteredOut?: number;
+	/**
+	 * Approved evidence links this run wrote WITHOUT a review baseline, because
+	 * their subject control was not resolvable in this vault (Ch 43
+	 * re-attestation). The links are valid and count toward coverage; what they
+	 * cannot do is notice a later upstream change to the control.
+	 *
+	 * Undefined when there were none, so a plain concept import says nothing
+	 * about baselines rather than claiming a zero it never measured. Never
+	 * back-filled by a second pass: a fingerprint the importer computed against
+	 * content no human read is not an approval.
+	 */
+	unbaselinedJunctions?: number;
 	duration: number;
 }
 

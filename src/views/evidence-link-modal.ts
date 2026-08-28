@@ -7,6 +7,7 @@
  */
 
 import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
+import { readNoteFrontmatter } from '../export/vault-reader';
 import {
 	buildEvidenceLink,
 	type EvidenceCoverage,
@@ -18,6 +19,21 @@ export interface ControlCandidate {
 	path: string;
 	title: string;
 	curie: string | null;
+	/**
+	 * `_crosswalker.review_cid` — the control's review-normalized content
+	 * fingerprint, recorded on an approved link so a later upstream edit to this
+	 * control can invalidate the claim. Null when the control carries none.
+	 */
+	reviewCid: string | null;
+}
+
+/** Read `_crosswalker.review_cid` from a frontmatter object, or null. */
+export function readReviewCid(fm: unknown): string | null {
+	if (!fm || typeof fm !== 'object') return null;
+	const provenance = (fm as Record<string, unknown>)._crosswalker;
+	if (!provenance || typeof provenance !== 'object') return null;
+	const value = (provenance as Record<string, unknown>).review_cid;
+	return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 }
 
 /**
@@ -38,6 +54,7 @@ export function listControlCandidates(app: App): ControlCandidate[] {
 			path: file.path,
 			title: typeof fm.title === 'string' && fm.title ? fm.title : file.basename,
 			curie: fm.curie,
+			reviewCid: readReviewCid(fm),
 		});
 	}
 	return out.sort((a, b) => a.path.localeCompare(b.path));
@@ -180,9 +197,37 @@ export class EvidenceLinkModal extends Modal {
 			new Notice(`No note found at ${evidencePath}. Creating the link anyway.`);
 		}
 
+		// Only an approval records a baseline, so only an approval needs the
+		// control's fingerprint resolved — and resolved honestly.
+		let controlReviewCid = this.control.reviewCid;
+		if (this.status === 'approved' && controlReviewCid === null) {
+			const controlFile = this.app.vault.getAbstractFileByPath(this.control.path);
+			if (controlFile instanceof TFile && !this.app.metadataCache.getFileCache(controlFile)) {
+				// A null cache entry means EITHER no frontmatter OR not indexed
+				// yet. Reading the second as the first would stamp "no baseline"
+				// onto a control that has a perfectly good fingerprint — the
+				// mistake behind three bugs in one week
+				// (`project_cache_lag_is_not_absence`). Look at the file before
+				// concluding anything, for this ONE control only.
+				const fromDisk = await readNoteFrontmatter(this.app, controlFile);
+				if (fromDisk === null) {
+					new Notice('Obsidian is still reading this control. Try again in a moment.');
+					return;
+				}
+				controlReviewCid = readReviewCid(fromDisk);
+			}
+			if (controlReviewCid === null) {
+				new Notice(
+					'This control has no content fingerprint, so Crosswalker cannot tell you later if it changes. '
+					+ 'The link was still created and still counts.',
+				);
+			}
+		}
+
 		const note = buildEvidenceLink({
 			controlPath: this.control.path,
 			controlCurie: this.control.curie,
+			controlReviewCid,
 			evidencePath,
 			coverage: this.coverage,
 			status: this.status,

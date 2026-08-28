@@ -1,7 +1,7 @@
 /**
  * Tier 2 schema migrations.
  *
- * Tier 2 currently ships `tier2-sqlite-v4`. If a sidecar reports a different
+ * Tier 2 currently ships `tier2-sqlite-v5`. If a sidecar reports a different
  * schema_version (or no version at all), the simplest correct response
  * is to drop all tables and recreate from canonical Tier 1. The Tier 1
  * vault is the source of truth; the sidecar is a deletable projection.
@@ -13,10 +13,10 @@
  * risk-free to bundle in v0.1."
  */
 
-export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v4';
+export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v5';
 
 /**
- * The DDL for tier2-sqlite-v4. Imported as a string at build time
+ * The DDL for tier2-sqlite-v5. Imported as a string at build time
  * from src/tier2/schema.sql. esbuild's `text` loader handles `.sql`
  * imports as plain strings.
  *
@@ -24,7 +24,7 @@ export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v4';
  * default TS pipeline doesn't auto-load .sql; explicit constants
  * keep the build simple.
  */
-export const TIER2_DDL_V4 = `
+export const TIER2_DDL_V5 = `
 PRAGMA foreign_keys = ON;
 PRAGMA synchronous = NORMAL;
 
@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS concepts (
   source_hash    TEXT NOT NULL,
   import_set_id  TEXT,
   title          TEXT NOT NULL DEFAULT '',
+  review_cid     TEXT,
   parent_curie   TEXT,
   status         TEXT NOT NULL DEFAULT 'active',
   imported_at    TEXT NOT NULL,
@@ -112,6 +113,8 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   scope           TEXT,
   expires_at      TEXT,
   notes           TEXT,
+  reviewed_against_curie TEXT,
+  reviewed_against_cid   TEXT,
   import_set_id   TEXT,
   source_hash     TEXT NOT NULL,
   modified_at     TEXT NOT NULL
@@ -127,15 +130,35 @@ CREATE VIEW IF NOT EXISTS junction_notes_with_freshness AS
 SELECT
   jn.*,
   CASE
-    WHEN jn.expires_at IS NULL AND jn.review_date IS NULL THEN 'not-set'
-    WHEN jn.expires_at IS NOT NULL AND jn.expires_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    WHEN jn.expires_at IS NOT NULL
+         AND jn.expires_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
       THEN 'expired'
     WHEN jn.review_date IS NOT NULL
          AND jn.review_date < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-180 days')
       THEN 'stale'
+    WHEN jn.reviewed_against_cid IS NOT NULL
+         AND c.review_cid IS NOT NULL
+         AND c.review_cid <> jn.reviewed_against_cid
+      THEN 'subject-changed'
+    WHEN jn.expires_at IS NULL AND jn.review_date IS NULL
+      THEN 'not-set'
     ELSE 'fresh'
-  END AS freshness
-FROM junction_notes jn;
+  END AS freshness,
+  CASE
+    WHEN jn.reviewed_against_cid IS NULL         THEN 'unrecorded'
+    WHEN c.curie IS NULL                         THEN 'subject-absent'
+    WHEN c.review_cid IS NULL                    THEN 'subject-unhashed'
+    WHEN c.review_cid <> jn.reviewed_against_cid THEN 'changed'
+    ELSE 'match'
+  END AS subject_baseline
+FROM junction_notes jn
+LEFT JOIN concepts c
+  ON c.rowid = (
+    SELECT c2.rowid FROM concepts c2
+    WHERE c2.curie = COALESCE(jn.reviewed_against_curie, jn.subject_curie)
+    ORDER BY c2.ontology_id
+    LIMIT 1
+  );
 
 CREATE TABLE IF NOT EXISTS closure_cache (
   subject_id      TEXT NOT NULL,
@@ -206,8 +229,9 @@ export function applyMigrations(db: any): boolean {
 		DROP TABLE IF EXISTS schema_meta;
 	`);
 
-	// Apply the v3 DDL
-	db.exec(TIER2_DDL_V4);
+	// Apply the current DDL. The constant is version-named on purpose: a stale
+	// reference must fail to compile rather than silently apply an old shape.
+	db.exec(TIER2_DDL_V5);
 
 	// Stamp the version. Deliberately NOT `projected_at`: the tables were just
 	// emptied, so nothing has been projected. Recording a projection timestamp

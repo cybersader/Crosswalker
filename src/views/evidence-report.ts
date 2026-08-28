@@ -22,10 +22,13 @@
  */
 
 import type {
+	BaselineGap,
 	EvidenceCoverageRow,
 	EvidenceCoverageSummary,
 	ExcludedJunction,
 	ExclusionReason,
+	SupersededSubject,
+	UnbaselinedJunction,
 } from '../tier2/evidence-coverage';
 import type { ProjectionStatus } from '../tier2/projector';
 
@@ -35,6 +38,20 @@ export interface EvidenceReportInput {
 	summary: EvidenceCoverageSummary;
 	rows: EvidenceCoverageRow[];
 	excluded: ExcludedJunction[];
+	/**
+	 * Valid links with no comparable review baseline, and why (Ch 43 §2.3).
+	 * These COUNT toward the numbers above; they are listed so a reader knows
+	 * which part of the total Crosswalker cannot verify. Omitted by a caller
+	 * that did not query them, which renders no section rather than claiming
+	 * zero.
+	 */
+	unbaselined?: UnbaselinedJunction[];
+	/**
+	 * Superseded controls that attestations still point at, with the successor
+	 * candidates the vault asserts (Ch 43 section 7). Omitted by a caller that did
+	 * not query them, which renders no section rather than implying there are none.
+	 */
+	superseded?: SupersededSubject[];
 	status: ProjectionStatus;
 	/** ISO timestamp for "generated at". Injected so tests are deterministic. */
 	generatedAt: string;
@@ -54,13 +71,31 @@ const REASON_HELP: Record<ExclusionReason, string> = {
 		'The link does not use `has_evidence`, so it is not a claim that this evidence satisfies the control.',
 	'no-subject-identity':
 		'The link has no stable control identifier, so it cannot be matched to a control reliably.',
+	'subject-superseded':
+		'The control this link points at is no longer in the index, and a later release says it was replaced. See [[#Links whose control was superseded]] for the replacements, then decide which one this evidence belongs to.',
 	'subject-not-a-known-concept':
 		'The link points at something that is not an imported control. A link written the wrong way round lands here.',
 	'not-approved': 'The link is not approved yet.',
 	'coverage-not-asserted':
 		'The link does not state how much of the control it covers, or states that it covers none.',
 	expired: 'The evidence is past its expiry date.',
+	'subject-changed':
+		'The control changed after this link was approved. Re-review the evidence against the current control text, then re-approve.',
 	stale: 'The evidence has not been reviewed recently enough.',
+};
+
+/**
+ * What to do about each kind of missing baseline. Phrased as the fix, like
+ * REASON_HELP, and never as reassurance: none of these states says the control
+ * is unchanged, only that nobody can check.
+ */
+const BASELINE_HELP: Record<BaselineGap, string> = {
+	unrecorded:
+		'Re-approve this link to record the baseline. Links approved from now on record it automatically.',
+	'subject-absent':
+		'The control this link was approved against is not in the index. Re-import it, or re-point the link and re-approve.',
+	'subject-unhashed':
+		'The control carries no content fingerprint. Re-import it with a current version of Crosswalker, then re-approve this link.',
 };
 
 /** Escape the pipe character so a value containing one cannot break the table. */
@@ -148,6 +183,18 @@ export function renderEvidenceReport(input: EvidenceReportInput): string {
 		out.push('');
 	}
 
+	if (summary.unbaselined_valid_junctions > 0) {
+		// Deliberate wording: "cannot tell". Never "unchanged", "verified",
+		// "current", or "up to date" — none of which was measured.
+		const n = summary.unbaselined_valid_junctions;
+		out.push(
+			`> [!important] ${n} of the links counted above ${n === 1 ? 'has' : 'have'} no recorded review baseline. `
+			+ `Their subjects may have changed since approval; Crosswalker cannot tell. `
+			+ 'See [[#Links with no review baseline]].',
+		);
+		out.push('');
+	}
+
 	if (summary.excluded_junctions > 0) {
 		out.push(
 			`> [!important] ${summary.excluded_junctions} evidence link`
@@ -180,6 +227,70 @@ export function renderEvidenceReport(input: EvidenceReportInput): string {
 		out.push(...renderConceptTable(partial, limit));
 	}
 	out.push('');
+
+	// ---- No review baseline -----------------------------------------------
+	// Its own section, not a row in the exclusions table: these links DID count.
+	// Filing them under "did not count" would be a second wrong answer.
+	if (input.unbaselined !== undefined) {
+		out.push('## Links with no review baseline');
+		out.push('');
+		if (input.unbaselined.length === 0) {
+			out.push('Every counted link records the control state it was approved against.');
+		} else {
+			out.push(
+				'These links count toward the numbers above. What Crosswalker cannot tell you is '
+				+ 'whether the control changed after they were approved, because no baseline was recorded.',
+			);
+			out.push('');
+			out.push('| Link | Control | Why | What to do |');
+			out.push('|---|---|---|---|');
+			for (const item of input.unbaselined.slice(0, limit)) {
+				out.push(
+					`| [[${cell(item.vault_path)}]] | ${cell(item.subject_curie ?? item.subject)} `
+					+ `| \`${cell(item.baseline)}\` | ${BASELINE_HELP[item.baseline]} |`,
+				);
+			}
+			if (input.unbaselined.length > limit) {
+				out.push('');
+				out.push(`_${input.unbaselined.length - limit} more not listed (showing the first ${limit})._`);
+			}
+		}
+		out.push('');
+	}
+
+	// ---- Superseded controls ----------------------------------------------
+	// These links ALSO appear under "did not count" (as `subject-superseded`).
+	// The duplication is deliberate: the exclusions table answers "why did my
+	// number move", this section answers "what do I do about it", and a reader
+	// looking at one is not looking at the other.
+	if (input.superseded !== undefined) {
+		out.push('## Links whose control was superseded');
+		out.push('');
+		if (input.superseded.length === 0) {
+			out.push('No links point at a control that a later release says was replaced.');
+		} else {
+			out.push(
+				'The control these links were approved against is no longer in the index, and a '
+				+ 'later release says it was replaced. Crosswalker lists the replacements it was '
+				+ 'told about; it does not move your evidence. Deciding which replacement this '
+				+ 'evidence belongs to, and whether it still holds, is a review.',
+			);
+			out.push('');
+			out.push('| Control (no longer present) | Links | Replaced by |');
+			out.push('|---|---:|---|');
+			for (const item of input.superseded.slice(0, limit)) {
+				out.push(
+					`| \`${cell(item.subject_curie)}\` | ${item.attestation_count} `
+					+ `| ${renderSuccessors(item.successors)} |`,
+				);
+			}
+			if (input.superseded.length > limit) {
+				out.push('');
+				out.push(`_${input.superseded.length - limit} more not listed (showing the first ${limit})._`);
+			}
+		}
+		out.push('');
+	}
 
 	// ---- Exclusions -------------------------------------------------------
 	out.push('## Links that did not count');
@@ -220,4 +331,33 @@ function renderConceptTable(rows: EvidenceCoverageRow[], limit: number): string[
 		out.push(`_${rows.length - limit} more not listed (showing the first ${limit})._`);
 	}
 	return out;
+}
+
+/**
+ * The replacement cell for one superseded control.
+ *
+ * Two things this must never do. It must not drop a successor that is asserted
+ * but not imported here: that would print "no successor known" over an
+ * assertion the vault actually holds. And it must not present a multi-hop chain
+ * as a direct replacement, because a control three releases away has been
+ * through three rounds of editing and the reviewer needs to know that before
+ * they trust the link.
+ */
+function renderSuccessors(successors: SupersededSubject['successors']): string {
+	if (successors.length === 0) {
+		// Reachable only if a caller hands in a row with no candidates. Say so
+		// plainly rather than leaving an empty cell that reads as a rendering bug.
+		return 'No successor known.';
+	}
+	return successors
+		.map((s) => {
+			const label = s.title && s.title !== s.curie ? `${s.title} (${s.curie})` : s.curie;
+			const notes = [s.depth === 1 ? 'direct' : `via ${s.depth} releases`];
+			if (!s.vault_path) notes.push('not imported in this vault');
+			const link = s.vault_path
+				? `[[${cell(s.vault_path)}\\|${cell(label)}]]`
+				: `\`${cell(s.curie)}\``;
+			return `${link} (${notes.join(', ')})`;
+		})
+		.join('; ');
 }

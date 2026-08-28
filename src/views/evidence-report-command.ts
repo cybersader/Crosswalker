@@ -17,6 +17,8 @@ import {
 	diagnoseExcludedJunctions,
 	evidenceCoverageByConcept,
 	evidenceCoverageSummary,
+	listSupersededSubjects,
+	listUnbaselinedValidJunctions,
 } from '../tier2/evidence-coverage';
 import { readProjectionStatus } from '../tier2/projector';
 import { renderEvidenceReport } from './evidence-report';
@@ -109,11 +111,19 @@ export async function writeEvidenceReport(
 	const { db } = await deps.openTier2();
 	const now = deps.now ?? (() => new Date());
 
+	// Diagnosed once and passed to both readers. The superseded section is
+	// derived from these exact rows rather than from a query of its own, so its
+	// counts cannot describe a different population than the exclusions table
+	// printed a few lines below it.
+	const excluded = diagnoseExcludedJunctions(db);
+
 	const markdown = renderEvidenceReport({
 		ontologyId,
 		summary: evidenceCoverageSummary(db, ontologyId),
 		rows: evidenceCoverageByConcept(db, ontologyId),
-		excluded: diagnoseExcludedJunctions(db),
+		excluded,
+		unbaselined: listUnbaselinedValidJunctions(db),
+		superseded: listSupersededSubjects(db, excluded),
 		status: readProjectionStatus(db),
 		generatedAt: now().toISOString(),
 	});

@@ -105,6 +105,21 @@ describe('identity and safety', () => {
 		expect(buildEvidenceLink(input()).markdown).toContain('kind: junction-note');
 	});
 
+	it('carries a _crosswalker block, without which the note is invisible to coverage', () => {
+		// The blocker found 2026-08-28. spec/tier1.schema.json REQUIRES this block on a
+		// junction note and src/tier2/projector.ts skips any note lacking it as "not
+		// produced by Crosswalker" -- so a link without it sits in the vault counted by
+		// nothing. Every link the modal created was in that state.
+		//
+		// It survived a round-trip test because that test injected `_crosswalker` by hand
+		// before projecting, exercising a note shape the product never emits. This asserts
+		// against the builder's ACTUAL output, which is the only thing that can catch it.
+		const { markdown } = buildEvidenceLink(input());
+		expect(markdown).toContain('_crosswalker:');
+		expect(markdown).toMatch(/^\s+spec_version:/m);
+		expect(markdown).toMatch(/^\s+produced_at:/m);
+	});
+
 	it('carries a curie, without which projection rejects the note outright', () => {
 		// Found by the round-trip test: an omitted curie produced a note that
 		// looked correct in the vault and reached no report at all, because

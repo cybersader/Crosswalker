@@ -46,6 +46,11 @@
  *     and `no_relationship`, which have no exact SKOS/STRM round-trip
  *     partner (see the map's comment).
  *
+ *   - Release lineage (`superseded_by` / `supersedes`) is REFUSED, not
+ *     translated. SKOS has no replacement property, and the fallback path here
+ *     would have labelled a withdrawal record `skos:relatedMatch`. Those rows
+ *     are excluded and counted in `skipped`.
+ *
  *   - `mapping_provider` / `mapping_set_id`: these ARE written per-row (the
  *     synthetic recipe's `also_emit.frontmatter.managed` includes both), but
  *     SSSOM models them as mapping-SET-level metadata (header lines, not
@@ -60,6 +65,10 @@ import Papa from 'papaparse';
 import type { App } from 'obsidian';
 import { readVaultTree, type CrosswalkEdgeRow, type SkippedNote } from './vault-reader';
 import { normalizeMappingSetId, readStoredPredicateModifier } from '../utils/mapping-provenance';
+import {
+	LINEAGE_NOT_REPRESENTABLE_REASON,
+	isLineagePredicate,
+} from '../tier2/predicate-characteristics';
 
 /**
  * STRM predicate_id → SSSOM/SKOS predicate. Reverse of SKOS_TO_STRM in
@@ -200,6 +209,20 @@ export function crosswalkEdgesToSssomTsv(
 				path: edge.path,
 				reason: error instanceof Error ? error.message : 'invalid explicit predicate_modifier',
 			});
+			continue;
+		}
+		if (isLineagePredicate(edge.predicate_id)) {
+			// Release lineage is not a SKOS mapping property. Checked BEFORE the
+			// lookup because STRM_TO_SKOS is a `Record<string, string>` whose `??`
+			// fallback compiles cleanly and would emit `skos:relatedMatch` — the
+			// claim that a withdrawn control and its replacement are merely
+			// "related", with nothing in the type checker to flag it.
+			//
+			// The per-note `sssom_predicate` override does NOT rescue the row: a
+			// vault where lineage is mixed into a mapping-set export is exactly the
+			// case where a silently-included row would be trusted. Exporting lineage
+			// is a separate artifact, not a column value.
+			skipped.push({ path: edge.path, reason: LINEAGE_NOT_REPRESENTABLE_REASON });
 			continue;
 		}
 		const sssomPredicate = asOptionalString(fm.sssom_predicate) ?? STRM_TO_SKOS[edge.predicate_id] ?? 'skos:relatedMatch';

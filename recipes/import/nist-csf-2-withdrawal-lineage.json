@@ -1,0 +1,47 @@
+{
+  "$comment": "PURPOSE AND SHAPE: one crosswalk-edge note per successor reference in NIST CSF 2.0's withdrawal markers — release lineage imported through the ordinary crosswalk path, with no lineage-specific machinery anywhere below the predicate enum. The CSF 2.0 sheet retains 79 CSF v1.1 subcategories as withdrawal markers shaped 'ID.AM-06: [Withdrawn: Incorporated into GV.RR-02, GV.SC-02]', carrying 127 successor references between them (45 one-to-one, 25 one-to-two, 6 one-to-three, 1 one-to-four, 2 one-to-five; counted from Frameworks/csf2.xlsx sheet 'CSF 2.0'). Each successor reference becomes one 'subject superseded_by object' assertion, so a rename is one edge and a split is N edges sharing subject_id — exactly the cardinality a flat previous_ids field cannot express. DIRECTION: subject_id is the OLD concept. ONTOLOGY SPLIT: subject side is 'nist-csf-1-1' and object side is 'nist-csf-2' because the withdrawn identifiers ARE CSF v1.1 identifiers; CSF 2.0 lists them only to record that they are gone. This is the two-release-ontology shape the predicate's own schema text describes, and it is the shape that makes the feature fire: an attestation approved against nist-csf-1-1:ID.AM-06 in a vault that has since been re-imported at CSF 2.0 has no concept row, which is precisely the dangling-attestation case that answers with 'subject-superseded' plus the successor candidates. The alternative — minting both sides under 'nist-csf-2', matching what recipes/import/nist-csf-2.json does with all 185 subcategory rows — keeps every subject resolvable but asserts that a 2.0 concept is superseded by another 2.0 concept, which is not what happened, and leaves the lineage inert because a resolvable subject never reaches the successor walk. FOUR CATEGORY-LEVEL TARGETS: GV.PO, GV.RR, ID.IM and DE.AE appear as successors but are categories, not subcategories, so they are not concepts in a flat subcategory import. They are emitted anyway and surface in the report as a bare CURIE marked 'not imported in this vault' — an honest gap beats a dropped assertion. PROVENANCE: mapping_provider, mapping_justification and creator_id all name NIST. The lineage is the publisher's own assertion, transcribed; no local reviewer curated it, and review_status is deliberately NOT stamped — a producer must never write a review fact. lineage_disposition preserves NIST's own verb (Incorporated into / Moved to / Moved into, 61/17/1 occurrences) rather than flattening all three into the predicate, because 'incorporated into' and 'moved to' say different things about how much of the old outcome survived. ROW SELECTION: source.where is \"successor_id != ''\", which admits exactly the 127 lineage rows out of the 279 in the source file and excludes the 46 banner rows and 106 current subcategories that pass through it untouched. SOURCE FILE: recipes/import/crosswalks/nist-csf-2-withdrawal-lineage.csv, produced by tools/lineage-from-csf-workbook.ts from the reference workbook. GRAMMAR GAP 1 (why a producer step exists at all) — one withdrawal row must become up to five notes, and nothing in the grammar multiplies rows: render(Recipe, ConceptIdentity) returns one Address, `variadic` expands folder levels not notes, `enrichment` emits facet hubs not edges, and `source.joins` binds a list into one row rather than fanning it out. Per the Ch 46 ruling that is producer work, so the tool does the fan-out and nothing else: it selects no rows, mints no subject or object CURIE, and reads no disposition verb. GRAMMAR GAP 2 — source.where cannot test a substring. Its permitted function set is $not/$exists/$trim/$lowercase/$uppercase/$string/$number, with regex, $match, $contains and $substring all rejected at preflight by name, so the marker '[Withdrawn:' cannot be matched where the selection happens. Selecting withdrawal rows directly off the workbook would need a co-varying proxy column (on this sheet 'Implementation Examples' is empty on all 79 withdrawn rows and non-empty on all 106 current ones), which is an inference rather than the marker itself; against the exploded file the predicate tests the successor column directly and needs no proxy. WHAT THE GRAMMAR CAN DO, contrary to the KNOWN GAP 2 note still carried by recipes/import/nist-csf-2.json: the regex filter reads the bracketed prose fine. Its argument lexer has been balanced-paren and backslash aware since R2.4, so capture groups and alternation are both writable, and {Subcategory|regex(...)} recovers all three disposition verbs across all 79 markers; a scalar-to-list split even recovers the whole successor list. The list is simply unusable here, because a crosswalk edge needs one scalar object_id per note. RIGHTS: NIST Cybersecurity Framework 2.0 is a public-domain United States Government work; the derived edge list is committed. Corpus provenance and rights posture: https://cybersader.github.io/crosswalker/reference/framework-corpus/.",
+  "recipe": "nist-csf-2-withdrawal-lineage",
+  "source": {
+    "ontology": "xwalk",
+    "levels": ["edge"],
+    "where": "successor_id != ''"
+  },
+  "target": {
+    "layout": [
+      {
+        "level": "edge",
+        "mechanism": "file",
+        "template": "cw-nist-csf-1-1-{Subcategory|split(:,0)|slug}--nist-csf-2-{successor_id|slug}.md",
+        "kind": "crosswalk-edge"
+      }
+    ],
+    "also_emit": {
+      "frontmatter": {
+        "managed": {
+          "subject_id": "{Subcategory|split(:,0)|curie-prefix(nist-csf-1-1)}",
+          "predicate_id": "superseded_by",
+          "object_id": "{successor_id|curie-prefix(nist-csf-2)}",
+          "mapping_set_id": "https://crosswalker.dev/crosswalks/nist-csf-2-withdrawal-lineage",
+          "subject_group": "{Subcategory|split(:,0)|split(.,0)}",
+          "object_group": "{successor_id|split(.,0)}",
+          "source_framework": "nist-csf-1-1",
+          "target_framework": "nist-csf-2",
+          "mapping_provider": "NIST Cybersecurity Framework 2.0 reference workbook (withdrawal markers)",
+          "mapping_justification": "semapv:ManualMappingCuration",
+          "creator_id": "NIST",
+          "lineage_disposition": "{Subcategory|regex(\\[Withdrawn: ([A-Za-z ]+?) [A-Z][A-Z]\\.)}"
+        },
+        "user_preserve": ["reviewer", "notes"]
+      },
+      "body": [
+        {
+          "template": "CSF 2.0 withdrew {Subcategory|split(:,0)} and records it as {Subcategory|regex(\\[Withdrawn: ([A-Za-z ]+?) [A-Z][A-Z]\\.)|lower} {successor_id}.",
+          "position": "section",
+          "heading": "Publisher statement",
+          "heading_depth": 2,
+          "format": "text"
+        }
+      ]
+    }
+  }
+}

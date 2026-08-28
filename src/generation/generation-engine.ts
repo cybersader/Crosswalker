@@ -38,7 +38,8 @@ import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
 import { resolveImportSet, type ImportSetOption, type ImportSetReference } from './import-set';
-import { computeConceptCid, computeRecipeHash, identityScopeForNoteKind } from './hash';
+import { computeConceptCid, computeRecipeHash, computeReviewCid, identityScopeForNoteKind } from './hash';
+import { reviewedAgainstFor } from '../views/evidence-link';
 import { prepareSourceStage, SourceStageError, type SourceStage } from '../source';
 import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
 import { validateTier1Frontmatter } from '../validation/validator';
@@ -961,6 +962,10 @@ function buildNoteDataViaRender(
 			// Raw source scope on purpose: mapping-only defaults must never enter
 			// concept identity, or every concept's content hash shifts.
 			conceptCid: computeConceptCid({ curie, scope: sourceScope }),
+			// The same record, hashed with cosmetic differences folded away, so an
+			// attestation can tell a rewritten control from a re-typeset one.
+			// A SECOND hash: concept_cid is untouched, byte for byte.
+			reviewCid: computeReviewCid({ curie, scope: sourceScope }),
 		},
 		PLUGIN_VERSION,
 	);
@@ -1967,6 +1972,32 @@ export async function generateFromRecipe(
 
 	const emittedPaths = new Set<string>();
 	const producedCuries = new Set<string>();
+	// Ch 43 re-attestation: review fingerprints of concepts produced by THIS run,
+	// so a recipe that emits a concept and an evidence link for it in one pass can
+	// stamp the link against the concept it just wrote.
+	const producedReviewCids = new Map<string, string>();
+	// Approved junction rows written with no review baseline, because their
+	// subject's fingerprint was not resolvable. Counted, never silently dropped.
+	let unbaselinedJunctions = 0;
+	/**
+	 * The subject's current review fingerprint, or null when it cannot be had.
+	 *
+	 * Null is a real answer here — a junction row generated before its subject
+	 * concept exists, a subject in a different import set, an external subject.
+	 * There is deliberately NO second pass to fill these in later: a resolve pass
+	 * would stamp a fingerprint the IMPORTER computed against content no human
+	 * reviewed, which is fabricating an approval with extra steps.
+	 */
+	const resolveSubjectReviewCid = (subjectCurie: string): string | null => {
+		const fromThisRun = producedReviewCids.get(subjectCurie);
+		if (fromThisRun) return fromThisRun;
+		const file = identityIndex.get(subjectCurie);
+		if (!file) return null;
+		const provenance = app.metadataCache.getFileCache(file)?.frontmatter?._crosswalker;
+		if (!provenance || typeof provenance !== 'object') return null;
+		const value = (provenance as Record<string, unknown>).review_cid;
+		return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+	};
 	// Pass 1.5 enrichment (v0.1.6): records collected during the stream so the
 	// post-stream patch phase can derive parent→children + facet hubs without
 	// re-reading the vault. One lightweight record per written note. Only
@@ -2090,6 +2121,29 @@ export async function generateFromRecipe(
 				const aliases = normalizeAliasList(address.aliases);
 				if (aliases.length > 0) frontmatter.aliases = aliases;
 			}
+			const identityScope = identityScopeForNoteKind(address.frontmatter.kind, sourceScope, scope);
+			const reviewCid = computeReviewCid({ curie, scope: identityScope });
+			// An imported evidence link records what its subject looked like at
+			// approval, exactly as the link modal does — but only when the row is
+			// approved AND the subject's fingerprint is genuinely resolvable.
+			// Never fabricated: an importer computing a baseline against content no
+			// human read is an audit fact nobody asserted.
+			if (address.frontmatter.kind === 'junction-note' && frontmatter.status === 'approved') {
+				const subjectCurie = typeof frontmatter.subject_curie === 'string'
+					? frontmatter.subject_curie
+					: null;
+				const reviewedAgainst = reviewedAgainstFor(
+					subjectCurie,
+					subjectCurie ? resolveSubjectReviewCid(subjectCurie) : null,
+				);
+				if (reviewedAgainst) {
+					frontmatter.reviewed_against = reviewedAgainst;
+				} else {
+					// Counted, never silently dropped: "N links written without a
+					// baseline" is the honest summary line.
+					unbaselinedJunctions += 1;
+				}
+			}
 			frontmatter._crosswalker = buildProvenance(
 				{
 					sourceFile: options.sourceFileName,
@@ -2097,10 +2151,8 @@ export async function generateFromRecipe(
 					recipeId: recipe.recipe,
 					recipeHash,
 					importSet,
-					conceptCid: computeConceptCid({
-						curie,
-						scope: identityScopeForNoteKind(address.frontmatter.kind, sourceScope, scope),
-					}),
+					conceptCid: computeConceptCid({ curie, scope: identityScope }),
+					reviewCid,
 				},
 				PLUGIN_VERSION,
 			);
@@ -2124,6 +2176,12 @@ export async function generateFromRecipe(
 			// This identity belongs to the current source set even when overwrite mode
 			// skips or merges the note rather than creating a new file.
 			producedCuries.add(curie);
+			// Recorded only for a row that survived validation, so a junction row
+			// later in the same run can never be stamped against a concept this run
+			// refused to write.
+			if (address.frontmatter.kind !== 'junction-note' && address.frontmatter.kind !== 'crosswalk-edge') {
+				producedReviewCids.set(curie, reviewCid);
+			}
 
 			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND
 			//    (when enrichment is on) the folder-note-relocated path by curie —
@@ -2255,6 +2313,12 @@ export async function generateFromRecipe(
 		} catch (stageErr) {
 			captureSourceStageFailure(stageErr);
 		}
+	}
+
+	if (unbaselinedJunctions > 0) {
+		// Undefined when zero, so a plain concept import says nothing about
+		// baselines rather than claiming a zero it never measured.
+		result.unbaselinedJunctions = unbaselinedJunctions;
 	}
 
 	if (sourceStage.active && !sourceStageFailure) {

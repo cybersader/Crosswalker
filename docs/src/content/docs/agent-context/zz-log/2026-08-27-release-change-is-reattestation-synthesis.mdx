@@ -106,7 +106,15 @@ The mitigation is **normalization before comparison** over the measured cosmetic
 - punctuation;
 - citation markers.
 
-That suppresses most of the roughly 4% cosmetic class measured in the evidence pass without pretending to decide materiality automatically. The remaining judgment stays human.
+**Correction (2026-08-28).** This section originally claimed normalization suppresses "the roughly 4% cosmetic class". That inverted the measurement and overstated the mitigation by roughly fourteen times for the ATT&CK pair. In [deliverable A](/crosswalker/agent-context/zz-research/2026-08-27-challenge-43-deliverable-a-release-diff-evidence/), 4.3% (68 / 1,584) is the **material** class that survives normalization; the cosmetic class is **0.3%** (5 / 1,584). Caught by the implementation design pass reading the source table rather than the summary of it.
+
+What normalization actually buys, stated honestly:
+
+- On ATT&CK 15.1 → 16.1 it is nearly free — the cosmetic class is 0.3%, so it removes almost nothing.
+- On CIS 8.1 → 8.1.2 it earns its keep: 8.8 percentage points, a 57.7% reduction in flagged links.
+- Because the fingerprint covers the whole row rather than the primary description alone, the realistic flag rate on ATT&CK is the 15-24% metadata band, not 4.3%.
+
+So normalization is a correctness measure that stops trivial edits from flagging, **not** a workload reduction. The review load after a release is real, and the honest number is the metadata band. The remaining judgment stays human.
 
 At ATT&CK's measured 23.7% publisher-classified change rate, a vault with 200 attestations should expect roughly **47**, operationally **about 50**, re-reviews per release. That is not overhead invented by Crosswalker. It is the true cost of asserting that evidence still satisfies requirements after the requirements changed, made visible instead of hidden behind stable identifiers.
 

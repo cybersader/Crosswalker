@@ -244,6 +244,134 @@ export function computeConceptCid(record: ConceptIdentityRecord): string {
 	return toSha256Cid(sha256Hex(canonical));
 }
 
+// ---------------------------------------------------------------------------
+// Review normalization + `review_cid` (Ch 43 re-attestation, 2026-08-28)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fold the COSMETIC shape of one string value, leaving every word intact.
+ *
+ * This is the whole content-drift feature in one function: it decides which
+ * upstream edits are worth a human re-review and which are typography churn.
+ * It is deliberately a SECOND, tolerant hash rather than a change to
+ * `computeConceptCid` (Ch 43 contract §3.1, fork F1) — `concept_cid` is an
+ * IDENTITY hash whose published contract is byte-exactness across layouts
+ * (spec/tier1.schema.json `sha256_cid`), and it is the load-bearing input to
+ * the two-axes drift analysis. Redefining it would make every note in every
+ * existing vault emit a changed value on its next re-import for no gain — the
+ * identical hazard `recipeHashCanonicalInput` already refuses below.
+ *
+ * The fourteen steps run in EXACTLY this order and are pure string operations
+ * over a fixed regex subset: no locale, no Unicode tables beyond NFC, no
+ * library. That is the reproducibility bar — an external Python or Go producer
+ * implements these fourteen steps and gets the same digest.
+ *
+ * Deliberately NOT done (contract §3.3):
+ *   - ASCII punctuation is never DELETED, only folded in shape. Over-
+ *     normalizing hides a material change and produces a green report over an
+ *     invalidated claim. Under-normalizing costs one false flag and a five-
+ *     second human re-review. Bias to under-normalize.
+ *   - No case folding. A capitalization change in a control title can be a real
+ *     edit, and `toLowerCase` is locale-sensitive (Turkish dotless i), which
+ *     breaks the reimplement-and-agree requirement above.
+ *   - No stemming, stop-word removal, or semantic similarity. Materiality is a
+ *     human call and this rule must not pretend otherwise.
+ */
+export function normalizeReviewString(value: string): string {
+	// 1. Unicode normalization — composed form, so a precomposed and a
+	//    decomposed accent are the same content.
+	let s = value.normalize('NFC');
+	// 2. Citation markers: ATT&CK descriptions carry "(Citation: Author 2024)"
+	//    inline, and reference churn is a pure-typography class there.
+	s = s.replace(/\(Citation:[^)]*\)/g, '');
+	// 3. Numeric footnote markers.
+	s = s.replace(/\[\d+\]/g, '');
+	// 4. Markdown link destinations: keep the text a reviewer read, drop the URL.
+	//    Repeated until stable (bounded at 4) so a nested link collapses fully.
+	for (let pass = 0; pass < 4; pass++) {
+		const next = s.replace(/\[([^\][]*)\]\((?:[^()\s]*)(?:\s+"[^"]*")?\)/g, '$1');
+		if (next === s) break;
+		s = next;
+	}
+	// 5. Markdown autolinks.
+	s = s.replace(/<https?:\/\/[^>\s]*>/g, '');
+	// 6. HTML tags — the tag, never the text between tags.
+	s = s.replace(/<\/?[A-Za-z][^>]*>/g, '');
+	// 7. Quote folding: curly single/double quotes and the acute accent.
+	s = s.replace(/[\u2018\u2019\u201A\u201B\u00B4]/g, "'");
+	s = s.replace(/[\u201C\u201D\u201E\u201F]/g, '"');
+	// 8. Dash folding: hyphen/figure/en/em/horizontal-bar/minus.
+	s = s.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-');
+	// 9. Ellipsis folding.
+	s = s.replace(/\u2026/g, '...');
+	// 10. Zero-width and soft-hyphen removal.
+	s = s.replace(/[\u200B\u200C\u200D\uFEFF\u00AD]/g, '');
+	// 11. Space folding — every Unicode space becomes an ASCII space.
+	s = s.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ');
+	// 12. Line-ending folding.
+	s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+	// 13. Whitespace collapse — LAST, so markup removed above cannot leave a
+	//     doubled space behind and change the digest for nothing.
+	s = s.replace(/\s+/g, ' ');
+	// 14. Trim.
+	return s.trim();
+}
+
+/**
+ * Apply `normalizeReviewString` to every string leaf of a value, recursively.
+ *
+ * OBJECT KEYS ARE NEVER NORMALIZED. A renamed column changes what the row
+ * asserts and what templates address; that is a real change, not typography.
+ * Non-string leaves (number, boolean, null) pass through untouched.
+ *
+ * A value that normalizes to the empty string KEEPS ITS KEY with value `""`.
+ * `canonicalStringify` drops only `undefined`-valued keys, so emptying a column
+ * stays detectable as a change while removing it stays detectable as a
+ * different change.
+ */
+export function normalizeForReview(value: unknown): unknown {
+	if (typeof value === 'string') return normalizeReviewString(value);
+	if (Array.isArray(value)) return value.map((v) => normalizeForReview(v));
+	if (value !== null && typeof value === 'object') {
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+			out[k] = normalizeForReview(v);
+		}
+		return out;
+	}
+	return value;
+}
+
+/**
+ * The exact string hashed into `review_cid`. Exported for tests so a failure
+ * names the step that diverged rather than only a digest mismatch — the same
+ * discipline `recipeHashCanonicalInput` established.
+ */
+export function reviewCidCanonicalInput(record: ConceptIdentityRecord): string {
+	return canonicalStringify({
+		curie: record.curie,
+		scope: normalizeForReview(record.scope),
+	});
+}
+
+/**
+ * Compute `_crosswalker.review_cid` — the fingerprint an attestation records at
+ * approval time and is later compared against.
+ *
+ * Same input record as `computeConceptCid` (the RAW pre-render source row), so
+ * the two hashes describe the same content and differ only in tolerance. The
+ * `curie` is inside the hash on purpose: the concept identity a reviewer read
+ * is part of what they read, so a CURIE change is a content change.
+ *
+ * SCOPE IS THE WHOLE ROW (contract fork F4), not a description column. Which
+ * fields a reviewer read is not knowable and is recipe-dependent; guessing it
+ * silently exempts material changes. The named extension point is an optional
+ * recipe-declared `review_scope` field list, additive, later.
+ */
+export function computeReviewCid(record: ConceptIdentityRecord): string {
+	return toSha256Cid(sha256Hex(reviewCidCanonicalInput(record)));
+}
+
 /**
  * The recipe fields hashed into `_crosswalker.recipe.hash` — the "effective
  * recipe target": everything in `Recipe.target` that currently affects

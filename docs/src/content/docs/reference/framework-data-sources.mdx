@@ -30,6 +30,7 @@ The bundled recipes live in the [Crosswalker plugin repository](https://github.c
 | NIST SP 800-53 Rev. 5 | CSV lineage | CSV header | 0 | **1,189 records** | `nist-800-53-flat` |
 | NIST CSF 2.0 | Core workbook | `CSF 2.0` | **1** | 231 total: **185 subcategory rows** + 46 banner rows | `nist-csf-2-flat` |
 | NIST CSF 2.0 | CPRT JSON | element collection | n/a | **906 total: 679 concept elements** + 227 non-concept (excluded by the recipe) | `nist-csf-2-cprt`, `nist-csf-2-cprt-hierarchical` |
+| NIST CSF 2.0 withdrawal lineage | Derived edge list (`recipes/import/crosswalks/nist-csf-2-withdrawal-lineage.csv`) | CSV header | 0 | 279 total: **127 successor references** + 152 pass-through rows | `nist-csf-2-withdrawal-lineage` |
 | MITRE ATT&CK Enterprise | Excel export | `techniques` | 0 | **656** | `mitre-attack-technique-flat` |
 | CIS Controls v8.1.2 | Controls workbook | `Controls v8.1.2` | 0 | **171**: 153 safeguards + 18 controls | `cis-controls-v8-flat`, `cis-controls-v8-controls` |
 | CRI Profile v2.2 | Profile workbook | `CRI Profile v2.2 Structure` | **2** | **472**: F 7 / C 28 / S 119 / DS 318 | `cri-profile-v2-2-flat` |
@@ -100,6 +101,7 @@ Pattern: /^([A-Za-z]+)-0?(\d+)/
 | `nist-csf-2-flat` | Core workbook, sheet `CSF 2.0` | One note per subcategory |
 | `nist-csf-2-cprt` | CPRT JSON | Flat element notes |
 | `nist-csf-2-cprt-hierarchical` | CPRT JSON | Function/category hierarchy |
+| `nist-csf-2-withdrawal-lineage` | Derived edge list from the core workbook | One `superseded_by` crosswalk edge per replacement of a withdrawn subcategory |
 
 ### Exact workbook binding and result
 
@@ -119,10 +121,49 @@ Identifier pattern: `[A-Z]{2}\.[A-Z]{2}-\d{2}`, for example `GV.OC-01`.
 
 - **The workbook mixes banner rows with subcategory rows.** Only rows with a non-empty `Subcategory` are real; the other 46 resolve to empty filenames and collide. The bundled recipe declares that selection itself, so no manual prefilter is needed.
 - **The CPRT collection includes 227 non-concept elements** (225 `sort` ordering keys and 2 `party` elements) that must not become concept notes. Both bundled CPRT recipes exclude them by element type, leaving **679** concept elements.
-- **Withdrawal markers are real rows.** Of 185 subcategory rows, 79 are withdrawal markers. If you count only active outcomes, the total is 106.
+- **Withdrawal markers are real rows, and they carry lineage.** Of 185 subcategory rows, 79 are withdrawal markers naming the CSF 2.0 subcategories that replaced them. If you count only active outcomes, the total is 106. See [Withdrawal lineage](#withdrawal-lineage) below for what the markers look like and how to import them.
 - **Merged-cell hierarchy columns are empty on subcategory rows.** The bundled flat recipe derives function and category from the subcategory identifier rather than trusting those cells.
-- **Outcome text repeats the identifier.** Removing the leading `GV.OC-01:`-style prefix needs a substring transform not currently available in the recipe grammar.
+- **Outcome text repeats the identifier.** The bundled flat recipe projects the cell verbatim, prefix included. That is now a deliberate choice rather than a grammar limit: `{Subcategory|regex(:\s*(.+)$)}` recovers everything after the first colon on all 185 rows, but changing the shipped recipe would move its hash and rewrite every already-generated note.
 - **Informative References is intentionally omitted.** It contains newline-separated mappings whose labels and identifiers need per-item cleanup before they can become reliable links.
+
+### Withdrawal lineage
+
+CSF 2.0 does not just mark a v1.1 subcategory as gone: it says what replaced it. That statement is machine-readable, but it is written in prose inside the `Subcategory` cell.
+
+```text
+ID.AM-06: [Withdrawn: Incorporated into GV.RR-02, GV.SC-02]
+ID.GV-03: [Withdrawn: Moved to GV.OC-03]
+ID.RM-03: [Withdrawn: Moved into GV.RM-02]
+```
+
+| Item | Verified value |
+|---|---|
+| Withdrawal markers | **79** of the 185 subcategory rows |
+| Successor references | **127** across those 79 markers |
+| One-to-one replacements | **45** |
+| Splits (one withdrawn subcategory, several successors) | **34** — 25 with two successors, 6 with three, 1 with four, 2 with five |
+| Widest split | `ID.SC-01` into `GV.RM-05`, `GV.SC-01`, `GV.SC-06`, `GV.SC-09`, `GV.SC-10` |
+| Disposition verbs | `Incorporated into` (61), `Moved to` (17), `Moved into` (1) |
+| Successors that are categories, not subcategories | `GV.PO`, `GV.RR`, `ID.IM`, `DE.AE` |
+
+Source: `Frameworks/csf2.xlsx`, sheet `CSF 2.0`, counted 2026-08-28.
+
+**Import it as crosswalk edges, not as a field on the concept.** A split is the reason. `ID.AM-06` was replaced by two subcategories, so one flat `previous_ids` property would have to hold a list and could never say anything per replacement. As [crosswalk edges](/crosswalker/concepts/terminology/#crosswalk-edge) it is two ordinary assertions, `superseded_by`, sharing a subject; a merge is N edges sharing an object; and the successor walk that answers "what replaced this control" is the same closure query every other predicate uses.
+
+The bundled `nist-csf-2-withdrawal-lineage` recipe emits exactly that: 127 edges from `nist-csf-1-1:<old id>` to `nist-csf-2:<new id>`, each recording NIST as the mapping provider and preserving NIST's own disposition verb in `lineage_disposition`. The subject side is `nist-csf-1-1` because the withdrawn identifiers are CSF v1.1 identifiers; CSF 2.0 lists them only to record that they are gone. That is what makes the lineage useful after an upgrade: an approval recorded against `nist-csf-1-1:ID.AM-06` in a vault since re-imported at CSF 2.0 has no concept of its own left, and the edges are what turn "this link points at nothing" into "this control was replaced by these two".
+
+**One producer step is required, and it is the only one.** The workbook packs up to five successors into a single cell, and a recipe renders exactly one note per source row, so the 79 marker rows cannot become 127 edge notes on their own. `tools/lineage-from-csf-workbook.ts` does that fan-out and nothing else:
+
+```bash
+bun tools/lineage-from-csf-workbook.ts \
+  --source Frameworks/csf2.xlsx \
+  --out recipes/import/crosswalks/nist-csf-2-withdrawal-lineage.csv
+```
+
+It repeats a marker row once per successor and adds one column. It selects no rows, mints no identifiers, and reads no disposition verb; the recipe does all of that, and its `source.where` picks the 127 lineage rows out of the 279 the file carries. The emitted list is committed alongside the recipe, so importing published CSF lineage needs the recipe only. Re-run the tool when NIST publishes a new release.
+
+The tool refuses anything it does not recognise: a marker whose wording is not one of the three verbs above, or a successor that is not a CSF identifier, aborts the run naming the row rather than importing a partial lineage.
+
 
 ## MITRE ATT&CK Enterprise
 

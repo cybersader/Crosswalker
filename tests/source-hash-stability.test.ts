@@ -18,13 +18,18 @@
  * tests/fixtures/recipe-hash-golden.json was generated from the PRE-change
  * code. Do not regenerate it to make this test pass.
  *
- * Five shipped recipes have since adopted `source.where` to select their own
+ * Six shipped recipes have since adopted `source.where` to select their own
  * rows (SchemaVer 1.9.0), so their LIVE hash legitimately differs from the
  * golden — that movement is F2 doing its job, not drift. The golden stays the
  * baseline for the question A1 actually asks: with shaping stripped, does every
  * shipped recipe still hash exactly as it did before src/source existed? That
- * is asserted for all 13, which is strictly more than asserting the live hash
+ * is asserted for all 14, which is strictly more than asserting the live hash
  * of the eight that happen to declare nothing.
+ *
+ * A recipe added AFTER src/source existed (nist-csf-2-withdrawal-lineage) has
+ * no pre-change value to preserve, so its golden entry is its stripped hash as
+ * first computed. That entry is what stops it from being edited unnoticed
+ * later; it is not evidence about the source-stage change itself.
  */
 
 import { readdirSync, readFileSync } from 'fs';
@@ -77,6 +82,7 @@ const DECLARED_WHERE: Record<string, string> = {
 	'recipes/import/nist-csf-2-cprt-hierarchical.json': "$not(element_type in ['sort', 'party'])",
 	'recipes/import/nist-csf-2-cprt.json': "$not(element_type in ['sort', 'party'])",
 	'recipes/import/nist-csf-2.json': "Subcategory != ''",
+	'recipes/import/nist-csf-2-withdrawal-lineage.json': "successor_id != ''",
 };
 
 describe('A1 — the source-stage code change moved no shipped recipe hash', () => {
@@ -84,7 +90,7 @@ describe('A1 — the source-stage code change moved no shipped recipe hash', () 
 
 	it('covers every shipped recipe, so a new one cannot slip past unpinned', () => {
 		expect(recipes.map((r) => r.relPath).sort()).toEqual(Object.keys(GOLDEN).sort());
-		expect(recipes).toHaveLength(13);
+		expect(recipes).toHaveLength(14);
 	});
 
 	/**

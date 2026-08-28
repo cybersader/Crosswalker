@@ -77,7 +77,13 @@ export interface ClosureEntry {
 }
 
 const WILDCARD_PREDICATE_FILTER = '*';
-const CLOSURE_SEMANTICS_VERSION = 'predicate-characteristics-v1';
+// Physical cache-partition prefix. The predicate-characteristics table is an
+// INPUT to every cached closure result, so this must move whenever that table
+// changes — a cache key that does not cover its own inputs is exactly the bug
+// class fixed on 2026-08-20. v2 (2026-08-28, Ch 43): added the transitive
+// lineage pair superseded_by / supersedes. Cost of the bump is one recompute
+// of a rebuildable cache.
+const CLOSURE_SEMANTICS_VERSION = 'predicate-characteristics-v2';
 
 interface PredicateCharacteristicsSqlPlan {
 	cte: string;

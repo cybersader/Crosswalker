@@ -25,6 +25,14 @@
  * is 0-1, so the conversion is a lossy `Math.round(confidence * 10)`, same
  * as the forward direction's `n / 10` normalization).
  *
+ * Refused, not coerced: the release-lineage predicates (`superseded_by` /
+ * `supersedes`) are not set-theoretic relations at all, so there is no OLIR
+ * Relationship that states them even approximately. They are excluded and
+ * counted in `skipped`. This matters more than it looks: STRM_TO_OLIR is a
+ * `Record<string, string>`, so its `??` fallback compiles cleanly and would
+ * have exported a withdrawal record as the auditor-facing claim "these two
+ * controls intersect" with nothing in the type checker to catch it.
+ *
  * Known lossy field: `is_approximate_to` (STRM) has no OLIR relationship
  * equivalent — OLIR's five types are Subset / Superset / Equal / Intersects /
  * Not Related (see docs/.../reference/registry/olir.mdx), with no "close but
@@ -34,6 +42,10 @@
 import Papa from 'papaparse';
 import type { App } from 'obsidian';
 import { readVaultTree, type CrosswalkEdgeRow, type SkippedNote } from './vault-reader';
+import {
+	LINEAGE_NOT_REPRESENTABLE_REASON,
+	isLineagePredicate,
+} from '../tier2/predicate-characteristics';
 
 /**
  * STRM predicate_id → OLIR "Relationship" label. Reverse of the OLIR_TO_SKOS
@@ -112,6 +124,13 @@ export function crosswalkEdgesToStrmTsv(edges: CrosswalkEdgeRow[], options: Strm
 				path: edge.path,
 				reason: 'explicit negation is not representable in OLIR/STRM TSV; use the crosswalk mapping file export',
 			});
+			continue;
+		}
+		if (isLineagePredicate(edge.predicate_id)) {
+			// Deliberately BEFORE the STRM_TO_OLIR lookup. Falling through would
+			// hit the `??` default and publish a lineage record as a set-theoretic
+			// overlap claim (see the module comment).
+			skipped.push({ path: edge.path, reason: LINEAGE_NOT_REPRESENTABLE_REASON });
 			continue;
 		}
 		const relationship = STRM_TO_OLIR[edge.predicate_id] ?? 'intersects with';

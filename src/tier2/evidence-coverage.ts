@@ -35,6 +35,34 @@
  *   4. `coverage` is `full` or `partial`. `none` and `n/a` are explicit
  *      statements that this artifact does NOT cover the control.
  *   5. It is not expired or stale under the review policy.
+ *   6. Its subject has not CHANGED since it was approved. An attestation
+ *      records the control's content fingerprint at approval
+ *      (`reviewed_against`); when the control is re-imported with different
+ *      content, the link still RESOLVES but stops being a valid claim, because
+ *      the reviewer approved evidence against text that no longer exists.
+ *      Freshness therefore has three drivers, not two: expiry, time, and
+ *      content.
+ *
+ * A link that never recorded a baseline is `unrecorded`. It COUNTS, and it is
+ * REPORTED, by name and by count. Treating a never-recorded fingerprint as
+ * evidence of change would zero out every existing vault on the day the plugin
+ * updates, for nothing the user did; treating it as evidence of no change would
+ * exempt it forever, invisibly. See `unbaselined_valid_junctions`.
+ *
+ * LINEAGE
+ *
+ * A framework release that renames, splits, or merges its controls is a
+ * MAPPING between two release ontologies, not a special case: the transition is
+ * recorded as ordinary crosswalk assertions using the `superseded_by` predicate
+ * (or its inverse `supersedes`). When an attestation points at a control that
+ * is no longer in the index AND lineage edges name a replacement, the honest
+ * diagnosis is `subject-superseded` with the candidates listed, not the bare
+ * `subject-not-a-known-concept`. Same population, better answer, which is why
+ * it sits directly above that reason in the ladder rather than beside it.
+ *
+ * Crosswalker never re-points an attestation itself, and never infers a
+ * successor from name similarity or from anything else. Listing the candidates
+ * a human asserted is the entire feature; choosing among them is a human act.
  *
  * Anything failing these is EXCLUDED and DIAGNOSABLE (see
  * `diagnoseExcludedJunctions`), never silently reinterpreted. A junction
@@ -50,6 +78,8 @@
  * zero coverage rows against this query, because `subject_curie` then holds an
  * evidence document that matches no concept.
  */
+
+import { closureFromConcept } from './queries';
 
 /** The one predicate that constitutes a claim of evidence coverage. */
 export const CANONICAL_EVIDENCE_PREDICATE = 'has_evidence';
@@ -80,17 +110,47 @@ export interface EvidenceCoverageSummary {
 	uncovered: number;
 	/** Junctions excluded for any reason — the number a reader should ask about. */
 	excluded_junctions: number;
+	/**
+	 * Valid links that carry no usable review baseline: no `reviewed_against`
+	 * recorded, or a subject with no fingerprint to compare against.
+	 *
+	 * These COUNT toward the percentages above. This number says how much of
+	 * those percentages rests on links whose subject may have changed since
+	 * approval without Crosswalker being able to tell. Counted, never silently
+	 * exempted.
+	 */
+	unbaselined_valid_junctions: number;
 }
 
 /** Why one junction did not count toward coverage. */
 export type ExclusionReason =
 	| 'predicate-not-canonical'
 	| 'no-subject-identity'
+	| 'subject-superseded'
 	| 'subject-not-a-known-concept'
 	| 'not-approved'
 	| 'coverage-not-asserted'
 	| 'expired'
+	| 'subject-changed'
 	| 'stale';
+
+/**
+ * Why one COUNTED link has no comparable review baseline.
+ *
+ * All three are the absence of a record, never evidence of anything:
+ * `unrecorded` (the link never wrote one), `subject-absent` (the reviewed
+ * subject is not in the index), `subject-unhashed` (the subject carries no
+ * fingerprint because its producer did not compute one).
+ */
+export type BaselineGap = 'unrecorded' | 'subject-absent' | 'subject-unhashed';
+
+/** One valid link whose subject state at approval cannot be compared to now. */
+export interface UnbaselinedJunction {
+	vault_path: string;
+	subject: string;
+	subject_curie: string | null;
+	baseline: BaselineGap;
+}
 
 /** One junction that exists but does not count, and the reason. */
 export interface ExcludedJunction {
@@ -102,6 +162,43 @@ export interface ExcludedJunction {
 }
 
 /**
+ * One concept a superseded subject was replaced by, as asserted by lineage
+ * edges in the vault.
+ *
+ * `vault_path` is null when the successor is named by a lineage edge but is not
+ * itself imported here. That row is still listed. Dropping it would report "no
+ * successor known" when a successor IS asserted, which is the one wrong answer
+ * this whole section exists to avoid.
+ */
+export interface SuccessorCandidate {
+	curie: string;
+	title: string | null;
+	/** Null when the successor concept is not imported in this vault. */
+	vault_path: string | null;
+	/** Hops along the lineage chain. 1 is a direct replacement. */
+	depth: number;
+}
+
+/**
+ * One control that attestations still point at, which is no longer in the
+ * index, and which lineage edges say was replaced.
+ *
+ * This is the structural-transition regime: the newer release was imported
+ * under a new ontology id, so the old concepts orphaned and their attestations
+ * dangle. The successor mapping set is what reconnects them, and this row is
+ * how a human sees the candidates.
+ */
+export interface SupersededSubject {
+	subject_curie: string;
+	/** Attestations still pointing at the superseded control. */
+	attestation_count: number;
+	/** Their vault paths, ordered, so the reader can open them. */
+	attestation_paths: string[];
+	/** Candidates, nearest first. Never empty for a row that appears here. */
+	successors: SuccessorCandidate[];
+}
+
+/**
  * The validity predicate, as a SQL fragment applied to the aliased
  * `junction_notes_with_freshness` row `j`. Kept in one place so the coverage
  * query, the summary, and the exclusion diagnostics can never drift apart —
@@ -110,12 +207,56 @@ export interface ExcludedJunction {
  * `not-set` freshness (no review_date and no expires_at) is admitted. Refusing
  * it would zero out coverage for every team that has not yet adopted review
  * dates, which reports a data-entry gap as a compliance gap.
+ *
+ * `subject-changed` is NOT admitted: the control the reviewer read is not the
+ * control in the vault, so the claim is no longer substantiated. That is a
+ * different statement from "the link is broken" — it still resolves, and
+ * re-approving it restores the count.
+ *
+ * A link whose `subject_baseline` is `unrecorded` sits inside `fresh` or
+ * `not-set` and therefore still counts. That is the absence ruling, expressed
+ * as the one line of SQL that is NOT here.
  */
 const VALID_JUNCTION_CONDITIONS = `
 	j.predicate = $predicate
 	AND j.status = 'approved'
 	AND j.coverage IN ('full', 'partial')
-	AND j.freshness NOT IN ('expired', 'stale')
+	AND j.freshness NOT IN ('expired', 'stale', 'subject-changed')
+`;
+
+/**
+ * How deep a successor walk follows a lineage chain. Deliberately tighter than
+ * the closure default of 10: a replacement chain more than five releases long
+ * inside one vault is far more likely to be a data error than a real chain, and
+ * a shorter cap keeps the candidate list honest.
+ */
+export const SUCCESSOR_WALK_MAX_DEPTH = 5;
+
+/**
+ * Does the subject of this junction have an outbound successor edge? Written as
+ * a correlated EXISTS over the aliased row `j`.
+ *
+ * Two spellings, because lineage can legitimately be recorded from either end:
+ * a stored `A superseded_by B` row, or a stored `B supersedes A` row. Those are
+ * the same assertion, and the effective-edge traversal in `queries.ts` already
+ * materialises the inverse of every stored row, so
+ * `closureFromConcept(A, 'superseded_by')` reaches B in both cases. This
+ * predicate has to match that, or the diagnosis and the successor list would
+ * disagree: a vault that records lineage only from the newer end would be told
+ * "no successor known" while the walk was quietly able to find one.
+ *
+ * `predicate_modifier = ''` is load-bearing. A `NOT superseded_by` row asserts
+ * the OPPOSITE, that the object does not replace the subject, and walking it
+ * would manufacture a successor out of an explicit denial. The effective-edge
+ * traversal applies the same filter for the same reason.
+ */
+const SUCCESSOR_EDGE_EXISTS = `
+	SELECT 1 FROM mappings m
+	WHERE m.predicate_modifier = ''
+	  AND (
+	    (m.predicate_id = 'superseded_by' AND m.subject_id = j.subject_curie)
+	    OR (m.predicate_id = 'supersedes' AND m.object_id = j.subject_curie)
+	  )
 `;
 
 /** Row shape returned by the grouped coverage query, before state derivation. */
@@ -199,7 +340,48 @@ export function evidenceCoverageSummary(db: any, ontologyId: string): EvidenceCo
 		partial,
 		uncovered,
 		excluded_junctions: diagnoseExcludedJunctions(db).length,
+		unbaselined_valid_junctions: listUnbaselinedValidJunctions(db).length,
 	};
+}
+
+/**
+ * Valid links whose subject state at approval cannot be compared to the
+ * subject state now.
+ *
+ * Three ways that happens, all of them ABSENCE OF A RECORD rather than evidence
+ * of anything: the link never recorded a baseline (`unrecorded`), its subject
+ * is not in the index (`subject-absent`), or its subject carries no fingerprint
+ * because the producer did not compute one (`subject-unhashed`). All three
+ * count toward coverage and all three are surfaced here, so a reader can see
+ * how much of the number is unverifiable rather than being told it is fine.
+ *
+ * Built on the same `VALID_JUNCTION_CONDITIONS` token as every other query in
+ * this file, so the count can never describe a different population than the
+ * percentages it sits beside.
+ */
+export function listUnbaselinedValidJunctions(db: any): UnbaselinedJunction[] {
+	const rows = db.exec({
+		sql: `
+			SELECT j.vault_path, j.subject, j.subject_curie, j.subject_baseline
+			FROM junction_notes_with_freshness j
+			WHERE ${VALID_JUNCTION_CONDITIONS}
+				AND j.subject_curie IS NOT NULL
+				AND j.subject_curie <> ''
+				AND EXISTS (SELECT 1 FROM concepts c WHERE c.curie = j.subject_curie)
+				AND j.subject_baseline IN ('unrecorded', 'subject-absent', 'subject-unhashed')
+			ORDER BY j.vault_path
+		`,
+		bind: { $predicate: CANONICAL_EVIDENCE_PREDICATE },
+		rowMode: 'array',
+		returnValue: 'resultRows',
+	}) as unknown[][];
+
+	return rows.map((r) => ({
+		vault_path: String(r[0]),
+		subject: String(r[1]),
+		subject_curie: r[2] === null || r[2] === undefined || r[2] === '' ? null : String(r[2]),
+		baseline: String(r[3]) as UnbaselinedJunction['baseline'],
+	}));
 }
 
 /**
@@ -213,6 +395,13 @@ export function evidenceCoverageSummary(db: any, ontologyId: string): EvidenceCo
  * one, and so the most actionable problem wins: a junction with a wrong
  * predicate AND no identity is reported as the predicate problem, because
  * fixing the predicate is what the author actually intended to write.
+ *
+ * `subject-changed` sits ABOVE the `stale` catch-all deliberately. Below it, a
+ * content-invalidated link would be reported as "not reviewed recently enough"
+ * — a confidently stated wrong reason, which is worse than no reason at all.
+ * A link that is both expired and content-changed reports `expired`, because
+ * that is the branch the freshness view already picked; the second fact is not
+ * lost, it is carried separately on `subject_baseline`.
  */
 export function diagnoseExcludedJunctions(db: any): ExcludedJunction[] {
 	const rows = db.exec({
@@ -226,11 +415,15 @@ export function diagnoseExcludedJunctions(db: any): ExcludedJunction[] {
 					WHEN j.predicate <> $predicate THEN 'predicate-not-canonical'
 					WHEN j.subject_curie IS NULL OR j.subject_curie = '' THEN 'no-subject-identity'
 					WHEN NOT EXISTS (SELECT 1 FROM concepts c WHERE c.curie = j.subject_curie)
+						AND EXISTS (${SUCCESSOR_EDGE_EXISTS})
+						THEN 'subject-superseded'
+					WHEN NOT EXISTS (SELECT 1 FROM concepts c WHERE c.curie = j.subject_curie)
 						THEN 'subject-not-a-known-concept'
 					WHEN j.status IS NULL OR j.status <> 'approved' THEN 'not-approved'
 					WHEN j.coverage IS NULL OR j.coverage NOT IN ('full', 'partial')
 						THEN 'coverage-not-asserted'
 					WHEN j.freshness = 'expired' THEN 'expired'
+					WHEN j.freshness = 'subject-changed' THEN 'subject-changed'
 					ELSE 'stale'
 				END AS reason
 			FROM junction_notes_with_freshness j
@@ -254,4 +447,96 @@ export function diagnoseExcludedJunctions(db: any): ExcludedJunction[] {
 		predicate: String(r[3]),
 		reason: String(r[4]) as ExclusionReason,
 	}));
+}
+
+/**
+ * Superseded controls that attestations still point at, each with the successor
+ * candidates the vault asserts.
+ *
+ * Derived FROM the exclusion diagnosis rather than from a parallel query, so
+ * the count in this table and the rows in "links that did not count" can never
+ * describe different populations. That is the same discipline as
+ * `VALID_JUNCTION_CONDITIONS`: one definition, many readers.
+ *
+ * The walk is memoised per distinct subject CURIE. Ten attestations against one
+ * withdrawn control are one closure call, not ten.
+ *
+ * @param excluded already-diagnosed rows, when the caller has them. Omitted, the
+ *   diagnosis is run here.
+ */
+export function listSupersededSubjects(
+	db: any,
+	excluded?: ExcludedJunction[],
+): SupersededSubject[] {
+	const rows = (excluded ?? diagnoseExcludedJunctions(db)).filter(
+		(row) => row.reason === 'subject-superseded' && row.subject_curie !== null,
+	);
+	if (rows.length === 0) return [];
+
+	const grouped = new Map<string, string[]>();
+	for (const row of rows) {
+		const curie = row.subject_curie as string;
+		const paths = grouped.get(curie);
+		if (paths) paths.push(row.vault_path);
+		else grouped.set(curie, [row.vault_path]);
+	}
+
+	const out: SupersededSubject[] = [];
+	for (const [subjectCurie, paths] of [...grouped.entries()].sort((a, b) =>
+		a[0].localeCompare(b[0]),
+	)) {
+		// Forward-only by construction: the effective-edge traversal stores the
+		// inverse of each row under the inverse predicate, so filtering on
+		// `superseded_by` walks old -> new and never new -> old.
+		const reached = closureFromConcept(
+			db,
+			subjectCurie,
+			'superseded_by',
+			SUCCESSOR_WALK_MAX_DEPTH,
+		);
+		const successors = reached
+			.map((entry) => ({
+				curie: entry.target_curie,
+				depth: entry.shortest_depth,
+				...lookupConcept(db, entry.target_curie),
+			}))
+			.sort((a, b) => a.depth - b.depth || a.curie.localeCompare(b.curie));
+
+		out.push({
+			subject_curie: subjectCurie,
+			attestation_count: paths.length,
+			attestation_paths: [...paths].sort((a, b) => a.localeCompare(b)),
+			successors,
+		});
+	}
+	return out;
+}
+
+/**
+ * Title and path for one CURIE, or nulls when it is not imported here.
+ *
+ * Nulls mean "not in this vault", never "does not exist": the lineage edge that
+ * named it is an assertion in its own right and is reported either way.
+ */
+function lookupConcept(db: any, curie: string): { title: string | null; vault_path: string | null } {
+	const rows = db.exec({
+		sql: `
+			SELECT title, vault_path
+			FROM concepts
+			WHERE curie = $curie
+			ORDER BY ontology_id
+			LIMIT 1
+		`,
+		bind: { $curie: curie },
+		rowMode: 'array',
+		returnValue: 'resultRows',
+	}) as unknown[][];
+
+	if (rows.length === 0) return { title: null, vault_path: null };
+	const title = rows[0][0];
+	const path = rows[0][1];
+	return {
+		title: title === null || title === undefined ? null : String(title),
+		vault_path: path === null || path === undefined ? null : String(path),
+	};
 }

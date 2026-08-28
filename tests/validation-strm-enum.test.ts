@@ -34,6 +34,12 @@ const STRM_PREDICATES = [
 	'no_relationship',
 ];
 
+// Ch 43: release lineage is an ORDINARY crosswalk assertion, so its predicates
+// live in the same closed enum and go through the same validation branch. They
+// are listed separately here only to keep the six pre-existing STRM values
+// pinned as a set that did not change.
+const LINEAGE_PREDICATES = ['superseded_by', 'supersedes'];
+
 describe('Tier 1 validation — STRM predicate enforcement (v0.1.4)', () => {
 	test.each(STRM_PREDICATES)('valid STRM predicate %s passes', (predicate) => {
 		const fm = {
@@ -47,6 +53,39 @@ describe('Tier 1 validation — STRM predicate enforcement (v0.1.4)', () => {
 		const result = validateTier1Frontmatter(fm);
 		expect(result.valid).toBe(true);
 		expect(result.errors).toEqual([]);
+	});
+
+	test.each(LINEAGE_PREDICATES)('lineage predicate %s passes (Ch 43, additive)', (predicate) => {
+		const fm = {
+			curie: 'cwk:cw-csf11-idgv2-superseded-by-gvrr02',
+			kind: 'crosswalk-edge',
+			subject_id: 'nist-csf-1-1:ID.GV-2',
+			predicate_id: predicate,
+			object_id: 'nist-csf-2-0:GV.RR-02',
+			mapping_set_id: 'https://crosswalker.dev/lineage/nist-csf/1.1-to-2.0',
+			match_type: 'broad',
+			mapping_justification: 'semapv:ManualMappingCuration',
+			mapping_provider: 'NIST CSF 2.0 CPRT withdrawal records',
+			review_status: 'approved',
+			_crosswalker: baseProvenance,
+		};
+		const result = validateTier1Frontmatter(fm);
+		expect(result.valid).toBe(true);
+		expect(result.errors).toEqual([]);
+	});
+
+	test('widening the enum did not open it: an unknown lineage-shaped verb still fails', () => {
+		const fm = {
+			curie: 'cwk:cw-test',
+			kind: 'crosswalk-edge',
+			subject_id: 'nist-csf-1-1:ID.GV-2',
+			predicate_id: 'replaced_by',
+			object_id: 'nist-csf-2-0:GV.RR-02',
+			_crosswalker: baseProvenance,
+		};
+		const result = validateTier1Frontmatter(fm);
+		expect(result.valid).toBe(false);
+		expect(result.errors.some((e) => e.includes('predicate_id'))).toBe(true);
 	});
 
 	test('invalid predicate "totally_unrelated" rejected with enum error', () => {

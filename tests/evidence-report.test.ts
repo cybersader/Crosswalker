@@ -45,6 +45,7 @@ function input(over: Partial<EvidenceReportInput> = {}): EvidenceReportInput {
 			partial: rows.filter((r) => r.coverage_state === 'partial').length,
 			uncovered: rows.filter((r) => r.coverage_state === 'uncovered').length,
 			excluded_junctions: 0,
+			unbaselined_valid_junctions: 0,
 		},
 		...over,
 	};
@@ -171,5 +172,70 @@ describe('rendering safety', () => {
 		const out = renderEvidenceReport(input());
 		expect(out).toContain('crosswalker_generated: true');
 		expect(out).toContain('will be lost');
+	});
+});
+
+describe('the report never turns "we cannot tell" into "it is fine"', () => {
+	const unbaselined = [
+		{
+			vault_path: 'Evidence/Junctions/AC-1--has_evidence--MFA policy.md',
+			subject: '[[AC-1]]',
+			subject_curie: 'nist-800-53:AC-1',
+			baseline: 'unrecorded' as const,
+		},
+	];
+
+	function withGap(): EvidenceReportInput {
+		const base = input({ unbaselined });
+		return { ...base, summary: { ...base.summary, unbaselined_valid_junctions: 1 } };
+	}
+
+	it('A4: names the section and says CANNOT TELL', () => {
+		const md = renderEvidenceReport(withGap());
+		expect(md).toContain('Links with no review baseline');
+		expect(md).toContain('cannot tell');
+	});
+
+	it('A4: never claims the subjects are unchanged, verified, current, or up to date', () => {
+		// The whole hazard of reporting an unmeasured fact is that the reassuring
+		// word is the natural one to reach for. This pins that none is reachable.
+		const md = renderEvidenceReport(withGap()).toLowerCase();
+		for (const forbidden of ['unchanged', 'verified', 'up to date']) {
+			expect(md).not.toContain(forbidden);
+		}
+	});
+
+	it('places the count beside the percentages, not three sections below them', () => {
+		const md = renderEvidenceReport(withGap());
+		expect(md.indexOf('no recorded review baseline')).toBeLessThan(md.indexOf('## Controls with no valid evidence'));
+	});
+
+	it('says so plainly when every counted link does have a baseline', () => {
+		const md = renderEvidenceReport(input({ unbaselined: [] }));
+		expect(md).toContain('Every counted link records the control state it was approved against.');
+	});
+
+	it('renders no baseline section at all when the caller did not query one', () => {
+		// Silence rather than a fabricated zero: a caller that asked no question
+		// must not have an answer invented for it.
+		expect(renderEvidenceReport(input())).not.toContain('Links with no review baseline');
+	});
+
+	it('tells the reader what to do about each kind of gap', () => {
+		const md = renderEvidenceReport(withGap());
+		expect(md).toContain('Re-approve this link to record the baseline.');
+	});
+
+	it('explains a content-invalidated link as a re-review, not as a broken link', () => {
+		const excluded: ExcludedJunction[] = [{
+			vault_path: 'Evidence/Junctions/AC-1--has_evidence--MFA policy.md',
+			subject: '[[AC-1]]',
+			subject_curie: 'nist-800-53:AC-1',
+			predicate: 'has_evidence',
+			reason: 'subject-changed',
+		}];
+		const md = renderEvidenceReport(input({ excluded }));
+		expect(md).toContain('`subject-changed`');
+		expect(md).toContain('The control changed after this link was approved.');
 	});
 });

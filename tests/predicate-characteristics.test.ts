@@ -25,21 +25,33 @@ describe('Crosswalker predicate characteristics', () => {
 		}
 	});
 
-	it('declares exactly equivalent, broader, and narrower predicates transitive', () => {
+	// The lineage pair is transitive on purpose: the dangling-attestation walk
+	// (Ch 43 §7) has to reach a successor several releases away, and a
+	// non-transitive lineage predicate would silently return only the first hop.
+	it('declares exactly equivalence, containment, and lineage transitive', () => {
 		expect(
 			characteristicRows
 				.filter((row) => row.transitive)
 				.map((row) => row.predicate_id)
 				.sort(),
-		).toEqual(['is_broader_than', 'is_equivalent_to', 'is_narrower_than']);
+		).toEqual([
+			'is_broader_than',
+			'is_equivalent_to',
+			'is_narrower_than',
+			'superseded_by',
+			'supersedes',
+		]);
 	});
 
-	it('labels only approximation as a Crosswalker extension', () => {
+	it('labels approximation and lineage as Crosswalker extensions', () => {
+		// NIST IR 8477's STRM vocabulary is purely set-theoretic and contains no
+		// lineage relation, so attributing superseded_by to it would be false.
 		expect(
 			characteristicRows
 				.filter((row) => row.authority === 'crosswalker-extension')
-				.map((row) => row.predicate_id),
-		).toEqual(['is_approximate_to']);
+				.map((row) => row.predicate_id)
+				.sort(),
+		).toEqual(['is_approximate_to', 'superseded_by', 'supersedes']);
 		expect(PREDICATE_CHARACTERISTICS.is_approximate_to.rationale).toContain(
 			'Crosswalker judgment',
 		);

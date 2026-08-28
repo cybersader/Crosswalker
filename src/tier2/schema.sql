@@ -1,6 +1,6 @@
 -- ================================================================
 -- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
--- Schema version: tier2-sqlite-v4
+-- Schema version: tier2-sqlite-v5
 --
 -- Per spec/tier1.schema.json + v0.1 schema spec §7.
 -- This file is the canonical DDL; the migrations module (migrations.ts)
@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS concepts (
   import_set_id  TEXT,                    -- owning import set; null for legacy notes
   -- Display
   title          TEXT NOT NULL DEFAULT '',
+  -- Content fingerprint an attestation can be compared against (Ch 43).
+  -- NULL = the producer did not compute one, which is NOT a claim of no change.
+  review_cid     TEXT,
   -- Hierarchy
   parent_curie   TEXT,                    -- single-parent CURIE for tree
   -- Lifecycle
@@ -115,6 +118,11 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   scope           TEXT,
   expires_at      TEXT,
   notes           TEXT,
+  -- Review baseline (Ch 43): the subject, and its content fingerprint, as the
+  -- approver read them. Both NULL together = 'unrecorded', a named state that
+  -- still counts toward coverage. Never a half-record.
+  reviewed_against_curie TEXT,
+  reviewed_against_cid   TEXT,
   -- Provenance
   import_set_id   TEXT,
   source_hash     TEXT NOT NULL,
@@ -129,20 +137,68 @@ CREATE INDEX IF NOT EXISTS idx_junction_status  ON junction_notes(status);
 
 -- ----------------------------------------------------------------
 -- Junction notes with computed freshness (view)
+--
+-- TWO independent columns, because they answer two different questions.
+-- `freshness` asks "is this still good"; `subject_baseline` asks "can we even
+-- tell". A link with no recorded baseline is 'unrecorded' and STILL COUNTS --
+-- an unmeasured fact is never reported as a negative one.
+--
+-- Branch order is load-bearing twice over:
+--   1. 'not-set' sits BELOW 'subject-changed'. It fires only when expires_at
+--      and review_date are both NULL, which makes the two branches above it
+--      false by construction, so moving it down changes nothing for existing
+--      data. Leaving it first would short-circuit content invalidation for
+--      every link with no review dates -- most links in most vaults.
+--   2. 'expired' beats 'subject-changed'. Both point at the same action, and
+--      the one carrying a dated policy deadline the org owns is the more
+--      actionable of the two. No fact is lost: subject_baseline is computed
+--      independently and still reads 'changed'.
+--
+-- LEFT JOIN, never inner: an attestation whose subject is not in the index must
+-- still appear here, or it vanishes from the coverage query AND from the
+-- exclusion diagnostics at the same time -- the shape of the withdrawn-Base bug.
+-- COALESCE(reviewed_against_curie, subject_curie) compares against the subject
+-- AS REVIEWED, so re-pointing a link without re-approving stays detectable.
+--
+-- The join resolves to ONE concept row by rowid rather than matching on curie
+-- directly. concepts is keyed (ontology_id, curie), so two ontologies sharing a
+-- CURIE would otherwise fan this view out and DOUBLE-COUNT the junction in
+-- every coverage tally built on it. Ordering by ontology_id makes the pick
+-- deterministic; idx_concepts_curie covers the lookup.
 -- ----------------------------------------------------------------
 CREATE VIEW IF NOT EXISTS junction_notes_with_freshness AS
 SELECT
   jn.*,
   CASE
-    WHEN jn.expires_at IS NULL AND jn.review_date IS NULL THEN 'not-set'
-    WHEN jn.expires_at IS NOT NULL AND jn.expires_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    WHEN jn.expires_at IS NOT NULL
+         AND jn.expires_at < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
       THEN 'expired'
     WHEN jn.review_date IS NOT NULL
          AND jn.review_date < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-180 days')
       THEN 'stale'
+    WHEN jn.reviewed_against_cid IS NOT NULL
+         AND c.review_cid IS NOT NULL
+         AND c.review_cid <> jn.reviewed_against_cid
+      THEN 'subject-changed'
+    WHEN jn.expires_at IS NULL AND jn.review_date IS NULL
+      THEN 'not-set'
     ELSE 'fresh'
-  END AS freshness
-FROM junction_notes jn;
+  END AS freshness,
+  CASE
+    WHEN jn.reviewed_against_cid IS NULL         THEN 'unrecorded'
+    WHEN c.curie IS NULL                         THEN 'subject-absent'
+    WHEN c.review_cid IS NULL                    THEN 'subject-unhashed'
+    WHEN c.review_cid <> jn.reviewed_against_cid THEN 'changed'
+    ELSE 'match'
+  END AS subject_baseline
+FROM junction_notes jn
+LEFT JOIN concepts c
+  ON c.rowid = (
+    SELECT c2.rowid FROM concepts c2
+    WHERE c2.curie = COALESCE(jn.reviewed_against_curie, jn.subject_curie)
+    ORDER BY c2.ontology_id
+    LIMIT 1
+  );
 
 -- ----------------------------------------------------------------
 -- Closure cache — populated lazily on first transitive query (Ch 18 §2.5)
