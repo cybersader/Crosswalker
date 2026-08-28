@@ -27,9 +27,9 @@ GRC/risk is the **system-of-record owner** for the spine: authorities/frameworks
 
 ## How you get into it
 
-1. **Stand up the spine.** Import your top-of-house authority ([CRI Profile](/crosswalker/reference/registry/cri/)) and the frameworks you map to ([NIST CSF 2.0](/crosswalker/reference/registry/nist/), 800-53, ISO 27001) via `Crosswalker: Import structured data` → concept notes per framework.
-2. **Import the crosswalks.** Bring in CRI ↔ CSF ↔ 800-53 mappings via `Crosswalker: Import SSSOM mapping file` → [junction notes](/crosswalker/concepts/terminology/) carrying typed [STRM](/crosswalker/reference/registry/strm/) relationships. This is the "assess once, comply many" wiring: one control hangs off many requirements.
-3. **Build coverage + gap views.** `Crosswalker: Insert query into note` → pick a coverage-matrix recipe → see which CRI statements are covered (and which controls are missing) across frameworks. Anti-join recipes surface "controls with no evidence."
+1. **Stand up the spine.** Import your top-of-house authority ([CRI Profile](/crosswalker/reference/registry/cri/)) and the frameworks you map to ([NIST CSF 2.0](/crosswalker/reference/registry/nist/), 800-53, ISO 27001) via `Crosswalker: Start here: import structured data` → concept notes per framework.
+2. **Import the crosswalks.** Bring in CRI ↔ CSF ↔ 800-53 mappings via `Crosswalker: Import and export: import crosswalk mapping file` → [junction notes](/crosswalker/concepts/terminology/) carrying typed [STRM](/crosswalker/reference/registry/strm/) relationships. This is the "assess once, comply many" wiring: one control hangs off many requirements.
+3. **Build coverage + gap views.** `Crosswalker: Explore data: create a query in the current note` → pick a coverage-matrix recipe → see which CRI statements are covered (and which controls are missing) across frameworks. Anti-join recipes surface "controls with no evidence."
 4. **Collect evidence once.** Attach evidence to the control; the crosswalk means it answers every framework that control maps to.
 
 ## Where the line is

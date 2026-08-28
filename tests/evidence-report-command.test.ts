@@ -12,6 +12,7 @@ import { applyMigrations } from '../src/tier2/migrations';
 import {
 	evidenceReportPath,
 	listOntologiesForReport,
+	runEvidenceReportCommand,
 	writeEvidenceReport,
 } from '../src/views/evidence-report-command';
 
@@ -169,5 +170,21 @@ describe('writing the report', () => {
 		const app = mockApp();
 		const path = await writeEvidenceReport(deps(app), 'nist-800-53');
 		expect(app.files.get(path)).toContain('freshness unknown');
+	});
+
+	it('refreshes report data before deciding whether an imported framework exists', async () => {
+		const app = mockApp();
+		let refreshed = false;
+		await runEvidenceReportCommand({
+			...deps(app),
+			refreshForReport: async () => {
+				refreshed = true;
+				seedOntology(db, 'nist-800-53', ['nist-800-53:AC-1']);
+				return { success: true, errors: [] };
+			},
+		});
+		expect(refreshed).toBe(true);
+		expect(app.files.has('Reports/Evidence coverage - nist-800-53.md')).toBe(true);
+		expect(app.opened).toEqual(['Reports/Evidence coverage - nist-800-53.md']);
 	});
 });

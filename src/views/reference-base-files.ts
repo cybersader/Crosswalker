@@ -135,22 +135,21 @@ The host note has **no \`crosswalker_query:\` frontmatter** — embeds are pure 
 ## How to author a new query
 
 1. **Open the note where you want the query displayed** (any markdown note, anywhere in your vault).
-2. **Run \`Crosswalker: Insert query into note\`** from the command palette.
+2. **Run \`Crosswalker: Explore data: create a query in the current note\`** from the command palette.
 3. **Pick a recipe** (e.g. NIST CSF → 800-53 coverage matrix). Adjust exposed params inline.
 4. **Click Apply.** The plugin creates \`_crosswalker/queries/<slug>/\` with \`index.md\` + \`view.base\`, then inserts \`![[<slug>/view.base]]\` at your cursor. Done.
 
 ## How to edit an existing query
 
-Two options:
+Three options:
 
-- **Hand-edit the canonical index.md.** Open \`_crosswalker/queries/<slug>/index.md\` directly; edit the \`crosswalker_query:\` frontmatter (params, recipe, shape, etc.); run \`Crosswalker: Refresh query views\` to regenerate \`view.base\`. The frontmatter is the source of truth.
-- **Delete the query folder and re-create from the picker.** For larger changes.
-
-(Future: \`Crosswalker: Browse my queries\` modal for direct edit + UPDATE-mode picker — not yet shipped.)
+- **Hand-edit the canonical index.md.** Open \`_crosswalker/queries/<slug>/index.md\` directly; edit the \`crosswalker_query:\` frontmatter (params, recipe, shape, etc.); run \`Crosswalker: Maintenance: refresh saved query views\` to regenerate \`view.base\`. The frontmatter is the source of truth.
+- **Browse saved queries.** Run \`Crosswalker: Explore data: browse saved queries\` to open a query's canonical note, embed it elsewhere, or delete its folder.
+- **Delete and recreate.** Delete the query folder and recreate it from the picker for larger changes.
 
 ## Migrating from Phase 4.5
 
-If you have notes with legacy \`crosswalker_query:\` frontmatter from before Phase 4.6 (Layout B+), run \`Crosswalker: Migrate queries to folder layout\` once. It creates the per-query folders, rewrites embeds, and removes the legacy frontmatter from your host notes. Idempotent — safe to re-run.
+If you have notes with legacy \`crosswalker_query:\` frontmatter from before Phase 4.6 (Layout B+), run \`Crosswalker: Maintenance: update saved queries to the current layout\` once. It creates the per-query folders, rewrites embeds, and removes the legacy frontmatter from your host notes. Idempotent — safe to re-run.
 
 ## Why this design
 

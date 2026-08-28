@@ -49,7 +49,7 @@ export class EmbedExistingQueryModal extends Modal {
 			empty.createEl('p', { text: 'No queries in this vault.' });
 			empty.createEl('p', {
 				// eslint-disable-next-line obsidianmd/ui/sentence-case -- quotes the literal command palette entry name
-				text: 'Run "Crosswalker: Insert query into note" to create one.',
+				text: 'Run "Crosswalker: Explore data: create a query in the current note" to create one.',
 				cls: 'crosswalker-browse-hint',
 			});
 			this.renderCancelOnly(contentEl);

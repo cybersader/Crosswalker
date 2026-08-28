@@ -1,7 +1,7 @@
 /**
  * recipe-picker-modal.ts — Phase 4b modal UI.
  *
- * Entry point for `Crosswalker: Insert query into note`. Lists shipped + user
+ * Entry point for `Crosswalker: Explore data: create a query in the current note`. Lists shipped + user
  * recipes; selecting one expands inline parameter controls; "Insert" calls
  * back with the final block text. Also offers a "Raw YAML escape" option for
  * power users (desktop-only — hidden on mobile per commitment #3).

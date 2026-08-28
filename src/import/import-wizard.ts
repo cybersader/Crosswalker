@@ -1878,9 +1878,9 @@ export class ImportFlow {
 	/**
 	 * Wait for Obsidian's metadataCache resolve queue to drain (bounded), so
 	 * frontmatter reads immediately after a bulk `vault.create()` batch (the
-	 * home screen's installed-frameworks filter, `_crosswalker` producer
-	 * frontmatter) see freshly-generated notes instead of racing the async
-	 * indexer. `resolved` fires once per full pass; a generation batch queues
+	 * installed-framework identity scan and the derived-report projector) see
+	 * freshly-generated notes instead of racing the async indexer. `resolved`
+	 * fires once per full pass; a generation batch queues
 	 * new work, so it should fire again shortly. Falls back to the timeout so
 	 * a stuck/absent event never hangs the "done" transition.
 	 */
@@ -3348,15 +3348,12 @@ export class ImportFlow {
 					this.draftId = null;
 				}
 
-				// The workspace-view home screen (spec §7n) reads _crosswalker
-				// producer frontmatter straight off Obsidian's metadataCache to
-				// decide which folders are "installed frameworks" (2026-07-11
-				// home-screen polish). That cache resolves asynchronously after
-				// `vault.create()`, so calling host.close() immediately can render
-				// the home screen BEFORE the just-generated notes are indexed —
-				// the fresh import would silently vanish from its own list. Give
-				// the resolve queue a bounded moment to drain when something was
-				// actually created.
+				// Installed-framework discovery and derived reports both consume
+				// the generated notes' identity frontmatter. Obsidian indexes that
+				// metadata asynchronously after `vault.create()`. The workspace has
+				// a direct-read fallback, while full projection intentionally fails
+				// closed on an incomplete cache, so give the resolve queue a bounded
+				// moment to drain before exposing the completed import.
 				if (result.created.length > 0) await this.waitForMetadataResolve();
 
 				// Reached "done" — host decides what that means (close the

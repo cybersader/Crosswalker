@@ -8,7 +8,7 @@ You need Crosswalker [installed and enabled](/crosswalker/getting-started/instal
 
 ## Import your first framework
 
-1. **Open the Crosswalker workspace tab.** Click the network-shaped ribbon icon, click the status bar count, or run **Crosswalker: Import structured data** from the command palette (`Ctrl/Cmd + P`). You can also right-click a CSV, XLSX, or JSON file in the file explorer and choose **Import into vault with Crosswalker**, which skips straight to configuring it.
+1. **Open the Crosswalker workspace tab.** Click the network-shaped ribbon icon, click the status bar count, or run **Crosswalker: Start here: open workspace** from the command palette (`Ctrl/Cmd + P`). You can also right-click a CSV, XLSX, or JSON file in the file explorer and choose **Import into vault with Crosswalker**, which skips straight to configuring it.
 
 2. **Pick your file.** For example, a NIST 800-53 controls export. Large CSVs stream in, so multi-megabyte files are fine. For XLSX you also pick the worksheet and header row; for JSON you pick which list of records to import. Before trusting a recognized-source import, check its [verified sheet, header row, count, and silent-failure gotchas](/crosswalker/reference/framework-data-sources/#silent-failure-checklist).
 
@@ -24,16 +24,17 @@ Full detail on every screen is on the [import wizard](/crosswalker/features/impo
 
 ## What you get
 
-Folders and one note per row, under your output folder (`Ontologies` by default):
+One note per row under your output folder (`Ontologies` by default). The bundled NIST 800-53 setup uses a flat layout, so the notes sit directly in that folder:
 
 ```
 Ontologies/
-└── NIST-800-53/
-    ├── AC-1.md
-    ├── AC-2.md
-    ├── AC-2(1).md
-    └── AU-1.md
+├── AC-1.md
+├── AC-2.md
+├── AC-2(1).md
+└── AU-1.md
 ```
+
+Other import setups can use nested folders, headings, tags, links, or a combination. Crosswalker recognizes an imported framework from the identity recorded inside each generated note, not from the folder shape.
 
 Each note carries your mapped columns as Obsidian properties, links to related notes, and a small record of where it came from:
 

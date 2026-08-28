@@ -90,7 +90,7 @@ Convention: `docs/tests/*.spec.ts`. Don't add unless docs UX changes.
 ### obsidian-cli (planned)
 
 For headless scripted operations where you don't need to drive the UI:
-- CI fixture validation: open test-vault, run "Crosswalker: Import structured data" against a known CSV, dump generated frontmatter to stdout, diff against expected
+- CI fixture validation: open test-vault, run "Crosswalker: Start here: import structured data" against a known CSV, dump generated frontmatter to stdout, diff against expected
 - Bulk operations: open multiple vaults, run a command on each, exit
 - Reproducibility checks: assert that running the import command produces byte-identical output across two runs
 

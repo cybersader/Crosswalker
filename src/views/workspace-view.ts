@@ -20,48 +20,67 @@ import { ImportFlow, type ImportFlowHost } from '../import/import-wizard';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
 import {
 	deriveInstalledOntologies,
-	findRecipeForOntologyName,
+	findRecipeForOntologyIdentity,
 	type MinimalVaultNode,
 } from './workspace-view-helpers';
 
 export const VIEW_TYPE_CROSSWALKER_WORKSPACE = 'crosswalker-workspace';
 
+interface NoteIdentityFacts {
+	producerKind?: string;
+	ontologyId?: string;
+	recipeId?: string;
+}
+
+function curiePrefix(value: unknown): string | undefined {
+	if (typeof value !== 'string') return undefined;
+	const colon = value.indexOf(':');
+	return colon > 0 ? value.slice(0, colon) : undefined;
+}
+
+function identityFactsFromFrontmatter(frontmatter: unknown): NoteIdentityFacts {
+	if (!frontmatter || typeof frontmatter !== 'object') return {};
+	const fm = frontmatter as {
+		curie?: unknown;
+		_crosswalker?: {
+			producer?: { kind?: unknown };
+			source_ref?: { curie?: unknown };
+			recipe?: { id?: unknown };
+		};
+	};
+	const producerKind = fm._crosswalker?.producer?.kind;
+	const recipeId = fm._crosswalker?.recipe?.id;
+	return {
+		...(typeof producerKind === 'string' ? { producerKind } : {}),
+		...(curiePrefix(fm.curie) || curiePrefix(fm._crosswalker?.source_ref?.curie)
+			? { ontologyId: curiePrefix(fm.curie) ?? curiePrefix(fm._crosswalker?.source_ref?.curie) }
+			: {}),
+		...(typeof recipeId === 'string' ? { recipeId } : {}),
+	};
+}
+
 /**
- * `_crosswalker.producer.kind` for one file (spec §7m "home-screen polish"),
- * preferring the metadata cache and falling back to a direct frontmatter read
- * when the cache hasn't resolved yet. The fallback matters: right after a bulk
- * `vault.create()` generation batch, `metadataCache.getFileCache()` can lag
- * well behind the write (observed empty even several seconds later against
- * this repo's wdio harness) — `import-wizard.ts`'s `waitForMetadataResolve`
- * mitigates but does not guarantee the cache is warm by the time the home
- * screen re-renders. A direct read keeps the filter correct regardless of
- * cache timing, at the cost of one extra read only for not-yet-indexed files.
+ * Identity facts for one note, preferring Obsidian's metadata cache and falling
+ * back to a direct frontmatter read while the cache catches up after generation.
+ * Path never participates: provenance establishes that Crosswalker produced the
+ * note, and the CURIE prefix establishes which framework owns it.
  */
-async function producerKindOf(file: TFile, app: App): Promise<string | undefined> {
-	const cached = app.metadataCache.getFileCache(file)?.frontmatter?._crosswalker as
-		| { producer?: { kind?: unknown } }
-		| undefined;
-	if (typeof cached?.producer?.kind === 'string') return cached.producer.kind;
+async function noteIdentityFactsOf(file: TFile, app: App): Promise<NoteIdentityFacts> {
+	const cached = identityFactsFromFrontmatter(app.metadataCache.getFileCache(file)?.frontmatter);
+	if (cached.producerKind && cached.ontologyId) return cached;
 
 	try {
 		const content = await app.vault.cachedRead(file);
 		const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
-		if (!match) return undefined;
-		const parsed = parseYaml(match[1]) as { _crosswalker?: { producer?: { kind?: unknown } } } | undefined;
-		const kind = parsed?._crosswalker?.producer?.kind;
-		return typeof kind === 'string' ? kind : undefined;
+		if (!match) return cached;
+		return identityFactsFromFrontmatter(parseYaml(match[1]));
 	} catch {
-		return undefined;
+		return cached;
 	}
 }
 
-/**
- * Adapt a real vault file/folder into the Obsidian-free shape the pure helper
- * consumes. Files carry `producerKind` (see `producerKindOf`) — the signal
- * `deriveInstalledOntologies` uses to tell real plugin-generated output apart
- * from curated fixtures / licensed test corpora that also carry `_crosswalker`.
- */
-async function toMinimalNode(file: TAbstractFile | null, app: App): Promise<MinimalVaultNode | null> {
+/** Adapt a real vault tree into the pure helper's identity-bearing shape. */
+export async function toMinimalNode(file: TAbstractFile | null, app: App): Promise<MinimalVaultNode | null> {
 	if (!file) return null;
 	if (file instanceof TFolder) {
 		const children = await Promise.all(file.children.map((child) => toMinimalNode(child, app)));
@@ -72,7 +91,16 @@ async function toMinimalNode(file: TAbstractFile | null, app: App): Promise<Mini
 		};
 	}
 	if (file instanceof TFile) {
-		return { path: file.path, name: file.name, producerKind: await producerKindOf(file, app) };
+		if (file.extension.toLowerCase() !== 'md') {
+			return { path: file.path, name: file.name };
+		}
+		const facts = await noteIdentityFactsOf(file, app);
+		return {
+			path: file.path,
+			name: file.name,
+			...facts,
+			linkCount: app.metadataCache.getFileCache(file)?.frontmatterLinks?.length ?? 0,
+		};
 	}
 	return { path: file.path, name: file.name };
 }
@@ -212,19 +240,18 @@ export class CrosswalkerWorkspaceView extends ItemView {
 		for (const summary of summaries) {
 			const item = list.createDiv({ cls: 'crosswalker-workspace-ontology-item' });
 			const ico = item.createSpan({ cls: 'crosswalker-workspace-ontology-ico' });
-			setIcon(ico, 'folder');
+			setIcon(ico, 'network');
 
 			const body = item.createDiv({ cls: 'crosswalker-workspace-ontology-body' });
 			body.createDiv({ cls: 'crosswalker-workspace-ontology-name', text: summary.name });
-			const edgeCount = this.countLiveEdges(summary.path);
 			body.createDiv({
 				cls: 'crosswalker-workspace-ontology-count',
 				text: `${summary.noteCount} note${summary.noteCount === 1 ? '' : 's'} · `
-					+ `${edgeCount} link${edgeCount === 1 ? '' : 's'}`,
+					+ `${summary.linkCount} link${summary.linkCount === 1 ? '' : 's'}`,
 			});
 
 			const actions = item.createDiv({ cls: 'crosswalker-workspace-ontology-actions' });
-			const match = findRecipeForOntologyName(summary.name);
+			const match = findRecipeForOntologyIdentity(summary.id, summary.recipeId);
 			if (match) {
 				const btn = actions.createEl('button', {
 					cls: 'crosswalker-workspace-ontology-reimport',
@@ -236,23 +263,6 @@ export class CrosswalkerWorkspaceView extends ItemView {
 				btn.addEventListener('click', () => this.startFlow({ presetRecipeId: match.id }));
 			}
 		}
-	}
-
-	/**
-	 * Live count of frontmatter wikilinks under an installed ontology's folder —
-	 * the connectedness signal for the installed-ontologies list (spec §7n item 3;
-	 * "note/edge counts stay live"). Recomputed on every return to the home screen,
-	 * so a generate-in-view (or any vault edit) is reflected immediately.
-	 */
-	private countLiveEdges(folderPath: string): number {
-		let edges = 0;
-		const prefix = folderPath + '/';
-		for (const file of this.app.vault.getMarkdownFiles()) {
-			if (file.path !== folderPath && !file.path.startsWith(prefix)) continue;
-			const cache = this.app.metadataCache.getFileCache(file);
-			edges += cache?.frontmatterLinks?.length ?? 0;
-		}
-		return edges;
 	}
 
 	// =========================================================================

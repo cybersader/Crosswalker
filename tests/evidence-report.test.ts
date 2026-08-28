@@ -258,7 +258,7 @@ describe('the report never turns "we cannot tell" into "it is fine"', () => {
 			expect(md.split(path)).toHaveLength(2);
 		}
 		expect(md).toContain('| Link | Subject baseline | Change kind | Primary exclusion | What it means |');
-		expect(md).toContain('Record selected housekeeping changes as baseline');
+		expect(md).toContain('Maintenance: record selected housekeeping changes as baseline');
 		expect(md).toContain('### Other reasons (1)');
 		expect(md).toContain('Evidence/proposed.md');
 	});

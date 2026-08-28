@@ -320,7 +320,7 @@ export function renderEvidenceReport(input: EvidenceReportInput): string {
 				if (kind === 'housekeeping' && group.length > 0) {
 					out.push(
 						'> [!tip] Dismiss selected housekeeping changes\n'
-						+ '> Select one or more rows in this table, then run **Crosswalker: Record selected housekeeping changes as baseline**. '
+						+ '> Select one or more rows in this table, then run **Crosswalker: Maintenance: record selected housekeeping changes as baseline**. '
 						+ 'Crosswalker asks for confirmation and updates only the recorded fingerprints. It does not change status, reviewer, or review date.',
 					);
 					out.push('');

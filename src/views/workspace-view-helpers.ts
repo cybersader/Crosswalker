@@ -1,12 +1,9 @@
 /**
- * workspace-view-helpers.ts — pure logic for the Crosswalker workspace view
- * (spec `.workspace/2026-07-05-shape-first-wizard-spec.md` §7n).
+ * workspace-view-helpers.ts — pure logic for the Crosswalker workspace view.
  *
- * Kept Obsidian-free so it's unit-testable without mocking the plugin API.
- * `MinimalVaultNode` structurally matches Obsidian's `TAbstractFile` /
- * `TFolder` shapes (path, name, optional children), so callers can pass
- * real vault objects directly or a thin recursive adapter — see
- * `workspace-view.ts` for the adapter that bridges `TAbstractFile`.
+ * Kept Obsidian-free so installed-framework discovery can be tested without
+ * mocking the plugin API. The caller adapts vault files into `MinimalVaultNode`
+ * values and includes the identity facts read from each note's frontmatter.
  */
 
 import { RECIPE_REGISTRY } from '../import/recipe-registry';
@@ -16,84 +13,104 @@ export interface MinimalVaultNode {
 	name: string;
 	/** Present (possibly empty) for folders; absent for files. */
 	children?: MinimalVaultNode[];
-	/**
-	 * For files only: the note's `_crosswalker.producer.kind` frontmatter value
-	 * (spec/tier1.schema.json `$defs/provenance_block`), when present. Undefined
-	 * for a file with no `_crosswalker` block at all, or for folders. The
-	 * adapter in `workspace-view.ts` populates this from the real metadata
-	 * cache; this module stays pure and never reads frontmatter itself.
-	 */
+	/** `_crosswalker.producer.kind`, when this is a Markdown note. */
 	producerKind?: string;
+	/** Canonical ontology identity derived from the note's CURIE prefix. */
+	ontologyId?: string;
+	/** `_crosswalker.recipe.id`, used only to choose the best display label/action. */
+	recipeId?: string;
+	/** Number of frontmatter wikilinks in this note. */
+	linkCount?: number;
 }
 
 export interface InstalledOntologySummary {
+	/** Canonical identity shared by every note in this group. */
+	id: string;
+	/** User-facing label, when a bundled recipe recognizes the identity. */
 	name: string;
-	path: string;
 	noteCount: number;
+	linkCount: number;
+	/** One exact bundled recipe id, when the generated notes name one. */
+	recipeId?: string;
 }
 
-/** The producer kind that marks a note as end-user, plugin-generated output
- *  (as opposed to `external-cli` fixture/test-corpus generation — spec §7m,
- *  "home-screen polish", 2026-07-11: the installed list must show what the
- *  USER imported through Crosswalker, not synthetic or curated test data). */
+/** Plugin output, as distinct from curated or external fixture generation. */
 const PLUGIN_PRODUCER_KIND = 'plugin-engine';
 
+type RecipeIdentity = { id: string; label: string; ontology: string };
+
 /**
- * Derive the list of "installed ontologies" from the default output folder:
- * one summary per top-level subfolder, with a recursive count of markdown
- * notes underneath it. A folder only counts as an installed ontology when it
- * actually contains GENERATED content — at least one note whose
- * `_crosswalker.producer.kind` is `plugin-engine` (real plugin output, not a
- * curated/fixture corpus like `NIST-mini` or a licensed test corpus, which
- * carry `_crosswalker` too but with `producer.kind: 'external-cli'`).
- * Folders whose name starts with `_` (the vault's internal/hidden convention,
- * e.g. `_licensed`) are skipped outright, before even checking their content.
- * Loose files directly under the output root are ignored (not an ontology).
- * Returns an empty array if the output root doesn't exist yet or has no
- * qualifying subfolders.
+ * Derive installed frameworks from note identity, never from folder shape.
+ *
+ * Every plugin-generated Markdown note contributes to the group named by its
+ * ontology id (the prefix before `:` in `curie`, populated by the adapter).
+ * Therefore a flat import whose notes live directly under the output root and
+ * a hierarchical import spread across nested folders produce the same summary.
+ * Hand-authored notes, external fixtures, and notes without a usable identity
+ * do not register. Underscore-prefixed subtrees remain excluded because they
+ * are Crosswalker/internal or protected-corpus storage, not user imports.
  */
 export function deriveInstalledOntologies(
 	outputRoot: MinimalVaultNode | null | undefined,
+	registry: RecipeIdentity[] = RECIPE_REGISTRY,
 ): InstalledOntologySummary[] {
-	if (!outputRoot || !outputRoot.children) return [];
+	if (!outputRoot) return [];
 
-	const summaries: InstalledOntologySummary[] = [];
-	for (const child of outputRoot.children) {
-		if (!child.children) continue; // skip loose files, only folders count as ontologies
-		if (child.name.startsWith('_')) continue; // internal/hidden convention (e.g. `_licensed`)
-		if (!hasGeneratedNote(child)) continue; // curated/fixture corpora and hand-authored folders
-		summaries.push({
-			name: child.name,
-			path: child.path,
-			noteCount: countMarkdownNotes(child),
-		});
+	interface MutableSummary {
+		id: string;
+		noteCount: number;
+		linkCount: number;
+		recipeIds: Set<string>;
 	}
-	return summaries.sort((a, b) => a.name.localeCompare(b.name));
+	const groups = new Map<string, MutableSummary>();
+
+	const visit = (node: MinimalVaultNode, isRoot = false): void => {
+		if (node.children) {
+			if (!isRoot && node.name.startsWith('_')) return;
+			for (const child of node.children) visit(child);
+			return;
+		}
+		if (!node.name.toLowerCase().endsWith('.md')) return;
+		if (node.producerKind !== PLUGIN_PRODUCER_KIND) return;
+		const id = node.ontologyId?.trim();
+		if (!id) return;
+
+		let group = groups.get(id);
+		if (!group) {
+			group = { id, noteCount: 0, linkCount: 0, recipeIds: new Set<string>() };
+			groups.set(id, group);
+		}
+		group.noteCount += 1;
+		group.linkCount += node.linkCount ?? 0;
+		if (node.recipeId) group.recipeIds.add(node.recipeId);
+	};
+	visit(outputRoot, true);
+
+	return Array.from(groups.values())
+		.map((group): InstalledOntologySummary => {
+			const recipeId = Array.from(group.recipeIds).sort()[0];
+			const recipe = (recipeId ? registry.find((entry) => entry.id === recipeId) : undefined)
+				?? registry.find((entry) => entry.ontology === group.id);
+			return {
+				id: group.id,
+				name: recipe?.label ?? group.id,
+				noteCount: group.noteCount,
+				linkCount: group.linkCount,
+				...(recipeId ? { recipeId } : {}),
+			};
+		})
+		.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
-function countMarkdownNotes(node: MinimalVaultNode): number {
-	let count = 0;
-	for (const child of node.children ?? []) {
-		if (child.children) {
-			count += countMarkdownNotes(child);
-		} else if (child.name.toLowerCase().endsWith('.md')) {
-			count += 1;
-		}
-	}
-	return count;
-}
-
-/** True when this folder (recursively) contains at least one note actually
- *  produced by the plugin engine — the "GENERATED content" gate. */
-function hasGeneratedNote(node: MinimalVaultNode): boolean {
-	for (const child of node.children ?? []) {
-		if (child.children) {
-			if (hasGeneratedNote(child)) return true;
-		} else if (child.producerKind === PLUGIN_PRODUCER_KIND) {
-			return true;
-		}
-	}
-	return false;
+/** Exact recipe match from canonical identity/provenance, with no path heuristic. */
+export function findRecipeForOntologyIdentity(
+	ontologyId: string,
+	recipeId?: string,
+	registry: RecipeIdentity[] = RECIPE_REGISTRY,
+): OntologyRecipeMatch | null {
+	const match = (recipeId ? registry.find((entry) => entry.id === recipeId) : undefined)
+		?? registry.find((entry) => entry.ontology === ontologyId);
+	return match ? { id: match.id, label: match.label } : null;
 }
 
 /** A recipe recognized as a likely match for an already-installed ontology folder. */
@@ -105,28 +122,13 @@ export interface OntologyRecipeMatch {
 const NORMALIZE = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
- * Best-effort match from an installed ontology's folder name back to a bundled
- * recipe (spec §7n item 3 — "Import again"). There is no persisted link between
- * a generated folder and the recipe that produced it, so this is a heuristic:
- * normalize both the folder name and each registry entry's `ontology` id
- * *and* its display `label` (strip case/punctuation) and look for a substring
- * match either direction ("NIST-CSF-2.0" folder ⊇ "nistcsf2" ontology id).
- * The label is checked too because some ontology ids don't spell out the same
- * letters a folder name would ("mitre-attack" vs. the literal acronym
- * "ATT&CK" a user's folder is named after — the label "MITRE ATT&CK
- * techniques" carries the acronym verbatim, the id doesn't). Only the text
- * before any parenthetical is used from the label, so descriptive suffixes
- * ("(CPRT export, nested)") don't have to appear in the folder name too.
- * Ties break toward the longest (most specific) matched candidate. Returns
- * null when nothing is recognizable — the caller simply omits the "Import
- * again" affordance.
- *
- * Pure and unit-testable: pass `registry` to test against a fixture instead of
- * the full bundled `RECIPE_REGISTRY`.
+ * Legacy best-effort match from a display/folder name to a bundled recipe.
+ * New installed-framework discovery uses `findRecipeForOntologyIdentity`;
+ * this helper remains for callers that only possess an old folder label.
  */
 export function findRecipeForOntologyName(
 	folderName: string,
-	registry: { id: string; label: string; ontology: string }[] = RECIPE_REGISTRY,
+	registry: RecipeIdentity[] = RECIPE_REGISTRY,
 ): OntologyRecipeMatch | null {
 	const target = NORMALIZE(folderName);
 	if (!target) return null;

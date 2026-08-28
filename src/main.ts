@@ -1,11 +1,9 @@
-import { Plugin, Notice, TFile, TFolder, MarkdownView, Platform, apiVersion, type WorkspaceLeaf } from 'obsidian';
+import { Plugin, Notice, TFile, TFolder, MarkdownView, Platform, apiVersion, normalizePath, type WorkspaceLeaf } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
 import {
 	isImportableExtension,
-	countTopLevelOntologyFolders,
 	formatOntologyStatusLabel,
 	checkFirstRun,
-	type TopLevelEntry,
 } from './ui/entry-points';
 import { CrosswalkerSettingTab } from './settings/settings-tab';
 import { ImportWizardModal } from './import/import-wizard';
@@ -25,7 +23,8 @@ import {
 	type CrosswalkerBasesViewOption,
 } from './views/bases-api';
 import { writeReferenceBaseFiles } from './views/reference-base-files';
-import { CrosswalkerWorkspaceView, VIEW_TYPE_CROSSWALKER_WORKSPACE } from './views/workspace-view';
+import { CrosswalkerWorkspaceView, VIEW_TYPE_CROSSWALKER_WORKSPACE, toMinimalNode } from './views/workspace-view';
+import { deriveInstalledOntologies } from './views/workspace-view-helpers';
 import { DebugLog } from './utils/debug';
 import { DraftStore } from './import/draft-store';
 import { RecipePickerModal } from './views/recipe-picker-modal';
@@ -87,6 +86,10 @@ export default class CrosswalkerPlugin extends Plugin {
 	 * vault structure changes without re-adding the element.
 	 */
 	private ontologyStatusBarEl: HTMLElement | null = null;
+	/** Coalesce bulk create/rename/delete events into one identity scan. */
+	private ontologyStatusRefreshTimer: number | null = null;
+	/** Prevent a slower stale scan from repainting after a newer one. */
+	private ontologyStatusRefreshToken = 0;
 
 	// Validator + render + generation-module handles attached to the plugin
 	// instance so E2E tests + future command implementations can call them
@@ -248,7 +251,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// Register the main import command
 		this.addCommand({
 			id: 'import-structured-data',
-			name: 'Import structured data',
+			name: 'Start here: import structured data',
 			callback: () => {
 				new ImportWizardModal(this.app, this).open();
 			}
@@ -257,7 +260,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// v0.1.6 Phase 2: SSSOM TSV import (per Ch 35)
 		this.addCommand({
 			id: 'import-sssom',
-			name: 'Import crosswalk mapping file',
+			name: 'Import and export: import crosswalk mapping file',
 			callback: () => {
 				new SssomImportModal(this.app, this).open();
 			},
@@ -267,11 +270,11 @@ export default class CrosswalkerPlugin extends Plugin {
 		// Canonical state lives at _crosswalker/queries/<slug>/{index.md,view.base};
 		// the host note (current editor) receives only an `![[<slug>/view.base]]`
 		// embed at cursor. To edit an existing query, open its index.md directly
-		// and re-run "Refresh query views" — or use "Migrate queries to folder
-		// layout" if you have legacy Phase 4.5 frontmatter on host notes.
+		// and re-run "Maintenance: refresh saved query views" or use "Maintenance:
+		// update saved queries to the current layout" if you have legacy Phase 4.5 frontmatter on host notes.
 		this.addCommand({
 			id: 'insert-query-into-note',
-			name: 'Insert query into note',
+			name: 'Explore data: create a query in the current note',
 			editorCallback: (editor, ctx) => {
 				const file = ctx.file;
 				if (!file) {
@@ -287,7 +290,7 @@ export default class CrosswalkerPlugin extends Plugin {
 						if (sv === 1) {
 							new Notice(
 								'This note has legacy (Phase 4.5) Crosswalker frontmatter. ' +
-								'Run "Migrate queries to folder layout" first to move it into _crosswalker/queries/.',
+								'Run "Maintenance: update saved queries to the current layout" first to move it into _crosswalker/queries/.',
 								8000,
 							);
 							this.debug.info('view', 'picker-blocked-on-legacy', 'Picker blocked — legacy v1 frontmatter on host note', { host: file.path });
@@ -327,7 +330,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// frontmatter to Layout B+ per-query folders. Idempotent.
 		this.addCommand({
 			id: 'migrate-query-layout',
-			name: 'Migrate queries to folder layout',
+			name: 'Maintenance: update saved queries to the current layout',
 			callback: async () => {
 				const traceId = this.debug.newTraceId();
 				await this.debug.withTrace(traceId, async () => {
@@ -354,7 +357,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// embedding is CHEAP (just inserts `![[<slug>/view.base]]`); no scan.
 		this.addCommand({
 			id: 'embed-existing-query',
-			name: 'Embed existing query into note',
+			name: 'Explore data: embed a saved query in the current note',
 			editorCallback: async (editor, ctx) => {
 				const file = ctx.file;
 				if (!file) {
@@ -387,7 +390,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// per-row actions (Open canonical / Embed here / Delete folder).
 		this.addCommand({
 			id: 'browse-queries',
-			name: 'Browse my queries',
+			name: 'Explore data: browse saved queries',
 			callback: async () => {
 				const traceId = this.debug.newTraceId();
 				await this.debug.withTrace(traceId, async () => {
@@ -421,7 +424,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// TSV inside main.js to skip the manual file-copy step.
 		this.addCommand({
 			id: 'import-bundled-fixture',
-			name: 'Import bundled test fixture (dev)',
+			name: 'Developer tools: import bundled test data',
 			callback: async () => {
 				const traceId = this.debug.newTraceId();
 				await this.debug.withTrace(traceId, async () => {
@@ -486,7 +489,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// `bun run reset` (scripts/reset-test-vault.mjs) — same protected list.
 		this.addCommand({
 			id: 'reset-imported-notes',
-			name: 'Reset imported notes — delete a test import (dev)',
+			name: 'Developer tools: delete a test import',
 			callback: async () => {
 				const { scanGeneratedImports, deleteImportedNotes } = await import('./views/reset-imports');
 				const { Modal, ButtonComponent, Notice } = await import('obsidian');
@@ -549,7 +552,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// understanding scale characteristics.
 		this.addCommand({
 			id: 'benchmark-primitives',
-			name: 'Run primitives benchmark (perf)',
+			name: 'Developer tools: run a performance check',
 			callback: async () => {
 				const traceId = this.debug.newTraceId();
 				await this.debug.withTrace(traceId, async () => {
@@ -589,7 +592,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// case per Ch 32 deliverable B. Default browse stays live.
 		this.addCommand({
 			id: 'materialize-query',
-			name: 'Materialize this query (snapshot)',
+			name: 'Explore data: save a snapshot of the current query',
 			editorCallback: async (_editor, ctx) => {
 				const file = ctx.file;
 				if (!file) {
@@ -644,7 +647,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// whose .base content already matches.
 		this.addCommand({
 			id: 'refresh-query-views',
-			name: 'Refresh query views',
+			name: 'Maintenance: refresh saved query views',
 			callback: async () => {
 				const traceId = this.debug.newTraceId();
 				await this.debug.withTrace(traceId, async () => {
@@ -662,7 +665,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// Register config browser command
 		this.addCommand({
 			id: 'browse-saved-configs',
-			name: 'Browse saved configurations',
+			name: 'Import setup: browse saved configurations',
 			callback: () => {
 				new ConfigBrowserModal(this.app, this, 'browse').open();
 			}
@@ -675,7 +678,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// makes the load-bearing direction impossible to enter backwards.
 		this.addCommand({
 			id: 'link-evidence-to-control',
-			name: 'Link evidence to a control',
+			name: 'Evidence: link evidence to a control',
 			callback: () => {
 				// Pre-select the control when run from an open control note.
 				const active = this.app.workspace.getActiveFile();
@@ -696,11 +699,12 @@ export default class CrosswalkerPlugin extends Plugin {
 		// from the query index into a note the user can keep and share.
 		this.addCommand({
 			id: 'evidence-coverage-report',
-			name: 'Evidence coverage report',
+			name: 'Evidence: create coverage report',
 			callback: async () => {
 				await runEvidenceReportCommand({
 					app: this.app,
 					openTier2: this.openTier2,
+					refreshForReport: this.runProjection,
 					reportFolder: this.settings.evidenceReportFolder,
 				});
 			},
@@ -711,7 +715,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// mandatory; status and reviewer facts are never touched.
 		this.addCommand({
 			id: 'record-selected-housekeeping-baseline',
-			name: 'Record selected housekeeping changes as baseline',
+			name: 'Maintenance: record selected housekeeping changes as baseline',
 			callback: async () => {
 				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 				await runHousekeepingRebaselineCommand({
@@ -725,7 +729,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// v0.1.5: Tier 2 sidecar — clear command
 		this.addCommand({
 			id: 'clear-tier-2-sidecar',
-			name: 'Clear fast query index (rebuilds automatically)',
+			name: 'Maintenance: reset search data',
 			callback: async () => {
 				try {
 					if (this.tier2Handle) {
@@ -745,7 +749,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// v0.1.6 Phase 3.5: debug log commands — open / export / clear
 		this.addCommand({
 			id: 'open-debug-log',
-			name: 'Open debug log',
+			name: 'Developer tools: open troubleshooting log',
 			callback: async () => {
 				const path = this.debug.getLogPath();
 				const file = this.app.vault.getAbstractFileByPath(path);
@@ -759,7 +763,7 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'export-debug-log',
-			name: 'Export debug log to clipboard (last 1 megabyte, secrets redacted)',
+			name: 'Developer tools: copy troubleshooting log to clipboard',
 			callback: async () => {
 				const content = await this.debug.readForExport();
 				if (!content) {
@@ -778,7 +782,7 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'copy-diagnostics',
-			name: 'Copy diagnostics to clipboard',
+			name: 'Developer tools: copy troubleshooting details to clipboard',
 			callback: async () => {
 				const bundle = this.debug.assembleDiagnostics({
 					pluginVersion: this.manifest.version,
@@ -798,7 +802,7 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'clear-debug-log',
-			name: 'Clear debug log',
+			name: 'Developer tools: clear troubleshooting log',
 			callback: async () => {
 				await this.debug.clear();
 				new Notice('Debug log cleared.');
@@ -810,7 +814,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// command just opens the wizard. The user picks Resume from Step 1.
 		this.addCommand({
 			id: 'resume-draft-import',
-			name: 'Resume draft import',
+			name: 'Import setup: resume a draft import',
 			callback: () => {
 				new ImportWizardModal(this.app, this).open();
 			},
@@ -818,7 +822,7 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'clear-all-drafts',
-			name: 'Clear all import drafts',
+			name: 'Maintenance: clear all import drafts',
 			callback: async () => {
 				const count = await this.draftStore.clearAll();
 				new Notice(`Cleared ${count} draft import${count === 1 ? '' : 's'}.`);
@@ -827,7 +831,7 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'purge-expired-drafts',
-			name: 'Purge expired import drafts',
+			name: 'Maintenance: remove expired import drafts',
 			callback: async () => {
 				const count = await this.draftStore.purgeExpired();
 				new Notice(`Purged ${count} expired draft import${count === 1 ? '' : 's'}.`);
@@ -842,7 +846,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// round, same as the SSSOM importer's own Phase 2 entry point).
 		this.addCommand({
 			id: 'export-folder-as-crosswalk-mapping-file',
-			name: 'Export folder as crosswalk mapping file',
+			name: 'Import and export: export folder as a crosswalk mapping file',
 			callback: () => {
 				new ExportFolderPickerModal(this.app, (folder) => {
 					void (async () => {
@@ -867,7 +871,7 @@ export default class CrosswalkerPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'export-folder-as-csv',
-			name: 'Export folder as CSV',
+			name: 'Import and export: export folder as CSV',
 			callback: () => {
 				new ExportFolderPickerModal(this.app, (folder) => {
 					void (async () => {
@@ -907,7 +911,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		});
 		this.addCommand({
 			id: 'open-crosswalker-workspace',
-			name: 'Open workspace',
+			name: 'Start here: open workspace',
 			callback: () => {
 				void this.activateWorkspaceView();
 			},
@@ -946,10 +950,8 @@ export default class CrosswalkerPlugin extends Plugin {
 		);
 
 		// Discoverability entry point 3: subtle status bar indicator showing
-		// how many ontologies are installed (top-level folders under the
-		// configured output path). Click opens the workspace tab via the
-		// existing view-type machinery — no import of the sibling-owned view
-		// module needed.
+		// how many frameworks are recognized from generated-note identity under
+		// the configured output path. Click opens the workspace tab.
 		this.ontologyStatusBarEl = this.addStatusBarItem();
 		this.ontologyStatusBarEl.addClass('crosswalker-status-bar-item');
 		this.ontologyStatusBarEl.addClass('mod-clickable');
@@ -958,21 +960,20 @@ export default class CrosswalkerPlugin extends Plugin {
 		this.ontologyStatusBarEl.addEventListener('click', () => {
 			void this.activateWorkspaceView();
 		});
-		this.registerEvent(
-			this.app.vault.on('create', (file) => {
-				if (file instanceof TFolder) this.refreshOntologyStatusBar();
-			}),
-		);
-		this.registerEvent(
-			this.app.vault.on('delete', (file) => {
-				if (file instanceof TFolder) this.refreshOntologyStatusBar();
-			}),
-		);
-		this.registerEvent(
-			this.app.vault.on('rename', (file) => {
-				if (file instanceof TFolder) this.refreshOntologyStatusBar();
-			}),
-		);
+		this.registerEvent(this.app.vault.on('create', (file) => {
+			if (this.pathAffectsInstalledFrameworks(file.path)) this.scheduleOntologyStatusBarRefresh();
+		}));
+		this.registerEvent(this.app.vault.on('delete', (file) => {
+			if (this.pathAffectsInstalledFrameworks(file.path)) this.scheduleOntologyStatusBarRefresh();
+		}));
+		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+			if (this.pathAffectsInstalledFrameworks(file.path) || this.pathAffectsInstalledFrameworks(oldPath)) {
+				this.scheduleOntologyStatusBarRefresh();
+			}
+		}));
+		this.registerEvent(this.app.vault.on('modify', (file) => {
+			if (this.pathAffectsInstalledFrameworks(file.path)) this.scheduleOntologyStatusBarRefresh();
+		}));
 
 		// v0.1.6 Phase 3: register the crosswalkerPivot custom Bases view
 		// (per Settled #2 + Ch 30). Public API path; Obsidian 1.10.0+ required.
@@ -997,8 +998,8 @@ export default class CrosswalkerPlugin extends Plugin {
 			// hand-edits frontmatter or the recipe template changes.
 			void regenerateAll(this.app, this.debug);
 			// Discoverability entry point 3: now that the vault is indexed,
-			// the output folder's top-level children can be counted.
-			this.refreshOntologyStatusBar();
+			// derive installed frameworks from generated-note identity.
+			this.scheduleOntologyStatusBarRefresh(0);
 		});
 
 		// Discoverability entry point 4: first-run / post-update notice. Fires
@@ -1012,19 +1013,35 @@ export default class CrosswalkerPlugin extends Plugin {
 		this.debug.info('lifecycle', 'loaded', 'Crosswalker plugin loaded', { version: '0.1.6' });
 	}
 
+	/** Whether a vault event can change discovery beneath the configured output root. */
+	private pathAffectsInstalledFrameworks(path: string): boolean {
+		const outputRoot = normalizePath(this.settings.defaultOutputPath);
+		if (!outputRoot) return true;
+		const candidate = normalizePath(path);
+		return candidate === outputRoot || candidate.startsWith(`${outputRoot}/`);
+	}
+
+	/** Coalesce relevant vault event bursts before reading generated-note identity. */
+	private scheduleOntologyStatusBarRefresh(delayMs = 250): void {
+		if (this.ontologyStatusRefreshTimer !== null) window.clearTimeout(this.ontologyStatusRefreshTimer);
+		this.ontologyStatusRefreshTimer = window.setTimeout(() => {
+			this.ontologyStatusRefreshTimer = null;
+			void this.refreshOntologyStatusBar();
+		}, delayMs);
+	}
+
 	/**
-	 * Recompute + repaint the status bar ontology count from the top-level
-	 * folders under the configured output path. Cheap — only ever looks at
-	 * one level, never recurses into the ontology folders themselves.
+	 * Repaint the status bar from the same identity-based rule as the workspace.
+	 * Flat and hierarchical layouts therefore count identically, while a folder
+	 * of ordinary hand-authored notes remains outside Crosswalker's installed set.
 	 */
-	private refreshOntologyStatusBar(): void {
+	private async refreshOntologyStatusBar(): Promise<void> {
 		if (!this.ontologyStatusBarEl) return;
-		const folder = this.app.vault.getAbstractFileByPath(this.settings.defaultOutputPath);
-		const entries: TopLevelEntry[] = folder instanceof TFolder
-			? folder.children.map((child) => ({ name: child.name, isFolder: child instanceof TFolder }))
-			: [];
-		const count = countTopLevelOntologyFolders(entries);
-		this.ontologyStatusBarEl.setText(formatOntologyStatusLabel(count));
+		const token = ++this.ontologyStatusRefreshToken;
+		const outputRoot = this.app.vault.getAbstractFileByPath(this.settings.defaultOutputPath);
+		const node = await toMinimalNode(outputRoot, this.app);
+		if (token !== this.ontologyStatusRefreshToken || !this.ontologyStatusBarEl) return;
+		this.ontologyStatusBarEl.setText(formatOntologyStatusLabel(deriveInstalledOntologies(node).length));
 	}
 
 	/**
@@ -1133,6 +1150,7 @@ export default class CrosswalkerPlugin extends Plugin {
 		// Deliberately does NOT detachLeavesOfType(VIEW_TYPE_CROSSWALKER_WORKSPACE):
 		// the official plugin guidelines say "Don't detach leaves in onunload" —
 		// Obsidian reinitializes open leaves in place on plugin update/reload.
+		if (this.ontologyStatusRefreshTimer !== null) window.clearTimeout(this.ontologyStatusRefreshTimer);
 		this.tier2Handle?.close();
 		this.debug?.info('lifecycle', 'unloaded', 'Crosswalker plugin unloaded');
 	}

@@ -1,123 +1,129 @@
-/**
- * workspace-view-helpers.test.ts — pure logic for the Crosswalker workspace
- * view's "Installed ontologies" section (spec §7n).
- */
+/** Pure identity-based discovery for the workspace's installed-framework list. */
 
 import { deriveInstalledOntologies, type MinimalVaultNode } from '../src/views/workspace-view-helpers';
 
+const registry = [
+	{ id: 'nist-flat', label: 'NIST 800-53 Rev 5', ontology: 'nist-800-53' },
+	{ id: 'mitre', label: 'MITRE ATT&CK techniques', ontology: 'mitre-attack' },
+];
+
+function generated(path: string, ontologyId: string, extras: Partial<MinimalVaultNode> = {}): MinimalVaultNode {
+	return {
+		path,
+		name: path.slice(path.lastIndexOf('/') + 1),
+		producerKind: 'plugin-engine',
+		ontologyId,
+		...extras,
+	};
+}
+
 describe('deriveInstalledOntologies', () => {
 	it('returns an empty array when the output root does not exist or has no children', () => {
-		expect(deriveInstalledOntologies(null)).toEqual([]);
-		expect(deriveInstalledOntologies({ path: 'Ontologies', name: 'Ontologies' })).toEqual([]);
+		expect(deriveInstalledOntologies(null, registry)).toEqual([]);
+		expect(deriveInstalledOntologies({ path: 'Ontologies', name: 'Ontologies' }, registry)).toEqual([]);
 	});
 
-	it('summarizes each top-level subfolder with a recursive markdown note count, skipping loose files', () => {
+	it('registers a flat import whose generated notes live directly under the output root', () => {
 		const root: MinimalVaultNode = {
 			path: 'Ontologies',
 			name: 'Ontologies',
 			children: [
-				{
-					path: 'Ontologies/NIST-mini',
-					name: 'NIST-mini',
-					children: [
-						{ path: 'Ontologies/NIST-mini/GV.md', name: 'GV.md', producerKind: 'plugin-engine' },
-						{
-							path: 'Ontologies/NIST-mini/GV.OC',
-							name: 'GV.OC',
-							children: [
-								{ path: 'Ontologies/NIST-mini/GV.OC/GV.OC-01.md', name: 'GV.OC-01.md', producerKind: 'plugin-engine' },
-							],
-						},
-					],
-				},
-				{ path: 'Ontologies/loose-note.md', name: 'loose-note.md', producerKind: 'plugin-engine' },
+				generated('Ontologies/AC-1.md', 'nist-800-53', { recipeId: 'nist-flat', linkCount: 2 }),
+				generated('Ontologies/AC-2.md', 'nist-800-53', { recipeId: 'nist-flat', linkCount: 1 }),
 			],
 		};
 
-		expect(deriveInstalledOntologies(root)).toEqual([
-			{ name: 'NIST-mini', path: 'Ontologies/NIST-mini', noteCount: 2 },
-		]);
+		expect(deriveInstalledOntologies(root, registry)).toEqual([{
+			id: 'nist-800-53',
+			name: 'NIST 800-53 Rev 5',
+			noteCount: 2,
+			linkCount: 3,
+			recipeId: 'nist-flat',
+		}]);
 	});
 
-	it('sorts results alphabetically by name', () => {
+	it('groups nested and loose generated notes by ontology identity rather than path', () => {
 		const root: MinimalVaultNode = {
 			path: 'Ontologies',
 			name: 'Ontologies',
 			children: [
-				{ path: 'Ontologies/ZFramework', name: 'ZFramework', children: [{ path: 'x', name: 'x.md', producerKind: 'plugin-engine' }] },
-				{ path: 'Ontologies/AFramework', name: 'AFramework', children: [{ path: 'y', name: 'y.md', producerKind: 'plugin-engine' }] },
-			],
-		};
-
-		expect(deriveInstalledOntologies(root).map((s) => s.name)).toEqual(['AFramework', 'ZFramework']);
-	});
-
-	// -- GENERATED-content filter (spec §7m "home-screen polish", 2026-07-11) --
-
-	it('omits a folder whose notes carry no `_crosswalker` producer frontmatter at all', () => {
-		const root: MinimalVaultNode = {
-			path: 'Frameworks',
-			name: 'Frameworks',
-			children: [
-				{ path: 'Frameworks/Scratch', name: 'Scratch', children: [{ path: 'Frameworks/Scratch/note.md', name: 'note.md' }] },
-			],
-		};
-		expect(deriveInstalledOntologies(root)).toEqual([]);
-	});
-
-	it('omits a curated/fixture corpus whose notes are `_crosswalker`-tagged but produced by `external-cli`, not the plugin (e.g. NIST-mini)', () => {
-		const root: MinimalVaultNode = {
-			path: 'Frameworks',
-			name: 'Frameworks',
-			children: [
+				generated('Ontologies/T1055.md', 'mitre-attack', { recipeId: 'mitre' }),
 				{
-					path: 'Frameworks/NIST-mini',
-					name: 'NIST-mini',
-					children: [{ path: 'Frameworks/NIST-mini/AC-1.md', name: 'AC-1.md', producerKind: 'external-cli' }],
+					path: 'Ontologies/Techniques',
+					name: 'Techniques',
+					children: [generated('Ontologies/Techniques/T1055.011.md', 'mitre-attack', { recipeId: 'mitre' })],
 				},
 			],
 		};
-		expect(deriveInstalledOntologies(root)).toEqual([]);
+
+		expect(deriveInstalledOntologies(root, registry)).toEqual([{
+			id: 'mitre-attack',
+			name: 'MITRE ATT&CK techniques',
+			noteCount: 2,
+			linkCount: 0,
+			recipeId: 'mitre',
+		}]);
 	});
 
-	it('omits underscore-prefixed folders outright, even when they contain plugin-engine notes (e.g. `_licensed`)', () => {
+	it('keeps two identities separate even when their notes share one folder', () => {
 		const root: MinimalVaultNode = {
-			path: 'Frameworks',
-			name: 'Frameworks',
+			path: 'Ontologies',
+			name: 'Ontologies',
 			children: [
-				{
-					path: 'Frameworks/_licensed',
-					name: '_licensed',
-					children: [{ path: 'Frameworks/_licensed/CIS-v8/1.1.md', name: '1.1.md', producerKind: 'plugin-engine' }],
-				},
+				generated('Ontologies/AC-1.md', 'nist-800-53', { recipeId: 'nist-flat' }),
+				generated('Ontologies/T1055.md', 'mitre-attack', { recipeId: 'mitre' }),
 			],
 		};
-		expect(deriveInstalledOntologies(root)).toEqual([]);
+		expect(deriveInstalledOntologies(root, registry).map((item) => item.id))
+			.toEqual(['mitre-attack', 'nist-800-53']);
 	});
 
-	it('includes a folder as soon as ANY note beneath it (however deep) was produced by the plugin engine', () => {
+	it('does not register a hand-authored folder with no Crosswalker provenance', () => {
 		const root: MinimalVaultNode = {
-			path: 'Frameworks',
-			name: 'Frameworks',
-			children: [
-				{
-					path: 'Frameworks/MITRE ATT&CK',
-					name: 'MITRE ATT&CK',
-					children: [
-						{ path: 'Frameworks/MITRE ATT&CK/T1055.md', name: 'T1055.md' }, // no _crosswalker — user-added
-						{
-							path: 'Frameworks/MITRE ATT&CK/T1055',
-							name: 'T1055',
-							children: [
-								{ path: 'Frameworks/MITRE ATT&CK/T1055/T1055.011.md', name: 'T1055.011.md', producerKind: 'plugin-engine' },
-							],
-						},
-					],
-				},
-			],
+			path: 'Ontologies',
+			name: 'Ontologies',
+			children: [{
+				path: 'Ontologies/Scratch',
+				name: 'Scratch',
+				children: [{ path: 'Ontologies/Scratch/note.md', name: 'note.md', ontologyId: 'scratch' }],
+			}],
 		};
-		expect(deriveInstalledOntologies(root)).toEqual([
-			{ name: 'MITRE ATT&CK', path: 'Frameworks/MITRE ATT&CK', noteCount: 2 },
-		]);
+		expect(deriveInstalledOntologies(root, registry)).toEqual([]);
+	});
+
+	it('omits external fixtures even when they carry Crosswalker identity metadata', () => {
+		const root: MinimalVaultNode = {
+			path: 'Ontologies',
+			name: 'Ontologies',
+			children: [{
+				path: 'Ontologies/NIST-mini.md',
+				name: 'NIST-mini.md',
+				producerKind: 'external-cli',
+				ontologyId: 'nist-800-53',
+			}],
+		};
+		expect(deriveInstalledOntologies(root, registry)).toEqual([]);
+	});
+
+	it('omits generated notes without an ontology identity', () => {
+		const root: MinimalVaultNode = {
+			path: 'Ontologies',
+			name: 'Ontologies',
+			children: [{ path: 'Ontologies/unknown.md', name: 'unknown.md', producerKind: 'plugin-engine' }],
+		};
+		expect(deriveInstalledOntologies(root, registry)).toEqual([]);
+	});
+
+	it('preserves the underscore-prefixed protected-subtree exclusion', () => {
+		const root: MinimalVaultNode = {
+			path: 'Ontologies',
+			name: 'Ontologies',
+			children: [{
+				path: 'Ontologies/_licensed',
+				name: '_licensed',
+				children: [generated('Ontologies/_licensed/CIS/1.1.md', 'cis-v8')],
+			}],
+		};
+		expect(deriveInstalledOntologies(root, registry)).toEqual([]);
 	});
 });

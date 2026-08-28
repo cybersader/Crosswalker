@@ -16,7 +16,7 @@
  *   - `regenerateOne(app, file, debug)` — single index.md
  *
  * Runs on plugin load (onLayoutReady) as stale-state recovery + as the
- * explicit `Crosswalker: Refresh query views` command.
+ * explicit `Crosswalker: Maintenance: refresh saved query views` command.
  */
 
 import type { App, TFile } from 'obsidian';

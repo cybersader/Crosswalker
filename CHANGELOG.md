@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### A successful first import now becomes a usable product state (2026-08-28)
+
+- **Installed frameworks are derived from generated-note identity, not folder shape.** A flat recipe can write notes directly into the configured output folder and still appear immediately in the workspace and status bar. Hierarchical layouts continue to work, notes are grouped by their CURIE prefix, and hand-authored folders without Crosswalker provenance stay excluded.
+- **Evidence coverage refreshes its own report data before reading it.** The explicit command no longer depends on the one-time background refresh that ran when the vault opened, so a framework imported moments ago reaches a report without a hidden rebuild step. This explicit refresh also works when background refresh-on-load is disabled.
+- **The command palette separates normal work from maintenance and developer tools.** Commands now lead with plain categories such as Start here, Evidence, Import and export, Maintenance, and Developer tools; internal storage vocabulary is removed from command names.
+- **The empty-vault E2E walkthrough is now a regression test.** It imports a real 12-row NIST 800-53 slice through the visible wizard, then asserts that the workspace lists NIST, the status bar says one framework, and the coverage command opens the report.
+
 ### A changed-control queue now says what kind of review it needs (2026-08-28)
 
 - **The release-change warning stays conservative, but the queue is now usable.** Crosswalker still compares the normalized whole source row and still flags every approved link whose row changed. It now explains each flagged link as one highest-priority kind: wording changed, recipe-managed scope changed, or only remaining source housekeeping changed. The recipe is the declaration: body projections mean wording; managed frontmatter and managed links mean scope; everything else means housekeeping.

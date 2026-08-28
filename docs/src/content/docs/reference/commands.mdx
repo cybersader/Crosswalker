@@ -1,23 +1,70 @@
 ---
 title: Commands
-description: Obsidian commands registered by Crosswalker.
+description: Obsidian commands registered by Crosswalker, grouped by the task they support.
 tags: [obsidian, getting-started]
 ---
 
-## Available commands
+Access these from Obsidian's command palette (`Ctrl/Cmd + P`). Obsidian adds the **Crosswalker:** prefix; the leading words keep related actions together.
 
-Access these via the command palette (`Ctrl/Cmd + P`):
-
-| Command | Description |
-|---------|-------------|
-| **Crosswalker: Import structured data** | Opens the 4-step import wizard |
-
-## Planned commands
-
-These are on the roadmap for future releases:
+## Start here
 
 | Command | Description |
-|---------|-------------|
-| Insert framework link | Search and insert a typed link to a framework node |
-| Browse saved configs | Open the config browser modal |
-| Re-import framework | Re-run import with an existing config |
+|---|---|
+| **Crosswalker: Start here: open workspace** | Opens the workspace that shows imported frameworks and starts guided imports. |
+| **Crosswalker: Start here: import structured data** | Opens the import flow directly for CSV, XLSX, or JSON data. |
+
+## Import setup
+
+| Command | Description |
+|---|---|
+| **Crosswalker: Import setup: browse saved configurations** | Opens saved import configurations. |
+| **Crosswalker: Import setup: resume a draft import** | Opens the import flow with drafts from previous sessions available. |
+
+## Import and export
+
+| Command | Description |
+|---|---|
+| **Crosswalker: Import and export: import crosswalk mapping file** | Imports relationships between two frameworks from a mapping file. |
+| **Crosswalker: Import and export: export folder as a crosswalk mapping file** | Exports relationship notes beneath a chosen folder. |
+| **Crosswalker: Import and export: export folder as CSV** | Exports notes beneath a chosen folder as CSV. |
+
+## Explore data
+
+| Command | Description |
+|---|---|
+| **Crosswalker: Explore data: create a query in the current note** | Creates a saved query and embeds its view at the cursor. |
+| **Crosswalker: Explore data: embed a saved query in the current note** | Embeds an existing saved query at the cursor. |
+| **Crosswalker: Explore data: browse saved queries** | Opens saved queries and their open, embed, and delete actions. |
+| **Crosswalker: Explore data: save a snapshot of the current query** | Saves an auditable snapshot for the open query. |
+
+## Evidence
+
+| Command | Description |
+|---|---|
+| **Crosswalker: Evidence: link evidence to a control** | Creates one evidence-to-control relationship through a guided form. |
+| **Crosswalker: Evidence: create coverage report** | Refreshes coverage data, writes a report note, and opens it. |
+
+## Maintenance
+
+| Command | Description |
+|---|---|
+| **Crosswalker: Maintenance: update saved queries to the current layout** | Moves older saved queries into the current folder layout. |
+| **Crosswalker: Maintenance: refresh saved query views** | Rebuilds saved query views from their current definitions. |
+| **Crosswalker: Maintenance: record selected housekeeping changes as baseline** | Records selected non-substantive control changes as the comparison baseline. |
+| **Crosswalker: Maintenance: reset search data** | Clears derived search data so Crosswalker can rebuild it. |
+| **Crosswalker: Maintenance: clear all import drafts** | Deletes every saved import draft. |
+| **Crosswalker: Maintenance: remove expired import drafts** | Deletes drafts older than the configured retention period. |
+
+## Developer tools
+
+These support testing and troubleshooting rather than the normal import workflow.
+
+| Command | Description |
+|---|---|
+| **Crosswalker: Developer tools: import bundled test data** | Imports bundled mapping data for end-to-end testing. |
+| **Crosswalker: Developer tools: delete a test import** | Deletes generated test imports while protecting curated data. |
+| **Crosswalker: Developer tools: run a performance check** | Runs the built-in performance check and copies its summary. |
+| **Crosswalker: Developer tools: open troubleshooting log** | Opens the troubleshooting log when logging is enabled. |
+| **Crosswalker: Developer tools: copy troubleshooting log to clipboard** | Copies a redacted portion of the troubleshooting log. |
+| **Crosswalker: Developer tools: copy troubleshooting details to clipboard** | Copies a redacted diagnostic summary. |
+| **Crosswalker: Developer tools: clear troubleshooting log** | Clears the troubleshooting log. |

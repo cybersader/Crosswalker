@@ -86,7 +86,7 @@ The same source can land as a deep folder tree, a single document with nested he
 
 ### Import a framework
 
-1. Open the **Crosswalker workspace tab** (ribbon icon, status bar, or `Ctrl/Cmd + P` > **Crosswalker: Import structured data**)
+1. Open the **Crosswalker workspace tab** (ribbon icon, status bar, or `Ctrl/Cmd + P` > **Crosswalker: Start here: open workspace**)
 2. Select your CSV, XLSX, or JSON file — recognized sources offer a one-click fast path
 3. Map columns: hierarchy levels, frontmatter properties, links, body
 4. Review the destination, shape map, and stats

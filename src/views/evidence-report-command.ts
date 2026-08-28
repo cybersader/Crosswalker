@@ -93,6 +93,11 @@ class OntologyPickerModal extends FuzzySuggestModal<OntologyChoice> {
 export interface EvidenceReportDeps {
 	app: App;
 	openTier2: () => Promise<{ db: any }>;
+	/**
+	 * Refresh canonical notes into the report data before reading it. Explicit
+	 * report actions do this even when background refresh-on-load is disabled.
+	 */
+	refreshForReport?: () => Promise<{ success: boolean; errors?: unknown[] }>;
 	reportFolder: string;
 	/** Injected so tests are deterministic. */
 	now?: () => Date;
@@ -151,17 +156,31 @@ export async function writeEvidenceReport(
  * and "you have no gaps" are easy to confuse.
  */
 export async function runEvidenceReportCommand(deps: EvidenceReportDeps): Promise<void> {
+	if (deps.refreshForReport) {
+		try {
+			const refreshed = await deps.refreshForReport();
+			if (!refreshed.success) {
+				const count = refreshed.errors?.length ?? 0;
+				new Notice(`Could not refresh the coverage data${count > 0 ? ` (${count} errors)` : ''}. Check the troubleshooting log and try again.`);
+				return;
+			}
+		} catch (err) {
+			new Notice(`Could not refresh the coverage data: ${err instanceof Error ? err.message : String(err)}`);
+			return;
+		}
+	}
+
 	let db: any;
 	try {
 		({ db } = await deps.openTier2());
 	} catch (err) {
-		new Notice(`Could not open the fast query index: ${err instanceof Error ? err.message : String(err)}`);
+		new Notice(`Could not open the coverage data: ${err instanceof Error ? err.message : String(err)}`);
 		return;
 	}
 
 	const choices = listOntologiesForReport(db);
 	if (choices.length === 0) {
-		new Notice('No frameworks found in the query index. Import a framework first, then run this report.');
+		new Notice('No imported frameworks found. Import structured data first, then run this report.');
 		return;
 	}
 

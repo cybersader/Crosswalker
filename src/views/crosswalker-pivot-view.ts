@@ -251,8 +251,8 @@ class CrosswalkerPivotView extends Component {
 				text: 'The Bases filter matched 0 junction notes. Likely causes:',
 			});
 			const list = wrap.createEl('ul');
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "SSSOM" is a domain acronym; quotes the literal command palette entry name
-			list.createEl('li', { text: 'No SSSOM crosswalks have been imported yet for the ontologies in this filter. Run "Crosswalker: Import SSSOM mapping file" to populate _crosswalker/mappings/.' });
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- quotes the literal command palette entry name
+			list.createEl('li', { text: 'No crosswalk mappings have been imported yet for the frameworks in this filter. Run "Crosswalker: Import and export: import crosswalk mapping file" to populate the mapping data.' });
 			list.createEl('li', { text: "The query's filter targets a folder that does not exist in this vault." });
 			list.createEl('li', { text: 'A confidence threshold or filter clause is excluding every junction.' });
 		}

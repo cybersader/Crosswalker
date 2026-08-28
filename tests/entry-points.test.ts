@@ -7,10 +7,8 @@
 import {
 	IMPORTABLE_EXTENSIONS,
 	isImportableExtension,
-	countTopLevelOntologyFolders,
 	formatOntologyStatusLabel,
 	checkFirstRun,
-	type TopLevelEntry,
 } from '../src/ui/entry-points';
 
 describe('isImportableExtension', () => {
@@ -34,41 +32,18 @@ describe('isImportableExtension', () => {
 	});
 });
 
-describe('countTopLevelOntologyFolders', () => {
-	it('counts only folders, ignoring files', () => {
-		const entries: TopLevelEntry[] = [
-			{ name: 'NIST-CSF', isFolder: true },
-			{ name: 'MITRE-ATTACK', isFolder: true },
-			{ name: 'readme.md', isFolder: false },
-		];
-		expect(countTopLevelOntologyFolders(entries)).toBe(2);
-	});
-
-	it('returns 0 for an empty list', () => {
-		expect(countTopLevelOntologyFolders([])).toBe(0);
-	});
-
-	it('returns 0 when the output folder has files but no subfolders', () => {
-		const entries: TopLevelEntry[] = [
-			{ name: 'notes.md', isFolder: false },
-			{ name: 'index.md', isFolder: false },
-		];
-		expect(countTopLevelOntologyFolders(entries)).toBe(0);
-	});
-});
-
 describe('formatOntologyStatusLabel', () => {
-	it('uses a no-ontologies message at zero', () => {
-		expect(formatOntologyStatusLabel(0)).toBe('Crosswalker: no ontologies yet');
+	it('uses a no-frameworks message at zero', () => {
+		expect(formatOntologyStatusLabel(0)).toBe('Crosswalker: no frameworks yet');
 	});
 
-	it('uses singular "ontology" at exactly one', () => {
-		expect(formatOntologyStatusLabel(1)).toBe('Crosswalker: 1 ontology');
+	it('uses singular "framework" at exactly one', () => {
+		expect(formatOntologyStatusLabel(1)).toBe('Crosswalker: 1 framework');
 	});
 
-	it('uses plural "ontologies" for counts above one', () => {
-		expect(formatOntologyStatusLabel(2)).toBe('Crosswalker: 2 ontologies');
-		expect(formatOntologyStatusLabel(15)).toBe('Crosswalker: 15 ontologies');
+	it('uses plural "frameworks" for counts above one', () => {
+		expect(formatOntologyStatusLabel(2)).toBe('Crosswalker: 2 frameworks');
+		expect(formatOntologyStatusLabel(15)).toBe('Crosswalker: 15 frameworks');
 	});
 
 	it('never contains an em dash', () => {

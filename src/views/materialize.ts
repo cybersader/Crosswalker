@@ -11,7 +11,8 @@
  * this trivial — derivative artifacts have a stable home.
  *
  * NOT called on every render — explicit opt-in via the
- * `Crosswalker: Materialize this query` command. Default browse stays live.
+ * `Crosswalker: Explore data: save a snapshot of the current query`
+ * command. Default browse stays live.
  * Per Ch 32 deliverable B: materialization is the audit/share path, not
  * the default browse path.
  */

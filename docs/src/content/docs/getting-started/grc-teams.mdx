@@ -84,7 +84,7 @@ review_date: 2026-03-15
 ---
 ```
 
-You do not have to write this by hand. Run **Link evidence to a control** from the command palette, or from an open control note to have that control pre-selected. It asks for the control and the evidence, fills in the rest, and the note it creates says whether the link counts yet.
+You do not have to write this by hand. Run **Crosswalker: Evidence: link evidence to a control** from the command palette, or from an open control note to have that control pre-selected. It asks for the control and the evidence, fills in the rest, and the note it creates says whether the link counts yet.
 
 If you do write one by hand, three details carry weight, and getting them wrong is the difference between a coverage report that works and one that silently reports nothing:
 
@@ -117,9 +117,9 @@ Two different tools answer two different kinds of question, and it is worth know
 
 That split is not a limitation anyone chose; it is what the two tools can each honestly do. A Bases view filters the notes in your vault. A control with no evidence has no evidence note to filter, so there is nothing for a view to show — the control simply does not appear, and an empty result looks identical to a clean bill of health. Counting backlinks does not rescue it either, because hierarchy links, index links, and framework crosswalks are all backlinks, so nearly every control looks covered.
 
-Crosswalker therefore computes coverage from its own index, which can tell the difference between "no evidence" and "no row". Run **Evidence coverage report** from the command palette. It writes a note listing the controls with no valid evidence, the partially covered ones, and any evidence links it had to **set aside** and why: wrong direction, unapproved status, expired review, or a control that changed after approval. A low score sends you to the data rather than to a panic.
+Crosswalker therefore computes coverage from its own index, which can tell the difference between "no evidence" and "no row". Run **Crosswalker: Evidence: create coverage report** from the command palette. It writes a note listing the controls with no valid evidence, the partially covered ones, and any evidence links it had to **set aside** and why: wrong direction, unapproved status, expired review, or a control that changed after approval. A low score sends you to the data rather than to a panic.
 
-Changed controls appear in three review queues, in this order: wording, scope, then housekeeping. Each heading gives its count, and every changed link appears once. Wording and scope changes need human re-review. For housekeeping-only source changes, select the rows you mean to acknowledge and run **Record selected housekeeping changes as baseline**. Crosswalker asks for confirmation and updates only those recorded fingerprints; it does not change approval status, reviewer, or review date. A link with no recorded baseline still counts and is named separately, because missing history is not proof that the control stayed unchanged.
+Changed controls appear in three review queues, in this order: wording, scope, then housekeeping. Each heading gives its count, and every changed link appears once. Wording and scope changes need human re-review. For housekeeping-only source changes, select the rows you mean to acknowledge and run **Crosswalker: Maintenance: record selected housekeeping changes as baseline**. Crosswalker asks for confirmation and updates only those recorded fingerprints; it does not change approval status, reviewer, or review date. A link with no recorded baseline still counts and is named separately, because missing history is not proof that the control stayed unchanged.
 
 The report also states when the index behind it was last rebuilt, and warns you if that rebuild was incomplete. It is regenerated from scratch each run, so keep your own notes elsewhere.
 

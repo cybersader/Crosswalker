@@ -26,31 +26,12 @@ export function isImportableExtension(extension: string): boolean {
 }
 
 /**
- * A minimal, vault-I/O-free description of one entry directly under the
- * configured output folder. Callers list the folder's immediate children
- * and map them to this shape; this module never touches the vault itself.
- */
-export interface TopLevelEntry {
-	name: string;
-	isFolder: boolean;
-}
-
-/**
- * Derive the "installed ontology" count for the status bar: the number of
- * top-level folders directly under the configured output path. Cheap by
- * construction — it only ever looks at one level, never recurses.
- */
-export function countTopLevelOntologyFolders(entries: TopLevelEntry[]): number {
-	return entries.filter((entry) => entry.isFolder).length;
-}
-
-/**
- * Status bar label for a given ontology count. Sentence case, no internal
- * jargon, no em dashes (per plugin UI-copy convention).
+ * Status bar label for the installed-framework count. Sentence case, plain
+ * user-facing vocabulary, and no em dashes (per plugin UI-copy convention).
  */
 export function formatOntologyStatusLabel(count: number): string {
-	if (count === 0) return 'Crosswalker: no ontologies yet';
-	return `Crosswalker: ${count} ontolog${count === 1 ? 'y' : 'ies'}`;
+	if (count === 0) return 'Crosswalker: no frameworks yet';
+	return `Crosswalker: ${count} framework${count === 1 ? '' : 's'}`;
 }
 
 export type FirstRunReason = 'first-install' | 'version-changed' | 'already-seen';

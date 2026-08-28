@@ -238,7 +238,7 @@ export function buildIndexBody(_frontmatter: CrosswalkerQueryFrontmatter, slug: 
 		'',
 		'<!-- This is the canonical state for a Crosswalker query.',
 		'     Edit the frontmatter (via the Crosswalker picker or hand-edit) to change params.',
-		'     Run "Crosswalker: Refresh query views" to regenerate view.base. -->',
+		'     Run "Crosswalker: Maintenance: refresh saved query views" to regenerate view.base. -->',
 		'',
 		`![[${slug}/view.base]]`,
 		'',
@@ -262,7 +262,7 @@ export function buildBaseFileContent(
 		`# Source note (where embed was inserted): ${context.sourceNotePath}`,
 		'#',
 		`# Edit the canonical state at _crosswalker/queries/${context.slug}/index.md`,
-		'# To regenerate: run "Crosswalker: Refresh query views".',
+		'# To regenerate: run "Crosswalker: Maintenance: refresh saved query views".',
 		'# Manual edits to this file are overwritten on the next refresh.',
 		'',
 	].join('\n');
