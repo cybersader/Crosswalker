@@ -237,4 +237,90 @@ describe('housekeeping re-baselining', () => {
 		expect(() => resolveHousekeepingRebaselineCandidates(incompleteDb, ['Evidence/one.md']))
 			.toThrow('has no complete current fingerprint set');
 	});
+
+	// Regression, 2026-08-28. The command used to resolve candidates, open a
+	// confirmation dialog, and then write through the SAME handle it opened
+	// before the dialog. A dialog is user time and unbounded, so a reset of the
+	// query index during it closed that database and deleted its file. Waiting
+	// for the dialog is not an option -- that hangs the reset -- so the handle
+	// must not be carried across the decision at all.
+	it('does not carry the database handle across the confirmation dialog', async () => {
+		const before = createDb();
+		applyMigrations(before);
+		const paths = ['Evidence/one.md'];
+		seed(before, paths);
+
+		// What a reset leaves behind: the old database is gone and the next
+		// open hands back a fresh one.
+		const after = createDb();
+		applyMigrations(after);
+		seed(after, paths);
+
+		// The app helper asserts Tier 1 lands before Tier 2, and it must make
+		// that check against the database the write actually goes to.
+		const { app } = appWithFrontmatter(after, paths);
+
+		let opens = 0;
+		const openTier2 = async () => {
+			opens += 1;
+			return { db: opens === 1 ? before : after };
+		};
+		const confirm = jest.fn(async () => {
+			before.close(); // the reset happens while the dialog is up
+			return true;
+		});
+
+		const changed = await runHousekeepingRebaselineCommand({
+			app: app as any,
+			openTier2,
+			selection: '| [[Evidence/one.md]] | `changed` | `housekeeping` | `subject-changed` |',
+			confirm,
+		});
+
+		expect(opens).toBe(2);
+		expect(changed).toBe(1);
+		// The write landed on the live database, not the closed one.
+		expect(rows(after, `SELECT reviewed_against_cid FROM junction_notes WHERE vault_path='Evidence/one.md'`))
+			.toEqual([[CURRENT.reviewCid]]);
+		after.close();
+	});
+
+	// The notes are canonical and the index is derived, so "the index update
+	// failed" and "your re-baseline failed" are different facts. Reporting the
+	// second when only the first happened invites someone to re-run an audit
+	// action that already took effect.
+	it('reports a recorded baseline when only the derived index update fails', async () => {
+		const db = createDb();
+		applyMigrations(db);
+		const paths = ['Evidence/one.md'];
+		seed(db, paths);
+		const { app, frontmatter, processFrontMatter } = appWithFrontmatter(db, paths);
+
+		// Fail every write to the index, leaving the note edits intact.
+		const live = {
+			exec: (input: any) => {
+				const sql = typeof input === 'string' ? input : input.sql;
+				if (/SAVEPOINT|UPDATE junction_notes/i.test(sql)) throw new Error('database is closed');
+				return db.exec(input);
+			},
+		};
+		let opens = 0;
+		const openTier2 = async () => {
+			opens += 1;
+			return { db: opens === 1 ? db : live };
+		};
+
+		const changed = await runHousekeepingRebaselineCommand({
+			app: app as any,
+			openTier2,
+			selection: '| [[Evidence/one.md]] | `changed` | `housekeeping` | `subject-changed` |',
+			confirm: async () => true,
+		});
+
+		// Counted as done, because in the canonical record it is done.
+		expect(changed).toBe(1);
+		expect(processFrontMatter).toHaveBeenCalledTimes(1);
+		expect(frontmatter.get('Evidence/one.md')!.reviewed_against.review_cid).toBe(CURRENT.reviewCid);
+		db.close();
+	});
 });
