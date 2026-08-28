@@ -18,6 +18,7 @@
  */
 
 import type { ImportSetReference } from './import-set';
+import type { ReviewGroupCids } from './hash';
 
 const SPEC_VERSION = 'https://crosswalker.dev/spec/tier1.schema.json';
 
@@ -48,6 +49,8 @@ export interface ProvenanceInput {
 	 * fingerprint is never read as evidence of change.
 	 */
 	reviewCid?: string;
+	/** Optional recipe-driven explanation hashes for a changed reviewCid. */
+	reviewGroups?: ReviewGroupCids;
 }
 
 const PRODUCER_NAME = 'crosswalker-plugin';
@@ -92,6 +95,10 @@ export function buildProvenance(input: ProvenanceInput, pluginVersion: string): 
 
 	if (input.reviewCid) {
 		block.review_cid = input.reviewCid;
+	}
+
+	if (input.reviewGroups) {
+		block.review_groups = { ...input.reviewGroups };
 	}
 
 	return block;

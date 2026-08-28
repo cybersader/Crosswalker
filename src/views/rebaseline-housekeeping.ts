@@ -1,0 +1,250 @@
+/**
+ * Explicit housekeeping re-baselining for Ch 43 re-attestation.
+ *
+ * This is deliberately selection-driven and confirmation-gated. It records the
+ * current subject fingerprints only after Tier 2 proves every selected row is a
+ * housekeeping-only change. It never writes status, reviewer, or review_date.
+ */
+
+import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import { readReviewGroupCids, type ReviewGroupCids } from '../generation/hash';
+import { hashFrontmatter } from '../tier2/projector';
+
+export interface HousekeepingRebaselineCandidate {
+	vaultPath: string;
+	status: string | null;
+	subjectCurie: string;
+	reviewCid: string;
+	reviewGroups: ReviewGroupCids;
+}
+
+/** Extract the first-cell junction links from selected report rows. */
+export function selectedReportPaths(selection: string): string[] {
+	const paths = new Set<string>();
+	for (const line of selection.split(/\r?\n/)) {
+		const tableLink = line.match(/^\s*\|\s*\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]\s*\|/);
+		if (tableLink) paths.add(tableLink[1].trim());
+	}
+	// Also support selecting one or more bare report links rather than full rows.
+	if (paths.size === 0) {
+		for (const match of selection.matchAll(/\[\[([^\]|#]+)(?:\|[^\]]*)?\]\]/g)) {
+			paths.add(match[1].trim());
+		}
+	}
+	return [...paths].filter(Boolean);
+}
+
+/**
+ * Resolve and validate every selected path before any vault write occurs.
+ * Refuses the whole selection if even one row is not a classifiable,
+ * housekeeping-only change.
+ */
+export function resolveHousekeepingRebaselineCandidates(
+	db: any,
+	paths: string[],
+): HousekeepingRebaselineCandidate[] {
+	const out: HousekeepingRebaselineCandidate[] = [];
+	for (const path of paths) {
+		const rows = db.exec({
+			sql: `
+				SELECT
+					j.vault_path,
+					j.status,
+					j.subject_baseline,
+					j.change_kind,
+					c.curie,
+					c.review_cid,
+					c.review_wording_cid,
+					c.review_scope_cid,
+					c.review_housekeeping_cid
+				FROM junction_notes_with_freshness j
+				LEFT JOIN concepts c
+				  ON c.rowid = (
+					SELECT c2.rowid FROM concepts c2
+					WHERE c2.curie = COALESCE(j.reviewed_against_curie, j.subject_curie)
+					ORDER BY c2.ontology_id
+					LIMIT 1
+				  )
+				WHERE j.vault_path = $path
+				LIMIT 1
+			`,
+			bind: { $path: path },
+			rowMode: 'array',
+			returnValue: 'resultRows',
+		}) as unknown[][];
+		if (rows.length === 0) {
+			throw new Error(`${path} is not a projected evidence link.`);
+		}
+		const row = rows[0];
+		if (String(row[2]) !== 'changed' || String(row[3]) !== 'housekeeping') {
+			throw new Error(`${path} is not a housekeeping-only changed link.`);
+		}
+		const subjectCurie = typeof row[4] === 'string' ? row[4].trim() : '';
+		const reviewCid = typeof row[5] === 'string' ? row[5].trim() : '';
+		const reviewGroups = readReviewGroupCids({
+			wording: row[6],
+			scope: row[7],
+			housekeeping: row[8],
+		});
+		if (!subjectCurie || !/^sha256-[a-f0-9]{64}$/.test(reviewCid) || !reviewGroups) {
+			throw new Error(`${path} has no complete current fingerprint set.`);
+		}
+		out.push({
+			vaultPath: String(row[0]),
+			status: row[1] === null || row[1] === undefined ? null : String(row[1]),
+			subjectCurie,
+			reviewCid,
+			reviewGroups,
+		});
+	}
+	return out;
+}
+
+/** Canonical Tier 1 first; Tier 2 is updated only after every file write succeeds. */
+export async function applyHousekeepingRebaseline(
+	app: App,
+	db: any,
+	candidates: HousekeepingRebaselineCandidate[],
+): Promise<void> {
+	// Resolve every selected note before the first write. This cannot make vault
+	// writes transactional, but it prevents a missing later selection from
+	// producing an avoidable half-applied batch.
+	const files = candidates.map((candidate) => {
+		const file = app.vault.getAbstractFileByPath(candidate.vaultPath);
+		if (!(file instanceof TFile)) throw new Error(`Evidence link not found: ${candidate.vaultPath}`);
+		return { candidate, file };
+	});
+	const sourceHashes = new Map<string, string>();
+
+	for (const { candidate, file } of files) {
+		await app.fileManager.processFrontMatter(file, (frontmatter) => {
+			// Intentionally no writes to status, reviewer, review_date, or coverage.
+			frontmatter.reviewed_against = {
+				curie: candidate.subjectCurie,
+				review_cid: candidate.reviewCid,
+				review_groups: { ...candidate.reviewGroups },
+			};
+			sourceHashes.set(candidate.vaultPath, hashFrontmatter(frontmatter));
+		});
+	}
+
+	// Tier 2 is deletable projection state. Update it only after Tier 1 succeeded,
+	// so an interruption can leave a stale cache but can never make the cache the
+	// sole source of the new audit fact. The savepoint makes the selected Tier 2
+	// rows all-or-none and keeps source_hash aligned with the canonical edit.
+	db.exec('SAVEPOINT housekeeping_rebaseline');
+	try {
+		for (const candidate of candidates) {
+			db.exec({
+				sql: `
+					UPDATE junction_notes
+					SET reviewed_against_curie = $curie,
+						reviewed_against_cid = $review_cid,
+						reviewed_wording_cid = $wording,
+						reviewed_scope_cid = $scope,
+						reviewed_housekeeping_cid = $housekeeping,
+						source_hash = $source_hash,
+						modified_at = $modified_at
+					WHERE vault_path = $path
+				`,
+				bind: {
+					$curie: candidate.subjectCurie,
+					$review_cid: candidate.reviewCid,
+					$wording: candidate.reviewGroups.wording,
+					$scope: candidate.reviewGroups.scope,
+					$housekeeping: candidate.reviewGroups.housekeeping,
+					$source_hash: sourceHashes.get(candidate.vaultPath),
+					$modified_at: new Date().toISOString(),
+					$path: candidate.vaultPath,
+				},
+			});
+		}
+		db.exec('RELEASE housekeeping_rebaseline');
+	} catch (error) {
+		try {
+			db.exec('ROLLBACK TO housekeeping_rebaseline');
+			db.exec('RELEASE housekeeping_rebaseline');
+		} catch {
+			// Preserve the original Tier 2 update error.
+		}
+		throw error;
+	}
+}
+
+class HousekeepingRebaselineConfirmModal extends Modal {
+	private settled = false;
+
+	constructor(
+		app: App,
+		private readonly count: number,
+		private readonly resolve: (confirmed: boolean) => void,
+	) {
+		super(app);
+	}
+
+	private finish(confirmed: boolean): void {
+		if (this.settled) return;
+		this.settled = true;
+		this.resolve(confirmed);
+		this.close();
+	}
+
+	onOpen(): void {
+		this.contentEl.empty();
+		new Setting(this.contentEl).setName('Record housekeeping baseline').setHeading();
+		this.contentEl.createEl('p', {
+			text: `Record the current fingerprints for ${this.count} selected housekeeping-only change${this.count === 1 ? '' : 's'}?`,
+		});
+		this.contentEl.createEl('p', {
+			text: 'This acknowledges source changes outside recipe body and managed frontmatter declarations. It does not approve content, change link status, identify a reviewer, or change the original review date.',
+		});
+		new Setting(this.contentEl)
+			.addButton((button) => button.setButtonText('Cancel').onClick(() => this.finish(false)))
+			.addButton((button) => button.setButtonText('Record baseline').setCta()
+				.onClick(() => this.finish(true)));
+	}
+
+	onClose(): void {
+		if (!this.settled) {
+			this.settled = true;
+			this.resolve(false);
+		}
+		this.contentEl.empty();
+	}
+}
+
+function confirmHousekeepingRebaseline(app: App, count: number): Promise<boolean> {
+	return new Promise((resolve) => new HousekeepingRebaselineConfirmModal(app, count, resolve).open());
+}
+
+export interface HousekeepingRebaselineCommandDeps {
+	app: App;
+	openTier2: () => Promise<{ db: any }>;
+	selection: string;
+	confirm?: (count: number) => Promise<boolean>;
+}
+
+/** Selection-based command entry point. Every rejection is explicit and non-writing. */
+export async function runHousekeepingRebaselineCommand(
+	deps: HousekeepingRebaselineCommandDeps,
+): Promise<number> {
+	const paths = selectedReportPaths(deps.selection);
+	if (paths.length === 0) {
+		new Notice('Select one or more housekeeping rows in an evidence coverage report first.');
+		return 0;
+	}
+	try {
+		const { db } = await deps.openTier2();
+		const candidates = resolveHousekeepingRebaselineCandidates(db, paths);
+		const confirmed = await (deps.confirm ?? ((count) => confirmHousekeepingRebaseline(deps.app, count)))(candidates.length);
+		if (!confirmed) return 0;
+		await applyHousekeepingRebaseline(deps.app, db, candidates);
+		new Notice(
+			`Recorded current fingerprints for ${candidates.length} link${candidates.length === 1 ? '' : 's'}. Status, reviewer, and review date were not changed.`,
+		);
+		return candidates.length;
+	} catch (error) {
+		new Notice(`Could not record housekeeping baselines: ${error instanceof Error ? error.message : String(error)}`);
+		return 0;
+	}
+}

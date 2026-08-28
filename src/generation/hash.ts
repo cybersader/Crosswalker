@@ -18,6 +18,9 @@
  * in tests/generation-hash.test.ts).
  */
 
+import { interpolationColumn, parseTemplateSegments, type Interpolation } from '../render/template';
+import type { Recipe } from '../render';
+
 // ---------------------------------------------------------------------------
 // Canonical serialization
 // ---------------------------------------------------------------------------
@@ -370,6 +373,175 @@ export function reviewCidCanonicalInput(record: ConceptIdentityRecord): string {
  */
 export function computeReviewCid(record: ConceptIdentityRecord): string {
 	return toSha256Cid(sha256Hex(reviewCidCanonicalInput(record)));
+}
+
+/**
+ * Recipe-declared sub-fingerprints used to explain a changed `review_cid`.
+ *
+ * `review_cid` remains the whole-row gate. These hashes never decide whether a
+ * subject changed; they only classify an already-detected change. The recipe is
+ * the declaration source: body projections are wording, managed frontmatter
+ * (including managed links) is scope, and everything else is housekeeping.
+ */
+export interface ReviewGroupCids {
+	wording: string;
+	scope: string;
+	housekeeping: string;
+}
+
+/** Read a complete group-hash block. Partial blocks are absence, never facts. */
+export function readReviewGroupCids(value: unknown): ReviewGroupCids | null {
+	if (!value || typeof value !== 'object') return null;
+	const source = value as Record<string, unknown>;
+	const wording = typeof source.wording === 'string' ? source.wording.trim() : '';
+	const scope = typeof source.scope === 'string' ? source.scope.trim() : '';
+	const housekeeping = typeof source.housekeeping === 'string' ? source.housekeeping.trim() : '';
+	const isSha256Cid = (candidate: string) => /^sha256-[a-f0-9]{64}$/.test(candidate);
+	return isSha256Cid(wording) && isSha256Cid(scope) && isSha256Cid(housekeeping)
+		? { wording, scope, housekeeping }
+		: null;
+}
+
+type ResolvedReviewPath = {
+	/** Stable identity of the selected source location. */
+	key: string;
+	/** Direct source key or nested traversal segments, as render() resolves it. */
+	path: string[];
+	value: unknown;
+};
+
+/** Collect every interpolation from a set of recipe templates. */
+function reviewInterpolations(templates: string[]): Interpolation[] {
+	const out: Interpolation[] = [];
+	for (const template of templates) {
+		for (const segment of parseTemplateSegments(template)) {
+			if (segment.kind === 'interp') out.push(segment.interp);
+		}
+	}
+	return out;
+}
+
+/**
+ * Resolve the source location an interpolation consumes, without applying its
+ * filters. This intentionally mirrors template.ts's exact-key fast path: a
+ * dotted spreadsheet header remains one source key, while a true nested path
+ * selects only its leaf so unrelated siblings remain housekeeping.
+ */
+function resolveReviewPath(interp: Interpolation, scope: Record<string, unknown>): ResolvedReviewPath {
+	const rawPath = interp.rawPath.trim();
+	const direct = (
+		interp.path.length === 1
+		|| (
+			interp.path.length > 1
+			&& interp.path.every((segment) => !segment.literal)
+			&& Object.prototype.hasOwnProperty.call(scope, rawPath)
+		)
+	);
+	const path = direct ? [interpolationColumn(interp).column] : interp.path.map((segment) => segment.name);
+	let value: unknown = scope;
+	for (const segment of path) {
+		if (value === null || typeof value !== 'object') {
+			value = undefined;
+			break;
+		}
+		value = (value as Record<string, unknown>)[segment];
+	}
+	return {
+		key: canonicalStringify(path),
+		path,
+		value,
+	};
+}
+
+/** Deduplicate and sort selected source values so recipe declaration order is irrelevant. */
+function selectedReviewValues(
+	interpolations: Interpolation[],
+	scope: Record<string, unknown>,
+): { values: Array<{ path: string[]; value: unknown }>; paths: string[][] } {
+	const selected = new Map<string, ResolvedReviewPath>();
+	for (const interp of interpolations) {
+		const resolved = resolveReviewPath(interp, scope);
+		selected.set(resolved.key, resolved);
+	}
+	const ordered = [...selected.values()].sort((a, b) => a.key.localeCompare(b.key));
+	return {
+		values: ordered.map(({ path, value }) => ({ path, value: normalizeForReview(value) })),
+		paths: ordered.map(({ path }) => path),
+	};
+}
+
+function cloneForHousekeeping(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(cloneForHousekeeping);
+	if (value !== null && typeof value === 'object') {
+		const out: Record<string, unknown> = {};
+		for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+			out[key] = cloneForHousekeeping(child);
+		}
+		return out;
+	}
+	return value;
+}
+
+/** Remove one consumed leaf while preserving every unconsumed sibling. */
+function omitReviewPath(scope: Record<string, unknown>, path: string[]): void {
+	if (path.length === 0) return;
+	let parent: unknown = scope;
+	for (let index = 0; index < path.length - 1; index++) {
+		if (parent === null || typeof parent !== 'object') return;
+		parent = (parent as Record<string, unknown>)[path[index]];
+	}
+	if (parent === null || typeof parent !== 'object') return;
+	const leaf = path[path.length - 1];
+	if (Array.isArray(parent) && /^\d+$/.test(leaf)) {
+		// Do not splice: shifting indexes would turn an excluded field into a
+		// housekeeping change. Undefined serializes as null inside arrays.
+		parent[Number(leaf)] = undefined;
+	} else {
+		delete (parent as Record<string, unknown>)[leaf];
+	}
+}
+
+function reviewGroupCid(group: keyof ReviewGroupCids, value: unknown): string {
+	return toSha256Cid(sha256Hex(canonicalStringify({ group, value: normalizeForReview(value) })));
+}
+
+/**
+ * Compute the three recipe-driven explanation hashes for one concept row.
+ *
+ * Priority is applied later, when hashes are compared: wording, then scope,
+ * then housekeeping. A source field used by both body and managed frontmatter
+ * may therefore change both hashes, but receives exactly one `wording` verdict.
+ */
+export function computeReviewGroupCids(
+	record: ConceptIdentityRecord,
+	recipe: Pick<Recipe, 'target'>,
+): ReviewGroupCids {
+	const wordingTemplates = (recipe.target.also_emit?.body ?? []).map((entry) => entry.template);
+	const managed = recipe.target.also_emit?.frontmatter?.managed ?? {};
+	const managedLinks = recipe.target.also_emit?.frontmatter?.managed_links ?? {};
+	const scopeTemplates = [
+		...Object.values(managed),
+		...Object.values(managedLinks).map((entry) => entry.template),
+	];
+
+	const wording = selectedReviewValues(reviewInterpolations(wordingTemplates), record.scope);
+	const scope = selectedReviewValues(reviewInterpolations(scopeTemplates), record.scope);
+	const housekeepingScope = cloneForHousekeeping(record.scope) as Record<string, unknown>;
+	const consumed = new Map<string, string[]>();
+	for (const path of [...wording.paths, ...scope.paths]) consumed.set(canonicalStringify(path), path);
+	for (const path of consumed.values()) omitReviewPath(housekeepingScope, path);
+
+	return {
+		wording: reviewGroupCid('wording', wording.values),
+		scope: reviewGroupCid('scope', scope.values),
+		// CURIE changes are not recipe projections, but they are part of review_cid.
+		// Keeping identity in the residual group guarantees every whole-row change
+		// has a conservative explanation rather than falling through unclassified.
+		housekeeping: reviewGroupCid('housekeeping', {
+			curie: record.curie,
+			scope: housekeepingScope,
+		}),
+	};
 }
 
 /**

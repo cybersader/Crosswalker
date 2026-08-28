@@ -52,10 +52,10 @@ describe('Tier 2 v4 import-set, identity, and mapping-set provenance', () => {
 	afterEach(() => db.close());
 
 	it('installs the v4 ownership columns, composed occurrence key, and identity indexes', () => {
-		// Version moved to v5 when the review-baseline columns landed (Ch 43).
+		// Version moved to v6 when recipe-group review hashes landed (Ch 43).
 		// The v4 ownership guarantees this test covers are unaffected: every
 		// version bump drops and rebuilds, so they are re-asserted below.
-		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v5');
+		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v6');
 		for (const table of ['concepts', 'mappings', 'junction_notes']) {
 			expect(rows(db, `SELECT name FROM pragma_table_info('${table}') ORDER BY cid`)).toContainEqual(['import_set_id']);
 		}
@@ -68,6 +68,59 @@ describe('Tier 2 v4 import-set, identity, and mapping-set provenance', () => {
 		expect(() => db.exec(`INSERT INTO mappings
 			(mapping_set_id, subject_id, predicate_id, predicate_modifier, object_id, source_path, source_hash)
 			VALUES ('set:a','x:A','is_equivalent_to','not','x:B','bad.md','hash')`)).toThrow();
+	});
+
+	it('projects only complete current and baseline review-group blocks', async () => {
+		const group = {
+			wording: `sha256-${'a'.repeat(64)}`,
+			scope: `sha256-${'b'.repeat(64)}`,
+			housekeeping: `sha256-${'c'.repeat(64)}`,
+		};
+		const reviewCid = `sha256-${'d'.repeat(64)}`;
+		const entries: Array<[string, Record<string, unknown>]> = [
+			['Concepts/A.md', {
+				curie: 'example:A', title: 'A',
+				_crosswalker: { ...provenance(), review_cid: reviewCid, review_groups: group },
+			}],
+			['Concepts/B.md', {
+				curie: 'example:B', title: 'B',
+				_crosswalker: {
+					...provenance(), review_cid: reviewCid,
+					review_groups: { wording: group.wording, scope: group.scope },
+				},
+			}],
+			['Evidence/a.md', {
+				kind: 'junction-note', curie: 'cwk:a', subject: '[[Concepts/A]]', subject_curie: 'example:A',
+				predicate: 'has_evidence', object: '[[Policy]]', status: 'approved', coverage: 'full',
+				reviewed_against: { curie: 'example:A', review_cid: reviewCid, review_groups: group },
+				_crosswalker: provenance(),
+			}],
+			['Evidence/b.md', {
+				kind: 'junction-note', curie: 'cwk:b', subject: '[[Concepts/B]]', subject_curie: 'example:B',
+				predicate: 'has_evidence', object: '[[Policy]]', status: 'approved', coverage: 'full',
+				reviewed_against: {
+					curie: 'example:B', review_cid: reviewCid,
+					review_groups: { wording: group.wording, housekeeping: group.housekeeping },
+				},
+				_crosswalker: provenance(),
+			}],
+		];
+		const result = await projectFromTier1(mockApp(entries), db);
+		expect(result.success).toBe(true);
+		expect(rows(db, `
+			SELECT curie, review_wording_cid, review_scope_cid, review_housekeeping_cid
+			FROM concepts ORDER BY curie
+		`)).toEqual([
+			['example:A', group.wording, group.scope, group.housekeeping],
+			['example:B', null, null, null],
+		]);
+		expect(rows(db, `
+			SELECT vault_path, reviewed_wording_cid, reviewed_scope_cid, reviewed_housekeeping_cid
+			FROM junction_notes ORDER BY vault_path
+		`)).toEqual([
+			['Evidence/a.md', group.wording, group.scope, group.housekeeping],
+			['Evidence/b.md', null, null, null],
+		]);
 	});
 
 	it('projects explicit identities, preserves release occurrences, and reconciles concept versions lexically', async () => {

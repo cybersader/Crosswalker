@@ -347,9 +347,9 @@ describe('the view cannot double-count', () => {
 });
 
 describe('the schema version moved so every sidecar rebuilds', () => {
-	it('is tier2-sqlite-v5', () => {
-		// The freshness view changed shape. A sidecar left on v4 would answer
+	it('is tier2-sqlite-v6', () => {
+		// The freshness view changed shape. A sidecar left on v5 would answer
 		// with the old ladder and no subject_baseline column at all.
-		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v5');
+		expect(TIER2_SCHEMA_VERSION).toBe('tier2-sqlite-v6');
 	});
 });

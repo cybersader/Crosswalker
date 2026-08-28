@@ -1,10 +1,10 @@
 -- ================================================================
 -- Crosswalker Tier 2 sidecar — sqlite-wasm projection of Tier 1
--- Schema version: tier2-sqlite-v5
+-- Schema version: tier2-sqlite-v6
 --
 -- Per spec/tier1.schema.json + v0.1 schema spec §7.
--- This file is the canonical DDL; the migrations module (migrations.ts)
--- reads it at sidecar-open time.
+-- This file is the canonical DDL. migrations.ts duplicates its executable
+-- SQL for bundling; tests/tier2-schema-consistency.test.ts prevents drift.
 -- ================================================================
 
 PRAGMA foreign_keys = ON;
@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS concepts (
   -- Content fingerprint an attestation can be compared against (Ch 43).
   -- NULL = the producer did not compute one, which is NOT a claim of no change.
   review_cid     TEXT,
+  -- Recipe-driven sub-fingerprints explain a changed review_cid. NULL means
+  -- this producer predates classification; changed legacy baselines default to
+  -- wording so they can never be dismissed as housekeeping without evidence.
+  review_wording_cid     TEXT,
+  review_scope_cid       TEXT,
+  review_housekeeping_cid TEXT,
   -- Hierarchy
   parent_curie   TEXT,                    -- single-parent CURIE for tree
   -- Lifecycle
@@ -123,6 +129,9 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   -- still counts toward coverage. Never a half-record.
   reviewed_against_curie TEXT,
   reviewed_against_cid   TEXT,
+  reviewed_wording_cid   TEXT,
+  reviewed_scope_cid     TEXT,
+  reviewed_housekeeping_cid TEXT,
   -- Provenance
   import_set_id   TEXT,
   source_hash     TEXT NOT NULL,
@@ -190,7 +199,28 @@ SELECT
     WHEN c.review_cid IS NULL                    THEN 'subject-unhashed'
     WHEN c.review_cid <> jn.reviewed_against_cid THEN 'changed'
     ELSE 'match'
-  END AS subject_baseline
+  END AS subject_baseline,
+  CASE
+    WHEN jn.reviewed_against_cid IS NULL
+         OR c.review_cid IS NULL
+         OR c.review_cid = jn.reviewed_against_cid
+      THEN NULL
+    -- A changed legacy baseline has no defensible per-group comparison. Classify
+    -- it conservatively as wording so it cannot enter the housekeeping-dismiss
+    -- path. New baselines always carry all six comparable group hashes.
+    WHEN jn.reviewed_wording_cid IS NULL
+         OR jn.reviewed_scope_cid IS NULL
+         OR jn.reviewed_housekeeping_cid IS NULL
+         OR c.review_wording_cid IS NULL
+         OR c.review_scope_cid IS NULL
+         OR c.review_housekeeping_cid IS NULL
+      THEN 'wording'
+    WHEN c.review_wording_cid <> jn.reviewed_wording_cid
+      THEN 'wording'
+    WHEN c.review_scope_cid <> jn.reviewed_scope_cid
+      THEN 'scope'
+    ELSE 'housekeeping'
+  END AS change_kind
 FROM junction_notes jn
 LEFT JOIN concepts c
   ON c.rowid = (

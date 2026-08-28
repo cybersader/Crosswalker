@@ -13,7 +13,7 @@ tags: [schema, foundation, v0-1, architecture]
 
 The machine-readable contracts and canonical SQL remain authoritative. Sections §3 and §7 below summarize the shipped shapes. Historical TypeScript/YAML sketches are labeled as history and must not be used as implementation contracts.
 
-The 2026-08-21 additive contract changes close the earlier P2/P3 gaps and add durable import ownership: explicit hierarchy/endpoint identities, mapping-set provenance, `predicate_modifier: NOT`, and `_crosswalker.import_set` now validate and project. Import sets may keep endpoint-derived assertion identities or mint set-qualified identities for coexisting crosswalk releases. Source ordering remains a separate open P1 question in the [primitives reconciliation decision register](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/).
+The 2026-08-28 Challenge 43 additions make approved evidence sensitive to source change without redefining concept identity. `_crosswalker.review_cid` remains the normalized whole-row change gate. Optional `review_groups` blocks partition that same source row into three explanation groups (source: `spec/tier1.schema.json § $defs.review_group_cids`): recipe body projections are `wording`, recipe-managed frontmatter and managed links are `scope`, and residual source content is `housekeeping`. Release lineage remains ordinary crosswalk data through `superseded_by` / `supersedes`.
 :::
 
 ## §1 Why this page exists
@@ -128,7 +128,8 @@ Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schem
 | `recipe` | No | Recipe identifier and content hash used for this output |
 | `import_set` | No | Durable ownership stamp: `id` matches `^iset-[a-z0-9]{6}$`; `scheme` is fixed at mint. The closed enum is `endpoint-v1 | set-qualified-v1` (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set.properties.scheme.enum`) |
 | `concept_cid` | No | Content identifier for the declared concept-identity scope; layout and mapping-only defaults do not enter a concept's scope |
-| `review_cid` | No | The same identity record hashed with the review-normalization rule applied to every string value, so cosmetically-different content (citation markers, curly quotes, collapsed whitespace, markdown link destinations) hashes identically here and differently in `concept_cid`. What an attestation records at approval and is later compared against. Absent means the producer computed none, which is not a claim that the content is unchanged |
+| `review_cid` | No | The same identity record hashed with the review-normalization rule applied to every string value, so cosmetically-different content (citation markers, curly quotes, collapsed whitespace, markdown link destinations) hashes identically here and differently in `concept_cid`. This normalized whole-row hash is the only changed/not-changed gate. Absent means the producer computed none, which is not a claim that the content is unchanged |
+| `review_groups` | No | Three recipe-driven explanation hashes, all required when the block is present: `wording`, `scope`, and `housekeeping` (source: `spec/tier1.schema.json § $defs.review_group_cids`). They classify a changed `review_cid`; they never replace or narrow the whole-row gate |
 
 
 Crosswalk assertion identity (the stable name of one mapping note) follows the owning set's fixed scheme. Both values and forms below are defined by `spec/tier1.schema.json § $defs.provenance_block.properties.import_set.properties.scheme`:
@@ -170,7 +171,7 @@ A junction note (one evidence relationship represented as its own note) keeps en
 | `coverage` | No | `full`, `partial`, `none`, or `n/a` |
 | `reviewer`, `review_date`, `status`, `confidence` | No | Review and lifecycle facts |
 | `scope`, `expires_at`, `notes`, `tags` | No | Scope, expiry, annotation, and Obsidian tags |
-| `reviewed_against` | No | The review baseline: `{ curie, review_cid }`, both required together, `additionalProperties: false` (source: `spec/tier1.schema.json § $defs.junction_note_frontmatter.properties.reviewed_against`). The subject, and the subject's normalized content fingerprint, as the approver read them. Written only when a human approves; a producer must never fabricate one. Absent is the named state `unrecorded`: the link still counts toward coverage, and the coverage report names it rather than implying the subject is unchanged |
+| `reviewed_against` | No | The review baseline: required `{ curie, review_cid }` plus optional complete `review_groups` (source: `spec/tier1.schema.json § $defs.junction_note_frontmatter.properties.reviewed_against`). The subject and whole-row fingerprint record what the approver read; the group hashes explain a later difference. Written only when a human approves. Absent is the named state `unrecorded`: the link still counts toward coverage, and the report names it rather than implying the subject is unchanged |
 
 ### Crosswalk-edge fields
 
@@ -827,16 +828,16 @@ v0.1 ships `@sqlite.org/sqlite-wasm` as the embedded query substrate. `sqlite-ve
 
 ### Current schema summary
 
-`src/tier2/schema.sql` is the canonical DDL. Tier 2 currently ships as `tier2-sqlite-v5`. The table below cites every stored column by table so additions are reviewable without copying a second SQL source that can drift.
+`src/tier2/schema.sql` is the canonical DDL. Tier 2 currently ships as `tier2-sqlite-v6`. The table below cites every stored column by table so additions are reviewable without copying a second SQL source that can drift.
 
 | Table/view | Current columns | Purpose |
 |---|---|---|
 | `schema_meta` | `key`, `value` | Schema and projection metadata |
 | `ontologies` | `id`, `name`, `version`, `base_path`, `upstream_url`, `recipe_id`, `imported_at`, `control_count` | One represented ontology summary |
-| `concepts` | `ontology_id`, `curie`, `vault_path`, `source_hash`, `import_set_id`, `title`, `review_cid`, `parent_curie`, `status`, `imported_at`, `modified_at` | Canonical concept projection with explicit parent identity |
+| `concepts` | `ontology_id`, `curie`, `vault_path`, `source_hash`, `import_set_id`, `title`, `review_cid`, `review_wording_cid`, `review_scope_cid`, `review_housekeeping_cid`, `parent_curie`, `status`, `imported_at`, `modified_at` | Canonical concept projection with explicit parent identity and current review fingerprints |
 | `mappings` | `import_set_id`, `mapping_set_id`, `subject_id`, `predicate_id`, `predicate_modifier`, `object_id`, `match_type`, `match_confidence`, `mapping_justification`, `mapping_provider`, `mapping_date`, `creator_id`, `review_status`, `source_path`, `source_hash` | One mapping occurrence with release provenance and explicit negation |
-| `junction_notes` | `vault_path`, `curie`, `subject`, `subject_curie`, `predicate`, `object`, `object_curie`, `coverage`, `reviewer`, `review_date`, `status`, `confidence`, `scope`, `expires_at`, `notes`, `reviewed_against_curie`, `reviewed_against_cid`, `import_set_id`, `source_hash`, `modified_at` | Evidence relationship with separate addresses and identities. The two baseline columns are projected as a pair: if either is missing in Tier 1, both bind NULL |
-| `junction_notes_with_freshness` | All junction columns plus computed `freshness` and `subject_baseline` | Review-age and content-drift view. `freshness` is `expired` \| `stale` \| `subject-changed` \| `not-set` \| `fresh`, first match wins; `subject_baseline` is `unrecorded` \| `subject-absent` \| `subject-unhashed` \| `changed` \| `match`, computed independently so a link that is both expired and content-changed loses neither fact (source: `src/tier2/schema.sql § junction_notes_with_freshness`) |
+| `junction_notes` | `vault_path`, `curie`, `subject`, `subject_curie`, `predicate`, `object`, `object_curie`, `coverage`, `reviewer`, `review_date`, `status`, `confidence`, `scope`, `expires_at`, `notes`, `reviewed_against_curie`, `reviewed_against_cid`, `reviewed_wording_cid`, `reviewed_scope_cid`, `reviewed_housekeeping_cid`, `import_set_id`, `source_hash`, `modified_at` | Evidence relationship with separate addresses and identities. The subject/whole-row pair projects together; group hashes project only as one complete three-value block (source: `src/tier2/projector.ts § upsertJunctionNote`) |
+| `junction_notes_with_freshness` | All junction columns plus computed `freshness`, `subject_baseline`, and `change_kind` | Review-age and content-drift view. `review_cid` alone gates `subject_baseline = changed`; only then does `change_kind` compare the three group hashes in priority order `wording` > `scope` > `housekeeping`. A changed legacy baseline without complete group hashes defaults conservatively to `wording`, so it cannot enter the housekeeping dismissal path (source: `src/tier2/schema.sql § junction_notes_with_freshness`) |
 | `closure_cache` | `subject_id`, `predicate_id`, `object_id`, `shortest_depth`, `computed_at` | Cached transitive answers |
 | `closure_cache_state` | `subject_id`, `predicate_id`, `computed_max_depth`, `computed_at` | Proof that a closure partition was computed through a depth, including empty results |
 | `concept_embeddings` | Reserved virtual-table shape | Optional future vector projection; not authoritative |
@@ -854,10 +855,11 @@ The mapping primary key includes `mapping_set_id`, the subject/predicate/modifie
 7. Exclude `predicate_modifier = 'NOT'` from effective graph edges, including symmetric and inverse expansion. Direct `crosswalkBetween()` queries retain negated rows and their provenance.
 8. Invalidate mapping-dependent closure rows and depth-coverage state together whenever mappings change.
 9. Prune unseen rows only during a complete `full` projection. Filters, projection errors, or unreadable-but-present frontmatter suppress pruning.
+10. Project `review_groups` only when all three schema-defined hashes are present. Compare them only after the whole-row `review_cid` differs; apply `wording` > `scope` > `housekeeping` so one attestation receives exactly one change kind.
 
 ### Schema-version migration
 
-Tier 2 now ships `tier2-sqlite-v5`. Because Tier 2 is derived, opening any other schema version drops and recreates the sidecar, then reprojects canonical Tier 1 Markdown. v5 adds nullable `concepts.review_cid` plus the `junction_notes` baseline pair, and rebuilds the freshness view with content as a third driver beside expiry and time. It preserves the v4 ownership projection and the v3 mapping-occurrence, negation, endpoint-identity, and depth-safe closure-cache model.
+Tier 2 now ships `tier2-sqlite-v6`. Because Tier 2 is derived, opening any other schema version drops and recreates the sidecar, then reprojects canonical Tier 1 Markdown. v6 adds current and recorded wording/scope/housekeeping hashes and the computed `change_kind`; v5 introduced the whole-row `review_cid` gate and baseline pair. It preserves the v4 ownership projection and the v3 mapping-occurrence, negation, endpoint-identity, and depth-safe closure-cache model.
 
 ## §8 Cross-schema invariants & constraints
 

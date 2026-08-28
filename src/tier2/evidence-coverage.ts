@@ -144,6 +144,12 @@ export type ExclusionReason =
  */
 export type BaselineGap = 'unrecorded' | 'subject-absent' | 'subject-unhashed';
 
+/** Current comparison state for an attestation subject. */
+export type SubjectBaseline = BaselineGap | 'changed' | 'match';
+
+/** Highest-priority recipe-driven explanation for a changed subject. */
+export type ReviewChangeKind = 'wording' | 'scope' | 'housekeeping';
+
 /** One valid link whose subject state at approval cannot be compared to now. */
 export interface UnbaselinedJunction {
 	vault_path: string;
@@ -159,6 +165,10 @@ export interface ExcludedJunction {
 	subject_curie: string | null;
 	predicate: string;
 	reason: ExclusionReason;
+	/** Independent of the primary exclusion reason (for example expired + changed). */
+	subject_baseline: SubjectBaseline;
+	/** Null unless subject_baseline is changed. */
+	change_kind: ReviewChangeKind | null;
 }
 
 /**
@@ -411,6 +421,8 @@ export function diagnoseExcludedJunctions(db: any): ExcludedJunction[] {
 				j.subject,
 				j.subject_curie,
 				j.predicate,
+				j.subject_baseline,
+				j.change_kind,
 				CASE
 					WHEN j.predicate <> $predicate THEN 'predicate-not-canonical'
 					WHEN j.subject_curie IS NULL OR j.subject_curie = '' THEN 'no-subject-identity'
@@ -445,7 +457,9 @@ export function diagnoseExcludedJunctions(db: any): ExcludedJunction[] {
 		subject: String(r[1]),
 		subject_curie: r[2] === null || r[2] === undefined || r[2] === '' ? null : String(r[2]),
 		predicate: String(r[3]),
-		reason: String(r[4]) as ExclusionReason,
+		subject_baseline: String(r[4]) as SubjectBaseline,
+		change_kind: r[5] === null || r[5] === undefined ? null : String(r[5]) as ReviewChangeKind,
+		reason: String(r[6]) as ExclusionReason,
 	}));
 }
 

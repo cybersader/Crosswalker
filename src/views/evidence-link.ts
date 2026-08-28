@@ -25,6 +25,7 @@
 import { CANONICAL_EVIDENCE_PREDICATE } from '../tier2/evidence-coverage';
 import { buildProvenance } from '../generation/provenance';
 import type { ImportSetReference } from '../generation/import-set';
+import type { ReviewGroupCids } from '../generation/hash';
 
 /** How much of the control this evidence covers. */
 export type EvidenceCoverage = 'full' | 'partial' | 'none';
@@ -46,6 +47,8 @@ export interface EvidenceLinkInput {
 	 * unchanged; the link is written without a baseline and reported as such.
 	 */
 	controlReviewCid?: string | null;
+	/** Optional recipe-driven explanation hashes from the control provenance. */
+	controlReviewGroups?: ReviewGroupCids | null;
 	/** Vault path of the evidence document. */
 	evidencePath: string;
 	coverage: EvidenceCoverage;
@@ -161,12 +164,24 @@ export function evidenceLinkCurie(controlPath: string, evidencePath: string): st
  * re-attestation contract §2, and `project_cache_lag_is_not_absence` — three
  * bugs in one week from reading "not recorded" as "not true".
  */
+export interface ReviewedAgainst {
+	curie: string;
+	review_cid: string;
+	/** Optional for legacy producers; all three or none. */
+	review_groups?: ReviewGroupCids;
+}
+
 export function reviewedAgainstFor(
 	subjectCurie: string | null | undefined,
 	subjectReviewCid: string | null | undefined,
-): { curie: string; review_cid: string } | null {
+	subjectReviewGroups?: ReviewGroupCids | null,
+): ReviewedAgainst | null {
 	if (!subjectCurie || !subjectReviewCid) return null;
-	return { curie: subjectCurie, review_cid: subjectReviewCid };
+	return {
+		curie: subjectCurie,
+		review_cid: subjectReviewCid,
+		...(subjectReviewGroups ? { review_groups: { ...subjectReviewGroups } } : {}),
+	};
 }
 
 /**
@@ -181,7 +196,11 @@ export function reviewedAgainstFor(
 export function buildEvidenceLink(input: EvidenceLinkInput): EvidenceLinkNote {
 	const control = basename(input.controlPath);
 	const evidence = basename(input.evidencePath);
-	const reviewedAgainst = reviewedAgainstFor(input.controlCurie, input.controlReviewCid);
+	const reviewedAgainst = reviewedAgainstFor(
+		input.controlCurie,
+		input.controlReviewCid,
+		input.controlReviewGroups,
+	);
 
 	const lines: string[] = ['---'];
 	lines.push(`curie: ${evidenceLinkCurie(input.controlPath, input.evidencePath)}`);
@@ -204,6 +223,12 @@ export function buildEvidenceLink(input: EvidenceLinkInput): EvidenceLinkNote {
 		lines.push('reviewed_against:');
 		lines.push(`  curie: ${yamlString(reviewedAgainst.curie)}`);
 		lines.push(`  review_cid: ${reviewedAgainst.review_cid}`);
+		if (reviewedAgainst.review_groups) {
+			lines.push('  review_groups:');
+			lines.push(`    wording: ${reviewedAgainst.review_groups.wording}`);
+			lines.push(`    scope: ${reviewedAgainst.review_groups.scope}`);
+			lines.push(`    housekeeping: ${reviewedAgainst.review_groups.housekeeping}`);
+		}
 	}
 	lines.push('tags: [evidence/junction]');
 

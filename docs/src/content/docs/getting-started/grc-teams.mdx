@@ -8,7 +8,7 @@ tags: [grc, evidence-mapping, frameworks-mapping]
 
 Every GRC practitioner knows this pain: you have **evidence** (policies, procedures, audit findings, screenshots, technical configs) scattered across wikis, SharePoint, OneNote, and email. You have **[frameworks](/crosswalker/concepts/framework-standards/)** (NIST, CIS, MITRE, CRI, FFIEC) in massive spreadsheets. And you need to prove to [auditors](/crosswalker/concepts/institutional-landscape/#the-entities) that specific evidence satisfies specific controls.
 
-**Status last verified:** 2026-08-21 — verified against the shipped evidence recipe and coverage report.
+**Status last verified:** 2026-08-28 — verified in real Obsidian against the ATT&CK release-drift report and selected housekeeping re-baseline flow.
 
 This is **evidence mapping** — the core work of compliance — and the tools are broken. Understanding [who owns what](/crosswalker/concepts/institutional-landscape/) in the ontology ecosystem helps explain why.
 
@@ -117,7 +117,9 @@ Two different tools answer two different kinds of question, and it is worth know
 
 That split is not a limitation anyone chose; it is what the two tools can each honestly do. A Bases view filters the notes in your vault. A control with no evidence has no evidence note to filter, so there is nothing for a view to show — the control simply does not appear, and an empty result looks identical to a clean bill of health. Counting backlinks does not rescue it either, because hierarchy links, index links, and framework crosswalks are all backlinks, so nearly every control looks covered.
 
-Crosswalker therefore computes coverage from its own index, which can tell the difference between "no evidence" and "no row". Run **Evidence coverage report** from the command palette. It writes a note listing the controls with no valid evidence, the partially covered ones, and any evidence links it had to **set aside** and why: wrong direction, unapproved status, expired review. A low score sends you to the data rather than to a panic.
+Crosswalker therefore computes coverage from its own index, which can tell the difference between "no evidence" and "no row". Run **Evidence coverage report** from the command palette. It writes a note listing the controls with no valid evidence, the partially covered ones, and any evidence links it had to **set aside** and why: wrong direction, unapproved status, expired review, or a control that changed after approval. A low score sends you to the data rather than to a panic.
+
+Changed controls appear in three review queues, in this order: wording, scope, then housekeeping. Each heading gives its count, and every changed link appears once. Wording and scope changes need human re-review. For housekeeping-only source changes, select the rows you mean to acknowledge and run **Record selected housekeeping changes as baseline**. Crosswalker asks for confirmation and updates only those recorded fingerprints; it does not change approval status, reviewer, or review date. A link with no recorded baseline still counts and is named separately, because missing history is not proof that the control stayed unchanged.
 
 The report also states when the index behind it was last rebuilt, and warns you if that rebuild was incomplete. It is regenerated from scratch each run, so keep your own notes elsewhere.
 

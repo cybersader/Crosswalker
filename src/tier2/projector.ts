@@ -26,6 +26,7 @@ import { App, TFile } from 'obsidian';
 import { DebugLog } from '../utils/debug';
 import { extractTier1Curie } from '../validation/validator';
 import { normalizeMappingSetId, readStoredPredicateModifier } from '../utils/mapping-provenance';
+import { readReviewGroupCids } from '../generation/hash';
 
 /**
  * Result of a projection pass. Counts per Tier 2 table + skipped (files
@@ -425,12 +426,13 @@ function upsertConcept(db: any, file: TFile, fm: Record<string, any>): void {
 	const importSetId = extractImportSetId(fm);
 	const importedAt = extractProducedAt(fm) ?? new Date().toISOString();
 	const modifiedAt = new Date(file.stat.mtime).toISOString();
+	const reviewGroups = readReviewGroupCids(fm._crosswalker?.review_groups);
 
 	db.exec({
 		sql: `
 			INSERT OR REPLACE INTO concepts
-				(ontology_id, curie, vault_path, source_hash, import_set_id, title, review_cid, parent_curie, status, imported_at, modified_at)
-			VALUES ($ontology_id, $curie, $vault_path, $source_hash, $import_set_id, $title, $review_cid, $parent_curie, $status, $imported_at, $modified_at)
+				(ontology_id, curie, vault_path, source_hash, import_set_id, title, review_cid, review_wording_cid, review_scope_cid, review_housekeeping_cid, parent_curie, status, imported_at, modified_at)
+			VALUES ($ontology_id, $curie, $vault_path, $source_hash, $import_set_id, $title, $review_cid, $review_wording_cid, $review_scope_cid, $review_housekeeping_cid, $parent_curie, $status, $imported_at, $modified_at)
 		`,
 		bind: {
 			$ontology_id: ontologyId,
@@ -440,6 +442,9 @@ function upsertConcept(db: any, file: TFile, fm: Record<string, any>): void {
 			$import_set_id: importSetId,
 			$title: title,
 			$review_cid: stringOrNull(fm._crosswalker?.review_cid),
+			$review_wording_cid: reviewGroups?.wording ?? null,
+			$review_scope_cid: reviewGroups?.scope ?? null,
+			$review_housekeeping_cid: reviewGroups?.housekeeping ?? null,
 			$parent_curie: parentCurie,
 			$status: status,
 			$imported_at: importedAt,
@@ -479,12 +484,15 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 		? stringOrNull((reviewedAgainst as Record<string, unknown>).review_cid)
 		: null;
 	const baselineComplete = reviewedAgainstCurie !== null && reviewedAgainstCid !== null;
+	const reviewedGroups = baselineComplete
+		? readReviewGroupCids((reviewedAgainst as Record<string, unknown>).review_groups)
+		: null;
 
 	db.exec({
 		sql: `
 			INSERT OR REPLACE INTO junction_notes
-				(vault_path, curie, subject, subject_curie, predicate, object, object_curie, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, reviewed_against_curie, reviewed_against_cid, import_set_id, source_hash, modified_at)
-			VALUES ($vault_path, $curie, $subject, $subject_curie, $predicate, $object, $object_curie, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $reviewed_against_curie, $reviewed_against_cid, $import_set_id, $source_hash, $modified_at)
+				(vault_path, curie, subject, subject_curie, predicate, object, object_curie, coverage, reviewer, review_date, status, confidence, scope, expires_at, notes, reviewed_against_curie, reviewed_against_cid, reviewed_wording_cid, reviewed_scope_cid, reviewed_housekeeping_cid, import_set_id, source_hash, modified_at)
+			VALUES ($vault_path, $curie, $subject, $subject_curie, $predicate, $object, $object_curie, $coverage, $reviewer, $review_date, $status, $confidence, $scope, $expires_at, $notes, $reviewed_against_curie, $reviewed_against_cid, $reviewed_wording_cid, $reviewed_scope_cid, $reviewed_housekeeping_cid, $import_set_id, $source_hash, $modified_at)
 		`,
 		bind: {
 			$vault_path: file.path,
@@ -504,6 +512,9 @@ function upsertJunctionNote(db: any, file: TFile, fm: Record<string, any>): void
 			$notes: stringOrNull(fm.notes),
 			$reviewed_against_curie: baselineComplete ? reviewedAgainstCurie : null,
 			$reviewed_against_cid: baselineComplete ? reviewedAgainstCid : null,
+			$reviewed_wording_cid: reviewedGroups?.wording ?? null,
+			$reviewed_scope_cid: reviewedGroups?.scope ?? null,
+			$reviewed_housekeeping_cid: reviewedGroups?.housekeeping ?? null,
 			$import_set_id: importSetId,
 			$source_hash: sourceHash,
 			$modified_at: modifiedAt,
@@ -720,7 +731,7 @@ function derivePathPrefix(vaultPath: string): string {
  * security-critical here — this is for change detection, not integrity.
  * (Cryptographic hashes for the audit trail are a v0.1.8 concern.)
  */
-function hashFrontmatter(fm: Record<string, any>): string {
+export function hashFrontmatter(fm: Record<string, any>): string {
 	const stable = stripVolatile(fm);
 	const json = canonicalJson(stable);
 	return 'fnv1a-' + fnv1a32(json).toString(16).padStart(8, '0');

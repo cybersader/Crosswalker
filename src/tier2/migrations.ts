@@ -1,7 +1,7 @@
 /**
  * Tier 2 schema migrations.
  *
- * Tier 2 currently ships `tier2-sqlite-v5`. If a sidecar reports a different
+ * Tier 2 currently ships `tier2-sqlite-v6`. If a sidecar reports a different
  * schema_version (or no version at all), the simplest correct response
  * is to drop all tables and recreate from canonical Tier 1. The Tier 1
  * vault is the source of truth; the sidecar is a deletable projection.
@@ -13,18 +13,15 @@
  * risk-free to bundle in v0.1."
  */
 
-export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v5';
+export const TIER2_SCHEMA_VERSION = 'tier2-sqlite-v6';
 
 /**
- * The DDL for tier2-sqlite-v5. Imported as a string at build time
- * from src/tier2/schema.sql. esbuild's `text` loader handles `.sql`
- * imports as plain strings.
- *
- * In v0.1.5 we inline the DDL here as a string because esbuild's
- * default TS pipeline doesn't auto-load .sql; explicit constants
- * keep the build simple.
+ * Bundled DDL for tier2-sqlite-v6. The canonical authoring surface is
+ * src/tier2/schema.sql, but the plugin does not load .sql at runtime, so the
+ * executable SQL is duplicated here. tests/tier2-schema-consistency.test.ts
+ * compares both surfaces after removing comments and formatting.
  */
-export const TIER2_DDL_V5 = `
+export const TIER2_DDL_V6 = `
 PRAGMA foreign_keys = ON;
 PRAGMA synchronous = NORMAL;
 
@@ -52,6 +49,9 @@ CREATE TABLE IF NOT EXISTS concepts (
   import_set_id  TEXT,
   title          TEXT NOT NULL DEFAULT '',
   review_cid     TEXT,
+  review_wording_cid      TEXT,
+  review_scope_cid        TEXT,
+  review_housekeeping_cid TEXT,
   parent_curie   TEXT,
   status         TEXT NOT NULL DEFAULT 'active',
   imported_at    TEXT NOT NULL,
@@ -115,6 +115,9 @@ CREATE TABLE IF NOT EXISTS junction_notes (
   notes           TEXT,
   reviewed_against_curie TEXT,
   reviewed_against_cid   TEXT,
+  reviewed_wording_cid   TEXT,
+  reviewed_scope_cid     TEXT,
+  reviewed_housekeeping_cid TEXT,
   import_set_id   TEXT,
   source_hash     TEXT NOT NULL,
   modified_at     TEXT NOT NULL
@@ -150,7 +153,25 @@ SELECT
     WHEN c.review_cid IS NULL                    THEN 'subject-unhashed'
     WHEN c.review_cid <> jn.reviewed_against_cid THEN 'changed'
     ELSE 'match'
-  END AS subject_baseline
+  END AS subject_baseline,
+  CASE
+    WHEN jn.reviewed_against_cid IS NULL
+         OR c.review_cid IS NULL
+         OR c.review_cid = jn.reviewed_against_cid
+      THEN NULL
+    WHEN jn.reviewed_wording_cid IS NULL
+         OR jn.reviewed_scope_cid IS NULL
+         OR jn.reviewed_housekeeping_cid IS NULL
+         OR c.review_wording_cid IS NULL
+         OR c.review_scope_cid IS NULL
+         OR c.review_housekeeping_cid IS NULL
+      THEN 'wording'
+    WHEN c.review_wording_cid <> jn.reviewed_wording_cid
+      THEN 'wording'
+    WHEN c.review_scope_cid <> jn.reviewed_scope_cid
+      THEN 'scope'
+    ELSE 'housekeeping'
+  END AS change_kind
 FROM junction_notes jn
 LEFT JOIN concepts c
   ON c.rowid = (
@@ -231,7 +252,7 @@ export function applyMigrations(db: any): boolean {
 
 	// Apply the current DDL. The constant is version-named on purpose: a stale
 	// reference must fail to compile rather than silently apply an old shape.
-	db.exec(TIER2_DDL_V5);
+	db.exec(TIER2_DDL_V6);
 
 	// Stamp the version. Deliberately NOT `projected_at`: the tables were just
 	// emptied, so nothing has been projected. Recording a projection timestamp

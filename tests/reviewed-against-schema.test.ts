@@ -17,6 +17,11 @@
 import { initValidator, validateTier1Frontmatter } from '../src/validation/validator';
 
 const CID = `sha256-${'a'.repeat(64)}`;
+const GROUPS = {
+	wording: `sha256-${'b'.repeat(64)}`,
+	scope: `sha256-${'c'.repeat(64)}`,
+	housekeeping: `sha256-${'d'.repeat(64)}`,
+};
 
 beforeAll(() => {
 	initValidator();
@@ -48,6 +53,23 @@ describe('reviewed_against on a junction note', () => {
 		);
 		expect(result.errors).toEqual([]);
 		expect(result.valid).toBe(true);
+	});
+
+	it('accepts a complete optional recipe-group baseline', () => {
+		const result = validateTier1Frontmatter(junction({
+			reviewed_against: { curie: 'nist:AC-2', review_cid: CID, review_groups: GROUPS },
+		}));
+		expect(result.errors).toEqual([]);
+		expect(result.valid).toBe(true);
+	});
+
+	it('rejects a partial recipe-group baseline', () => {
+		expect(validateTier1Frontmatter(junction({
+			reviewed_against: {
+				curie: 'nist:AC-2', review_cid: CID,
+				review_groups: { wording: GROUPS.wording, scope: GROUPS.scope },
+			},
+		})).valid).toBe(false);
 	});
 
 	it('rejects a baseline with no fingerprint', () => {
@@ -94,6 +116,29 @@ describe('review_cid on the provenance block', () => {
 		});
 		expect(result.errors).toEqual([]);
 		expect(result.valid).toBe(true);
+	});
+
+	it('accepts a concept carrying a complete group block and rejects a partial one', () => {
+		const base = {
+			curie: 'nist:AC-2',
+			_crosswalker: {
+				spec_version: 'https://crosswalker.dev/spec/tier1.schema.json',
+				source_ref: { file: 'nist.csv' },
+				produced_at: '2026-05-04T18:42:00Z',
+				review_cid: CID,
+			},
+		};
+		expect(validateTier1Frontmatter({
+			...base,
+			_crosswalker: { ...base._crosswalker, review_groups: GROUPS },
+		}).valid).toBe(true);
+		expect(validateTier1Frontmatter({
+			...base,
+			_crosswalker: {
+				...base._crosswalker,
+				review_groups: { wording: GROUPS.wording, housekeeping: GROUPS.housekeeping },
+			},
+		}).valid).toBe(false);
 	});
 
 	it('accepts a concept note carrying none', () => {

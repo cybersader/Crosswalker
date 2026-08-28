@@ -13,6 +13,7 @@ import {
 	type EvidenceCoverage,
 	type EvidenceStatus,
 } from './evidence-link';
+import { readReviewGroupCids, type ReviewGroupCids } from '../generation/hash';
 
 /** A control note the user can link evidence to. */
 export interface ControlCandidate {
@@ -25,6 +26,7 @@ export interface ControlCandidate {
 	 * control can invalidate the claim. Null when the control carries none.
 	 */
 	reviewCid: string | null;
+	reviewGroups?: ReviewGroupCids | null;
 }
 
 /** Read `_crosswalker.review_cid` from a frontmatter object, or null. */
@@ -34,6 +36,14 @@ export function readReviewCid(fm: unknown): string | null {
 	if (!provenance || typeof provenance !== 'object') return null;
 	const value = (provenance as Record<string, unknown>).review_cid;
 	return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+/** Read a complete `_crosswalker.review_groups` block, or null. */
+export function readReviewGroups(fm: unknown): ReviewGroupCids | null {
+	if (!fm || typeof fm !== 'object') return null;
+	const provenance = (fm as Record<string, unknown>)._crosswalker;
+	if (!provenance || typeof provenance !== 'object') return null;
+	return readReviewGroupCids((provenance as Record<string, unknown>).review_groups);
 }
 
 /**
@@ -55,6 +65,7 @@ export function listControlCandidates(app: App): ControlCandidate[] {
 			title: typeof fm.title === 'string' && fm.title ? fm.title : file.basename,
 			curie: fm.curie,
 			reviewCid: readReviewCid(fm),
+			reviewGroups: readReviewGroups(fm),
 		});
 	}
 	return out.sort((a, b) => a.path.localeCompare(b.path));
@@ -200,6 +211,7 @@ export class EvidenceLinkModal extends Modal {
 		// Only an approval records a baseline, so only an approval needs the
 		// control's fingerprint resolved — and resolved honestly.
 		let controlReviewCid = this.control.reviewCid;
+		let controlReviewGroups = this.control.reviewGroups ?? null;
 		if (this.status === 'approved' && controlReviewCid === null) {
 			const controlFile = this.app.vault.getAbstractFileByPath(this.control.path);
 			if (controlFile instanceof TFile && !this.app.metadataCache.getFileCache(controlFile)) {
@@ -215,6 +227,7 @@ export class EvidenceLinkModal extends Modal {
 					return;
 				}
 				controlReviewCid = readReviewCid(fromDisk);
+				controlReviewGroups = readReviewGroups(fromDisk);
 			}
 			if (controlReviewCid === null) {
 				new Notice(
@@ -228,6 +241,7 @@ export class EvidenceLinkModal extends Modal {
 			controlPath: this.control.path,
 			controlCurie: this.control.curie,
 			controlReviewCid,
+			controlReviewGroups,
 			evidencePath,
 			coverage: this.coverage,
 			status: this.status,

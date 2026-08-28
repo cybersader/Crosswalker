@@ -29,7 +29,14 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import * as XLSX from 'xlsx';
 import { applyMigrations } from '../src/tier2/migrations';
-import { computeReviewCid, computeConceptCid, normalizeReviewString } from '../src/generation/hash';
+import {
+	computeReviewCid,
+	computeConceptCid,
+	computeReviewGroupCids,
+	normalizeReviewString,
+	type ReviewGroupCids,
+} from '../src/generation/hash';
+import type { Recipe } from '../src/render';
 import {
 	CANONICAL_EVIDENCE_PREDICATE,
 	diagnoseExcludedJunctions,
@@ -50,6 +57,9 @@ const ROOT = path.resolve(__dirname, '..');
 const V15 = path.join(ROOT, 'Frameworks', 'enterprise-attack-v15.1.xlsx');
 const V16 = path.join(ROOT, 'Frameworks', 'enterprise-attack-v16.1.xlsx');
 const LINEAGE_CSV = path.join(ROOT, 'recipes', 'import', 'crosswalks', 'nist-csf-2-withdrawal-lineage.csv');
+const ATTACK_RECIPE = JSON.parse(
+	readFileSync(path.join(ROOT, 'recipes', 'import', 'mitre-attack-technique.json'), 'utf8'),
+) as Recipe;
 
 const CORPUS_PRESENT = existsSync(V15) && existsSync(V16);
 const describeCorpus = CORPUS_PRESENT ? describe : describe.skip;
@@ -77,6 +87,8 @@ const curieOf = (row: Record<string, string>): string => `${ONTOLOGY}:${row['ID'
 /** The exact call the generation engine makes: whole raw source row as scope. */
 const reviewCidOf = (row: Record<string, string>): string =>
 	computeReviewCid({ curie: curieOf(row), scope: row });
+const reviewGroupsOf = (row: Record<string, string>): ReviewGroupCids =>
+	computeReviewGroupCids({ curie: curieOf(row), scope: row }, ATTACK_RECIPE);
 
 // ---------------------------------------------------------------------------
 // Tier 2 harness — same in-memory shape the other Tier 2 suites use.
@@ -109,13 +121,32 @@ function addOntology(db: TestDb, id: string): void {
 }
 
 /** Import (or re-import) one technique as a concept carrying its review_cid. */
-function upsertConcept(db: TestDb, curie: string, reviewCid: string | null, title: string, ontology = ONTOLOGY): void {
+function upsertConcept(
+	db: TestDb,
+	curie: string,
+	reviewCid: string | null,
+	title: string,
+	ontology = ONTOLOGY,
+	reviewGroups: ReviewGroupCids | null = null,
+): void {
 	addOntology(db, ontology);
 	db.exec({
 		sql: `INSERT OR REPLACE INTO concepts
-		        (ontology_id, curie, vault_path, source_hash, title, review_cid, status, imported_at, modified_at)
-		      VALUES ($o, $c, $p, 'h', $t, $rc, 'active', '2026-08-28', '2026-08-28')`,
-		bind: { $o: ontology, $c: curie, $p: `Frameworks/ATTACK/${title}.md`, $t: title, $rc: reviewCid },
+		        (ontology_id, curie, vault_path, source_hash, title, review_cid,
+		         review_wording_cid, review_scope_cid, review_housekeeping_cid,
+		         status, imported_at, modified_at)
+		      VALUES ($o, $c, $p, 'h', $t, $rc, $rw, $rs, $rh,
+		              'active', '2026-08-28', '2026-08-28')`,
+		bind: {
+			$o: ontology,
+			$c: curie,
+			$p: `Frameworks/ATTACK/${title}.md`,
+			$t: title,
+			$rc: reviewCid,
+			$rw: reviewGroups?.wording ?? null,
+			$rs: reviewGroups?.scope ?? null,
+			$rh: reviewGroups?.housekeeping ?? null,
+		},
 	});
 }
 
@@ -123,14 +154,22 @@ function upsertConcept(db: TestDb, curie: string, reviewCid: string | null, titl
  * One approved attestation. `baselineCid === null` is the pre-feature vault:
  * a link written before `reviewed_against` existed, which must be untouched.
  */
-function addAttestation(db: TestDb, notePath: string, subjectCurie: string, baselineCid: string | null): void {
+function addAttestation(
+	db: TestDb,
+	notePath: string,
+	subjectCurie: string,
+	baselineCid: string | null,
+	baselineGroups: ReviewGroupCids | null = null,
+): void {
 	db.exec({
 		sql: `INSERT OR REPLACE INTO junction_notes
 		        (vault_path, curie, subject, subject_curie, predicate, object, object_curie,
 		         coverage, status, review_date, expires_at, reviewed_against_curie, reviewed_against_cid,
+		         reviewed_wording_cid, reviewed_scope_cid, reviewed_housekeeping_cid,
 		         source_hash, modified_at)
 		      VALUES ($path, $curie, $subject, $sc, $pred, '[[Evidence/EDR-Runbook]]', NULL,
-		              'full', 'approved', NULL, NULL, $rac, $racid, 'h', '2026-08-28')`,
+		              'full', 'approved', NULL, NULL, $rac, $racid, $rw, $rs, $rh,
+		              'h', '2026-08-28')`,
 		bind: {
 			$path: notePath,
 			$curie: `cwk:${notePath}`,
@@ -139,6 +178,9 @@ function addAttestation(db: TestDb, notePath: string, subjectCurie: string, base
 			$pred: CANONICAL_EVIDENCE_PREDICATE,
 			$rac: baselineCid === null ? null : subjectCurie,
 			$racid: baselineCid,
+			$rw: baselineGroups?.wording ?? null,
+			$rs: baselineGroups?.scope ?? null,
+			$rh: baselineGroups?.housekeeping ?? null,
 		},
 	});
 }
@@ -203,8 +245,8 @@ describeCorpus('Ch 43 central claim, measured on MITRE ATT&CK Enterprise 15.1 ->
 			// Import 15.1 and attest EVERY surviving technique, approved, with a
 			// baseline recorded at approval -- the state a diligent team is in.
 			for (const row of survivors) {
-				upsertConcept(db, curieOf(row), reviewCidOf(row), row['ID']);
-				addAttestation(db, notePathFor(row['ID']), curieOf(row), reviewCidOf(row));
+				upsertConcept(db, curieOf(row), reviewCidOf(row), row['ID'], ONTOLOGY, reviewGroupsOf(row));
+				addAttestation(db, notePathFor(row['ID']), curieOf(row), reviewCidOf(row), reviewGroupsOf(row));
 			}
 
 			const before = evidenceCoverageSummary(db, ONTOLOGY);
@@ -217,7 +259,7 @@ describeCorpus('Ch 43 central claim, measured on MITRE ATT&CK Enterprise 15.1 ->
 			// the attestations, not the reviewers, not the dates.
 			for (const row of survivors) {
 				const next = newById.get(row['ID'])!;
-				upsertConcept(db, curieOf(next), reviewCidOf(next), next['ID']);
+				upsertConcept(db, curieOf(next), reviewCidOf(next), next['ID'], ONTOLOGY, reviewGroupsOf(next));
 			}
 
 			const after = evidenceCoverageSummary(db, ONTOLOGY);
@@ -231,6 +273,14 @@ describeCorpus('Ch 43 central claim, measured on MITRE ATT&CK Enterprise 15.1 ->
 			const reasons = diagnoseExcludedJunctions(db);
 			expect(reasons).toHaveLength(flagged.length);
 			expect(new Set(reasons.map((row) => row.reason))).toEqual(new Set(['subject-changed']));
+			const kindCounts = { wording: 0, scope: 0, housekeeping: 0 };
+			for (const row of reasons) {
+				expect(row.subject_baseline).toBe('changed');
+				expect(row.change_kind).not.toBeNull();
+				kindCounts[row.change_kind as keyof typeof kindCounts] += 1;
+			}
+			expect(kindCounts).toEqual({ wording: 57, scope: 110, housekeeping: 260 });
+			expect(Object.values(kindCounts).reduce((sum, count) => sum + count, 0)).toBe(flagged.length);
 			// It says WHICH ones, not just how many.
 			expect(new Set(reasons.map((row) => row.vault_path)))
 				.toEqual(new Set(flagged.map(notePathFor)));
@@ -350,29 +400,25 @@ describeCorpus('Ch 43 central claim, measured on MITRE ATT&CK Enterprise 15.1 ->
 		}
 	});
 
-	it('R7: HONEST LIMIT — most flags on this release are bookkeeping, not meaning', () => {
-		// The number that decides whether a team keeps the feature switched on.
-		// Bookkeeping = the columns a publisher moves without changing what the
-		// technique means: the release version stamp, the modification date, and
-		// the citation list attached to relationships.
-		const BOOKKEEPING = new Set(['version', 'last modified', 'relationship citations']);
-		let bookkeepingOnly = 0;
+	it('R7: recipe declarations split every real flag once, with wording matching description drift', () => {
+		const counts = { wording: 0, scope: 0, housekeeping: 0 };
 		let descriptionMoved = 0;
 		for (const id of flagged) {
 			const before = oldRows.find((row) => row['ID'] === id)!;
 			const after = newById.get(id)!;
-			const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-			const moved = [...keys].filter((k) =>
-				normalizeReviewString(before[k] ?? '') !== normalizeReviewString(after[k] ?? ''));
-			if (moved.every((k) => BOOKKEEPING.has(k))) bookkeepingOnly += 1;
+			const oldGroups = reviewGroupsOf(before);
+			const newGroups = reviewGroupsOf(after);
+			const kind = oldGroups.wording !== newGroups.wording ? 'wording'
+				: oldGroups.scope !== newGroups.scope ? 'scope'
+					: 'housekeeping';
+			counts[kind] += 1;
 			if (normalizeReviewString(before['description'] ?? '')
 				!== normalizeReviewString(after['description'] ?? '')) descriptionMoved += 1;
 		}
 		expect(flagged.length).toBe(427);
-		expect(bookkeepingOnly).toBe(255);
+		expect(counts).toEqual({ wording: 57, scope: 110, housekeeping: 260 });
 		expect(descriptionMoved).toBe(57);
-		// 59.7% of all flags on this release carry no change beyond bookkeeping.
-		expect(bookkeepingOnly / flagged.length).toBeGreaterThan(0.59);
+		expect(counts.wording + counts.scope + counts.housekeeping).toBe(flagged.length);
 	});
 
 	// -----------------------------------------------------------------

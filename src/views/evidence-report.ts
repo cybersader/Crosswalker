@@ -27,6 +27,7 @@ import type {
 	EvidenceCoverageSummary,
 	ExcludedJunction,
 	ExclusionReason,
+	ReviewChangeKind,
 	SupersededSubject,
 	UnbaselinedJunction,
 } from '../tier2/evidence-coverage';
@@ -302,21 +303,92 @@ export function renderEvidenceReport(input: EvidenceReportInput): string {
 			'Each of these exists in the vault but was not counted. The reason names what to change.',
 		);
 		out.push('');
-		out.push('| Link | Reason | What it means |');
-		out.push('|---|---|---|');
-		for (const item of excluded.slice(0, limit)) {
+
+		const changed = excluded.filter((item) => item.subject_baseline === 'changed');
+		if (changed.length > 0) {
 			out.push(
-				`| [[${cell(item.vault_path)}]] | \`${cell(item.reason)}\` | ${REASON_HELP[item.reason] ?? ''} |`,
+				'Changed controls are grouped by the highest-priority recipe-declared source area that moved: '
+				+ 'wording, then scope, then housekeeping. Each link appears in exactly one group.',
 			);
-		}
-		if (excluded.length > limit) {
 			out.push('');
-			out.push(`_${excluded.length - limit} more not listed (showing the first ${limit})._`);
+			for (const kind of ['wording', 'scope', 'housekeeping'] as const) {
+				const group = changed.filter((item) => (item.change_kind ?? 'wording') === kind);
+				out.push(`### ${changeKindHeading(kind)} (${group.length})`);
+				out.push('');
+				out.push(CHANGE_KIND_HELP[kind]);
+				out.push('');
+				if (kind === 'housekeeping' && group.length > 0) {
+					out.push(
+						'> [!tip] Dismiss selected housekeeping changes\n'
+						+ '> Select one or more rows in this table, then run **Crosswalker: Record selected housekeeping changes as baseline**. '
+						+ 'Crosswalker asks for confirmation and updates only the recorded fingerprints. It does not change status, reviewer, or review date.',
+					);
+					out.push('');
+				}
+				if (group.length === 0) {
+					out.push('None.');
+				} else {
+					out.push(...renderChangedJunctionTable(group, limit));
+				}
+				out.push('');
+			}
+		}
+
+		const other = excluded.filter((item) => item.subject_baseline !== 'changed');
+		if (other.length > 0) {
+			if (changed.length > 0) {
+				out.push(`### Other reasons (${other.length})`);
+				out.push('');
+			}
+			// Preserve the pre-classification rendering for vaults with no changed
+			// baselines: adopting none of this feature changes none of their report.
+			out.push('| Link | Reason | What it means |');
+			out.push('|---|---|---|');
+			for (const item of other.slice(0, limit)) {
+				out.push(
+					`| [[${cell(item.vault_path)}]] | \`${cell(item.reason)}\` | ${REASON_HELP[item.reason] ?? ''} |`,
+				);
+			}
+			if (other.length > limit) {
+				out.push('');
+				out.push(`_${other.length - limit} more not listed (showing the first ${limit})._`);
+			}
 		}
 	}
 	out.push('');
 
 	return out.join('\n');
+}
+
+const CHANGE_KIND_HELP: Record<ReviewChangeKind, string> = {
+	wording: 'Recipe body-projected source content changed. Re-review the evidence against the current control wording.',
+	scope: 'Recipe-managed frontmatter or managed link source content changed. Re-check whether the evidence still applies to the current control scope.',
+	housekeeping: 'Only source content outside recipe body and managed frontmatter declarations changed.',
+};
+
+function changeKindHeading(kind: ReviewChangeKind): string {
+	if (kind === 'wording') return 'Wording changes';
+	if (kind === 'scope') return 'Scope changes';
+	return 'Housekeeping changes';
+}
+
+/** One changed-baseline table. The first cell is intentionally selection-safe. */
+function renderChangedJunctionTable(rows: ExcludedJunction[], limit: number): string[] {
+	const out = [
+		'| Link | Subject baseline | Change kind | Primary exclusion | What it means |',
+		'|---|---|---|---|---|',
+	];
+	for (const item of rows.slice(0, limit)) {
+		out.push(
+			`| [[${cell(item.vault_path)}]] | \`${cell(item.subject_baseline)}\` `
+			+ `| \`${cell(item.change_kind ?? 'wording')}\` | \`${cell(item.reason)}\` | ${REASON_HELP[item.reason] ?? ''} |`,
+		);
+	}
+	if (rows.length > limit) {
+		out.push('');
+		out.push(`_${rows.length - limit} more not listed (showing the first ${limit})._`);
+	}
+	return out;
 }
 
 /** A control table, truncated loudly rather than silently. */

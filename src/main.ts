@@ -40,6 +40,7 @@ import { buildProvenance } from './generation/provenance';
 import { generateNotes, generateFromRecipe } from './generation/generation-engine';
 import { openSidecar, clearSidecar, type SidecarHandle } from './tier2/sidecar';
 import { runEvidenceReportCommand } from './views/evidence-report-command';
+import { runHousekeepingRebaselineCommand } from './views/rebaseline-housekeeping';
 import { EvidenceLinkModal, listControlCandidates } from './views/evidence-link-modal';
 import { projectFromTier1, type ProjectionResult } from './tier2/projector';
 import {
@@ -701,6 +702,22 @@ export default class CrosswalkerPlugin extends Plugin {
 					app: this.app,
 					openTier2: this.openTier2,
 					reportFolder: this.settings.evidenceReportFolder,
+				});
+			},
+		});
+
+		// Housekeeping changes can be acknowledged without pretending the control
+		// wording or scope was re-reviewed. Selection + confirmation are both
+		// mandatory; status and reviewer facts are never touched.
+		this.addCommand({
+			id: 'record-selected-housekeeping-baseline',
+			name: 'Record selected housekeeping changes as baseline',
+			callback: async () => {
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				await runHousekeepingRebaselineCommand({
+					app: this.app,
+					openTier2: this.openTier2,
+					selection: view?.editor.getSelection() ?? '',
 				});
 			},
 		});

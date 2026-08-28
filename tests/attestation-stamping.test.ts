@@ -18,9 +18,9 @@ import { TFile, TFolder } from 'obsidian';
 import { applyMigrations } from '../src/tier2/migrations';
 import { projectFromTier1 } from '../src/tier2/projector';
 import { generateFromRecipe } from '../src/generation/generation-engine';
-import { computeReviewCid } from '../src/generation/hash';
+import { computeReviewCid, computeReviewGroupCids } from '../src/generation/hash';
 import { buildEvidenceLink, reviewedAgainstFor, type EvidenceLinkInput } from '../src/views/evidence-link';
-import { EvidenceLinkModal, readReviewCid } from '../src/views/evidence-link-modal';
+import { EvidenceLinkModal, readReviewCid, readReviewGroups } from '../src/views/evidence-link-modal';
 import {
 	evidenceCoverageByConcept,
 	diagnoseExcludedJunctions,
@@ -65,6 +65,11 @@ function frontmatterOf(markdown: string): Record<string, any> {
 
 const CID_OLD = `sha256-${'a'.repeat(64)}`;
 const CID_NEW = `sha256-${'b'.repeat(64)}`;
+const REVIEW_GROUPS = {
+	wording: `sha256-${'c'.repeat(64)}`,
+	scope: `sha256-${'d'.repeat(64)}`,
+	housekeeping: `sha256-${'e'.repeat(64)}`,
+};
 const CONTROL_PATH = 'Frameworks/NIST/AC-2.md';
 const CONTROL_CURIE = 'nist-800-53:AC-2';
 
@@ -91,6 +96,14 @@ describe('reviewedAgainstFor writes both facts or neither', () => {
 			.toEqual({ curie: CONTROL_CURIE, review_cid: CID_OLD });
 	});
 
+	it('records complete group hashes beside the whole-row fingerprint', () => {
+		expect(reviewedAgainstFor(CONTROL_CURIE, CID_OLD, REVIEW_GROUPS)).toEqual({
+			curie: CONTROL_CURIE,
+			review_cid: CID_OLD,
+			review_groups: REVIEW_GROUPS,
+		});
+	});
+
 	it('refuses a fingerprint with no subject', () => {
 		// A fingerprint alone cannot say WHICH control it came from once a rename
 		// or a re-point happens, so it is not a fact worth recording.
@@ -115,6 +128,15 @@ describe('the link note records what was approved', () => {
 	it('E1: an approved link carries the control curie and fingerprint', () => {
 		const fm = frontmatterOf(buildEvidenceLink(linkInput()).markdown);
 		expect(fm.reviewed_against).toEqual({ curie: CONTROL_CURIE, review_cid: CID_OLD });
+	});
+
+	it('an approved link records the complete group baseline when available', () => {
+		const fm = frontmatterOf(buildEvidenceLink(linkInput({ controlReviewGroups: REVIEW_GROUPS })).markdown);
+		expect(fm.reviewed_against).toEqual({
+			curie: CONTROL_CURIE,
+			review_cid: CID_OLD,
+			review_groups: REVIEW_GROUPS,
+		});
 	});
 
 	it('E2: a proposed link records nothing — there is no review to describe', () => {
@@ -153,6 +175,13 @@ describe('the link note records what was approved', () => {
 describe('readReviewCid reads a fingerprint, and nothing else', () => {
 	it('finds it in the provenance block', () => {
 		expect(readReviewCid({ _crosswalker: { review_cid: CID_OLD } })).toBe(CID_OLD);
+	});
+
+	it('reads only complete recipe-group blocks', () => {
+		expect(readReviewGroups({ _crosswalker: { review_groups: REVIEW_GROUPS } }))
+			.toEqual(REVIEW_GROUPS);
+		expect(readReviewGroups({ _crosswalker: { review_groups: { wording: REVIEW_GROUPS.wording } } }))
+			.toBeNull();
 	});
 
 	it('returns null, not undefined-ish junk, for every absent shape', () => {
@@ -430,6 +459,9 @@ describe('generated concept notes carry review_cid beside concept_cid', () => {
 		const fm = frontmatterOf(files.get('Frameworks/AC-2.md')!);
 		expect(fm._crosswalker.review_cid)
 			.toBe(computeReviewCid({ curie: 'nist:AC-2', scope: row }));
+		expect(fm._crosswalker.review_groups).toEqual(
+			computeReviewGroupCids({ curie: 'nist:AC-2', scope: row }, CONCEPT_RECIPE),
+		);
 		// And the identity hash is a different value, computed a different way.
 		expect(fm._crosswalker.review_cid).not.toBe(fm._crosswalker.concept_cid);
 	});
@@ -499,6 +531,10 @@ describe('the modal looks at the file before concluding a control has no fingerp
 		'    file: nist.csv',
 		'  produced_at: "2026-08-28T00:00:00.000Z"',
 		`  review_cid: ${CID_OLD}`,
+		'  review_groups:',
+		`    wording: ${REVIEW_GROUPS.wording}`,
+		`    scope: ${REVIEW_GROUPS.scope}`,
+		`    housekeeping: ${REVIEW_GROUPS.housekeeping}`,
 		'---',
 		'',
 	].join('\n');
@@ -521,8 +557,11 @@ describe('the modal looks at the file before concluding a control has no fingerp
 
 		const markdown = created.get(LINK_PATH);
 		expect(markdown).toBeDefined();
-		expect(frontmatterOf(markdown!).reviewed_against)
-			.toEqual({ curie: CONTROL_CURIE, review_cid: CID_OLD });
+		expect(frontmatterOf(markdown!).reviewed_against).toEqual({
+			curie: CONTROL_CURIE,
+			review_cid: CID_OLD,
+			review_groups: REVIEW_GROUPS,
+		});
 	});
 
 	it('E4: refuses to create the link at all when the control cannot be read', async () => {

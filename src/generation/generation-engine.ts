@@ -38,7 +38,15 @@ import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
 import { resolveImportSet, type ImportSetOption, type ImportSetReference } from './import-set';
-import { computeConceptCid, computeRecipeHash, computeReviewCid, identityScopeForNoteKind } from './hash';
+import {
+	computeConceptCid,
+	computeRecipeHash,
+	computeReviewCid,
+	computeReviewGroupCids,
+	identityScopeForNoteKind,
+	readReviewGroupCids,
+	type ReviewGroupCids,
+} from './hash';
 import { reviewedAgainstFor } from '../views/evidence-link';
 import { prepareSourceStage, SourceStageError, type SourceStage } from '../source';
 import { SourceOrderStamper, stripBasePath, shouldStampSourceOrder } from './source-order';
@@ -966,6 +974,7 @@ function buildNoteDataViaRender(
 			// attestation can tell a rewritten control from a re-typeset one.
 			// A SECOND hash: concept_cid is untouched, byte for byte.
 			reviewCid: computeReviewCid({ curie, scope: sourceScope }),
+			reviewGroups: computeReviewGroupCids({ curie, scope: sourceScope }, recipe),
 		},
 		PLUGIN_VERSION,
 	);
@@ -1975,7 +1984,8 @@ export async function generateFromRecipe(
 	// Ch 43 re-attestation: review fingerprints of concepts produced by THIS run,
 	// so a recipe that emits a concept and an evidence link for it in one pass can
 	// stamp the link against the concept it just wrote.
-	const producedReviewCids = new Map<string, string>();
+	type ReviewBaseline = { reviewCid: string; reviewGroups: ReviewGroupCids | null };
+	const producedReviewBaselines = new Map<string, ReviewBaseline>();
 	// Approved junction rows written with no review baseline, because their
 	// subject's fingerprint was not resolvable. Counted, never silently dropped.
 	let unbaselinedJunctions = 0;
@@ -1988,15 +1998,19 @@ export async function generateFromRecipe(
 	 * would stamp a fingerprint the IMPORTER computed against content no human
 	 * reviewed, which is fabricating an approval with extra steps.
 	 */
-	const resolveSubjectReviewCid = (subjectCurie: string): string | null => {
-		const fromThisRun = producedReviewCids.get(subjectCurie);
+	const resolveSubjectReviewBaseline = (subjectCurie: string): ReviewBaseline | null => {
+		const fromThisRun = producedReviewBaselines.get(subjectCurie);
 		if (fromThisRun) return fromThisRun;
 		const file = identityIndex.get(subjectCurie);
 		if (!file) return null;
 		const provenance = app.metadataCache.getFileCache(file)?.frontmatter?._crosswalker;
 		if (!provenance || typeof provenance !== 'object') return null;
-		const value = (provenance as Record<string, unknown>).review_cid;
-		return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+		const source = provenance as Record<string, unknown>;
+		const value = source.review_cid;
+		const reviewCid = typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+		return reviewCid
+			? { reviewCid, reviewGroups: readReviewGroupCids(source.review_groups) }
+			: null;
 	};
 	// Pass 1.5 enrichment (v0.1.6): records collected during the stream so the
 	// post-stream patch phase can derive parent→children + facet hubs without
@@ -2122,7 +2136,9 @@ export async function generateFromRecipe(
 				if (aliases.length > 0) frontmatter.aliases = aliases;
 			}
 			const identityScope = identityScopeForNoteKind(address.frontmatter.kind, sourceScope, scope);
-			const reviewCid = computeReviewCid({ curie, scope: identityScope });
+			const reviewRecord = { curie, scope: identityScope };
+			const reviewCid = computeReviewCid(reviewRecord);
+			const reviewGroups = computeReviewGroupCids(reviewRecord, recipe);
 			// An imported evidence link records what its subject looked like at
 			// approval, exactly as the link modal does — but only when the row is
 			// approved AND the subject's fingerprint is genuinely resolvable.
@@ -2132,9 +2148,11 @@ export async function generateFromRecipe(
 				const subjectCurie = typeof frontmatter.subject_curie === 'string'
 					? frontmatter.subject_curie
 					: null;
+				const subjectBaseline = subjectCurie ? resolveSubjectReviewBaseline(subjectCurie) : null;
 				const reviewedAgainst = reviewedAgainstFor(
 					subjectCurie,
-					subjectCurie ? resolveSubjectReviewCid(subjectCurie) : null,
+					subjectBaseline?.reviewCid,
+					subjectBaseline?.reviewGroups,
 				);
 				if (reviewedAgainst) {
 					frontmatter.reviewed_against = reviewedAgainst;
@@ -2153,6 +2171,7 @@ export async function generateFromRecipe(
 					importSet,
 					conceptCid: computeConceptCid({ curie, scope: identityScope }),
 					reviewCid,
+					reviewGroups,
 				},
 				PLUGIN_VERSION,
 			);
@@ -2180,7 +2199,7 @@ export async function generateFromRecipe(
 			// later in the same run can never be stamped against a concept this run
 			// refused to write.
 			if (address.frontmatter.kind !== 'junction-note' && address.frontmatter.kind !== 'crosswalk-edge') {
-				producedReviewCids.set(curie, reviewCid);
+				producedReviewBaselines.set(curie, { reviewCid, reviewGroups });
 			}
 
 			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND

@@ -130,6 +130,8 @@ describe('set-aside links are surfaced, not buried', () => {
 		subject_curie: 'evidence:MFA-Policy',
 		predicate: 'has_evidence',
 		reason: 'subject-not-a-known-concept',
+		subject_baseline: 'subject-absent',
+		change_kind: null,
 	}];
 
 	it('flags the count next to the summary a reader would otherwise trust', () => {
@@ -226,6 +228,41 @@ describe('the report never turns "we cannot tell" into "it is fine"', () => {
 		expect(md).toContain('Re-approve this link to record the baseline.');
 	});
 
+	it('groups every changed link once in wording, scope, housekeeping order with counts', () => {
+		const changed: ExcludedJunction[] = [
+			{
+				vault_path: 'Evidence/wording.md', subject: '[[AC-1]]', subject_curie: 'nist:AC-1',
+				predicate: 'has_evidence', reason: 'subject-changed', subject_baseline: 'changed', change_kind: 'wording',
+			},
+			{
+				vault_path: 'Evidence/scope.md', subject: '[[AC-2]]', subject_curie: 'nist:AC-2',
+				predicate: 'has_evidence', reason: 'expired', subject_baseline: 'changed', change_kind: 'scope',
+			},
+			{
+				vault_path: 'Evidence/housekeeping.md', subject: '[[AC-3]]', subject_curie: 'nist:AC-3',
+				predicate: 'has_evidence', reason: 'subject-changed', subject_baseline: 'changed', change_kind: 'housekeeping',
+			},
+			{
+				vault_path: 'Evidence/proposed.md', subject: '[[AC-4]]', subject_curie: 'nist:AC-4',
+				predicate: 'has_evidence', reason: 'not-approved', subject_baseline: 'match', change_kind: null,
+			},
+		];
+		const md = renderEvidenceReport(input({ excluded: changed }));
+		const wording = md.indexOf('### Wording changes (1)');
+		const scope = md.indexOf('### Scope changes (1)');
+		const housekeeping = md.indexOf('### Housekeeping changes (1)');
+		expect(wording).toBeGreaterThan(-1);
+		expect(wording).toBeLessThan(scope);
+		expect(scope).toBeLessThan(housekeeping);
+		for (const path of ['Evidence/wording.md', 'Evidence/scope.md', 'Evidence/housekeeping.md']) {
+			expect(md.split(path)).toHaveLength(2);
+		}
+		expect(md).toContain('| Link | Subject baseline | Change kind | Primary exclusion | What it means |');
+		expect(md).toContain('Record selected housekeeping changes as baseline');
+		expect(md).toContain('### Other reasons (1)');
+		expect(md).toContain('Evidence/proposed.md');
+	});
+
 	it('explains a content-invalidated link as a re-review, not as a broken link', () => {
 		const excluded: ExcludedJunction[] = [{
 			vault_path: 'Evidence/Junctions/AC-1--has_evidence--MFA policy.md',
@@ -233,6 +270,8 @@ describe('the report never turns "we cannot tell" into "it is fine"', () => {
 			subject_curie: 'nist-800-53:AC-1',
 			predicate: 'has_evidence',
 			reason: 'subject-changed',
+			subject_baseline: 'changed',
+			change_kind: 'wording',
 		}];
 		const md = renderEvidenceReport(input({ excluded }));
 		expect(md).toContain('`subject-changed`');

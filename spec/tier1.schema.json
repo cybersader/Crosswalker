@@ -4,7 +4,7 @@
   "title": "Crosswalker Tier 1",
   "description": "The canonical contract for a Crosswalker vault. Tier 1 is the load-bearing primitive: any producer (the bundled engine, an external Python script, an AI agent, an MCP server, hand-written notes) that emits files conforming to this schema produces a valid Crosswalker vault. Validation surface covers YAML frontmatter shape only — folder layout and Markdown body are recipe-defined and out of scope here. See https://crosswalker.dev/spec/recipe.schema.json for recipe shape.",
   "type": "object",
-  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. Discrimination by `kind` field: kind='junction-note' must match junction-note shape; kind='crosswalk-edge' must match crosswalk-edge shape; absent kind (or any other value) must match concept-note shape. Uses allOf+if/then so AJV can produce specific error messages from the matching branch. SchemaVer 1.2.0. Additive history: 1.1.0 (2026-08-28, Ch 43) added the optional `reviewed_against` block on junction_note_frontmatter (the control fingerprint an attestation was approved against) and the optional `review_cid` on provenance_block (the concept-side current value); 1.2.0 (2026-08-28, Ch 43) widened the crosswalk_edge_frontmatter predicate_id enum with the release-lineage pair `superseded_by` / `supersedes`. Both steps are property/enum widenings only: every document that validated before still validates, so the $id is unchanged.",
+  "$comment": "v0.1. JSON Schema 2020-12. Stable URI; breaking changes will bump to /v2/. Discrimination by `kind` field: kind='junction-note' must match junction-note shape; kind='crosswalk-edge' must match crosswalk-edge shape; absent kind (or any other value) must match concept-note shape. Uses allOf+if/then so AJV can produce specific error messages from the matching branch. SchemaVer 1.3.0. Additive history: 1.1.0 (2026-08-28, Ch 43) added the optional `reviewed_against` block on junction_note_frontmatter (the control fingerprint an attestation was approved against) and the optional `review_cid` on provenance_block (the concept-side current value); 1.2.0 (2026-08-28, Ch 43) widened the crosswalk_edge_frontmatter predicate_id enum with the release-lineage pair `superseded_by` / `supersedes`. 1.3.0 (2026-08-28, Ch 43) added optional recipe-driven review_groups to concept provenance and reviewed_against so a changed whole-row fingerprint can be classified as wording, scope, or housekeeping. All steps are property/enum widenings only: every document that validated before still validates, so the $id is unchanged.",
 
   "$defs": {
     "curie": {
@@ -23,6 +23,18 @@
       "type": "string",
       "format": "date-time",
       "description": "ISO 8601 UTC timestamp."
+    },
+
+    "review_group_cids": {
+      "type": "object",
+      "description": "Recipe-driven sub-fingerprints used only to explain an already-detected review_cid change. Wording covers body-projected source content; scope covers recipe-managed frontmatter and managed links; housekeeping covers the remaining source content. All three are required when the block is present so a partial explanation is never mistaken for a complete one.",
+      "required": ["wording", "scope", "housekeeping"],
+      "additionalProperties": false,
+      "properties": {
+        "wording": { "$ref": "#/$defs/sha256_cid" },
+        "scope": { "$ref": "#/$defs/sha256_cid" },
+        "housekeeping": { "$ref": "#/$defs/sha256_cid" }
+      }
     },
 
     "wikilink_target": {
@@ -111,6 +123,10 @@
         "review_cid": {
           "$ref": "#/$defs/sha256_cid",
           "description": "Normalized content fingerprint of this concept, computed over the same identity record as concept_cid but with the review-normalization rule applied to every string value. Cosmetically-different content (citation markers, curly quotes, collapsed whitespace, markdown link destinations) hashes identically here and differently in concept_cid. Optional; absent means the producer did not compute one, which is NOT a claim that the content is unchanged."
+        },
+        "review_groups": {
+          "$ref": "#/$defs/review_group_cids",
+          "description": "Recipe-driven explanation hashes for this concept's current source row. They classify a changed review_cid but never replace it as the whole-row change gate."
         }
       }
     },
@@ -190,7 +206,11 @@
           "additionalProperties": false,
           "properties": {
             "curie": { "$ref": "#/$defs/curie", "description": "Identity of the subject as reviewed. Records WHICH subject the fingerprint was taken from, so a later rename or re-point is detectable." },
-            "review_cid": { "$ref": "#/$defs/sha256_cid", "description": "Normalized content fingerprint of the subject at approval time. Compared against the current _crosswalker.review_cid of the subject; a difference means the reviewed content changed and the attestation needs re-review." }
+            "review_cid": { "$ref": "#/$defs/sha256_cid", "description": "Normalized content fingerprint of the subject at approval time. Compared against the current _crosswalker.review_cid of the subject; a difference means the reviewed content changed and the attestation needs re-review." },
+            "review_groups": {
+              "$ref": "#/$defs/review_group_cids",
+              "description": "Optional recipe-driven explanation hashes recorded beside review_cid. Legacy baselines without this block remain valid but are classified conservatively when review_cid changes."
+            }
           }
         },
         "status": {
