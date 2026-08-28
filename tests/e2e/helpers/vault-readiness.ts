@@ -246,10 +246,18 @@ export async function readFrontmatterMatching(
  * **Why truncation instead of deleting `.crosswalker.sqlite`:** the sidecar is
  * not a vault file. `src/tier2/sidecar.ts` opens it through the
  * `opfs-sahpool` VFS, so the bytes live inside an opaque OPFS pool — there is
- * nothing for `app.vault.adapter.remove()` to delete, and the product's own
- * `clearSidecar()` unlinks through `sqlite3.opfs.unlink`, which belongs to the
- * *other* OPFS VFS and does not address sahpool-backed files. A spec that
- * assumed either path would silently keep observing another spec's rows.
+ * nothing for `app.vault.adapter.remove()` to delete. A spec that assumed that
+ * path would silently keep observing another spec's rows.
+ *
+ * The product's own `clearSidecar()` *does* now delete the pool entry (it goes
+ * through the sahpool util's `unlink`, having previously reached for
+ * `sqlite3.opfs.unlink`, which belongs to the other OPFS VFS and never matched
+ * a sahpool-backed file). Truncation is still the right tool here: it leaves
+ * the file and the schema in place, so a spec does not have to re-run
+ * migrations, and it reports per-table counts the caller can assert on.
+ * Deleting the pool entry is the behaviour under test for the reset command
+ * itself, not the setup other specs want.
+ *
  * Emptying every derived table is equivalent for test purposes (the schema is
  * recreated by migrations, and `runProjection()` rebuilds all rows from
  * canonical Tier 1) and is verifiable from the test.

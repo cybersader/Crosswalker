@@ -732,12 +732,36 @@ export default class CrosswalkerPlugin extends Plugin {
 			name: 'Maintenance: reset search data',
 			callback: async () => {
 				try {
+					// Close and drop the handle BEFORE deleting. Unlinking a file
+					// that still has an open sahpool access handle is undefined
+					// behavior, and a surviving handle would keep answering queries
+					// out of the rows the user just asked us to destroy.
 					if (this.tier2Handle) {
-						await this.tier2Handle.close();
+						const closed = await this.tier2Handle.close();
 						this.tier2Handle = null;
+						if (!closed) {
+							// Deleting a pool file whose access handle is still
+							// open recycles that handle under a live file. Stop
+							// here: a confusing error beats silent corruption.
+							throw new Error('the query index could not be closed, so it was not cleared. Reload Obsidian and try again.');
+						}
 					}
-					await clearSidecar(this, this.settings.tier2SidecarPath);
-					new Notice('Fast query index cleared. It rebuilds automatically.');
+					const result = await clearSidecar(this, this.settings.tier2SidecarPath);
+					// clearSidecar throws when it cannot verify the file is gone, so
+					// reaching here means the reset actually happened. Each outcome
+					// gets its own wording: announcing a deletion that did not occur
+					// is the bug this command shipped with.
+					if (!result.hadPersistentStore) {
+						new Notice('Fast query index was held in memory only. It has been discarded and rebuilds automatically.');
+					} else if (result.removed.length === 0) {
+						new Notice('Fast query index was already empty. There was nothing to clear.');
+					} else {
+						new Notice('Fast query index cleared. It rebuilds automatically.');
+					}
+					this.debug?.info('tier2', 'clear-ok', 'Tier 2 sidecar cleared', {
+						hadPersistentStore: result.hadPersistentStore,
+						removed: result.removed,
+					});
 				} catch (err) {
 					const msg = err instanceof Error ? err.message : String(err);
 					new Notice(`Failed to clear the fast query index: ${msg}`);

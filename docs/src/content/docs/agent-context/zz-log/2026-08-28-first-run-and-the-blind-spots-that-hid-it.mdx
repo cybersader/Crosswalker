@@ -1,0 +1,154 @@
+---
+title: "First run was broken, and every gate was green"
+description: "Session record for 2026-08-28. A new user could import a framework and be told, on the same screen, that 12 notes were created and that nothing had been imported. The cause was counting installed frameworks from folder shape: the third time meaning was inferred from vault paths and the third time it was wrong. It survived a week of green suites because every test and every screenshot started from a seeded vault, so none of them crossed the empty-vault path. The maintenance reset was a third instance of the same family, one layer down: a deletion that deleted nothing behind a success notice."
+tags: [decision, session-summary, first-run, testing, tier2, correctness, provenance]
+date: 2026-08-28
+sidebar:
+  label: "08-28 · First run was broken"
+  order: -20260828
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="tip" title="How to read this">
+This page narrows as it goes. **Section 1 is thirty seconds** and may be all you need. Stop wherever you have enough.
+</Aside>
+
+## 1. Thirty seconds
+
+**Crosswalker** imports compliance frameworks into an Obsidian vault as ordinary markdown notes and lets you link evidence to them. The goal driving the project is being usable for real work at an organization.
+
+**What happened today:** the very first thing a new user does was broken, and had been for some time. Import a framework and the plugin would report, on the same screen and at the same moment, that it had created 12 notes and that nothing had been imported. Nothing was actually wrong with the import. The notes were correct and on disk. Everything that *looked* at them disagreed that they existed.
+
+**The lesson, which is bigger than the bug:** it was found by a person opening an empty vault, not by any test. Every automated test and every screenshot taken that week started from a vault that already had content in it, so not one of them walked the only path a new user takes.
+
+**What you need to do:** nothing. It is fixed, and the walkthrough is now a test. Section 7 lists what is still open.
+
+---
+
+## 2. Two minutes: what a new user actually saw
+
+The default settings, the bundled NIST recipe, and an empty vault. That is the shortest possible path through the product, and it ended here:
+
+| Surface | What it said |
+|---|---|
+| The import results screen | **Created 12 notes** |
+| The workspace home screen | **Nothing imported yet** |
+| The status bar | **no ontologies yet** |
+| The coverage report command | Refused, with **Import a framework first** |
+
+Four surfaces, one vault, two mutually exclusive answers. A person seeing this cannot tell whether the import worked, and the reasonable conclusion is that the product does not.
+
+---
+
+## 3. The cause: paths are guesses, not facts, for the third time
+
+Installed frameworks were counted from **folder shape**. Discovery walked the output location and treated each subfolder as one installed framework, skipping loose files. There was a comment in the code saying that only folders count.
+
+The bundled NIST recipe writes a **flat** layout. It puts notes directly into the configured output folder and creates no subfolder at all. So the default recipe and the default detector disagreed about what an import looks like, and the default settings put them in precisely the arrangement where they disagree. Nobody had to do anything unusual to hit this.
+
+The fix is to stop asking the filesystem and start asking the notes. A note counts when its own provenance says Crosswalker produced it, and it joins the group named by its **CURIE prefix** (the short identifier namespace, such as `nist800-53`, that every generated note already carries). Path never participates. Flat and nested layouts now produce identical summaries because layout is no longer an input, and hand-authored folders stay out because they carry no provenance, which is a stronger exclusion than the folder-name check it replaces.
+
+<Aside type="caution" title="Name the pattern: paths are guesses, not facts">
+This is the **third** defect from inferring meaning from vault paths, and the third time it has been wrong.
+
+1. **Re-import reconciliation** matched notes by where they lived, so a note that moved became a duplicate. Fixed by matching on identity. See [re-import is identity reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/).
+2. **Orphan detection** had no reliable answer to "which notes did this import produce," and the destination folder was rejected as an ownership key for exactly this reason: it is a path, and [paths are guesses, not facts](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/). Fixed by minting an import-set id.
+3. **Installed-framework discovery**, today.
+
+The notes have always said what they are. The rule is to ask them. Any future code that reads a vault path in order to decide *what something means* should be treated as a defect report until proven otherwise. A path may be used to *find* candidates. It may not be used to *classify* them.
+</Aside>
+
+There was a second, independent failure on the same screen. The coverage report read the fast query index without refreshing it, so it saw whatever the one-time background pass at vault open had seen, which for a framework imported minutes after the vault opened is nothing. It now refreshes before reading, and reports the failure rather than an empty result if that refresh fails. Two unrelated bugs producing one symptom is part of why this looked, from the outside, like one confusing product rather than two fixable defects.
+
+---
+
+## 4. Why a week of green suites never saw it
+
+This is the part worth carrying forward.
+
+The suite was green. The screenshot runs were green. The static gates were green. A whole week of real-Obsidian E2E work had just landed, including a deliberate replacement of an 11,198-note dev-vault copy with a small purpose-built seed vault. And **every one of those runs started from a seeded vault**: a vault that already contained generated notes, arranged the way the tests expected.
+
+A seeded vault is a good default. It makes runs fast and deterministic, and it is the right starting point for the great majority of assertions. But it silently encodes an assumption, *content already exists*, and that assumption is false for exactly one user: the new one. The empty-vault path was not undertested. It was **untested**, by every suite, with no gap visible anywhere, because a gap in coverage looks identical to coverage that passes.
+
+`tests/e2e/first-run.spec.ts` now walks it: an empty vault, a real 12-row NIST 800-53 slice imported through the visible wizard, and then assertions that the contradiction cannot come back. The workspace names the framework, the status bar counts one, and the coverage command opens a report.
+
+| Blind spot | What it looked like | What closed it |
+|---|---|---|
+| No suite crossed the empty-vault path | Green everywhere | An E2E spec that starts from an empty vault and imports through the real UI |
+| Two pages describing first-day behavior were written from memory | Plausible prose | Both now carry a `Status last verified` marker citing the empty-vault run, not a reading of the source |
+
+The two pages are [quick start](/crosswalker/getting-started/quick-start/) and the [command reference](/crosswalker/reference/commands/). The quick start walked a flow that ended at a screen saying nothing had been imported. The command reference listed names that no longer matched the palette. Both were verified against the product rather than against recollection, and the markers say so.
+
+<Aside type="note" title="The generalizable rule">
+Ask of any fixture: **what does this fixture assume that a real user does not?** A seeded vault assumes content exists. A vault with one framework assumes no cross-framework ambiguity. A run inside a single session assumes no restart. Each assumption is a path nothing tests, and none of them will ever show up as a failure.
+</Aside>
+
+---
+
+## 5. The same family, one layer down: a reset that reset nothing
+
+Also on 2026-08-28, and the reason this log covers three things rather than one.
+
+**Maintenance: reset search data** exists to throw away Crosswalker's derived search data so it can be rebuilt from the canonical notes. It was deleting nothing at all. The index is opened through one storage mechanism and the delete was attempted through a different one, behind a `typeof` guard that was never true. The guard was false, the function returned having done nothing, and the command still showed **Fast query index cleared**.
+
+Every row the reset was supposed to destroy survived, and the next query answered out of it. Nothing downstream ever complained, because losing this data is safe by design. The index rebuilds from the notes, so an index that was never cleared behaves almost exactly like one that was cleared and immediately rebuilt. The one observable difference is *stale rows*, and only if you go looking.
+
+The reset now deletes where the file actually lives, removes any partial write left beside it, closes the live connection first, then **re-reads and throws if anything survived**, so the command reports failure instead of a success it cannot see. The message now distinguishes three genuinely different outcomes: something was deleted, there was nothing to delete, or the data was only ever held in memory this session.
+
+**The E2E test that covered this command is worth reading as an artifact.** It projected rows first, with a comment saying *"so we have data to verify is gone after clear"*, and then never checked that the data was gone. It asserted that the handle was null and that a later reprojection succeeded, with a further comment excusing the row counts as possibly zero. The test watched the mechanism and not the outcome, so it passed for months over a command that did nothing.
+
+This is the same family as the [closure cache fix](/crosswalker/agent-context/zz-log/2026-08-20-closure-cache-fix-and-what-it-means/) and the [cache-lag bugs](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/): **absence read as fine**. A missing cache entry read as "no result." A not-yet-indexed file read as "no frontmatter." A delete that found nothing read as "already clean." In each case the code observed nothing and concluded that everything was in order, when the correct conclusion was *I cannot tell*.
+
+It had also been flagged. [Challenge 45](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/) named the purge boundary as unproven, noted that the clear was best-effort and silently did nothing when the function was unavailable, and told pilots not to treat the index as a confidentiality boundary. The finding was recorded and correct. It took until today to become a fix.
+
+---
+
+## 6. What changed
+
+| Area | Change |
+|---|---|
+| Installed-framework discovery | Derived from provenance plus CURIE prefix. Path is no longer an input |
+| Coverage report | Refreshes the query index before reading it, and reports a refresh failure instead of an empty result |
+| Command palette | Grouped by what a person is trying to do: Start here, Evidence, Explore data, Import and export, Maintenance, Developer tools. Internal storage vocabulary removed from every command name |
+| First-run coverage | `tests/e2e/first-run.spec.ts`. Empty vault, real wizard, real 12-row NIST slice |
+| Living pages | Quick start and command reference re-verified against the empty-vault run, markers dated |
+| Maintenance reset | Deletes the index where it actually lives, verifies the deletion, and fails loudly when it cannot |
+| Documentation links | A new `check:links` CI gate, described below |
+
+**The link gate is its own small instance of the same theme.** Astro builds and deploys a page full of broken internal links without complaint, and Starlight does not validate them either, so the failure was silent by construction: green build, successful deploy, and the only signal a reader landing on a 404 that nobody hears about. A sweep found 68 files pointing at challenge briefs that had been archived out from under them, across eighteen briefs and months of archiving. `bun run check:links` now resolves all 4,947 internal links across the site, README, ROADMAP, and both agent-instruction files, in about a second with no build, no browser, and no network. It deliberately does not check heading anchors, because a gate that cries wolf gets waved through when it is finally right.
+
+---
+
+## 7. Open at the time of writing
+
+### Closed by adversarial review, in this same session
+
+The reset fix was reviewed by an agent whose only instruction was to prove it wrong, and it found two ways the repaired command still deleted nothing while saying something reassuring. Both are recorded because the pattern is the point: **the fix removed the original silent no-op and immediately grew two more behind it.** Neither was reachable on the default path, which is exactly what would have carried them through a manual test.
+
+| Found | Why it mattered | Resolution |
+|---|---|---|
+| The pool key was rebuilt by hand and escaped differently from the storage layer | A *Query index file* containing a space, such as `Vault Notes/.crosswalker.sqlite`, matched nothing, deleted nothing, threw nothing, and reported "already empty." The setting has a folder picker attached, so spaces are ordinary | Key is now derived by the same expression the storage layer uses, so the two cannot disagree. Regression test asserts the escaped form and fails on the hand-rolled version |
+| A storage-pool that refused to open was read as "nothing was persisted" | The pool also refuses while a second vault window holds it, and caches that refusal for the session. The rows are intact on disk and the user is told they were discarded | Absence must be earned: "nothing persisted" is claimed only when this session demonstrably ran in memory. Any other unreachable pool is a reported failure |
+
+### Still open
+
+| Item | State |
+|---|---|
+| A close that fails is now reported, but the wider ordering is unguarded | A projection running when the reset fires still dies on a closed handle and surfaces its error separately from the reset's success notice. Not corruption, since the file is deleted and the next open rebuilds, but two messages that read as contradictory |
+| The seeded-vault assumption elsewhere | `first-run.spec.ts` closes the empty-vault path specifically. Other fixtures carry other unexamined assumptions. Listed here as a question to ask, not a fix to make |
+| `reference/settings.mdx` says the index file lives "relative to the vault root" | It does not. It lives in browser-managed storage outside the vault. The settings UI string says the same thing. A copy fix on both surfaces, not scheduled |
+
+---
+
+## Related
+
+- [Re-import is identity reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/) — the first path-inference defect
+- [Import-set ownership](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/) — the second, and where "paths are guesses, not facts" was first written down
+- [Closure cache fix, and what it means](/crosswalker/agent-context/zz-log/2026-08-20-closure-cache-fix-and-what-it-means/) — the same absence-read-as-fine family, in the query layer
+- [Challenge 44 E2E testing strategy synthesis](/crosswalker/agent-context/zz-log/2026-08-24-e2e-testing-strategy-synthesis/) — the seed vault whose limits this session found
+- [Challenge 45 org-rollout readiness](/crosswalker/agent-context/zz-research/2026-08-19-challenge-45-org-rollout-readiness/) — flagged the unproven purge boundary before it was fixed
+- [Org-rollout readiness synthesis](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/) — what was adopted from that audit
+- [Quick start](/crosswalker/getting-started/quick-start/) and the [command reference](/crosswalker/reference/commands/) — the two living pages re-verified here
+- [v0.1.5 Tier 2 sidecar milestone](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — where the reset command shipped, with a checkbox asserting a deletion that did not happen
+- [UI lexicon](/crosswalker/agent-context/ui-lexicon/) — the command-naming rules the palette regrouping satisfies

@@ -47,8 +47,8 @@ The lexicon below keeps these roles distinct while leaving the final public name
 | Materialized query instance (frontmatter + generated `.base` file) | **Query** | A saved, filterable view of your vault | `browse-queries-modal.ts`, `embed-existing-query-modal.ts`, command palette |
 | [SSSOM](/crosswalker/reference/registry/sssom/) mapping file | **Crosswalk mapping file** | A file listing how two frameworks' items relate | `sssom-import-modal.ts`, `main.ts` command (fix-list) |
 | [Crosswalk](/crosswalker/concepts/terminology/#core-terms) | **Crosswalk** (no change — already plain) | A link showing two framework items correspond | `crosswalker-pivot-view.ts`, docs |
-| Tier 2 / sqlite-wasm sidecar projection | **Fast query index** | A background cache that speeds up big-vault queries | `settings-tab.ts` (correct), `main.ts` command (fix-list, currently leaks "Tier 2 sidecar") |
-| Ontology (as a plugin-home noun, e.g. "installed ontologies") | **Framework** (or the specific source name) | The structured source you imported | `workspace-view.ts` (fix-list — currently says "Installed ontologies") |
+| Tier 2 / sqlite-wasm sidecar projection | **Fast query index** | A background cache that speeds up big-vault queries | `settings-tab.ts` (correct), `main.ts` command (applied 2026-08-28: the palette now reads "Maintenance: reset search data") |
+| Ontology (as a plugin-home noun, e.g. "installed ontologies") | **Framework** (or the specific source name) | The structured source you imported | `workspace-view.ts` (applied 2026-08-28: the heading now reads "Installed frameworks" and the status bar counts frameworks) |
 | `WizardDraft` | **Draft** | Your in-progress import, saved to resume later | `draft-store.ts`, `import-wizard.ts` |
 | Structural `Detection` | **What we found** / detected shape | The plugin's evidence-backed guess at your data's shape | `workbench.ts`, `import-wizard.ts` |
 | Six-primitive `Destination` (folder/name/tag/heading/link/property) | **Shape** | One of six ways your data can live in the vault | `workbench.ts` shape cards |
