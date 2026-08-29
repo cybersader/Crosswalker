@@ -50,15 +50,49 @@ import {
 import { discoverImportSets, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
 
 /**
- * Curated destination default for a recognized recipe (spec §7m): an explicit
- * plugin-wide default output path always wins (the user already told us where
- * their imports go); otherwise the registry's curated `suggestedFolder`
- * ("Frameworks/CIS Controls v8", etc.) beats the generic `Frameworks/<file
- * name>` fallback `deriveDestinationDefault` would otherwise produce.
+ * Curated per-import root for a recognized recipe (spec §7m), or `null` when the
+ * registry has nothing more specific than its generic fallback and the
+ * destination should be derived from the source file name instead.
+ *
+ * This used to return the plugin-wide default output path verbatim whenever it
+ * was non-empty, which threw the curated folder away AND flattened the import
+ * into the shared root. The global default is the PARENT, not the destination:
+ * a curated `Frameworks/NIST CSF 2.0` under a global root of `Ontologies`
+ * becomes `Ontologies/NIST CSF 2.0`. The curated leading segment is the
+ * registry's stand-in for whatever root the user actually configured, so it is
+ * replaced rather than nested (which would read `Ontologies/Frameworks/...`).
+ *
+ * Crosswalk-edge and junction-note recipes are NOT ontology output: their
+ * curated homes (`_crosswalker/mappings`, `Evidence/Junctions`) sit deliberately
+ * outside the ontology root and are used verbatim, because re-parenting them
+ * would relocate the mapping and evidence surfaces that read them.
  */
-export function recognizedDestination(entry: RecipeRegistryEntry, globalDefault: string): string {
-	const explicit = (globalDefault ?? '').trim();
-	return explicit || entry.suggestedFolder;
+export function recognizedDestination(entry: RecipeRegistryEntry, globalDefault: string): string | null {
+	const suggested = (entry.suggestedFolder ?? '').trim().replace(/^\/+|\/+$/g, '');
+	if (!suggested) return null;
+	if (entry.routingKind !== 'concept') return suggested;
+	const tail = suggested.split('/').filter(Boolean).slice(1);
+	// A single-segment suggestion is the registry's generic fallback ("Frameworks"),
+	// not a per-import root. Derive from the source file name instead.
+	if (tail.length === 0) return null;
+	const root = (globalDefault ?? '').trim().replace(/\/+$/, '') || 'Frameworks';
+	return `${root}/${tail.join('/')}`;
+}
+
+/**
+ * Where an import lands when the user has not chosen a destination: the curated
+ * per-import root if a recognized recipe supplies one, otherwise
+ * `<global output path>/<source basename>`. Either way the import gets its OWN
+ * root inside the global path, so two unrelated sources never share a folder and
+ * cannot be mistaken for each other's import set (owner rule, 2026-07-11).
+ */
+export function resolveDestinationDefault(
+	globalDefault: string,
+	sourceFileName: string | null | undefined,
+	curated: RecipeRegistryEntry | null | undefined,
+): string {
+	const curatedRoot = curated ? recognizedDestination(curated, globalDefault) : null;
+	return curatedRoot ?? deriveDestinationDefault(globalDefault, sourceFileName);
 }
 
 /**
@@ -221,6 +255,21 @@ export class ImportFlow {
 
 	// Output settings (captured from Step 4)
 	outputPath: string = '';
+	/**
+	 * The user CHOSE the destination (typed it), as opposed to the wizard having
+	 * filled it in. The per-import root default gates on this recorded intent and
+	 * never on `outputPath` being empty: the constructor used to seed `outputPath`
+	 * from `settings.defaultOutputPath`, which ships non-empty, so an emptiness
+	 * test could never fire and the per-import root rule (owner, 2026-07-11) never
+	 * ran once. Emptiness is a property of the value; only a flag records intent.
+	 */
+	private destinationEdited: boolean = false;
+	/**
+	 * Curated per-import root from the recognized recipe driving this session
+	 * (`recognizedDestination`), or null when nothing was recognized. Held as the
+	 * resolved string so a draft can carry it across a resume.
+	 */
+	private curatedDestination: string | null = null;
 	overwriteMode: 'skip' | 'replace' | 'error' = 'skip';
 	frameworkId: string = '';
 
@@ -258,8 +307,9 @@ export class ImportFlow {
 		// Register once for hosts whose keyboard lifecycle sits above the rendered
 		// DOM. The workspace host omits this and uses the workbench-local fallback.
 		host.registerEscapeHandler?.(() => this.closeWorkbenchTransient());
-		// Initialize from settings
-		this.outputPath = plugin.settings.defaultOutputPath;
+		// `outputPath` deliberately stays empty until the user types one. Seeding it
+		// from settings here is what made the destination look "chosen" to every
+		// downstream check. The effective path comes from `currentOutputPath()`.
 	}
 
 	/** Consume Escape only while Step 2 is showing an open workbench surface. */
@@ -334,7 +384,12 @@ export class ImportFlow {
 		this.columnInfos = draft.columnInfos ?? [];
 		this.columnConfigs = dictToColumnConfigs(draft.columnConfigsDict ?? {});
 		this.config = draft.config ?? {};
-		this.outputPath = draft.outputPath ?? this.plugin.settings.defaultOutputPath;
+		this.outputPath = draft.outputPath ?? '';
+		// Absent on a pre-flag draft hydrates as false, so it re-derives. That is the
+		// right default: those drafts recorded a destination that was ALWAYS the bare
+		// global root, never a choice, so honouring it would replay the defect.
+		this.destinationEdited = draft.destinationEdited ?? false;
+		this.curatedDestination = draft.curatedDestination ?? null;
 		this.overwriteMode = draft.overwriteMode ?? 'skip';
 		this.frameworkId = draft.frameworkId ?? '';
 		// Restored column decisions are authoritative — don't let a re-parse
@@ -540,6 +595,7 @@ export class ImportFlow {
 		this.recognizedDismissed = false;
 		this.recognizedFastPath = false;
 		this.recognizedEdited = false;
+		this.curatedDestination = null;
 		this.workbench = null;
 		this.parsedData = null;
 		this.availableSheets = [];
@@ -621,6 +677,7 @@ export class ImportFlow {
 				this.recognizedDismissed = false;
 				this.recognizedFastPath = false;
 				this.recognizedEdited = false;
+				this.curatedDestination = null;
 				this.workbench = null;
 				this.parsedData = null;
 				this.availableSheets = [];
@@ -1087,7 +1144,7 @@ export class ImportFlow {
 		// (when live — spec §7m curated defaults) what the enrichment hint adds.
 		const rowCount = this.parsedData?.rowCount ?? 0;
 		const shapes = summarizeRecipeShapes(entry);
-		const dest = recognizedDestination(entry, this.plugin.settings.defaultOutputPath);
+		const dest = resolveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null, entry);
 		const enrichment = honestEnrichment(entry);
 		card.createEl('p', { cls: 'crosswalker-recognized-desc', text: entry.description });
 		const summary = card.createEl('div', { cls: 'crosswalker-recognized-summary' });
@@ -1137,7 +1194,9 @@ export class ImportFlow {
 		// Curated defaults (spec §7m): the registry's suggestedFolder becomes the
 		// destination (unless a plugin-wide default already overrides it), and any
 		// LIVE recommendedEnrichment hint rides along on the seeded mapping.
-		this.outputPath = recognizedDestination(entry, this.plugin.settings.defaultOutputPath);
+		// Records the curated ROOT, not a user choice: `destinationEdited` stays
+		// false so the breadcrumb still reads as autofilled and stays editable.
+		this.curatedDestination = recognizedDestination(entry, this.plugin.settings.defaultOutputPath);
 		// Seed from the COMPLETE canonical recipe. The RecipeDocument keeps every
 		// deferred/read-only field while exposing its editable mapping to the workbench.
 		// No curated overlay is applied here: an untouched recognized recipe must retain
@@ -1559,7 +1618,7 @@ export class ImportFlow {
 		return new MappingWorkbench({
 			parsedData: this.parsedData!,
 			columnInfos: this.columnInfos,
-			outputPath: this.outputPath || this.plugin.settings.defaultOutputPath,
+			outputPath: this.currentOutputPath(),
 			debug: this.plugin.debug,
 			defaultPresetId: 'browsable-framework',
 			initialMapping,
@@ -1696,8 +1755,30 @@ export class ImportFlow {
 		});
 	}
 
+	/**
+	 * The one place that answers "where does this import land". Every write path,
+	 * preview, tree, breadcrumb and ownership check reads THIS, so what the user is
+	 * shown is always what gets written (and two surfaces can never disagree).
+	 *
+	 * A user-chosen path wins. Otherwise the import gets its own root inside the
+	 * global output path. The old version returned the bare global output path,
+	 * which put unrelated imports in one folder and made the second import look
+	 * like a refresh of the first.
+	 *
+	 * Nothing that already exists is ever relocated. The derived root is a pure
+	 * function of (global output path, source file name), so re-importing the same
+	 * source resolves to the same folder, finds its own set there, and refreshes it.
+	 * Known gap: re-importing a RENAMED source resolves elsewhere and mints a new
+	 * set. An import set records `{id, scheme}` and no destination, so nothing here
+	 * can look up where a set already lives without inferring it from vault paths.
+	 */
 	private currentOutputPath(): string {
-		return this.outputPath || this.plugin.settings.defaultOutputPath;
+		if (this.destinationEdited) {
+			const chosen = this.outputPath.trim();
+			if (chosen) return chosen;
+		}
+		return this.curatedDestination
+			?? deriveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null);
 	}
 
 	/**
@@ -1823,10 +1904,10 @@ export class ImportFlow {
 	 * folder without closing the modal.
 	 */
 	private renderDestinationBlock(container: HTMLElement): void {
-		// Autofill a sensible default the first time we reach the review screen.
-		if (!this.outputPath || !this.outputPath.trim()) {
-			this.outputPath = deriveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null);
-		}
+		// No autofill-by-mutation here. Rendering used to derive the default and
+		// write it back, which meant the value depended on which screen you had
+		// visited; the step-2 preview and this breadcrumb could disagree. The
+		// default now lives in `currentOutputPath()`, which every surface reads.
 		const block = container.createEl('div', { cls: 'crosswalker-dest-block' });
 		const head = block.createEl('div', { cls: 'crosswalker-dest-head' });
 		head.createEl('div', { cls: 'crosswalker-dest-label', text: 'Destination' });
@@ -1838,11 +1919,17 @@ export class ImportFlow {
 	/** Breadcrumb path display / inline text editor toggle for the destination. */
 	private renderDestinationPath(wrap: HTMLElement): void {
 		if (this.destEditing) {
-			const input = wrap.createEl('input', { type: 'text', cls: 'crosswalker-dest-input', value: this.outputPath });
+			const input = wrap.createEl('input', { type: 'text', cls: 'crosswalker-dest-input', value: this.currentOutputPath() });
 			// eslint-disable-next-line obsidianmd/ui/sentence-case -- placeholder is an example vault path
 			input.placeholder = 'Frameworks/My import';
 			const commit = () => {
-				this.outputPath = input.value.trim() || this.outputPath;
+				const typed = input.value.trim();
+				// Only a non-empty value records intent. Clearing the field must fall back
+				// to the derived default rather than stranding the import at the vault root.
+				if (typed) {
+					this.outputPath = typed;
+					this.destinationEdited = true;
+				}
 				this.destEditing = false;
 				this.scheduleDraftSave();
 				this.renderStep();
@@ -1856,7 +1943,7 @@ export class ImportFlow {
 			return;
 		}
 		const crumb = wrap.createEl('button', { cls: 'crosswalker-dest-crumb', attr: { title: 'Click to edit the destination path' } });
-		const segs = this.outputPath.split('/').filter(Boolean);
+		const segs = this.currentOutputPath().split('/').filter(Boolean);
 		if (segs.length === 0) {
 			crumb.createEl('span', { cls: 'crosswalker-dest-seg', text: '(vault root)' });
 		} else {
@@ -1899,7 +1986,7 @@ export class ImportFlow {
 	}
 
 	private async revealDestinationInExplorer(): Promise<void> {
-		const target = this.outputPath.trim().replace(/\/+$/, '');
+		const target = this.currentOutputPath().trim().replace(/\/+$/, '');
 		// Walk up to the nearest existing folder (target or an ancestor).
 		let folder: TFolder | null = null;
 		let probe = target;
@@ -2192,6 +2279,8 @@ export class ImportFlow {
 			columnConfigsDict: columnConfigsToDict(this.columnConfigs),
 			config: this.config,
 			outputPath: this.outputPath,
+			destinationEdited: this.destinationEdited,
+			...(this.curatedDestination ? { curatedDestination: this.curatedDestination } : {}),
 			overwriteMode: this.overwriteMode,
 			frameworkId: this.frameworkId,
 			// B5: which entry path produced this draft's mapping (see
@@ -2322,8 +2411,9 @@ export class ImportFlow {
 				// Same basePath + normalizePath combination generation-engine's
 				// buildNoteDataViaRender uses, so the path shown here is the
 				// actual vault path the row will land at, not an approximation.
-				const path = this.outputPath
-					? normalizePath(`${this.outputPath}/${address.primary.path}`)
+				const base = this.currentOutputPath();
+				const path = base
+					? normalizePath(`${base}/${address.primary.path}`)
 					: normalizePath(address.primary.path);
 				perRow.push({ row: rowNum, notes: report.notes, path });
 			} catch {
@@ -2407,7 +2497,7 @@ export class ImportFlow {
 			el.style.paddingLeft = `${depth * 22}px`;
 			el.setText(`${icon} ${text}`);
 		};
-		line(0, '📁', `${this.outputPath || 'output'}/`);
+		line(0, '📁', `${this.currentOutputPath() || 'output'}/`);
 
 		const sampleRows = this.parsedData && Array.isArray(this.parsedData.rows)
 			? (this.parsedData.rows as Record<string, unknown>[]).slice(0, 50)
@@ -2496,12 +2586,12 @@ export class ImportFlow {
 	 */
 	buildFolderTreePreview(config: Partial<ImportRecipe>): string {
 		if (!this.parsedData || !config.mapping) {
-			return `${this.outputPath}/\n└── (No hierarchy configured)`;
+			return `${this.currentOutputPath()}/\n└── (No hierarchy configured)`;
 		}
 
 		const hierarchyColumns: HierarchyMapping[] = config.mapping.hierarchy || [];
 		if (hierarchyColumns.length === 0) {
-			return `${this.outputPath}/\n└── (Flat structure - all notes in root folder)`;
+			return `${this.currentOutputPath()}/\n└── (Flat structure - all notes in root folder)`;
 		}
 
 		// Collect unique paths from data (limit to first 50 rows for performance).
@@ -2528,7 +2618,7 @@ export class ImportFlow {
 		}
 
 		// Build tree string
-		const lines: string[] = [`${this.outputPath}/`];
+		const lines: string[] = [`${this.currentOutputPath()}/`];
 
 		// Get root level items
 		const rootItems = paths.get('') || new Set();
@@ -2689,7 +2779,7 @@ export class ImportFlow {
 		if (this.isWorkbenchMode()) {
 			const confirm = container.createEl('div', { cls: 'crosswalker-gen-confirm' });
 			confirm.createEl('span', { cls: 'crosswalker-gen-confirm-lead', text: 'Creating in: ' });
-			confirm.createEl('span', { cls: 'mono', text: this.outputPath || this.plugin.settings.defaultOutputPath || '(vault root)' });
+			confirm.createEl('span', { cls: 'mono', text: this.currentOutputPath() || '(vault root)' });
 		} else {
 			// Output path setting
 			new Setting(container)
@@ -2697,9 +2787,12 @@ export class ImportFlow {
 				.setDesc('Folder where notes will be created')
 				.addText((text) => {
 					text.setPlaceholder('Ontologies')
-						.setValue(this.outputPath)
+						.setValue(this.currentOutputPath())
 						.onChange((value) => {
 							this.outputPath = value;
+							// Typing here IS the choice. Seeding the field above deliberately
+							// does not set it, so an untouched field keeps deriving.
+							this.destinationEdited = true;
 							this.scheduleDraftSave();
 						});
 					// Refresh the inline set list once the destination edit is complete.

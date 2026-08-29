@@ -8,15 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
-### Known defect: every import lands in the shared output folder (2026-08-28)
+### Known defect, mostly closed: each import now gets its own folder, but an existing vault needs care (2026-08-28, amended 2026-08-29)
 
-Found by a test-fixture experiment, not yet fixed. Recorded here because it reaches a person on default settings through the shortest path in the product.
+The original defect is fixed and the fix is verified against a real run. It is recorded here rather than rewritten as a plain feature entry because it is not safe to apply blindly to a vault that already holds imports, and because one form of the original problem survives untouched.
 
-- **Each import is supposed to nest under its own folder inside your output path. It does not; it writes straight into the shared folder.** That rule was set deliberately, and the code implementing it is correct and covered by tests, but the wizard fills the destination in before that code is consulted and so it never gets a chance to run. It only applies when the destination is empty, and the destination ships with your configured output path already in it.
-- **The visible consequence appears on your second import, not your first.** Once the output folder holds one imported collection, the wizard preselects "refresh that collection" for the next import. Importing a second, unrelated framework would attribute it to the first one and then report every control in the first framework as missing from the new source.
-- **On a third import it stops you.** Two collections in one folder is genuinely ambiguous, so the wizard requires you to say which one you mean and will not continue until you do. The requirement is announced only by a brief notice when you press the button, which is easy to miss.
-- **Nothing is deleted.** Controls that no longer appear in a source are listed for you to look at, never removed. This is a misattribution and a misleading change list rather than any loss of your notes.
-- **A related question is open.** When Crosswalker recognises a well-known source it also targets the shared folder, discarding the per-framework folder it keeps for that source. Whether that is intended or was overtaken by the per-import rule set down the same day has not been decided.
+**What was wrong**
+
+- **Each import is supposed to nest under its own folder inside your output path. It did not; it wrote straight into the shared folder.** That rule was set deliberately and the code implementing it was correct and covered by tests, but the wizard filled the destination in before that code was ever consulted. The code ran only when the destination was empty, and the destination shipped with your configured output path already in it. It was never empty, so the rule never ran, for anyone, ever.
+- **The visible consequence appeared on your second import, not your first.** Once the output folder held one imported collection, the wizard preselected "refresh that collection" for the next import. Importing a second, unrelated framework would attribute it to the first one and then report every control in the first framework as missing from the new source.
+- **On a third import it stopped you.** Two collections in one folder is genuinely ambiguous, so the wizard required you to say which one you meant and would not continue until you did. The requirement was announced only by a brief notice when you pressed the button, which is easy to miss.
+- **Nothing was ever deleted.** Controls that no longer appear in a source are listed for you to look at, never removed. This was a misattribution and a misleading change list, not a loss of your notes.
+
+**What changed**
+
+- **The wizard now remembers whether you chose a destination, instead of guessing from whether the box looked empty.** If you have not chosen one, your import gets its own folder inside your configured output path, named after the file you are importing. Your setting stays the parent folder, so a customised output path is still honoured.
+- **What you are shown is what gets written.** The recognised-source card, the destination breadcrumb, the preview, the folder tree, and the final confirmation now all read the same answer from one place, so two screens can no longer name different folders. The destination is never displayed blank; if you have not chosen one, you see the folder your import will actually land in.
+- **A recognised source now uses the folder curated for that framework, inside your output path.** Previously that curated folder was discarded in favour of the shared root. Crosswalk mappings and evidence junction notes keep their own homes outside the output path, because those are not framework output and relocating them would move the mapping and evidence surfaces that read them.
+- **Verified in a real Obsidian run, not only in unit tests.** An import that previously wrote into the shared `Frameworks` folder now writes into `Frameworks/attack-mini`. One end-to-end test that had never once been able to finish an import now finishes it, because the ownership question it could not answer no longer arises. The full end-to-end suite finished at 167 passing, 26 skipped, and 8 failures that are the pre-existing quarantined visual specs, unchanged. The unit suite is green.
+
+**What is still true, and what to watch for**
+
+- **If you already have imports sitting directly in your output folder, your next import will not recognise them.** It resolves to the new per-source folder, finds nothing there, and treats the import as a brand-new collection. On the default *skip* setting your existing notes stay where they are and only new rows land in the new folder, leaving one collection split across two places. If you select *replace*, your notes are moved into the new folder instead. Neither case deletes anything. To keep everything where it is, type your existing folder into the destination box; a destination you type is remembered as your choice and is not overridden.
+- **The "home" and grouping notes an import creates are matched by location rather than by what they are, so a change of destination copies them instead of moving them.** Two notes with the same name make any existing link to that name ambiguous, and Obsidian picks one. This affects only vaults imported before this change, and only on the first import after it.
+- **Two renderings of the same framework still share one folder.** The curated folders are per framework, not per source layout, so importing the hierarchical NIST CSF export and then the flat one both land in `NIST CSF 2.0`, and the second is offered as a refresh of the first. That is the original defect intact, in the recognised-source path only. The same holds for two unrelated files that happen to share a name, since the folder is named after the file.
+- **Renaming your source file makes the next import look like a new collection**, because the folder is derived from the file name and a collection does not record where it lives.
+- **Changing the source file after typing a destination keeps the destination you typed**, which would send the second source into the first one's folder. Clear or retype the destination after switching files.
+- **A recognised crosswalk or junction import now writes outside your configured output path**, so it does not appear in the installed-frameworks list or the status-bar count, and the *Reset imports* tool will not offer to clear it.
 
 ### The empty-vault walkthrough now runs only where it makes sense (2026-08-28)
 

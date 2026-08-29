@@ -423,17 +423,19 @@ export { DEFAULT_MISSING };
 // ============================================================================
 
 /**
- * The default vault destination for an import (spec §7j #2). An explicit
- * `outputPath` setting wins; otherwise derive `Frameworks/<source basename>`
- * from the source file name (extension stripped). An empty / unknown source
- * falls back to a stable `Frameworks/Imported` so the field is never blank.
+ * The default vault destination for an import (spec §7j #2). `outputPath` is the
+ * GLOBAL root (the plugin setting) and becomes the parent; the per-import root
+ * is `<root>/<source basename>` with the extension stripped. An empty / unknown
+ * source falls back to a stable `<root>/Imported` so the field is never blank,
+ * and an empty root falls back to `Frameworks`.
  */
 export function deriveDestinationDefault(outputPath: string, sourceFileName: string | null | undefined): string {
 	// Every import nests under its OWN root folder inside the global output
-	// path (owner, 2026-07-11): defaulting straight to `Frameworks/` flattened
-	// a whole import's top-level folders into the shared root, and the
-	// installed-frameworks list then showed every one of them as its own
-	// "framework". The per-import root also gives the home list one honest row.
+	// path (owner, 2026-07-11). Writing straight into the shared root flattens
+	// every import's top-level folders together, and the real damage is
+	// ownership: with one collection already in that folder, the review screen
+	// preselects refreshing it, so the NEXT unrelated source is attributed to the
+	// first and every concept in the first is reported missing from the new one.
 	const root = (outputPath ?? '').trim().replace(/\/+$/, '') || 'Frameworks';
 	const base = basenameNoExt(sourceFileName ?? '');
 	return base ? `${root}/${base}` : `${root}/Imported`;

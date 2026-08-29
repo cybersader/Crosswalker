@@ -1,6 +1,6 @@
 ---
 title: "First run was broken, and every gate was green"
-description: "Session record for 2026-08-28. A new user could import a framework and be told, on the same screen, that 12 notes were created and that nothing had been imported. The cause was counting installed frameworks from folder shape: the third time meaning was inferred from vault paths and the third time it was wrong. It survived a week of green suites because every test and every screenshot started from a seeded vault, so none of them crossed the empty-vault path. The maintenance reset was a third instance of the same family, one layer down: a deletion that deleted nothing behind a success notice."
+description: "Session record for 2026-08-28. A new user could import a framework and be told, on the same screen, that 12 notes were created and that nothing had been imported. The cause was counting installed frameworks from folder shape: the third time meaning was inferred from vault paths and the third time it was wrong. It survived a week of green suites because every test and every screenshot started from a seeded vault, so none of them crossed the empty-vault path. The maintenance reset was a third instance of the same family, one layer down: a deletion that deleted nothing behind a success notice. Amended 2026-08-29 with the outcome of the destination defect the fixture experiment revealed, fixed by recording the choice the guard was inferring, and with the pattern all four defects share: a value read as a fact it does not establish."
 tags: [decision, session-summary, first-run, testing, tier2, correctness, provenance]
 date: 2026-08-28
 sidebar:
@@ -148,6 +148,52 @@ The blocked-wizard case is what the new test failure actually is. That is a defe
 
 Two things the audit deliberately declined to call defects, because reading them as defects is how audits lose their credibility: the pure in-memory unit tests wearing an Obsidian costume are cheap, deterministic and honest about it, and the nine bodiless `it()` calls for an unlanded phase are the correct representation of work that has not happened.
 
+### The defect, fixed the next day (recorded 2026-08-29)
+
+**The guard was asking the wrong question, and that is the whole story.** It wanted to know one thing: *has the user chosen a destination?* What it actually asked was: *is the destination empty?* Those are the same question only in a world where nothing else may write to that field, and something else did — the constructor, fifteen hundred lines earlier, filling it with the configured output path before the user had seen a screen. One line seeded a value; another line read that value as an answer to a question about intent.
+
+The fix does not make the guard smarter. It records the thing the guard was trying to infer. A flag is set when, and only when, the user edits the destination. The derived per-import root applies when that flag is false. Emptiness is never consulted again.
+
+Three rulings rode along, all of them about not making the same class of mistake one layer over:
+
+| Ruling | Why |
+|---|---|
+| The configured output path stays the **global root**; the per-import folder nests inside it | A user who customised that setting keeps it as the parent. The per-import rule adds a level, it does not relocate anyone |
+| A **curated** folder for a recognised source beats a derived one, and both nest inside the global root | This closes the reconciliation section 4 called an owner call. The curated folder is a better per-import root than a filename-derived one, so it wins, but it does not get to escape the configured root. Crosswalk and junction recipes are the exception and keep their homes outside it, because they are not framework output and moving them would relocate the mapping and evidence surfaces that read them |
+| **One accessor answers "where does this land"**, and every write path, preview, tree, breadcrumb and ownership check reads it | The old code derived the value inside a render method and wrote it back into the field it was reading. Two surfaces could disagree, and the field being read was also the field being mutated |
+
+**Verified against a real run, not only against unit tests.** An import that had always written into the shared `Frameworks` folder now writes into `Frameworks/attack-mini`. `visual-workbench.spec.ts` had never once completed a generation in the life of that spec, reporting `NO_GENERATE` because the ownership question blocked the step before the generate button exists, and it now returns `created: 22, ok: true`. That is the blocked-wizard case from the table above, disappearing because the ambiguity that produced it is no longer created. The full end-to-end suite ended at 167 passing, 26 skipped, and 8 failures that are exactly the pre-existing quarantined visual specs: one net gain, no losses.
+
+**What the fix deliberately does not do.** It never moves anything that already exists. A refresh keeps the destination its notes already use, except that nothing can currently look that up: an import set records its id and its identity scheme and **no destination at all**. The only way to answer "where does this set live" today is to read the paths of its notes, which is the exact inference this project has already banned three times. So the invariant holds by construction rather than by lookup. The derived root is a pure function of the output path and the source file name, so re-importing the same source resolves to the same folder and finds its own collection there.
+
+That construction is sound for a vault created after the fix and hazardous for one created before it, and an adversarial review confirmed the shape of the hazard:
+
+| Confirmed | What happens |
+|---|---|
+| An existing flat vault is not recognised | The next import resolves to the new per-source folder, finds nothing, and mints a new collection. On the default *skip* it splits one collection across two folders; on *replace* it moves every note into the new one. Nothing is deleted either way, and typing the old path keeps it |
+| Home and grouping notes are matched by location, not identity | So a changed destination copies them rather than moving them. Duplicate names then make existing links to that name ambiguous. This is the one place the fix can produce a genuinely new duplicate, and it is confined to the first import after the change |
+| Two renderings of one framework still share a folder | The curated folders are per framework, not per source layout, so the hierarchical and flat NIST CSF exports both land in `NIST CSF 2.0` and the second is offered as a refresh of the first. **The original defect, intact, in the recognised-source path**: narrowed from every import to a specific pair, but not gone |
+| Switching source file after typing a destination keeps the destination | Which sends the second source into the folder belonging to the first: the same misattribution, reachable inside one session, in the file the fix lives in |
+
+The first two are migration questions and the honest answer to both is the same: before generating, compare where this import will land against where the selected collection actually keeps its notes, and if they differ, *ask*. Not because asking is nice, but because "the destination moved" is currently indistinguishable from an ordinary run, and every one of these failures is a consequence of that indistinguishability. The third and fourth are small edits.
+
+<Aside type="caution" title="Name the pattern: a value is not a fact">
+This is the **fourth** time, and the first three are already written down on this page and its neighbours. They look like different bugs. They are one bug.
+
+| # | The code observed | And concluded |
+|---|---|---|
+| 1 | A note folder | That is which import owns it. See [re-import reconciliation](/crosswalker/agent-context/zz-log/2026-08-21-reimport-is-identity-reconciliation/) |
+| 2 | A destination path | That is the ownership boundary. See [import-set ownership](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/), where *paths are guesses, not facts* was first written down |
+| 3 | A subfolder | That is one installed framework. Section 3 above |
+| 4 | An empty text field | The user has not chosen a destination. Today |
+
+The absence-read-as-fine family is the same shape said the other way round: a missing cache entry read as *no result* ([closure cache](/crosswalker/agent-context/zz-log/2026-08-20-closure-cache-fix-and-what-it-means/)), a not-yet-indexed file read as *no frontmatter*, a delete that found nothing read as *already clean* (section 5). In every case the code looked at a value it was allowed to see and reported a fact it had not established.
+
+**The rule, stated once for all four:** when you need a fact about **identity or intent**, record it at the moment it is true and read it back. Never reconstruct it from a value that some other line of code is allowed to write. A path may be used to *find* candidates and never to *classify* them; an empty field means the field is empty, never that a person declined to fill it.
+
+The tell is grammatical. Every one of these is a condition whose expression and whose purpose are about different things: `if (!outputPath)` standing in for *the user has not chosen*, a folder-shape walk standing in for *this is a framework*. When the question in the comment and the question in the expression are not the same question, that is the bug, and it will survive every test written by anyone who read the comment.
+</Aside>
+
 ---
 
 ## 5. The same family, one layer down: a reset that reset nothing
@@ -201,8 +247,12 @@ The reset fix was reviewed by an agent whose only instruction was to prove it wr
 | Item | State |
 |---|---|
 | The seeded-vault assumption elsewhere | **Asked, answered, and the first move executed.** The audit found sixteen assumptions across 48 specs. Its top finding — the configured output folder is never written to — was closed by pointing the seed at `Frameworks`, which cost one new test failure and revealed a live destination defect. The remaining fifteen are unfixed |
-| The destination defect the experiment revealed | **Open, unfixed, and user-facing.** Imports default to the bare shared output folder, so the per-import folder rule never runs and the ownership prompt fires on ambiguity that should not exist. The fix is small; whether the recognized-recipe path follows the same rule is an owner call |
-| The seed change itself | **Applied, not yet committed.** `visual-workbench.spec.ts` cannot express "this is a new import" and needs to answer the ownership control before advancing; `visual-workspace-flow.spec.ts` should match the rendered title rather than the identifier. Both are small edits that belong with the destination fix |
+| The destination defect the experiment revealed | **Fixed 2026-08-29, verified, with named residual risk.** The guard now reads a recorded choice instead of an empty field, the recognised-recipe reconciliation is decided (curated folder wins, nested inside the configured root), and a real run confirms the per-import folder. The residual items below are what the adversarial review found; delivery detail is in `CHANGELOG.md` `[Unreleased]` |
+| A vault that already imported into the shared folder | **Open, and the largest remaining item.** Its next import lands in the new per-import folder, does not recognise the earlier collection, and mints a new one: split on *skip*, moved on *replace*, deleted in neither. The proposed close is a comparison before generating, between where this import will land and where the selected collection keeps its notes, with a question rather than a silent write. Recording the destination on the import set would let that comparison be a lookup rather than another path inference |
+| Home and grouping notes are still matched by location | **Open.** They are the one part of a generated framework that reconciles by path rather than by identity, so a changed destination copies rather than moves them, and duplicate names make existing links to that name ambiguous. Their identifiers are already path-independent for facet hubs, so this is reachable; level hubs need a path-independent identifier first |
+| Two renderings of one framework still share a curated folder | **Open, and it is the original defect in miniature.** The hierarchical and flat NIST CSF exports both resolve to `NIST CSF 2.0`, so the second is offered as a refresh of the first. Either the curated folders distinguish the rendering, or the ambiguity is put to the user |
+| Switching source file keeps a typed destination | **Open, one-line fix.** Both source-reset sites clear the curated destination and neither clears the typed one, so picking a source, typing a destination, then switching sources sends the second into the folder belonging to the first |
+| The seed change itself | **Applied, not yet committed, and one half of it is now moot.** `visual-workbench.spec.ts` completes a generation for the first time and needs no ownership answer, because the destination fix removed the ambiguity it could not express. `visual-workspace-flow.spec.ts` still matches the identifier rather than the rendered title and is still failing on that string |
 | `tests/e2e/first-run.spec.ts` has an intermittent startup hang | On two consecutive runs of the same command on an idle host, one passed in 5.1s and one hung for 2m38s with an unresponsive renderer, failing on the first screenshot. The configuration fix is verified; the spec's stability is not, on one green run |
 | `tests/e2e/first-run-vault/.obsidian/plugins/` is untracked build residue and is not gitignored | A clean run deletes it, a terminated one strands it. Nothing under that subdirectory is tracked, so ignoring it untracks nothing |
 | `reference/settings.mdx` says the index file lives "relative to the vault root" | It does not. It lives in browser-managed storage outside the vault. The settings UI string says the same thing. A copy fix on both surfaces, not scheduled |
@@ -219,4 +269,5 @@ The reset fix was reviewed by an agent whose only instruction was to prove it wr
 - [Org-rollout readiness synthesis](/crosswalker/agent-context/zz-log/2026-08-21-org-rollout-readiness-synthesis/) — what was adopted from that audit
 - [Quick start](/crosswalker/getting-started/quick-start/) and the [command reference](/crosswalker/reference/commands/) — the two living pages re-verified here
 - [v0.1.5 Tier 2 sidecar milestone](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) — where the reset command shipped, with a checkbox asserting a deletion that did not happen
+- [`CHANGELOG.md` `[Unreleased]`](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md) — the delivery detail for the destination fix, in user-facing language
 - [UI lexicon](/crosswalker/agent-context/ui-lexicon/) — the command-naming rules the palette regrouping satisfies
