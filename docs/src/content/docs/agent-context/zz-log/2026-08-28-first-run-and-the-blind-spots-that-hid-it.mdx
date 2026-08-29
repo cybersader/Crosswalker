@@ -84,6 +84,31 @@ The two pages are [quick start](/crosswalker/getting-started/quick-start/) and t
 Ask of any fixture: **what does this fixture assume that a real user does not?** A seeded vault assumes content exists. A vault with one framework assumes no cross-framework ambiguity. A run inside a single session assumes no restart. Each assumption is a path nothing tests, and none of them will ever show up as a failure.
 </Aside>
 
+### That question, asked of all 48 specs
+
+Later the same day the rule above was turned on the suite itself, as a read-only audit. The question was not *which tests fail* but *what does each spec assume about the vault it starts in, and what could break without any of them noticing.* It found one assumption of exactly the shape that produced this morning's bug, and fifteen smaller ones.
+
+**The matching one: the configured output folder is never written to, by any spec, at any point in the run.** The [purpose-built seed vault](/crosswalker/agent-context/zz-log/2026-08-24-e2e-testing-strategy-synthesis/) does not set the output path, so it keeps the shipped default `Ontologies/`. Every spec writes somewhere else — `Frameworks/`, `Crosswalks/`, `Evidence/`. Installed-framework discovery resolves only the configured output folder, so for the whole run it resolves an empty folder and renders the empty state. `first-run.spec.ts` is the only spec in the repository that names `Ontologies/` at all, and it is the one spec excluded from the shared configuration. The surface repaired this morning is therefore dark for all 48 remaining specs: discovery, the status-bar count, the import-again affordance and orphan scanning can all break with the suite fully green. This is the same "a gap in coverage looks identical to coverage that passes" that the first-run bug rode in on, still present, one layer over.
+
+The other findings worth naming, ranked, with what each one hides:
+
+| Finding | What it conceals |
+|---|---|
+| No spec ever opens a Tier 2 index written at an older schema version | A migration that throws on upgrade. Every existing vault fails to open its index after a plugin update, suite green |
+| The SSSOM spec declares its own copy of the predicate map instead of importing the shipped one, and its fixture contains neither `broadMatch` nor `narrowMatch` | Re-inverting the exact mapping direction this project has already got wrong once, invisibly |
+| Two sidecar tests assert the opposite of their titles: the "respects the configured path" test never changes the setting, and the "skips auto-projection when disabled" test only checks that manual projection still works | A hardcoded index path, and a startup scan that runs for someone who turned it off |
+| `moved` and `orphans` are asserted by zero specs | Duplicate-instead-of-move, or every note reported as an orphan. Given that [path inference has now produced three defects](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/), this is the likeliest live one |
+| `re-import.spec.ts` performs no re-import, and `full-import-flow.spec.ts` never asserts `result.success` or `result.errors` | An import that reports failure while still writing files, and the cache-lag frontmatter-wipe risk that the re-import spec's name implies is covered |
+| Six specs are gated behind environment variables no runner sets, including everything proving real-corpus fidelity and the loudness contract for empty filtered imports | A source predicate regressing to a silent empty import, with zero coverage in any default run |
+| Six specs contain no assertion at all, and a seventh stops asserting 60% of the way through, emitting the rest as console findings | Roughly twenty green declarations carrying near-zero evidence. Two of them navigate to paths that exist only in a retired vault |
+| The four scale specs each clean `Frameworks` rather than their own destination | Nothing today, because they are gated off. The first person to enable them destroys the seed corpus and about fifteen other specs' output, and the failures will read as product regressions |
+
+Four themes are structural rather than per-spec, in the sense that fixing any single file does not touch them: one shared mutable vault with no per-spec reset and no cleanup afterwards, so whole-vault assertions are ordering-coupled by construction; the unpopulated output root above; the assertion-free specs; and the env-gated specs nobody runs. The rest are one-to-five-line edits.
+
+**The recommended first move is one fixture key, not a spec rewrite:** set the seed vault's output path to `Frameworks`, run the suite once, and read what turns red. It is reversible, it edits no test, and any spec that fails is by construction a spec that was passing only because the discovery surface was empty — which is the audit's finding, delivered as a failing test rather than as prose. The sidecar-migration gap is the largest remaining hole and is new-spec work; the SSSOM map, the two mistitled sidecar tests, the missing success assertion and the four scale-spec cleanups are small edits that should ride along with whatever commit follows.
+
+Two things the audit deliberately declined to call defects, because reading them as defects is how audits lose their credibility: the pure in-memory unit tests wearing an Obsidian costume are cheap, deterministic and honest about it, and the nine bodiless `it()` calls for an unlanded phase are the correct representation of work that has not happened.
+
 ---
 
 ## 5. The same family, one layer down: a reset that reset nothing
@@ -112,6 +137,7 @@ It had also been flagged. [Challenge 45](/crosswalker/agent-context/zz-research/
 | Coverage report | Refreshes the query index before reading it, and reports a refresh failure instead of an empty result |
 | Command palette | Grouped by what a person is trying to do: Start here, Evidence, Explore data, Import and export, Maintenance, Developer tools. Internal storage vocabulary removed from every command name |
 | First-run coverage | `tests/e2e/first-run.spec.ts`. Empty vault, real wizard, real 12-row NIST slice |
+| First-run test wiring | The shared configuration excludes `first-run.spec.ts`, which its own configuration then clears. Run against the seeded vault the spec tested the opposite of its purpose, and failed for the one reason that is not a defect |
 | Living pages | Quick start and command reference re-verified against the empty-vault run, markers dated |
 | Maintenance reset | Deletes the index where it actually lives, verifies the deletion, and fails loudly when it cannot |
 | Documentation links | A new `check:links` CI gate, described below |
@@ -135,7 +161,9 @@ The reset fix was reviewed by an agent whose only instruction was to prove it wr
 
 | Item | State |
 |---|---|
-| The seeded-vault assumption elsewhere | `first-run.spec.ts` closes the empty-vault path specifically. Other fixtures carry other unexamined assumptions. Listed here as a question to ask, not a fix to make |
+| The seeded-vault assumption elsewhere | **Asked and answered.** The audit above found sixteen assumptions across 48 specs, one of them the same shape as this morning's bug: the configured output folder is never written to, so installed-framework discovery is dark for the entire run. Ranked, with a one-key first move. None of it is fixed yet |
+| `tests/e2e/first-run.spec.ts` has an intermittent startup hang | On two consecutive runs of the same command on an idle host, one passed in 5.1s and one hung for 2m38s with an unresponsive renderer, failing on the first screenshot. The configuration fix is verified; the spec's stability is not, on one green run |
+| `tests/e2e/first-run-vault/.obsidian/plugins/` is untracked build residue and is not gitignored | A clean run deletes it, a terminated one strands it. Nothing under that subdirectory is tracked, so ignoring it untracks nothing |
 | `reference/settings.mdx` says the index file lives "relative to the vault root" | It does not. It lives in browser-managed storage outside the vault. The settings UI string says the same thing. A copy fix on both surfaces, not scheduled |
 
 ---

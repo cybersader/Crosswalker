@@ -26,6 +26,13 @@ test-vault/.obsidian/plugins/crosswalker/sqlite3.mjs
 test-vault/.obsidian/cache/
 test-vault/.obsidian/plugins/*/data.json
 
+# First-run E2E fixture: wdio.first-run.conf.mts copies the sqlite runtime in
+# during onPrepare so the very first frame is release-faithful, and removes it in
+# onComplete. A killed or crashed run strands the copies. Only the two .obsidian
+# json files under this fixture are tracked, both outside plugins/, so ignoring
+# this subtree untracks nothing.
+tests/e2e/first-run-vault/.obsidian/plugins/
+
 # Runtime state written by the plugin's first-run hook
 test-vault/_crosswalker/
 

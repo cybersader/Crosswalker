@@ -73,6 +73,14 @@ export const config: Options.Testrunner = {
 
   specs: ['./tests/e2e/**/*.spec.ts'],
 
+  // first-run.spec.ts owns its own vault fixture and its own config
+  // (wdio.first-run.conf.mts, vault tests/e2e/first-run-vault/). Its entire
+  // purpose is to observe what someone sees with NOTHING set up, so running it
+  // against this seeded vault tests the opposite of what it is for -- and it
+  // fails, because the seed already contains frameworks it asserts are absent.
+  // Run it with: bun x wdio run wdio.first-run.conf.mts
+  exclude: ['./tests/e2e/first-run.spec.ts'],
+
   // One Obsidian instance at a time keeps the test vault deterministic
   maxInstances: 1,
 

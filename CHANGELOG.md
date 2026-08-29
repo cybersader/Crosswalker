@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### The empty-vault walkthrough now runs only where it makes sense (2026-08-28)
+
+- **The first-run regression test was being run twice, and one of those runs tested the opposite of its purpose.** `tests/e2e/first-run.spec.ts` exists to observe what someone sees with nothing set up. The shared test configuration picked it up by filename pattern and ran it against the seeded test vault, which already contains the frameworks the spec asserts are absent, so it failed there for the one reason that is not a defect.
+- **The shared configuration now excludes it; the configuration that owns it clears that exclusion.** Verified by three runs: the shared configuration finds no spec to run when pointed at it, its own configuration runs it green, and the exclusion does not over-match, with the continuous-integration smoke spec still discovered and passing.
+- **Its stability is not claimed.** On two consecutive runs of the same command on an idle machine, one passed in seconds and one hung on the first screenshot with an unresponsive renderer. That is recorded as open rather than fixed.
+
 ### Resetting the search data now actually deletes it (2026-08-28)
 
 - **The maintenance reset announced success over work it had not done.** *Maintenance: reset search data* exists to throw away Crosswalker's derived search data so it can be rebuilt from your notes. It was deleting nothing at all. It looked for the index in one place while the index was being kept in another, found nothing there, and still showed "Fast query index cleared." Every row the reset was meant to destroy survived, and the next query was answered out of it.
