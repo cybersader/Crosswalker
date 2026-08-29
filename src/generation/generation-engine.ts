@@ -352,7 +352,7 @@ export async function generateNotes(
 		// what the set owned before this run, not what the cache happens to expose
 		// after writes. recipeId stays as the deprecated grace parameter; the
 		// import-set filter takes precedence, so unstamped legacy notes stay outside.
-		const ownedIdentityIndex = buildIdentityIndex(app, {
+		const ownedIdentityIndex = await buildIdentityIndex(app, {
 			importSetId: importSet.id,
 			recipeId: provenanceRecipeId,
 		});
@@ -364,7 +364,7 @@ export async function generateNotes(
 		const declaredManagedKeys = computeDeclaredManagedKeys(recipe.target.also_emit?.frontmatter);
 		// One pass over the vault's markdown list, reading Obsidian's existing metadata
 		// cache. Lets every row below find its note by identity instead of by address.
-		const identityIndex = buildIdentityIndex(app);
+		const identityIndex = await buildIdentityIndex(app);
 		if (identityIndex.collisions.length > 0) {
 			// Two notes claiming one concept is ambiguous. Choosing a winner silently is
 			// how a duplicate becomes permanent, so report and let the caller decide.
@@ -684,6 +684,7 @@ export async function generateNotes(
 					importSet,
 					producedCuries,
 					isStreamed,
+					identityIndex,
 					debug,
 				);
 			} catch (enrichErr) {
@@ -1144,6 +1145,34 @@ function deriveFilenameStem(
 		filename = filename.slice(0, -3);
 	}
 	return sanitizeFileName(filename);
+}
+
+/**
+ * The concept identities a wizard/workbench import will produce, for a bounded
+ * sample of its rows.
+ *
+ * Exists so the destination can be chosen by asking WHICH IDENTITIES THE VAULT
+ * ALREADY HOLDS rather than by guessing a folder from a source file name. That
+ * question is answerable before any address exists precisely because a concept
+ * curie is a pure function of (ontology prefix, row) and never of `basePath` —
+ * which is also why asking it does not reintroduce the address-to-identity
+ * coupling this whole change removes.
+ *
+ * Built on the SAME two helpers the write loop uses, so a drift here is a
+ * compile error rather than a silently wrong match.
+ */
+export function plannedConceptCuries(
+	mapping: MappingConfig,
+	ontologyId: string,
+	rows: readonly Record<string, unknown>[],
+	limit: number,
+): string[] {
+	const prefix = slugifyForCurie(ontologyId);
+	const curies: string[] = [];
+	for (let i = 0; i < rows.length && curies.length < limit; i++) {
+		curies.push(`${prefix}:${deriveFilenameStem(rows[i] as Record<string, any>, mapping, i + 1)}`);
+	}
+	return curies;
 }
 
 /**
@@ -1915,7 +1944,7 @@ export async function generateFromRecipe(
 	// Headless imports obey the same destination-discovery rules as the wizard.
 	// Callers can name a wiped/empty set explicitly or force a new mint.
 	const importSet = await resolveImportSet(app, options.basePath, options.importSet);
-	const ownedIdentityIndex = buildIdentityIndex(app, { importSetId: importSet.id });
+	const ownedIdentityIndex = await buildIdentityIndex(app, { importSetId: importSet.id });
 
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
 	// src/generation/hash.ts's doc comments for the exact field-set definition.
@@ -1930,7 +1959,7 @@ export async function generateFromRecipe(
 	// Resolve existing notes by canonical identity before considering their current
 	// address. The index admits only notes with Crosswalker provenance, so a
 	// hand-written note elsewhere in the vault is never a relocation candidate.
-	const identityIndex = buildIdentityIndex(app);
+	const identityIndex = await buildIdentityIndex(app);
 	const ambiguousCuries = new Set(identityIndex.collisions.map((collision) => collision.curie));
 	for (const collision of identityIndex.collisions) {
 		result.errors.push({
@@ -2372,6 +2401,7 @@ export async function generateFromRecipe(
 				importSet,
 				producedCuries,
 				isStreamed,
+				identityIndex,
 				debug,
 			);
 		} catch (enrichErr) {
@@ -2435,6 +2465,87 @@ export function facetMembershipsFromTags(tags: string[]): FacetMembership[] {
 }
 
 /**
+ * Where a hub note should be written, resolved by identity first and by address
+ * only as a last resort.
+ *
+ * A hub used to be found with `getAbstractFileByPath` alone. That is a guess
+ * about a note dressed up as a lookup: the moment an import's destination
+ * changes, the guess misses, a second hub is created for a concept the vault
+ * already holds, and the two files claim one curie forever — which surfaces as
+ * "Ambiguous identity", which in turn suppresses orphan reporting for the whole
+ * run. Concepts have gone through the identity index since 2026-08-21; hubs did
+ * not, and this closes that gap.
+ *
+ * `legacyCuries` is the second half of the same problem: hub identity itself used
+ * to be derived from the hub's full vault path (see `HubNote.legacyCuries`), so a
+ * moved destination did not merely relocate a hub, it RENAMED it. Accepting the
+ * old form as an alias is what keeps those hubs reconcilable instead of orphaned.
+ * A hub can carry user prose and user frontmatter, so recreating one at the new
+ * address and cleaning up the old is not available: it would destroy that content.
+ */
+function resolveHubTarget(
+	app: App,
+	desiredPath: string,
+	curie: string | null,
+	legacyCuries: string[] | undefined,
+	identityIndex?: IdentityIndex,
+): { existingFile: TFile | null; writePath: string; moveFrom?: string; adoptedAlias?: string } {
+	const byIdentity = curie && identityIndex ? identityIndex.get(curie) : null;
+	if (byIdentity) {
+		return byIdentity.path === desiredPath
+			? { existingFile: byIdentity, writePath: desiredPath }
+			: { existingFile: byIdentity, writePath: desiredPath, moveFrom: byIdentity.path };
+	}
+
+	if (identityIndex && legacyCuries) {
+		for (const alias of legacyCuries) {
+			const aliased = identityIndex.get(alias);
+			if (!aliased) continue;
+			return aliased.path === desiredPath
+				? { existingFile: aliased, writePath: desiredPath, adoptedAlias: alias }
+				: { existingFile: aliased, writePath: desiredPath, moveFrom: aliased.path, adoptedAlias: alias };
+		}
+	}
+
+	// Address is consulted last and only for a note the identity index cannot see
+	// (no `_crosswalker` block of its own). Writing over it blindly would clobber
+	// a file this plugin never produced.
+	const direct = app.vault.getAbstractFileByPath(desiredPath);
+	return { existingFile: direct instanceof TFile ? direct : null, writePath: desiredPath };
+}
+
+/**
+ * Physically apply a hub relocation decided by `resolveHubTarget`. Returns the
+ * path to write at: the destination when the move succeeded, and the note's
+ * CURRENT path when the destination is already occupied by something this batch
+ * did not produce. Refusing to move is always safe; clobbering is not.
+ */
+async function applyHubRelocation(
+	app: App,
+	target: { existingFile: TFile | null; writePath: string; moveFrom?: string },
+	curie: string | null,
+	result: GenerationResult,
+	debug?: DebugLog,
+): Promise<string> {
+	if (!target.moveFrom || !target.existingFile) return target.writePath;
+	if (app.vault.getAbstractFileByPath(target.writePath)) {
+		result.warnings ??= [];
+		result.warnings.push({
+			row: 0,
+			message: `Hub ${curie ?? target.existingFile.path}: left at ${target.moveFrom} because ${target.writePath} is already occupied.`,
+		});
+		return target.existingFile.path;
+	}
+	const parentPath = getParentPath(target.writePath);
+	if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
+	await app.vault.rename(target.existingFile, target.writePath);
+	result.moved ??= [];
+	result.moved.push({ curie: curie ?? '', from: target.moveFrom, to: target.writePath });
+	debug?.info('generation', 'hub-relocated', `Hub ${curie ?? ''} moved`, { from: target.moveFrom, to: target.writePath });
+	return target.writePath;
+}
+
+/**
  * Pass 1.5 enrichment patch phase (post-stream). Derives parent→children +
  * facet hubs from the in-memory records, then writes `children` onto parents and
  * materializes facet hub notes — both via the managed-merge path so re-imports
@@ -2456,6 +2567,7 @@ async function applyEnrichment(
 	importSet: ImportSetReference,
 	producedCuries: Set<string>,
 	streamed: boolean,
+	identityIndex?: IdentityIndex,
 	debug?: DebugLog,
 ): Promise<void> {
 	const config = recipe.target.enrichment ?? {};
@@ -2583,13 +2695,19 @@ async function applyEnrichment(
 		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
-		const existing = app.vault.getAbstractFileByPath(fullPath);
+		// Identity first: a facet hub curie is already address-independent, but it
+		// was resolved by path alone, so a changed destination created a duplicate
+		// instead of finding the hub that exists.
+		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, identityIndex);
+		const existing = target.existingFile;
+		const writePath = await applyHubRelocation(app, target, hubCurie, result, debug);
 		if (existing instanceof TFile) {
 			// Re-import through the SAME shared merger the row writes use. `kind:
 			// 'facet-hub'` selects adopt-by-replay: `mergeHubBody` was already
 			// non-destructive, so an equality rule would REGRESS a working path and
 			// stop hubs updating. A facet hub therefore never conflicts on its body,
 			// only on unreadable properties or corrupt markers.
+			if (target.adoptedAlias) producedCuries.add(target.adoptedAlias);
 			const outcome = await mergeExistingNote({
 				app,
 				file: existing,
@@ -2599,7 +2717,7 @@ async function applyEnrichment(
 				kind: 'facet-hub',
 			});
 			if (!outcome.ok) {
-				recordConflict(result, debug, fullPath, hubCurie ?? undefined, outcome.code, outcome.detail);
+				recordConflict(result, debug, writePath, hubCurie ?? undefined, outcome.code, outcome.detail);
 				continue;
 			}
 			Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
@@ -2608,10 +2726,10 @@ async function applyEnrichment(
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
 			body = wrapManagedBody(hub.body);
-			const parentPath = getParentPath(fullPath);
+			const parentPath = getParentPath(writePath);
 			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
-			await app.vault.create(fullPath, buildNoteContent(frontmatter, body));
-			result.created.push(fullPath);
+			await app.vault.create(writePath, buildNoteContent(frontmatter, body));
+			result.created.push(writePath);
 		}
 	}
 
@@ -2633,8 +2751,17 @@ async function applyEnrichment(
 		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
-		const existing = app.vault.getAbstractFileByPath(fullPath);
+		// Identity first, with the address-derived legacy forms accepted as aliases.
+		// A level hub whose curie moved with its folder is the silent case: no
+		// collision, no error, just two files and a batch of new orphans. The alias
+		// is what lets the existing note keep its content and be restamped instead.
+		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, identityIndex);
+		const existing = target.existingFile;
+		const writePath = await applyHubRelocation(app, target, hubCurie, result, debug);
 		if (existing instanceof TFile) {
+			// The adopted alias is recorded as produced so the identity this run
+			// deliberately superseded is not then reported as a note that vanished.
+			if (target.adoptedAlias) producedCuries.add(target.adoptedAlias);
 			// Re-import: regenerate the managed Contents section, preserve user
 			// frontmatter + any prose outside it (title, notes, etc.).
 			//
@@ -2648,12 +2775,12 @@ async function applyEnrichment(
 				existingNote = await readExistingNote(app, existing);
 			} catch (readErr) {
 				const detail = readErr instanceof ExistingNoteReadError ? readErr.detail : String(readErr);
-				recordConflict(result, debug, fullPath, hubCurie ?? undefined, 'frontmatter-unreadable', detail);
+				recordConflict(result, debug, writePath, hubCurie ?? undefined, 'frontmatter-unreadable', detail);
 				continue;
 			}
 			const scan = scanRegions(existingNote.body);
 			if (!scan.ok) {
-				recordConflict(result, debug, fullPath, hubCurie ?? undefined, scan.code, scan.detail);
+				recordConflict(result, debug, writePath, hubCurie ?? undefined, scan.code, scan.detail);
 				continue;
 			}
 			if (Object.keys(existingNote.frontmatter).length > 0) {
@@ -2663,7 +2790,7 @@ async function applyEnrichment(
 					Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
 					Object.assign(frontmatter, merged);
 				} catch (mergeErr) {
-					recordConflict(result, debug, fullPath, hubCurie ?? undefined, 'frontmatter-merge-failed',
+					recordConflict(result, debug, writePath, hubCurie ?? undefined, 'frontmatter-merge-failed',
 						mergeErr instanceof Error ? mergeErr.message : String(mergeErr));
 					continue;
 				}
@@ -2679,10 +2806,10 @@ async function applyEnrichment(
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
 			if (config.waypoint_marker) body = ensureWaypointMarker(body);
-			const parentPath = getParentPath(fullPath);
+			const parentPath = getParentPath(writePath);
 			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
-			await app.vault.create(fullPath, buildNoteContent(frontmatter, body));
-			result.created.push(fullPath);
+			await app.vault.create(writePath, buildNoteContent(frontmatter, body));
+			result.created.push(writePath);
 		}
 	}
 }

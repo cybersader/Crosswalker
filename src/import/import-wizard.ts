@@ -22,6 +22,7 @@ import {
 	buildConfigFromWizardState,
 	deriveIdSplitTemplates,
 	estimateOutput,
+	plannedConceptCuries,
 	GenerationOptions
 } from '../generation/generation-engine';
 import {
@@ -47,7 +48,8 @@ import {
 	type RecipeMatch,
 	type RecipeRegistryEntry,
 } from './recipe-registry';
-import { discoverImportSets, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
+import { discoverImportSets, recoverImportSetRoot, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
+import { buildIdentityIndex } from '../generation/identity-index';
 
 /**
  * Curated per-import root for a recognized recipe (spec §7m), or `null` when the
@@ -270,6 +272,28 @@ export class ImportFlow {
 	 * resolved string so a draft can carry it across a resume.
 	 */
 	private curatedDestination: string | null = null;
+	/**
+	 * Root of the import set this source is already stored in, when exactly one
+	 * owns the identities the source will produce. Outranks every autofilled
+	 * default: a refresh that lands somewhere other than where its own notes live
+	 * forks the import, which is the failure the derived per-import root would
+	 * otherwise cause for every vault that imported before it existed.
+	 */
+	private adoptedSetRoot: string | null = null;
+	/** Why a set was found but its root could not be established. Shown, not swallowed. */
+	private adoptionDeclined: string | null = null;
+	/** Source state the adoption was computed for, so the vault scan runs once. */
+	private adoptionSignature: string | null = null;
+	private adoptionInFlight = false;
+	/**
+	 * Row ceiling for the identity probe. High rather than sampled, because the
+	 * fallback below recovers a root from the folders the matched notes sit in, and
+	 * a PARTIAL sample of a hierarchical import shares a DEEPER common folder than
+	 * the import as a whole. Recovering from the first N rows of a foldered source
+	 * would confidently return a subfolder. The probe therefore records whether it
+	 * saw every row, and the recovery only runs when it did.
+	 */
+	private static readonly ADOPTION_PROBE_ROWS = 5000;
 	overwriteMode: 'skip' | 'replace' | 'error' = 'skip';
 	frameworkId: string = '';
 
@@ -1662,6 +1686,12 @@ export class ImportFlow {
 		}
 
 		// (a) Destination block — WHERE.
+		// The recognized-source fast path and a draft resume both land here without
+		// passing through step 2, so the probe is armed here too. It is idempotent
+		// (signature-guarded) and only re-renders when it actually changed the answer.
+		void this.adoptExistingSetDestination().then((changed) => {
+			if (changed) this.renderStep();
+		});
 		this.renderDestinationBlock(container);
 		void this.renderImportSetReview(container, this.currentOutputPath());
 
@@ -1765,20 +1795,165 @@ export class ImportFlow {
 	 * which put unrelated imports in one folder and made the second import look
 	 * like a refresh of the first.
 	 *
-	 * Nothing that already exists is ever relocated. The derived root is a pure
-	 * function of (global output path, source file name), so re-importing the same
-	 * source resolves to the same folder, finds its own set there, and refreshes it.
-	 * Known gap: re-importing a RENAMED source resolves elsewhere and mints a new
-	 * set. An import set records `{id, scheme}` and no destination, so nothing here
-	 * can look up where a set already lives without inferring it from vault paths.
+	 * Precedence, highest first:
+	 *   1. the user typed a destination
+	 *   2. the set this source already belongs to (`adoptedSetRoot`)
+	 *   3. a curated recipe's suggested folder
+	 *   4. the derived per-import root
+	 *
+	 * Rule 2 is the one that makes rule 4 safe. The derived root is a pure function
+	 * of (global output path, source file name), which is fine for a first import
+	 * and wrong for every refresh where the source was renamed, or where the notes
+	 * predate the per-import root rule and are sitting in the flat shared folder.
+	 * Adopting a derived root in either case does not relocate anything: it writes
+	 * a SECOND copy of the import beside the first and reports paths the user has
+	 * never seen. Asking which set already owns these identities is what avoids it.
+	 *
+	 * Stays synchronous and side-effect-free: every surface reads it, several times
+	 * per render. `adoptExistingSetDestination` does the vault work once, off to the
+	 * side, and leaves the answer here.
 	 */
 	private currentOutputPath(): string {
 		if (this.destinationEdited) {
 			const chosen = this.outputPath.trim();
 			if (chosen) return chosen;
 		}
+		if (this.adoptedSetRoot) return this.adoptedSetRoot;
 		return this.curatedDestination
 			?? deriveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null);
+	}
+
+	/**
+	 * Resolve rule 2 above: does an import set already own the concept identities
+	 * this source will produce, and if so, where does it live?
+	 *
+	 * Identity, not address. Discovery is destination-scoped, so "where does this
+	 * set live" cannot be asked by naming a destination without assuming the answer.
+	 * Concept curies do not depend on the destination, so they can be asked about
+	 * before one is chosen, which is what breaks the circle.
+	 *
+	 * Deliberately conservative at every branch. Zero matches means a genuinely new
+	 * import (and also means a streamed source, which has no eager rows to probe:
+	 * those always take the derived root, indistinguishable from a first import).
+	 * More than one match is left to the existing multiple-sets flow rather than
+	 * guessed. A set whose notes do not share a root declines rather than inventing
+	 * one. Corrupt provenance anywhere in the vault is caught rather than allowed to
+	 * block the import: whole-vault discovery has no per-destination blast shield.
+	 *
+	 * Returns true when the adopted answer changed, so a caller can re-render.
+	 */
+	private async adoptExistingSetDestination(): Promise<boolean> {
+		const signature = `${this.sourceFile?.name ?? ''}::${this.parsedData?.rowCount ?? -1}`;
+		if (this.adoptionInFlight || this.adoptionSignature === signature) return false;
+		const app = this.app as App | undefined;
+		if (!app?.vault?.getMarkdownFiles || !app.metadataCache) return false;
+
+		this.adoptionInFlight = true;
+		// Recorded as attempted BEFORE the work, not after it succeeds. A throw that
+		// left this unset would re-run a whole-vault scan on every re-render of the
+		// review screen, which on a shared machine is the expensive failure mode.
+		this.adoptionSignature = signature;
+		const previousRoot = this.adoptedSetRoot;
+		const previousDeclined = this.adoptionDeclined;
+		let root: string | null = null;
+		let declined: string | null = null;
+		try {
+			const probe = this.probeConceptCuries();
+			if (probe.curies.length > 0) {
+				const index = await buildIdentityIndex(app);
+				const held: string[] = [];
+				for (const curie of probe.curies) {
+					const file = index.get(curie);
+					if (file) held.push(file.path);
+				}
+				if (held.length > 0) {
+					// A stamped set is the better answer when there is one: it knows its
+					// whole membership, so its root comes from every note it owns rather
+					// than from whichever ones this probe happened to match.
+					let owning: DiscoveredImportSet[] = [];
+					try {
+						const heldSet = new Set(held);
+						owning = (await discoverImportSets(app, undefined))
+							.filter((set) => set.paths.some((path) => heldSet.has(path)));
+					} catch (discoveryError) {
+						// Malformed provenance on any note in the vault throws here.
+						// Fall through to the identity-only recovery below rather than
+						// letting an unrelated corrupt note block this import.
+						this.plugin.debug.warn('wizard', 'set-discovery-failed', 'Whole-vault import set discovery failed', {
+							error: discoveryError instanceof Error ? discoveryError.message : String(discoveryError),
+						});
+					}
+					if (owning.length === 1) {
+						root = owning[0].root;
+						if (!root) declined = this.spreadNotice(`The notes in import set ${owning[0].id}`, owning[0].paths);
+					} else if (owning.length === 0 && probe.complete) {
+						// Notes predating import-set ownership carry no stamp, so no set
+						// owns them. They are still notes this import would duplicate, and
+						// the identities prove it. Only run this when the probe covered the
+						// whole source: see ADOPTION_PROBE_ROWS.
+						root = recoverImportSetRoot(held);
+						if (!root) declined = this.spreadNotice('The notes already holding these concepts', held);
+					}
+					// owning.length > 1 falls through untouched: several sets claiming
+					// these identities is the existing ambiguity flow's decision, not a
+					// guess to make here.
+				}
+			}
+		} catch (error) {
+			// A malformed provenance block on any note in the vault throws here.
+			// It must not be able to stop an unrelated import from proceeding.
+			this.plugin.debug.warn('wizard', 'set-adoption-failed', 'Could not determine an owning import set', {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		} finally {
+			this.adoptionInFlight = false;
+		}
+
+		this.adoptedSetRoot = root;
+		this.adoptionDeclined = declined;
+		if (root) {
+			this.plugin.debug.info('wizard', 'set-adopted', `Destination adopted from the existing import set at ${root}`, { root });
+		}
+		// A declined recovery also changes what the screen must show, so it counts as
+		// a change: the reason a destination was NOT adjusted is the useful half.
+		return root !== previousRoot || declined !== previousDeclined;
+	}
+
+	/** Explain a refusal to recover a root, naming two notes that bound the spread. */
+	private spreadNotice(subject: string, paths: readonly string[]): string {
+		const sorted = [...paths].sort();
+		return `${subject} do not share one folder (for example ${sorted[0]} and ${sorted[sorted.length - 1]}), so the destination below was left as the default.`;
+	}
+
+	/**
+	 * Concept curies this source will produce, built exactly the way generation
+	 * builds them. `complete` is false when the source is longer than the probe
+	 * ceiling. Empty for a streamed source (no eager rows) or an unbuildable
+	 * mapping, which is indistinguishable here from a genuinely new import and
+	 * therefore takes the derived root.
+	 */
+	private probeConceptCuries(): { curies: string[]; complete: boolean } {
+		const none = { curies: [] as string[], complete: false };
+		if (!this.parsedData || !isEagerRows(this.parsedData.rows)) return none;
+		const rows = this.parsedData.rows as Record<string, unknown>[];
+		if (rows.length === 0) return none;
+		try {
+			const workbenchMode = this.isWorkbenchMode() && !!this.workbench;
+			const config = workbenchMode
+				? this.buildWorkbenchConfig()
+				: buildConfigFromWizardState(this.columnConfigs, this.parsedData.columns, this.appliedConfig?.config?.mapping?.filename);
+			if (!config.mapping) return none;
+			const recipe = workbenchMode && this.workbench
+				? this.workbench.buildRecipe()
+				: legacyConfigToRecipe(config as ImportRecipe);
+			const ontologyId = recipe.source?.ontology ?? config.name ?? 'unknown';
+			return {
+				curies: plannedConceptCuries(config.mapping, ontologyId, rows, ImportFlow.ADOPTION_PROBE_ROWS),
+				complete: rows.length <= ImportFlow.ADOPTION_PROBE_ROWS,
+			};
+		} catch {
+			return none;
+		}
 	}
 
 	/**
@@ -1914,6 +2089,9 @@ export class ImportFlow {
 		const revealBtn = head.createEl('button', { cls: 'crosswalker-dest-reveal', text: 'Show in file explorer' });
 		revealBtn.addEventListener('click', () => this.revealDestinationInExplorer());
 		this.renderDestinationPath(block.createEl('div', { cls: 'crosswalker-dest-pathwrap' }));
+		if (this.adoptionDeclined) {
+			block.createEl('p', { text: this.adoptionDeclined, cls: 'crosswalker-warning' });
+		}
 	}
 
 	/** Breadcrumb path display / inline text editor toggle for the destination. */
@@ -3154,6 +3332,11 @@ export class ImportFlow {
 					}
 					return parseSuccess;
 				}
+				return true;
+			case 2:
+				// Resolved before step 3 renders, so the destination the review screen
+				// shows is the one generation will actually write to.
+				await this.adoptExistingSetDestination();
 				return true;
 			case 3:
 				return !this.isWorkbenchMode() || await this.validateImportSetSelection(this.currentOutputPath());

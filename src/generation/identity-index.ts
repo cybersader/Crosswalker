@@ -19,12 +19,12 @@
  * here, so reconciliation can never move, rewrite, or orphan it.
  *
  * COST — one pass over the vault's markdown list per generation run, reading
- * frontmatter from Obsidian's own metadata cache. Nothing is read from disk and no
- * second index of the vault is built; this reuses the index Obsidian already
- * maintains for every plugin.
+ * frontmatter from Obsidian's own metadata cache, plus a raw read of the files the
+ * cache has not indexed yet (normally none). No second index of the vault is built;
+ * this reuses the index Obsidian already maintains for every plugin.
  */
 
-import { App, TFile } from 'obsidian';
+import { App, parseYaml, TFile } from 'obsidian';
 
 /** A curie claimed by more than one note. Ambiguous: identity must be unique. */
 export interface IdentityCollision {
@@ -62,6 +62,29 @@ function readString(value: unknown): string | null {
 }
 
 /**
+ * Frontmatter straight from the file, for a note Obsidian has not indexed yet.
+ * Malformed YAML is treated as "no frontmatter" rather than thrown: one corrupt
+ * note anywhere in the vault must not be able to block every import.
+ */
+async function readRawFrontmatter(app: App, file: TFile): Promise<Record<string, unknown> | undefined> {
+	let content: string;
+	try {
+		content = await app.vault.cachedRead(file);
+	} catch {
+		return undefined;
+	}
+	const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+	if (!match) return undefined;
+	try {
+		const parsed = parseYaml(match[1]);
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+		return parsed as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * Build a curie -> file index over the Crosswalker-generated notes in the vault.
  *
  * Deterministic on collision: the first file encountered wins `get()`, and every
@@ -70,13 +93,21 @@ function readString(value: unknown): string | null {
  * error — writing through an ambiguous identity is how duplicates become
  * permanent.
  */
-export function buildIdentityIndex(app: App, options: BuildIdentityIndexOptions = {}): IdentityIndex {
+export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOptions = {}): Promise<IdentityIndex> {
 	const byCurie = new Map<string, TFile>();
 	const claims = new Map<string, string[]>();
 
 	for (const file of app.vault.getMarkdownFiles()) {
-		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!fm || typeof fm !== 'object') continue;
+		let fm: Record<string, unknown> | undefined = app.metadataCache.getFileCache(file)?.frontmatter;
+		if (!fm || typeof fm !== 'object') {
+			// A null metadata cache means "Obsidian has not indexed this file yet",
+			// never "this file has no properties". Treating lag as absence is what
+			// makes a re-import miss the note that already holds an identity and
+			// write a second one beside it, permanently. Costs one read per
+			// not-yet-indexed file, which is normally zero.
+			fm = await readRawFrontmatter(app, file);
+		}
+		if (!fm || typeof fm !== 'object' || Array.isArray(fm)) continue;
 
 		// Scope guard: no provenance block means the note is not ours to reconcile.
 		const provenance = (fm as Record<string, unknown>)._crosswalker;

@@ -6,6 +6,7 @@ import {
 	MultipleImportSetsError,
 	discoverImportSets,
 	mintImportSetId,
+	recoverImportSetRoot,
 	resolveImportSet,
 } from '../src/generation/import-set';
 
@@ -39,6 +40,11 @@ function mockApp(notes: Record<string, Stamp | null>, rawContents: Record<string
 	} as any;
 }
 
+/** A note whose provenance also records the destination the set was written to. */
+function stampedWithDestination(id: string, destination: string, scheme = 'endpoint-v1'): string {
+	return `---\n_crosswalker:\n  import_set:\n    id: ${id}\n    scheme: ${scheme}\n    destination: "${destination}"\n---\n# Generated\n`;
+}
+
 function rawStampedNote(id: string, scheme = 'endpoint-v1'): string {
 	return `---\n_crosswalker:\n  import_set:\n    id: ${id}\n    scheme: ${scheme}\n---\n# Generated\n`;
 }
@@ -57,6 +63,9 @@ describe('import-set ownership discovery and selection', () => {
 			scheme: CURRENT_IMPORT_SET_SCHEME,
 			noteCount: 2,
 			paths: ['Frameworks/A.md', 'Frameworks/Sub/B.md'],
+			// No note recorded a destination (these predate the stamp), so the root
+			// is recovered from the paths: the deepest folder both notes sit under.
+			root: 'Frameworks',
 		}]);
 	});
 
@@ -70,6 +79,7 @@ describe('import-set ownership discovery and selection', () => {
 			scheme: 'endpoint-v1',
 			noteCount: 1,
 			paths: ['Frameworks/A.md'],
+			root: 'Frameworks',
 		}]);
 		expect(app.vault.cachedRead).toHaveBeenCalledTimes(1);
 	});
@@ -125,7 +135,9 @@ describe('import-set ownership discovery and selection', () => {
 		const one = mockApp({
 			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
 		});
-		await expect(resolveImportSet(one, 'Frameworks')).resolves.toEqual({ id: 'iset-abc123', scheme: 'endpoint-v1' });
+		await expect(resolveImportSet(one, 'Frameworks')).resolves.toEqual({
+			id: 'iset-abc123', scheme: 'endpoint-v1', destination: 'Frameworks',
+		});
 
 		const many = mockApp({
 			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
@@ -147,13 +159,13 @@ describe('import-set ownership discovery and selection', () => {
 			'Other/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
 		});
 		await expect(resolveImportSet(app, 'Frameworks', { id: 'iset-zzzz99' })).resolves.toEqual({
-			id: 'iset-zzzz99', scheme: 'endpoint-v1',
+			id: 'iset-zzzz99', scheme: 'endpoint-v1', destination: 'Frameworks',
 		});
 		await expect(resolveImportSet(app, 'Frameworks', 'new')).resolves.toEqual({
-			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1',
+			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1', destination: 'Frameworks',
 		});
 		await expect(resolveImportSet(app, 'Frameworks', 'new-set-qualified')).resolves.toEqual({
-			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'set-qualified-v1',
+			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'set-qualified-v1', destination: 'Frameworks',
 		});
 	});
 
@@ -184,9 +196,10 @@ describe('import-set ownership discovery and selection', () => {
 			scheme: 'set-qualified-v1',
 			noteCount: 2,
 			paths: ['Frameworks/A.md', 'Frameworks/B.md'],
+			root: 'Frameworks',
 		}]);
 		await expect(resolveImportSet(app, 'Frameworks', { id: 'iset-abc123' })).resolves.toEqual({
-			id: 'iset-abc123', scheme: 'set-qualified-v1',
+			id: 'iset-abc123', scheme: 'set-qualified-v1', destination: 'Frameworks',
 		});
 	});
 
@@ -213,7 +226,7 @@ describe('import-set ownership discovery and selection', () => {
 			'Other/bad.md': { raw: { id: 'not-valid', scheme: 'future-v1' } },
 		});
 		await expect(resolveImportSet(app, 'Frameworks', { id: 'iset-abc123' })).resolves.toEqual({
-			id: 'iset-abc123', scheme: 'endpoint-v1',
+			id: 'iset-abc123', scheme: 'endpoint-v1', destination: 'Frameworks',
 		});
 	});
 
@@ -229,5 +242,118 @@ describe('import-set ownership discovery and selection', () => {
 		} finally {
 			spy.mockRestore();
 		}
+	});
+});
+
+// ===========================================================================
+// F-1: a set's root is RECORDED going forward and RECOVERED for legacy vaults.
+//
+// The damage this closes: a refresh had no way to ask where its own set already
+// lives. Provenance stamped {id, scheme} and no destination, so the wizard fell
+// through to a derived default. For a vault that imported before the per-import
+// root rule existed, the derived default names a folder the set's notes are not
+// in, and writing there does not relocate the import: it forks it.
+// ===========================================================================
+
+describe('recoverImportSetRoot -- the deepest folder every note sits under', () => {
+	it('compares whole path SEGMENTS, so two sibling roots with a shared name prefix never merge', () => {
+		// The falsifying case for a common-string-prefix implementation, which
+		// returns 'Frameworks/NIST-min' here: a folder NEITHER set lives in.
+		// A refresh sent there writes a third copy of the import.
+		const root = recoverImportSetRoot([
+			'Frameworks/NIST-mini/AC-2.md',
+			'Frameworks/NIST-minimal/AC-3.md',
+		]);
+		expect(root).toBe('Frameworks');
+		expect(root).not.toBe('Frameworks/NIST-min');
+	});
+
+	it('does not merge sibling roots even when one name is a strict prefix of the other', () => {
+		expect(recoverImportSetRoot([
+			'Ontologies/NIST/AC-2.md',
+			'Ontologies/NISTED/AC-3.md',
+		])).toBe('Ontologies');
+	});
+
+	it('returns the deepest shared folder, not merely the first segment', () => {
+		expect(recoverImportSetRoot([
+			'Ontologies/attack-mini/T1078.md',
+			'Ontologies/attack-mini/T1078/T1078.001.md',
+			'Ontologies/attack-mini/Persistence/Persistence.md',
+		])).toBe('Ontologies/attack-mini');
+	});
+
+	it('recovers a flat pre-fix import that sits directly in the shared root', () => {
+		expect(recoverImportSetRoot(['Ontologies/T1078.md', 'Ontologies/T1098.md'])).toBe('Ontologies');
+	});
+
+	// Fail closed. Refusing to answer is the correct answer when the notes do not
+	// agree, because every wrong answer here MOVES a user's notes.
+	it.each([
+		['no notes at all', []],
+		['one note dragged to the vault root', ['Ontologies/T1078.md', 'stray.md']],
+		['notes under two unrelated top-level folders', ['Ontologies/A.md', 'Archive/B.md']],
+		['a note sitting at the vault root', ['A.md']],
+	])('returns null rather than guessing: %s', (_label, paths) => {
+		expect(recoverImportSetRoot(paths as string[])).toBeNull();
+	});
+});
+
+describe('a discovered set knows where it lives', () => {
+	it('prefers the destination its own notes recorded', async () => {
+		const app = mockApp({}, {
+			'Ontologies/attack-mini/T1078.md': stampedWithDestination('iset-abc123', 'Ontologies/attack-mini'),
+			'Ontologies/attack-mini/Persistence/T1098.md': stampedWithDestination('iset-abc123', 'Ontologies/attack-mini'),
+		});
+		const [set] = await discoverImportSets(app, 'Ontologies');
+		expect(set.destination).toBe('Ontologies/attack-mini');
+		expect(set.root).toBe('Ontologies/attack-mini');
+	});
+
+	it('ignores a recorded destination its notes no longer corroborate (a renamed folder)', async () => {
+		// Nothing reconciles the stamp when a user renames the folder in the file
+		// explorer, so the stamp is a hint and the paths are the evidence. Writing
+		// to a folder the set has left is how a refresh silently forks an import.
+		const app = mockApp({}, {
+			'Ontologies/renamed/T1078.md': stampedWithDestination('iset-abc123', 'Ontologies/attack-mini'),
+			'Ontologies/renamed/T1098.md': stampedWithDestination('iset-abc123', 'Ontologies/attack-mini'),
+		});
+		const [set] = await discoverImportSets(app, 'Ontologies');
+		expect(set.root).toBe('Ontologies/renamed');
+	});
+
+	it('falls back to the paths when members disagree about the destination (a half-migrated set)', async () => {
+		const app = mockApp({}, {
+			'Ontologies/T1078.md': stampedWithDestination('iset-abc123', 'Ontologies'),
+			'Ontologies/T1098.md': stampedWithDestination('iset-abc123', 'Ontologies/attack-mini'),
+		});
+		const [set] = await discoverImportSets(app, 'Ontologies');
+		expect(set.destination).toBeUndefined();
+		expect(set.root).toBe('Ontologies');
+	});
+
+	it('reports a null root rather than inventing one when the set is spread across the vault', async () => {
+		const app = mockApp({
+			'Ontologies/T1078.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
+			'Archive/T1098.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
+		});
+		const [set] = await discoverImportSets(app, undefined);
+		expect(set.root).toBeNull();
+	});
+
+	it('records the destination it wrote to on every run, not only at mint', async () => {
+		// Re-stamped each run so a set that legitimately moves records its new home
+		// instead of carrying a stale one forever.
+		const app = mockApp({ 'Ontologies/T1078.md': { id: 'iset-abc123', scheme: 'endpoint-v1' } });
+		await expect(resolveImportSet(app, 'Ontologies/attack-mini', { id: 'iset-abc123' })).resolves.toEqual({
+			id: 'iset-abc123', scheme: 'endpoint-v1', destination: 'Ontologies/attack-mini',
+		});
+	});
+
+	it('records no destination for an import into the vault root, rather than an empty string', async () => {
+		const app = mockApp({});
+		await expect(resolveImportSet(app, '', 'new')).resolves.toEqual({
+			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1',
+		});
 	});
 });

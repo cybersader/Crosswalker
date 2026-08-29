@@ -20,6 +20,19 @@ export const CURRENT_IMPORT_SET_SCHEME: ImportSetScheme = 'endpoint-v1';
 export interface ImportSetReference {
 	id: string;
 	scheme: ImportSetScheme;
+	/**
+	 * The destination folder this set was last written to. Recorded rather than
+	 * inferred: a refresh that cannot look up where its set already lives has to
+	 * guess from a derived default, and a guess that disagrees with reality
+	 * writes a second copy of the whole import beside the first. Optional because
+	 * every note written before this existed has no stamp; those sets fall back
+	 * to `recoverImportSetRoot`.
+	 *
+	 * A hint, never authority. Nothing reconciles it when a user renames the
+	 * folder in the file explorer, so a reader must re-validate it against the
+	 * set's actual note paths before writing anything there.
+	 */
+	destination?: string;
 }
 
 export type ImportSetOption =
@@ -30,12 +43,20 @@ export type ImportSetOption =
 export interface DiscoveredImportSet extends ImportSetReference {
 	noteCount: number;
 	paths: string[];
+	/**
+	 * Where this set's notes actually live: the recorded destination when it is
+	 * still consistent with those notes, otherwise recovered from them, otherwise
+	 * null. Null means "refuse to guess", which is the correct answer when the
+	 * set's notes do not share a root.
+	 */
+	root: string | null;
 }
 
 interface ImportSetObservation {
 	id: string;
 	scheme: string | null;
 	path: string;
+	destination: string | null;
 }
 
 /** A destination contains several ownership sets and no caller selected one. */
@@ -74,12 +95,22 @@ export async function resolveImportSet(
 	basePath: string,
 	option?: ImportSetOption,
 ): Promise<ImportSetReference> {
+	// Where this run writes is stamped onto every note it writes. Recorded, not
+	// inferred: without it a later refresh has no way to ask where its own set
+	// already lives, and has to fall back to a derived default that may point
+	// somewhere else entirely. Re-stamped on every run rather than only at mint,
+	// so a set that legitimately moves records its new home instead of keeping a
+	// stale one.
+	const destination = normalizeFolder(basePath ?? '') || undefined;
+	const stamp = (reference: ImportSetReference): ImportSetReference =>
+		destination ? { ...reference, destination } : reference;
+
 	if (option === 'new') {
-		return { id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME };
+		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME });
 	}
 
 	if (option === 'new-set-qualified') {
-		return { id: mintImportSetId(collectKnownIds(app)), scheme: 'set-qualified-v1' };
+		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: 'set-qualified-v1' });
 	}
 
 	if (option && typeof option === 'object') {
@@ -94,18 +125,18 @@ export async function resolveImportSet(
 					existing.paths,
 				);
 			}
-			return { id: existing.id, scheme: existing.scheme };
+			return stamp({ id: existing.id, scheme: existing.scheme });
 		}
-		return { id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME };
+		return stamp({ id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME });
 	}
 
 	const destinationSets = await discoverImportSets(app, basePath);
 	if (destinationSets.length === 1) {
-		return { id: destinationSets[0].id, scheme: destinationSets[0].scheme };
+		return stamp({ id: destinationSets[0].id, scheme: destinationSets[0].scheme });
 	}
 	if (destinationSets.length > 1) throw new MultipleImportSetsError(destinationSets);
 
-	return { id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME };
+	return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME });
 }
 
 /** Mint a meaningless crypto-random id, retrying if a vault already uses it. */
@@ -155,7 +186,8 @@ async function collectObservations(app: App, basePath?: string, onlyId?: string)
 		if (!id || !IMPORT_SET_ID_PATTERN.test(id)) {
 			throw new ImportSetProvenanceError(`Invalid import set id at ${file.path}: expected iset- followed by 6 lowercase letters or digits.`, [file.path]);
 		}
-		observations.push({ id, scheme, path: file.path });
+		const destination = readString((raw as Record<string, unknown>).destination);
+		observations.push({ id, scheme, path: file.path, destination });
 	}
 	return observations;
 }
@@ -199,7 +231,15 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 			throw new ImportSetProvenanceError(`Import set ${id} has inconsistent or unsupported schemes: ${details}.`, paths);
 		}
 		const paths = group.map((entry) => entry.path).sort();
-		sets.push({ id, scheme, noteCount: paths.length, paths });
+		const recorded = recordedDestination(group);
+		sets.push({
+			id,
+			scheme,
+			noteCount: paths.length,
+			paths,
+			root: resolveSetRoot(recorded, paths),
+			...(recorded ? { destination: recorded } : {}),
+		});
 	}
 	sets.sort((a, b) => a.id.localeCompare(b.id));
 	return sets;
@@ -252,4 +292,62 @@ function readString(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * The destination every member of a set agrees on, or null when they disagree
+ * or none recorded one. Disagreement is not an error: a half-migrated set is a
+ * real state, and the answer there is to fall back to what the paths show.
+ */
+function recordedDestination(group: readonly ImportSetObservation[]): string | null {
+	const stamped = new Set(group.map((entry) => entry.destination).filter((d): d is string => d !== null));
+	if (stamped.size !== 1) return null;
+	return normalizeFolder([...stamped][0]);
+}
+
+/**
+ * Where a set actually lives. Prefers the recorded destination, but only while
+ * the set's own notes still corroborate it: a recorded folder goes stale the
+ * moment a user renames it in the file explorer, and writing to a folder that no
+ * longer exists is how a refresh silently forks an import.
+ */
+function resolveSetRoot(recorded: string | null, paths: readonly string[]): string | null {
+	if (recorded && paths.every((path) => path.startsWith(`${recorded}/`))) return recorded;
+	return recoverImportSetRoot(paths);
+}
+
+/**
+ * Recover a set's root from the notes it owns: the deepest folder every one of
+ * them sits under.
+ *
+ * Compared SEGMENT-WISE on purpose. A common string prefix would happily merge
+ * `Frameworks/NIST-mini` with `Frameworks/NIST-minimal` into
+ * `Frameworks/NIST-min`, a folder neither set lives in.
+ *
+ * Fails closed: an empty result or the vault root returns null rather than a
+ * destination. One note dragged out of the import root collapses the prefix, and
+ * refusing to answer is right there. Callers should say WHICH note broke the
+ * prefix rather than silently reverting to a derived default.
+ */
+export function recoverImportSetRoot(paths: readonly string[]): string | null {
+	if (paths.length === 0) return null;
+	let common: string[] | null = null;
+	for (const path of paths) {
+		const segments = path.split('/').slice(0, -1).filter(Boolean);
+		if (common === null) {
+			common = segments;
+			continue;
+		}
+		let i = 0;
+		while (i < common.length && i < segments.length && common[i] === segments[i]) i++;
+		common = common.slice(0, i);
+		if (common.length === 0) return null;
+	}
+	if (!common || common.length === 0) return null;
+	return common.join('/');
+}
+
+/** Trim slashes so a recorded destination compares equal to a vault path prefix. */
+function normalizeFolder(value: string): string {
+	return value.trim().replace(/^\/+|\/+$/g, '');
 }

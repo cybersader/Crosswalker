@@ -46,7 +46,13 @@
  *                   folder/file — in real usage (generation-engine, basePath
  *                   always set) `rootFolder` IS a tracked ancestor and is
  *                   handled by the uniform per-folder pass with no special
- *                   casing. Deterministic, re-import safe (managed body
+ *                   casing. A synthetic hub's CURIE is derived from its folder
+ *                   path relative to `rootFolder` (the root's own hub takes the
+ *                   reserved `hub/_root` local part), never from its full vault
+ *                   path: identity must not move when an address does. The
+ *                   superseded full-path form travels on `HubNote.legacyCuries`
+ *                   so hubs already written under it stay reconcilable.
+ *                   Deterministic, re-import safe (managed body
  *                   section is stripped-and-reappended by delimiter markers,
  *                   same discipline as facet hubs' H1 split).
  *   5. Stats      — edgeCount = parent links + children entries + member
@@ -132,6 +138,16 @@ export interface HubNote {
 	 * fields directly, never by re-parsing `body`.
 	 */
 	facetLinks?: string[];
+	/**
+	 * Level hubs only: identity forms this hub was written under by an EARLIER
+	 * plugin version, newest-superseded first. A hub curie used to be derived
+	 * from the hub's full vault path, so moving an import's destination changed
+	 * the identity of every hub in it — the note at the old address kept a curie
+	 * nothing would ever claim again, and a second note was created for the
+	 * "new" identity. A caller reconciles these aliases to the same note before
+	 * concluding that a hub does not exist yet.
+	 */
+	legacyCuries?: string[];
 }
 
 /** One parent-note relocation the caller must physically apply to the vault. */
@@ -189,7 +205,8 @@ export interface EnrichOptions {
 	 * The per-import destination folder (matches `GenerationOptions.basePath`),
 	 * a FULL vault-relative path with no trailing slash ('' for the vault
 	 * root). Used only by `level_hubs: 'notes'` to scope which folders are "in
-	 * this import" and to name the root/home hub note. Every `EnrichNote.path`
+	 * this import", to compute hub curies relative to it, and to name the
+	 * root/home hub note. Every `EnrichNote.path`
 	 * is expected to already be prefixed by this value in real usage (the
 	 * generation-engine callers always supply it); omit only in contexts (like
 	 * the bare golden-vault test harness) that never simulate a destination
@@ -438,6 +455,8 @@ interface FolderIdentity {
 	label: string;
 	/** Set when a note already in the batch hosts this folder's content (see step 4.5). */
 	hostedPath?: string;
+	/** Synthetic hubs only: the address-derived curie this hub used to carry. */
+	legacyCurie?: string;
 }
 
 /**
@@ -520,6 +539,27 @@ function computeLevelHubs(
 		else filesOf.set(dir, [e]);
 	}
 
+	// A hub's curie is computed from its folder path RELATIVE to the import root,
+	// never from its full vault path. Identity must not be derived from address:
+	// an address is a choice the user can change (a different destination, a
+	// renamed output folder), and an identity that moves with it is not an
+	// identity at all — the same hub acquires a second name, the re-import cannot
+	// see the note that already exists, and the vault ends up holding two files
+	// claiming one thing. The root folder itself has no relative path, so it gets
+	// a reserved local part rather than an empty one, which every import under the
+	// same ontology prefix would otherwise share by accident.
+	const relativeToRoot = (f: string): string => {
+		if (!rootIsTrackedAncestor || root === undefined || root === '') return f;
+		if (f === root) return '';
+		return f.startsWith(`${root}/`) ? f.slice(root.length + 1) : f;
+	};
+	const hubCurieOf = (f: string): string => {
+		const rel = relativeToRoot(f);
+		return `${ontology}:hub/${rel === '' ? ROOT_HUB_LOCAL_PART : slugPath(rel)}`;
+	};
+	/** The address-derived form this hub was written under before the fix above. */
+	const legacyHubCurieOf = (f: string): string => `${ontology}:hub/${slugPath(f)}`;
+
 	// Pass A: every folder's link identity — hosted by an existing same-
 	// basename note (wherever it currently lives), or synthetic.
 	const identity = new Map<string, FolderIdentity>();
@@ -530,7 +570,7 @@ function computeLevelHubs(
 		const host = byBasename.get(label);
 		const id: FolderIdentity = host
 			? { curie: host.curie, label, hostedPath: finalPath(host) }
-			: { curie: `${ontology}:hub/${slugPath(f)}`, label };
+			: { curie: hubCurieOf(f), label, legacyCurie: legacyHubCurieOf(f) };
 		identity.set(f, id);
 		return id;
 	};
@@ -582,6 +622,7 @@ function computeLevelHubs(
 				body: `# ${id.label}\n\n${buildManagedChildrenSection('Contents', links, facetGroup)}`,
 				childrenLinks: links,
 				...(facetGroup.length > 0 ? { facetLinks: rootFacetLinks } : {}),
+				...(id.legacyCurie && id.legacyCurie !== id.curie ? { legacyCuries: [id.legacyCurie] } : {}),
 			});
 		}
 	}
@@ -621,7 +662,12 @@ function computeLevelHubs(
 				// deliberately out-of-scope rare edge case.
 				result.levelHubs.hostedChildrenByPath.set(finalPath(host), links);
 			} else {
-				const curie = `${ontology}:hub/${slug(root)}`;
+				// Same rule as `hubCurieOf` above: this hub IS the import root, so its
+				// relative path is empty and it takes the reserved local part. The
+				// old form slugged `root` — i.e. the destination — straight into the
+				// identity, which is the exact coupling being removed.
+				const curie = `${ontology}:hub/${ROOT_HUB_LOCAL_PART}`;
+				const legacyCurie = `${ontology}:hub/${slug(root)}`;
 				result.levelHubs.notes.push({
 					path: `${label}.md`,
 					curie,
@@ -629,6 +675,7 @@ function computeLevelHubs(
 					body: `# ${label}\n\n${buildManagedChildrenSection('Contents', links, facetGroup)}`,
 					childrenLinks: links,
 					...(facetGroup.length > 0 ? { facetLinks: rootFacetLinks } : {}),
+					...(legacyCurie !== curie ? { legacyCuries: [legacyCurie] } : {}),
 				});
 			}
 		}
@@ -636,6 +683,14 @@ function computeLevelHubs(
 
 	result.levelHubs.notes.sort((a, b) => cmp(a.path, b.path));
 }
+
+/**
+ * Curie local part for the import root's own hub. Reserved because the root's
+ * path relative to itself is empty, and an empty local part is not a name.
+ * `slug()` lowercases and strips to `[a-z0-9-]`, so no real folder can produce
+ * a leading underscore and collide with this.
+ */
+const ROOT_HUB_LOCAL_PART = '_root';
 
 /** Slug every segment of a folder path independently, joined the same way (a readable multi-segment curie local part). */
 function slugPath(path: string): string {

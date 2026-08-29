@@ -496,7 +496,12 @@ describe('enrich — level hubs, synthetic case (pure structural folder, no matc
 		expect(result.levelHubs.notes).toHaveLength(1);
 		const hub = result.levelHubs.notes[0];
 		expect(hub.path).toBe('Persistence/Persistence.md');
-		expect(hub.curie).toBe('attack:hub/persistence');
+		// This folder IS the import root, so its path relative to the root is
+		// empty and it takes the reserved local part. The address-derived form it
+		// used to carry travels as an alias so hubs already written under it stay
+		// reconcilable (see the hub-identity block at the bottom of this file).
+		expect(hub.curie).toBe('attack:hub/_root');
+		expect(hub.legacyCuries).toEqual(['attack:hub/persistence']);
 		expect(hub.frontmatter.kind).toBe('hub');
 		expect(hub.frontmatter.children).toEqual(['[[T1078]]', '[[T1098]]']);
 		expect(hub.childrenLinks).toEqual(['[[T1078]]', '[[T1098]]']);
@@ -525,6 +530,9 @@ describe('enrich — level hubs, root/home hub (design step 4.5 root fallback)',
 		const rootHubs = result.levelHubs.notes.filter((h) => h.path === 'Frameworks/MITRE/MITRE.md');
 		expect(rootHubs).toHaveLength(1);
 		expect(rootHubs[0].frontmatter.children).toEqual(['[[T1078]]']);
+		// The destination is two segments deep and NONE of it reaches the identity.
+		expect(rootHubs[0].curie).toBe('attack:hub/_root');
+		expect(rootHubs[0].legacyCuries).toEqual(['attack:hub/frameworks/mitre']);
 		expect(result.levelHubs.hostedChildrenByPath.get('Frameworks/MITRE/T1078.md')).toEqual(['[[T1078.001]]']);
 	});
 
@@ -689,5 +697,105 @@ describe('ensureWaypointMarker — opt-in, additive, idempotent (2026-07-11 ICSB
 	it('never strips or duplicates a block Waypoint has already expanded', () => {
 		const expanded = '# T1078\n\n%% Begin Waypoint %%\n- [[Some Note]]\n%% End Waypoint %%\n';
 		expect(ensureWaypointMarker(expanded)).toBe(expanded);
+	});
+});
+
+// ===========================================================================
+// F-4 / F-5: hub identity does not encode the hub's address.
+//
+// A level hub's curie used to be derived from its FULL vault path
+// (`${ontology}:hub/${slugPath(folder)}`), so changing an import's destination
+// did not merely relocate a hub, it RENAMED it. The note at the old address kept
+// a curie nothing would ever claim again (a permanent orphan) while a second note
+// was created for the "new" identity. This is the same rule the rest of the
+// codebase already obeys -- identity must not be derived from address -- broken
+// one level deeper than concepts.
+//
+// The superseded absolute form travels on `legacyCuries` because a hub CAN carry
+// user prose and user frontmatter (generation-engine.ts routes both hub kinds
+// through the merge path), so regenerating one at the new address and deleting
+// the old is not available: it would destroy that content.
+//
+// The legacy forms below are the shapes real vaults hold. Both appear verbatim in
+// this repo's own test-vault, written by an earlier build:
+//   test-vault/Frameworks/Frameworks.md                   -> shape-workbench:hub/frameworks
+//   test-vault/Frameworks/MITRE ATT&CK/MITRE ATT&CK.md    -> shape-workbench:hub/frameworks/mitre-att-ck
+// ===========================================================================
+
+describe('enrich -- hub identity is independent of the destination (F-4)', () => {
+	/** The same two-concept import, rendered under any destination folder. */
+	function importedInto(root: string): EnrichNote[] {
+		return [
+			{ path: `${root}/Persistence/T1078.md`, curie: 'attack:T1078', frontmatter: {}, facets: [] },
+			{ path: `${root}/Persistence/T1098.md`, curie: 'attack:T1098', frontmatter: {}, facets: [] },
+		];
+	}
+
+	function hubCuries(root: string): string[] {
+		const result = enrich(importedInto(root), { ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: root });
+		return result.levelHubs.notes.map((h) => h.curie).sort();
+	}
+
+	it('a sub-folder hub is named by its path RELATIVE to the import root', () => {
+		const result = enrich(importedInto('Ontologies'), {
+			ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'Ontologies',
+		});
+		const sub = result.levelHubs.notes.find((h) => h.path === 'Ontologies/Persistence/Persistence.md')!;
+		expect(sub.curie).toBe('attack:hub/persistence');
+		expect(sub.curie).not.toContain('ontologies');
+	});
+
+	it('the SAME import under a different destination produces the SAME hub identities', () => {
+		// The single property F-4 exists for. Pre-fix these two lists differ in
+		// every element, which is why moving a destination orphaned every hub.
+		expect(hubCuries('Ontologies')).toEqual(hubCuries('Ontologies/attack-mini'));
+		expect(hubCuries('Ontologies')).toEqual(['attack:hub/_root', 'attack:hub/persistence']);
+	});
+
+	it('carries the superseded address-derived form as an alias, per destination', () => {
+		const flat = enrich(importedInto('Ontologies'), {
+			ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'Ontologies',
+		}).levelHubs.notes;
+		expect(flat.map((h) => [h.curie, h.legacyCuries])).toEqual([
+			['attack:hub/_root', ['attack:hub/ontologies']],
+			['attack:hub/persistence', ['attack:hub/ontologies/persistence']],
+		]);
+
+		// Hub order follows path, which reorders under a nested root, so compare
+		// the alias SET rather than pinning an incidental sort.
+		const nested = enrich(importedInto('Ontologies/attack-mini'), {
+			ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'Ontologies/attack-mini',
+		}).levelHubs.notes;
+		expect(nested.flatMap((h) => h.legacyCuries ?? []).sort()).toEqual([
+			'attack:hub/ontologies/attack-mini',
+			'attack:hub/ontologies/attack-mini/persistence',
+		]);
+	});
+
+	it('the reserved root local part cannot collide with a real folder name', () => {
+		// Slugging lowercases and strips to [a-z0-9-], so no folder a user can
+		// create produces a leading underscore. A folder literally named "_root"
+		// slugs to "root" and stays distinct from the reserved "_root".
+		const result = enrich([
+			{ path: 'Ontologies/_root/T1078.md', curie: 'attack:T1078', frontmatter: {}, facets: [] },
+			{ path: 'Ontologies/_root/T1098.md', curie: 'attack:T1098', frontmatter: {}, facets: [] },
+		], { ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'Ontologies' });
+		const curies = result.levelHubs.notes.map((h) => h.curie);
+		expect(curies).toContain('attack:hub/_root');
+		expect(curies).toContain('attack:hub/root');
+		expect(new Set(curies).size).toBe(curies.length);
+	});
+
+	it('the bare-harness fallback root (not a tracked ancestor) also takes the reserved local part', () => {
+		// golden-vault.ts passes a corpus id that prefixes nothing. The home note
+		// it produces must not be named after that id either, or the same import
+		// run through the harness and through generation would disagree.
+		const result = enrich([
+			{ path: 'A.md', curie: 'attack:A', frontmatter: {}, facets: [] },
+			{ path: 'B.md', curie: 'attack:B', frontmatter: {}, facets: [] },
+		], { ontology: 'attack', config: { level_hubs: 'notes' }, rootFolder: 'flat-corpus' });
+		const home = result.levelHubs.notes.find((h) => h.path === 'flat-corpus.md')!;
+		expect(home.curie).toBe('attack:hub/_root');
+		expect(home.legacyCuries).toEqual(['attack:hub/flat-corpus']);
 	});
 });

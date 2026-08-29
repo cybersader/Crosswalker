@@ -113,6 +113,10 @@
               "type": "string",
               "enum": ["endpoint-v1", "set-qualified-v1"],
               "description": "Identity scheme fixed when the import set is minted. endpoint-v1 identifies crosswalk assertions by endpoints. set-qualified-v1 uses cwset-<import-set-id>-<sanitized-subject>-<sanitized-object>, allowing assertions with the same endpoints in different sets to coexist without changing any existing identity."
+            },
+            "destination": {
+              "type": "string",
+              "description": "Folder this import set was last written to. Recorded so a refresh can find where the set already lives instead of inferring it from vault paths. A hint, not authority: a reader re-validates it against the actual note paths of the set, because nothing updates it when a user renames the folder."
             }
           }
         },

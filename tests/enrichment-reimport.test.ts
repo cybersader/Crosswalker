@@ -357,9 +357,13 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 		expect(home).toContain('# Frameworks');
 		expect(home).toContain('- [[T1078]]');
 		const homeFm = yaml.load(/^---\n([\s\S]*?)\n---/.exec(home)![1]) as any;
+		// `destination` records where the set was written, so a later refresh can
+		// look up where its own notes live instead of re-deriving a folder that may
+		// no longer be the right one (2026-08-29).
 		expect(homeFm._crosswalker.import_set).toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/),
 			scheme: 'endpoint-v1',
+			destination: 'Frameworks',
 		});
 	});
 
