@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Known defect: every import lands in the shared output folder (2026-08-28)
+
+Found by a test-fixture experiment, not yet fixed. Recorded here because it reaches a person on default settings through the shortest path in the product.
+
+- **Each import is supposed to nest under its own folder inside your output path. It does not; it writes straight into the shared folder.** That rule was set deliberately, and the code implementing it is correct and covered by tests, but the wizard fills the destination in before that code is consulted and so it never gets a chance to run. It only applies when the destination is empty, and the destination ships with your configured output path already in it.
+- **The visible consequence appears on your second import, not your first.** Once the output folder holds one imported collection, the wizard preselects "refresh that collection" for the next import. Importing a second, unrelated framework would attribute it to the first one and then report every control in the first framework as missing from the new source.
+- **On a third import it stops you.** Two collections in one folder is genuinely ambiguous, so the wizard requires you to say which one you mean and will not continue until you do. The requirement is announced only by a brief notice when you press the button, which is easy to miss.
+- **Nothing is deleted.** Controls that no longer appear in a source are listed for you to look at, never removed. This is a misattribution and a misleading change list rather than any loss of your notes.
+- **A related question is open.** When Crosswalker recognises a well-known source it also targets the shared folder, discarding the per-framework folder it keeps for that source. Whether that is intended or was overtaken by the per-import rule set down the same day has not been decided.
+
 ### The empty-vault walkthrough now runs only where it makes sense (2026-08-28)
 
 - **The first-run regression test was being run twice, and one of those runs tested the opposite of its purpose.** `tests/e2e/first-run.spec.ts` exists to observe what someone sees with nothing set up. The shared test configuration picked it up by filename pattern and ran it against the seeded test vault, which already contains the frameworks the spec asserts are absent, so it failed there for the one reason that is not a defect.

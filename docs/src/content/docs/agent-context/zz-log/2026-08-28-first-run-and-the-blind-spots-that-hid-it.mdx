@@ -105,7 +105,46 @@ The other findings worth naming, ranked, with what each one hides:
 
 Four themes are structural rather than per-spec, in the sense that fixing any single file does not touch them: one shared mutable vault with no per-spec reset and no cleanup afterwards, so whole-vault assertions are ordering-coupled by construction; the unpopulated output root above; the assertion-free specs; and the env-gated specs nobody runs. The rest are one-to-five-line edits.
 
-**The recommended first move is one fixture key, not a spec rewrite:** set the seed vault's output path to `Frameworks`, run the suite once, and read what turns red. It is reversible, it edits no test, and any spec that fails is by construction a spec that was passing only because the discovery surface was empty — which is the audit's finding, delivered as a failing test rather than as prose. The sidecar-migration gap is the largest remaining hole and is new-spec work; the SSSOM map, the two mistitled sidecar tests, the missing success assertion and the four scale-spec cleanups are small edits that should ride along with whatever commit follows.
+**The recommended first move was one fixture key, not a spec rewrite:** set the seed vault's output path to `Frameworks`, run the suite once, and read what turns red. It is reversible, it edits no test, and any spec that fails is by construction a spec that was passing only because the discovery surface was empty — which is the audit's finding, delivered as a failing test rather than as prose. The sidecar-migration gap is the largest remaining hole and is new-spec work; the SSSOM map, the two mistitled sidecar tests, the missing success assertion and the four scale-spec cleanups are small edits that should ride along with whatever commit follows.
+
+### The one-key experiment, run
+
+That key was added the same day and the suite was run twice, before and after, on an idle host. **The prediction above is now a measurement, and it was wrong in an interesting direction: the change turned almost nothing red, and what little it moved was worth more than the failure count suggests.**
+
+| | Before | After |
+|---|---|---|
+| Spec files | 41 passed / 6 failed | 41 passed / 6 failed — *identical* |
+| Declarations | 167 passed / 8 failed / 26 skipped | 166 passed / 9 failed / 26 skipped |
+
+At spec-file granularity the two runs are indistinguishable, and the six failures are exactly the six visual specs already quarantined. One declaration moved from passing to failing. Nothing moved the other way.
+
+**The value is not in the one new failure. It is in an assertion that kept its verdict and inverted its evidence.** `visual-workspace-flow.spec.ts` reads the workspace's installed-frameworks list after generating a framework and asserts the framework's name appears in it. Before the key, that assertion failed against an empty string: the list element was never rendered at all, because discovery resolved the configured `Ontologies/`, found nothing, and took its empty-state branch. After the key it fails against `NIST CSF 2.0 (CPRT export, nested)8 notes · 0 linksImport again` — a real row, with a real note count and a working import-again button, matched against the identifier form rather than the display title the interface renders.
+
+That is the whole point of the exercise, and it is invisible in a pass/fail count. The assertion was failing for the reason that a feature did not run; it now fails for the reason that a feature runs and the expectation is written against the wrong string. **For the entire life of this suite, the installed-frameworks list and the status-bar count had never once produced a non-empty result under any spec.** The surface repaired that morning went from untested to tested by changing one line of fixture configuration, and no test was edited to get there.
+
+<Aside type="caution" title="A vacuous assertion and a satisfied one look the same from the outside">
+Both of these runs report the same failure on the same line of the same spec. Only the recorded string distinguishes "the feature never ran" from "the feature ran and my expectation is stale." A suite that stores verdicts and discards evidence cannot tell them apart, and neither can a reader of its summary.
+</Aside>
+
+### What it revealed in the product
+
+The single new failure is not a fixture problem. It is a live defect, and it is the more valuable half of the result.
+
+**Every import defaults its destination to the bare shared output folder, so a per-import folder rule that exists, is unit-tested, and was an explicit owner call never runs.** On 2026-07-11 the rule was set down that each import nests under its own folder inside the configured output path, because writing straight into the shared root flattened one import's top-level folders into everyone else's. The function implementing it was changed accordingly and is covered by passing unit tests. Its only caller in the wizard sits behind a guard that fires only when the destination is blank — and the wizard's constructor has already filled it with the configured output path, which ships non-empty. The guard cannot fire. The rule has never executed for any user who did not manually erase the setting.
+
+The experiment surfaced it because it is only observable once the output folder has something in it:
+
+| With defaults, a user | What happens |
+|---|---|
+| Imports their first framework | Lands in the shared root rather than its own folder. Nothing looks wrong yet |
+| Imports a second, unrelated framework | The destination now holds one owned collection, so the wizard quietly preselects **refresh that collection**. Importing MITRE would stamp it with the identity of the earlier NIST import and report every NIST control as missing from the source |
+| Imports a third | Two collections is ambiguous, so the wizard now requires a choice and refuses to advance. The requirement is announced only by a transient notice when the button is pressed |
+
+Nothing is deleted — orphans are reported, never removed — so this is misattributed ownership and a spurious change list rather than data loss. It is still the ownership machinery firing correctly on an ambiguity that should never have been created.
+
+The blocked-wizard case is what the new test failure actually is. That is a defect reaching a person through the shortest path in the product, found by a one-line fixture change, in a surface that six weeks of green runs never entered.
+
+**A second instance of the same flattening is a question for the owner rather than a fix.** The recognized-recipe fast path also returns the bare configured root, discarding the curated per-framework folder the registry carries. Its comment says that is deliberate. But it was written four hours *before* the per-import-root rule on the same day, so it reads as a decision the later call superseded and nobody went back to reconcile. Which of the two governs is an owner call, not an inference — the runtime evidence is that a user on defaults sees the recognized-source card say their import "lands in Frameworks", the shared root, never the curated folder.
 
 Two things the audit deliberately declined to call defects, because reading them as defects is how audits lose their credibility: the pure in-memory unit tests wearing an Obsidian costume are cheap, deterministic and honest about it, and the nine bodiless `it()` calls for an unlanded phase are the correct representation of work that has not happened.
 
@@ -161,7 +200,9 @@ The reset fix was reviewed by an agent whose only instruction was to prove it wr
 
 | Item | State |
 |---|---|
-| The seeded-vault assumption elsewhere | **Asked and answered.** The audit above found sixteen assumptions across 48 specs, one of them the same shape as this morning's bug: the configured output folder is never written to, so installed-framework discovery is dark for the entire run. Ranked, with a one-key first move. None of it is fixed yet |
+| The seeded-vault assumption elsewhere | **Asked, answered, and the first move executed.** The audit found sixteen assumptions across 48 specs. Its top finding — the configured output folder is never written to — was closed by pointing the seed at `Frameworks`, which cost one new test failure and revealed a live destination defect. The remaining fifteen are unfixed |
+| The destination defect the experiment revealed | **Open, unfixed, and user-facing.** Imports default to the bare shared output folder, so the per-import folder rule never runs and the ownership prompt fires on ambiguity that should not exist. The fix is small; whether the recognized-recipe path follows the same rule is an owner call |
+| The seed change itself | **Applied, not yet committed.** `visual-workbench.spec.ts` cannot express "this is a new import" and needs to answer the ownership control before advancing; `visual-workspace-flow.spec.ts` should match the rendered title rather than the identifier. Both are small edits that belong with the destination fix |
 | `tests/e2e/first-run.spec.ts` has an intermittent startup hang | On two consecutive runs of the same command on an idle host, one passed in 5.1s and one hung for 2m38s with an unresponsive renderer, failing on the first screenshot. The configuration fix is verified; the spec's stability is not, on one green run |
 | `tests/e2e/first-run-vault/.obsidian/plugins/` is untracked build residue and is not gitignored | A clean run deletes it, a terminated one strands it. Nothing under that subdirectory is tracked, so ignoring it untracks nothing |
 | `reference/settings.mdx` says the index file lives "relative to the vault root" | It does not. It lives in browser-managed storage outside the vault. The settings UI string says the same thing. A copy fix on both surfaces, not scheduled |
