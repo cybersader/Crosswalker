@@ -359,11 +359,15 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 		const homeFm = yaml.load(/^---\n([\s\S]*?)\n---/.exec(home)![1]) as any;
 		// `destination` records where the set was written, so a later refresh can
 		// look up where its own notes live instead of re-deriving a folder that may
-		// no longer be the right one (2026-08-29).
+		// no longer be the right one (2026-08-29). `ontology` pins the identity
+		// space the same way `scheme` does, so a refresh mints curies the set's own
+		// notes already answer to rather than recomputing them from its own recipe
+		// (AM-6, 2026-08-30).
 		expect(homeFm._crosswalker.import_set).toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/),
 			scheme: 'endpoint-v1',
 			destination: 'Frameworks',
+			ontology: 'attack-hubs',
 		});
 	});
 

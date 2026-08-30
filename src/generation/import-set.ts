@@ -33,6 +33,21 @@ export interface ImportSetReference {
 	 * set's actual note paths before writing anything there.
 	 */
 	destination?: string;
+	/**
+	 * AM-6. The ontology this set's curies are minted under, pinned at mint the
+	 * same way `scheme` is.
+	 *
+	 * Failure mode prevented: a refresh recomputing the ontology from the run's
+	 * own recipe and getting a different answer from the one the set's notes
+	 * already carry. Every existing note then falls outside the run's identity
+	 * index, so the run writes a second copy of the whole framework beside the
+	 * first and reports every original as an orphan.
+	 *
+	 * Optional because notes written before this existed carry no pin. Such a
+	 * set is pinned on its first refresh to the ontology prefix its own notes
+	 * already show, because the notes are the fact.
+	 */
+	ontology?: string;
 }
 
 export type ImportSetOption =
@@ -77,6 +92,8 @@ interface ImportSetObservation {
 	destination: string | null;
 	recipeId: string | null;
 	ontologyPrefix: string | null;
+	/** The ontology pinned in this note's import_set block, if any (AM-6). */
+	ontology: string | null;
 }
 
 /** A destination contains several ownership sets and no caller selected one. */
@@ -114,6 +131,13 @@ export async function resolveImportSet(
 	app: App,
 	basePath: string,
 	option?: ImportSetOption,
+	/**
+	 * AM-6. The ontology this run WOULD use if the set had never been imported
+	 * before. A proposal only: an existing set's pin always wins, because a
+	 * refresh that changes the ontology changes every curie it writes and
+	 * therefore stops recognising the notes it owns.
+	 */
+	proposedOntology?: string,
 ): Promise<ImportSetReference> {
 	// Where this run writes is stamped onto every note it writes. Recorded, not
 	// inferred: without it a later refresh has no way to ask where its own set
@@ -122,15 +146,19 @@ export async function resolveImportSet(
 	// so a set that legitimately moves records its new home instead of keeping a
 	// stale one.
 	const destination = normalizeFolder(basePath ?? '') || undefined;
-	const stamp = (reference: ImportSetReference): ImportSetReference =>
-		destination ? { ...reference, destination } : reference;
+	const proposed = proposedOntology?.trim() || undefined;
+	const stamp = (reference: ImportSetReference, ontology?: string): ImportSetReference => ({
+		...reference,
+		...(destination ? { destination } : {}),
+		...(ontology ? { ontology } : {}),
+	});
 
 	if (option === 'new') {
-		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME });
+		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME }, proposed);
 	}
 
 	if (option === 'new-set-qualified') {
-		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: 'set-qualified-v1' });
+		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: 'set-qualified-v1' }, proposed);
 	}
 
 	if (option && typeof option === 'object') {
@@ -145,18 +173,38 @@ export async function resolveImportSet(
 					existing.paths,
 				);
 			}
-			return stamp({ id: existing.id, scheme: existing.scheme });
+			return stamp({ id: existing.id, scheme: existing.scheme }, pinnedOntologyOf(existing, proposed));
 		}
-		return stamp({ id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME });
+		return stamp({ id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME }, proposed);
 	}
 
 	const destinationSets = await discoverImportSets(app, basePath);
 	if (destinationSets.length === 1) {
-		return stamp({ id: destinationSets[0].id, scheme: destinationSets[0].scheme });
+		return stamp(
+			{ id: destinationSets[0].id, scheme: destinationSets[0].scheme },
+			pinnedOntologyOf(destinationSets[0], proposed),
+		);
 	}
 	if (destinationSets.length > 1) throw new MultipleImportSetsError(destinationSets);
 
-	return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME });
+	return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME }, proposed);
+}
+
+/**
+ * AM-6. The ontology a refresh must mint curies under.
+ *
+ * Order: the stamped pin, else the one ontology prefix the set's own notes
+ * already agree on (a legacy set predates the pin, and its notes are the fact),
+ * else this run's proposal.
+ *
+ * Several disagreeing prefixes pin nothing. There is no single fact to recover
+ * there, and inventing one would be the guess this whole design removes; the
+ * behaviour in that case stays exactly what it was before AM-6.
+ */
+function pinnedOntologyOf(set: DiscoveredImportSet, proposed?: string): string | undefined {
+	if (set.ontology) return set.ontology;
+	if (set.ontologyPrefixes.length === 1) return set.ontologyPrefixes[0];
+	return proposed;
 }
 
 /** Mint a meaningless crypto-random id, retrying if a vault already uses it. */
@@ -207,6 +255,7 @@ async function collectObservations(app: App, basePath?: string, onlyId?: string)
 			throw new ImportSetProvenanceError(`Invalid import set id at ${file.path}: expected iset- followed by 6 lowercase letters or digits.`, [file.path]);
 		}
 		const destination = readString((raw as Record<string, unknown>).destination);
+		const ontology = readString((raw as Record<string, unknown>).ontology);
 		// Two stamped facts about WHAT produced this note, kept beside the ownership
 		// id so a caller can ask "has this source written here before?" without
 		// re-deriving anything from the note's address. Both are optional: a note
@@ -222,6 +271,7 @@ async function collectObservations(app: App, basePath?: string, onlyId?: string)
 			destination,
 			recipeId,
 			ontologyPrefix: curiePrefix(readString((fm as Record<string, unknown>).curie)),
+			ontology,
 		});
 	}
 	return observations;
@@ -267,6 +317,7 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 		}
 		const paths = group.map((entry) => entry.path).sort();
 		const recorded = recordedDestination(group);
+		const pinnedOntology = agreedOntology(group);
 		sets.push({
 			id,
 			scheme,
@@ -276,6 +327,7 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 			recipeIds: distinctSorted(group.map((entry) => entry.recipeId)),
 			ontologyPrefixes: distinctSorted(group.map((entry) => entry.ontologyPrefix)),
 			...(recorded ? { destination: recorded } : {}),
+			...(pinnedOntology ? { ontology: pinnedOntology } : {}),
 		});
 	}
 	sets.sort((a, b) => a.id.localeCompare(b.id));
@@ -353,6 +405,17 @@ function recordedDestination(group: readonly ImportSetObservation[]): string | n
 	const stamped = new Set(group.map((entry) => entry.destination).filter((d): d is string => d !== null));
 	if (stamped.size !== 1) return null;
 	return normalizeFolder([...stamped][0]);
+}
+
+/**
+ * The ontology every member of a set agrees on, or null when they disagree or
+ * none recorded one (AM-6). Disagreement reads as no pin at all: a set holding
+ * two answers has no single fact to carry forward, and picking one would be a
+ * guess about which half of the set is authoritative.
+ */
+function agreedOntology(group: readonly ImportSetObservation[]): string | null {
+	const stamped = new Set(group.map((entry) => entry.ontology).filter((value): value is string => value !== null));
+	return stamped.size === 1 ? [...stamped][0] : null;
 }
 
 /**

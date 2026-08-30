@@ -90,6 +90,11 @@ export function buildProvenance(input: ProvenanceInput, pluginVersion: string): 
 			// vault paths. An import that guesses its own destination wrong writes a
 			// second copy of itself beside the first.
 			...(input.importSet.destination ? { destination: input.importSet.destination } : {}),
+			// AM-6. The ontology the set is pinned to, stamped beside the scheme it is
+			// pinned to. Without it a refresh recomputes the ontology from its own
+			// recipe, and a recomputation that lands on a different answer writes a
+			// second copy of the framework and orphans the first.
+			...(input.importSet.ontology ? { ontology: input.importSet.ontology } : {}),
 		};
 	}
 

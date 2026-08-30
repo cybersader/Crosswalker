@@ -299,11 +299,6 @@ export class ImportFlow {
 	 */
 	private step3SourceSignature: string | null = null;
 	private step3InFlight = false;
-	/**
-	 * The user picked refresh-or-new explicitly, so re-entering step 3 must not
-	 * re-apply the stamped default over the top of their choice.
-	 */
-	private importSetChoiceExplicit = false;
 	overwriteMode: 'skip' | 'replace' | 'error' = 'skip';
 	frameworkId: string = '';
 
@@ -1932,36 +1927,36 @@ export class ImportFlow {
 	}
 
 	/**
-	 * The sets this source has written to before, by stamped fact rather than by
-	 * folder. Membership, not equality: a set legitimately carries several recipe
-	 * ids and several ontology prefixes over its life, and matching on any one of
-	 * them is the question being asked.
+	 * AM-5. The ONE set this source may be OFFERED as a refresh target, or null.
+	 *
+	 * An offer, never a default. Matching a source to a set is a guess about
+	 * ownership, and the facts available to guess with are not owned by one
+	 * framework each: bundled recipes share ontology labels, a re-used saved
+	 * config gives two frameworks one recipe id, and two vendor exports both
+	 * named `controls.csv` share a file stem. A wrong guess writes one framework
+	 * into another and orphans the first, which is the worst thing this product
+	 * can do, so the guess only ever puts a button on screen.
+	 *
+	 * Requires a REAL ontology on the source side: a sentinel means `nobody told
+	 * us`, and a placeholder stamped on every nameless classic import
+	 * distinguishes nothing. Several candidates produce no offer either, because
+	 * `which one` is exactly the question a guess cannot answer.
 	 */
-	private matchingSets(sets: readonly DiscoveredImportSet[]): DiscoveredImportSet[] {
-		const keys = this.sourceIdentityKeys();
-		// AM-1. A placeholder is never an identity. `unknown` / `legacy-config` are
-		// stamped on EVERY nameless classic import, so a membership test that
-		// honours them matches every classic set against every classic source: the
-		// second framework imported into a vault gets attributed to the first.
-		// Dropping them here leaves zero matches, and zero matches preselects a NEW
-		// set, which owns nothing and can therefore damage nothing.
-		const recipeId = ImportFlow.isIdentitySentinel(keys.recipeId) ? null : keys.recipeId;
-		const ontologyPrefix = ImportFlow.isIdentitySentinel(keys.ontologyPrefix) ? null : keys.ontologyPrefix;
-		if (recipeId === null && ontologyPrefix === null) return [];
-		return sets.filter((set) =>
-			(recipeId !== null && set.recipeIds.includes(recipeId))
-			|| (ontologyPrefix !== null && set.ontologyPrefixes.includes(ontologyPrefix)));
+	private offeredRefreshSet(sets: readonly DiscoveredImportSet[]): DiscoveredImportSet | null {
+		const prefix = this.sourceIdentityKeys().ontologyPrefix;
+		if (prefix === null || ImportFlow.isIdentitySentinel(prefix)) return null;
+		const candidates = sets.filter((set) => set.ontologyPrefixes.includes(prefix));
+		return candidates.length === 1 ? candidates[0] : null;
 	}
 
 	/**
-	 * AM-1. Is this identity value a placeholder rather than a fact?
+	 * Is this identity value a placeholder rather than a fact?
 	 *
 	 * The literals live at their mint site (`legacy-recipe-shim.ts`) and are
 	 * imported, never retyped: a second copy is a copy that drifts, and a drifted
-	 * copy silently re-admits the placeholder to matching. Both the raw form and
-	 * the slugified form are covered because an ontology reaches this test after
-	 * `slugifyForCurie` (that is how it is compared against stamped curies) while
-	 * a recipe id does not.
+	 * copy silently re-admits the placeholder. Both the raw form and the
+	 * slugified form are covered because an ontology reaches this test after
+	 * `slugifyForCurie` (that is how it is compared against stamped curies).
 	 */
 	private static readonly IDENTITY_SENTINEL_FORMS: ReadonlySet<string> = new Set([
 		...IDENTITY_SENTINELS,
@@ -1972,30 +1967,26 @@ export class ImportFlow {
 		return value !== null && ImportFlow.IDENTITY_SENTINEL_FORMS.has(value);
 	}
 
-	/**
-	 * A-2's default: preselect refresh only when exactly one existing set carries
-	 * this source's stamped facts. Sets that exist but do not match preselect a NEW
-	 * set, which is the clause that ends "the second framework was attributed to the
-	 * first" (the old rule preselected refresh for whichever single set happened to
-	 * sit in the destination folder, whatever it was).
+	/*
+	 * AM-5. THE PRESELECT USED TO LIVE HERE, AND NOTHING REPLACES IT.
 	 *
-	 * Never overrides an explicit user choice.
+	 * A refresh is chosen, never guessed. Every version of this method picked a
+	 * refresh target for the user out of facts stamped on existing notes: first
+	 * whichever set shared the destination folder, then whichever set shared the
+	 * source's recipe id or ontology. Four passes failed at it, because none of
+	 * those facts names an owner. Recipe ids name instructions, not ownership;
+	 * bundled recipes share ontology labels across frameworks; file stems
+	 * collide. Each version narrowed the guess and each one still guessed.
+	 *
+	 * The failure mode is not symmetric, which is why refining it was the wrong
+	 * move. Guessing `new set` when the user meant refresh costs a duplicate
+	 * folder the user can see and delete. Guessing `refresh` when the user meant
+	 * a new framework overwrites another framework in place and reports the
+	 * originals as orphans, and by then the notes are gone. So the default is
+	 * always the harmless one, and the only route into a refresh is a click
+	 * (`offeredRefreshSet` above suggests one; `renderImportSetReview` lists
+	 * every set so any of them can be picked deliberately).
 	 */
-	private applyDefaultImportSetChoice(): void {
-		if (this.importSetChoiceExplicit) return;
-		const sets = this.discoveredSets ?? [];
-		if (sets.length === 0) {
-			this.importSetChoice = null;
-			return;
-		}
-		const matches = this.matchingSets(sets);
-		if (matches.length === 1) {
-			this.importSetChoice = { id: matches[0].id };
-			return;
-		}
-		// Zero matches mints; several matches is a decision, not a guess.
-		this.importSetChoice = matches.length === 0 ? 'new' : null;
-	}
 
 	/**
 	 * Everything step 3 needs to answer "where does this land and what does it
@@ -2027,9 +2018,14 @@ export class ImportFlow {
 		this.step3InFlight = true;
 		if (this.step3SourceSignature !== signature) {
 			// A different source is a different question, so the previous answer to
-			// "refresh or new" no longer applies and the stamped default runs again.
+			// "refresh or new" no longer applies.
+			//
+			// AM-5. Clearing the choice returns to the ONLY default there is: a new
+			// set. Nothing recomputes a preselect afterwards, so a choice carried
+			// over from the previous file would be the last surviving guess about
+			// ownership, and it would be a guess made about a different source.
 			this.step3SourceSignature = signature;
-			this.importSetChoiceExplicit = false;
+			this.importSetChoice = null;
 		}
 		// Recorded BEFORE the work, not after it succeeds. A throw that left this
 		// unset would re-run a whole-vault scan on every re-render of the review
@@ -2059,7 +2055,8 @@ export class ImportFlow {
 					error: this.setDiscoveryError,
 				});
 			}
-			this.applyDefaultImportSetChoice();
+			// AM-5. Nothing preselects an ownership choice here. See the note where
+			// the preselect used to be, above `offeredRefreshSet`.
 			if (this.discoveredSets) {
 				this.plugin.debug.info('wizard', 'sets-discovered', `Discovered ${this.discoveredSets.length} import set(s) in the vault`, {
 					sets: this.discoveredSets.map((set) => ({ id: set.id, root: set.root, notes: set.noteCount })),
@@ -2105,13 +2102,14 @@ export class ImportFlow {
 	}
 
 	/**
-	 * Inline ownership review, over the WHOLE VAULT (A-2).
+	 * Inline ownership review, over the WHOLE VAULT.
 	 *
-	 * The old version discovered sets scoped to the destination folder, which was
-	 * both a circularity (the destination is what the ownership answer determines)
-	 * and the original misattribution bug: one set in the folder meant "refresh
-	 * that set", whatever it was. Membership is now decided by what the notes are
-	 * stamped with, and the folder has no vote.
+	 * AM-5. Built from `sets`, every set in the vault, NOT from a matched
+	 * subset. Two earlier versions narrowed this list: first to the destination
+	 * folder, then to sets whose stamped facts matched the source. Both were
+	 * guesses about ownership, and a narrowed list also hides the sets it left
+	 * out, so a legacy set the source does not resemble became unrefreshable.
+	 * The user sees everything and picks.
 	 *
 	 * Synchronous: it reads the list `prepareStep3` already resolved, so the
 	 * ownership control cannot render a different answer from the destination
@@ -2129,59 +2127,70 @@ export class ImportFlow {
 		const sets = this.discoveredSets ?? [];
 		if (sets.length === 0) return;
 
-		const matches = this.matchingSets(sets);
 		const refreshing = this.refreshTargetSet();
 		const wrap = container.createDiv({ cls: 'crosswalker-import-set-review' });
 
 		const line = wrap.createEl('p', { cls: 'setting-item-description' });
 		if (refreshing) {
 			line.setText(`Refreshing import set ${refreshing.id} (${refreshing.noteCount} existing notes)`);
-		} else if (matches.length > 1) {
-			line.setText('Several existing imports were made from this source. Choose which one to refresh, or import as a new set.');
-			line.addClass('crosswalker-warning');
-		} else if (matches.length === 1) {
-			line.setText('Importing as a new set. The existing import from this source stays separate.');
 		} else {
 			line.setText(sets.length === 1
 				? 'Importing as a new set. The one import already in this vault stays separate.'
 				: `Importing as a new set. The ${sets.length} imports already in this vault stay separate.`);
 		}
 
-		if (matches.length > 1) {
-			const list = wrap.createEl('ul');
-			for (const set of matches) {
-				list.createEl('li', { text: `${set.id}: ${set.noteCount} existing notes in ${set.root ?? 'more than one folder'}` });
-			}
-			new Setting(wrap)
-				.setName('Import set')
-				.setDesc('Required because more than one existing import was made from this source')
-				.addDropdown((dropdown) => {
-					dropdown.addOption('', 'Choose one');
-					for (const set of matches) dropdown.addOption(set.id, `${set.id} (${set.noteCount} existing notes)`);
-					dropdown.addOption('__new__', 'Import as a new set');
-					const value = this.importSetChoice === 'new'
-						? '__new__'
-						: (refreshing ? refreshing.id : '');
-					dropdown.setValue(value).onChange((selected) => {
-						this.chooseImportSet(selected === '__new__' ? 'new' : (selected ? { id: selected } : null));
-					});
+		// Every set, with the facts that tell them apart. A minted id is
+		// deliberately meaningless, so a user choosing which one to overwrite needs
+		// its size, its folder and what produced it in front of them.
+		const list = wrap.createEl('ul');
+		for (const set of sets) list.createEl('li', { text: ImportFlow.describeSet(set) });
+
+		// New set is FIRST and is what a fresh review shows, because it is the
+		// only choice that cannot damage anything: a new set owns no notes.
+		new Setting(wrap)
+			.setName('Import set')
+			.setDesc('A new set is the default. Choose an existing set only to refresh the notes it already owns.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('__new__', 'Import as a new set');
+				for (const set of sets) dropdown.addOption(set.id, ImportFlow.describeSet(set));
+				dropdown.setValue(refreshing ? refreshing.id : '__new__').onChange((selected) => {
+					this.chooseImportSet(selected === '__new__' ? 'new' : { id: selected });
 				});
-		} else if (refreshing) {
+			});
+
+		// AM-5. The offer, and it is only ever an offer: one line, one click.
+		// Matching a source to a set is a guess about ownership, and a wrong guess
+		// writes one framework into another and orphans the first. A guess is
+		// allowed to suggest; it is never allowed to decide.
+		const offer = refreshing ? null : this.offeredRefreshSet(sets);
+		if (offer) {
+			const suggest = wrap.createEl('button', { text: `Looks like ${offer.id}. Refresh it instead?` });
+			suggest.addEventListener('click', () => this.chooseImportSet({ id: offer.id }));
+		}
+		if (refreshing) {
 			const fresh = wrap.createEl('button', { text: 'Import as a new set instead' });
 			fresh.addEventListener('click', () => this.chooseImportSet('new'));
-		} else if (matches.length === 1) {
-			const refresh = wrap.createEl('button', { text: `Refresh ${matches[0].id} instead` });
-			refresh.addEventListener('click', () => this.chooseImportSet({ id: matches[0].id }));
 		}
 
 		const problem = this.refreshRootProblem() ?? this.newSetOccupancyProblem();
 		if (problem) wrap.createEl('p', { text: problem, cls: 'crosswalker-warning' });
 	}
 
-	/** Record an ownership decision the user made, so the default stops applying. */
+	/** One set as the review names it: id, size, where it lives, what made it. */
+	private static describeSet(set: DiscoveredImportSet): string {
+		const where = set.root ?? 'more than one folder';
+		const notes = set.noteCount === 1 ? 'note' : 'notes';
+		const recipe = set.recipeIds.length > 0 ? set.recipeIds.join(', ') : 'an unrecorded recipe';
+		return `${set.id}: ${set.noteCount} ${notes} in ${where}, from ${recipe}`;
+	}
+
+	/**
+	 * Record the ownership decision the user made. AM-5: this is the ONLY way
+	 * a refresh is ever selected, so there is no default left to suppress and
+	 * no `the user chose it` flag to keep.
+	 */
 	private chooseImportSet(choice: ImportSetOption | null): void {
 		this.importSetChoice = choice;
-		this.importSetChoiceExplicit = true;
 		this.renderStep();
 	}
 
@@ -2209,11 +2218,12 @@ export class ImportFlow {
 		// Nothing discovered: leave the decision to the engine's own mint path, which
 		// is what an empty vault (and a flow with no vault at all) has always done.
 		if (sets.length === 0) return undefined;
-		if (this.matchingSets(sets).length > 1) {
-			throw new Error('Choose an import set to refresh, or choose to import as a new set.');
-		}
-		// Sets exist and none was chosen: mint explicitly rather than letting the
-		// engine's destination-scoped fallback adopt whichever set shares the folder.
+		// AM-5. Sets exist and none was chosen, so this is a new set. There is no
+		// longer a `several candidates, ask the user` branch here: nothing ever
+		// preselects a refresh, so an unanswered matching question cannot exist.
+		// Minting EXPLICITLY still matters, because the engine's own
+		// destination-scoped fallback would otherwise adopt whichever set happens
+		// to share the folder, which is the misattribution this design removes.
 		return 'new';
 	}
 
@@ -3777,13 +3787,24 @@ export class ImportFlow {
 				// AM-3. The moved and orphan counts ride on the success notice, on
 				// EVERY run. A clean refresh closes the wizard without drawing a
 				// results screen, so a screen-only report is a report the common case
-				// never sees, and a user who cannot see the zero cannot tell "nothing
-				// moved" from "nobody checked". Both numbers are always stated.
+				// never sees.
+				//
+				// AM-7. And an orphan count that was NOT COMPUTED is not zero. The
+				// engine suppresses detection whenever it cannot prove it read the
+				// whole source; printing `No orphans.` there tells a GRC user their
+				// framework is intact when nobody checked. Tri-state, same rule as the
+				// metadata cache: not-checked is its own answer and it is said out loud.
 				const movedCount = result.moved?.length ?? 0;
 				const orphanCount = result.orphans?.length ?? 0;
-				const counts = movedCount === 0 && orphanCount === 0
-					? 'Nothing moved. No orphans.'
-					: `${movedCount} moved, ${orphanCount} orphans. See results.`;
+				const orphansChecked = result.orphansChecked !== false;
+				const movedText = movedCount === 0 ? 'Nothing moved.' : `${movedCount} moved.`;
+				const orphanText = !orphansChecked
+					? 'Orphans not checked.'
+					: (orphanCount === 0 ? 'No orphans.' : `${orphanCount} orphans.`);
+				// Anything but a clean, fully checked run sends the user to the screen
+				// that carries the detail, and the same flag gates drawing it below.
+				const needsResults = movedCount > 0 || orphanCount > 0 || !orphansChecked;
+				const counts = `${movedText} ${orphanText}${needsResults ? ' See results.' : ''}`;
 				const message = `✅ Created ${result.created.length} notes` +
 					(result.skipped.length > 0 ? `, skipped ${result.skipped.length} existing` : '') +
 					` in ${(result.duration / 1000).toFixed(1)}s. ${counts}`;
@@ -3844,7 +3865,9 @@ export class ImportFlow {
 				// is raised at row 0 and is the case that found this), and closing on
 				// it destroyed the only surface that ever showed them. Same family as
 				// the purge that reported success. Errors first, then the two counts.
-				if (result.errors.length > 0 || movedCount > 0 || orphanCount > 0) {
+				// AM-7 joins AM-4 here: a run that could not check for orphans has
+				// something to explain, and the notice already points at this screen.
+				if (result.errors.length > 0 || needsResults) {
 					this.renderGenerationResults(result);
 					return;
 				}
@@ -3888,6 +3911,8 @@ export class ImportFlow {
 		moved?: Array<{ curie: string; from: string; to: string }>;
 		/** Identities this set held that the source no longer produces. */
 		orphans?: Array<{ curie: string; path: string }>;
+		/** AM-7. False when orphan detection was suppressed, so `no orphans` is never printed for a run that never looked. */
+		orphansChecked?: boolean;
 	}) {
 		const contentEl = this.host.containerEl;
 		contentEl.empty();
@@ -3929,7 +3954,15 @@ export class ImportFlow {
 				: `📦 Moved: ${moved.length} ${moved.length === 1 ? 'note was' : 'notes were'} relocated.`,
 		});
 		const orphans = result.orphans ?? [];
-		if (orphans.length > 0) {
+		// AM-7. An orphan count that was not computed is not zero. Detection is
+		// suppressed whenever the run cannot prove it read the whole source, and
+		// the absence of orphans then looks exactly like a clean result. Saying so
+		// is the whole point: the user must know the question was not answered.
+		if (result.orphansChecked === false) {
+			summary.createEl('p', {
+				text: '🕳️ Orphans: not checked. This run could not confirm it read the whole source, so it cannot say whether any notes are missing.',
+			});
+		} else if (orphans.length > 0) {
 			summary.createEl('p', {
 				text: `🕳️ Orphans: ${orphans.length} ${orphans.length === 1 ? 'note is' : 'notes are'} no longer in the source. They were kept, not deleted.`,
 			});

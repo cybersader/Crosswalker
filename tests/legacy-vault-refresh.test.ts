@@ -20,12 +20,22 @@
  * PART A'S ANSWER, AND WHY THE TESTS ARE SHAPED THIS WAY
  *
  * A refresh never changes a set's root. The destination for a refresh IS the
- * set's existing root, resolved once from the notes the set already owns, and
- * ownership is decided by what the notes are STAMPED with (recipe id, ontology
- * prefix) rather than by which folder they happen to sit in. So the destination
- * is never hard-coded into the refresh below: it is read back out of a real
- * `ImportFlow` through the same accessor every write path uses, because "where
- * does this refresh land" is the decision the whole failure hangs on.
+ * set's existing root, resolved once from the notes the set already owns. So the
+ * destination is never hard-coded into the refresh below: it is read back out of
+ * a real `ImportFlow` through the same accessor every write path uses, because
+ * "where does this refresh land" is the decision the whole failure hangs on.
+ *
+ * WHO DECIDES THAT IT IS A REFRESH AT ALL (AM-5)
+ *
+ * Ownership used to be inferred: first from the folder, then from the stamped
+ * recipe id and ontology prefix. Four passes narrowed that guess and four passes
+ * were defeated by it, because none of those facts names an owner. AM-5 removed
+ * it. The default is ALWAYS a new set, matching is demoted to an offer, and a
+ * click is the only route into a refresh -- so every scenario below that is
+ * about a refresh presses that offer (`askWhereARefreshLands` / `pressTheOffer`)
+ * or picks the set out of the list (`chooseFromTheList`), and the answer BEFORE
+ * the click is asserted too, because "the default was never a refresh" is half
+ * of what these tests exist to show.
  *
  * WHY THE PRE-FIX VAULT IS BUILT BY DE-MIGRATION
  *
@@ -51,6 +61,13 @@
  *  10. The classic import path, which stamps no ontology of its own (AM-1).
  *  11. What the success notice says on every run (AM-3).
  *  12. An identity collision on a run that would otherwise close (AM-4).
+ *  13. Nothing preselects a refresh; the offer is a suggestion; every set is
+ *      listed; and the three sources that defeated pass-4 matching (AM-5).
+ *  14. A legacy set whose ontology is the placeholder: pinned to what its own
+ *      notes carry, on the first refresh, and reused after (AM-6).
+ *  15. A run that could not check for orphans says so, and never prints a zero
+ *      (AM-7). AM-8 -- the same rule at the SSSOM entry point -- lives in
+ *      tests/sssom-import-modal-errors.test.ts, because it is a different modal.
  *
  * THE THREE GAPS THIS FILE USED TO PIN WITH `it.failing`, AND WHERE THEY WENT
  *
@@ -68,6 +85,25 @@
  *      told both numbers, because the notice fires before the close.
  *
  * A regression in any of the three turns this suite red at the named section.
+ *
+ * TESTS RETIRED BY AM-5, AND WHAT REPLACED THEM
+ *
+ *   - 'preselects refreshing exactly the set whose stamps this source carries'
+ *     (section 1) asserted the pass-4 default. Replaced by 'preselects nothing
+ *     at all, even when exactly one set matches this source', on the same input.
+ *   - 'still refreshes its OWN set when the same source comes back' (section 10)
+ *     asserted the same default on the classic path. Replaced by 'offers its OWN
+ *     set when the same source comes back, and refreshes only on the click'.
+ *
+ * THE ONE GAP THIS FILE STILL PINS WITH `it.failing`
+ *
+ *   A recipe mints one root-hub curie per ontology (`<ontology>:hub/_root`) with
+ *   nothing set-qualifying it, and the identity index `resolveWriteTarget`
+ *   consults is whole-vault rather than scoped to the writing set. So a second
+ *   import under a SHARED ontology label -- two crosswalks under `xwalk`, the
+ *   exact escape route AM-5 names -- lands as its own new set and still renames
+ *   the first set's root hub into its own folder. Section 13's
+ *   'leaves the first crosswalk holding its own root hub'.
  */
 
 import { TFile, TFolder } from 'obsidian';
@@ -113,6 +149,10 @@ const yaml = require('js-yaml') as { load: (s: string) => unknown };
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const obsidianModule = require('obsidian') as {
 	Notice: new (message: string, timeout?: number) => unknown;
+	// AM-5: the ownership DEFAULT is carried by a dropdown, and the mock's
+	// `addDropdown` is an instance field that never calls its callback, so the
+	// control is invisible unless the class itself is swapped. See captureReview.
+	Setting: new (containerEl: HTMLElement) => { addDropdown(cb: (d: unknown) => void): unknown };
 };
 const RealNotice = obsidianModule.Notice;
 
@@ -332,6 +372,22 @@ function deMigrateToPreFix(files: Map<string, string>, root: string): void {
 	}
 }
 
+/**
+ * Strip the AM-6 ontology pin, the same way `deMigrateToPreFix` strips the
+ * destination stamp.
+ *
+ * A set imported before AM-6 existed carries no `ontology` in its import-set
+ * block, and "what happens when nothing recorded one" is the entire question
+ * AM-6 answers. Seeding with the current engine and then removing the one field
+ * is more faithful than hand-writing notes: every other byte is what a real
+ * vault holds.
+ */
+function deMigrateOntologyPin(files: Map<string, string>): void {
+	for (const [path, text] of [...files]) {
+		files.set(path, text.replace(/\n[ \t]+ontology: [^\n]*/g, ''));
+	}
+}
+
 /** A vault holding one complete import, generated by the current engine. */
 async function seedVault(recipeOverride: Recipe = RECIPE, basePath: string = SHARED_ROOT) {
 	const vault = makeVault();
@@ -365,12 +421,113 @@ interface FlowInternals {
 	refreshRootProblem(): string | null;
 	newSetOccupancyProblem(): string | null;
 	sourceIdentityKeys(): { recipeId: string | null; ontologyPrefix: string | null };
+	// AM-5. The three members the ownership review is now built out of: the list
+	// EVERY set appears in, the single-candidate suggestion, and the one method
+	// both the dropdown's onChange and the offer button's listener call.
+	renderImportSetReview(container: HTMLElement): void;
+	offeredRefreshSet(sets: readonly DiscoveredImportSet[]): DiscoveredImportSet | null;
+	chooseImportSet(choice: ImportSetOption | null): void;
 	discoveredSets: DiscoveredImportSet[] | null;
 	indexingBlocked: string | null;
 	importSetChoice: ImportSetOption | null;
 }
 
 const inner = (flow: ImportFlow): FlowInternals => flow as unknown as FlowInternals;
+
+/** One dropdown as the review screen built it, in the order the user sees it. */
+interface DropdownRecord {
+	options: Array<{ value: string; label: string }>;
+	value: string | null;
+	onChange: ((value: string) => void) | null;
+}
+
+/**
+ * Draw the ownership review and keep everything a user could act on: the text,
+ * the dropdown (options, order, and the value it opens on) and every button's
+ * click handler by its label.
+ *
+ * The obsidian mock's `Setting.addDropdown` never invokes its callback, so the
+ * dropdown -- which under AM-5 is the control that carries the default and the
+ * whole list of sets -- would otherwise be invisible to every assertion. It is
+ * patched for the duration of the render and restored in a `finally`, so a
+ * throw cannot leak the patch into the next test.
+ */
+function captureReview(flow: ImportFlow): {
+	texts: string[];
+	dropdown: DropdownRecord | null;
+	clicks: Map<string, () => void>;
+} {
+	const texts: string[] = [];
+	const clicks = new Map<string, () => void>();
+	const dropdowns: DropdownRecord[] = [];
+	// The mock declares `addDropdown` as an INSTANCE field, so patching the
+	// prototype is silently shadowed. The whole exported class is swapped
+	// instead -- the same live module object `import { Setting }` resolves to.
+	const original = obsidianModule.Setting;
+	class RecordingSetting extends original {
+		constructor(containerEl: HTMLElement) {
+			super(containerEl);
+			// Assigned as an INSTANCE property, not a prototype method: the mock's
+			// own `addDropdown` is an instance field, and an instance field shadows
+			// anything a subclass puts on the prototype.
+			(this as unknown as Record<string, unknown>).addDropdown = (cb: (dropdown: unknown) => void) => {
+				const record: DropdownRecord = { options: [], value: null, onChange: null };
+				const stub = {
+					addOption: (value: string, label: string) => { record.options.push({ value, label }); return stub; },
+					setValue: (value: string) => { record.value = value; return stub; },
+					onChange: (fn: (value: string) => void) => { record.onChange = fn; return stub; },
+				};
+				cb(stub);
+				dropdowns.push(record);
+				return this;
+			};
+		}
+	}
+	obsidianModule.Setting = RecordingSetting as unknown as typeof original;
+	try {
+		inner(flow).renderImportSetReview(makeRecordingEl(texts, clicks));
+	} finally {
+		obsidianModule.Setting = original;
+	}
+	return { texts, dropdown: dropdowns[0] ?? null, clicks };
+}
+
+/**
+ * Press the refresh offer, which under AM-5 is the ONLY route into a refresh
+ * that does not require the user to pick a set out of the list by hand.
+ *
+ * Deliberately goes through the rendered button rather than calling
+ * `chooseImportSet` directly: a test that reaches past the UI would still pass
+ * on a build that stopped drawing the offer at all.
+ */
+function pressTheOffer(flow: ImportFlow): string {
+	const sets = inner(flow).discoveredSets ?? [];
+	const offer = inner(flow).offeredRefreshSet(sets);
+	const { clicks } = captureReview(flow);
+	const label = offer ? `Looks like ${offer.id}. Refresh it instead?` : null;
+	if (!label || !clicks.has(label)) {
+		throw new Error(
+			`No refresh offer was drawn. Sets: ${sets.map((s) => s.id).join(', ') || 'none'}; `
+			+ `buttons: ${[...clicks.keys()].join(' | ') || 'none'}`,
+		);
+	}
+	clicks.get(label)!();
+	return offer!.id;
+}
+
+/**
+ * Pick a set out of the list by hand, the way a user refreshes a set the offer
+ * never suggests (a legacy `unknown` set, or one of several candidates).
+ * Driven through the dropdown's own onChange, so the option really is offered.
+ */
+function chooseFromTheList(flow: ImportFlow, id: string): void {
+	const { dropdown } = captureReview(flow);
+	if (!dropdown) throw new Error('The review drew no import-set dropdown.');
+	if (!dropdown.options.some((option) => option.value === id)) {
+		throw new Error(`Set ${id} is not offered. Options: ${dropdown.options.map((o) => o.value).join(', ')}`);
+	}
+	dropdown.onChange!(id);
+}
 
 /**
  * A stand-in container that absorbs the whole Obsidian element surface and
@@ -383,26 +540,36 @@ const inner = (flow: ImportFlow): FlowInternals => flow as unknown as FlowIntern
  * text-bearing calls -- `createEl(tag, { text })` and `setText` -- are captured,
  * which is what the assertions are actually about.
  */
-function makeRecordingEl(texts: string[]): HTMLElement {
+function makeRecordingEl(texts: string[], clicks?: Map<string, () => void>, ownText?: string): HTMLElement {
 	const target = function () { /* elements are called for nothing; see apply */ };
 	return new Proxy(target, {
 		get(_t, prop) {
 			// A thenable would make an element look like a promise to `await`.
 			if (prop === 'then') return undefined;
 			if (prop === 'setText') return (t: string) => { texts.push(t); };
+			// AM-5. The refresh OFFER is a button, and a button nothing can press is
+			// not an offer. Recording each listener under the text of the element it
+			// was attached to is what lets a test take the one action AM-5 leaves as
+			// the route into a refresh, instead of reaching past the UI and setting
+			// the field the click would have set.
+			if (prop === 'addEventListener' && clicks && ownText !== undefined) {
+				return (event: string, handler: () => void) => {
+					if (event === 'click') clicks.set(ownText, handler);
+				};
+			}
 			if (prop === 'createEl' || prop === 'createDiv' || prop === 'createSpan') {
 				return (first?: unknown, second?: { text?: string }) => {
 					const opts = (typeof first === 'object' ? first : second) as { text?: string } | undefined;
 					if (opts?.text) texts.push(opts.text);
-					return makeRecordingEl(texts);
+					return makeRecordingEl(texts, clicks, opts?.text);
 				};
 			}
 			if (prop === 'value' || prop === 'textContent' || prop === 'innerHTML') return '';
-			if (prop === 'style' || prop === 'dataset' || prop === 'classList') return makeRecordingEl(texts);
-			return () => makeRecordingEl(texts);
+			if (prop === 'style' || prop === 'dataset' || prop === 'classList') return makeRecordingEl(texts, clicks, ownText);
+			return () => makeRecordingEl(texts, clicks, ownText);
 		},
 		set: () => true,
-		apply: () => makeRecordingEl(texts),
+		apply: () => makeRecordingEl(texts, clicks, ownText),
 	}) as unknown as HTMLElement;
 }
 
@@ -440,6 +607,88 @@ function makeFlow(
 	return { flow, texts, close };
 }
 
+/**
+ * A flow on the CLASSIC path. The single difference from `makeFlow` is the one
+ * that matters: no workbench is constructed, so `isWorkbenchMode()` is false and
+ * the flow goes through `legacyConfigToRecipe`. That is the shipped default
+ * (`enableShapeWorkbench` is off), and the only path that mints the sentinels.
+ *
+ * `appliedConfigId` stands in for a SAVED CONFIG the user re-applied to a second
+ * source. It is the fact that makes one of AM-5's escape routes possible: a
+ * re-used config gives two unrelated frameworks one stamped recipe id.
+ */
+function makeClassicFlow(
+	app: unknown,
+	opts: { sourceFileName: string; data?: ParsedData; globalRoot?: string; appliedConfigId?: string },
+): { flow: ImportFlow; texts: string[]; close: jest.Mock } {
+	const plugin = {
+		settings: {
+			...DEFAULT_SETTINGS,
+			defaultOutputPath: opts.globalRoot ?? SHARED_ROOT,
+			enableShapeWorkbench: false,
+		},
+		debug: debugStub,
+	} as unknown as ConstructorParameters<typeof ImportFlow>[1];
+	const texts: string[] = [];
+	const close = jest.fn();
+	const flow = new ImportFlow(
+		app as ConstructorParameters<typeof ImportFlow>[0],
+		plugin,
+		{ containerEl: makeRecordingEl(texts), close },
+	);
+	flow.sourceFile = { name: opts.sourceFileName } as File;
+	flow.parsedData = opts.data ?? parsed();
+	flow.columnConfigs = new Map(COLUMN_CONFIGS);
+	if (opts.appliedConfigId) {
+		// Only `.id` and `.config.mapping.filename` are read off an applied config
+		// on this path; the rest of `SavedConfig` is not part of what is asserted.
+		flow.appliedConfig = { id: opts.appliedConfigId, name: opts.appliedConfigId } as unknown as typeof flow.appliedConfig;
+	}
+	return { flow, texts, close };
+}
+
+/** What the review screen decided, before anything is written. */
+async function classicReview(app: unknown, opts: Parameters<typeof makeClassicFlow>[1]) {
+	const { flow } = makeClassicFlow(app, opts);
+	await inner(flow).prepareStep3(true);
+	return {
+		flow,
+		choice: inner(flow).importSetChoice,
+		destination: inner(flow).currentOutputPath(),
+		keys: inner(flow).sourceIdentityKeys(),
+	};
+}
+
+/**
+ * A whole classic import, driven by the flow itself.
+ *
+ * `refresh: true` presses the offer first, which under AM-5 is the only route
+ * into a refresh. Left off, this is what a user gets by doing nothing, which
+ * is the case A-8 restated says must land as a new set.
+ */
+async function classicImport(
+	app: unknown,
+	opts: Parameters<typeof makeClassicFlow>[1] & { refresh?: boolean },
+) {
+	const { flow, texts, close } = makeClassicFlow(app, opts);
+	flow.overwriteMode = 'replace';
+	await inner(flow).prepareStep3(true);
+	if (opts.refresh) pressTheOffer(flow);
+	flow.currentStep = 4;
+	const choice = inner(flow).importSetChoice;
+	const destination = inner(flow).currentOutputPath();
+	const resolved = inner(flow).selectedImportSet();
+	await flow.generate();
+	return { flow, texts, close, choice, destination, resolved };
+}
+
+/** Everything the results screen draws for one result, as a user would read it. */
+function renderResults(result: Parameters<ImportFlow['renderGenerationResults']>[0]): string[] {
+	const { flow, texts } = makeFlow({});
+	flow.renderGenerationResults(result);
+	return texts;
+}
+
 /** Where this flow says the import lands, after it has been allowed to look. */
 async function askWhereItLands(
 	app: unknown,
@@ -448,6 +697,30 @@ async function askWhereItLands(
 	const { flow } = makeFlow(app, opts);
 	const prepared = await inner(flow).prepareStep3(true);
 	return { flow, prepared, destination: inner(flow).currentOutputPath() };
+}
+
+/**
+ * The same, and then the CLICK.
+ *
+ * AM-5 removed the preselect: a refresh is chosen, never guessed, so every
+ * scenario about "where a refresh lands" now has to say who chose it. `unchosen`
+ * is what the flow answered before the click -- always the new-set answer -- so
+ * a test can assert both halves of AM-5 from one run: the default is never a
+ * refresh, and the click really is what changes it.
+ */
+async function askWhereARefreshLands(
+	app: unknown,
+	opts?: Parameters<typeof makeFlow>[1],
+): Promise<{
+	flow: ImportFlow;
+	prepared: { ok: boolean; changed: boolean };
+	unchosen: string;
+	destination: string;
+	chosenId: string;
+}> {
+	const { flow, prepared, destination: unchosen } = await askWhereItLands(app, opts);
+	const chosenId = pressTheOffer(flow);
+	return { flow, prepared, unchosen, chosenId, destination: inner(flow).currentOutputPath() };
 }
 
 // ---------------------------------------------------------------------------
@@ -533,8 +806,12 @@ describe('a refresh is offered the folder its own set already occupies', () => {
 		const vault = await seedPreFixVault();
 		expect(resolveDestinationDefault(SHARED_ROOT, SOURCE_FILE, null)).toBe(DERIVED_ROOT);
 
-		const { destination, prepared } = await askWhereItLands(vault.app);
+		const { destination, unchosen, prepared } = await askWhereARefreshLands(vault.app);
 		expect(prepared.ok).toBe(true);
+		// AM-5: before the click the answer is the harmless one, and it is the
+		// DERIVED root. The set's root is reached by choosing the set, not by
+		// resembling it.
+		expect(unchosen).toBe(DERIVED_ROOT);
 		expect(destination).toBe(SHARED_ROOT);
 		expect(destination).not.toBe(DERIVED_ROOT);
 	});
@@ -542,19 +819,26 @@ describe('a refresh is offered the folder its own set already occupies', () => {
 	it('adopts the same root when the source file was renamed since the first import', async () => {
 		// The derived root is a function of the file name, and the file name is the
 		// one thing a user is free to change between releases. Ownership is stamped,
-		// so a rename cannot move an import.
+		// so a rename cannot move an import the user chose to refresh.
 		const vault = await seedPreFixVault();
-		const { destination } = await askWhereItLands(vault.app, { sourceFileName: 'attack-mini-v2.csv' });
+		const { destination } = await askWhereARefreshLands(vault.app, { sourceFileName: 'attack-mini-v2.csv' });
 		expect(destination).toBe(SHARED_ROOT);
 	});
 
-	it('preselects refreshing exactly the set whose stamps this source carries', async () => {
+	// RETIRED (AM-5): 'preselects refreshing exactly the set whose stamps this
+	// source carries'. It asserted the pass-4 default -- one matching set means
+	// preselect refreshing it -- which is the guess AM-5 removes. Its replacement
+	// asserts the opposite, and the offer that took its place is section 13.
+	it('preselects nothing at all, even when exactly one set matches this source', async () => {
 		const vault = await seedPreFixVault();
 		const { flow } = await askWhereItLands(vault.app);
 		const sets = inner(flow).discoveredSets ?? [];
 		expect(sets).toHaveLength(1);
-		expect(inner(flow).importSetChoice).toEqual({ id: sets[0].id });
-		expect(inner(flow).selectedImportSet()).toEqual({ id: sets[0].id });
+		// The exact input the retired test called a match: same recipe id, same
+		// ontology prefix, one candidate. Still not a refresh.
+		expect(inner(flow).offeredRefreshSet(sets)).toBe(sets[0]);
+		expect(inner(flow).importSetChoice).toBeNull();
+		expect(inner(flow).selectedImportSet()).toBe('new');
 	});
 
 	it('matches on the two facts the write loop actually stamps', async () => {
@@ -576,9 +860,9 @@ describe('a refresh is offered the folder its own set already occupies', () => {
 		// destination, and the destination is what the ownership answer decides.
 		// A set that sits nowhere near the derived root must still be found.
 		const vault = await seedPreFixVault();
-		const { flow } = await askWhereItLands(vault.app, { globalRoot: 'Reference/Compliance' });
+		const { flow, destination } = await askWhereARefreshLands(vault.app, { globalRoot: 'Reference/Compliance' });
 		expect((inner(flow).discoveredSets ?? []).map((s) => s.root)).toEqual([SHARED_ROOT]);
-		expect(inner(flow).currentOutputPath()).toBe(SHARED_ROOT);
+		expect(destination).toBe(SHARED_ROOT);
 	});
 });
 
@@ -607,7 +891,10 @@ describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwri
 		const vault = await seedPreFixVault();
 		vault.files.set(HUB_WITH_PROSE, `${vault.files.get(HUB_WITH_PROSE)!}\n${HUB_PROSE}\n`);
 		const before = new Map(vault.files);
-		const { flow, destination } = await askWhereItLands(vault.app);
+		// AM-5: the refresh is CHOSEN. A-8 restated says so in as many words --
+		// "refreshed by explicit choice" -- so the acceptance run starts with the
+		// click, not with a flow that guessed its way into one.
+		const { flow, destination } = await askWhereARefreshLands(vault.app);
 		const importSet = inner(flow).selectedImportSet();
 		const result = await generateNotes(
 			vault.app, parsed(), CONFIG, options(destination, overwriteMode, { importSet }),
@@ -770,7 +1057,11 @@ describe('a second, unrelated framework in the same legacy vault', () => {
 	it('defaults to a NEW set rather than refreshing the set already in the vault', async () => {
 		const { flow, importSet } = await importSecond();
 		expect((inner(flow).discoveredSets ?? []).length).toBe(1);
-		expect(inner(flow).importSetChoice).toBe('new');
+		// AM-5: nothing is preselected, so the recorded choice is EMPTY -- and the
+		// answer that empty resolves to is a new set. Both halves are asserted:
+		// a build that preselected `new` would look identical to the caller, but
+		// it would also be a build with a preselect, which is what got removed.
+		expect(inner(flow).importSetChoice).toBeNull();
 		expect(importSet).toBe('new');
 	});
 
@@ -865,6 +1156,12 @@ describe('a cold metadata cache at step 3', () => {
 		const again = await inner(flow).prepareStep3();
 		expect(again.ok).toBe(true);
 		expect(inner(flow).indexingBlocked).toBeNull();
+		// What the retry has to produce is the VAULT PICTURE, not a destination:
+		// under AM-5 the destination only changes once the user chooses a set, and
+		// the set they would choose has to be visible for that to be possible.
+		expect((inner(flow).discoveredSets ?? []).map((s) => s.root)).toEqual([SHARED_ROOT]);
+		expect(inner(flow).currentOutputPath()).toBe(DERIVED_ROOT);
+		pressTheOffer(flow);
 		expect(inner(flow).currentOutputPath()).toBe(SHARED_ROOT);
 	});
 });
@@ -899,7 +1196,7 @@ describe('two sets whose folder names share a prefix', () => {
 
 	it('refreshes into its own folder, never into a merged character prefix', async () => {
 		const vault = await twoSiblingSets();
-		const { destination } = await askWhereItLands(vault.app, {
+		const { destination } = await askWhereARefreshLands(vault.app, {
 			globalRoot: 'Frameworks',
 			sourceFileName: 'nist-mini.csv',
 			ontology: 'nist-mini',
@@ -913,7 +1210,7 @@ describe('two sets whose folder names share a prefix', () => {
 
 	it('sends the sibling source to the sibling folder, from the same vault', async () => {
 		const vault = await twoSiblingSets();
-		const { destination } = await askWhereItLands(vault.app, {
+		const { destination } = await askWhereARefreshLands(vault.app, {
 			globalRoot: 'Frameworks',
 			sourceFileName: 'nist-minimal.csv',
 			ontology: 'nist-minimal',
@@ -941,7 +1238,10 @@ describe('a set whose notes are spread across two top-level folders', () => {
 
 	it('names the problem in words that tell the user what to do', async () => {
 		const vault = await spreadSet();
-		const { flow } = await askWhereItLands(vault.app);
+		// The problem is a property of the refresh the user CHOSE: with nothing
+		// chosen this import is a new set, and a new set owns nothing that could
+		// be spread anywhere.
+		const { flow } = await askWhereARefreshLands(vault.app);
 		expect(inner(flow).refreshRootProblem()).toBe(
 			'Crosswalker cannot tell where this framework lives. Its notes are spread across more than one folder. Import it as a new set, or move its notes into one folder first.',
 		);
@@ -949,7 +1249,7 @@ describe('a set whose notes are spread across two top-level folders', () => {
 
 	it('refuses to generate rather than writing into a guessed folder', async () => {
 		const vault = await spreadSet();
-		const { flow } = await askWhereItLands(vault.app);
+		const { flow } = await askWhereARefreshLands(vault.app);
 		expect(() => inner(flow).selectedImportSet()).toThrow(/spread across more than one folder/);
 		expect(inner(flow).validateImportSetSelection()).toBe(false);
 
@@ -974,7 +1274,9 @@ describe('a new set refuses to mint into a folder another set already owns', () 
 		// A source the stamps do NOT connect to that set (a re-derived ontology),
 		// so the default is a new set -- landing on the occupied derived root.
 		const { flow } = await askWhereItLands(vault.app, { ontology: 'attack-mini-v2' });
-		expect(inner(flow).importSetChoice).toBe('new');
+		// AM-5: no choice recorded, and the answer that resolves to is a new set.
+		expect(inner(flow).importSetChoice).toBeNull();
+		expect(inner(flow).selectedImportSet()).toBe('new');
 		expect(inner(flow).currentOutputPath()).toBe(DERIVED_ROOT);
 		expect(inner(flow).newSetOccupancyProblem())
 			.toMatch(/^Ontologies\/attack-mini already holds notes owned by import set iset-[a-z0-9]{6}\. Choose another folder for this import, or refresh that set instead\.$/);
@@ -1079,11 +1381,7 @@ describe('a suppressed move under skip mode', () => {
 // ===========================================================================
 
 describe('the results screen', () => {
-	function render(result: Parameters<ImportFlow['renderGenerationResults']>[0]) {
-		const { flow, texts } = makeFlow({});
-		flow.renderGenerationResults(result);
-		return texts;
-	}
+	const render = renderResults;
 
 	const clean = {
 		success: true,
@@ -1270,15 +1568,20 @@ describe.each(['replace', 'skip'] as const)('two real wizard runs, the second a 
 
 		const second = makeFlow(vault.app);
 		second.flow.overwriteMode = overwriteMode;
-		second.flow.currentStep = 4;
 		await inner(second.flow).prepareStep3(true);
+		// A-8 restated: "refreshed BY EXPLICIT CHOICE". What the flow answers before
+		// the click is kept, because "the default was never a refresh" is half of
+		// what this scenario has to prove.
+		const unchosen = inner(second.flow).currentOutputPath();
+		pressTheOffer(second.flow);
+		second.flow.currentStep = 4;
 		const destination = inner(second.flow).currentOutputPath();
 		// Only the refresh's notices, so the first import's cannot be mistaken for
 		// the report the user reads at the end of the run under test.
 		notices.length = 0;
 		await second.flow.generate();
 
-		return { vault, before, destination, second };
+		return { vault, before, destination, unchosen, second };
 	}
 
 	it('leaves the first import flat, with its concept notes AND its hubs at the bare root', async () => {
@@ -1298,8 +1601,11 @@ describe.each(['replace', 'skip'] as const)('two real wizard runs, the second a 
 		]);
 	});
 
-	it('refreshes into that same bare root', async () => {
-		const { destination } = await firstImportThenRefresh();
+	it('refreshes into that same bare root, once the user asks for a refresh', async () => {
+		const { destination, unchosen } = await firstImportThenRefresh();
+		// AM-5, end to end: with no click this run was a new set headed for a
+		// folder of its own. The click is what put it back on the set's own root.
+		expect(unchosen).toBe(DERIVED_ROOT);
 		expect(destination).toBe(SHARED_ROOT);
 		expect(destination).not.toBe(DERIVED_ROOT);
 	});
@@ -1354,6 +1660,36 @@ describe.each(['replace', 'skip'] as const)('two real wizard runs, the second a 
 				: /✅ Created 0 notes, skipped 6 existing in [\d.]+s\. Nothing moved\. No orphans\./,
 		);
 	});
+
+	// AM-7, end to end. "No orphans" and "orphans not checked" are different
+	// sentences, and the clean refresh has to earn the first one: a build that
+	// suppressed detection here would still look clean to every other assertion
+	// in this section, because a suppressed count is an ABSENT count.
+	it('says the orphan question was answered, not that it was skipped', async () => {
+		const { second } = await firstImportThenRefresh();
+		void second;
+		expect(noticeText()).not.toContain('Orphans not checked.');
+		expect(noticeText()).toContain('No orphans.');
+	});
+
+	// A-8 restated, the clause about the user's own vault: every path the run
+	// reports back exists, and no two files claim one identity. Asserted here as
+	// well as on the engine result in section 2, because end to end is where a
+	// path the wizard invented rather than wrote would show up.
+	it('reports a vault that matches what it says about it', async () => {
+		const { vault } = await firstImportThenRefresh();
+		expect(duplicateCuries(vault.files)).toEqual([]);
+		const hubs = [...vault.files.values()].filter((text) => frontmatterOf(text).kind === 'hub');
+		expect(hubs.length).toBeGreaterThan(0);
+		// Every wikilink target a hub lists resolves to a note that is really there.
+		for (const [path, text] of vault.files) {
+			for (const [, target] of text.matchAll(/\[\[([^\]|#]+)/g)) {
+				const basename = target.trim();
+				const found = [...vault.files.keys()].some((p) => p.endsWith(`/${basename}.md`) || p === `${basename}.md`);
+				expect(found ? true : `${path} -> ${basename}`).toBe(true);
+			}
+		}
+	});
 });
 
 // ===========================================================================
@@ -1390,61 +1726,6 @@ describe('the classic import path, which carries no ontology of its own', () => 
 		return { columns: [...COLUMNS], rows: CIS_ROWS.map((r) => ({ ...r })), rowCount: CIS_ROWS.length };
 	}
 
-	/**
-	 * A flow on the CLASSIC path. The single difference from `makeFlow` is the one
-	 * that matters: no workbench is constructed, so `isWorkbenchMode()` is false
-	 * and the flow goes through `legacyConfigToRecipe`. That is the shipped
-	 * default, and the only path that mints the sentinels.
-	 */
-	function makeClassicFlow(
-		app: unknown,
-		opts: { sourceFileName: string; data?: ParsedData; globalRoot?: string },
-	): { flow: ImportFlow; texts: string[]; close: jest.Mock } {
-		const plugin = {
-			settings: {
-				...DEFAULT_SETTINGS,
-				defaultOutputPath: opts.globalRoot ?? SHARED_ROOT,
-				enableShapeWorkbench: false,
-			},
-			debug: debugStub,
-		} as unknown as ConstructorParameters<typeof ImportFlow>[1];
-		const texts: string[] = [];
-		const close = jest.fn();
-		const flow = new ImportFlow(
-			app as ConstructorParameters<typeof ImportFlow>[0],
-			plugin,
-			{ containerEl: makeRecordingEl(texts), close },
-		);
-		flow.sourceFile = { name: opts.sourceFileName } as File;
-		flow.parsedData = opts.data ?? parsed();
-		flow.columnConfigs = new Map(COLUMN_CONFIGS);
-		return { flow, texts, close };
-	}
-
-	/** What the review screen decided, before anything is written. */
-	async function classicReview(app: unknown, opts: Parameters<typeof makeClassicFlow>[1]) {
-		const { flow } = makeClassicFlow(app, opts);
-		await inner(flow).prepareStep3(true);
-		return {
-			flow,
-			choice: inner(flow).importSetChoice,
-			destination: inner(flow).currentOutputPath(),
-			keys: inner(flow).sourceIdentityKeys(),
-		};
-	}
-
-	/** A whole classic import, driven by the flow itself. */
-	async function classicImport(app: unknown, opts: Parameters<typeof makeClassicFlow>[1]) {
-		const { flow, texts, close } = makeClassicFlow(app, opts);
-		flow.overwriteMode = 'replace';
-		flow.currentStep = 4;
-		await inner(flow).prepareStep3(true);
-		const choice = inner(flow).importSetChoice;
-		const destination = inner(flow).currentOutputPath();
-		await flow.generate();
-		return { flow, texts, close, choice, destination };
-	}
-
 	it('stamps the source file stem as the ontology, not the placeholder', async () => {
 		const vault = makeVault();
 		await classicImport(vault.app, { sourceFileName: FIRST_SOURCE });
@@ -1479,7 +1760,9 @@ describe('the classic import path, which carries no ontology of its own', () => 
 
 		const second = await classicImport(vault.app, { sourceFileName: SECOND_SOURCE, data: cisData() });
 
-		expect(second.choice).toBe('new');
+		// AM-5: nothing chosen, and nothing chosen means a new set.
+		expect(second.choice).toBeNull();
+		expect(second.resolved).toBe('new');
 		expect(second.destination).toBe('Ontologies/cis-controls-v8');
 		// The consequence, not just the decision: two sets, and the first framework
 		// is untouched, byte for byte.
@@ -1489,20 +1772,30 @@ describe('the classic import path, which carries no ontology of its own', () => 
 		for (const [path, text] of firstFiles) expect(vault.files.get(path)).toBe(text);
 	});
 
-	it('still refreshes its OWN set when the same source comes back', async () => {
-		// The other half, and the reason the stem is stamped at all. With both values
-		// sentinels there is nothing left to match on, so every re-import of the same
-		// classic source would mint a second set beside the first.
+	// RETIRED (AM-5): 'still refreshes its OWN set when the same source comes
+	// back'. It asserted that a returning classic source AUTO-SELECTED its own
+	// set, which is the preselect AM-5 removed. What the stamped stem buys is now
+	// an OFFER, and this is the same scenario asserted at that altitude: the
+	// suggestion appears, the default stays new, and the click is what refreshes.
+	it('offers its OWN set when the same source comes back, and refreshes only on the click', async () => {
 		const vault = makeVault();
 		const first = await classicImport(vault.app, { sourceFileName: FIRST_SOURCE });
 		const [set] = await discoverImportSets(vault.app, undefined);
 
 		const again = await classicReview(vault.app, { sourceFileName: FIRST_SOURCE });
-		expect(again.choice).toEqual({ id: set.id });
-		expect(again.destination).toBe(first.destination);
+		expect(again.choice).toBeNull();
+		expect(inner(again.flow).selectedImportSet()).toBe('new');
+		// The stem is what makes the offer possible at all: with both stamped
+		// values sentinels there is nothing to recognise the source by.
+		const offered = inner(again.flow).offeredRefreshSet(inner(again.flow).discoveredSets ?? []);
+		expect(offered?.id).toBe(set.id);
+
+		pressTheOffer(again.flow);
+		expect(inner(again.flow).selectedImportSet()).toEqual({ id: set.id });
+		expect(inner(again.flow).currentOutputPath()).toBe(first.destination);
 	});
 
-	it('never auto-matches a legacy set stamped with the placeholder', async () => {
+	it('never offers a legacy set stamped with the placeholder', async () => {
 		// A vault imported BEFORE AM-1: no source name reached the shim, so the
 		// ontology on disk is the sentinel. AM-1 says such a set never auto-matches,
 		// and the awkward case is a source whose own stem IS the sentinel word: the
@@ -1519,10 +1812,12 @@ describe('the classic import path, which carries no ontology of its own', () => 
 
 		const review = await classicReview(vault.app, { sourceFileName: `${LEGACY_ONTOLOGY_SENTINEL}.csv` });
 		expect(review.keys.ontologyPrefix).toBe(LEGACY_ONTOLOGY_SENTINEL);
-		// Both keys are placeholders on both sides, and the answer is still "new": a
-		// set this import owns nothing of, which is the safe answer. The user can
-		// still choose refresh explicitly.
-		expect(review.choice).toBe('new');
+		// Both keys are placeholders on both sides, so there is no offer to make and
+		// the answer is a new set: one this import owns nothing of. The user can
+		// still refresh the legacy set deliberately -- section 13 does exactly that.
+		expect(review.choice).toBeNull();
+		expect(inner(review.flow).offeredRefreshSet(inner(review.flow).discoveredSets ?? [])).toBeNull();
+		expect(inner(review.flow).selectedImportSet()).toBe('new');
 	});
 });
 
@@ -1551,8 +1846,9 @@ describe('the success notice', () => {
 
 		const second = makeFlow(vault.app, { data: rows });
 		second.flow.overwriteMode = 'replace';
-		second.flow.currentStep = 4;
 		await inner(second.flow).prepareStep3(true);
+		pressTheOffer(second.flow);
+		second.flow.currentStep = 4;
 		notices.length = 0;
 		await second.flow.generate();
 		return { vault, second };
@@ -1575,8 +1871,14 @@ describe('the success notice', () => {
 		// The falsifying control for the test above: a notice that printed "Nothing
 		// moved. No orphans." unconditionally would pass that one and fail here.
 		const { second } = await importThenRefreshWith(rowsMinusOne());
-		expect(noticeText()).toContain('0 moved, 1 orphans. See results.');
-		expect(noticeText()).not.toContain('Nothing moved. No orphans.');
+		// AM-7 restructured this sentence into two independent clauses, so that
+		// "orphans were not checked" has somewhere to go that is neither a count
+		// nor a silence. Both clauses are asserted, and the clean-run sentence is
+		// asserted absent, because a notice that printed it unconditionally would
+		// pass the test above and say nothing true here.
+		expect(noticeText()).toContain('Nothing moved. 1 orphans. See results.');
+		expect(noticeText()).not.toContain('No orphans.');
+		expect(noticeText()).not.toContain('Orphans not checked.');
 		// And the screen it points at really is drawn, with the orphan on it.
 		expect(second.close).not.toHaveBeenCalled();
 		expect(second.texts).toContain('🕳️ Orphans: 1 note is no longer in the source. They were kept, not deleted.');
@@ -1628,8 +1930,9 @@ describe('an identity collision on a run that would otherwise close', () => {
 
 		const second = makeFlow(vault.app);
 		second.flow.overwriteMode = 'replace';
-		second.flow.currentStep = 4;
 		await inner(second.flow).prepareStep3(true);
+		pressTheOffer(second.flow);
+		second.flow.currentStep = 4;
 		notices.length = 0;
 		await second.flow.generate();
 		return { vault, second, victim };
@@ -1657,6 +1960,16 @@ describe('an identity collision on a run that would otherwise close', () => {
 		expect(noticeText()).toContain('Import finished with 1 errors. See results.');
 	});
 
+	// AM-7 meeting AM-4. A row error suppresses orphan detection, so this exact
+	// run is one that did NOT look -- and it used to be the run most likely to
+	// print "No orphans." beside an error the user could not see either.
+	it('does not claim there are no orphans on a run that never checked', async () => {
+		const { second } = await refreshOverACollision(true);
+		expect(noticeText()).toContain('Orphans not checked.');
+		expect(noticeText()).not.toContain('No orphans.');
+		expect(second.texts.some((line) => /Orphans: not checked/.test(line))).toBe(true);
+	});
+
 	it('closes on the same run without the collision, which is the control', async () => {
 		// Without this, the three tests above prove only that the wizard draws a
 		// screen, not that the COLLISION is what made it draw one.
@@ -1664,5 +1977,550 @@ describe('an identity collision on a run that would otherwise close', () => {
 		expect(second.close).toHaveBeenCalledTimes(1);
 		expect(second.texts.filter((t) => /Errors|Ambiguous/.test(t))).toEqual([]);
 		expect(noticeText()).not.toContain('finished with');
+	});
+});
+
+// ===========================================================================
+// 13. AM-5: A REFRESH IS CHOSEN, NEVER GUESSED.
+//
+// Passes 1 to 4 each picked a refresh target FOR the user out of facts stamped
+// on existing notes -- the set in the destination folder, then the set sharing
+// the source's recipe id or ontology. None of those facts names an owner:
+// bundled recipes share ontology labels across frameworks, a re-used saved
+// config gives two frameworks one recipe id, and two vendor exports both named
+// `controls.csv` share a file stem.
+//
+// The failure is not symmetric, which is why refining the guess was the wrong
+// move for four passes running. Guessing `new` when the user meant refresh
+// costs a duplicate folder they can see and delete. Guessing `refresh` when
+// they meant a new framework writes one framework into another IN PLACE and
+// reports the originals as orphans. So the default is always the harmless one,
+// matching is demoted from default to OFFER, and a click is the only way in.
+//
+// Every test below is written so that restoring the pass-4 preselect turns it
+// red; the three escape routes are the exact inputs that defeated pass 4.
+// ===========================================================================
+
+describe('the ownership review preselects nothing, whatever the vault holds', () => {
+	/** A vault holding N independent framework imports, each in its own root. */
+	async function vaultWith(ontologies: readonly string[]) {
+		const vault = makeVault();
+		for (const ontology of ontologies) {
+			const recipe: Recipe = {
+				...RECIPE,
+				recipe: `custom-${ontology}`,
+				source: { ontology, levels: ['tactic', 'leaf'] },
+			};
+			await generateNotes(vault.app, parsed(), CONFIG, {
+				...options(`Ontologies/${ontology}`, 'replace', { recipeOverride: recipe, importSet: 'new' }),
+				sourceFileName: `${ontology}.csv`,
+			});
+		}
+		return vault;
+	}
+
+	it.each([
+		['one set, and this source matches it', ['attack-mini']],
+		['two sets, one of which this source matches', ['attack-mini', 'cis-controls-v8']],
+		['four sets, one of which this source matches', ['attack-mini', 'cis-controls-v8', 'nist-csf-2', 'iso-27001']],
+	])('defaults to a new set with %s', async (_label, ontologies) => {
+		const vault = await vaultWith(ontologies);
+		const { flow } = await askWhereItLands(vault.app);
+		expect((inner(flow).discoveredSets ?? [])).toHaveLength(ontologies.length);
+		expect(inner(flow).importSetChoice).toBeNull();
+		expect(inner(flow).selectedImportSet()).toBe('new');
+		expect(inner(flow).currentOutputPath()).toBe(DERIVED_ROOT);
+	});
+
+	it('forgets a refresh the user chose for a DIFFERENT source file', async () => {
+		// A choice that outlived the file it was made about is the last surviving
+		// guess about ownership -- and a guess made about someone else's source.
+		// Clearing it returns to the only default there is.
+		const vault = await vaultWith(['attack-mini']);
+		const { flow } = await askWhereItLands(vault.app);
+		const chosen = pressTheOffer(flow);
+		expect(inner(flow).selectedImportSet()).toEqual({ id: chosen });
+
+		flow.sourceFile = { name: 'a-completely-different-export.csv' } as File;
+		await inner(flow).prepareStep3(true);
+		expect(inner(flow).importSetChoice).toBeNull();
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+
+	it('opens the chooser on importing as a new set, ahead of every existing set', async () => {
+		// The default is not only what the code resolves; it is what the control
+		// SHOWS. A dropdown opening on a set is a preselect wearing a UI.
+		const vault = await vaultWith(['attack-mini', 'cis-controls-v8']);
+		const { flow } = await askWhereItLands(vault.app);
+		const { dropdown } = captureReview(flow);
+		expect(dropdown!.options[0].value).toBe('__new__');
+		expect(dropdown!.options[0].label).toBe('Import as a new set');
+		expect(dropdown!.value).toBe('__new__');
+	});
+});
+
+describe('the refresh offer, which is a suggestion and never a decision', () => {
+	async function seedOntology(vault: Vault, ontology: string, root: string, rows: ParsedData = parsed()) {
+		const recipe: Recipe = {
+			...RECIPE,
+			recipe: `custom-${ontology}`,
+			source: { ontology, levels: ['tactic', 'leaf'] },
+		};
+		await generateNotes(vault.app, rows, CONFIG, {
+			...options(root, 'replace', { recipeOverride: recipe, importSet: 'new' }),
+			sourceFileName: `${ontology}.csv`,
+		});
+	}
+
+	it('appears for exactly one set sharing this source ontology', async () => {
+		const vault = makeVault();
+		await seedOntology(vault, ONTOLOGY, 'Ontologies/attack-mini');
+		await seedOntology(vault, 'cis-controls-v8', 'Ontologies/cis-controls-v8');
+		const { flow } = await askWhereItLands(vault.app);
+		const sets = inner(flow).discoveredSets ?? [];
+		const match = sets.find((set) => set.ontologyPrefixes.includes(ONTOLOGY))!;
+
+		expect(inner(flow).offeredRefreshSet(sets)).toBe(match);
+		expect(captureReview(flow).texts).toContain(`Looks like ${match.id}. Refresh it instead?`);
+	});
+
+	it('appears for no set at all when nothing in the vault shares the ontology', async () => {
+		const vault = makeVault();
+		await seedOntology(vault, 'cis-controls-v8', 'Ontologies/cis-controls-v8');
+		const { flow } = await askWhereItLands(vault.app);
+		expect(inner(flow).offeredRefreshSet(inner(flow).discoveredSets ?? [])).toBeNull();
+		expect(captureReview(flow).texts.filter((s) => /Looks like/.test(s))).toEqual([]);
+	});
+
+	it('appears for NEITHER when two sets share the ontology, because which one is the question', async () => {
+		// The bundled-recipe shape: `xwalk` backs every crosswalk, `nist-csf-2`
+		// backs three recipes. A label several frameworks answer to cannot pick one.
+		const vault = makeVault();
+		await seedOntology(vault, ONTOLOGY, 'Ontologies/attack-mini');
+		// Disjoint ids: a curie is `<ontology>:<id>`, so two sets sharing an
+		// ontology AND a concept id would be two files claiming one identity,
+		// which is section 12's scenario rather than this one.
+		await seedOntology(vault, ONTOLOGY, 'Ontologies/attack-mini-2023', {
+			columns: [...COLUMNS],
+			rows: ROWS.map((row, i) => ({ ...row, technique_id: `T99${i}` })),
+			rowCount: ROWS.length,
+		});
+		const { flow } = await askWhereItLands(vault.app);
+		const sets = inner(flow).discoveredSets ?? [];
+
+		expect(sets).toHaveLength(2);
+		expect(sets.every((set) => set.ontologyPrefixes.includes(ONTOLOGY))).toBe(true);
+		expect(inner(flow).offeredRefreshSet(sets)).toBeNull();
+		expect(captureReview(flow).texts.filter((s) => /Looks like/.test(s))).toEqual([]);
+	});
+
+	it('never appears for a placeholder ontology, on either side', async () => {
+		// `unknown` is stamped on every nameless classic import ever run, so a
+		// placeholder matching a placeholder matches everything. It is not a fact.
+		const vault = makeVault();
+		await generateNotes(vault.app, parsed(), CONFIG, {
+			basePath: SHARED_ROOT, overwriteMode: 'replace', createFolders: true, importSet: 'new',
+		});
+		const { flow } = await classicReview(vault.app, { sourceFileName: `${LEGACY_ONTOLOGY_SENTINEL}.csv` });
+		const sets = inner(flow).discoveredSets ?? [];
+
+		expect(sets[0].ontologyPrefixes).toEqual([LEGACY_ONTOLOGY_SENTINEL]);
+		expect(inner(flow).sourceIdentityKeys().ontologyPrefix).toBe(LEGACY_ONTOLOGY_SENTINEL);
+		expect(inner(flow).offeredRefreshSet(sets)).toBeNull();
+	});
+});
+
+describe('every set in the vault is listed, so any of them can be refreshed on purpose', () => {
+	/** A vault with one legacy `unknown` classic set and nothing else. */
+	async function legacyUnknownVault() {
+		const vault = makeVault();
+		await generateNotes(vault.app, parsed(), CONFIG, {
+			basePath: SHARED_ROOT, overwriteMode: 'replace', createFolders: true, importSet: 'new',
+		});
+		forgetSeedWrites(vault);
+		return vault;
+	}
+
+	it('names a legacy set this source does not resemble, with the facts that tell sets apart', async () => {
+		// E-D: a list narrowed to matches HIDES the sets it leaves out, which makes
+		// a legacy `unknown` set unrefreshable through the UI -- the exact set most
+		// likely to need refreshing.
+		const vault = await legacyUnknownVault();
+		const { flow } = await classicReview(vault.app, { sourceFileName: SOURCE_FILE });
+		const [legacy] = inner(flow).discoveredSets ?? [];
+		const { texts, dropdown } = captureReview(flow);
+
+		expect(inner(flow).offeredRefreshSet([legacy])).toBeNull();
+		const listed = texts.filter((line) => line.startsWith(`${legacy.id}: `));
+		expect(listed).toHaveLength(1);
+		expect(listed[0]).toBe(`${legacy.id}: ${legacy.noteCount} notes in ${SHARED_ROOT}, from ${LEGACY_RECIPE_ID_SENTINEL}`);
+		expect(dropdown!.options.map((option) => option.value)).toEqual(['__new__', legacy.id]);
+	});
+
+	it('refreshes that legacy set when the user picks it out of the list', async () => {
+		const vault = await legacyUnknownVault();
+		const { flow } = await classicReview(vault.app, { sourceFileName: SOURCE_FILE });
+		const [legacy] = inner(flow).discoveredSets ?? [];
+
+		chooseFromTheList(flow, legacy.id);
+		expect(inner(flow).selectedImportSet()).toEqual({ id: legacy.id });
+		expect(inner(flow).currentOutputPath()).toBe(SHARED_ROOT);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// The three inputs that defeated pass 4. Each is a case where the stamped facts
+// pair two unrelated frameworks, so the pass-4 preselect chose "refresh" and the
+// second framework was written into the first. Under AM-5 they are ordinary: the
+// user did not click, so nothing refreshed.
+// ---------------------------------------------------------------------------
+
+describe('the sources that defeated matching land as new sets with no click', () => {
+	/**
+	 * The bundled crosswalk recipe is one recipe with one ontology label, so two
+	 * different crosswalk exports stamp the same two facts. Rows are disjoint on
+	 * BOTH axes -- concept curies are `<ontology>:<id>` and level-hub curies are
+	 * `<ontology>:hub/<layout segments>` -- so nothing here shares an identity
+	 * except the one the recipe mints unconditionally (see the `it.failing`
+	 * below).
+	 */
+	async function twoXwalkCrosswalks() {
+		const vault = makeVault();
+		const xwalkRecipe: Recipe = {
+			...RECIPE,
+			recipe: 'olir-crosswalk-edge',
+			source: { ontology: 'xwalk', levels: ['tactic', 'leaf'] },
+		};
+		await generateNotes(vault.app, parsed(), CONFIG, {
+			...options('Crosswalks/csf-to-iso', 'replace', { recipeOverride: xwalkRecipe, importSet: 'new' }),
+			sourceFileName: 'csf-to-iso.csv',
+		});
+		const firstBefore = new Map(vault.files);
+
+		const secondRows: ParsedData = {
+			columns: [...COLUMNS],
+			rows: ROWS.map((row, i) => ({ ...row, technique_id: `X${i}`, tactic: `Mapping ${i % 2}` })),
+			rowCount: ROWS.length,
+		};
+		const { flow } = makeFlow(vault.app, {
+			globalRoot: 'Crosswalks', sourceFileName: 'cis-to-nist.csv', ontology: 'xwalk', data: secondRows,
+		});
+		await inner(flow).prepareStep3(true);
+		const choice = inner(flow).importSetChoice;
+		const resolved = inner(flow).selectedImportSet();
+		const destination = inner(flow).currentOutputPath();
+		const result = await generateNotes(vault.app, secondRows, CONFIG, {
+			...options(destination, 'replace', { recipeOverride: xwalkRecipe, importSet: 'new' }),
+			sourceFileName: 'cis-to-nist.csv',
+		});
+		return { vault, flow, firstBefore, choice, resolved, destination, result };
+	}
+
+	it('two crosswalks that share the generic xwalk ontology and one recipe id', async () => {
+		const { vault, flow, firstBefore, choice, resolved, destination, result } = await twoXwalkCrosswalks();
+
+		// The stamped facts really do pair them: this is what pass 4 matched on.
+		const [existing] = inner(flow).discoveredSets ?? [];
+		expect(existing.recipeIds).toContain('olir-crosswalk-edge');
+		expect(existing.ontologyPrefixes).toContain('xwalk');
+
+		expect(choice).toBeNull();
+		expect(resolved).toBe('new');
+		expect(destination).toBe('Crosswalks/cis-to-nist');
+		expect(result.errors).toEqual([]);
+		expect(await discoverImportSets(vault.app, undefined)).toHaveLength(2);
+		// Every CONCEPT note of the first crosswalk is untouched, byte for byte.
+		for (const [path, text] of firstBefore) {
+			if (frontmatterOf(text).kind === 'hub') continue;
+			expect(vault.files.get(path)).toBe(text);
+		}
+	});
+
+	// PINNED GAP, and the one clause of A-8 restated that this pass does not
+	// close. `it.failing` rather than a deleted test: the suite stays green while
+	// the gap stays visible, which is the idiom the skip-mode clauses used above.
+	//
+	// A recipe mints ONE root-hub curie per ontology, `<ontology>:hub/_root`, with
+	// nothing set-qualifying it. Two crosswalks under the shared `xwalk` label
+	// therefore claim one identity no matter how disjoint their rows are, and the
+	// whole-vault identity index that `resolveWriteTarget` consults is not scoped
+	// to the writing set -- so the SECOND import, a brand-new set nobody clicked
+	// anything to create, renames the FIRST crosswalk's root hub into its own
+	// folder and re-stamps it into its own set. The first crosswalk is left with
+	// no root hub, and the move is reported on the second import's screen.
+	//
+	// AM-5 removed the ownership GUESS; it did not stop a write from reaching
+	// across a set boundary by identity. Closing this is an identity-scope
+	// question (set-qualify hub curies, or refuse a move whose source belongs to
+	// another set), not an ownership-default one.
+	it.failing('leaves the first crosswalk holding its own root hub', async () => {
+		const { vault, firstBefore, result } = await twoXwalkCrosswalks();
+		const firstHubs = [...firstBefore].filter(([, text]) => frontmatterOf(text).kind === 'hub');
+		expect(firstHubs.length).toBeGreaterThan(0);
+		expect(result.moved ?? []).toEqual([]);
+		for (const [path, text] of firstHubs) expect(vault.files.get(path)).toBe(text);
+	});
+
+	it('one saved config applied to two different frameworks', async () => {
+		// `import-set.ts` already says it: a recipe id names INSTRUCTIONS, not
+		// ownership. Re-applying a saved config is the ordinary way two frameworks
+		// come to carry one.
+		const vault = makeVault();
+		const CONFIG_ID = 'cfg-shared-mapping';
+		await classicImport(vault.app, { sourceFileName: 'attack-mini.csv', appliedConfigId: CONFIG_ID });
+		const firstBefore = new Map(vault.files);
+
+		const second = await classicImport(vault.app, {
+			sourceFileName: 'cis-controls-v8.csv',
+			data: {
+				columns: [...COLUMNS],
+				rows: [{ technique_id: 'CIS-1', name: 'Assets', tactic: 'Inventory', domain: 'IG1' }],
+				rowCount: 1,
+			},
+			appliedConfigId: CONFIG_ID,
+		});
+		// The shared fact is real, and it is what pass 4 preselected on.
+		const sets = await discoverImportSets(vault.app, undefined);
+		expect(sets.every((set) => set.recipeIds.includes(CONFIG_ID))).toBe(true);
+
+		expect(second.choice).toBeNull();
+		expect(second.resolved).toBe('new');
+		expect(second.destination).toBe('Ontologies/cis-controls-v8');
+		expect(sets).toHaveLength(2);
+		for (const [path, text] of firstBefore) expect(vault.files.get(path)).toBe(text);
+	});
+
+	it('two vendor exports that happen to share the file name controls.csv', async () => {
+		// The classic path derives its ontology from the file stem, and a stem is
+		// not an owner: `controls.csv` is what half the GRC world exports.
+		const vault = makeVault();
+		await classicImport(vault.app, { sourceFileName: 'controls.csv' });
+		const firstBefore = new Map(vault.files);
+
+		const second = await classicImport(vault.app, {
+			sourceFileName: 'controls.csv',
+			globalRoot: 'Vendor B',
+			data: {
+				columns: [...COLUMNS],
+				rows: [{ technique_id: 'B-1', name: 'Second vendor', tactic: 'Inventory', domain: 'IG1' }],
+				rowCount: 1,
+			},
+		});
+
+		expect(second.choice).toBeNull();
+		expect(second.resolved).toBe('new');
+		expect(second.destination).toBe('Vendor B/controls');
+		expect(await discoverImportSets(vault.app, undefined)).toHaveLength(2);
+		for (const [path, text] of firstBefore) expect(vault.files.get(path)).toBe(text);
+	});
+});
+
+// ===========================================================================
+// 14. AM-6: THE ONTOLOGY IS PINNED TO THE SET AT MINT.
+//
+// A curie is `<ontology>:<local part>`, and the ontology half used to be
+// recomputed from the RUN's own recipe every time. So a refresh whose ontology
+// came out different from the one its notes already carry -- a renamed export
+// file on the classic path is enough -- wrote curies that matched nothing in
+// its own identity index. The engine then created a second copy of the whole
+// framework and reported every original as an orphan: the worst outcome this
+// product has, reached by renaming a file.
+//
+// The set decides, not the run. A legacy set carrying no pin is pinned on its
+// first refresh to the ontology prefix its own notes already show, because the
+// notes are the fact.
+// ===========================================================================
+
+describe('a legacy set whose ontology is the placeholder', () => {
+	/**
+	 * A vault holding one classic import stamped `unknown`, with no pin recorded:
+	 * a set minted before AM-6 shipped. The pin is stripped rather than never
+	 * written, because the current engine always writes one.
+	 */
+	async function legacyUnknownVault() {
+		const vault = makeVault();
+		await generateNotes(vault.app, parsed(), CONFIG, {
+			basePath: SHARED_ROOT, overwriteMode: 'replace', createFolders: true, importSet: 'new',
+		});
+		deMigrateOntologyPin(vault.files);
+		forgetSeedWrites(vault);
+		return vault;
+	}
+
+	/**
+	 * Refresh that set deliberately, from a source whose own file stem proposes a
+	 * DIFFERENT ontology. That disagreement is the whole scenario: without a pin
+	 * the run mints `<stem>:` curies and recognises none of the notes it owns.
+	 */
+	async function refreshItAs(vault: Vault, sourceFileName: string, overwriteMode: 'replace' | 'skip' = 'replace') {
+		const { flow } = await classicReview(vault.app, { sourceFileName });
+		const [legacy] = inner(flow).discoveredSets ?? [];
+		chooseFromTheList(flow, legacy.id);
+		const importSet = inner(flow).selectedImportSet();
+		const result = await generateNotes(vault.app, parsed(), CONFIG, {
+			basePath: inner(flow).currentOutputPath(),
+			overwriteMode,
+			createFolders: true,
+			sourceFileName,
+			importSet,
+		});
+		return { legacy, result };
+	}
+
+	it('proposes a different ontology than the set carries, which is the trap', async () => {
+		// Asserted rather than assumed: if the source and the set agreed there
+		// would be nothing for the pin to do, and the tests below would pass on a
+		// build with no pin at all.
+		const vault = await legacyUnknownVault();
+		const { flow } = await classicReview(vault.app, { sourceFileName: SOURCE_FILE });
+		const [legacy] = inner(flow).discoveredSets ?? [];
+		expect(legacy.ontologyPrefixes).toEqual([LEGACY_ONTOLOGY_SENTINEL]);
+		expect(inner(flow).sourceIdentityKeys().ontologyPrefix).toBe(ONTOLOGY);
+	});
+
+	it.each(['replace', 'skip'] as const)('reports zero orphans on an explicit refresh (%s)', async (mode) => {
+		const vault = await legacyUnknownVault();
+		const before = new Map(vault.files);
+		const { result } = await refreshItAs(vault, SOURCE_FILE, mode);
+
+		expect(result.errors).toEqual([]);
+		expect(result.orphansChecked).toBe(true);
+		expect(result.orphans ?? []).toEqual([]);
+		expect(result.moved ?? []).toEqual([]);
+		expect(duplicateCuries(vault.files)).toEqual([]);
+		expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+	});
+
+	it('keeps minting the placeholder curies its own notes already carry', async () => {
+		const vault = await legacyUnknownVault();
+		await refreshItAs(vault, SOURCE_FILE);
+		const prefixes = new Set(
+			[...vault.files.values()]
+				.map((text) => frontmatterOf(text).curie)
+				.filter((curie): curie is string => typeof curie === 'string')
+				.map((curie) => curie.split(':')[0]),
+		);
+		expect([...prefixes]).toEqual([LEGACY_ONTOLOGY_SENTINEL]);
+	});
+
+	it('stamps the recovered ontology onto the set, so it is recovered only once', async () => {
+		const vault = await legacyUnknownVault();
+		// Before: nothing recorded one. The answer came from the notes.
+		const [beforeSet] = await discoverImportSets(vault.app, undefined);
+		expect(beforeSet.ontology).toBeUndefined();
+
+		await refreshItAs(vault, SOURCE_FILE);
+		const [afterSet] = await discoverImportSets(vault.app, undefined);
+		expect(afterSet.ontology).toBe(LEGACY_ONTOLOGY_SENTINEL);
+		expect(afterSet.id).toBe(beforeSet.id);
+	});
+
+	it('reuses the pin on the NEXT refresh, from a third differently named source', async () => {
+		// The pin has to survive as a fact about the set, not as a re-derivation
+		// that happens to agree. A third file name is the input that tells them
+		// apart: recovery-from-notes and the stamped pin now both say `unknown`,
+		// and a run that recomputed would say `renamed-again`.
+		const vault = await legacyUnknownVault();
+		await refreshItAs(vault, SOURCE_FILE);
+		const before = new Map(vault.files);
+
+		const { result } = await refreshItAs(vault, 'renamed-again.csv');
+		expect(result.errors).toEqual([]);
+		expect(result.orphans ?? []).toEqual([]);
+		expect(duplicateCuries(vault.files)).toEqual([]);
+		expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+		const [set] = await discoverImportSets(vault.app, undefined);
+		expect(set.ontology).toBe(LEGACY_ONTOLOGY_SENTINEL);
+	});
+});
+
+// ===========================================================================
+// 15. AM-7: AN ORPHAN COUNT THAT WAS NOT COMPUTED IS NOT ZERO.
+//
+// Orphan detection is suppressed whenever the run cannot prove it read the
+// whole source -- a row error, an incomplete row count, enrichment bookkeeping
+// that did not finish. `result.orphans` is then absent, which is exactly what a
+// clean run also looks like. Reporting that absence as `No orphans.` tells a
+// GRC user their framework is intact when nothing checked.
+//
+// Tri-state, the same rule the metadata cache follows: not-checked is its own
+// answer and it is said out loud.
+// ===========================================================================
+
+describe('a run that could not check for orphans', () => {
+	/**
+	 * A source whose declared row count is larger than the rows it carries: what
+	 * a truncated or partially failed parse hands the engine. `rowCountComplete`
+	 * is false, so detection is suppressed while the run still succeeds -- which
+	 * is the combination that used to print a clean bill of health.
+	 */
+	function truncatedSource(): ParsedData {
+		return { columns: [...COLUMNS], rows: ROWS.map((r) => ({ ...r })), rowCount: ROWS.length + 1 };
+	}
+
+	async function refreshWithATruncatedSource() {
+		const vault = makeVault();
+		const first = makeFlow(vault.app);
+		(first.flow as unknown as { destinationEdited: boolean }).destinationEdited = true;
+		first.flow.outputPath = SHARED_ROOT;
+		first.flow.overwriteMode = 'replace';
+		first.flow.currentStep = 4;
+		await inner(first.flow).prepareStep3(true);
+		await first.flow.generate();
+
+		const second = makeFlow(vault.app, { data: truncatedSource() });
+		second.flow.overwriteMode = 'replace';
+		await inner(second.flow).prepareStep3(true);
+		pressTheOffer(second.flow);
+		second.flow.currentStep = 4;
+		notices.length = 0;
+		await second.flow.generate();
+		return { vault, second };
+	}
+
+	it('says so on the engine result, rather than leaving the answer absent', async () => {
+		const vault = makeVault();
+		const result = await generateNotes(vault.app, truncatedSource(), CONFIG, options(SHARED_ROOT, 'replace'));
+		expect(result.success).toBe(true);
+		expect(result.orphansChecked).toBe(false);
+		expect(result.orphans).toBeUndefined();
+	});
+
+	it('tells the user orphans were not checked, and never prints a zero', async () => {
+		const { second } = await refreshWithATruncatedSource();
+		expect(noticeText()).toContain('Orphans not checked. See results.');
+		expect(noticeText()).not.toContain('No orphans.');
+		expect(noticeText()).not.toMatch(/0 orphans/);
+		// And the screen it points at is really drawn: a notice that expires is
+		// not a report, and this run closed the window before AM-7.
+		expect(second.close).not.toHaveBeenCalled();
+	});
+
+	it('says it on the results screen too, in place of the count', async () => {
+		const { second } = await refreshWithATruncatedSource();
+		expect(second.texts).toContain(
+			'🕳️ Orphans: not checked. This run could not confirm it read the whole source, so it cannot say whether any notes are missing.',
+		);
+		expect(second.texts.filter((line) => /no longer in the source/.test(line))).toEqual([]);
+	});
+
+	it('still says "No orphans" on a run that did check, which is the control', async () => {
+		// Without this, every assertion above is satisfied by a build that simply
+		// never claims to have checked anything.
+		const vault = makeVault();
+		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'replace'));
+		expect(result.orphansChecked).toBe(true);
+		const texts = renderResults({ ...result, orphans: [] });
+		expect(texts.filter((line) => /Orphans: not checked/.test(line))).toEqual([]);
+	});
+
+	it('never reports a checked run before the orphan pass has run', async () => {
+		// The initializer, not the assignment: a run that throws on row 1 returns a
+		// result whose orphan pass never executed, and `undefined` there would read
+		// as "checked, and found none" at every surface below.
+		const vault = makeVault();
+		const result = await generateNotes(vault.app, parsed(), {}, options(SHARED_ROOT, 'replace'));
+		expect(result.success).toBe(false);
+		expect(result.orphansChecked).toBe(false);
 	});
 });

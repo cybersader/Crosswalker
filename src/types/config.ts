@@ -457,6 +457,21 @@ export interface GenerationResult {
 	 */
 	orphans?: Array<{ curie: string; path: string }>;
 	/**
+	 * AM-7. Whether orphan detection actually ran.
+	 *
+	 * Failure mode prevented: an uncomputed orphan count read as zero. Detection
+	 * is suppressed whenever the run cannot prove it saw the whole source (a row
+	 * error, a short read, incomplete enrichment bookkeeping), and `orphans` is
+	 * then absent for exactly the same reason it is absent when a complete run
+	 * found none. Reporting the second case as the first tells a user their
+	 * framework is intact when nobody checked. Tri-state, same rule as the
+	 * metadata cache: absent-because-pending is never absent-because-none.
+	 *
+	 * Optional so producers written before this stay valid; a reader treats only
+	 * an explicit `false` as `not checked`.
+	 */
+	orphansChecked?: boolean;
+	/**
 	 * Per-row render deviations (v0.1.6): rows that imported fine but didn't
 	 * fully fit the recipe's expected shape (skipped folder level, split/regex
 	 * fallback). Never blocks the import — surfaced so a "weird vault" is

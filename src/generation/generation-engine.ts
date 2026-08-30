@@ -312,7 +312,11 @@ export async function generateNotes(
 		created: [],
 		skipped: [],
 		errors: [],
-		duration: 0
+		duration: 0,
+		// AM-7. Starts FALSE, not absent. A run that throws before the orphan pass
+		// checked nothing, and a reader must not read that silence as `no orphans`.
+		// The orphan pass below sets it true only when it actually ran.
+		orphansChecked: false,
 	};
 
 	const importId = generateImportId();
@@ -334,16 +338,6 @@ export async function generateNotes(
 			throw new Error('No mapping configuration provided');
 		}
 
-		// Ownership is minted or selected once per run, before any note is written.
-		// Never derive this id from recipe/source/path: all are allowed to change on
-		// a legitimate refresh, while the import set must remain the same.
-		const importSet = await resolveImportSet(app, options.basePath, options.importSet);
-
-		// Ensure base folder exists
-		if (options.createFolders) {
-			await ensureFolderExists(app, options.basePath);
-		}
-
 		// v0.1.3: translate the legacy v0.1.0 config shape into a Ch 22 Recipe
 		// once before the per-row loop. The recipe is what render() consumes.
 		// The shape workbench passes a pre-built recipe (recipeOverride) so its
@@ -352,7 +346,11 @@ export async function generateNotes(
 		// stamps its file stem as the ontology instead of the `unknown` sentinel.
 		// Failure mode prevented: every nameless classic import sharing one
 		// placeholder identity, which makes two unrelated frameworks look like
-		// the same source to import-set matching.
+		// the same source.
+		//
+		// AM-6 moved this ABOVE ownership resolution: the ontology this source
+		// proposes is an input to resolving the set, because a set that already
+		// exists overrides the proposal with the ontology it is pinned to.
 		const recipe = options.recipeOverride
 			?? legacyConfigToRecipe(config as ImportRecipe, { sourceFileName: options.sourceFileName });
 		// Compute recipe ownership once and reuse the exact value written to
@@ -361,6 +359,20 @@ export async function generateNotes(
 		const provenanceRecipeId = options.recipeOverride
 			? recipe.recipe
 			: (options.configId ?? recipe.recipe);
+		// AM-6. What this run WOULD mint curies under if the set were new. A
+		// proposal, not the answer: see `ontologyId` below.
+		const proposedOntologyId = recipe.source?.ontology ?? (config.name ?? LEGACY_ONTOLOGY_SENTINEL);
+
+		// Ownership is minted or selected once per run, before any note is written.
+		// Never derive this id from recipe/source/path: all are allowed to change on
+		// a legitimate refresh, while the import set must remain the same.
+		const importSet = await resolveImportSet(app, options.basePath, options.importSet, proposedOntologyId);
+
+		// Ensure base folder exists
+		if (options.createFolders) {
+			await ensureFolderExists(app, options.basePath);
+		}
+
 		// Snapshot this set's PRE-RUN membership. Metadata-cache updates are not
 		// guaranteed to land before generation completes, and orphan reporting asks
 		// what the set owned before this run, not what the cache happens to expose
@@ -410,7 +422,13 @@ export async function generateNotes(
 		// unaffected when the recipe carries no `source.ontology`, e.g. the
 		// workbench recipe today).
 		const enrichmentEnabled = !!recipe.target.enrichment;
-		const ontologyId = recipe.source?.ontology ?? (config.name ?? LEGACY_ONTOLOGY_SENTINEL);
+		// AM-6. The SET decides the ontology, not the run. A refresh that
+		// recomputed this from its own recipe could land on a different answer
+		// (a renamed config, a differently named export file), and every curie it
+		// then wrote would match none of the notes the set already owns: a second
+		// copy of the whole framework, with every original reported as an orphan.
+		// A set with no pin (legacy, or genuinely new) falls back to the proposal.
+		const ontologyId = importSet.ontology ?? proposedOntologyId;
 		const curiePrefix = slugifyForCurie(ontologyId);
 		const enrichRecords: EnrichRecord[] = [];
 		// AM-2. Rows this run KEPT rather than wrote (overwriteMode 'skip').
@@ -776,7 +794,12 @@ export async function generateNotes(
 
 		const rowCountComplete =
 			parsedData.rowCount < 0 || completed + sourceStage.excludedCount === parsedData.rowCount;
-		if (result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete) {
+		// AM-7. Record WHETHER detection ran, not just what it found. Absent
+		// `orphans` means both `a complete run found none` and `nobody could
+		// check`, and a caller that cannot tell them apart tells the user their
+		// framework is intact when the run never looked.
+		result.orphansChecked = result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete;
+		if (result.orphansChecked) {
 			const orphans = ownedIdentityIndex.curies()
 				.filter((curie) => !producedCuries.has(curie))
 				.map((curie) => ({ curie, path: ownedIdentityIndex.get(curie)!.path }))
@@ -1978,15 +2001,25 @@ export async function generateFromRecipe(
 		skipped: [],
 		errors: [],
 		duration: 0,
+		// AM-7. Starts FALSE, not absent. A run that throws before the orphan pass
+		// checked nothing, and a reader must not read that silence as `no orphans`.
+		// The orphan pass below sets it true only when it actually ran.
+		orphansChecked: false,
 	};
 
 	const strict = options.strictValidation ?? true;
 	const createFolders = options.createFolders ?? true;
-	const ontologyId = recipe.source?.ontology ?? recipe.recipe;
-	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
+	// AM-6. What this run WOULD mint curies under if the set were new.
+	const proposedOntologyId = recipe.source?.ontology ?? recipe.recipe;
 	// Headless imports obey the same destination-discovery rules as the wizard.
 	// Callers can name a wiped/empty set explicitly or force a new mint.
-	const importSet = await resolveImportSet(app, options.basePath, options.importSet);
+	const importSet = await resolveImportSet(app, options.basePath, options.importSet, proposedOntologyId);
+	// AM-6. The set's pin wins over this run's proposal. A refresh whose curie
+	// prefix disagrees with the notes it owns writes a second copy of the whole
+	// import and orphans the first. An explicit `options.curiePrefix` still wins
+	// over both: that caller is naming the identity space on purpose.
+	const ontologyId = importSet.ontology ?? proposedOntologyId;
+	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
 	const ownedIdentityIndex = await buildIdentityIndex(app, { importSetId: importSet.id });
 
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
@@ -2507,7 +2540,11 @@ export async function generateFromRecipe(
 	// no source shaping is declared, leaving this expression exactly as it was.
 	const rowCountComplete =
 		parsedData.rowCount < 0 || completed + sourceStage.excludedCount === parsedData.rowCount;
-	if (result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete) {
+	// AM-7. Record WHETHER detection ran. An uncomputed orphan count is not
+	// zero, and a surface that renders it as zero says the import is intact
+	// when nothing checked.
+	result.orphansChecked = result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete;
+	if (result.orphansChecked) {
 		const orphans = ownedIdentityIndex.curies()
 			.filter((curie) => !producedCuries.has(curie))
 			.map((curie) => ({ curie, path: ownedIdentityIndex.get(curie)!.path }))

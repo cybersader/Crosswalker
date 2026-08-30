@@ -31,6 +31,25 @@ import {
 	type DiscoveredImportSet,
 	type ImportSetOption,
 } from '../generation/import-set';
+import type { GenerationError, GenerationResult } from '../types/config';
+
+/**
+ * AM-8. One row error, as a user can read it.
+ *
+ * Failure mode prevented: `errors.join()` on an array of objects, which prints
+ * `[object Object]` and tells the user nothing they can act on. A negative row
+ * number is a whole-run error rather than a row, so it carries no row label.
+ */
+function formatGenerationError(error: GenerationError): string {
+	return error.row >= 0 ? `Row ${error.row}: ${error.message}` : error.message;
+}
+
+/** The same, for the handful of errors a Notice has room for. */
+function formatGenerationErrors(errors: readonly GenerationError[] | undefined): string {
+	if (!errors || errors.length === 0) return 'unknown error';
+	const shown = errors.slice(0, 3).map(formatGenerationError).join('; ');
+	return errors.length > 3 ? `${shown} (and ${errors.length - 3} more)` : shown;
+}
 
 /** Source for the SSSOM TSV content. */
 type Source =
@@ -401,15 +420,26 @@ export class SssomImportModal extends Modal {
 				return;
 			}
 
+			// AM-8. Every entry point shows its errors; there is no exempt surface.
+			// A row error here (an ambiguous identity is the case that found this)
+			// used to be summarized as a "warning" and the window closed on it, so
+			// the only record of a refusal was the debug log, which is off by
+			// default. Same family as the purge that reported success.
 			const gen = result.generation;
 			if (!gen?.success) {
-				new Notice(`SSSOM import failed: ${gen?.errors.join('; ') ?? 'unknown error'}`);
+				new Notice(`SSSOM import failed: ${formatGenerationErrors(gen?.errors)}`, 10000);
+				if (gen) this.renderImportErrors(gen, result.folder);
+				return;
+			}
+
+			if (gen.errors.length > 0) {
+				new Notice(`SSSOM import finished with ${gen.errors.length} errors. See results.`, 10000);
+				this.renderImportErrors(gen, result.folder);
 				return;
 			}
 
 			new Notice(
-				`SSSOM import: ${gen.created.length} junction notes created under ${result.folder}` +
-					(gen.errors.length > 0 ? ` (with ${gen.errors.length} warning(s))` : ''),
+				`SSSOM import: ${gen.created.length} junction notes created under ${result.folder}`,
 				8000,
 			);
 			this.close();
@@ -419,5 +449,43 @@ export class SssomImportModal extends Modal {
 			new Notice(`SSSOM import error: ${msg}`);
 			this.plugin.debug?.error('sssom-import', 'unhandled-error', 'SSSOM import: unhandled error', { error: msg });
 		}
+	}
+
+	/**
+	 * AM-8. The results screen this modal never had.
+	 *
+	 * A run that ends must show its errors somewhere the user can read them. A
+	 * Notice truncates, expires, and cannot be scrolled, so a run with twenty
+	 * refusals reached the user as one line and then vanished.
+	 */
+	private renderImportErrors(gen: GenerationResult, folder: string | null | undefined): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl('h2', { text: 'SSSOM import results' });
+
+		const summary = contentEl.createDiv({ cls: 'crosswalker-results-summary' });
+		summary.createEl('p', {
+			text: `Created: ${gen.created.length} junction notes${folder ? ` under ${folder}` : ''}`,
+		});
+		if (gen.skipped.length > 0) {
+			summary.createEl('p', { text: `Skipped: ${gen.skipped.length} existing notes` });
+		}
+		summary.createEl('p', { text: `Errors: ${gen.errors.length}`, cls: 'mod-warning' });
+
+		contentEl.createEl('h4', { text: 'Errors' });
+		const list = contentEl.createDiv({ cls: 'crosswalker-error-list' });
+		for (const error of gen.errors.slice(0, 20)) {
+			list.createEl('p', { text: formatGenerationError(error), cls: 'crosswalker-error-item' });
+		}
+		if (gen.errors.length > 20) {
+			list.createEl('p', {
+				text: `... and ${gen.errors.length - 20} more`,
+				cls: 'setting-item-description',
+			});
+		}
+
+		const footer = contentEl.createDiv({ cls: 'modal-button-container' });
+		const closeBtn = footer.createEl('button', { text: 'Close' });
+		closeBtn.addEventListener('click', () => this.close());
 	}
 }

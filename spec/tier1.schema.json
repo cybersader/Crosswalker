@@ -117,6 +117,10 @@
             "destination": {
               "type": "string",
               "description": "Folder this import set was last written to. Recorded so a refresh can find where the set already lives instead of inferring it from vault paths. A hint, not authority: a reader re-validates it against the actual note paths of the set, because nothing updates it when a user renames the folder."
+            },
+            "ontology": {
+              "type": "string",
+              "description": "Ontology this import set mints its CURIEs under, pinned when the set is minted, the same way scheme is. A refresh uses the pin instead of recomputing the ontology from its own recipe: a recomputation that lands on a different answer produces CURIEs matching none of the notes the set already owns, so the run writes a second copy of the whole import and reports every original as an orphan. Absent on notes written before the pin existed; such a set is pinned on its first refresh to the ontology prefix its own notes already carry."
             }
           }
         },
