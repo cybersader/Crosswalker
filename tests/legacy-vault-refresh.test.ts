@@ -1,39 +1,31 @@
 /**
- * legacy-vault-refresh.test.ts -- the acceptance criterion for the per-import
- * destination root (2026-08-29).
+ * legacy-vault-refresh.test.ts -- the D1 Part A acceptance criterion (A-8).
  *
  * THE SCENARIO THIS FILE EXISTS FOR
  *
- * A user imported a source before the per-import root rule ran. Their notes sit
- * flat in the shared output folder ("Ontologies"), and their provenance records
- * `{id, scheme}` and no destination, because nothing recorded one yet. They now
- * refresh that import with a build where the per-import root rule DOES run, and
- * the derived default names a folder their notes have never been in
- * ("Ontologies/attack-mini").
+ * A user imported a source before the per-import root rule ran. Their notes and
+ * their hubs sit in the shared output folder ("Ontologies") itself, and their
+ * provenance records `{id, scheme}` and no destination, because nothing recorded
+ * one yet. They now refresh that import with a build where the per-import root
+ * rule DOES run, and the derived default names a folder their notes have never
+ * been in ("Ontologies/attack-mini").
  *
  * Nothing in that chain moves the existing import. It writes a SECOND copy of it
  * beside the first, reports paths the user has never seen, strands hubs at the
  * old address under identities nothing will claim again, and -- once two files
  * claim one curie -- raises "Ambiguous identity", which suppresses orphan
- * reporting for the entire run and surfaces to the user as "N rows failed" for
- * something that is not a row.
+ * reporting for the entire run and surfaces as "N rows failed" for something
+ * that is not a row.
  *
- * WHAT IS ASSERTED
+ * PART A'S ANSWER, AND WHY THE TESTS ARE SHAPED THIS WAY
  *
- * The refresh must produce, under BOTH overwrite modes:
- *   - zero duplicate curies (no two files claiming one identity)
- *   - zero unsolicited moves of the user's existing notes
- *   - zero new orphans
- *   - no "Ambiguous identity" error
- *   - reported paths that actually exist
- *
- * The destination is not hard-coded into the refresh: it is read back out of a
- * real ImportFlow, because "where does this refresh land" is the decision the
- * whole failure hangs on. Pre-fix that accessor answers "Ontologies/attack-mini"
- * and every assertion below fails; the answer it must give is "Ontologies".
- *
- * ONE CLAUSE DOES NOT HOLD UNDER `skip`, AND IS MARKED `it.failing` RATHER THAN
- * SOFTENED -- see the `known gap` block below section 2.
+ * A refresh never changes a set's root. The destination for a refresh IS the
+ * set's existing root, resolved once from the notes the set already owns, and
+ * ownership is decided by what the notes are STAMPED with (recipe id, ontology
+ * prefix) rather than by which folder they happen to sit in. So the destination
+ * is never hard-coded into the refresh below: it is read back out of a real
+ * `ImportFlow` through the same accessor every write path uses, because "where
+ * does this refresh land" is the decision the whole failure hangs on.
  *
  * WHY THE PRE-FIX VAULT IS BUILT BY DE-MIGRATION
  *
@@ -42,19 +34,44 @@
  * address-derived form). That is more faithful than hand-writing notes: every
  * byte except the two deliberate differences is exactly what a real vault holds,
  * so the test cannot pass by seeding something the engine would never produce.
- * The legacy hub-curie forms used here are the ones this repo's own test-vault
- * still carries (`shape-workbench:hub/frameworks`,
- * `shape-workbench:hub/frameworks/mitre-att-ck`), written by an earlier build.
+ *
+ * WHAT IS ASSERTED, AND WHERE
+ *
+ *   1. Where a refresh lands, and which set it is attributed to (A-1 to A-3).
+ *   2. The acceptance clauses themselves, under BOTH overwrite modes (A-8).
+ *   3. A second, unrelated framework in the same legacy vault (A-8 companion).
+ *   4. A cold metadata cache at step 3 (A-8 companion, A-4).
+ *   5. Segment-wise root recovery and failing closed, at the wizard (A-3).
+ *   6. The new-set occupancy guard and suppressed moves under skip (A-6).
+ *   7. What the results screen renders (A-7).
+ *   8. The isolating experiment behind the `it.failing` clauses in section 2.
+ *   9. The same criterion driven end to end through two real wizard runs.
+ *
+ * KNOWN GAPS, PINNED WITH `it.failing` RATHER THAN SOFTENED
+ *
+ *   a. `skip` mode orphans every hub, and restamps none (section 2, isolated in
+ *      section 8). Not caused by the destination rule.
+ *   b. The orphan count is rendered only when it is non-zero, so "and the orphan
+ *      count" is invisible on a clean run (section 7).
+ *   c. A clean refresh closes the host instead of rendering results at all, so
+ *      the A-8 clause "the results screen shows moved: 0" is unreachable in the
+ *      very scenario A-8 describes (section 9).
+ *
+ * Each is named where it is pinned. A fix turns this suite red until the
+ * expectation is restored, which is the point.
  */
 
 import { TFile, TFolder } from 'obsidian';
 import {
 	buildConfigFromWizardState,
 	generateNotes,
-	plannedConceptCuries,
 } from '../src/generation/generation-engine';
+import { discoverImportSets, type DiscoveredImportSet, type ImportSetOption } from '../src/generation/import-set';
 import { ImportFlow, resolveDestinationDefault } from '../src/import/import-wizard';
+import { MappingWorkbench } from '../src/import/workbench';
+import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import { DEFAULT_SETTINGS } from '../src/settings/settings-data';
+import type { DebugLog } from '../src/utils/debug';
 import type { GenerationOptions } from '../src/generation/generation-engine';
 import type { Recipe } from '../src/render';
 import type { GenerationResult, ImportRecipe, ParsedData } from '../src/types/config';
@@ -67,6 +84,14 @@ const SHARED_ROOT = 'Ontologies';
 /** What the per-import root rule derives for this source, and must NOT use here. */
 const DERIVED_ROOT = 'Ontologies/attack-mini';
 const SOURCE_FILE = 'attack-mini.csv';
+/** The ontology this source stamps on every note it writes. */
+const ONTOLOGY = 'attack-mini';
+
+const debugStub = {
+	info() {}, trace() {}, warn() {}, error() {},
+	newTraceId: () => 'test-trace',
+	withTrace: <T>(_id: string, fn: () => T): T => fn(),
+} as unknown as DebugLog;
 
 // ---------------------------------------------------------------------------
 // A stateful in-memory vault. Same shape as tests/enrichment-reimport.test.ts,
@@ -92,20 +117,23 @@ function makeVault() {
 		if (coldPaths.delete(file.path)) coldPaths.add(newPath);
 		file.path = newPath;
 	});
+	const createFolder = jest.fn(async (path: string) => { folders.add(path); });
+	const create = jest.fn(async (path: string, content: string) => {
+		files.set(path, content);
+		return new TFile(path);
+	});
+	const modify = jest.fn(async (file: { path: string }, content: string) => {
+		files.set(file.path, content);
+	});
 	const app = {
 		vault: {
 			getMarkdownFiles: () => [...files.keys()].map((path) => new TFile(path)),
 			getAbstractFileByPath,
-			create: async (path: string, content: string) => {
-				files.set(path, content);
-				return new TFile(path);
-			},
-			modify: async (file: { path: string }, content: string) => {
-				files.set(file.path, content);
-			},
+			create,
+			modify,
 			read: async (file: { path: string }) => files.get(file.path) ?? '',
 			cachedRead: async (file: { path: string }) => files.get(file.path) ?? '',
-			createFolder: async (path: string) => { folders.add(path); },
+			createFolder,
 			rename,
 			delete: async (file: { path: string }) => { files.delete(file.path); },
 		},
@@ -119,9 +147,29 @@ function makeVault() {
 				if (!m) return { frontmatter: {} };
 				return { frontmatter: (yaml.load(m[1]) as Record<string, unknown>) ?? {} };
 			},
+			// `waitForMetadataResolve` subscribes to 'resolved' and races it against
+			// its own timeout. Firing on the next tick keeps a cold-cache test at
+			// milliseconds instead of the 4-second fallback, and proves the wizard
+			// re-checks AFTER the wait rather than trusting that it returned.
+			on: (_event: string, cb: () => void) => { setTimeout(cb, 0); return {}; },
+			offref: () => {},
 		},
 	};
-	return { app: app as any, files, folders, coldPaths, rename };
+	return { app: app as any, files, folders, coldPaths, rename, createFolder, create, modify };
+}
+
+type Vault = ReturnType<typeof makeVault>;
+
+/**
+ * Forget the writes that BUILT the fixture, so "wrote nothing" means "wrote
+ * nothing during the act under test". Seeding a pre-fix vault runs a real
+ * generation, and its `create` calls are not evidence about the refresh.
+ */
+function forgetSeedWrites(vault: Vault): void {
+	vault.create.mockClear();
+	vault.modify.mockClear();
+	vault.rename.mockClear();
+	vault.createFolder.mockClear();
 }
 
 // ---------------------------------------------------------------------------
@@ -131,13 +179,15 @@ function makeVault() {
 // ---------------------------------------------------------------------------
 
 const ROWS = [
-	{ id: 'T1078', tactic: 'Persistence', domain: 'Enterprise' },
-	{ id: 'T1098', tactic: 'Persistence', domain: 'Enterprise' },
-	{ id: 'T1595', tactic: 'Discovery', domain: 'Enterprise' },
-	{ id: 'T1590', tactic: 'Discovery', domain: 'Enterprise' },
+	{ technique_id: 'T1078', name: 'Valid Accounts', tactic: 'Persistence', domain: 'Enterprise' },
+	{ technique_id: 'T1078.001', name: 'Default Accounts', tactic: 'Persistence', domain: 'Enterprise' },
+	{ technique_id: 'T1098', name: 'Account Manipulation', tactic: 'Persistence', domain: 'Enterprise' },
+	{ technique_id: 'T1595', name: 'Active Scanning', tactic: 'Discovery', domain: 'Enterprise' },
+	{ technique_id: 'T1595.002', name: 'Vulnerability Scanning', tactic: 'Discovery', domain: 'Enterprise' },
+	{ technique_id: 'T1590', name: 'Gather Network Info', tactic: 'Discovery', domain: 'Enterprise' },
 ];
 
-const COLUMNS = ['id', 'tactic', 'domain'];
+const COLUMNS = ['technique_id', 'name', 'tactic', 'domain'];
 
 function parsed(): ParsedData {
 	return { columns: [...COLUMNS], rows: ROWS.map((r) => ({ ...r })), rowCount: ROWS.length };
@@ -145,34 +195,34 @@ function parsed(): ParsedData {
 
 /** Exactly what a user's Step-2 choices produce. */
 const COLUMN_CONFIGS = new Map<string, { useAs: string; outputKey: string }>([
-	['id', { useAs: 'title', outputKey: 'id' }],
+	['technique_id', { useAs: 'title', outputKey: 'technique_id' }],
+	['name', { useAs: 'frontmatter', outputKey: 'name' }],
 	['tactic', { useAs: 'frontmatter', outputKey: 'tactic' }],
 	['domain', { useAs: 'frontmatter', outputKey: 'domain' }],
 ]);
 
-/**
- * The wizard's own config, built by the wizard's own helper. Not hand-written:
- * the whole point of the destination probe is that it derives the SAME curies
- * the write loop does, and a hand-written config could drift from either.
- *
- * No `name`, so the legacy shim names the ontology 'unknown' -- what a plain
- * unnamed wizard config really produces, on both the probe and the write path.
- */
 const CONFIG: Partial<ImportRecipe> = buildConfigFromWizardState(COLUMN_CONFIGS, COLUMNS);
 
-/** No `source`, so `ontologyId` falls through to the config name on both paths. */
+/**
+ * The recipe the pre-fix import was written with. `recipe` and `source.ontology`
+ * are the two facts A-2 matches a source against, and they are spelled exactly
+ * the way a workbench import spells them (`custom-<ontology-slug>` /
+ * `<ontology-slug>`, recipe-document.ts createFreshRecipeDocument), so the vault
+ * this seeds is one the shipped path could really have produced.
+ */
 const RECIPE: Recipe = {
-	recipe: 'attack-mini',
+	recipe: `custom-${ONTOLOGY}`,
+	source: { ontology: ONTOLOGY, levels: ['tactic', 'leaf'] },
 	target: {
 		layout: [
 			{ level: 'tactic', mechanism: 'folder', template: '{tactic}' },
-			{ level: 'leaf', mechanism: 'file', template: '{id}.md' },
+			{ level: 'leaf', mechanism: 'file', template: '{technique_id}.md' },
 		],
 		enrichment: { children_lists: true, facet_notes: 'none', parent_note: 'sibling', level_hubs: 'notes' },
 	},
 };
 
-/** The same import with FACET hubs instead of level hubs -- see section 3. */
+/** The same import with FACET hubs instead of level hubs -- see section 6. */
 const FACET_RECIPE: Recipe = {
 	...RECIPE,
 	target: {
@@ -184,14 +234,18 @@ const FACET_RECIPE: Recipe = {
 function options(
 	basePath: string,
 	overwriteMode: 'skip' | 'replace',
-	recipeOverride: Recipe = RECIPE,
+	extra: {
+		recipeOverride?: Recipe;
+		importSet?: ImportSetOption;
+	} = {},
 ): GenerationOptions {
 	return {
 		basePath,
 		overwriteMode,
 		createFolders: true,
-		recipeOverride,
+		recipeOverride: extra.recipeOverride ?? RECIPE,
 		sourceFileName: SOURCE_FILE,
+		...(extra.importSet !== undefined ? { importSet: extra.importSet } : {}),
 		facetsForRow: (row: Record<string, unknown>) => [{ namespace: 'domain', value: String(row.domain) }],
 	};
 }
@@ -226,52 +280,121 @@ function deMigrateToPreFix(files: Map<string, string>, root: string): void {
 }
 
 /** A vault holding one complete import, generated by the current engine. */
-async function seedVault(recipeOverride: Recipe = RECIPE) {
+async function seedVault(recipeOverride: Recipe = RECIPE, basePath: string = SHARED_ROOT) {
 	const vault = makeVault();
-	const seed = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'replace', recipeOverride));
+	const seed = await generateNotes(vault.app, parsed(), CONFIG, options(basePath, 'replace', { recipeOverride }));
 	if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
 	return vault;
 }
 
 /** The same vault, rewritten into the shape a pre-fix build left behind. */
 async function seedPreFixVault(recipeOverride: Recipe = RECIPE) {
-	const vault = await seedVault(recipeOverride);
+	const vault = await seedVault(recipeOverride, SHARED_ROOT);
 	deMigrateToPreFix(vault.files, SHARED_ROOT);
 	return vault;
 }
 
 // ---------------------------------------------------------------------------
-// The wizard's answer to "where does this refresh land".
+// The wizard's answer to "where does this refresh land, and what does it own".
 // ---------------------------------------------------------------------------
 
+/**
+ * Private members the review screen, the destination breadcrumb and the generate
+ * button all read. Reached through a cast for the same reason
+ * destination-default.test.ts does it: the flow's DOM is not mountable under the
+ * obsidian mock, and these ARE the decisions, not incidental internals.
+ */
 interface FlowInternals {
 	currentOutputPath(): string;
-	adoptExistingSetDestination(): Promise<boolean>;
-	adoptionDeclined: string | null;
+	prepareStep3(force?: boolean): Promise<{ ok: boolean; changed: boolean }>;
+	selectedImportSet(): ImportSetOption | undefined;
+	validateImportSetSelection(): boolean;
+	refreshRootProblem(): string | null;
+	newSetOccupancyProblem(): string | null;
+	sourceIdentityKeys(): { recipeId: string | null; ontologyPrefix: string | null };
+	discoveredSets: DiscoveredImportSet[] | null;
+	indexingBlocked: string | null;
+	importSetChoice: ImportSetOption | null;
 }
 
-function makeFlow(app: unknown, opts: { globalRoot?: string; sourceFileName?: string } = {}): ImportFlow {
+const inner = (flow: ImportFlow): FlowInternals => flow as unknown as FlowInternals;
+
+/**
+ * A stand-in container that absorbs the whole Obsidian element surface and
+ * records the text of everything drawn into it.
+ *
+ * The wizard's DOM is not mountable under the obsidian mock, and hand-listing
+ * the members `renderStep` touches is a guessing game that fails as an obscure
+ * "is not a function" the day someone adds a class. A proxy that answers every
+ * property with another element removes that whole failure mode, while the two
+ * text-bearing calls -- `createEl(tag, { text })` and `setText` -- are captured,
+ * which is what the assertions are actually about.
+ */
+function makeRecordingEl(texts: string[]): HTMLElement {
+	const target = function () { /* elements are called for nothing; see apply */ };
+	return new Proxy(target, {
+		get(_t, prop) {
+			// A thenable would make an element look like a promise to `await`.
+			if (prop === 'then') return undefined;
+			if (prop === 'setText') return (t: string) => { texts.push(t); };
+			if (prop === 'createEl' || prop === 'createDiv' || prop === 'createSpan') {
+				return (first?: unknown, second?: { text?: string }) => {
+					const opts = (typeof first === 'object' ? first : second) as { text?: string } | undefined;
+					if (opts?.text) texts.push(opts.text);
+					return makeRecordingEl(texts);
+				};
+			}
+			if (prop === 'value' || prop === 'textContent' || prop === 'innerHTML') return '';
+			if (prop === 'style' || prop === 'dataset' || prop === 'classList') return makeRecordingEl(texts);
+			return () => makeRecordingEl(texts);
+		},
+		set: () => true,
+		apply: () => makeRecordingEl(texts),
+	}) as unknown as HTMLElement;
+}
+
+function makeFlow(
+	app: unknown,
+	opts: { globalRoot?: string; sourceFileName?: string; ontology?: string; data?: ParsedData } = {},
+): { flow: ImportFlow; texts: string[]; close: jest.Mock } {
 	const plugin = {
 		settings: { ...DEFAULT_SETTINGS, defaultOutputPath: opts.globalRoot ?? SHARED_ROOT },
-		debug: { info() {}, trace() {}, warn() {}, error() {} },
+		debug: debugStub,
 	} as unknown as ConstructorParameters<typeof ImportFlow>[1];
+	const texts: string[] = [];
+	const close = jest.fn();
 	const flow = new ImportFlow(
 		app as ConstructorParameters<typeof ImportFlow>[0],
 		plugin,
-		{ containerEl: null as unknown as HTMLElement, close: () => {} },
+		{ containerEl: makeRecordingEl(texts), close },
 	);
+	const data = opts.data ?? parsed();
 	flow.sourceFile = { name: opts.sourceFileName ?? SOURCE_FILE } as File;
-	flow.parsedData = parsed();
+	flow.parsedData = data;
 	flow.columnConfigs = new Map(COLUMN_CONFIGS);
-	return flow;
+	// The shipped path for a framework import is the shape workbench, and it is
+	// the only path that carries a real ontology: the classic column-mapping path
+	// has no place to put one and stamps every import 'unknown'.
+	flow.workbench = new MappingWorkbench({
+		parsedData: data,
+		columnInfos: analyzeColumns(data),
+		outputPath: opts.globalRoot ?? SHARED_ROOT,
+		debug: debugStub,
+		defaultPresetId: 'browsable-framework',
+		sourceOntology: opts.ontology ?? ONTOLOGY,
+		onChange: () => {},
+	});
+	return { flow, texts, close };
 }
 
 /** Where this flow says the import lands, after it has been allowed to look. */
-async function askWhereItLands(app: unknown, opts?: { globalRoot?: string; sourceFileName?: string }) {
-	const flow = makeFlow(app, opts);
-	const inner = flow as unknown as FlowInternals;
-	await inner.adoptExistingSetDestination();
-	return { destination: inner.currentOutputPath(), declined: inner.adoptionDeclined };
+async function askWhereItLands(
+	app: unknown,
+	opts?: Parameters<typeof makeFlow>[1],
+): Promise<{ flow: ImportFlow; destination: string; prepared: { ok: boolean; changed: boolean } }> {
+	const { flow } = makeFlow(app, opts);
+	const prepared = await inner(flow).prepareStep3(true);
+	return { flow, prepared, destination: inner(flow).currentOutputPath() };
 }
 
 // ---------------------------------------------------------------------------
@@ -316,99 +439,103 @@ function pathsOfKind(files: Map<string, string>, kind: string): string[] {
 		.sort();
 }
 
+/**
+ * The same source with two rows the vault has never held. Under `skip` only the
+ * rows a run CREATES enter the enrichment batch, so a scenario that needs the
+ * enrichment phase to run at all has to add new rows -- and at least
+ * `HUB_MIN_MEMBERS` of them, or no facet hub is materialized.
+ */
+function rowsPlusTwoNew(): ParsedData {
+	return {
+		columns: [...COLUMNS],
+		rows: [
+			...ROWS.map((r) => ({ ...r })),
+			{ technique_id: 'T1666', name: 'A New Technique', tactic: 'Persistence', domain: 'Enterprise' },
+			{ technique_id: 'T1667', name: 'Another New Technique', tactic: 'Persistence', domain: 'Enterprise' },
+		],
+		rowCount: ROWS.length + 2,
+	};
+}
+
+/** The prose a user typed onto one hub, marked so it is unmistakable. */
+const HUB_PROSE = 'Our team owns this tactic. Escalate to the on-call analyst.';
+const HUB_WITH_PROSE = 'Ontologies/Persistence/Persistence.md';
+
 // ===========================================================================
-// 1. Where a refresh of a pre-fix vault lands (F-1, F-2, F-3).
+// 1. WHERE A REFRESH OF A PRE-FIX VAULT LANDS (A-1, A-2, A-3).
 // ===========================================================================
 
-describe('a refresh of a pre-fix import is offered the folder its notes are already in', () => {
-	it('adopts the existing set root instead of the derived per-import root', async () => {
-		const vault = await seedPreFixVault();
-
+describe('a refresh is offered the folder its own set already occupies', () => {
+	it('reads the destination off the set, never off the source file name', async () => {
 		// What the derived rule would say, spelled out so the failure this test
 		// guards is legible: a folder the user's notes have never been in.
+		const vault = await seedPreFixVault();
 		expect(resolveDestinationDefault(SHARED_ROOT, SOURCE_FILE, null)).toBe(DERIVED_ROOT);
 
-		const { destination, declined } = await askWhereItLands(vault.app);
+		const { destination, prepared } = await askWhereItLands(vault.app);
+		expect(prepared.ok).toBe(true);
 		expect(destination).toBe(SHARED_ROOT);
 		expect(destination).not.toBe(DERIVED_ROOT);
-		expect(declined).toBeNull();
 	});
 
 	it('adopts the same root when the source file was renamed since the first import', async () => {
-		// The case a pure "the same source name resolves to the same folder" rule
-		// cannot cover: the derived root is a function of the file name, and the
-		// file name is the one thing a user is free to change between releases.
+		// The derived root is a function of the file name, and the file name is the
+		// one thing a user is free to change between releases. Ownership is stamped,
+		// so a rename cannot move an import.
 		const vault = await seedPreFixVault();
 		const { destination } = await askWhereItLands(vault.app, { sourceFileName: 'attack-mini-v2.csv' });
 		expect(destination).toBe(SHARED_ROOT);
 	});
 
-	it('finds the set even when the vault has not been indexed yet (F-7)', async () => {
-		// A cold metadata cache means "not indexed yet", never "absent". Treating
-		// lag as absence here reports a genuinely new import and mints a second
-		// copy of one the vault already holds.
+	it('preselects refreshing exactly the set whose stamps this source carries', async () => {
 		const vault = await seedPreFixVault();
-		for (const path of vault.files.keys()) vault.coldPaths.add(path);
-		const { destination } = await askWhereItLands(vault.app);
-		expect(destination).toBe(SHARED_ROOT);
+		const { flow } = await askWhereItLands(vault.app);
+		const sets = inner(flow).discoveredSets ?? [];
+		expect(sets).toHaveLength(1);
+		expect(inner(flow).importSetChoice).toEqual({ id: sets[0].id });
+		expect(inner(flow).selectedImportSet()).toEqual({ id: sets[0].id });
 	});
 
-	it('derives a fresh root for a source whose concepts the vault has never held', async () => {
-		// Adoption must not degrade into "reuse whatever is already there": an
-		// unrelated second import in the same vault is exactly what the per-import
-		// root rule was restored for.
+	it('matches on the two facts the write loop actually stamps', async () => {
+		// A-2 replaced curie probing with stamped-fact matching, so the keys the
+		// wizard derives and the keys generation writes must be the same strings.
+		// Asserted against a real generated vault, never against a literal.
 		const vault = await seedPreFixVault();
-		const flow = makeFlow(vault.app, { sourceFileName: 'cis-controls-v8.csv' });
-		flow.parsedData = { columns: [...COLUMNS], rows: [{ id: 'CIS-1', tactic: 'Inventory', domain: 'IG1' }], rowCount: 1 };
-		const inner = flow as unknown as FlowInternals;
-		await inner.adoptExistingSetDestination();
-		expect(inner.currentOutputPath()).toBe('Ontologies/cis-controls-v8');
+		const { flow } = await askWhereItLands(vault.app);
+		const keys = inner(flow).sourceIdentityKeys();
+		const [set] = inner(flow).discoveredSets ?? [];
+
+		expect(keys).toEqual({ recipeId: `custom-${ONTOLOGY}`, ontologyPrefix: ONTOLOGY });
+		expect(set.recipeIds).toContain(keys.recipeId);
+		expect(set.ontologyPrefixes).toContain(keys.ontologyPrefix);
 	});
 
-	it('leaves the destination alone, and says why, when the set has no shared root', async () => {
-		// Fail closed. One note dragged to the vault root collapses the recovered
-		// prefix, and inventing a root there would move the user's whole import.
+	it('discovers the set wherever it lives, not only under the folder it would derive', async () => {
+		// The circularity A-2 removed: discovery used to be scoped to the
+		// destination, and the destination is what the ownership answer decides.
+		// A set that sits nowhere near the derived root must still be found.
 		const vault = await seedPreFixVault();
-		const stray = [...vault.files.keys()].find((p) => p.endsWith('T1078.md'))!;
-		vault.files.set('T1078.md', vault.files.get(stray)!);
-		vault.files.delete(stray);
-
-		const { destination, declined } = await askWhereItLands(vault.app);
-		expect(destination).toBe(DERIVED_ROOT); // unchanged: the derived default
-		expect(declined).toMatch(/do not share one folder/);
-		expect(declined).toContain('T1078.md');
-	});
-
-	it('probes the identities the write loop will actually produce', async () => {
-		// The probe and the write loop must derive the same curie, or adoption is
-		// answering a question about a different import. Asserted against the
-		// curies a real generation run wrote, not against a literal.
-		const vault = await seedPreFixVault();
-		const written = [...vault.files.values()]
-			.map((text) => frontmatterOf(text).curie)
-			.filter((c): c is string => typeof c === 'string' && !c.includes(':hub/'))
-			.sort();
-		const probed = plannedConceptCuries(CONFIG.mapping!, 'unknown', ROWS, 100).sort();
-		expect(probed).toEqual(written);
+		const { flow } = await askWhereItLands(vault.app, { globalRoot: 'Reference/Compliance' });
+		expect((inner(flow).discoveredSets ?? []).map((s) => s.root)).toEqual([SHARED_ROOT]);
+		expect(inner(flow).currentOutputPath()).toBe(SHARED_ROOT);
 	});
 });
 
 // ===========================================================================
-// 2. THE ACCEPTANCE CRITERION.
+// 2. THE ACCEPTANCE CRITERION (A-8), UNDER BOTH OVERWRITE MODES.
 //
 // KNOWN GAP -- `skip` mode, two clauses, marked `it.failing` below.
 //
-// Under `overwriteMode: 'skip'` every row returns from the write loop BEFORE
-// `enrichRecords.push` (generation-engine.ts: the skip `return` sits above the
-// collection), so the enrichment batch is empty, `applyEnrichment` never runs,
-// and no hub curie is ever added to `producedCuries`. Every hub the set owns is
-// therefore reported as an orphan, and no hub is reconciled or restamped.
+// Under `overwriteMode: 'skip'` every existing row returns from the write loop
+// BEFORE `enrichRecords.push` (generation-engine.ts: the skip `return` sits
+// above the collection), so the enrichment batch is empty, `applyEnrichment`
+// never runs, and no hub curie is ever added to `producedCuries`. Every hub the
+// set owns is therefore reported as an orphan, and no hub is reconciled or
+// restamped.
 //
-// That is NOT caused by the per-import root work: the `does not depend on the
-// legacy shape` test immediately below reproduces it on a vault generated by the
-// current engine and never de-migrated. It is pinned with `it.failing` rather
-// than softened, so a fix to skip-mode enrichment turns this suite red until the
-// expectation is restored.
+// That is NOT caused by the per-import root work: the isolating experiment in
+// section 8 reproduces it on a vault generated by the current engine and never
+// de-migrated. It is pinned with `it.failing` rather than softened.
 // ===========================================================================
 
 describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwriteMode %s)', (overwriteMode) => {
@@ -417,10 +544,14 @@ describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwri
 
 	async function refresh() {
 		const vault = await seedPreFixVault();
+		vault.files.set(HUB_WITH_PROSE, `${vault.files.get(HUB_WITH_PROSE)!}\n${HUB_PROSE}\n`);
 		const before = new Map(vault.files);
-		const { destination } = await askWhereItLands(vault.app);
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(destination, overwriteMode));
-		return { vault, before, destination, result };
+		const { flow, destination } = await askWhereItLands(vault.app);
+		const importSet = inner(flow).selectedImportSet();
+		const result = await generateNotes(
+			vault.app, parsed(), CONFIG, options(destination, overwriteMode, { importSet }),
+		);
+		return { vault, before, destination, result, flow };
 	}
 
 	it('writes into the folder the set already occupies', async () => {
@@ -444,6 +575,7 @@ describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwri
 		expect(result.moved ?? []).toEqual([]);
 		// Not just "reported no moves": every note the user had is still where it was.
 		for (const path of before.keys()) expect(vault.files.has(path)).toBe(true);
+		expect(vault.rename).not.toHaveBeenCalled();
 	});
 
 	it('creates no second copy of the import', async () => {
@@ -455,6 +587,11 @@ describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwri
 		const { vault, result } = await refresh();
 		const missing = reportedPaths(result).filter((p) => !vault.files.has(p));
 		expect(missing).toEqual([]);
+	});
+
+	it('keeps the prose the user typed onto a hub', async () => {
+		const { vault } = await refresh();
+		expect(vault.files.get(HUB_WITH_PROSE)).toContain(HUB_PROSE);
 	});
 
 	clause('reports no new orphans', async () => {
@@ -473,22 +610,435 @@ describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwri
 			.filter((text) => frontmatterOf(text).kind === 'hub')
 			.map((text) => frontmatterOf(text).curie)
 			.sort();
-		expect(hubCuries).toEqual(['unknown:hub/_root', 'unknown:hub/discovery', 'unknown:hub/persistence']);
+		expect(hubCuries).toEqual([
+			`${ONTOLOGY}:hub/_root`,
+			`${ONTOLOGY}:hub/discovery`,
+			`${ONTOLOGY}:hub/persistence`,
+		]);
 	});
 });
 
+// ===========================================================================
+// 3. A-8, COMPANION 1: a SECOND, UNRELATED framework in the same legacy vault.
+//
+// This is the clause the original defect broke in the other direction: the
+// review screen preselected "refresh" for whichever single set happened to sit
+// in the destination folder, so a second framework was attributed to the first
+// and generation merged two ontologies into one import set.
+// ===========================================================================
+
+describe('a second, unrelated framework in the same legacy vault', () => {
+	const SECOND_SOURCE = 'cis-controls-v8.csv';
+	const SECOND_ONTOLOGY = 'cis-controls-v8';
+	const SECOND_ROOT = 'Ontologies/cis-controls-v8';
+
+	const SECOND_ROWS = [
+		{ technique_id: 'CIS-1', name: 'Inventory of Assets', tactic: 'Inventory', domain: 'IG1' },
+		{ technique_id: 'CIS-1.1', name: 'Asset Inventory Tool', tactic: 'Inventory', domain: 'IG1' },
+		{ technique_id: 'CIS-2', name: 'Software Inventory', tactic: 'Inventory', domain: 'IG1' },
+	];
+
+	function secondData(): ParsedData {
+		return { columns: [...COLUMNS], rows: SECOND_ROWS.map((r) => ({ ...r })), rowCount: SECOND_ROWS.length };
+	}
+
+	const SECOND_RECIPE: Recipe = {
+		...RECIPE,
+		recipe: `custom-${SECOND_ONTOLOGY}`,
+		source: { ontology: SECOND_ONTOLOGY, levels: ['tactic', 'leaf'] },
+	};
+
+	async function importSecond() {
+		const vault = await seedPreFixVault();
+		const firstBefore = new Map(vault.files);
+		const { flow } = await askWhereItLands(vault.app, {
+			sourceFileName: SECOND_SOURCE,
+			ontology: SECOND_ONTOLOGY,
+			data: secondData(),
+		});
+		const destination = inner(flow).currentOutputPath();
+		const importSet = inner(flow).selectedImportSet();
+		const result = await generateNotes(vault.app, secondData(), CONFIG, {
+			...options(destination, 'replace', { recipeOverride: SECOND_RECIPE, importSet }),
+			sourceFileName: SECOND_SOURCE,
+		});
+		return { vault, firstBefore, flow, destination, importSet, result };
+	}
+
+	it('defaults to a NEW set rather than refreshing the set already in the vault', async () => {
+		const { flow, importSet } = await importSecond();
+		expect((inner(flow).discoveredSets ?? []).length).toBe(1);
+		expect(inner(flow).importSetChoice).toBe('new');
+		expect(importSet).toBe('new');
+	});
+
+	it('lands in its own derived root, not in the first framework folder', async () => {
+		const { destination } = await importSecond();
+		expect(destination).toBe(SECOND_ROOT);
+		expect(destination).not.toBe(SHARED_ROOT);
+	});
+
+	it('mints its own import set instead of joining the first', async () => {
+		const { vault } = await importSecond();
+		const sets = await discoverImportSets(vault.app, undefined);
+		expect(sets).toHaveLength(2);
+		expect(sets.map((s) => s.root).sort()).toEqual([SECOND_ROOT, SHARED_ROOT].sort());
+		// Neither set carries the other's ontology: the two imports stayed separate.
+		const byRoot = new Map(sets.map((s) => [s.root, s]));
+		expect(byRoot.get(SHARED_ROOT)!.ontologyPrefixes).toEqual([ONTOLOGY]);
+		expect(byRoot.get(SECOND_ROOT)!.ontologyPrefixes).toEqual([SECOND_ONTOLOGY]);
+	});
+
+	it('leaves the first framework coverage untouched, note for note', async () => {
+		const { vault, firstBefore, result } = await importSecond();
+		expect(result.errors).toEqual([]);
+		for (const [path, text] of firstBefore) {
+			expect(vault.files.get(path)).toBe(text);
+		}
+		expect(duplicateCuries(vault.files)).toEqual([]);
+		expect(result.moved ?? []).toEqual([]);
+		expect(result.orphans ?? []).toEqual([]);
+	});
+});
+
+// ===========================================================================
+// 4. A-8, COMPANION 2: a COLD CACHE at step 3 blocks, and never generates.
+//
+// A null `getFileCache` means "Obsidian has not read this file yet", never
+// "this file has no properties". Whole-vault discovery has no raw-frontmatter
+// fallback, so a cold cache shows a vault with fewer sets than it has -- and
+// the missing set is exactly the one this import would have refreshed.
+// ===========================================================================
+
+describe('a cold metadata cache at step 3', () => {
+	async function coldFlow() {
+		const vault = await seedPreFixVault();
+		for (const path of vault.files.keys()) vault.coldPaths.add(path);
+		forgetSeedWrites(vault);
+		const { flow } = makeFlow(vault.app);
+		const prepared = await inner(flow).prepareStep3(true);
+		return { vault, flow, prepared };
+	}
+
+	it('refuses to settle an answer, and says why in words a user can act on', async () => {
+		const { flow, prepared } = await coldFlow();
+		expect(prepared.ok).toBe(false);
+		expect(inner(flow).indexingBlocked).toBe(
+			'Obsidian is still indexing your vault. Wait a moment and open the import again.',
+		);
+		expect(inner(flow).discoveredSets).toBeNull();
+	});
+
+	it('blocks the Next button off step 2', async () => {
+		const { flow } = await coldFlow();
+		flow.currentStep = 2;
+		await expect(flow.validateCurrentStep()).resolves.toBe(false);
+	});
+
+	it('refuses to hand generation an ownership answer', async () => {
+		const { flow } = await coldFlow();
+		expect(() => inner(flow).selectedImportSet()).toThrow(/still indexing/);
+		expect(inner(flow).validateImportSetSelection()).toBe(false);
+	});
+
+	it('writes nothing at all when Generate is pressed anyway', async () => {
+		const { vault, flow } = await coldFlow();
+		const before = new Map(vault.files);
+		await flow.generate();
+		expect(vault.create).not.toHaveBeenCalled();
+		expect(vault.modify).not.toHaveBeenCalled();
+		expect(vault.rename).not.toHaveBeenCalled();
+		expect([...vault.files]).toEqual([...before]);
+		// The distinction A-4 exists to preserve: the vault picture is REFUSED,
+		// never emptied. An empty list would read as "this vault holds no imports",
+		// which is how a cold cache mints a duplicate of a set it could not see.
+		expect(inner(flow).discoveredSets).toBeNull();
+	});
+
+	it('retries once the cache is warm, rather than latching the refusal', async () => {
+		// The refusal deliberately clears the settled marker: a user who waits and
+		// presses Next again must get a fresh answer, not the cached "no".
+		const { vault, flow } = await coldFlow();
+		vault.coldPaths.clear();
+		const again = await inner(flow).prepareStep3();
+		expect(again.ok).toBe(true);
+		expect(inner(flow).indexingBlocked).toBeNull();
+		expect(inner(flow).currentOutputPath()).toBe(SHARED_ROOT);
+	});
+});
+
+// ===========================================================================
+// 5. A-3 AT THE WIZARD: segment-wise recovery, and failing closed.
+//
+// `recoverImportSetRoot` itself is unit-tested in tests/import-set.test.ts.
+// What is asserted here is the CONSEQUENCE: which folder the refresh is offered,
+// and what happens when the answer is null. A green helper test next to a caller
+// that ignores it is exactly how the original defect survived.
+// ===========================================================================
+
+describe('two sets whose folder names share a prefix', () => {
+	/** Two independent imports, in sibling folders one name is a prefix of. */
+	async function twoSiblingSets() {
+		const vault = makeVault();
+		const mini: Recipe = {
+			...RECIPE,
+			recipe: 'custom-nist-mini',
+			source: { ontology: 'nist-mini', levels: ['tactic', 'leaf'] },
+		};
+		const minimal: Recipe = {
+			...RECIPE,
+			recipe: 'custom-nist-minimal',
+			source: { ontology: 'nist-minimal', levels: ['tactic', 'leaf'] },
+		};
+		await generateNotes(vault.app, parsed(), CONFIG, options('Frameworks/NIST-mini', 'replace', { recipeOverride: mini, importSet: 'new' }));
+		await generateNotes(vault.app, parsed(), CONFIG, options('Frameworks/NIST-minimal', 'replace', { recipeOverride: minimal, importSet: 'new' }));
+		return vault;
+	}
+
+	it('refreshes into its own folder, never into a merged character prefix', async () => {
+		const vault = await twoSiblingSets();
+		const { destination } = await askWhereItLands(vault.app, {
+			globalRoot: 'Frameworks',
+			sourceFileName: 'nist-mini.csv',
+			ontology: 'nist-mini',
+		});
+		expect(destination).toBe('Frameworks/NIST-mini');
+		// The falsifying answer a common-string-prefix implementation gives: a
+		// folder NEITHER set lives in, which a refresh would fork the import into.
+		expect(destination).not.toBe('Frameworks/NIST-min');
+		expect(destination).not.toBe('Frameworks/NIST-minimal');
+	});
+
+	it('sends the sibling source to the sibling folder, from the same vault', async () => {
+		const vault = await twoSiblingSets();
+		const { destination } = await askWhereItLands(vault.app, {
+			globalRoot: 'Frameworks',
+			sourceFileName: 'nist-minimal.csv',
+			ontology: 'nist-minimal',
+		});
+		expect(destination).toBe('Frameworks/NIST-minimal');
+	});
+});
+
+describe('a set whose notes are spread across two top-level folders', () => {
+	/** One note dragged out of the import root into an unrelated tree. */
+	async function spreadSet() {
+		const vault = await seedPreFixVault();
+		const stray = [...vault.files.keys()].find((p) => p.endsWith('/T1078.md'))!;
+		vault.files.set('Archive/T1078.md', vault.files.get(stray)!);
+		vault.files.delete(stray);
+		return vault;
+	}
+
+	it('recovers no root at all, rather than inventing one', async () => {
+		const vault = await spreadSet();
+		const { flow } = await askWhereItLands(vault.app);
+		const [set] = inner(flow).discoveredSets ?? [];
+		expect(set.root).toBeNull();
+	});
+
+	it('names the problem in words that tell the user what to do', async () => {
+		const vault = await spreadSet();
+		const { flow } = await askWhereItLands(vault.app);
+		expect(inner(flow).refreshRootProblem()).toBe(
+			'Crosswalker cannot tell where this framework lives. Its notes are spread across more than one folder. Import it as a new set, or move its notes into one folder first.',
+		);
+	});
+
+	it('refuses to generate rather than writing into a guessed folder', async () => {
+		const vault = await spreadSet();
+		const { flow } = await askWhereItLands(vault.app);
+		expect(() => inner(flow).selectedImportSet()).toThrow(/spread across more than one folder/);
+		expect(inner(flow).validateImportSetSelection()).toBe(false);
+
+		const before = new Map(vault.files);
+		await flow.generate();
+		expect([...vault.files]).toEqual([...before]);
+	});
+});
+
+// ===========================================================================
+// 6. A-6: the hardening that must hold whatever the destination rule decides.
+// ===========================================================================
+
+describe('a new set refuses to mint into a folder another set already owns', () => {
+	/** A set that already occupies the per-import root this source derives. */
+	async function occupiedDerivedRoot() {
+		return seedVault(RECIPE, DERIVED_ROOT);
+	}
+
+	it('refuses, and offers the one action that resolves it', async () => {
+		const vault = await occupiedDerivedRoot();
+		// A source the stamps do NOT connect to that set (a re-derived ontology),
+		// so the default is a new set -- landing on the occupied derived root.
+		const { flow } = await askWhereItLands(vault.app, { ontology: 'attack-mini-v2' });
+		expect(inner(flow).importSetChoice).toBe('new');
+		expect(inner(flow).currentOutputPath()).toBe(DERIVED_ROOT);
+		expect(inner(flow).newSetOccupancyProblem())
+			.toMatch(/^Ontologies\/attack-mini already holds notes owned by import set iset-[a-z0-9]{6}\. Choose another folder for this import, or refresh that set instead\.$/);
+	});
+
+	it('blocks Generate instead of writing a second ontology into that folder', async () => {
+		const vault = await occupiedDerivedRoot();
+		const { flow } = await askWhereItLands(vault.app, { ontology: 'attack-mini-v2' });
+		const before = new Map(vault.files);
+		expect(inner(flow).validateImportSetSelection()).toBe(false);
+		await flow.generate();
+		expect([...vault.files]).toEqual([...before]);
+	});
+
+	it('does not block a second framework that lands beside the first', async () => {
+		// The guard must be a collision check, not a "somebody else is in this
+		// vault" check: a legacy flat set at Ontologies must not make every new
+		// import under Ontologies impossible.
+		const vault = await seedPreFixVault();
+		const { flow } = await askWhereItLands(vault.app, {
+			sourceFileName: 'cis-controls-v8.csv',
+			ontology: 'cis-controls-v8',
+		});
+		expect(inner(flow).currentOutputPath()).toBe('Ontologies/cis-controls-v8');
+		expect(inner(flow).newSetOccupancyProblem()).toBeNull();
+	});
+});
+
+describe('a suppressed move under skip mode', () => {
+	/**
+	 * The only way to ask the engine for a move it must then suppress: point a
+	 * refresh at a different root. Part A keeps a refresh out of this state, and
+	 * the engine must not depend on the wizard for its own safety (E1/E2).
+	 */
+	async function skipIntoAMovedRoot(recipeOverride: Recipe = RECIPE, rows: ParsedData = parsed()) {
+		const vault = await seedPreFixVault(recipeOverride);
+		const before = new Map(vault.files);
+		const result = await generateNotes(vault.app, rows, CONFIG, options(DERIVED_ROOT, 'skip', { recipeOverride }));
+		return { vault, before, result };
+	}
+
+	it('reports the path that exists, never the path the move would have used', async () => {
+		const { vault, result } = await skipIntoAMovedRoot();
+		expect([...result.skipped].sort()).toEqual([
+			'Ontologies/Discovery/T1590.md',
+			'Ontologies/Discovery/T1595.002.md',
+			'Ontologies/Discovery/T1595.md',
+			'Ontologies/Persistence/T1078.001.md',
+			'Ontologies/Persistence/T1078.md',
+			'Ontologies/Persistence/T1098.md',
+		]);
+		// The whole point: a user following the report lands on a real note.
+		for (const path of result.skipped) expect(vault.files.has(path)).toBe(true);
+		for (const path of result.skipped) expect(path.startsWith(DERIVED_ROOT)).toBe(false);
+	});
+
+	it('moves nothing at all', async () => {
+		const { vault, before, result } = await skipIntoAMovedRoot();
+		expect(result.moved ?? []).toEqual([]);
+		expect(vault.rename).not.toHaveBeenCalled();
+		expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+	});
+
+	it('leaves a facet hub where it is instead of relocating it', async () => {
+		// A facet hub's curie is address-independent, so identity resolution finds
+		// it wherever it sits and WANTS to relocate it (the `replace` run below is
+		// the control that proves it does). Under skip it must not, and the
+		// enrichment phase has to enforce that itself rather than relying on the
+		// caller having chosen a destination that never asks for a move.
+		//
+		// Two new rows, not one: under skip only the rows this run CREATES reach
+		// the enrichment batch, and a facet hub is materialized only at
+		// HUB_MIN_MEMBERS (2). One new row silently emits no hub at all, and the
+		// assertion below would then hold for the wrong reason.
+		const { vault, result } = await skipIntoAMovedRoot(FACET_RECIPE, rowsPlusTwoNew());
+
+		expect(vault.files.has(`${SHARED_ROOT}/Enterprise.md`)).toBe(true);
+		expect(vault.files.has(`${DERIVED_ROOT}/Enterprise.md`)).toBe(false);
+		expect((result.moved ?? []).map((m) => m.from)).not.toContain(`${SHARED_ROOT}/Enterprise.md`);
+		expect(vault.rename).not.toHaveBeenCalled();
+	});
+
+	it('relocates that same facet hub under replace, which is the control', async () => {
+		// Without this the test above proves nothing: a hub that was never going to
+		// move is not evidence that a suppression worked.
+		const vault = await seedPreFixVault(FACET_RECIPE);
+		const result = await generateNotes(
+			vault.app, rowsPlusTwoNew(), CONFIG,
+			options(DERIVED_ROOT, 'replace', { recipeOverride: FACET_RECIPE }),
+		);
+		expect(vault.files.has(`${DERIVED_ROOT}/Enterprise.md`)).toBe(true);
+		expect(vault.files.has(`${SHARED_ROOT}/Enterprise.md`)).toBe(false);
+		expect((result.moved ?? []).map((m) => m.from)).toContain(`${SHARED_ROOT}/Enterprise.md`);
+	});
+});
+
+// ===========================================================================
+// 7. A-7: what the user is actually shown.
+//
+// `moved` and `orphans` were written by the engine and read by nothing, which
+// made two acceptance clauses untestable and hid a real answer from the user.
+// ===========================================================================
+
+describe('the results screen', () => {
+	function render(result: Parameters<ImportFlow['renderGenerationResults']>[0]) {
+		const { flow, texts } = makeFlow({});
+		flow.renderGenerationResults(result);
+		return texts;
+	}
+
+	const clean = {
+		success: true,
+		created: ['Ontologies/Persistence/T1078.md'],
+		skipped: [],
+		errors: [],
+	};
+
+	it('states that nothing moved, rather than saying nothing at all', () => {
+		const texts = render({ ...clean, moved: [], orphans: [] });
+		expect(texts).toContain('📦 Moved: 0 notes. Nothing was relocated.');
+	});
+
+	it('lists what moved when something did', () => {
+		const texts = render({
+			...clean,
+			moved: [{ curie: `${ONTOLOGY}:T1078`, from: 'Ontologies/T1078.md', to: 'Ontologies/Persistence/T1078.md' }],
+		});
+		expect(texts).toContain('📦 Moved: 1 note was relocated.');
+		expect(texts).toContain('Ontologies/T1078.md → Ontologies/Persistence/T1078.md');
+	});
+
+	it('counts the notes the source no longer produces, and says they were kept', () => {
+		const texts = render({
+			...clean,
+			orphans: [{ curie: `${ONTOLOGY}:T1099`, path: 'Ontologies/Persistence/T1099.md' }],
+		});
+		expect(texts).toContain('🕳️ Orphans: 1 note is no longer in the source. They were kept, not deleted.');
+		expect(texts).toContain(`${ONTOLOGY}:T1099: Ontologies/Persistence/T1099.md`);
+	});
+
+	// KNOWN GAP. A-8 requires the results screen to show "moved: 0 AND the orphan
+	// count". The orphan line is rendered only when the count is non-zero, so on
+	// the clean refresh A-8 describes the user is told that nothing moved and told
+	// nothing whatsoever about orphans -- which is the same "cannot tell 'none'
+	// from 'nobody checked'" the moved line was made unconditional to avoid.
+	it.failing('states the orphan count even when it is zero', () => {
+		const texts = render({ ...clean, moved: [], orphans: [] });
+		expect(texts.join('\n')).toMatch(/Orphans: 0/);
+	});
+});
+
+// ===========================================================================
+// 8. The isolating experiment behind the two `it.failing` clauses in section 2.
+// ===========================================================================
+
 describe('the skip-mode hub gap does not depend on the legacy shape', () => {
 	it('orphans every hub even on a vault this engine generated moments earlier', async () => {
-		// The isolating experiment. No de-migration, no destination change, no
-		// legacy curies: the only variable is overwriteMode. If this ever goes
-		// green, the two `it.failing` clauses above must be un-marked in the same
-		// change.
+		// No de-migration, no destination change, no legacy curies: the only
+		// variable is overwriteMode. If this ever goes green, the two `it.failing`
+		// clauses in section 2 must be un-marked in the same change.
 		const vault = await seedVault();
 		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'skip'));
 		expect((result.orphans ?? []).map((o) => o.curie).sort()).toEqual([
-			'unknown:hub/_root',
-			'unknown:hub/discovery',
-			'unknown:hub/persistence',
+			`${ONTOLOGY}:hub/_root`,
+			`${ONTOLOGY}:hub/discovery`,
+			`${ONTOLOGY}:hub/persistence`,
 		]);
 	});
 
@@ -500,108 +1050,107 @@ describe('the skip-mode hub gap does not depend on the legacy shape', () => {
 });
 
 // ===========================================================================
-// 3. The safety net: what happens when the destination really does change.
+// 9. THE SAME CRITERION, DRIVEN THROUGH THE REAL WIZARD PATH.
 //
-// F-3 is what keeps the destination still in section 2, but it declines on
-// purpose in several real situations (a streamed source has no eager rows to
-// probe; a source above the probe ceiling; several sets claiming the same
-// identities; notes that share no root). What a moved destination does to hubs
-// therefore still matters.
+// Sections 1-8 call `generateNotes` directly, which is precise but leaves one
+// question open: does the flow that a user actually drives hand the engine the
+// destination and the ownership answer the review screen showed them? Here the
+// pre-fix vault is built by RUNNING THE WIZARD, so the refresh cannot differ
+// from the original import in any way except the one under test, and the
+// refresh is `flow.generate()` -- config, recipe, destination, ownership and
+// overwrite mode all resolved by the flow itself.
 //
-// The two hub kinds diverge here, and the divergence is the boundary of the fix:
-//
-//   FACET hubs carry an address-independent curie (`<ont>:facet/<ns>/<value>`),
-//   so identity resolution finds them wherever they sit and RELOCATES them.
-//   That is F-6 doing real work: before it, the path-only lookup missed and a
-//   second facet hub was created, permanently claiming the same curie.
-//
-//   LEVEL hubs carry a curie relative to the import root (F-4), which is the
-//   right rule -- but when the root itself moves, the old hub is a hub for a
-//   folder this import no longer produces, and no alias can match it. The old
-//   level hubs are left behind. Asserted, named, and left to F-3 to keep out of
-//   reach rather than quietly implied to be fixed.
+// It also reaches the one clause nothing else can: what the user is SHOWN when
+// the refresh finishes.
 // ===========================================================================
 
-describe('a moved destination relocates facet hubs instead of duplicating them (F-6)', () => {
-	async function movedFacetRefresh() {
-		const vault = await seedPreFixVault(FACET_RECIPE);
+describe('two real wizard runs, the second a refresh', () => {
+	/**
+	 * Run the wizard once into the bare shared root -- which is exactly how the
+	 * pre-fix vaults arose, the destination field having been seeded with the
+	 * global output path -- then rewrite the result into the pre-fix on-disk
+	 * shape and hand the vault to a second, untouched flow.
+	 */
+	async function firstImportThenRefresh() {
+		const vault = makeVault();
+
+		const first = makeFlow(vault.app);
+		(first.flow as unknown as { destinationEdited: boolean }).destinationEdited = true;
+		first.flow.outputPath = SHARED_ROOT;
+		first.flow.overwriteMode = 'replace';
+		first.flow.currentStep = 4;
+		await inner(first.flow).prepareStep3(true);
+		await first.flow.generate();
+
+		deMigrateToPreFix(vault.files, SHARED_ROOT);
+		vault.files.set(
+			`${SHARED_ROOT}/Persistence.md`,
+			`${vault.files.get(`${SHARED_ROOT}/Persistence.md`)!}\n${HUB_PROSE}\n`,
+		);
 		const before = new Map(vault.files);
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(DERIVED_ROOT, 'replace', FACET_RECIPE));
-		return { vault, before, result };
+		forgetSeedWrites(vault);
+
+		const second = makeFlow(vault.app);
+		second.flow.overwriteMode = 'replace';
+		second.flow.currentStep = 4;
+		await inner(second.flow).prepareStep3(true);
+		const destination = inner(second.flow).currentOutputPath();
+		await second.flow.generate();
+
+		return { vault, before, destination, second };
 	}
 
-	it('leaves exactly one note claiming the facet identity', async () => {
-		const { vault, result } = await movedFacetRefresh();
-		expect(ambiguousIdentityErrors(result)).toEqual([]);
-		expect(duplicateCuries(vault.files)).toEqual([]);
-		expect(pathsOfKind(vault.files, 'facet')).toEqual([`${DERIVED_ROOT}/Enterprise.md`]);
-		expect(vault.files.has(`${SHARED_ROOT}/Enterprise.md`)).toBe(false);
-	});
-
-	it('reports the relocation, so a rearranged vault is never a mystery', async () => {
-		const { result } = await movedFacetRefresh();
-		expect((result.moved ?? []).map((m) => `${m.from} -> ${m.to}`))
-			.toContain(`${SHARED_ROOT}/Enterprise.md -> ${DERIVED_ROOT}/Enterprise.md`);
-	});
-
-	it('carries the user prose on that hub across with it', async () => {
-		// The reason a hub is moved rather than regenerated at the new address and
-		// deleted at the old: a hub can hold content only the user has.
-		const vault = await seedPreFixVault(FACET_RECIPE);
-		const hubPath = `${SHARED_ROOT}/Enterprise.md`;
-		vault.files.set(hubPath, `${vault.files.get(hubPath)!}\nMy own notes about this facet.\n`);
-
-		await generateNotes(vault.app, parsed(), CONFIG, options(DERIVED_ROOT, 'replace', FACET_RECIPE));
-
-		expect(vault.files.get(`${DERIVED_ROOT}/Enterprise.md`)).toContain('My own notes about this facet.');
-	});
-
-	it('refuses to relocate onto an occupied address, and says so', async () => {
-		// Refusing to move is always safe; clobbering a note this run did not
-		// produce is not.
-		const vault = await seedPreFixVault(FACET_RECIPE);
-		vault.folders.add(DERIVED_ROOT);
-		vault.files.set(`${DERIVED_ROOT}/Enterprise.md`, '# Something a user already put here\n');
-
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(DERIVED_ROOT, 'replace', FACET_RECIPE));
-
-		expect(vault.files.get(`${DERIVED_ROOT}/Enterprise.md`)).toContain('Something a user already put here');
-		expect((result.warnings ?? []).map((w) => w.message).join('\n')).toMatch(/already occupied/);
-	});
-});
-
-describe('a moved destination still strands level hubs (the residual F-3 protects against)', () => {
-	it('leaves the old level hubs behind, because their identity is relative to a root that moved', async () => {
-		const vault = await seedPreFixVault();
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(DERIVED_ROOT, 'replace'));
-
-		// No duplicate identity and no ambiguity: the two generations of hub carry
-		// DIFFERENT curies, which is precisely why neither can see the other.
-		expect(ambiguousIdentityErrors(result)).toEqual([]);
-		expect(duplicateCuries(vault.files)).toEqual([]);
-
-		expect(pathsOfKind(vault.files, 'hub')).toEqual([
-			'Ontologies/Discovery/Discovery.md',
+	it('leaves the first import flat, with its concept notes AND its hubs at the bare root', async () => {
+		// The starting state the whole criterion is about. Asserted rather than
+		// assumed: a fixture that quietly nested itself would test nothing.
+		const { before } = await firstImportThenRefresh();
+		expect([...before.keys()].sort()).toEqual([
+			'Ontologies/Discovery.md',
 			'Ontologies/Ontologies.md',
-			'Ontologies/Persistence/Persistence.md',
-			`${DERIVED_ROOT}/Discovery/Discovery.md`,
-			`${DERIVED_ROOT}/Persistence/Persistence.md`,
-			`${DERIVED_ROOT}/attack-mini.md`,
+			'Ontologies/Persistence.md',
+			'Ontologies/T1078.md',
+			'Ontologies/T1078/T1078.001.md',
+			'Ontologies/T1098.md',
+			'Ontologies/T1590.md',
+			'Ontologies/T1595.md',
+			'Ontologies/T1595/T1595.002.md',
 		]);
 	});
 
-	it('relocates the concept notes by identity, so no concept is duplicated', async () => {
-		// The concepts DO reconcile, because their curies never encoded an address.
-		// This is what makes the level-hub residual survivable rather than fatal.
-		const vault = await seedPreFixVault();
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(DERIVED_ROOT, 'replace'));
+	it('refreshes into that same bare root', async () => {
+		const { destination } = await firstImportThenRefresh();
+		expect(destination).toBe(SHARED_ROOT);
+		expect(destination).not.toBe(DERIVED_ROOT);
+	});
 
-		expect((result.moved ?? []).map((m) => m.to).sort()).toEqual([
-			`${DERIVED_ROOT}/Discovery/T1590.md`,
-			`${DERIVED_ROOT}/Discovery/T1595.md`,
-			`${DERIVED_ROOT}/Persistence/T1078.md`,
-			`${DERIVED_ROOT}/Persistence/T1098.md`,
-		]);
-		expect(vault.files.has(`${SHARED_ROOT}/Persistence/T1078.md`)).toBe(false);
+	it('leaves the vault holding exactly the notes it held before', async () => {
+		const { vault, before } = await firstImportThenRefresh();
+		expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+		expect(duplicateCuries(vault.files)).toEqual([]);
+		expect(vault.rename).not.toHaveBeenCalled();
+	});
+
+	it('keeps the prose the user typed onto a hub', async () => {
+		const { vault } = await firstImportThenRefresh();
+		expect(vault.files.get(`${SHARED_ROOT}/Persistence.md`)).toContain(HUB_PROSE);
+	});
+
+	// KNOWN GAP. A successful run renders the results screen only when something
+	// moved or orphaned; otherwise it closes the host. So on the A-8 scenario
+	// itself -- a refresh that correctly moves nothing -- the "Moved: 0" line
+	// A-8 asks for is never drawn, and neither is the orphan count. The user is
+	// left unable to tell "nothing moved" from "nobody checked", which is the
+	// exact reason the moved line was made unconditional in the first place.
+	it.failing('tells the user that nothing moved', async () => {
+		const { second } = await firstImportThenRefresh();
+		expect(second.texts).toContain('📦 Moved: 0 notes. Nothing was relocated.');
+	});
+
+	it('closes straight through instead, which is what makes the line unreachable', async () => {
+		// The other half of the gap above, asserted positively so the pair reads
+		// as one statement: today a clean refresh reports nothing at all.
+		const { second } = await firstImportThenRefresh();
+		expect(second.close).toHaveBeenCalledTimes(1);
+		expect(second.texts.filter((t) => /Moved|Orphans/.test(t))).toEqual([]);
 	});
 });

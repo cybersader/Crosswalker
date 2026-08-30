@@ -50,6 +50,24 @@ export interface DiscoveredImportSet extends ImportSetReference {
 	 * set's notes do not share a root.
 	 */
 	root: string | null;
+	/**
+	 * Every distinct `_crosswalker.recipe.id` stamped on this set's notes, sorted.
+	 *
+	 * A set legitimately holds more than one: a refresh through a renamed or
+	 * re-saved recipe restamps only the notes it rewrites, and a set that was
+	 * seeded by one recipe and extended by another is a real state, not a fault.
+	 * Membership, therefore, not equality: a source matches a set when the set
+	 * carries that recipe id anywhere, which is the question a caller is actually
+	 * asking ("has this source written here before?").
+	 */
+	recipeIds: string[];
+	/**
+	 * Every distinct ontology prefix (the part of a note's `curie` before the
+	 * colon) stamped on this set's notes, sorted. The second half of the same
+	 * question, for a set whose recipe was renamed between imports: the ontology
+	 * prefix is a pure function of the source, so it survives a recipe rename.
+	 */
+	ontologyPrefixes: string[];
 }
 
 interface ImportSetObservation {
@@ -57,6 +75,8 @@ interface ImportSetObservation {
 	scheme: string | null;
 	path: string;
 	destination: string | null;
+	recipeId: string | null;
+	ontologyPrefix: string | null;
 }
 
 /** A destination contains several ownership sets and no caller selected one. */
@@ -187,7 +207,22 @@ async function collectObservations(app: App, basePath?: string, onlyId?: string)
 			throw new ImportSetProvenanceError(`Invalid import set id at ${file.path}: expected iset- followed by 6 lowercase letters or digits.`, [file.path]);
 		}
 		const destination = readString((raw as Record<string, unknown>).destination);
-		observations.push({ id, scheme, path: file.path, destination });
+		// Two stamped facts about WHAT produced this note, kept beside the ownership
+		// id so a caller can ask "has this source written here before?" without
+		// re-deriving anything from the note's address. Both are optional: a note
+		// written by a producer that stamps neither simply contributes nothing.
+		const recipeBlock = (provenance as Record<string, unknown>).recipe;
+		const recipeId = recipeBlock && typeof recipeBlock === 'object'
+			? readString((recipeBlock as Record<string, unknown>).id)
+			: null;
+		observations.push({
+			id,
+			scheme,
+			path: file.path,
+			destination,
+			recipeId,
+			ontologyPrefix: curiePrefix(readString((fm as Record<string, unknown>).curie)),
+		});
 	}
 	return observations;
 }
@@ -238,6 +273,8 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 			noteCount: paths.length,
 			paths,
 			root: resolveSetRoot(recorded, paths),
+			recipeIds: distinctSorted(group.map((entry) => entry.recipeId)),
+			ontologyPrefixes: distinctSorted(group.map((entry) => entry.ontologyPrefix)),
 			...(recorded ? { destination: recorded } : {}),
 		});
 	}
@@ -292,6 +329,19 @@ function readString(value: unknown): string | null {
 	if (typeof value !== 'string') return null;
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : null;
+}
+
+/** The ontology half of a curie (`nist-mini:AC-1` -> `nist-mini`), or null. */
+function curiePrefix(curie: string | null): string | null {
+	if (!curie) return null;
+	const colon = curie.indexOf(':');
+	if (colon <= 0) return null;
+	return curie.slice(0, colon);
+}
+
+/** Distinct non-null values in a stable order, so two runs compare equal. */
+function distinctSorted(values: readonly (string | null)[]): string[] {
+	return [...new Set(values.filter((value): value is string => value !== null))].sort();
 }
 
 /**

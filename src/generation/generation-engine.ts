@@ -202,6 +202,14 @@ interface EnrichmentWriteOptions {
 	basePath: string;
 	sourceFileName?: string;
 	sourceVersion?: string;
+	/**
+	 * Carried in so the enrichment phase can honour `skip` on its own. A hub
+	 * relocation is a change to the vault, and `skip` means leave existing notes
+	 * alone; the row loops already gate their moves on this, and the enrichment
+	 * phase must not be the one place whose safety depends on the caller having
+	 * chosen a destination that never asks for a move.
+	 */
+	overwriteMode?: 'skip' | 'replace' | 'error';
 }
 
 // Current schema version for _crosswalker metadata
@@ -556,8 +564,13 @@ export async function generateNotes(
 
 					if (existingFile instanceof TFile) {
 						if (options.overwriteMode === 'skip') {
-							result.skipped.push(writePath);
-							debug?.info('generation', 'skipped-existing', `Skipped existing file ${writePath}`, { path: writePath });
+							// The path that EXISTS, never the one the move was going to use.
+							// Reporting the desired path names a file the run deliberately did
+							// not create, so "every reported path exists" stops holding and a
+							// user following the report lands on nothing.
+							const skippedPath = existingFile.path;
+							result.skipped.push(skippedPath);
+							debug?.info('generation', 'skipped-existing', `Skipped existing file ${skippedPath}`, { path: skippedPath });
 							return;
 						} else if (options.overwriteMode === 'error') {
 							result.errors.push({
@@ -677,6 +690,7 @@ export async function generateNotes(
 						basePath: options.basePath,
 						sourceFileName: options.sourceFileName,
 						sourceVersion: options.frameworkVersion ?? recipe.source?.version,
+						overwriteMode: options.overwriteMode,
 					},
 					curiePrefix,
 					enrichRecords,
@@ -1148,38 +1162,15 @@ function deriveFilenameStem(
 }
 
 /**
- * The concept identities a wizard/workbench import will produce, for a bounded
- * sample of its rows.
- *
- * Exists so the destination can be chosen by asking WHICH IDENTITIES THE VAULT
- * ALREADY HOLDS rather than by guessing a folder from a source file name. That
- * question is answerable before any address exists precisely because a concept
- * curie is a pure function of (ontology prefix, row) and never of `basePath` —
- * which is also why asking it does not reintroduce the address-to-identity
- * coupling this whole change removes.
- *
- * Built on the SAME two helpers the write loop uses, so a drift here is a
- * compile error rather than a silently wrong match.
- */
-export function plannedConceptCuries(
-	mapping: MappingConfig,
-	ontologyId: string,
-	rows: readonly Record<string, unknown>[],
-	limit: number,
-): string[] {
-	const prefix = slugifyForCurie(ontologyId);
-	const curies: string[] = [];
-	for (let i = 0; i < rows.length && curies.length < limit; i++) {
-		curies.push(`${prefix}:${deriveFilenameStem(rows[i] as Record<string, any>, mapping, i + 1)}`);
-	}
-	return curies;
-}
-
-/**
  * Slugify a string for use as a CURIE prefix (must match the schema's
  * `^[a-z][a-z0-9_-]*` pattern from spec/tier1.schema.json $defs/curie).
+ *
+ * Exported so a caller comparing a source against the ontology prefixes ALREADY
+ * STAMPED on vault notes produces the same prefix generation stamps. Comparing
+ * against the un-slugged ontology instead silently misses every name that needed
+ * normalizing, which reads as "no set matches" and mints a duplicate.
  */
-function slugifyForCurie(input: string): string {
+export function slugifyForCurie(input: string): string {
 	const lower = String(input).toLowerCase();
 	const cleaned = lower.replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '');
 	// Ensure first char is a letter (schema requires)
@@ -2252,7 +2243,8 @@ export async function generateFromRecipe(
 
 			if (existingFile instanceof TFile) {
 				if (options.overwriteMode === 'skip') {
-					result.skipped.push(writePath);
+					// The path that EXISTS, never the desired one — see generateNotes.
+					result.skipped.push(existingFile.path);
 					return;
 				} else if (options.overwriteMode === 'error') {
 					result.errors.push({ row: rowNum, message: `File already exists: ${writePath}` });
@@ -2525,9 +2517,18 @@ async function applyHubRelocation(
 	target: { existingFile: TFile | null; writePath: string; moveFrom?: string },
 	curie: string | null,
 	result: GenerationResult,
+	overwriteMode: 'skip' | 'replace' | 'error' | undefined,
 	debug?: DebugLog,
 ): Promise<string> {
 	if (!target.moveFrom || !target.existingFile) return target.writePath;
+	if (overwriteMode === 'skip') {
+		// Leave it exactly where it is, and do not create the folder it would have
+		// moved into: a destination that will receive nothing must not be built.
+		debug?.info('generation', 'hub-relocation-skipped', `Hub ${curie ?? target.existingFile.path} left at ${target.moveFrom} (skip mode)`, {
+			curie, from: target.moveFrom, to: target.writePath,
+		});
+		return target.existingFile.path;
+	}
 	if (app.vault.getAbstractFileByPath(target.writePath)) {
 		result.warnings ??= [];
 		result.warnings.push({
@@ -2700,7 +2701,7 @@ async function applyEnrichment(
 		// instead of finding the hub that exists.
 		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, identityIndex);
 		const existing = target.existingFile;
-		const writePath = await applyHubRelocation(app, target, hubCurie, result, debug);
+		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
 		if (existing instanceof TFile) {
 			// Re-import through the SAME shared merger the row writes use. `kind:
 			// 'facet-hub'` selects adopt-by-replay: `mergeHubBody` was already
@@ -2757,7 +2758,7 @@ async function applyEnrichment(
 		// is what lets the existing note keep its content and be restamped instead.
 		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, identityIndex);
 		const existing = target.existingFile;
-		const writePath = await applyHubRelocation(app, target, hubCurie, result, debug);
+		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
 		if (existing instanceof TFile) {
 			// The adopted alias is recorded as produced so the identity this run
 			// deliberately superseded is not then reported as a note that vanished.

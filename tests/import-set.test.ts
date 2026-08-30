@@ -66,6 +66,10 @@ describe('import-set ownership discovery and selection', () => {
 			// No note recorded a destination (these predate the stamp), so the root
 			// is recovered from the paths: the deepest folder both notes sit under.
 			root: 'Frameworks',
+			// Neither note records what produced it, so the two matching keys are
+			// empty rather than absent: a set nothing can be matched against.
+			recipeIds: [],
+			ontologyPrefixes: [],
 		}]);
 	});
 
@@ -80,6 +84,8 @@ describe('import-set ownership discovery and selection', () => {
 			noteCount: 1,
 			paths: ['Frameworks/A.md'],
 			root: 'Frameworks',
+			recipeIds: [],
+			ontologyPrefixes: [],
 		}]);
 		expect(app.vault.cachedRead).toHaveBeenCalledTimes(1);
 	});
@@ -197,6 +203,8 @@ describe('import-set ownership discovery and selection', () => {
 			noteCount: 2,
 			paths: ['Frameworks/A.md', 'Frameworks/B.md'],
 			root: 'Frameworks',
+			recipeIds: [],
+			ontologyPrefixes: [],
 		}]);
 		await expect(resolveImportSet(app, 'Frameworks', { id: 'iset-abc123' })).resolves.toEqual({
 			id: 'iset-abc123', scheme: 'set-qualified-v1', destination: 'Frameworks',
@@ -355,5 +363,95 @@ describe('a discovered set knows where it lives', () => {
 		await expect(resolveImportSet(app, '', 'new')).resolves.toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1',
 		});
+	});
+});
+
+// ===========================================================================
+// A-2: a discovered set carries the two STAMPED FACTS an import is matched on.
+//
+// Ownership review used to be scoped to the destination folder, so "one set in
+// this folder" meant "refresh that set, whatever it was" -- which is how a
+// second framework was attributed to the first. Matching now asks what the
+// notes were stamped with, and these are the fields that answer.
+// ===========================================================================
+
+/** A vault whose notes carry full frontmatter, not only the ownership stamp. */
+function mockStampedApp(notes: Record<string, { setId: string; recipeId?: string; curie?: string }>) {
+	const files = Object.keys(notes).map((path) => new TFile(path));
+	return {
+		vault: { getMarkdownFiles: () => files, cachedRead: jest.fn(async () => '') },
+		metadataCache: {
+			getFileCache: (file: { path: string }) => {
+				const note = notes[file.path];
+				if (!note) return undefined;
+				return {
+					frontmatter: {
+						...(note.curie !== undefined ? { curie: note.curie } : {}),
+						_crosswalker: {
+							import_set: { id: note.setId, scheme: 'endpoint-v1' },
+							...(note.recipeId !== undefined ? { recipe: { id: note.recipeId } } : {}),
+						},
+					},
+				};
+			},
+		},
+	} as any;
+}
+
+describe('a discovered set knows what produced it', () => {
+	it('collects the recipe id and the ontology prefix its notes are stamped with', async () => {
+		const app = mockStampedApp({
+			'Ontologies/A.md': { setId: 'iset-abc123', recipeId: 'custom-attack-mini', curie: 'attack-mini:T1078' },
+			'Ontologies/B.md': { setId: 'iset-abc123', recipeId: 'custom-attack-mini', curie: 'attack-mini:T1098' },
+		});
+		const [set] = await discoverImportSets(app, undefined);
+		expect(set.recipeIds).toEqual(['custom-attack-mini']);
+		expect(set.ontologyPrefixes).toEqual(['attack-mini']);
+	});
+
+	it('keeps every distinct value, because a set legitimately carries more than one', async () => {
+		// A refresh through a renamed recipe restamps only the notes it rewrites,
+		// so a half-restamped set is a real state. Matching is membership, and
+		// membership needs the whole list.
+		const app = mockStampedApp({
+			'Ontologies/A.md': { setId: 'iset-abc123', recipeId: 'custom-attack-mini', curie: 'attack-mini:T1078' },
+			'Ontologies/B.md': { setId: 'iset-abc123', recipeId: 'attack-mini-v2', curie: 'attack-mini:T1098' },
+		});
+		const [set] = await discoverImportSets(app, undefined);
+		expect(set.recipeIds).toEqual(['attack-mini-v2', 'custom-attack-mini']);
+		expect(set.ontologyPrefixes).toEqual(['attack-mini']);
+	});
+
+	it('contributes nothing for a note that records neither, rather than a null', async () => {
+		// A producer that stamps ownership and nothing else is allowed. A null in
+		// these lists would match a source whose own key failed to build, which is
+		// precisely the "match everything" failure the lists exist to prevent.
+		const app = mockStampedApp({
+			'Ontologies/A.md': { setId: 'iset-abc123' },
+			'Ontologies/B.md': { setId: 'iset-abc123', curie: 'attack-mini:T1098' },
+		});
+		const [set] = await discoverImportSets(app, undefined);
+		expect(set.recipeIds).toEqual([]);
+		expect(set.ontologyPrefixes).toEqual(['attack-mini']);
+	});
+
+	it('reads no prefix out of a curie that has no ontology half', async () => {
+		const app = mockStampedApp({
+			'Ontologies/A.md': { setId: 'iset-abc123', curie: 'no-colon-here' },
+			'Ontologies/B.md': { setId: 'iset-abc123', curie: ':leading-colon' },
+		});
+		const [set] = await discoverImportSets(app, undefined);
+		expect(set.ontologyPrefixes).toEqual([]);
+	});
+
+	it('does not let one set inherit another set stamps', async () => {
+		const app = mockStampedApp({
+			'Ontologies/A.md': { setId: 'iset-abc123', recipeId: 'custom-attack-mini', curie: 'attack-mini:T1078' },
+			'Ontologies/cis/B.md': { setId: 'iset-def456', recipeId: 'custom-cis-controls', curie: 'cis-controls:CIS-1' },
+		});
+		const sets = await discoverImportSets(app, undefined);
+		const byId = new Map(sets.map((s) => [s.id, s]));
+		expect(byId.get('iset-abc123')!.ontologyPrefixes).toEqual(['attack-mini']);
+		expect(byId.get('iset-def456')!.ontologyPrefixes).toEqual(['cis-controls']);
 	});
 });

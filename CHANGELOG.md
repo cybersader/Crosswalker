@@ -8,11 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
-### Known defect, mostly closed: each import now gets its own folder, but an existing vault needs care (2026-08-28, amended 2026-08-29)
+### Known defect, mostly closed: each import now gets its own folder, but an existing vault needs care (2026-08-28, amended 2026-08-29 and 2026-08-30)
 
 The original defect is fixed and the fix is verified against a real run. It is recorded here rather than rewritten as a plain feature entry because it is not safe to apply blindly to a vault that already holds imports, and because one form of the original problem survives untouched.
 
-**The work to make it safe for a vault that already holds imports is written but not finished.** It was measured against a bar set in advance rather than a checklist, it meets that bar when you choose *replace*, and it does not meet it when you leave the default *skip* in place. So it is not offered here, and every piece of guidance below still stands in full. If you have existing imports, the paragraph beginning "If you already have imports sitting directly in your output folder" is the thing to read.
+**The work to make it safe for a vault that already holds imports has now been attempted twice, and is still not finished.** Both attempts were measured against a bar set in advance rather than a checklist, and neither cleared it.
+
+The second attempt (2026-08-30) rests on a better rule than the first: **refreshing a collection you already have never changes where that collection lives.** Its folder is read from the notes it already owns and then remembered, so a refresh has nothing to move and nothing to leave behind, and moving a framework somewhere else becomes a thing you ask for rather than something that happens to you. That attempt is written, holds against 2,174 unit tests, and causes no regression in the end-to-end suite.
+
+**It still fails four of the bar's clauses, and one of them is on the path most people are on.** Import a second, unrelated framework through the ordinary wizard and it is *still* offered as a refresh of the first, because that path labels every import with the same placeholder name and the matching rule cannot tell two placeholders apart. Separately: on the default *skip* setting the grouping notes a collection owns are still reported as missing; the summary screen that was built so you could see "nothing was moved" is only drawn on the runs where something *was* moved; and a genuine "two notes claim the same identifier" error currently ends the run on the success path and closes the window without showing you.
+
+So none of it is offered here, and every piece of guidance below still stands in full. If you have existing imports, the paragraph beginning "If you already have imports sitting directly in your output folder" is the thing to read.
 
 **What was wrong**
 

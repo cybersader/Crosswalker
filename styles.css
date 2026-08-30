@@ -2345,6 +2345,10 @@
 	text-align: left;
 }
 .crosswalker-dest-crumb:hover { border-color: var(--background-modifier-border-hover); }
+/* A refresh writes back to its set's own root, so the path is shown, not offered
+   for editing (per-import root rule). No pointer, no hover affordance. */
+.crosswalker-dest-readonly { cursor: default; }
+.crosswalker-dest-readonly:hover { border-color: transparent; }
 .crosswalker-dest-seg { color: var(--text-normal); }
 .crosswalker-dest-sep { color: var(--text-faint); margin: 0 2px; }
 .crosswalker-dest-editicon { display: inline-flex; align-items: center; color: var(--text-faint); margin-left: var(--cw-s2); }
