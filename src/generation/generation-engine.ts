@@ -33,7 +33,7 @@ import {
 	type RenderReport,
 	type SourceScope,
 } from '../render';
-import { legacyConfigToRecipe } from './legacy-recipe-shim';
+import { legacyConfigToRecipe, LEGACY_ONTOLOGY_SENTINEL } from './legacy-recipe-shim';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
@@ -348,7 +348,13 @@ export async function generateNotes(
 		// once before the per-row loop. The recipe is what render() consumes.
 		// The shape workbench passes a pre-built recipe (recipeOverride) so its
 		// full mechanism set survives; otherwise the legacy shim translates.
-		const recipe = options.recipeOverride ?? legacyConfigToRecipe(config as ImportRecipe);
+		// AM-1: the source file name reaches the shim so a nameless classic import
+		// stamps its file stem as the ontology instead of the `unknown` sentinel.
+		// Failure mode prevented: every nameless classic import sharing one
+		// placeholder identity, which makes two unrelated frameworks look like
+		// the same source to import-set matching.
+		const recipe = options.recipeOverride
+			?? legacyConfigToRecipe(config as ImportRecipe, { sourceFileName: options.sourceFileName });
 		// Compute recipe ownership once and reuse the exact value written to
 		// `_crosswalker.recipe.id`; orphan detection must never invent a different
 		// ownership key from the provenance stored on notes.
@@ -404,9 +410,19 @@ export async function generateNotes(
 		// unaffected when the recipe carries no `source.ontology`, e.g. the
 		// workbench recipe today).
 		const enrichmentEnabled = !!recipe.target.enrichment;
-		const ontologyId = recipe.source?.ontology ?? (config.name ?? 'unknown');
+		const ontologyId = recipe.source?.ontology ?? (config.name ?? LEGACY_ONTOLOGY_SENTINEL);
 		const curiePrefix = slugifyForCurie(ontologyId);
 		const enrichRecords: EnrichRecord[] = [];
+		// AM-2. Rows this run KEPT rather than wrote (overwriteMode 'skip').
+		//
+		// Failure mode prevented: a skip refresh orphaning every hub the set owns.
+		// A skipped row is still a row this run vouches for, but the skip branch
+		// returns above the enrichment bookkeeping, so an unchanged set produced no
+		// enrichRecords at all, `applyEnrichment` never ran, no hub curie was ever
+		// marked produced, and orphan detection then reported every hub as gone.
+		// These records are used for BOOKKEEPING ONLY -- never written, never
+		// merged, never relocated -- so hub prose is untouched.
+		const keptRecords: EnrichRecord[] = [];
 		// parent_note: 'folder-note' needs the whole batch's shape up front —
 		// a streamed (AsyncIterable) source can't provide that (design §3 step 2
 		// v1 restriction). applyEnrichment falls back to sibling + a deviation.
@@ -571,6 +587,26 @@ export async function generateNotes(
 							const skippedPath = existingFile.path;
 							result.skipped.push(skippedPath);
 							debug?.info('generation', 'skipped-existing', `Skipped existing file ${skippedPath}`, { path: skippedPath });
+							// AM-2. Record what was kept so the post-stream bookkeeping pass
+							// can derive the hubs these rows imply. `path` is the note that
+							// ACTUALLY exists, not the desired one: a bookkeeping pass keyed
+							// on a path the run declined to create would derive hubs for a
+							// shape the vault is not in.
+							if (enrichmentEnabled) {
+								keptRecords.push({
+									path: skippedPath,
+									renderedPath: fullPath,
+									curie: noteData.curie,
+									frontmatter: { ...noteData.frontmatter },
+									facets: options.facetsForRow
+										? options.facetsForRow(row as Record<string, unknown>, rowNum)
+										: facetMembershipsFromTags(noteData.tags),
+									// Never read: this record is never written back. Kept empty
+									// rather than carrying a fresh render, which is exactly the
+									// content a skip promised not to write.
+									body: '',
+								});
+							}
 							return;
 						} else if (options.overwriteMode === 'error') {
 							result.errors.push({
@@ -681,6 +717,22 @@ export async function generateNotes(
 		// generateFromRecipe runs. See applyEnrichment for the exact semantics
 		// (children lists + facet hub notes + edgeCount, re-import-safe merge).
 		let enrichmentComplete = true;
+
+		// AM-2. Account for the rows this run KEPT, so a skip refresh of an
+		// unchanged set reports zero orphans. Bookkeeping only, no writes.
+		if (enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure) {
+			enrichmentComplete = markKeptHubsProduced({
+				recipe,
+				curiePrefix,
+				basePath: options.basePath,
+				streamed: isStreamed,
+				records: [...enrichRecords, ...keptRecords],
+				producedCuries,
+				result,
+				debug,
+			}) && enrichmentComplete;
+		}
+
 		if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
 			try {
 				await applyEnrichment(
@@ -2038,6 +2090,12 @@ export async function generateFromRecipe(
 	// populated when the recipe declares target.enrichment.
 	const enrichmentEnabled = !!recipe.target.enrichment;
 	const enrichRecords: EnrichRecord[] = [];
+	// AM-2. Rows this run KEPT rather than wrote (overwriteMode 'skip'). The same
+	// hole generateNotes had: the skip branch returns above the enrichment
+	// collection, so a skip refresh of an unchanged set marked no hub produced and
+	// orphaned every hub the set owns. A fix that lands on one generation entry
+	// point only is how a removed behaviour comes back on the other.
+	const keptRecords: EnrichRecord[] = [];
 	// parent_note: 'folder-note' needs the whole batch's shape up front — a
 	// streamed (AsyncIterable) source can't provide that (design §3 step 2 v1
 	// restriction). applyEnrichment falls back to sibling + a deviation.
@@ -2245,6 +2303,25 @@ export async function generateFromRecipe(
 				if (options.overwriteMode === 'skip') {
 					// The path that EXISTS, never the desired one — see generateNotes.
 					result.skipped.push(existingFile.path);
+					// AM-2. Record what was kept so the post-stream bookkeeping pass can
+					// derive the hubs these rows imply. Keyed on the note that ACTUALLY
+					// exists, never the desired path: bookkeeping against a path the run
+					// declined to create describes a vault shape that is not there.
+					if (enrichmentEnabled) {
+						keptRecords.push({
+							path: existingFile.path,
+							renderedPath: fullPath,
+							curie,
+							frontmatter: { ...frontmatter },
+							facets: options.facetsForRow
+								? options.facetsForRow(row as Record<string, unknown>, rowNum)
+								: facetMembershipsFromTags(address.tags),
+							// Never read: this record is never written back. Empty rather
+							// than a fresh render, which is the content a skip promised not
+							// to write.
+							body: '',
+						});
+					}
 					return;
 				} else if (options.overwriteMode === 'error') {
 					result.errors.push({ row: rowNum, message: `File already exists: ${writePath}` });
@@ -2381,6 +2458,22 @@ export async function generateFromRecipe(
 	// derivation), then writes children onto parents and materializes hub notes via
 	// the same managed-merge path so re-imports stay idempotent + user-safe.
 	let enrichmentComplete = true;
+
+	// AM-2. Account for the rows this run KEPT, so a skip refresh of an unchanged
+	// set reports zero orphans. Bookkeeping only, no writes.
+	if (enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure) {
+		enrichmentComplete = markKeptHubsProduced({
+			recipe,
+			curiePrefix,
+			basePath: options.basePath,
+			streamed: isStreamed,
+			records: [...enrichRecords, ...keptRecords],
+			producedCuries,
+			result,
+			debug,
+		}) && enrichmentComplete;
+	}
+
 	if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
 		try {
 			await applyEnrichment(
@@ -2558,6 +2651,72 @@ async function applyHubRelocation(
  * `EnrichmentWriteOptions`), so this one phase runs identically after either
  * write loop.
  */
+/**
+ * AM-2 (2026-08-30). Mark the hub identities a run's rows IMPLY as produced,
+ * without writing anything.
+ *
+ * Failure mode prevented: a skip-mode refresh orphaning every hub the import set
+ * owns. Both write loops return early for a skipped row, ABOVE the point where
+ * they collect enrichment records, so an unchanged set produced no records at
+ * all, `applyEnrichment` never ran, no hub curie was ever added to
+ * `producedCuries`, and orphan detection then reported every hub as vanished.
+ * A row that is skipped is still a row this run vouches for.
+ *
+ * BOOKKEEPING ONLY. `enrich()` is pure (no vault I/O) and only its curies are
+ * consumed here. No note is written, merged, moved or relocated, and no folder
+ * is created, so hub prose is untouched and `applyHubRelocation` stays the
+ * no-op under skip that it already was.
+ *
+ * Legacy hub curies are marked alongside the current form. A hub written under
+ * the older address-derived identity still carries that curie on disk, and that
+ * is the curie the owned identity index holds; marking only the current form
+ * would leave the very hub this run kept looking exactly like one that vanished.
+ *
+ * Returns false when the derivation failed, so the caller suppresses orphan
+ * reporting rather than publishing a list derived from an incomplete picture.
+ */
+function markKeptHubsProduced(args: {
+	recipe: Recipe;
+	curiePrefix: string;
+	basePath: string;
+	streamed: boolean;
+	records: EnrichRecord[];
+	producedCuries: Set<string>;
+	result: GenerationResult;
+	debug?: DebugLog;
+}): boolean {
+	const { recipe, curiePrefix, basePath, streamed, records, producedCuries, result, debug } = args;
+	try {
+		const implied = enrich(
+			records.map((r) => ({
+				path: r.path,
+				curie: r.curie,
+				frontmatter: r.frontmatter,
+				facets: r.facets,
+				renderedPath: r.renderedPath,
+			})),
+			{ ontology: curiePrefix, config: recipe.target.enrichment ?? {}, streamed, rootFolder: basePath },
+		);
+		const mark = (hub: HubNote): void => {
+			const hubCurie = typeof hub.frontmatter.curie === 'string' ? hub.frontmatter.curie : null;
+			if (hubCurie) producedCuries.add(hubCurie);
+			for (const alias of hub.legacyCuries ?? []) producedCuries.add(alias);
+		};
+		for (const hub of implied.hubs) mark(hub);
+		for (const hub of implied.levelHubs.notes) mark(hub);
+		return true;
+	} catch (bookkeepErr) {
+		const msg = bookkeepErr instanceof Error ? bookkeepErr.message : String(bookkeepErr);
+		result.warnings ??= [];
+		result.warnings.push({
+			row: 0,
+			message: `Could not account for the notes this import kept, so notes no longer in the source were not reported. ${msg}`,
+		});
+		debug?.error('generation', 'kept-bookkeeping-failed', 'Kept-row hub bookkeeping failed', { error: msg });
+		return false;
+	}
+}
+
 async function applyEnrichment(
 	app: App,
 	recipe: Recipe,

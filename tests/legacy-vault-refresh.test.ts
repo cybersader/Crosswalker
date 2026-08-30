@@ -44,30 +44,47 @@
  *   5. Segment-wise root recovery and failing closed, at the wizard (A-3).
  *   6. The new-set occupancy guard and suppressed moves under skip (A-6).
  *   7. What the results screen renders (A-7).
- *   8. The isolating experiment behind the `it.failing` clauses in section 2.
- *   9. The same criterion driven end to end through two real wizard runs.
+ *   8. The isolating experiment that showed the skip-mode gap was not the
+ *      destination rule's doing, now the control that it stays closed (AM-2).
+ *   9. The same criterion driven end to end through two real wizard runs, in
+ *      BOTH overwrite modes (A-8 restated).
+ *  10. The classic import path, which stamps no ontology of its own (AM-1).
+ *  11. What the success notice says on every run (AM-3).
+ *  12. An identity collision on a run that would otherwise close (AM-4).
  *
- * KNOWN GAPS, PINNED WITH `it.failing` RATHER THAN SOFTENED
+ * THE THREE GAPS THIS FILE USED TO PIN WITH `it.failing`, AND WHERE THEY WENT
  *
- *   a. `skip` mode orphans every hub, and restamps none (section 2, isolated in
- *      section 8). Not caused by the destination rule.
- *   b. The orphan count is rendered only when it is non-zero, so "and the orphan
- *      count" is invisible on a clean run (section 7).
- *   c. A clean refresh closes the host instead of rendering results at all, so
- *      the A-8 clause "the results screen shows moved: 0" is unreachable in the
- *      very scenario A-8 describes (section 9).
+ *   a. `skip` mode orphaned every hub and restamped none (section 2, isolated
+ *      in section 8). Closed by AM-2: a row this run KEPT is still a row it
+ *      vouches for, so the hubs those rows imply are marked produced without
+ *      anything being rewritten. Both clauses are ordinary `it` again, and
+ *      section 8 now asserts the absence rather than the presence.
+ *   b. "and the orphan count" was invisible on a clean run, because the screen
+ *      renders the orphan line only when the count is non-zero (section 7).
+ *      Closed by AM-3, but NOT on the screen: a clean refresh never draws one.
+ *      The counts ride on the success notice instead, on every run (section 11).
+ *   c. A clean refresh closed the host instead of reporting anything (section
+ *      9). Closed by AM-3 the same way: it still closes, and the user is still
+ *      told both numbers, because the notice fires before the close.
  *
- * Each is named where it is pinned. A fix turns this suite red until the
- * expectation is restored, which is the point.
+ * A regression in any of the three turns this suite red at the named section.
  */
 
 import { TFile, TFolder } from 'obsidian';
 import {
 	buildConfigFromWizardState,
+	generateFromRecipe,
 	generateNotes,
 } from '../src/generation/generation-engine';
 import { discoverImportSets, type DiscoveredImportSet, type ImportSetOption } from '../src/generation/import-set';
 import { ImportFlow, resolveDestinationDefault } from '../src/import/import-wizard';
+// AM-1. Imported, never retyped: these are the placeholder identities the
+// classic path mints, and a second copy of the literals in a test is a copy
+// that can agree with a drifted implementation instead of catching it.
+import {
+	LEGACY_ONTOLOGY_SENTINEL,
+	LEGACY_RECIPE_ID_SENTINEL,
+} from '../src/generation/legacy-recipe-shim';
 import { MappingWorkbench } from '../src/import/workbench';
 import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import { DEFAULT_SETTINGS } from '../src/settings/settings-data';
@@ -78,6 +95,42 @@ import type { GenerationResult, ImportRecipe, ParsedData } from '../src/types/co
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const yaml = require('js-yaml') as { load: (s: string) => unknown };
+
+// ---------------------------------------------------------------------------
+// AM-3 / AM-4: what the user is TOLD.
+//
+// The moved and orphan counts ride on the SUCCESS NOTICE, not on the results
+// screen, because the run A-8 is written about -- a clean refresh -- closes the
+// wizard without ever drawing a screen. A test that only inspects rendered text
+// therefore cannot see the guarantee at all.
+//
+// `require` rather than `import * as obsidian`: under esModuleInterop
+// TypeScript copies a namespace import into a fresh object, so a spy installed
+// on the copy would leave src/ calling the original and every assertion below
+// would pass for the wrong reason. This is the same live module object that
+// `import { Notice } from 'obsidian'` resolves to inside the wizard.
+// ---------------------------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const obsidianModule = require('obsidian') as {
+	Notice: new (message: string, timeout?: number) => unknown;
+};
+const RealNotice = obsidianModule.Notice;
+
+/** Every notice raised since the current test began, in order. */
+const notices: string[] = [];
+
+beforeAll(() => {
+	obsidianModule.Notice = class {
+		constructor(message: string) { notices.push(message); }
+	} as unknown as typeof RealNotice;
+});
+
+afterAll(() => { obsidianModule.Notice = RealNotice; });
+
+beforeEach(() => { notices.length = 0; });
+
+/** All notice text as one string, so one assertion can read the whole report. */
+const noticeText = (): string => notices.join('\n');
 
 /** The shared output folder a pre-fix import landed in. */
 const SHARED_ROOT = 'Ontologies';
@@ -432,6 +485,14 @@ function reportedPaths(result: GenerationResult): string[] {
 	];
 }
 
+/** Every hub's curie in the vault, sorted. One entry per hub note. */
+function hubCuriesOf(files: Map<string, string>): string[] {
+	return [...files.values()]
+		.filter((text) => frontmatterOf(text).kind === 'hub')
+		.map((text) => String(frontmatterOf(text).curie))
+		.sort();
+}
+
 function pathsOfKind(files: Map<string, string>, kind: string): string[] {
 	return [...files]
 		.filter(([, text]) => frontmatterOf(text).kind === kind)
@@ -524,24 +585,24 @@ describe('a refresh is offered the folder its own set already occupies', () => {
 // ===========================================================================
 // 2. THE ACCEPTANCE CRITERION (A-8), UNDER BOTH OVERWRITE MODES.
 //
-// KNOWN GAP -- `skip` mode, two clauses, marked `it.failing` below.
+// CLOSED GAP -- `skip` mode, two clauses, formerly `it.failing`.
 //
-// Under `overwriteMode: 'skip'` every existing row returns from the write loop
-// BEFORE `enrichRecords.push` (generation-engine.ts: the skip `return` sits
-// above the collection), so the enrichment batch is empty, `applyEnrichment`
-// never runs, and no hub curie is ever added to `producedCuries`. Every hub the
-// set owns is therefore reported as an orphan, and no hub is reconciled or
-// restamped.
+// Under `overwriteMode: 'skip'` every existing row returned from the write loop
+// BEFORE `enrichRecords.push` (the skip `return` sat above the collection), so
+// the enrichment batch was empty, `applyEnrichment` never ran, and no hub curie
+// was ever added to `producedCuries`. Every hub the set owns was therefore
+// reported as an orphan.
 //
-// That is NOT caused by the per-import root work: the isolating experiment in
-// section 8 reproduces it on a vault generated by the current engine and never
-// de-migrated. It is pinned with `it.failing` rather than softened.
+// AM-2 closed it: a row this run KEPT is still a row it vouches for, so a
+// bookkeeping pass derives the hub identities the kept rows imply and marks
+// them produced -- without writing, merging or relocating anything, which is
+// why hub prose survives (asserted immediately after this section, byte for
+// byte). Both clauses are ordinary `it` again. The reverse experiment lives in
+// section 8: it now proves the absence, on a vault that was never de-migrated,
+// so a regression cannot hide behind the legacy shape.
 // ===========================================================================
 
 describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwriteMode %s)', (overwriteMode) => {
-	/** Clauses the skip-mode enrichment gap above prevents from holding. */
-	const clause = overwriteMode === 'skip' ? it.failing : it;
-
 	async function refresh() {
 		const vault = await seedPreFixVault();
 		vault.files.set(HUB_WITH_PROSE, `${vault.files.get(HUB_WITH_PROSE)!}\n${HUB_PROSE}\n`);
@@ -594,28 +655,69 @@ describe.each(['replace', 'skip'] as const)('refreshing a pre-fix vault (overwri
 		expect(vault.files.get(HUB_WITH_PROSE)).toContain(HUB_PROSE);
 	});
 
-	clause('reports no new orphans', async () => {
+	it('reports no new orphans', async () => {
 		const { result } = await refresh();
 		expect(result.orphans ?? []).toEqual([]);
 	});
 
-	clause('leaves every hub holding exactly one identity, restamped to the address-independent form', async () => {
+	it('leaves every hub holding exactly one identity, at the address it already had', async () => {
 		const { vault } = await refresh();
 		expect(pathsOfKind(vault.files, 'hub')).toEqual([
 			'Ontologies/Discovery/Discovery.md',
 			'Ontologies/Ontologies.md',
 			'Ontologies/Persistence/Persistence.md',
 		]);
-		const hubCuries = [...vault.files.values()]
-			.filter((text) => frontmatterOf(text).kind === 'hub')
-			.map((text) => frontmatterOf(text).curie)
-			.sort();
-		expect(hubCuries).toEqual([
-			`${ONTOLOGY}:hub/_root`,
-			`${ONTOLOGY}:hub/discovery`,
-			`${ONTOLOGY}:hub/persistence`,
-		]);
+		// One identity each, and no hub sharing one with another.
+		expect(hubCuriesOf(vault.files)).toHaveLength(3);
+		expect(new Set(hubCuriesOf(vault.files)).size).toBe(3);
 	});
+
+	// The two modes part company HERE, and only here, which is the whole of what
+	// AM-2 changed. `replace` rewrites each hub and therefore restamps it into the
+	// address-independent form. `skip` must reach the same ORPHAN answer while
+	// rewriting nothing at all, so the legacy address-derived curies stay exactly
+	// as the de-migration left them. Asserting "restamped" in both modes would be
+	// asserting that skip rewrote a hub, which is the behaviour AM-2 forbids.
+	if (overwriteMode === 'replace') {
+		it('restamps each hub into the address-independent form', async () => {
+			const { vault } = await refresh();
+			expect(hubCuriesOf(vault.files)).toEqual([
+				`${ONTOLOGY}:hub/_root`,
+				`${ONTOLOGY}:hub/discovery`,
+				`${ONTOLOGY}:hub/persistence`,
+			]);
+		});
+	} else {
+		it('restamps no hub: each keeps the legacy curie the vault already held', async () => {
+			const { vault, before } = await refresh();
+			expect(hubCuriesOf(vault.files)).toEqual(hubCuriesOf(before));
+			// Spelled out, so the thing being preserved is legible: the legacy
+			// address-derived form, which is what makes the zero-orphan result above
+			// evidence that the bookkeeping marked the ALIAS and not just the
+			// current-form curie it would have computed from the recipe.
+			expect(hubCuriesOf(vault.files)).toEqual([
+				`${ONTOLOGY}:hub/ontologies`,
+				`${ONTOLOGY}:hub/ontologies/discovery`,
+				`${ONTOLOGY}:hub/ontologies/persistence`,
+			]);
+		});
+
+		it('rewrites no hub at all, byte for byte', async () => {
+			// AM-2's bookkeeping pass runs `enrich()` for its curies and must consume
+			// nothing else. A pass that quietly wrote its result back would still
+			// report zero orphans while destroying the prose the user typed, which is
+			// the failure the "keeps the prose" clause above would only half catch:
+			// it looks for one marked sentence, this compares every byte.
+			const { vault, before } = await refresh();
+			for (const [path, text] of before) {
+				if (frontmatterOf(text).kind !== 'hub') continue;
+				expect(vault.files.get(path)).toBe(text);
+			}
+			// And not merely "the same content after a rewrite": no write was issued.
+			const written = vault.modify.mock.calls.map((call) => (call[0] as { path: string }).path);
+			expect(written.filter((path) => frontmatterOf(before.get(path) ?? '').kind === 'hub')).toEqual([]);
+		});
+	}
 });
 
 // ===========================================================================
@@ -1013,36 +1115,106 @@ describe('the results screen', () => {
 		expect(texts).toContain(`${ONTOLOGY}:T1099: Ontologies/Persistence/T1099.md`);
 	});
 
-	// KNOWN GAP. A-8 requires the results screen to show "moved: 0 AND the orphan
-	// count". The orphan line is rendered only when the count is non-zero, so on
-	// the clean refresh A-8 describes the user is told that nothing moved and told
-	// nothing whatsoever about orphans -- which is the same "cannot tell 'none'
-	// from 'nobody checked'" the moved line was made unconditional to avoid.
-	it.failing('states the orphan count even when it is zero', () => {
+	// SUPERSEDED, NOT SWEPT. This section used to pin `it.failing('states the
+	// orphan count even when it is zero')`: the orphan line renders only when the
+	// count is non-zero, so on the clean refresh A-8 describes the user was told
+	// that nothing moved and nothing whatsoever about orphans.
+	//
+	// AM-3 answered it somewhere else on purpose. A clean refresh never draws this
+	// screen at all -- it closes -- so a screen-level fix would have been a fix the
+	// common case cannot see. The guarantee moved to the SUCCESS NOTICE, which
+	// fires on every run and always states both numbers. Section 11 holds it, and
+	// section 9 drives it end to end.
+	//
+	// What remains true here, and is asserted above, is that the MOVED line renders
+	// at zero: this screen is drawn when something moved, orphaned, or errored, and
+	// on an errors-only draw the moved zero is the only count in view.
+	it('renders no orphan line when there is nothing to report', () => {
 		const texts = render({ ...clean, moved: [], orphans: [] });
-		expect(texts.join('\n')).toMatch(/Orphans: 0/);
+		expect(texts.filter((t) => /Orphans/.test(t))).toEqual([]);
+		expect(texts).toContain('📦 Moved: 0 notes. Nothing was relocated.');
 	});
 });
 
 // ===========================================================================
-// 8. The isolating experiment behind the two `it.failing` clauses in section 2.
+// 8. AM-2 AT ITS NARROWEST: the same claim with the legacy shape removed.
+//
+// This section was the isolating experiment that proved the skip-mode gap was
+// NOT the per-import root work's doing -- it reproduced on a vault the current
+// engine had generated moments earlier, never de-migrated, with overwriteMode
+// as the only variable. It is kept, inverted, for the same reason: if AM-2's
+// bookkeeping ever regresses, this fails on the simplest possible vault, and
+// the failure cannot be blamed on the legacy shape or on a changed root.
 // ===========================================================================
 
-describe('the skip-mode hub gap does not depend on the legacy shape', () => {
-	it('orphans every hub even on a vault this engine generated moments earlier', async () => {
-		// No de-migration, no destination change, no legacy curies: the only
-		// variable is overwriteMode. If this ever goes green, the two `it.failing`
-		// clauses in section 2 must be un-marked in the same change.
+describe('a skip refresh accounts for the hubs its kept rows imply', () => {
+	it('reports no orphans on a vault this engine generated moments earlier', async () => {
+		// No de-migration, no destination change, no legacy curies. Every row is
+		// skipped, so under the old behaviour the enrichment batch was empty and
+		// all three hubs were reported gone.
 		const vault = await seedVault();
 		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'skip'));
+		// The rows really were kept, so "no orphans" is not "nothing happened".
+		expect(result.skipped).toHaveLength(ROWS.length);
+		expect(result.created).toEqual([]);
+		expect((result.orphans ?? []).map((o) => o.curie).sort()).toEqual([]);
+	});
+
+	it('marks the hub identities rather than declining to look', async () => {
+		// The other way to report zero orphans is to give up: `markKeptHubsProduced`
+		// returns false on failure and the caller then SUPPRESSES orphan reporting.
+		// A suppressed report and a clean report both read as an empty list, so the
+		// absence of the warning is what separates them.
+		const vault = await seedVault();
+		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'skip'));
+		expect(result.warnings ?? []).toEqual([]);
+		expect(result.errors).toEqual([]);
+	});
+
+	it('still reports a hub that genuinely has no members left', async () => {
+		// The falsifying case for "zero orphans" as a blanket answer: a source that
+		// dropped every Discovery row must still surface the Discovery hub. Kept-row
+		// bookkeeping vouches for the rows this run SAW, never for the whole set.
+		const vault = await seedVault();
+		const persistenceOnly: ParsedData = {
+			columns: [...COLUMNS],
+			rows: ROWS.filter((r) => r.tactic === 'Persistence').map((r) => ({ ...r })),
+			rowCount: 3,
+		};
+		const result = await generateNotes(vault.app, persistenceOnly, CONFIG, options(SHARED_ROOT, 'skip'));
 		expect((result.orphans ?? []).map((o) => o.curie).sort()).toEqual([
-			`${ONTOLOGY}:hub/_root`,
+			`${ONTOLOGY}:T1590`,
+			`${ONTOLOGY}:T1595`,
+			`${ONTOLOGY}:T1595.002`,
 			`${ONTOLOGY}:hub/discovery`,
-			`${ONTOLOGY}:hub/persistence`,
 		]);
 	});
 
-	it('does not orphan them under replace, which is the same vault and the same run', async () => {
+	it('does the same on the native recipe path, which is a second write loop', async () => {
+		// `generateNotes` and `generateFromRecipe` are two write loops carrying the
+		// same early return for a skipped row. A fix applied to one is not a fix to
+		// the other, and this engine has regressed exactly that way before -- which
+		// is why the recipe path gets its own assertion rather than an assumption
+		// that the shared helper covers it.
+		const vault = await seedVault();
+		const [set] = await discoverImportSets(vault.app, undefined);
+		const result = await generateFromRecipe(vault.app, parsed(), RECIPE, {
+			basePath: SHARED_ROOT,
+			overwriteMode: 'skip',
+			createFolders: true,
+			importSet: { id: set.id },
+			// The seed's identities came from the title column, so the recipe path
+			// has to be pointed at the same one or it invents `row-N` curies and
+			// orphans the whole set for an unrelated reason.
+			curieLocalPart: (row: Record<string, unknown>) => String(row.technique_id),
+			facetsForRow: (row: Record<string, unknown>) => [{ namespace: 'domain', value: String(row.domain) }],
+		});
+		expect(result.errors).toEqual([]);
+		expect(result.skipped).toHaveLength(ROWS.length);
+		expect(result.orphans ?? []).toEqual([]);
+	});
+
+	it('does not orphan them under replace either, which is the control', async () => {
 		const vault = await seedVault();
 		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'replace'));
 		expect(result.orphans ?? []).toEqual([]);
@@ -1060,11 +1232,17 @@ describe('the skip-mode hub gap does not depend on the legacy shape', () => {
 // refresh is `flow.generate()` -- config, recipe, destination, ownership and
 // overwrite mode all resolved by the flow itself.
 //
-// It also reaches the one clause nothing else can: what the user is SHOWN when
-// the refresh finishes.
+// It also reaches the two clauses nothing else can: what the user is SHOWN when
+// the refresh finishes, and that the refresh survives the wizard's own choice of
+// destination and ownership rather than a hand-passed one.
+//
+// A-8 RESTATED (2026-08-30) asks for this end to end in BOTH overwrite modes,
+// not just `replace`. Under `skip` the second run creates nothing at all, which
+// is precisely the run that used to orphan every hub, so it is the mode where an
+// end-to-end check has the most to say.
 // ===========================================================================
 
-describe('two real wizard runs, the second a refresh', () => {
+describe.each(['replace', 'skip'] as const)('two real wizard runs, the second a refresh (overwriteMode %s)', (overwriteMode) => {
 	/**
 	 * Run the wizard once into the bare shared root -- which is exactly how the
 	 * pre-fix vaults arose, the destination field having been seeded with the
@@ -1091,10 +1269,13 @@ describe('two real wizard runs, the second a refresh', () => {
 		forgetSeedWrites(vault);
 
 		const second = makeFlow(vault.app);
-		second.flow.overwriteMode = 'replace';
+		second.flow.overwriteMode = overwriteMode;
 		second.flow.currentStep = 4;
 		await inner(second.flow).prepareStep3(true);
 		const destination = inner(second.flow).currentOutputPath();
+		// Only the refresh's notices, so the first import's cannot be mistaken for
+		// the report the user reads at the end of the run under test.
+		notices.length = 0;
 		await second.flow.generate();
 
 		return { vault, before, destination, second };
@@ -1135,22 +1316,353 @@ describe('two real wizard runs, the second a refresh', () => {
 		expect(vault.files.get(`${SHARED_ROOT}/Persistence.md`)).toContain(HUB_PROSE);
 	});
 
-	// KNOWN GAP. A successful run renders the results screen only when something
-	// moved or orphaned; otherwise it closes the host. So on the A-8 scenario
-	// itself -- a refresh that correctly moves nothing -- the "Moved: 0" line
-	// A-8 asks for is never drawn, and neither is the orphan count. The user is
-	// left unable to tell "nothing moved" from "nobody checked", which is the
-	// exact reason the moved line was made unconditional in the first place.
-	it.failing('tells the user that nothing moved', async () => {
+	it('raises no ambiguous-identity error, in the only place the user would see one', async () => {
+		// End to end there is no `GenerationResult` to inspect: what the run
+		// concluded reaches the user as a notice, or not at all. AM-4 makes an error
+		// draw the results screen, so a clean close IS the assertion that none was
+		// raised -- and the notice is checked too, because "closed quietly" was
+		// exactly the old failure.
 		const { second } = await firstImportThenRefresh();
-		expect(second.texts).toContain('📦 Moved: 0 notes. Nothing was relocated.');
+		expect(noticeText()).not.toMatch(/Ambiguous identity|finished with \d+ errors/);
+		expect(second.texts.filter((t) => /Ambiguous identity/.test(t))).toEqual([]);
 	});
 
-	it('closes straight through instead, which is what makes the line unreachable', async () => {
-		// The other half of the gap above, asserted positively so the pair reads
-		// as one statement: today a clean refresh reports nothing at all.
+	// AM-3. This was `it.failing('tells the user that nothing moved')`: the results
+	// screen draws only when something moved, orphaned or (now) errored, so on the
+	// A-8 scenario itself -- a refresh that correctly moves nothing -- the user was
+	// told nothing at all and could not tell "nothing moved" from "nobody checked".
+	// The counts moved onto the success notice, which fires on every run, including
+	// the one that closes.
+	it('tells the user that nothing moved and nothing was orphaned', async () => {
 		const { second } = await firstImportThenRefresh();
+		expect(noticeText()).toContain('Nothing moved. No orphans.');
+		// Still closes: AM-3 deliberately did NOT force a screen onto a clean run.
 		expect(second.close).toHaveBeenCalledTimes(1);
 		expect(second.texts.filter((t) => /Moved|Orphans/.test(t))).toEqual([]);
+	});
+
+	it('reports the run it actually did, rather than a fixed sentence', async () => {
+		// The counts must be read off the result, not printed unconditionally. The
+		// two modes take different branches through the write loop -- `replace`
+		// rewrites all six notes, `skip` keeps all six -- and the notice has to
+		// describe the one that happened.
+		const { second } = await firstImportThenRefresh();
+		void second;
+		expect(noticeText()).toMatch(
+			overwriteMode === 'replace'
+				? /✅ Created 6 notes in [\d.]+s\. Nothing moved\. No orphans\./
+				: /✅ Created 0 notes, skipped 6 existing in [\d.]+s\. Nothing moved\. No orphans\./,
+		);
+	});
+});
+
+// ===========================================================================
+// 10. AM-1: A PLACEHOLDER IS NEVER AN IDENTITY.
+//
+// The classic column-mapping path is the DEFAULT install: `enableShapeWorkbench`
+// is off, so most users never reach the shape workbench, and the classic path
+// has nowhere to put an ontology. It stamped every import it ever ran
+// `ontology: unknown`, `recipe: legacy-config`.
+//
+// A-2 then matched a source against a set on those two stamped facts -- which,
+// for the default path, meant matching a placeholder against a placeholder.
+// Every classic import paired with every other one, so the SECOND framework a
+// user imported was attributed to the FIRST: the original misattribution bug
+// arriving again through the door A-2 had just closed on the folder-scoped one.
+//
+// AM-1 answers on both sides -- matching never considers a sentinel, and the
+// classic path stamps a real ontology going forward (the source file stem, a
+// fact the source actually carries). The two halves are falsified separately
+// below, because either one alone leaves a live failure.
+// ===========================================================================
+
+describe('the classic import path, which carries no ontology of its own', () => {
+	const FIRST_SOURCE = 'attack-mini.csv';
+	const SECOND_SOURCE = 'cis-controls-v8.csv';
+
+	const CIS_ROWS = [
+		{ technique_id: 'CIS-1', name: 'Inventory of Assets', tactic: 'Inventory', domain: 'IG1' },
+		{ technique_id: 'CIS-1.1', name: 'Asset Inventory Tool', tactic: 'Inventory', domain: 'IG1' },
+		{ technique_id: 'CIS-2', name: 'Software Inventory', tactic: 'Inventory', domain: 'IG1' },
+	];
+
+	function cisData(): ParsedData {
+		return { columns: [...COLUMNS], rows: CIS_ROWS.map((r) => ({ ...r })), rowCount: CIS_ROWS.length };
+	}
+
+	/**
+	 * A flow on the CLASSIC path. The single difference from `makeFlow` is the one
+	 * that matters: no workbench is constructed, so `isWorkbenchMode()` is false
+	 * and the flow goes through `legacyConfigToRecipe`. That is the shipped
+	 * default, and the only path that mints the sentinels.
+	 */
+	function makeClassicFlow(
+		app: unknown,
+		opts: { sourceFileName: string; data?: ParsedData; globalRoot?: string },
+	): { flow: ImportFlow; texts: string[]; close: jest.Mock } {
+		const plugin = {
+			settings: {
+				...DEFAULT_SETTINGS,
+				defaultOutputPath: opts.globalRoot ?? SHARED_ROOT,
+				enableShapeWorkbench: false,
+			},
+			debug: debugStub,
+		} as unknown as ConstructorParameters<typeof ImportFlow>[1];
+		const texts: string[] = [];
+		const close = jest.fn();
+		const flow = new ImportFlow(
+			app as ConstructorParameters<typeof ImportFlow>[0],
+			plugin,
+			{ containerEl: makeRecordingEl(texts), close },
+		);
+		flow.sourceFile = { name: opts.sourceFileName } as File;
+		flow.parsedData = opts.data ?? parsed();
+		flow.columnConfigs = new Map(COLUMN_CONFIGS);
+		return { flow, texts, close };
+	}
+
+	/** What the review screen decided, before anything is written. */
+	async function classicReview(app: unknown, opts: Parameters<typeof makeClassicFlow>[1]) {
+		const { flow } = makeClassicFlow(app, opts);
+		await inner(flow).prepareStep3(true);
+		return {
+			flow,
+			choice: inner(flow).importSetChoice,
+			destination: inner(flow).currentOutputPath(),
+			keys: inner(flow).sourceIdentityKeys(),
+		};
+	}
+
+	/** A whole classic import, driven by the flow itself. */
+	async function classicImport(app: unknown, opts: Parameters<typeof makeClassicFlow>[1]) {
+		const { flow, texts, close } = makeClassicFlow(app, opts);
+		flow.overwriteMode = 'replace';
+		flow.currentStep = 4;
+		await inner(flow).prepareStep3(true);
+		const choice = inner(flow).importSetChoice;
+		const destination = inner(flow).currentOutputPath();
+		await flow.generate();
+		return { flow, texts, close, choice, destination };
+	}
+
+	it('stamps the source file stem as the ontology, not the placeholder', async () => {
+		const vault = makeVault();
+		await classicImport(vault.app, { sourceFileName: FIRST_SOURCE });
+		const sets = await discoverImportSets(vault.app, undefined);
+		expect(sets).toHaveLength(1);
+		expect(sets[0].ontologyPrefixes).toEqual(['attack-mini']);
+		expect(sets[0].ontologyPrefixes).not.toContain(LEGACY_ONTOLOGY_SENTINEL);
+	});
+
+	it('compares the same two strings the write loop stamps', async () => {
+		// The keys the review screen matches on and the keys generation writes are
+		// two independent derivations. Asserted against a REAL generated vault, so a
+		// drift between them shows up here instead of as a silent non-match.
+		const vault = makeVault();
+		await classicImport(vault.app, { sourceFileName: FIRST_SOURCE });
+		const { keys } = await classicReview(vault.app, { sourceFileName: FIRST_SOURCE });
+		const [set] = await discoverImportSets(vault.app, undefined);
+
+		expect(keys).toEqual({ recipeId: LEGACY_RECIPE_ID_SENTINEL, ontologyPrefix: 'attack-mini' });
+		// The recipe-id sentinel really IS stamped on both sides. That is exactly
+		// why honouring it as a fact matches everything, and why it is excluded.
+		expect(set.recipeIds).toEqual([LEGACY_RECIPE_ID_SENTINEL]);
+		expect(set.ontologyPrefixes).toContain(keys.ontologyPrefix);
+	});
+
+	it('defaults the SECOND framework to a new set instead of the first one', async () => {
+		// The headline. Two unrelated classic sources, one vault. Both stamp the
+		// recipe-id sentinel, so a membership test that honours it pairs them.
+		const vault = makeVault();
+		await classicImport(vault.app, { sourceFileName: FIRST_SOURCE });
+		const firstFiles = new Map(vault.files);
+
+		const second = await classicImport(vault.app, { sourceFileName: SECOND_SOURCE, data: cisData() });
+
+		expect(second.choice).toBe('new');
+		expect(second.destination).toBe('Ontologies/cis-controls-v8');
+		// The consequence, not just the decision: two sets, and the first framework
+		// is untouched, byte for byte.
+		const sets = await discoverImportSets(vault.app, undefined);
+		expect(sets).toHaveLength(2);
+		expect(sets.map((s) => s.ontologyPrefixes.join(',')).sort()).toEqual(['attack-mini', 'cis-controls-v8']);
+		for (const [path, text] of firstFiles) expect(vault.files.get(path)).toBe(text);
+	});
+
+	it('still refreshes its OWN set when the same source comes back', async () => {
+		// The other half, and the reason the stem is stamped at all. With both values
+		// sentinels there is nothing left to match on, so every re-import of the same
+		// classic source would mint a second set beside the first.
+		const vault = makeVault();
+		const first = await classicImport(vault.app, { sourceFileName: FIRST_SOURCE });
+		const [set] = await discoverImportSets(vault.app, undefined);
+
+		const again = await classicReview(vault.app, { sourceFileName: FIRST_SOURCE });
+		expect(again.choice).toEqual({ id: set.id });
+		expect(again.destination).toBe(first.destination);
+	});
+
+	it('never auto-matches a legacy set stamped with the placeholder', async () => {
+		// A vault imported BEFORE AM-1: no source name reached the shim, so the
+		// ontology on disk is the sentinel. AM-1 says such a set never auto-matches,
+		// and the awkward case is a source whose own stem IS the sentinel word: the
+		// one input that could smuggle the placeholder back in as a fact.
+		const vault = makeVault();
+		await generateNotes(vault.app, parsed(), CONFIG, {
+			basePath: SHARED_ROOT,
+			overwriteMode: 'replace',
+			createFolders: true,
+			importSet: 'new',
+		});
+		const [legacy] = await discoverImportSets(vault.app, undefined);
+		expect(legacy.ontologyPrefixes).toEqual([LEGACY_ONTOLOGY_SENTINEL]);
+
+		const review = await classicReview(vault.app, { sourceFileName: `${LEGACY_ONTOLOGY_SENTINEL}.csv` });
+		expect(review.keys.ontologyPrefix).toBe(LEGACY_ONTOLOGY_SENTINEL);
+		// Both keys are placeholders on both sides, and the answer is still "new": a
+		// set this import owns nothing of, which is the safe answer. The user can
+		// still choose refresh explicitly.
+		expect(review.choice).toBe('new');
+	});
+});
+
+// ===========================================================================
+// 11. AM-3: THE COUNTS RIDE ON THE SUCCESS NOTICE.
+//
+// The results screen draws only when something moved, orphaned or errored. A
+// clean refresh -- the exact run A-8 is written about -- closes the wizard, so a
+// screen-only report is a report the common case never sees, and "nothing moved"
+// stays indistinguishable from "nobody checked".
+//
+// The notice fires on EVERY successful run and always states both numbers.
+// ===========================================================================
+
+describe('the success notice', () => {
+	/** One wizard import into the shared root, then a second flow refreshing it. */
+	async function importThenRefreshWith(rows: ParsedData) {
+		const vault = makeVault();
+		const first = makeFlow(vault.app);
+		(first.flow as unknown as { destinationEdited: boolean }).destinationEdited = true;
+		first.flow.outputPath = SHARED_ROOT;
+		first.flow.overwriteMode = 'replace';
+		first.flow.currentStep = 4;
+		await inner(first.flow).prepareStep3(true);
+		await first.flow.generate();
+
+		const second = makeFlow(vault.app, { data: rows });
+		second.flow.overwriteMode = 'replace';
+		second.flow.currentStep = 4;
+		await inner(second.flow).prepareStep3(true);
+		notices.length = 0;
+		await second.flow.generate();
+		return { vault, second };
+	}
+
+	/** The same source minus one leaf row, so the refresh leaves one note behind. */
+	function rowsMinusOne(): ParsedData {
+		const rows = ROWS.filter((r) => r.technique_id !== 'T1590').map((r) => ({ ...r }));
+		return { columns: [...COLUMNS], rows, rowCount: rows.length };
+	}
+
+	it('states both numbers on a clean run, and closes', async () => {
+		const { second } = await importThenRefreshWith(parsed());
+		expect(noticeText()).toContain('Nothing moved. No orphans.');
+		expect(noticeText()).not.toContain('See results.');
+		expect(second.close).toHaveBeenCalledTimes(1);
+	});
+
+	it('states the counts it actually found, and points at the screen', async () => {
+		// The falsifying control for the test above: a notice that printed "Nothing
+		// moved. No orphans." unconditionally would pass that one and fail here.
+		const { second } = await importThenRefreshWith(rowsMinusOne());
+		expect(noticeText()).toContain('0 moved, 1 orphans. See results.');
+		expect(noticeText()).not.toContain('Nothing moved. No orphans.');
+		// And the screen it points at really is drawn, with the orphan on it.
+		expect(second.close).not.toHaveBeenCalled();
+		expect(second.texts).toContain('🕳️ Orphans: 1 note is no longer in the source. They were kept, not deleted.');
+	});
+
+	it('carries the counts alongside the created and skipped totals, not instead of them', async () => {
+		const { second } = await importThenRefreshWith(parsed());
+		void second;
+		expect(noticeText()).toMatch(/^✅ Created 6 notes in [\d.]+s\. Nothing moved\. No orphans\.$/m);
+	});
+});
+
+// ===========================================================================
+// 12. AM-4: AN IDENTITY COLLISION IS SHOWN, NEVER SWALLOWED.
+//
+// `Ambiguous identity` is raised at row 0 from the identity index, and it leaves
+// `result.success` true. The wizard closed on any successful run that had not
+// moved or orphaned anything, so the one surface that ever displayed the error
+// was skipped and the window shut on it. Same family as the purge that reported
+// success.
+//
+// It is also the clause A-8 restated added: no ambiguous-identity error, AND if
+// one occurs it is displayed.
+// ===========================================================================
+
+describe('an identity collision on a run that would otherwise close', () => {
+	/** One wizard import, optionally a duplicated concept note, then a refresh. */
+	async function refreshOverACollision(duplicate: boolean) {
+		const vault = makeVault();
+		const first = makeFlow(vault.app);
+		(first.flow as unknown as { destinationEdited: boolean }).destinationEdited = true;
+		first.flow.outputPath = SHARED_ROOT;
+		first.flow.overwriteMode = 'replace';
+		first.flow.currentStep = 4;
+		await inner(first.flow).prepareStep3(true);
+		await first.flow.generate();
+
+		let victim: string | null = null;
+		if (duplicate) {
+			// A second file claiming one concept identity: what a pre-fix double
+			// import left behind, and the state A-8 says must be SHOWN.
+			victim = [...vault.files].find(([, text]) => {
+				const fm = frontmatterOf(text);
+				return !!fm._crosswalker && fm.kind !== 'hub';
+			})![0];
+			vault.files.set(`${SHARED_ROOT}/Copy of ${victim.split('/').pop()}`, vault.files.get(victim)!);
+			expect(duplicateCuries(vault.files)).toHaveLength(1);
+		}
+
+		const second = makeFlow(vault.app);
+		second.flow.overwriteMode = 'replace';
+		second.flow.currentStep = 4;
+		await inner(second.flow).prepareStep3(true);
+		notices.length = 0;
+		await second.flow.generate();
+		return { vault, second, victim };
+	}
+
+	it('does not close the window on it', async () => {
+		const { second } = await refreshOverACollision(true);
+		expect(second.close).not.toHaveBeenCalled();
+	});
+
+	it('draws the results screen, with the collision named on it', async () => {
+		const { second, victim } = await refreshOverACollision(true);
+		expect(second.texts).toContain('❌ Errors: 1');
+		expect(second.texts).toContain('Errors');
+		const collision = second.texts.filter((t) => /^Row 0: Ambiguous identity /.test(t));
+		expect(collision).toHaveLength(1);
+		// The message names both claimants, so the user can act on it.
+		expect(collision[0]).toContain(victim!);
+		expect(collision[0]).toContain('Copy of');
+	});
+
+	it('says so in the notice, instead of reporting an unqualified success', async () => {
+		const { second } = await refreshOverACollision(true);
+		void second;
+		expect(noticeText()).toContain('Import finished with 1 errors. See results.');
+	});
+
+	it('closes on the same run without the collision, which is the control', async () => {
+		// Without this, the three tests above prove only that the wizard draws a
+		// screen, not that the COLLISION is what made it draw one.
+		const { second } = await refreshOverACollision(false);
+		expect(second.close).toHaveBeenCalledTimes(1);
+		expect(second.texts.filter((t) => /Errors|Ambiguous/.test(t))).toEqual([]);
+		expect(noticeText()).not.toContain('finished with');
 	});
 });

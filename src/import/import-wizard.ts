@@ -11,7 +11,7 @@ import {
 	type RenderReport,
 	type PreviewRowNotes,
 } from '../render';
-import { legacyConfigToRecipe } from '../generation/legacy-recipe-shim';
+import { legacyConfigToRecipe, IDENTITY_SENTINELS, LEGACY_ONTOLOGY_SENTINEL } from '../generation/legacy-recipe-shim';
 import { describeConflict } from '../generation/managed-body';
 import { shorthandToSourceExpression } from '../source';
 import { findMatchingConfigs, ConfigMatch } from '../config/config-manager';
@@ -1911,13 +1911,17 @@ export class ImportFlow {
 				: buildConfigFromWizardState(this.columnConfigs, this.parsedData.columns, this.appliedConfig?.config?.mapping?.filename);
 			const recipe = workbenchMode && this.workbench
 				? this.workbench.buildRecipe()
-				: legacyConfigToRecipe(config as ImportRecipe);
+				// AM-1: the SAME source file name generation passes (doGenerate's
+				// `sourceFileName`), so the ontology compared here is the ontology
+				// that will be stamped. Omitting it would compare the sentinel
+				// against a stem and match nothing, which mints a duplicate set.
+				: legacyConfigToRecipe(config as ImportRecipe, { sourceFileName: this.sourceFile?.name });
 			// Mirrors generateNotes' `provenanceRecipeId`: a workbench import passes a
 			// recipeOverride and stamps the recipe's own id; a classic import stamps
 			// the applied config's id when it has one.
 			const recipeId = workbenchMode ? recipe.recipe : (this.appliedConfig?.id ?? recipe.recipe);
 			// Mirrors generateNotes' `ontologyId` + `curiePrefix`.
-			const ontologyId = recipe.source?.ontology ?? config.name ?? 'unknown';
+			const ontologyId = recipe.source?.ontology ?? config.name ?? LEGACY_ONTOLOGY_SENTINEL;
 			return {
 				recipeId: recipeId ?? null,
 				ontologyPrefix: slugifyForCurie(ontologyId),
@@ -1935,10 +1939,37 @@ export class ImportFlow {
 	 */
 	private matchingSets(sets: readonly DiscoveredImportSet[]): DiscoveredImportSet[] {
 		const keys = this.sourceIdentityKeys();
-		if (keys.recipeId === null && keys.ontologyPrefix === null) return [];
+		// AM-1. A placeholder is never an identity. `unknown` / `legacy-config` are
+		// stamped on EVERY nameless classic import, so a membership test that
+		// honours them matches every classic set against every classic source: the
+		// second framework imported into a vault gets attributed to the first.
+		// Dropping them here leaves zero matches, and zero matches preselects a NEW
+		// set, which owns nothing and can therefore damage nothing.
+		const recipeId = ImportFlow.isIdentitySentinel(keys.recipeId) ? null : keys.recipeId;
+		const ontologyPrefix = ImportFlow.isIdentitySentinel(keys.ontologyPrefix) ? null : keys.ontologyPrefix;
+		if (recipeId === null && ontologyPrefix === null) return [];
 		return sets.filter((set) =>
-			(keys.recipeId !== null && set.recipeIds.includes(keys.recipeId))
-			|| (keys.ontologyPrefix !== null && set.ontologyPrefixes.includes(keys.ontologyPrefix)));
+			(recipeId !== null && set.recipeIds.includes(recipeId))
+			|| (ontologyPrefix !== null && set.ontologyPrefixes.includes(ontologyPrefix)));
+	}
+
+	/**
+	 * AM-1. Is this identity value a placeholder rather than a fact?
+	 *
+	 * The literals live at their mint site (`legacy-recipe-shim.ts`) and are
+	 * imported, never retyped: a second copy is a copy that drifts, and a drifted
+	 * copy silently re-admits the placeholder to matching. Both the raw form and
+	 * the slugified form are covered because an ontology reaches this test after
+	 * `slugifyForCurie` (that is how it is compared against stamped curies) while
+	 * a recipe id does not.
+	 */
+	private static readonly IDENTITY_SENTINEL_FORMS: ReadonlySet<string> = new Set([
+		...IDENTITY_SENTINELS,
+		...IDENTITY_SENTINELS.map((value) => slugifyForCurie(value)),
+	]);
+
+	private static isIdentitySentinel(value: string | null): boolean {
+		return value !== null && ImportFlow.IDENTITY_SENTINEL_FORMS.has(value);
 	}
 
 	/**
@@ -3743,16 +3774,28 @@ export class ImportFlow {
 
 			// Show results
 			if (result.success) {
+				// AM-3. The moved and orphan counts ride on the success notice, on
+				// EVERY run. A clean refresh closes the wizard without drawing a
+				// results screen, so a screen-only report is a report the common case
+				// never sees, and a user who cannot see the zero cannot tell "nothing
+				// moved" from "nobody checked". Both numbers are always stated.
+				const movedCount = result.moved?.length ?? 0;
+				const orphanCount = result.orphans?.length ?? 0;
+				const counts = movedCount === 0 && orphanCount === 0
+					? 'Nothing moved. No orphans.'
+					: `${movedCount} moved, ${orphanCount} orphans. See results.`;
 				const message = `✅ Created ${result.created.length} notes` +
 					(result.skipped.length > 0 ? `, skipped ${result.skipped.length} existing` : '') +
-					` in ${(result.duration / 1000).toFixed(1)}s`;
+					` in ${(result.duration / 1000).toFixed(1)}s. ${counts}`;
 				new Notice(message, 5000);
 
-				// "Success" with nothing created (or row-level errors) is a trap the
-				// user can't see — surface the first cause instead of a silent zero.
+				// AM-4. An identity collision (and any other row error) reaches the
+				// user on a run that would otherwise close the window. "Success" with
+				// nothing created, or with row-level errors, is a trap the user cannot
+				// see; the results screen leads with the error list, so the notice
+				// points at it rather than trying to summarize it here.
 				if (result.errors.length > 0) {
-					const first = result.errors[0];
-					new Notice(`⚠️ ${result.errors.length} row(s) failed — first error: ${typeof first === 'string' ? first : (first as { message?: string }).message ?? JSON.stringify(first)}`, 10000);
+					new Notice(`Import finished with ${result.errors.length} errors. See results.`, 10000);
 				}
 				if (result.conflicts && result.conflicts.length > 0) {
 					const n = result.conflicts.length;
@@ -3796,7 +3839,12 @@ export class ImportFlow {
 				// has something the user must see, and closing on it is how `moved` and
 				// `orphans` stayed invisible for as long as they did. Everything else
 				// still closes straight through.
-				if ((result.moved?.length ?? 0) > 0 || (result.orphans?.length ?? 0) > 0) {
+				// AM-4. Errors force the results screen. `result.success` stays true
+				// for a run that hit per-row errors (an "Ambiguous identity" collision
+				// is raised at row 0 and is the case that found this), and closing on
+				// it destroyed the only surface that ever showed them. Same family as
+				// the purge that reported success. Errors first, then the two counts.
+				if (result.errors.length > 0 || movedCount > 0 || orphanCount > 0) {
 					this.renderGenerationResults(result);
 					return;
 				}
