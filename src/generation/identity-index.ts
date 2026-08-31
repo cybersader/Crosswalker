@@ -45,6 +45,25 @@ export interface IdentityIndex {
 	 * way" into an error a user can act on.
 	 */
 	owner(curie: string): string | null;
+	/**
+	 * AM-14 (2026-08-30). What sits at a vault ADDRESS, as far as ownership goes.
+	 *
+	 * Returns the note's import-set stamp (`{ importSetId }`, with a null id for a
+	 * note carrying provenance but no `import_set` block) or null when the path
+	 * holds no `_crosswalker` provenance at all — which the caller reads as "not
+	 * Crosswalker's" only for a path it has already established holds a file.
+	 *
+	 * Failure mode prevented: the address branch of write resolution adopting a
+	 * note it does not own. Identity is not the only route into a note; the
+	 * rendered address is the last one, and it was unguarded. Answered from THIS
+	 * pass rather than by a fresh `getFileCache` at the call site, because that
+	 * read has no raw-frontmatter fallback: a cache-cold owned note would read as
+	 * "not Crosswalker's" and the ordinary re-import would refuse itself.
+	 *
+	 * Only provenance-carrying notes are held, so this costs nothing per plain
+	 * user note.
+	 */
+	provenanceAt(path: string): { importSetId: string | null } | null;
 	/** Every curie the index holds — the vault side of a reconciliation. */
 	curies(): string[];
 	/** Curies held by more than one note. Non-empty means the vault is ambiguous. */
@@ -107,6 +126,11 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 	const byCurie = new Map<string, TFile>();
 	const ownerByCurie = new Map<string, string>();
 	const claims = new Map<string, string[]>();
+	// AM-14. Address -> import-set stamp, for every provenance-carrying note in the
+	// vault. Recorded BEFORE the ownership and curie filters below, because the
+	// address question is "who owns the note at this path", which a filtered index
+	// by construction cannot answer about the sets it excluded.
+	const stampByPath = new Map<string, string | null>();
 
 	for (const file of app.vault.getMarkdownFiles()) {
 		let fm: Record<string, unknown> | undefined = app.metadataCache.getFileCache(file)?.frontmatter;
@@ -131,6 +155,11 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 		const importSetId = importSetBlock && typeof importSetBlock === 'object'
 			? readString((importSetBlock as Record<string, unknown>).id)
 			: null;
+
+		// AM-14. Recorded for every Crosswalker note, curie or not: a note with no
+		// curie still occupies an address, and adopting it would cross exactly the
+		// same boundary as adopting one that has a curie.
+		stampByPath.set(file.path, importSetId);
 
 		if (options.importSetId !== undefined) {
 			if (importSetId !== options.importSetId) continue;
@@ -166,6 +195,7 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 	return {
 		get: (curie: string) => byCurie.get(curie) ?? null,
 		owner: (curie: string) => ownerByCurie.get(curie) ?? null,
+		provenanceAt: (path: string) => (stampByPath.has(path) ? { importSetId: stampByPath.get(path) ?? null } : null),
 		curies: () => [...byCurie.keys()],
 		collisions,
 		size: byCurie.size,

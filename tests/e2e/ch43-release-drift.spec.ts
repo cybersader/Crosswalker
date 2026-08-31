@@ -34,7 +34,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import * as XLSX from 'xlsx';
 import { buildEvidenceLink } from '../../src/views/evidence-link';
-import { requireFrontmatterIndexed } from './helpers/vault-readiness';
+import { readFrontmatterFromDisk, requireFrontmatterIndexed } from './helpers/vault-readiness';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const V15 = path.join(ROOT, 'Frameworks', 'enterprise-attack-v15.1.xlsx');
@@ -146,6 +146,16 @@ async function runRecipe(
 	recipe: unknown,
 	destination: string,
 	sourceFileName: string,
+	/**
+	 * AM-16. The ownership decision, named explicitly on any call that writes
+	 * over identities an earlier call already minted. Since AM-9 the engine no
+	 * longer adopts a set it happens to find in the destination, so omitting this
+	 * on a re-import asks for a NEW set, which AM-12 then correctly refuses row
+	 * by row as a cross-set collision. This is the E2E stand-in for the ownership
+	 * click a person makes in the wizard. Omitted on a first import, which
+	 * genuinely is a new set.
+	 */
+	importSet?: { id: string },
 ): Promise<any> {
 	return browser.executeObsidian(async ({ app }, args) => {
 		// @ts-expect-error — Crosswalker E2E API
@@ -165,14 +175,32 @@ async function runRecipe(
 				createFolders: true,
 				strictValidation: true,
 				sourceFileName: args.sourceFileName,
+				...(args.importSet ? { importSet: args.importSet } : {}),
 			},
 		);
-	}, { columns, rows, recipe, destination, sourceFileName });
+	}, { columns, rows, recipe, destination, sourceFileName, importSet });
 }
 
-async function importRelease(rows: Record<string, string>[], sourceFileName: string): Promise<any> {
+async function importRelease(
+	rows: Record<string, string>[],
+	sourceFileName: string,
+	importSet?: { id: string },
+): Promise<any> {
 	const { columns, rows: picked } = subset(rows);
-	return runRecipe(columns, picked, RECIPE, DESTINATION, sourceFileName);
+	return runRecipe(columns, picked, RECIPE, DESTINATION, sourceFileName, importSet);
+}
+
+/**
+ * AM-16. The import set the 15.1 import minted, read off a note it generated.
+ * The note on disk is where ownership is actually recorded, and it is read from
+ * the file's own bytes rather than the metadata cache, which may not have
+ * indexed a just-written note yet.
+ */
+async function ownedImportSet(): Promise<{ id: string }> {
+	const fm = await readFrontmatterFromDisk(`${DESTINATION}/${SCENARIOS[0].id}.md`) as Record<string, any> | null;
+	const id = fm?._crosswalker?.import_set?.id;
+	if (typeof id !== 'string') throw new Error('the 15.1 import stamped no import set id');
+	return { id };
 }
 
 /** Projection result plus every junction's freshness, keyed by note path. */
@@ -499,7 +527,7 @@ describe('Ch 43 — a real ATT&CK release re-import, end to end', function () {
 	});
 
 	it('THE CLAIM: re-importing 16.1 invalidates exactly the changed subjects', async () => {
-		const result = await importRelease(v16, 'enterprise-attack-v16.1.xlsx');
+		const result = await importRelease(v16, 'enterprise-attack-v16.1.xlsx', await ownedImportSet());
 		expect(result.success).toBe(true);
 		expect(result.errors).toEqual([]);
 

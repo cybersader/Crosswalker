@@ -4046,3 +4046,626 @@ describe.each(['replace', 'skip'] as const)(
 	},
 );
 
+
+// ===========================================================================
+// 23. AM-14: THE ADDRESS IS THE LAST ROUTE INTO A NOTE.
+//
+// There are exactly three routes into a note, and the resolver takes them in
+// order: its IDENTITY, its ADDRESS, and failing both, a fresh file. AM-12
+// closed the first. The second was still open, and it was open in the widest
+// possible way: `resolveWriteTarget` consulted `getAbstractFileByPath` FIRST,
+// before any index, and never read the `_crosswalker.import_set` stamp off
+// whatever it found. Whoever owned that note, it was merged into and re-stamped.
+//
+// WHY THE FIXTURE USES TWO ONTOLOGIES AND ONE FOLDER
+//
+// AM-12 already refuses a row whose CURIE another set holds, so a fixture where
+// the two imports share an ontology never reaches the address branch at all --
+// it is section 19, and it would pass on a build with no address check
+// whatsoever. Two DIFFERENT ontologies pointed at ONE folder is the shape that
+// isolates this: the rendered addresses are identical, no curie is shared, the
+// identity route finds nothing, and the address is the only thing left between
+// the second run and the first run's notes.
+//
+// THE THREE REFUSALS, AND WHY THEY ARE THREE
+//
+//   foreign stamp    another set owns it            -> refresh that set instead
+//   no provenance    a person's own note            -> move or rename it
+//   provenance, no
+//   import_set       a pre-R3 import                -> move or delete it
+//
+// They are kept apart because they are three different things for a user to do
+// something about, and one message covering all three would name an owner that
+// does not exist for two of them.
+//
+// AND THE CASE THAT MUST NOT BREAK
+//
+// A note stamped with the set this run writes is the ORDINARY same-set
+// re-import. It is adopted exactly as it always was -- including when its curie
+// is gone and the address is the only route left to it, which is the pure
+// owned-ADDRESS case and the one a refuse-everything build would destroy. Both
+// are asserted here, and both fail against a build that drops the owned-stamp
+// allowance, so this section pins the rule from both sides.
+// ===========================================================================
+
+/** A second ontology, so two imports render ONE address under TWO curies. */
+const SECOND_ONTOLOGY = 'beta-mini';
+/** The one folder both of them are pointed at. */
+const ONE_ROOT = 'Ontologies/shared';
+/** The prose a user typed onto a concept note, below the managed region. */
+const OWNED_PROSE = 'Our control owner is the platform team. Reviewed each quarter.';
+/** A note a person wrote themselves. No frontmatter at all, which is the point. */
+const USER_NOTE = "# Valid accounts\n\nMy own page about this. It is not Crosswalker's.\n";
+
+/** The hub-bearing layout under another ontology: same addresses, other curies. */
+function recipeUnder(ontology: string): Recipe {
+	return { ...RECIPE, recipe: `custom-${ontology}`, source: { ...RECIPE.source, ontology } };
+}
+
+/** One flat, hub-free import under a named ontology, through either write loop. */
+async function writeFlatAs(
+	vault: Vault,
+	entryPoint: EntryPoint,
+	ontology: string,
+	basePath: string,
+	overwriteMode: 'skip' | 'replace',
+	rows: ParsedData,
+	importSet: ImportSetOption = 'new',
+) {
+	const recipe = flatRecipe(ontology);
+	const sourceFileName = `${ontology}.csv`;
+	return entryPoint === 'generateNotes'
+		? generateNotes(vault.app, rows, CONFIG, {
+			...options(basePath, overwriteMode, { recipeOverride: recipe, importSet }),
+			sourceFileName,
+		})
+		: generateFromRecipe(vault.app, rows, recipe, {
+			basePath, overwriteMode, createFolders: true, sourceFileName, importSet,
+		});
+}
+
+/** A vault holding one flat import under `ONTOLOGY`, in the shared folder. */
+async function oneSetAtTheseAddresses(entryPoint: EntryPoint) {
+	const vault = makeVault();
+	const seed = await writeFlatAs(vault, entryPoint, ONTOLOGY, ONE_ROOT, 'replace', identified(parsed()));
+	if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+	// A hub here would mean the recipe stopped being the flat one this section
+	// reasons about, and the hub route is section 24's question, not this one.
+	if (pathsOfKind(vault.files, 'hub').length > 0) throw new Error('seed produced hubs');
+	forgetSeedWrites(vault);
+	return vault;
+}
+
+/**
+ * The same rows, the same folder, a different ontology.
+ *
+ * `unstamp` strips the whole `import_set` block from the first import, which is
+ * the shape a pre-R3 vault is in: provenance, and no owner to name.
+ */
+async function aSecondSetAtTheFirstAddresses(
+	overwriteMode: 'skip' | 'replace',
+	entryPoint: EntryPoint,
+	opts: { unstamp?: boolean } = {},
+) {
+	const vault = await oneSetAtTheseAddresses(entryPoint);
+	if (opts.unstamp) deMigrateImportSetStamp(vault.files);
+	const before = new Map(vault.files);
+	const [first] = await discoverImportSets(vault.app, undefined);
+	const result = await writeFlatAs(vault, entryPoint, SECOND_ONTOLOGY, ONE_ROOT, overwriteMode, identified(parsed()));
+	return { vault, before, first, result };
+}
+
+/** Every refusal a run reported at an ADDRESS, in the order it reported them. */
+function addressRefusalsIn(result: GenerationResult): string[] {
+	return result.errors
+		.map((e) => e.message)
+		.filter((m) => /^(Cross-set address|Address) collision: /.test(m));
+}
+
+describe.each(['replace', 'skip'] as const)(
+	'a run whose rendered addresses another set already occupies (overwriteMode %s)',
+	(overwriteMode) => {
+		it.each(ENTRY_POINTS)('names the file and the set that owns it, on every row it refused (%s)', async (entryPoint) => {
+			const { before, first, result } = await aSecondSetAtTheFirstAddresses(overwriteMode, entryPoint);
+			expect(before.size).toBe(ROWS.length);
+			expect(result.errors).toHaveLength(ROWS.length);
+			// The whole message, not a fragment: a refusal has to name the file, name
+			// the owner, say that nothing was written, and end with something the
+			// user can actually do. Asserting the fragment would let any of the four
+			// disappear.
+			for (const path of before.keys()) {
+				expect(addressRefusalsIn(result)).toContain(
+					`Cross-set address collision: ${path} is owned by import set ${first.id}. `
+					+ 'Nothing was written for it. Refresh that set instead, or choose a different destination folder for this import.',
+				);
+			}
+		});
+
+		it.each(ENTRY_POINTS)('writes nothing for them: no note, no merge, no rename, no restamp (%s)', async (entryPoint) => {
+			const { vault, before, first, result } = await aSecondSetAtTheFirstAddresses(overwriteMode, entryPoint);
+			expect(result.created).toEqual([]);
+			expect(result.skipped).toEqual([]);
+			expect(result.moved ?? []).toEqual([]);
+			expect(vault.create).not.toHaveBeenCalled();
+			expect(vault.modify).not.toHaveBeenCalled();
+			expect(vault.rename).not.toHaveBeenCalled();
+			expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+			for (const [path, text] of before) {
+				expect(vault.files.get(path)).toBe(text);
+				expect(setIdOf(text)).toBe(first.id);
+			}
+		});
+
+		it.each(ENTRY_POINTS)('counts the refused rows in no success accounting (%s)', async (entryPoint) => {
+			// A refused row is a row this run did not vouch for: it is not created,
+			// not skipped, its identity is not produced -- and a run that refused
+			// rows cannot also say the framework is intact (AM-7).
+			const { vault, first, result } = await aSecondSetAtTheFirstAddresses(overwriteMode, entryPoint);
+			expect(reportedPaths(result)).toEqual([]);
+			expect(result.orphansChecked).toBe(false);
+			expect(result.orphans).toBeUndefined();
+			expect(duplicateCuries(vault.files)).toEqual([]);
+			expect(setIdsInVault(vault.files)).toEqual([first.id]);
+		});
+
+		it.each(ENTRY_POINTS)('writes normally into the same vault when the addresses do NOT collide (%s)', async (entryPoint) => {
+			// The control. Without it every assertion above is satisfied by a build
+			// that refuses everything, which is a worse product, not a safer one.
+			// Same vault, same rows, same ontologies -- one folder apart.
+			const vault = await oneSetAtTheseAddresses(entryPoint);
+			const before = new Map(vault.files);
+			const result = await writeFlatAs(vault, entryPoint, SECOND_ONTOLOGY, 'Ontologies/second', overwriteMode, identified(parsed()));
+			expect(result.errors).toEqual([]);
+			expect(result.created).toHaveLength(ROWS.length);
+			expect(await discoverImportSets(vault.app, undefined)).toHaveLength(2);
+			for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+		});
+
+		it.each(ENTRY_POINTS)('never merges into a note that is not Crosswalker at all (%s)', async (entryPoint) => {
+			// R3: a user's own note is structurally unreachable. Before AM-14 this
+			// note was handed to the merger, which adopts a note whose content
+			// matches the current render -- so whether a person's page survived came
+			// down to what it happened to contain.
+			const probe = await oneSetAtTheseAddresses(entryPoint);
+			const address = [...probe.files.keys()].sort()[0];
+			const vault = makeVault();
+			vault.files.set(address, USER_NOTE);
+			const result = await writeFlatAs(vault, entryPoint, ONTOLOGY, ONE_ROOT, overwriteMode, identified(parsed()));
+
+			expect(addressRefusalsIn(result)).toEqual([
+				`Address collision: a note that is not Crosswalker's sits at ${address}. `
+				+ 'Nothing was written for it. Move or rename that note, or choose a different destination folder for this import.',
+			]);
+			expect(vault.files.get(address)).toBe(USER_NOTE);
+			expect(vault.modify).not.toHaveBeenCalled();
+			// Surgical: the other five rows are written. A refusal is about one
+			// address, never a reason to abandon the import.
+			expect(result.created).toHaveLength(ROWS.length - 1);
+			expect(result.created).not.toContain(address);
+			expect(duplicateCuries(vault.files)).toEqual([]);
+		});
+
+		it.each(ENTRY_POINTS)('refuses a note that carries provenance but no owner, and offers move or delete (%s)', async (entryPoint) => {
+			// The pre-R3 vault. There is no set to send the user to, so the message
+			// must not invent one -- the identity route already answers this case
+			// exactly this way, and the two have to agree.
+			const { vault, before, result } = await aSecondSetAtTheFirstAddresses(overwriteMode, entryPoint, { unstamp: true });
+			expect(await discoverImportSets(vault.app, undefined)).toEqual([]);
+			expect(result.errors).toHaveLength(ROWS.length);
+			for (const path of before.keys()) {
+				expect(addressRefusalsIn(result)).toContain(
+					`Address collision: ${path} is a note from an earlier import that carries no import set. `
+					+ 'Nothing was written for it. Move or delete that note, or choose a different destination folder for this import.',
+				);
+			}
+			for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+			expect(vault.modify).not.toHaveBeenCalled();
+		});
+	},
+);
+
+describe.each(['replace', 'skip'] as const)(
+	'the ordinary same-set re-import, which the address check must not touch (overwriteMode %s)',
+	(overwriteMode) => {
+		/** The set's own notes, refreshed by naming the set -- the everyday case. */
+		async function refreshedInPlace(entryPoint: EntryPoint, damage: (text: string) => string) {
+			const vault = await oneSetAtTheseAddresses(entryPoint);
+			const [set] = await discoverImportSets(vault.app, undefined);
+			const address = [...vault.files.keys()].sort()[0];
+			vault.files.set(address, damage(vault.files.get(address)!));
+			const before = new Map(vault.files);
+			const result = await writeFlatAs(
+				vault, entryPoint, ONTOLOGY, ONE_ROOT, overwriteMode, identified(parsed()), { id: set.id, scheme: set.scheme },
+			);
+			return { vault, before, address, set, result };
+		}
+
+		it.each(ENTRY_POINTS)('merges into its own notes and keeps the prose the user typed under them (%s)', async (entryPoint) => {
+			const { vault, before, address, set, result } = await refreshedInPlace(
+				entryPoint, (text) => `${text}\n${OWNED_PROSE}\n`,
+			);
+			expect(result.errors).toEqual([]);
+			expect(vault.files.get(address)).toContain(OWNED_PROSE);
+			expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+			expect(vault.create).not.toHaveBeenCalled();
+			expect(duplicateCuries(vault.files)).toEqual([]);
+			expect(setIdsInVault(vault.files)).toEqual([set.id]);
+			expect(result.orphansChecked).toBe(true);
+		});
+
+		it.each(ENTRY_POINTS)('adopts a note this set owns at the address even when its identity is gone (%s)', async (entryPoint) => {
+			// The pure owned-ADDRESS case, and the one a refuse-everything build
+			// destroys: a user deleted the `curie` property, so the identity index
+			// cannot see the note at all and the address is the only route left to
+			// it. It is still this set's note, and the stamp says so.
+			const { vault, before, address, result } = await refreshedInPlace(
+				entryPoint, (text) => text.replace(/\ncurie: [^\n]*/, ''),
+			);
+			expect(result.errors).toEqual([]);
+			expect(addressRefusalsIn(result)).toEqual([]);
+			expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+			// The run VOUCHED for that address instead of refusing it, which is the
+			// claim: under `replace` it merges and the identity comes back, under
+			// `skip` the note is kept exactly as it stands. Both are adoption; only
+			// one of them writes.
+			expect(reportedPaths(result)).toContain(address);
+			if (overwriteMode === 'replace') expect(vault.files.get(address)).toContain('curie:');
+			else expect(vault.files.get(address)).toBe(before.get(address));
+			expect(duplicateCuries(vault.files)).toEqual([]);
+		});
+	},
+);
+
+// ===========================================================================
+// 24. AM-14 FOR HUBS, WHICH IS THE HALF THAT RECONCILED BY ADDRESS ALL ALONG.
+//
+// `resolveHubTarget` takes the same three routes in the same order, and its
+// address branch was open in the same way. It matters more here than it does
+// for concepts: a hub carries user prose (six tests in this file exist for
+// that), it is never regenerated-and-cleaned, and its address is derived from
+// the layout rather than from any row -- so two frameworks pointed at one
+// folder land on each other's hubs even when no row of either resembles the
+// other.
+//
+// The fixture keeps the CONCEPT addresses disjoint (`disjointRowsInTactic`) so
+// nothing but the hubs can collide, which is what makes the refusal counts
+// exact rather than approximate.
+// ===========================================================================
+
+/** Where the two imports below both put the Persistence hub, and the root hub. */
+const SHARED_LEVEL_HUB = `${ONE_ROOT}/Persistence/Persistence.md`;
+const SHARED_ROOT_HUB = `${ONE_ROOT}/shared.md`;
+
+/** One hub-bearing import under a named ontology, through either write loop. */
+async function writeHubsAs(
+	vault: Vault,
+	entryPoint: EntryPoint,
+	ontology: string,
+	overwriteMode: 'skip' | 'replace',
+	rows: ParsedData,
+	importSet: ImportSetOption = 'new',
+) {
+	const recipe = recipeUnder(ontology);
+	const sourceFileName = `${ontology}.csv`;
+	return entryPoint === 'generateNotes'
+		? generateNotes(vault.app, rows, CONFIG, {
+			...options(ONE_ROOT, overwriteMode, { recipeOverride: recipe, importSet }),
+			sourceFileName,
+		})
+		: generateFromRecipe(vault.app, rows, recipe, {
+			basePath: ONE_ROOT, overwriteMode, createFolders: true, sourceFileName, importSet,
+		});
+}
+
+/** A vault holding one hub-bearing import, with prose typed onto one hub. */
+async function oneSetWithHubsHere(entryPoint: EntryPoint) {
+	const vault = makeVault();
+	const seed = await writeHubsAs(vault, entryPoint, ONTOLOGY, 'replace', identified(parsed()));
+	if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+	if (!vault.files.has(SHARED_LEVEL_HUB)) throw new Error(`seed produced no ${SHARED_LEVEL_HUB}`);
+	vault.files.set(SHARED_LEVEL_HUB, `${vault.files.get(SHARED_LEVEL_HUB)!}\n${HUB_PROSE}\n`);
+	forgetSeedWrites(vault);
+	return vault;
+}
+
+/**
+ * A second framework into the same folder, under another ontology, whose rows
+ * are all in the tactic the first framework already has a hub for. Nothing but
+ * the two hub ADDRESSES is shared: the concept addresses are disjoint, the
+ * concept curies are disjoint, and so are the hub curies AND their
+ * address-derived legacy aliases, because both carry the ontology prefix.
+ */
+async function aSecondSetAtTheFirstHubAddresses(
+	overwriteMode: 'skip' | 'replace',
+	entryPoint: EntryPoint,
+	opts: { unstamp?: boolean } = {},
+) {
+	const vault = await oneSetWithHubsHere(entryPoint);
+	if (opts.unstamp) deMigrateImportSetStamp(vault.files);
+	const before = new Map(vault.files);
+	const [first] = await discoverImportSets(vault.app, undefined);
+	const result = await writeHubsAs(
+		vault, entryPoint, SECOND_ONTOLOGY, overwriteMode, identified(disjointRowsInTactic('SECOND', 'Persistence')),
+	);
+	return { vault, before, first, result };
+}
+
+describe.each(['replace', 'skip'] as const)(
+	'a run whose HUB addresses another set already occupies (overwriteMode %s)',
+	(overwriteMode) => {
+		it.each(ENTRY_POINTS)('refuses both of them by name, and names the set that owns them (%s)', async (entryPoint) => {
+			const { first, result } = await aSecondSetAtTheFirstHubAddresses(overwriteMode, entryPoint);
+			expect(addressRefusalsIn(result).sort()).toEqual([SHARED_LEVEL_HUB, SHARED_ROOT_HUB].map((path) =>
+				`Cross-set address collision: ${path} is owned by import set ${first.id}. `
+				+ 'Nothing was written for it. Refresh that set instead, or choose a different destination folder for this import.',
+			).sort());
+			expect(result.errors).toHaveLength(2);
+		});
+
+		it.each(ENTRY_POINTS)('leaves those hubs byte for byte, prose and all, in the set that owns them (%s)', async (entryPoint) => {
+			const { vault, before, first } = await aSecondSetAtTheFirstHubAddresses(overwriteMode, entryPoint);
+			for (const [path, text] of before) {
+				if (frontmatterOf(text).kind !== 'hub') continue;
+				expect(vault.files.get(path)).toBe(text);
+				expect(setIdOf(text)).toBe(first.id);
+			}
+			expect(vault.files.get(SHARED_LEVEL_HUB)).toContain(HUB_PROSE);
+			expect(vault.rename).not.toHaveBeenCalled();
+		});
+
+		it.each(ENTRY_POINTS)('still writes its own rows, so a refused hub is not a stopped import (%s)', async (entryPoint) => {
+			const { vault, result } = await aSecondSetAtTheFirstHubAddresses(overwriteMode, entryPoint);
+			expect(result.created).toHaveLength(ROWS.length);
+			expect(duplicateCuries(vault.files)).toEqual([]);
+			// One root hub and one Persistence hub in the vault, both the first
+			// set's. A second of either would mean the refusal wrote after all.
+			expect(pathsOfKind(vault.files, 'hub').filter((p) => p === SHARED_ROOT_HUB)).toHaveLength(1);
+			// And not one hub in the vault carries the SECOND import's identity.
+			// Adoption did not create files, it re-stamped the ones it found, so a
+			// count alone would have read as clean while both hubs changed hands.
+			expect(hubCuriesOf(vault.files).filter((curie) => curie.startsWith(`${SECOND_ONTOLOGY}:`))).toEqual([]);
+		});
+
+		it.each(ENTRY_POINTS)('does not vouch for the hubs it refused, so orphans stay unchecked (%s)', async (entryPoint) => {
+			// Marking a refused hub as produced would both claim a note that does
+			// not exist and hide a real orphan behind it.
+			const { result } = await aSecondSetAtTheFirstHubAddresses(overwriteMode, entryPoint);
+			expect(result.orphansChecked).toBe(false);
+			expect(result.orphans).toBeUndefined();
+		});
+
+		it.each(ENTRY_POINTS)('never merges a hub into a note that is not Crosswalker at all (%s)', async (entryPoint) => {
+			const vault = makeVault();
+			vault.files.set(SHARED_LEVEL_HUB, USER_NOTE);
+			const result = await writeHubsAs(
+				vault, entryPoint, ONTOLOGY, overwriteMode, identified(disjointRowsInTactic('SECOND', 'Persistence')),
+			);
+			expect(addressRefusalsIn(result)).toEqual([
+				`Address collision: a note that is not Crosswalker's sits at ${SHARED_LEVEL_HUB}. `
+				+ 'Nothing was written for it. Move or rename that note, or choose a different destination folder for this import.',
+			]);
+			expect(vault.files.get(SHARED_LEVEL_HUB)).toBe(USER_NOTE);
+			expect(result.created).toHaveLength(ROWS.length + 1); // the rows, plus the root hub
+		});
+
+		it.each(ENTRY_POINTS)('refuses a hub address held by a note that carries no owner (%s)', async (entryPoint) => {
+			const { vault, before, result } = await aSecondSetAtTheFirstHubAddresses(overwriteMode, entryPoint, { unstamp: true });
+			for (const path of [SHARED_LEVEL_HUB, SHARED_ROOT_HUB]) {
+				expect(addressRefusalsIn(result)).toContain(
+					`Address collision: ${path} is a note from an earlier import that carries no import set. `
+					+ 'Nothing was written for it. Move or delete that note, or choose a different destination folder for this import.',
+				);
+			}
+			for (const [path, text] of before) {
+				if (frontmatterOf(text).kind !== 'hub') continue;
+				expect(vault.files.get(path)).toBe(text);
+			}
+		});
+
+		it.each(ENTRY_POINTS)('refreshes its OWN hubs in place, prose intact, which must not break (%s)', async (entryPoint) => {
+			const vault = await oneSetWithHubsHere(entryPoint);
+			const [set] = await discoverImportSets(vault.app, undefined);
+			const before = new Map(vault.files);
+			const result = await writeHubsAs(
+				vault, entryPoint, ONTOLOGY, overwriteMode, identified(parsed()), { id: set.id, scheme: set.scheme },
+			);
+			expect(addressRefusalsIn(result)).toEqual([]);
+			expect(result.errors).toEqual([]);
+			expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+			expect(vault.files.get(SHARED_LEVEL_HUB)).toContain(HUB_PROSE);
+			expect(duplicateCuries(vault.files)).toEqual([]);
+			expect(setIdsInVault(vault.files)).toEqual([set.id]);
+		});
+	},
+);
+
+// ===========================================================================
+// 25. AM-15: THE LITERAL `new` RESOLVES THROUGH THE COLLISION TEST.
+//
+// AM-13 (section 20) mints `set-qualified-v1` when a new set's curie space is
+// already occupied, so two releases of one framework coexist instead of meeting
+// as an AM-12 refusal on every row. It was dead on the ordinary click:
+// `selectedImportSet` returned the dropdown's literal `'new'` before the
+// qualification ever ran, so every import where the user touched the control --
+// or pressed "Import as a new set instead" -- minted the plain endpoint form
+// and walked straight into the collision AM-13 exists to prevent.
+//
+// A user clicking "Import as a new set" is asking for a NEW SET. They are not
+// asking for a particular identity scheme; they have never heard of one. So the
+// literal is a request that still has to be answered, and only the literal
+// `new-set-qualified` -- which is already an answer -- passes through.
+//
+// Driven through the rendered controls, not by calling `chooseImportSet`: a
+// test that reached past the UI would pass on a build that stopped drawing the
+// dropdown at all.
+// ===========================================================================
+
+describe('the literal new that a click produces', () => {
+	/** A vault holding one framework, in its own folder, under its own ontology. */
+	async function aVaultHolding(ontology: string) {
+		const vault = makeVault();
+		const seed = await generateNotes(vault.app, parsed(), CONFIG, {
+			...options(`Ontologies/${ontology}-2023`, 'replace', { recipeOverride: flatRecipe(ontology), importSet: 'new' }),
+			sourceFileName: `${ontology}.csv`,
+		});
+		if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+		return vault;
+	}
+
+	it('qualifies the mint when the user picks a new set out of the dropdown', async () => {
+		// The dropdown's own option value, through its own onChange: `__new__`
+		// becomes the literal `new`, which is exactly the value that used to be
+		// returned verbatim.
+		const vault = await aVaultHolding(ONTOLOGY);
+		const { flow } = await askWhereItLands(vault.app);
+		chooseFromTheList(flow, '__new__');
+		expect(inner(flow).importSetChoice).toBe('new');
+		expect(inner(flow).selectedImportSet()).toBe('new-set-qualified');
+	});
+
+	it('qualifies the mint when the user backs out of a refresh they had chosen', async () => {
+		// The second route to the literal: press the offer, then press "Import as a
+		// new set instead". A user who changes their mind must not get a worse
+		// answer than a user who never clicked at all.
+		const vault = await aVaultHolding(ONTOLOGY);
+		const { flow } = await askWhereARefreshLands(vault.app);
+		const { clicks } = captureReview(flow);
+		expect([...clicks.keys()]).toContain('Import as a new set instead');
+		clicks.get('Import as a new set instead')!();
+		expect(inner(flow).importSetChoice).toBe('new');
+		expect(inner(flow).selectedImportSet()).toBe('new-set-qualified');
+	});
+
+	it('leaves the plain endpoint form alone when the click lands in a free curie space', async () => {
+		// The control that keeps AM-15 from becoming "always qualify", which would
+		// rename the identity layer of every import path that already exists.
+		const vault = await aVaultHolding('cis-controls-v8');
+		const { flow } = await askWhereItLands(vault.app);
+		chooseFromTheList(flow, '__new__');
+		expect(inner(flow).importSetChoice).toBe('new');
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+
+	it('passes an explicit set-qualified answer through untouched', async () => {
+		// `new-set-qualified` is already an answer to the collision question, and
+		// re-asking it in a vault where nothing collides would downgrade it to
+		// `new` -- so this is asserted in the FREE vault, where the two answers
+		// differ and passing through is the only way to get the right one.
+		const vault = await aVaultHolding('cis-controls-v8');
+		const { flow } = await askWhereItLands(vault.app);
+		inner(flow).chooseImportSet('new-set-qualified');
+		expect(inner(flow).selectedImportSet()).toBe('new-set-qualified');
+	});
+});
+
+// ===========================================================================
+// 26. A-8, COMPLETE: AN OWNED NOTE, AN OWNED ADDRESS, OR A FRESH PATH.
+//
+// Every clause of A-8 up to pass 7 is asserted in sections 1 to 22. The fifth
+// amendment adds one sentence to it, and it is a closure claim rather than a
+// new feature: a write lands on a note this set owns, on an address this set
+// owns, or on a path nothing holds -- and EVERY other outcome is a named,
+// surfaced refusal. There is no fourth thing that can happen.
+//
+// Sections 23 and 24 hold that at the engine. This one holds it where the user
+// stands: one real `ImportFlow`, three legs, and nothing reaching past the UI.
+// The refusal leg uses a person's own note rather than another set's, because
+// the new-set occupancy guard (A-6) already blocks a mint into a folder a
+// STAMPED set owns -- so the case that actually reaches generation in the
+// shipped product is the one nothing above it can see.
+// ===========================================================================
+
+describe.each(['replace', 'skip'] as const)(
+	'a write lands on an owned note, an owned address, or a fresh path (overwriteMode %s)',
+	(overwriteMode) => {
+		/** One whole wizard import, optionally pressing the refresh offer first. */
+		async function wizardRun(app: unknown, opts: { refresh?: boolean } = {}) {
+			const { flow, texts, close } = makeFlow(app);
+			flow.overwriteMode = overwriteMode;
+			await inner(flow).prepareStep3(true);
+			if (opts.refresh) pressTheOffer(flow);
+			const resolved = inner(flow).selectedImportSet();
+			flow.currentStep = 4;
+			await flow.generate();
+			return { flow, texts, close, resolved };
+		}
+
+		/** A vault holding one wizard import, with prose typed onto one hub. */
+		async function afterTheFirstImport() {
+			const vault = makeVault();
+			notices.length = 0;
+			const first = await wizardRun(vault.app);
+			const hub = pathsOfKind(vault.files, 'hub')[0];
+			if (!hub) throw new Error('the first import produced no hub to type on');
+			vault.files.set(hub, `${vault.files.get(hub)!}\n${HUB_PROSE}\n`);
+			forgetSeedWrites(vault);
+			return { vault, first, hub };
+		}
+
+		it('lands the first import on fresh paths, and says so', async () => {
+			// Leg one. Nothing in the vault, so every write is a fresh path and the
+			// run closes with both counts stated.
+			const { vault, first } = await afterTheFirstImport();
+			expect(first.texts.filter((t) => /Errors|collision/.test(t))).toEqual([]);
+			expect(first.close).toHaveBeenCalledTimes(1);
+			expect(noticeText()).toContain('Nothing moved.');
+			expect(noticeText()).toContain('No orphans.');
+			expect(duplicateCuries(vault.files)).toEqual([]);
+		});
+
+		it('lands a refresh on the notes and addresses that set already owns', async () => {
+			// Leg two. The same source, refreshed by the click: every write finds
+			// either the note by identity or the address the set already owns, so
+			// nothing is created, nothing moves, nothing orphans, and the prose the
+			// user typed onto a hub is still there.
+			const { vault, hub } = await afterTheFirstImport();
+			const before = new Map(vault.files);
+			notices.length = 0;
+			const second = await wizardRun(vault.app, { refresh: true });
+
+			expect(second.texts.filter((t) => /Errors|collision/.test(t))).toEqual([]);
+			expect(second.close).toHaveBeenCalledTimes(1);
+			expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+			expect(vault.files.get(hub)).toContain(HUB_PROSE);
+			expect(vault.create).not.toHaveBeenCalled();
+			expect(vault.rename).not.toHaveBeenCalled();
+			expect(duplicateCuries(vault.files)).toEqual([]);
+			expect(setIdsInVault(vault.files)).toHaveLength(1);
+			expect(noticeText()).toContain('Nothing moved.');
+			expect(noticeText()).toContain('No orphans.');
+		});
+
+		it('refuses the one address it does not own, by name, on screen', async () => {
+			// Leg three, and the whole point of the sentence: the fourth outcome
+			// does not exist. A person's note sits at an address this import
+			// renders; the row is refused, the refusal is named on the results
+			// screen, the notice says the run finished with errors, and the window
+			// does not close on it.
+			const probe = makeVault();
+			await wizardRun(probe.app);
+			const address = [...probe.files.keys()].sort().find((path) => frontmatterOf(probe.files.get(path)!).kind === undefined);
+			if (!address) throw new Error('the probe import produced no concept note');
+
+			const vault = makeVault();
+			vault.files.set(address, USER_NOTE);
+			notices.length = 0;
+			const run = await wizardRun(vault.app);
+
+			expect(run.close).not.toHaveBeenCalled();
+			expect(run.texts).toContain('Errors');
+			expect(run.texts).toContain('❌ Errors: 1');
+			expect(run.texts.some((line) => line.endsWith(
+				`Address collision: a note that is not Crosswalker's sits at ${address}. `
+				+ 'Nothing was written for it. Move or rename that note, or choose a different destination folder for this import.',
+			))).toBe(true);
+			expect(noticeText()).toContain('Import finished with 1 errors. See results.');
+			// AM-7 riding on it: a run that refused a row did not answer the orphan
+			// question, so it must not print a zero.
+			expect(noticeText()).toContain('Orphans not checked.');
+			expect(noticeText()).not.toContain('No orphans.');
+			// And the note itself is exactly as the person left it.
+			expect(vault.files.get(address)).toBe(USER_NOTE);
+			expect(duplicateCuries(vault.files)).toEqual([]);
+		});
+	},
+);

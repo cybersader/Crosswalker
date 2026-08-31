@@ -2285,7 +2285,17 @@ export class ImportFlow {
 		if (this.discoveredSets === null) throw new Error(ImportFlow.STILL_INDEXING);
 
 		const choice = this.importSetChoice;
-		if (typeof choice === 'string') return choice;
+		// AM-15. The dropdown's literal `new` is a request for a NEW SET, not a
+		// request for a particular identity scheme, so it still has to go through the
+		// AM-13 qualification below. Returning it verbatim here is what made AM-13
+		// dead on the ordinary click: every wizard import that reached this line
+		// minted `endpoint-v1` even when its curie space was already occupied, and
+		// then met the existing set as an AM-12 collision on every single row.
+		// `new-set-qualified` is already an answer to that question and passes
+		// through untouched.
+		if (typeof choice === 'string') {
+			return choice === 'new' ? this.newSetOption() : choice;
+		}
 		if (choice) {
 			const set = this.discoveredSets.find((candidate) => candidate.id === choice.id);
 			if (!set) throw new Error('Choose an import set to refresh, or choose to import as a new set.');
@@ -2302,12 +2312,22 @@ export class ImportFlow {
 		// is left with a decision to make.
 		//
 		// AM-13. WHICH new set, though, is decided by whether its identities would
-		// collide. Same rule the crosswalk modal has always had, now on this
-		// surface too: a new set whose curie space overlaps an existing set's mints
-		// set-qualified identities, so the two releases coexist by construction
-		// instead of meeting as an AM-12 collision on every row. `endpoint-v1`
-		// stays the answer when nothing collides, so every pre-existing import path
-		// keeps the identities it already wrote.
+		// collide. See `newSetOption`.
+		return this.newSetOption();
+	}
+
+	/**
+	 * AM-13. The new-set option this source should mint, on EVERY route to a new
+	 * set: the explicit `new` click and the no-click default alike (AM-15).
+	 *
+	 * Same rule the crosswalk modal has always had. A new set whose curie space
+	 * overlaps an existing set's mints set-qualified identities, so two releases
+	 * of one framework coexist by construction instead of meeting as an AM-12
+	 * collision on every row. `endpoint-v1` stays the answer when nothing
+	 * collides, so every pre-existing import path keeps the identities it already
+	 * wrote.
+	 */
+	private newSetOption(): ImportSetOption {
 		return this.newSetCollidesWithExistingIdentities() ? 'new-set-qualified' : 'new';
 	}
 

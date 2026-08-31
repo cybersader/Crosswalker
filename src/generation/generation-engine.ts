@@ -559,6 +559,37 @@ export async function generateNotes(
 						});
 						return;
 					}
+
+					// AM-14. The ADDRESS is the last route into a note, so write resolution
+					// runs HERE, above every record this row would otherwise leave behind. A
+					// row refused at its address must not reserve its rendered path against a
+					// later row, must not be counted as produced, and must not be stamped with
+					// a source order, exactly as AM-12's identity refusal must not. Resolution
+					// is a pure set of lookups; only the point at which it runs moved.
+					//
+					// Deliberately BELOW the path-collision check: two rows rendering one
+					// address are that check's answer, and letting the second row race the
+					// first row's freshly written file into an address refusal would report a
+					// source problem as a vault problem.
+					const fullPath = normalizePath(noteData.path);
+					// AM-12: the OWNED index resolves. Every row whose identity is held
+					// outside this set was refused above, so a hit here is always a note this
+					// run owns. AM-14: the vault-wide index plus the set id are what the
+					// ADDRESS branches judge with, and they report rather than adopt.
+					const target = resolveWriteTarget(
+						app,
+						fullPath,
+						noteData.curie,
+						enrichmentEnabled,
+						ownedIdentityIndex,
+						identityIndex,
+						importSet.id,
+					);
+					if (target.refusal) {
+						result.errors.push({ row: rowNum, message: crossSetAddressMessage(target.refusal) });
+						return;
+					}
+
 					emittedPaths.add(noteData.path);
 
 					// P1 (2026-07-27): stamp source publication order onto concept
@@ -595,14 +626,10 @@ export async function generateNotes(
 					// skipped or merged rather than newly created.
 					producedCuries.add(noteData.curie);
 
-					// Check if file exists. Consults BOTH the sibling path AND (when
-					// enrichment is on) the folder-note-relocated path by curie — see
-					// resolveWriteTarget's docstring (re-import identity, design §4).
-					const fullPath = normalizePath(noteData.path);
-					// AM-12: the OWNED index resolves. Every row whose identity is held
-					// outside this set was refused above, so a hit here is always a note
-					// this run owns.
-					const target = resolveWriteTarget(app, fullPath, noteData.curie, enrichmentEnabled, ownedIdentityIndex);
+					// The write target was resolved above (AM-14), before this row reserved
+					// anything. Consults BOTH the sibling path AND (when enrichment is on) the
+					// folder-note-relocated path by curie — see resolveWriteTarget's docstring
+					// (re-import identity, design §4).
 					const existingFile = target.existingFile;
 					const writePath = target.writePath;
 
@@ -961,6 +988,79 @@ function crossSetCollisionMessage(curie: string, claim: ForeignClaim): string {
 }
 
 /**
+ * AM-14 (2026-08-30). Why a note sitting at a rendered address may not be adopted.
+ *
+ * Three cases, kept apart because they are three different things for a user to
+ * do something about:
+ *   `foreign-set`   another import set owns it. Refresh that set instead.
+ *   `not-crosswalker` a person's own note. Crosswalker never merges into one.
+ *   `unstamped`     provenance from an import predating import sets. Same answer
+ *                   the identity route already gives such a note: move or delete.
+ */
+type AddressRefusalReason = 'foreign-set' | 'not-crosswalker' | 'unstamped';
+
+interface AddressRefusal {
+	reason: AddressRefusalReason;
+	path: string;
+	/** The owning set, for `foreign-set` only. Never fabricated for the others. */
+	setId: string | null;
+}
+
+/**
+ * AM-14. The last route into a note is its ADDRESS, and until now it was the one
+ * route with no ownership check: `resolveWriteTarget` consulted
+ * `getAbstractFileByPath` FIRST and adopted whatever it found, without ever
+ * reading the `_crosswalker.import_set` stamp off it.
+ *
+ * Failure mode prevented: two notes with different curies and one rendered
+ * address. AM-12 closed the identity route (same curie, other owner); this closes
+ * the case where the curies differ, the addresses collide, and the foreign note is
+ * merged into and restamped with this run's set. A framework annexed one note at a
+ * time is the single worst thing this product can do.
+ *
+ * Returns null when the address may be adopted: the note is stamped with the set
+ * this run writes (the ORDINARY same-set re-import, which must keep working), or
+ * this run produced the note itself and the index simply predates it, or there is
+ * no index to judge with (a caller that passes none keeps its old behaviour rather
+ * than refusing everything).
+ */
+function addressRefusal(
+	vaultWide: IdentityIndex | undefined,
+	path: string,
+	ownedSetId: string | undefined,
+	producedThisRun?: ReadonlySet<string>,
+): AddressRefusal | null {
+	if (!vaultWide || !ownedSetId) return null;
+	// A note this run wrote minutes ago is this run's, and the index was built
+	// before it existed. Without this, a hub landing on a path an earlier row of
+	// the same run created would refuse itself as "not Crosswalker's".
+	if (producedThisRun?.has(path)) return null;
+	const stamp = vaultWide.provenanceAt(path);
+	if (!stamp) return { reason: 'not-crosswalker', path, setId: null };
+	if (stamp.importSetId === null) return { reason: 'unstamped', path, setId: null };
+	if (stamp.importSetId === ownedSetId) return null;
+	return { reason: 'foreign-set', path, setId: stamp.importSetId };
+}
+
+/**
+ * The error a row refused at its address reports. Names the file and the owner,
+ * and ends with the action that fits the case that actually occurred, because
+ * "something is in the way" is not something a user can act on.
+ */
+function crossSetAddressMessage(refusal: AddressRefusal): string {
+	if (refusal.reason === 'foreign-set') {
+		return `Cross-set address collision: ${refusal.path} is owned by import set ${refusal.setId}. `
+			+ 'Nothing was written for it. Refresh that set instead, or choose a different destination folder for this import.';
+	}
+	if (refusal.reason === 'unstamped') {
+		return `Address collision: ${refusal.path} is a note from an earlier import that carries no import set. `
+			+ 'Nothing was written for it. Move or delete that note, or choose a different destination folder for this import.';
+	}
+	return `Address collision: a note that is not Crosswalker's sits at ${refusal.path}. `
+		+ 'Nothing was written for it. Move or rename that note, or choose a different destination folder for this import.';
+}
+
+/**
  * AM-12 for hubs. A hub resolves through its own curie OR through an
  * address-derived legacy alias, so BOTH have to be checked: adopting a note via
  * an alias claimed by another set crosses the same boundary as adopting it
@@ -997,6 +1097,13 @@ function foreignHubClaim(
  * lookup per row when enrichment is on; Pass 1.5 (not this function) is what
  * actually DECIDES whether a concept should move — this only finds where it
  * currently sits so the row write lands there instead of an orphaned sibling.
+ *
+ * AM-14 (2026-08-30): every ADDRESS branch below now checks the stamp on the note
+ * it found and returns a `refusal` rather than adopting it, unless the stamp names
+ * the set this run writes. Identity, then address, then create fresh is the whole
+ * set of routes into a note; identity was closed by AM-12 and this closes the
+ * other. The caller must treat a `refusal` as a refused row: report it and write
+ * nothing.
  */
 function resolveWriteTarget(
 	app: App,
@@ -1004,9 +1111,18 @@ function resolveWriteTarget(
 	curie: string,
 	enrichmentEnabled: boolean,
 	ownedIndex?: IdentityIndex,
-): { existingFile: TFile | null; writePath: string; moveFrom?: string } {
+	vaultWideIndex?: IdentityIndex,
+	ownedSetId?: string,
+): { existingFile: TFile | null; writePath: string; moveFrom?: string; refusal?: AddressRefusal } {
 	const direct = app.vault.getAbstractFileByPath(siblingPath);
-	if (direct instanceof TFile) return { existingFile: direct, writePath: siblingPath };
+	if (direct instanceof TFile) {
+		// AM-14. The owned-stamp case is the ordinary same-set re-import and is
+		// adopted exactly as before; anything else is refused rather than merged
+		// into, moved, or restamped.
+		const refusal = addressRefusal(vaultWideIndex, direct.path, ownedSetId);
+		if (refusal) return { existingFile: null, writePath: siblingPath, refusal };
+		return { existingFile: direct, writePath: siblingPath };
+	}
 
 	// Identity reconciliation (2026-08-21): the note is not at the address this
 	// recipe renders, but the vault may still hold this concept SOMEWHERE — under a
@@ -1037,6 +1153,12 @@ function resolveWriteTarget(
 			if (relocated instanceof TFile) {
 				const fm = app.metadataCache.getFileCache(relocated)?.frontmatter;
 				if (fm && fm.curie === curie) {
+					// AM-14. Also an address branch, and the one AM-12 cannot reach: a
+					// note carrying this curie but NO `_crosswalker` block is invisible to
+					// the vault-wide identity index, so the caller's identity refusal never
+					// saw it and this branch would adopt a note that is not Crosswalker's.
+					const refusal = addressRefusal(vaultWideIndex, relocated.path, ownedSetId);
+					if (refusal) return { existingFile: null, writePath: siblingPath, refusal };
 					return { existingFile: relocated, writePath: candidatePath };
 				}
 			}
@@ -2229,11 +2351,19 @@ export async function generateFromRecipe(
 	/**
 	 * The subject's current review fingerprint, or null when it cannot be had.
 	 *
-	 * Null is a real answer here — a junction row generated before its subject
-	 * concept exists, a subject in a different import set, an external subject.
-	 * There is deliberately NO second pass to fill these in later: a resolve pass
-	 * would stamp a fingerprint the IMPORTER computed against content no human
-	 * reviewed, which is fabricating an approval with extra steps.
+	 * DELIBERATELY VAULT-WIDE (AM-16). This is a READ, never a write: it resolves
+	 * the subject through `identityIndex`, not the owned one, because a crosswalk
+	 * legitimately spans sets - its subject is routinely a concept another import
+	 * set owns, and refusing to read that would leave every cross-framework
+	 * attestation unbaselined. AM-12's owned-index rule governs what a run may
+	 * WRITE; nothing here modifies the subject.
+	 *
+	 * Null is a real answer here - a junction row generated before its subject
+	 * concept exists, a subject that is not in this vault at all, a subject whose
+	 * note carries no review fingerprint. There is deliberately NO second pass to
+	 * fill these in later: a resolve pass would stamp a fingerprint the IMPORTER
+	 * computed against content no human reviewed, which is fabricating an approval
+	 * with extra steps.
 	 */
 	const resolveSubjectReviewBaseline = (subjectCurie: string): ReviewBaseline | null => {
 		const fromThisRun = producedReviewBaselines.get(subjectCurie);
@@ -2379,6 +2509,36 @@ export async function generateFromRecipe(
 				});
 				return;
 			}
+			// AM-14. The ADDRESS is the last route into a note, so write resolution
+			// runs HERE, above every record this row would otherwise leave behind: the
+			// reserved path, the produced curie, the review baseline. A row refused at
+			// its address is a row this run never vouched for, exactly as AM-12's
+			// identity refusal is. Resolution is a pure set of lookups; only the point
+			// at which it runs moved.
+			//
+			// Deliberately BELOW the path-collision check: two rows rendering one
+			// address are that check's answer, and letting the second row race the
+			// first row's freshly written file into an address refusal would report a
+			// source problem as a vault problem.
+			//
+			// AM-12: the OWNED index resolves. Every row whose identity is held outside
+			// this set was refused above, so a hit there is always a note this run owns.
+			// AM-14: the vault-wide index plus the set id are what the ADDRESS branches
+			// judge with, and they report rather than adopt.
+			const target = resolveWriteTarget(
+				app,
+				fullPath,
+				curie,
+				enrichmentEnabled,
+				ownedIdentityIndex,
+				identityIndex,
+				importSet.id,
+			);
+			if (target.refusal) {
+				result.errors.push({ row: rowNum, message: crossSetAddressMessage(target.refusal) });
+				return;
+			}
+
 			emittedPaths.add(fullPath);
 
 			// 5. Compose frontmatter
@@ -2458,12 +2618,10 @@ export async function generateFromRecipe(
 				producedReviewBaselines.set(curie, { reviewCid, reviewGroups });
 			}
 
-			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND
+			// 7. Existing-file handling + merge. The target was resolved above (AM-14),
+			//    before this row reserved anything. Consults BOTH the sibling path AND
 			//    (when enrichment is on) the folder-note-relocated path by curie —
 			//    see resolveWriteTarget's docstring (re-import identity, design §4).
-			// AM-12: the OWNED index resolves. Every row whose identity is held outside
-			// this set was refused above, so a hit here is always a note this run owns.
-			const target = resolveWriteTarget(app, fullPath, curie, enrichmentEnabled, ownedIdentityIndex);
 			const existingFile = target.existingFile;
 			const writePath = target.writePath;
 
@@ -2758,7 +2916,10 @@ function resolveHubTarget(
 	curie: string | null,
 	legacyCuries: string[] | undefined,
 	ownedIndex?: IdentityIndex,
-): { existingFile: TFile | null; writePath: string; moveFrom?: string; adoptedAlias?: string } {
+	vaultWideIndex?: IdentityIndex,
+	ownedSetId?: string,
+	producedThisRun?: ReadonlySet<string>,
+): { existingFile: TFile | null; writePath: string; moveFrom?: string; adoptedAlias?: string; refusal?: AddressRefusal } {
 	// AM-12: the OWNED index. A hub held by another set is refused by the caller
 	// before this runs, so anything found here belongs to the set being written.
 	const byIdentity = curie && ownedIndex ? ownedIndex.get(curie) : null;
@@ -2779,15 +2940,22 @@ function resolveHubTarget(
 	}
 
 	// Address is consulted last, and since AM-12 the index it could not be seen in
-	// is the OWNED one, so this branch now covers two cases: a note with no
+	// is the OWNED one, so this branch covers two cases: a note with no
 	// `_crosswalker` block of its own, and a note some other set owns that happens
 	// to sit at this address under a DIFFERENT identity. AM-12 refuses the first
-	// kind of boundary crossing (same identity, other owner) at the caller; a
-	// same-address collision is the second kind and is still governed by the
-	// wizard's new-set occupancy guard plus `applyHubRelocation`, which refuses to
-	// move onto an occupied path rather than clobbering it.
+	// kind of boundary crossing (same identity, other owner) at the caller.
+	//
+	// AM-14 closes the second, which was the last unguarded route into a note: a
+	// hub whose rendered address happens to hold another set's note was merged
+	// into and restamped, no matter whose it was. The owned-stamp case is the
+	// ordinary same-set re-import and is adopted exactly as before.
 	const direct = app.vault.getAbstractFileByPath(desiredPath);
-	return { existingFile: direct instanceof TFile ? direct : null, writePath: desiredPath };
+	if (direct instanceof TFile) {
+		const refusal = addressRefusal(vaultWideIndex, direct.path, ownedSetId, producedThisRun);
+		if (refusal) return { existingFile: null, writePath: desiredPath, refusal };
+		return { existingFile: direct, writePath: desiredPath };
+	}
+	return { existingFile: null, writePath: desiredPath };
 }
 
 /**
@@ -2950,6 +3118,17 @@ async function applyEnrichment(
 
 	const recordsByPath = new Map(records.map((r) => [r.path, r]));
 
+	// AM-14. Every address THIS run has already written or kept. Both identity
+	// indexes were built before the run started, so a note this run created is
+	// absent from them; without this a hub resolving onto an address an earlier
+	// row of the SAME run wrote would refuse itself as `not Crosswalker's`.
+	// Ownership is the stamp on the note, and that stamp names this set.
+	const producedThisRun = new Set<string>([
+		...records.map((r) => normalizePath(r.path)),
+		...result.created.map((path) => normalizePath(path)),
+		...result.skipped.map((path) => normalizePath(path)),
+	]);
+
 	// 0. Parent-note relocations (batch-enrichment design §3 step 2) — physically
 	//    move each file BEFORE the children-list patch below, which writes to
 	//    the FINAL (post-relocation) path — enrichment.childrenByPath is
@@ -2985,6 +3164,7 @@ async function applyEnrichment(
 		const relocParentPath = getParentPath(toPath);
 		if (relocParentPath) await ensureFolderExists(app, relocParentPath).catch(() => {});
 		await app.vault.rename(file, toPath);
+		producedThisRun.add(toPath);
 
 		recordsByPath.delete(reloc.from);
 		record.path = toPath;
@@ -3056,13 +3236,31 @@ async function applyEnrichment(
 			result.errors.push({ row: 0, message: crossSetCollisionMessage(foreignHub.curie, foreignHub.claim) });
 			continue;
 		}
-		if (hubCurie) producedCuries.add(hubCurie);
-		let body = hub.body;
-
 		// Identity first: a facet hub curie is already address-independent, but it
 		// was resolved by path alone, so a changed destination created a duplicate
 		// instead of finding the hub that exists.
-		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, indexes?.owned);
+		//
+		// AM-14. Resolved BEFORE the hub is recorded as produced, for the same
+		// reason AM-12's detection is: a hub refused at its address is a hub this
+		// run never wrote, and marking it produced would both vouch for a note that
+		// does not exist and hide a real orphan behind it.
+		const target = resolveHubTarget(
+			app,
+			fullPath,
+			hubCurie,
+			hub.legacyCuries,
+			indexes?.owned,
+			indexes?.vaultWide,
+			importSet.id,
+			producedThisRun,
+		);
+		if (target.refusal) {
+			result.errors.push({ row: 0, message: crossSetAddressMessage(target.refusal) });
+			continue;
+		}
+		if (hubCurie) producedCuries.add(hubCurie);
+		let body = hub.body;
+
 		const existing = target.existingFile;
 		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
 		if (existing instanceof TFile) {
@@ -3094,6 +3292,7 @@ async function applyEnrichment(
 			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
 			await app.vault.create(writePath, buildNoteContent(frontmatter, body));
 			result.created.push(writePath);
+			producedThisRun.add(normalizePath(writePath));
 		}
 	}
 
@@ -3120,14 +3319,32 @@ async function applyEnrichment(
 			result.errors.push({ row: 0, message: crossSetCollisionMessage(foreignHub.curie, foreignHub.claim) });
 			continue;
 		}
-		if (hubCurie) producedCuries.add(hubCurie);
-		let body = hub.body;
-
 		// Identity first, with the address-derived legacy forms accepted as aliases.
 		// A level hub whose curie moved with its folder is the silent case: no
 		// collision, no error, just two files and a batch of new orphans. The alias
 		// is what lets the existing note keep its content and be restamped instead.
-		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, indexes?.owned);
+		//
+		// AM-14. Resolved BEFORE the hub is recorded as produced, for the same
+		// reason AM-12's detection is: a hub refused at its address is a hub this
+		// run never wrote, and marking it produced would vouch for a note that does
+		// not exist.
+		const target = resolveHubTarget(
+			app,
+			fullPath,
+			hubCurie,
+			hub.legacyCuries,
+			indexes?.owned,
+			indexes?.vaultWide,
+			importSet.id,
+			producedThisRun,
+		);
+		if (target.refusal) {
+			result.errors.push({ row: 0, message: crossSetAddressMessage(target.refusal) });
+			continue;
+		}
+		if (hubCurie) producedCuries.add(hubCurie);
+		let body = hub.body;
+
 		const existing = target.existingFile;
 		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
 		if (existing instanceof TFile) {
@@ -3182,6 +3399,7 @@ async function applyEnrichment(
 			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
 			await app.vault.create(writePath, buildNoteContent(frontmatter, body));
 			result.created.push(writePath);
+			producedThisRun.add(normalizePath(writePath));
 		}
 	}
 }
