@@ -4074,10 +4074,13 @@ export class ImportFlow {
 		if (result.orphansChecked === false) {
 			summary.createEl('p', {
 				// No leading icon here, unlike its siblings. `obsidianmd/ui/sentence-case`
-				// lowercases the first word of any literal that starts with anything
-				// non-alphabetic, so an emoji in front of `Orphans` fails the gate; the
-				// sibling lines are template literals, which the rule never inspects.
-				// The words are what carry the meaning, so the icon is what gives way.
+				// reads a leading emoji as the first word, so the `Orphans` behind it is a
+				// capitalised later word and the literal fails the gate (verified: the same
+				// sentence passes the moment the icon is dropped, and fails again with any
+				// icon in front of it). The sibling lines escape only because the rule
+				// inspects plain string literals and their `text` is a template literal or a
+				// ternary. Gaming it that way here would hide a real finding, and the words
+				// are what carry the meaning, so the icon is what gives way.
 				text: 'Orphans: not checked. This run could not confirm it read the whole source, so it cannot say whether any notes are missing.',
 			});
 		} else if (orphans.length > 0) {

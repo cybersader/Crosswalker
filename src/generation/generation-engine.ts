@@ -532,6 +532,23 @@ export async function generateNotes(
 						return;
 					}
 
+					// AM-12. A write never crosses a set boundary. The vault-wide index is
+					// consulted for DETECTION only: a note elsewhere in the vault already
+					// holding this curie, under a different set, is reported by name and the
+					// row is dropped - not adopted, not moved, not restamped, and with no
+					// fall back to its address. A refused row naming its owner beats an
+					// annexed framework.
+					//
+					// Refused the moment the curie is known rather than at the write itself:
+					// a row this run declines to write must not be counted as produced, must
+					// not reserve its rendered path against a later row, and must not be
+					// recorded anywhere as a note that is going to exist.
+					const foreign = foreignSetClaim(ownedIdentityIndex, identityIndex, noteData.curie);
+					if (foreign) {
+						result.errors.push({ row: rowNum, message: crossSetCollisionMessage(noteData.curie, foreign) });
+						return;
+					}
+
 					// Path collision detection — fail loud rather than silently
 					// overwriting one row's output with another's. (Runs in the sync
 					// prefix, so it's deterministic by row order under concurrency.)
@@ -582,17 +599,9 @@ export async function generateNotes(
 					// enrichment is on) the folder-note-relocated path by curie — see
 					// resolveWriteTarget's docstring (re-import identity, design §4).
 					const fullPath = normalizePath(noteData.path);
-					// AM-12. A write never crosses a set boundary. The vault-wide index
-					// is consulted for DETECTION only: a note elsewhere in the vault
-					// already holding this curie, under a different set, is reported and
-					// the row is dropped - not adopted, not moved, not restamped, and
-					// with no fall back to the address below. A refused row with a named
-					// owner beats an annexed framework.
-					const foreign = foreignSetClaim(ownedIdentityIndex, identityIndex, noteData.curie);
-					if (foreign) {
-						result.errors.push({ row: rowNum, message: crossSetCollisionMessage(noteData.curie, foreign) });
-						return;
-					}
+					// AM-12: the OWNED index resolves. Every row whose identity is held
+					// outside this set was refused above, so a hit here is always a note
+					// this run owns.
 					const target = resolveWriteTarget(app, fullPath, noteData.curie, enrichmentEnabled, ownedIdentityIndex);
 					const existingFile = target.existingFile;
 					const writePath = target.writePath;
@@ -2312,6 +2321,19 @@ export async function generateFromRecipe(
 			// collision. Refuse this row instead of making the duplicate permanent.
 			if (ambiguousCuries.has(curie)) return;
 
+			// AM-12. A write never crosses a set boundary. Same rule as generateNotes,
+			// refused at the same point: the vault-wide index only DETECTS, and a curie
+			// another set already holds stops the row here - not adopted, not moved, not
+			// restamped, with no fall back to its address. It sits beside the ambiguity
+			// refusal because both are answers about identity alone, so neither should
+			// cost a render, a folder, a produced curie, or a review baseline recorded
+			// for a note this run will never write.
+			const foreignClaim = foreignSetClaim(ownedIdentityIndex, identityIndex, curie);
+			if (foreignClaim) {
+				result.errors.push({ row: rowNum, message: crossSetCollisionMessage(curie, foreignClaim) });
+				return;
+			}
+
 			// 2. Render. Expose the already-derived local part as a reserved,
 			//    render-only variable so a recipe can keep its file address aligned
 			//    with scheme-aware identity. It is deliberately excluded from the
@@ -2439,14 +2461,8 @@ export async function generateFromRecipe(
 			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND
 			//    (when enrichment is on) the folder-note-relocated path by curie —
 			//    see resolveWriteTarget's docstring (re-import identity, design §4).
-			// AM-12. Same rule as generateNotes: the owned index resolves, the
-			// vault-wide index only reports, and a claim held by another set stops
-			// the row here rather than annexing the note that holds it.
-			const foreignClaim = foreignSetClaim(ownedIdentityIndex, identityIndex, curie);
-			if (foreignClaim) {
-				result.errors.push({ row: rowNum, message: crossSetCollisionMessage(curie, foreignClaim) });
-				return;
-			}
+			// AM-12: the OWNED index resolves. Every row whose identity is held outside
+			// this set was refused above, so a hit here is always a note this run owns.
 			const target = resolveWriteTarget(app, fullPath, curie, enrichmentEnabled, ownedIdentityIndex);
 			const existingFile = target.existingFile;
 			const writePath = target.writePath;
@@ -2762,9 +2778,14 @@ function resolveHubTarget(
 		}
 	}
 
-	// Address is consulted last and only for a note the identity index cannot see
-	// (no `_crosswalker` block of its own). Writing over it blindly would clobber
-	// a file this plugin never produced.
+	// Address is consulted last, and since AM-12 the index it could not be seen in
+	// is the OWNED one, so this branch now covers two cases: a note with no
+	// `_crosswalker` block of its own, and a note some other set owns that happens
+	// to sit at this address under a DIFFERENT identity. AM-12 refuses the first
+	// kind of boundary crossing (same identity, other owner) at the caller; a
+	// same-address collision is the second kind and is still governed by the
+	// wizard's new-set occupancy guard plus `applyHubRelocation`, which refuses to
+	// move onto an occupied path rather than clobbering it.
 	const direct = app.vault.getAbstractFileByPath(desiredPath);
 	return { existingFile: direct instanceof TFile ? direct : null, writePath: desiredPath };
 }

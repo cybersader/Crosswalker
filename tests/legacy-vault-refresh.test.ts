@@ -3906,3 +3906,143 @@ describe.each(['replace', 'skip'] as const)(
 		});
 	},
 );
+
+// ===========================================================================
+// 22. AM-12 MEETS AM-4: A REFUSED ROW IS A REFUSAL THE USER SEES.
+//
+// Sections 19 to 21 hold the refusal at the ENGINE: the row is dropped and the
+// reason lands in `result.errors`. That is only half of AM-12's contract. The
+// amendment says the collision is "surfaced by AM-4's machinery", and AM-4
+// exists because `result.errors` on a run whose `success` stayed true was
+// carried to a window that closed on it -- an import that silently wrote
+// nothing, reported as a success. A refusal nobody sees is the same product
+// failure as the annexation it replaced, wearing the opposite sign.
+//
+// So this section drives the whole thing through a real `ImportFlow` and reads
+// only what the USER gets: the notice text, the results screen, and whether the
+// window closed. Nothing here touches a `GenerationResult`.
+//
+// The fixture is the one collision AM-13 cannot design away, which is also the
+// residual case a very old vault is in: notes carrying `_crosswalker`
+// provenance and NO import-set block. AM-13's signal is what the discovered
+// sets' notes hold, and an unowned note belongs to no set, so the new set mints
+// plain `endpoint-v1`, walks straight into the identities those notes already
+// hold, and AM-12 refuses every row of it.
+// ===========================================================================
+
+describe.each(['replace', 'skip'] as const)(
+	'a cross-set refusal on a run the wizard would otherwise close (overwriteMode %s)',
+	(overwriteMode) => {
+		/**
+		 * One wizard import, optionally stripped of its ownership stamp, then a
+		 * second wizard import of the SAME source with nobody clicking anything.
+		 *
+		 * `stripOwnership: false` is the control: the two sets are then both
+		 * stamped, AM-13 qualifies the second, and there is no collision to report.
+		 */
+		async function importOverUnownedNotes(stripOwnership: boolean) {
+			const vault = makeVault();
+			await wizardImport(vault.app, { destination: 'Ontologies/attack-mini-2023' });
+			if (stripOwnership) deMigrateImportSetStamp(vault.files);
+			forgetSeedWrites(vault);
+			const before = new Map(vault.files);
+			notices.length = 0;
+			const second = await wizardImport(vault.app, {
+				destination: 'Ontologies/attack-mini-2024',
+				overwriteMode,
+			});
+			return { vault, before, second };
+		}
+
+		/**
+		 * The notes whose identities the second run actually proposes to write: one
+		 * per source row. A synthetic note carries a `kind` (`facet` or `hub`); a
+		 * row's own note carries none.
+		 *
+		 * Every row is refused, so enrichment receives no records and mints no hub
+		 * or facet curie at all. The first set's synthetic notes are therefore left
+		 * alone by never being reached rather than by being reported, and counting
+		 * them as expected errors would assert a message the run has no reason to
+		 * raise. Section 19 is where a hub identity IS reached and refused.
+		 */
+		function conceptsIn(before: Map<string, string>): Array<[string, string]> {
+			return [...before].filter(([, text]) => frontmatterOf(text).kind === undefined);
+		}
+
+		it('mints the plain endpoint form, which is what makes the collision reachable', async () => {
+			// The premise, asserted rather than assumed. If AM-13 qualified here the
+			// rest of this section would be testing an empty vault against itself.
+			const { second } = await importOverUnownedNotes(true);
+			expect(second.choice).toBeNull();
+			expect(second.resolved).toBe('new');
+		});
+
+		it('does not close the window on it', async () => {
+			const { second } = await importOverUnownedNotes(true);
+			expect(second.close).not.toHaveBeenCalled();
+		});
+
+		it('says in the notice that the run finished with errors, not that it succeeded quietly', async () => {
+			const { before } = await importOverUnownedNotes(true);
+			const refused = conceptsIn(before);
+			expect(refused).toHaveLength(ROWS.length);
+			expect(noticeText()).toContain(`Import finished with ${refused.length} errors. See results.`);
+			// Created zero and skipped zero is exactly the shape AM-4 was written
+			// about: a run that reports success having written nothing at all.
+			expect(noticeText()).toContain('Created 0 notes');
+			expect(noticeText()).not.toContain('skipped');
+		});
+
+		it('names every refused identity on the results screen, with its holder and its file', async () => {
+			const { before, second } = await importOverUnownedNotes(true);
+			const refused = conceptsIn(before);
+			expect(second.texts).toContain('Errors');
+			expect(second.texts).toContain(`❌ Errors: ${refused.length}`);
+			// Under 20 because that is where the screen starts summarizing; a fixture
+			// that outgrew the list would be asserting less than it looks like.
+			expect(refused.length).toBeLessThanOrEqual(20);
+			for (const [path, text] of refused) {
+				const curie = String(frontmatterOf(text).curie);
+				const named = second.texts.filter((line) =>
+					new RegExp(`^Row \\d+: Cross-set identity collision: ${curie.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is claimed by `).test(line));
+				expect(named).toHaveLength(1);
+				expect(named[0]).toContain(path);
+				expect(named[0]).toContain('Nothing was written for it.');
+			}
+		});
+
+		it('does not tell the user the framework is intact on a run that refused rows', async () => {
+			// AM-7 riding on AM-12. A refused row is a row this run did not vouch
+			// for, so the orphan question was not answered and must not be printed
+			// as a zero.
+			const { second } = await importOverUnownedNotes(true);
+			expect(noticeText()).toContain('Orphans not checked.');
+			expect(noticeText()).not.toContain('No orphans.');
+			expect(second.texts.some((line) => /Orphans: not checked/.test(line))).toBe(true);
+		});
+
+		it('leaves the notes it refused exactly as it found them', async () => {
+			const { vault, before } = await importOverUnownedNotes(true);
+			for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+			expect(vault.rename).not.toHaveBeenCalled();
+			expect(vault.modify).not.toHaveBeenCalled();
+			expect(duplicateCuries(vault.files)).toEqual([]);
+		});
+
+		it('closes cleanly on the same two imports when the first one is owned, which is the control', async () => {
+			// Without this the section proves only that the wizard can draw a screen,
+			// not that the REFUSAL is what made it draw one. Same source, same two
+			// folders, same absence of a click: the only difference is that the first
+			// import still carries its stamp, so AM-13 qualifies the second and there
+			// is nothing to refuse.
+			const { vault, before, second } = await importOverUnownedNotes(false);
+			expect(second.resolved).toBe('new-set-qualified');
+			expect(second.close).toHaveBeenCalledTimes(1);
+			expect(second.texts.filter((t) => /Errors|Cross-set/.test(t))).toEqual([]);
+			expect(noticeText()).not.toContain('finished with');
+			expect(noticeText()).toContain('No orphans.');
+			for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+		});
+	},
+);
+
