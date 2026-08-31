@@ -34,6 +34,7 @@ import {
 	type SourceScope,
 } from '../render';
 import { legacyConfigToRecipe, LEGACY_ONTOLOGY_SENTINEL } from './legacy-recipe-shim';
+import { slugifyForCurie } from './curie';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
@@ -586,7 +587,7 @@ export async function generateNotes(
 						importSet.id,
 					);
 					if (target.refusal) {
-						result.errors.push({ row: rowNum, message: crossSetAddressMessage(target.refusal) });
+						reportAddressRefusal(result, debug, target.refusal, rowNum, noteData.curie);
 						return;
 					}
 
@@ -913,6 +914,44 @@ function recordConflict(
 }
 
 /**
+ * AM-19 (2026-08-31). Surface ONE address refusal at the altitude that fits it.
+ *
+ * Three of the four reasons are ownership verdicts about a note the engine could
+ * read: they are run errors, because the user has to decide something about the
+ * vault (refresh the other set, move the stranger's note, pick another folder).
+ * `unreadable` is not a verdict at all - it is a note the engine could not read -
+ * and it is the same outcome `mergeExistingNote` produced before AM-14 closed the
+ * address route: the file is left exactly as it stands and a per-note conflict
+ * says why. Reporting it as an ownership error is what made a damaged note the
+ * set genuinely owns read as "a note that is not Crosswalker's. Move or rename
+ * that note", which is a false cause carrying a destructive instruction.
+ *
+ * One function so the four write sites cannot disagree about which surface a
+ * given reason lands on.
+ */
+function reportAddressRefusal(
+	result: GenerationResult,
+	debug: DebugLog | undefined,
+	refusal: AddressRefusal,
+	row: number,
+	curie?: string,
+): void {
+	if (refusal.reason === 'unreadable') {
+		recordConflict(
+			result,
+			debug,
+			refusal.path,
+			curie,
+			'frontmatter-unreadable',
+			'Its properties block did not parse, so Crosswalker could not tell whether the note is one of its own. '
+			+ 'Fix that block, then import again.',
+		);
+		return;
+	}
+	result.errors.push({ row, message: crossSetAddressMessage(refusal) });
+}
+
+/**
  * AM-13 (2026-08-30). The curie prefix one import set mints under.
  *
  * `endpoint-v1` is the ontology slug and nothing else, so every set minted
@@ -996,10 +1035,15 @@ function crossSetCollisionMessage(curie: string, claim: ForeignClaim): string {
  *   `not-crosswalker` a person's own note. Crosswalker never merges into one.
  *   `unstamped`     provenance from an import predating import sets. Same answer
  *                   the identity route already gives such a note: move or delete.
+ *
+ * AM-19 (2026-08-31) adds a fourth, which is the one that is NOT about ownership:
+ *   `unreadable`    the note was seen and nothing could be read off it. Who owns
+ *                   it is unknown, so nothing may be claimed about it and the
+ *                   only honest instruction is "fix this note, then import again".
  */
-type AddressRefusalReason = 'foreign-set' | 'not-crosswalker' | 'unstamped';
+export type AddressRefusalReason = 'foreign-set' | 'not-crosswalker' | 'unstamped' | 'unreadable';
 
-interface AddressRefusal {
+export interface AddressRefusal {
 	reason: AddressRefusalReason;
 	path: string;
 	/** The owning set, for `foreign-set` only. Never fabricated for the others. */
@@ -1023,19 +1067,29 @@ interface AddressRefusal {
  * this run produced the note itself and the index simply predates it, or there is
  * no index to judge with (a caller that passes none keeps its old behaviour rather
  * than refusing everything).
+ *
+ * AM-17 (2026-08-31): exported, because the engine is not the only writer of a
+ * Crosswalker artifact. A window that writes one asks the same question here
+ * rather than carrying a second copy of the answer. `ownedSetId` is `null` for a
+ * writer that owns no set at all: every note it finds at the address is then
+ * someone's but not its own, which is exactly the refusal it needs.
  */
-function addressRefusal(
+export function addressRefusal(
 	vaultWide: IdentityIndex | undefined,
 	path: string,
-	ownedSetId: string | undefined,
+	ownedSetId: string | null,
 	producedThisRun?: ReadonlySet<string>,
 ): AddressRefusal | null {
-	if (!vaultWide || !ownedSetId) return null;
+	if (!vaultWide) return null;
 	// A note this run wrote minutes ago is this run's, and the index was built
 	// before it existed. Without this, a hub landing on a path an earlier row of
 	// the same run created would refuse itself as "not Crosswalker's".
 	if (producedThisRun?.has(path)) return null;
 	const stamp = vaultWide.provenanceAt(path);
+	// AM-19. Checked FIRST and answered on its own terms. Nothing below this line
+	// knows anything about a note whose properties would not parse, so every
+	// answer below would be an invention.
+	if (stamp === 'unreadable') return { reason: 'unreadable', path, setId: null };
 	if (!stamp) return { reason: 'not-crosswalker', path, setId: null };
 	if (stamp.importSetId === null) return { reason: 'unstamped', path, setId: null };
 	if (stamp.importSetId === ownedSetId) return null;
@@ -1047,7 +1101,15 @@ function addressRefusal(
  * and ends with the action that fits the case that actually occurred, because
  * "something is in the way" is not something a user can act on.
  */
-function crossSetAddressMessage(refusal: AddressRefusal): string {
+export function crossSetAddressMessage(refusal: AddressRefusal): string {
+	if (refusal.reason === 'unreadable') {
+		// AM-19. Names the ONE thing that is actually known, and asks for the one
+		// action that fixes it. It must never say the note is not Crosswalker's
+		// (nothing here established that) and must never invite move-or-delete
+		// (this may be the user's own imported note, damaged by a hand edit).
+		return `Crosswalker could not read the properties of ${refusal.path}, so it could not tell whether that note is one of its own. `
+			+ 'Nothing was written for it. Fix that note\'s properties block, then import again.';
+	}
 	if (refusal.reason === 'foreign-set') {
 		return `Cross-set address collision: ${refusal.path} is owned by import set ${refusal.setId}. `
 			+ 'Nothing was written for it. Refresh that set instead, or choose a different destination folder for this import.';
@@ -1119,7 +1181,7 @@ function resolveWriteTarget(
 		// AM-14. The owned-stamp case is the ordinary same-set re-import and is
 		// adopted exactly as before; anything else is refused rather than merged
 		// into, moved, or restamped.
-		const refusal = addressRefusal(vaultWideIndex, direct.path, ownedSetId);
+		const refusal = addressRefusal(vaultWideIndex, direct.path, ownedSetId ?? null);
 		if (refusal) return { existingFile: null, writePath: siblingPath, refusal };
 		return { existingFile: direct, writePath: siblingPath };
 	}
@@ -1157,7 +1219,7 @@ function resolveWriteTarget(
 					// note carrying this curie but NO `_crosswalker` block is invisible to
 					// the vault-wide identity index, so the caller's identity refusal never
 					// saw it and this branch would adopt a note that is not Crosswalker's.
-					const refusal = addressRefusal(vaultWideIndex, relocated.path, ownedSetId);
+					const refusal = addressRefusal(vaultWideIndex, relocated.path, ownedSetId ?? null);
 					if (refusal) return { existingFile: null, writePath: siblingPath, refusal };
 					return { existingFile: relocated, writePath: candidatePath };
 				}
@@ -1486,21 +1548,11 @@ function deriveFilenameStem(
 	return sanitizeFileName(filename);
 }
 
-/**
- * Slugify a string for use as a CURIE prefix (must match the schema's
- * `^[a-z][a-z0-9_-]*` pattern from spec/tier1.schema.json $defs/curie).
- *
- * Exported so a caller comparing a source against the ontology prefixes ALREADY
- * STAMPED on vault notes produces the same prefix generation stamps. Comparing
- * against the un-slugged ontology instead silently misses every name that needed
- * normalizing, which reads as "no set matches" and mints a duplicate.
- */
-export function slugifyForCurie(input: string): string {
-	const lower = String(input).toLowerCase();
-	const cleaned = lower.replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '');
-	// Ensure first char is a letter (schema requires)
-	return /^[a-z]/.test(cleaned) ? cleaned : `cw-${cleaned}`;
-}
+// AM-18. `slugifyForCurie` now lives in `./curie` so `import-set.ts` can share
+// it without importing the engine. Re-exported here because it has always been
+// part of this module's surface, and a second normalization is exactly the kind
+// of near-copy the amendment set exists to remove.
+export { slugifyForCurie } from './curie';
 
 // Plugin version constant — populated from manifest.json. esbuild bundles
 // the import via the JSON loader.
@@ -2535,7 +2587,7 @@ export async function generateFromRecipe(
 				importSet.id,
 			);
 			if (target.refusal) {
-				result.errors.push({ row: rowNum, message: crossSetAddressMessage(target.refusal) });
+				reportAddressRefusal(result, debug, target.refusal, rowNum, curie);
 				return;
 			}
 
@@ -2951,7 +3003,7 @@ function resolveHubTarget(
 	// ordinary same-set re-import and is adopted exactly as before.
 	const direct = app.vault.getAbstractFileByPath(desiredPath);
 	if (direct instanceof TFile) {
-		const refusal = addressRefusal(vaultWideIndex, direct.path, ownedSetId, producedThisRun);
+		const refusal = addressRefusal(vaultWideIndex, direct.path, ownedSetId ?? null, producedThisRun);
 		if (refusal) return { existingFile: null, writePath: desiredPath, refusal };
 		return { existingFile: direct, writePath: desiredPath };
 	}
@@ -2970,6 +3022,19 @@ async function applyHubRelocation(
 	curie: string | null,
 	result: GenerationResult,
 	overwriteMode: 'skip' | 'replace' | 'error' | undefined,
+	/**
+	 * AM-20 (2026-08-31). The addresses this run has already put a note at.
+	 *
+	 * Failure mode prevented: a hub this run RELOCATED being refused, by a later
+	 * hub resolving onto its new address, as a note that is not Crosswalker's.
+	 * The vault-wide index is a pre-run snapshot and knows the moved note only
+	 * under its OLD path, so `provenanceAt(newPath)` answers null and
+	 * `addressRefusal` reads that as `not-crosswalker`. A rename is a mutation
+	 * this run made, exactly like a create, so it is recorded exactly like one.
+	 * Reachable when `hub_note_folder` overlaps a layout folder: the facet-hub
+	 * loop relocates first, the level-hub loop resolves second.
+	 */
+	producedThisRun: Set<string>,
 	debug?: DebugLog,
 ): Promise<string> {
 	if (!target.moveFrom || !target.existingFile) return target.writePath;
@@ -2992,6 +3057,8 @@ async function applyHubRelocation(
 	const parentPath = getParentPath(target.writePath);
 	if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
 	await app.vault.rename(target.existingFile, target.writePath);
+	// AM-20. A hub this run relocated is a note this run produced.
+	producedThisRun.add(normalizePath(target.writePath));
 	result.moved ??= [];
 	result.moved.push({ curie: curie ?? '', from: target.moveFrom, to: target.writePath });
 	debug?.info('generation', 'hub-relocated', `Hub ${curie ?? ''} moved`, { from: target.moveFrom, to: target.writePath });
@@ -3255,14 +3322,14 @@ async function applyEnrichment(
 			producedThisRun,
 		);
 		if (target.refusal) {
-			result.errors.push({ row: 0, message: crossSetAddressMessage(target.refusal) });
+			reportAddressRefusal(result, debug, target.refusal, 0, hubCurie ?? undefined);
 			continue;
 		}
 		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
 		const existing = target.existingFile;
-		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
+		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, producedThisRun, debug);
 		if (existing instanceof TFile) {
 			// Re-import through the SAME shared merger the row writes use. `kind:
 			// 'facet-hub'` selects adopt-by-replay: `mergeHubBody` was already
@@ -3339,14 +3406,14 @@ async function applyEnrichment(
 			producedThisRun,
 		);
 		if (target.refusal) {
-			result.errors.push({ row: 0, message: crossSetAddressMessage(target.refusal) });
+			reportAddressRefusal(result, debug, target.refusal, 0, hubCurie ?? undefined);
 			continue;
 		}
 		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
 		const existing = target.existingFile;
-		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
+		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, producedThisRun, debug);
 		if (existing instanceof TFile) {
 			// The adopted alias is recorded as produced so the identity this run
 			// deliberately superseded is not then reported as a note that vanished.

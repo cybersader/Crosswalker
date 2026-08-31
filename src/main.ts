@@ -466,7 +466,10 @@ export default class CrosswalkerPlugin extends Plugin {
 				const traceId = this.debug.newTraceId();
 				await this.debug.withTrace(traceId, async () => {
 					const { BUNDLED_FIXTURES } = await import('./views/bundled-fixtures');
-					const { importSssom } = await import('./import/sssom-importer');
+					const { importSssom, SSSOM_CURIE_PREFIX } = await import('./import/sssom-importer');
+					// AM-18. The one implementation of "which new set", imported here
+					// rather than re-decided, so this command cannot be the fourth copy.
+					const { newSetSchemeFor } = await import('./generation/import-set');
 
 					// Pick a fixture via a small AskUserQuestion-style modal
 					const { Modal, ButtonComponent } = await import('obsidian');
@@ -514,19 +517,41 @@ export default class CrosswalkerPlugin extends Plugin {
 							// "refresh whichever crosswalk already sits in this mapping
 							// folder", which meant loading a bundled fixture could replace
 							// a real crosswalk a user had imported into the same pair.
-							importSet: 'new',
+							//
+							// AM-18 (2026-08-31). WHICH new set is a question this route
+							// used to skip: the bare literal `new` always mints
+							// endpoint-v1, so loading a fixture into a vault that already
+							// held that ontology pair produced a set whose curie space was
+							// already occupied, and AM-12 then correctly refused every
+							// single row ("0 junction notes, N errors"). Not damage, but
+							// exactly the routine collision AM-13 exists to eliminate.
+							// One shared rule answers it here as everywhere else.
+							importSet: await newSetSchemeFor(this.app, SSSOM_CURIE_PREFIX),
 							// Nothing exists under a freshly minted set, so this only rules
 							// out rewriting a note the run does not own.
 							overwriteMode: 'skip',
 						},
 						this.debug,
 					);
-					const created = result.generation?.created ?? 0;
-					const errors = result.generation?.errors?.length ?? 0;
+					// AM-8 (via the pass-8 adversarial's secondary observations). There is
+					// no entry point exempt from saying WHY a row was refused: a bare
+					// count tells a reader that something went wrong and nothing about
+					// what to do. `created` is a list of paths, so its LENGTH is the
+					// count -- interpolating the array printed the paths where a number
+					// belonged.
+					const createdCount = result.generation?.created?.length ?? 0;
+					const errors = result.generation?.errors ?? [];
+					const conflicts = result.generation?.conflicts ?? [];
 					const skipReason = result.skipped ? ` (skipped: ${result.skipped})` : '';
+					const refused = errors.length > 0 ? `, ${errors.length} rows refused` : '';
+					const unchanged = conflicts.length > 0 ? `, ${conflicts.length} notes left unchanged` : '';
+					const detail = errors.length > 0
+						? `\n${errors.slice(0, 3).map((error) => error.message).join('\n')}`
+							+ (errors.length > 3 ? `\nAnd ${errors.length - 3} more.` : '')
+						: '';
 					new Notice(
-						`Imported "${fx.displayName}": ${created} junction notes${errors > 0 ? `, ${errors} errors` : ''}${skipReason}.`,
-						6000,
+						`Imported "${fx.displayName}": ${createdCount} junction notes${refused}${unchanged}${skipReason}.${detail}`,
+						errors.length > 0 ? 15000 : 6000,
 					);
 				});
 			},

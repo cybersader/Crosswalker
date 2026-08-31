@@ -10,10 +10,14 @@ import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
 import { readNoteFrontmatter } from '../export/vault-reader';
 import {
 	buildEvidenceLink,
+	evidenceLinkCurie,
 	type EvidenceCoverage,
 	type EvidenceStatus,
 } from './evidence-link';
 import { readReviewGroupCids, type ReviewGroupCids } from '../generation/hash';
+// AM-17. The same door the engine passes through, not a second copy of it.
+import { addressRefusal, crossSetAddressMessage } from '../generation/generation-engine';
+import { buildIdentityIndex } from '../generation/identity-index';
 
 /** A control note the user can link evidence to. */
 export interface ControlCandidate {
@@ -256,6 +260,43 @@ export class EvidenceLinkModal extends Modal {
 			}
 			const existing = this.app.vault.getAbstractFileByPath(note.path);
 			if (existing instanceof TFile) {
+				// AM-17 (2026-08-31). THE DOOR. This branch was `vault.modify` on
+				// whatever it found: `resolveWriteTarget`'s pre-AM-14 body verbatim, on
+				// a window instead of the engine. The path is deterministic
+				// (`<evidence folder>/<control>--has_evidence--<evidence>.md`) and the
+				// folder is user-configurable, so pointing it at a folder that already
+				// holds notes, or having any note whose basename matches that shape,
+				// meant a person's note was replaced in full while the notice said the
+				// link had been "updated".
+				//
+				// The test is IDENTITY, not address: this note may be updated only when
+				// the note already there IS the junction being written, which is what
+				// its own `curie` says. A foreign junction, another set's note, a user's
+				// note, or a note nothing can be read off all fail that test and get a
+				// named refusal instead. Read fail-closed (cache lag is not absence),
+				// because a cache miss read as "no curie" would refuse a legitimate
+				// re-link.
+				const expectedCurie = evidenceLinkCurie(this.control.path, evidencePath);
+				const existingFrontmatter = await readNoteFrontmatter(this.app, existing);
+				const existingCurie = typeof existingFrontmatter?.curie === 'string'
+					? existingFrontmatter.curie.trim()
+					: null;
+				if (existingCurie !== expectedCurie) {
+					// Vault-wide, because the question is "whose is the note at this
+					// address", and a scoped index by construction cannot answer about
+					// the notes it excluded. Built only on this branch, so the ordinary
+					// create and the ordinary re-link cost nothing.
+					const index = await buildIdentityIndex(this.app);
+					const refusal = addressRefusal(index, existing.path, null);
+					new Notice(
+						refusal
+							? `Could not create the link. ${crossSetAddressMessage(refusal)}`
+							: `Could not create the link: a different note already sits at ${existing.path}. `
+								+ 'Move or rename that note, or change the evidence link folder in settings.',
+						12000,
+					);
+					return;
+				}
 				await this.app.vault.modify(existing, note.markdown);
 				new Notice('Updated the existing link for this control and evidence.');
 			} else {

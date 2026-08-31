@@ -48,6 +48,15 @@ import {
 	normalizePredicateModifierInput,
 } from '../utils/mapping-provenance';
 
+/**
+ * The curie prefix every SSSOM crosswalk edge is minted under, whatever the
+ * ontology pair. Named once (AM-18, 2026-08-31) because it is what any caller
+ * asking "would a new set here collide" has to compare against: the SSSOM path
+ * overrides the engine's ontology-derived prefix with this literal, so the
+ * ontology pair is NOT the identity space these edges occupy.
+ */
+export const SSSOM_CURIE_PREFIX = 'sssom';
+
 /** Options accepted by importSssom(). */
 export interface SssomImportOptions {
 	/** Vault-relative folder for generated junction-edge notes.
@@ -263,7 +272,7 @@ async function runImportSssom(
 			sourceFileName: normalizedHeaderId || fallbackId,
 			strictValidation: true,
 			curieLocalPart: (row, _rowNum, importSet) => sssomEdgeCurie(row, importSet),
-			curiePrefix: 'sssom',
+			curiePrefix: SSSOM_CURIE_PREFIX,
 			onProgress: options.onProgress,
 		},
 		debug,

@@ -32,6 +32,17 @@ export interface IdentityCollision {
 	paths: string[];
 }
 
+/**
+ * What is known about the note at one vault address, for ownership purposes.
+ *
+ * AM-19 (2026-08-31). `'unreadable'` is a state of its own: the note exists and
+ * was looked at, and nothing could be read off it. It is deliberately NOT
+ * expressible as `{ importSetId: null }` (which means "a Crosswalker note from
+ * before import sets existed", a different thing a user does something different
+ * about) and NOT as the index's `null` (which means "not Crosswalker's").
+ */
+export type AddressStamp = { importSetId: string | null } | 'unreadable';
+
 export interface IdentityIndex {
 	/** The note currently holding this curie, or null if the vault has none. */
 	get(curie: string): TFile | null;
@@ -49,9 +60,17 @@ export interface IdentityIndex {
 	 * AM-14 (2026-08-30). What sits at a vault ADDRESS, as far as ownership goes.
 	 *
 	 * Returns the note's import-set stamp (`{ importSetId }`, with a null id for a
-	 * note carrying provenance but no `import_set` block) or null when the path
-	 * holds no `_crosswalker` provenance at all — which the caller reads as "not
-	 * Crosswalker's" only for a path it has already established holds a file.
+	 * note carrying provenance but no `import_set` block), the string
+	 * `'unreadable'` when the note was seen but nothing could be read off it, or
+	 * null when the path holds no `_crosswalker` provenance at all — which the
+	 * caller reads as "not Crosswalker's" only for a path it has already
+	 * established holds a file.
+	 *
+	 * AM-19 (2026-08-31). `'unreadable'` is the fourth answer, and it is not a
+	 * shade of null. A note whose properties will not parse may be owned by this
+	 * very set; saying "not Crosswalker's, move or rename it" about a user's own
+	 * imported note is a false cause attached to a destructive-sounding
+	 * instruction. Absence of a fact is never a fact.
 	 *
 	 * Failure mode prevented: the address branch of write resolution adopting a
 	 * note it does not own. Identity is not the only route into a note; the
@@ -63,7 +82,7 @@ export interface IdentityIndex {
 	 * Only provenance-carrying notes are held, so this costs nothing per plain
 	 * user note.
 	 */
-	provenanceAt(path: string): { importSetId: string | null } | null;
+	provenanceAt(path: string): AddressStamp | null;
 	/** Every curie the index holds — the vault side of a reconciliation. */
 	curies(): string[];
 	/** Curies held by more than one note. Non-empty means the vault is ambiguous. */
@@ -91,25 +110,45 @@ function readString(value: unknown): string | null {
 }
 
 /**
- * Frontmatter straight from the file, for a note Obsidian has not indexed yet.
- * Malformed YAML is treated as "no frontmatter" rather than thrown: one corrupt
- * note anywhere in the vault must not be able to block every import.
+ * AM-19 (2026-08-31). Three outcomes, never two.
+ *
+ * `none` is a FACT about the file: it has no frontmatter block, so it carries no
+ * provenance and is nobody's. `unreadable` is the absence of a fact: the bytes
+ * could not be read, or the block is there but will not parse, so nothing at all
+ * is known about who owns it. Collapsing the second into the first is what let a
+ * damaged note the run genuinely owns be reported as "not Crosswalker's. Move or
+ * rename that note." See `project_cache_lag_is_not_absence` - this is the same
+ * rule one level up, and its sixth appearance.
  */
-async function readRawFrontmatter(app: App, file: TFile): Promise<Record<string, unknown> | undefined> {
+type RawFrontmatter =
+	| { state: 'ok'; frontmatter: Record<string, unknown> }
+	| { state: 'none' }
+	| { state: 'unreadable' };
+
+/**
+ * Frontmatter straight from the file, for a note Obsidian has not indexed yet.
+ * Malformed YAML is reported as `unreadable` rather than thrown: one corrupt
+ * note anywhere in the vault must not be able to block every import, and it must
+ * not be silently reclassified as a note that has no properties either.
+ */
+async function readRawFrontmatter(app: App, file: TFile): Promise<RawFrontmatter> {
 	let content: string;
 	try {
 		content = await app.vault.cachedRead(file);
 	} catch {
-		return undefined;
+		return { state: 'unreadable' };
 	}
 	const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
-	if (!match) return undefined;
+	if (!match) return { state: 'none' };
 	try {
 		const parsed = parseYaml(match[1]);
-		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
-		return parsed as Record<string, unknown>;
+		// A YAML document that is not a mapping is a properties block nothing can
+		// be read out of, which is a failure to read, not an absence of properties.
+		if (parsed === null || parsed === undefined) return { state: 'none' };
+		if (typeof parsed !== 'object' || Array.isArray(parsed)) return { state: 'unreadable' };
+		return { state: 'ok', frontmatter: parsed as Record<string, unknown> };
 	} catch {
-		return undefined;
+		return { state: 'unreadable' };
 	}
 }
 
@@ -130,23 +169,39 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 	// vault. Recorded BEFORE the ownership and curie filters below, because the
 	// address question is "who owns the note at this path", which a filtered index
 	// by construction cannot answer about the sets it excluded.
-	const stampByPath = new Map<string, string | null>();
+	const stampByPath = new Map<string, AddressStamp>();
 
 	for (const file of app.vault.getMarkdownFiles()) {
 		let fm: Record<string, unknown> | undefined = app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!fm || typeof fm !== 'object') {
+		if (!fm || typeof fm !== 'object' || Array.isArray(fm)) {
 			// A null metadata cache means "Obsidian has not indexed this file yet",
 			// never "this file has no properties". Treating lag as absence is what
 			// makes a re-import miss the note that already holds an identity and
 			// write a second one beside it, permanently. Costs one read per
 			// not-yet-indexed file, which is normally zero.
-			fm = await readRawFrontmatter(app, file);
+			const raw = await readRawFrontmatter(app, file);
+			if (raw.state === 'unreadable') {
+				// AM-19. Recorded, not skipped. This note may be one this run owns;
+				// nothing here can tell, and the honest answer to "whose is it" is
+				// "we could not read it" rather than "not ours".
+				stampByPath.set(file.path, 'unreadable');
+				continue;
+			}
+			if (raw.state === 'none') continue;
+			fm = raw.frontmatter;
 		}
-		if (!fm || typeof fm !== 'object' || Array.isArray(fm)) continue;
 
 		// Scope guard: no provenance block means the note is not ours to reconcile.
 		const provenance = (fm as Record<string, unknown>)._crosswalker;
-		if (!provenance || typeof provenance !== 'object') continue;
+		if (provenance === undefined) continue;
+		if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) {
+			// AM-19. The key is THERE and its value is not a provenance block: a hand
+			// edit turned it into a string, a list, or null. That is a damaged
+			// Crosswalker note, not a stranger's note, so it gets the same "fix this
+			// note" answer rather than "move or rename that note".
+			stampByPath.set(file.path, 'unreadable');
+			continue;
+		}
 
 		// Read once, whether or not this build filters on it: `owner()` reports it
 		// for every indexed curie, and a second read of the same block would be a
@@ -159,7 +214,7 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 		// AM-14. Recorded for every Crosswalker note, curie or not: a note with no
 		// curie still occupies an address, and adopting it would cross exactly the
 		// same boundary as adopting one that has a curie.
-		stampByPath.set(file.path, importSetId);
+		stampByPath.set(file.path, { importSetId });
 
 		if (options.importSetId !== undefined) {
 			if (importSetId !== options.importSetId) continue;
@@ -195,7 +250,7 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 	return {
 		get: (curie: string) => byCurie.get(curie) ?? null,
 		owner: (curie: string) => ownerByCurie.get(curie) ?? null,
-		provenanceAt: (path: string) => (stampByPath.has(path) ? { importSetId: stampByPath.get(path) ?? null } : null),
+		provenanceAt: (path: string) => stampByPath.get(path) ?? null,
 		curies: () => [...byCurie.keys()],
 		collisions,
 		size: byCurie.size,

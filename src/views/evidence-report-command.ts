@@ -21,6 +21,7 @@ import {
 	listUnbaselinedValidJunctions,
 } from '../tier2/evidence-coverage';
 import { readProjectionStatus } from '../tier2/projector';
+import { readNoteFrontmatter } from '../export/vault-reader';
 import { renderEvidenceReport } from './evidence-report';
 
 /** One ontology the index knows about, as offered in the chooser. */
@@ -141,6 +142,22 @@ export async function writeEvidenceReport(
 
 	const existing = deps.app.vault.getAbstractFileByPath(path);
 	if (existing instanceof TFile) {
+		// AM-17 sweep (2026-08-31). The report is regenerated wholesale, so this
+		// `modify` replaces the file's entire contents. `reportFolder` is a user
+		// setting and the filename is derived from an ontology id, so a note of the
+		// user's own can legitimately sit here - and it was being destroyed with no
+		// warning, the same failure the evidence-link window carried.
+		//
+		// A report has no curie, so the identity it is checked against is the marker
+		// it stamps on itself. Only a note that says it is a generated report may be
+		// overwritten by one.
+		const frontmatter = await readNoteFrontmatter(deps.app, existing);
+		if (frontmatter?.crosswalker_generated !== true) {
+			throw new Error(
+				`a note that Crosswalker did not generate already sits at ${path}. `
+				+ 'Nothing was written. Move or rename that note, or change the report folder in settings.',
+			);
+		}
 		await deps.app.vault.modify(existing, markdown);
 	} else {
 		await deps.app.vault.create(path, markdown);

@@ -25,9 +25,10 @@
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import type CrosswalkerPlugin from '../main';
 import { detectOntologyPair, parseSssomTsv } from './sssom-parser';
-import { importSssom, type SssomImportResult } from './sssom-importer';
+import { importSssom, SSSOM_CURIE_PREFIX, type SssomImportResult } from './sssom-importer';
 import {
 	discoverImportSets,
+	newSetSchemeFor,
 	type DiscoveredImportSet,
 	type ImportSetOption,
 } from '../generation/import-set';
@@ -374,19 +375,38 @@ export class SssomImportModal extends Modal {
 	 * engine below it.
 	 */
 	private async selectedImportSet(): Promise<ImportSetOption> {
-		if (!this.detectedSource || !this.detectedTarget) return 'new';
-		const basePath = `_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}`;
-		const sets = await this.importSetsForDestination(basePath);
-		const choice = this.importSetChoice;
-		if (this.isExistingSetChoice(choice)) {
-			const set = sets.find((candidate) => candidate.id === choice.id);
-			if (!set) throw new Error('Choose an import set to refresh, or choose to keep this release as a new set.');
-			return { id: set.id, scheme: set.scheme };
+		if (this.detectedSource && this.detectedTarget) {
+			const basePath = `_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}`;
+			const sets = await this.importSetsForDestination(basePath);
+			const choice = this.importSetChoice;
+			if (this.isExistingSetChoice(choice)) {
+				const set = sets.find((candidate) => candidate.id === choice.id);
+				if (!set) throw new Error('Choose an import set to refresh, or choose to keep this release as a new set.');
+				return { id: set.id, scheme: set.scheme };
+			}
+			// AM-18. `new-set-qualified` is already an answer to the qualification
+			// question - the user clicked "keep both as a new set" on a screen that
+			// promised set-qualified identities - so it passes through untouched
+			// rather than being re-derived and possibly downgraded to `new`. Same
+			// pass-through the wizard's AM-15 branch does.
+			if (choice === 'new-set-qualified') return choice;
 		}
-		// No click, so a new set. Set-qualified when other releases already sit at
-		// this destination, so the two cannot collide on one edge curie; the plain
-		// default when the folder is empty and there is nothing to coexist with.
-		return sets.length === 0 ? 'new' : 'new-set-qualified';
+		// No click, so a new set - and WHICH new set is the one shared rule.
+		//
+		// AM-18 (2026-08-31). This used to read `sets.length === 0 ? 'new' :
+		// 'new-set-qualified'` against a list scoped to the pair folder: a
+		// folder-emptiness answer to an identity question, which is this project's
+		// own thesis inverted. Move or rename an earlier crosswalk's folder with a
+		// plain drag and the next import of that pair saw an empty destination,
+		// minted an unqualified set into the moved set's occupied curie space, and
+		// met it as an AM-12 collision on every row. The shared rule asks the whole
+		// vault about the identity space these edges actually occupy, which for
+		// every SSSOM import is `SSSOM_CURIE_PREFIX` rather than the ontology pair.
+		//
+		// The undetected-pair case lands here too. It used to return a bare `new`,
+		// and there is no reason for it to answer the qualification question
+		// differently from any other route to a new set.
+		return newSetSchemeFor(this.app, SSSOM_CURIE_PREFIX);
 	}
 
 	private isExistingSetChoice(choice: ImportSetOption | null = this.importSetChoice): choice is { id: string } {

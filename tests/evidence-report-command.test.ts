@@ -75,6 +75,12 @@ function mockApp() {
 			createFolder: async (path: string) => { folders.add(path); },
 			create: async (path: string, data: string) => { files.set(path, data); },
 			modify: async (file: { path: string }, data: string) => { files.set(file.path, data); },
+			// The writer now READS an existing note before replacing it (AM-17
+			// sweep): a report may only overwrite a note that says it is a
+			// generated report. A double with no reader would make every re-run
+			// look like a stranger's note.
+			read: async (file: { path: string }) => files.get(file.path) ?? '',
+			cachedRead: async (file: { path: string }) => files.get(file.path) ?? '',
 		},
 		workspace: {
 			getLeaf: () => ({ openFile: async (file: { path: string }) => { opened.push(file.path); } }),
@@ -161,6 +167,36 @@ describe('writing the report', () => {
 		const app = mockApp();
 		await writeEvidenceReport(deps(app), 'nist-800-53');
 		await writeEvidenceReport(deps(app), 'nist-800-53');
+		expect(app.files.size).toBe(1);
+	});
+
+	it('refuses to replace a note it did not generate, and says what to do', async () => {
+		// AM-17 sweep (2026-08-31). `reportFolder` is a user SETTING and the
+		// filename is derived from an ontology id, so a note of the user's own can
+		// legitimately sit at exactly this path -- and it was being replaced in
+		// full, the same failure the evidence-link window carried. A report has no
+		// curie, so the identity it is checked against is the marker it stamps on
+		// itself.
+		seedOntology(db, 'nist-800-53', ['nist:AC-1']);
+		const app = mockApp();
+		const path = evidenceReportPath('Reports', 'nist-800-53');
+		const mine = '---\ntitle: My own coverage notes\n---\nWork in progress.\n';
+		app.files.set(path, mine);
+
+		await expect(writeEvidenceReport(deps(app), 'nist-800-53')).rejects.toThrow(/did not generate/);
+		// Untouched, byte for byte.
+		expect(app.files.get(path)).toBe(mine);
+	});
+
+	it('still replaces its own previous report, which is what re-running is for', async () => {
+		// The control for the case above. A guard that refused everything would
+		// make the command a one-shot, and the refusal test would pass for the
+		// wrong reason.
+		seedOntology(db, 'nist-800-53', ['nist:AC-1']);
+		const app = mockApp();
+		const path = await writeEvidenceReport(deps(app), 'nist-800-53');
+		expect(app.files.get(path)).toContain('crosswalker_generated: true');
+		await expect(writeEvidenceReport(deps(app), 'nist-800-53')).resolves.toBe(path);
 		expect(app.files.size).toBe(1);
 	});
 

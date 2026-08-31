@@ -8,6 +8,8 @@
  */
 
 import { App, normalizePath, parseYaml, TFile } from 'obsidian';
+import { slugifyForCurie } from './curie';
+import { IDENTITY_SENTINELS } from './legacy-recipe-shim';
 
 export const IMPORT_SET_ID_PATTERN = /^iset-[a-z0-9]{6}$/;
 export const IMPORT_SET_SCHEMES = ['endpoint-v1', 'set-qualified-v1'] as const;
@@ -111,6 +113,79 @@ export class ImportSetProvenanceError extends Error {
  */
 export async function discoverImportSets(app: App, basePath?: string): Promise<DiscoveredImportSet[]> {
 	return buildDiscoveredSets(await collectObservations(app, basePath));
+}
+
+/**
+ * Every form a placeholder identity can reach a prefix comparison in.
+ *
+ * The literals live at their mint site (`legacy-recipe-shim.ts`) and are
+ * imported, never retyped: a second copy is a copy that drifts, and a drifted
+ * copy silently re-admits the placeholder. Both the raw and the slugified form
+ * are covered because an ontology reaches this test after `slugifyForCurie` -
+ * that is how it is compared against stamped curies.
+ */
+const IDENTITY_SENTINEL_FORMS: ReadonlySet<string> = new Set([
+	...IDENTITY_SENTINELS,
+	...IDENTITY_SENTINELS.map((value) => slugifyForCurie(value)),
+]);
+
+/**
+ * AM-18 (2026-08-31). WHICH new set to mint: the ONE implementation.
+ *
+ * Would a new set minted for this source write curies into a space an existing
+ * set already occupies? If so it is minted `set-qualified-v1`, so two releases of
+ * one framework - or two crosswalks over one pair - coexist by construction
+ * instead of meeting as an AM-12 collision on every row. `endpoint-v1` stays the
+ * answer when nothing collides, so every pre-existing import path keeps the
+ * identities it already wrote.
+ *
+ * Failure mode prevented: three copies of one rule, two of them wrong. Before
+ * this, the wizard compared whole-vault ontology prefixes, the crosswalk modal
+ * asked whether one folder was empty, and the dev fixture command asked nothing
+ * at all. A folder is an ADDRESS, and this project's own rule is that an address
+ * does not name an owner: move an earlier crosswalk's folder with a drag and the
+ * folder-emptiness copy mints an unqualified set straight into the moved set's
+ * curie space. One function, so the rule cannot disagree with itself.
+ *
+ * The signal is a shared REAL ontology prefix. The prefix is the whole left half
+ * of every curie the source produces, and discovery carries the prefixes existing
+ * sets' notes actually show, so this compares stamped fact against stamped fact.
+ * A sentinel prefix is not a fact about anything (it is what a nameless classic
+ * import stamps) and an unbuildable source has no prefix at all; both signal
+ * nothing and degrade to the plain default.
+ *
+ * Deliberately compares against `ontologyPrefixes` (what the notes hold) and NOT
+ * against a set's pinned `ontology`: a set already minted set-qualified carries
+ * the unqualified ontology as its pin while its notes carry the qualified prefix,
+ * and it is the notes that decide whether a space is taken.
+ *
+ * @param sets  Sets discovered over the WHOLE vault. A destination-scoped list
+ *              answers a different question and must not be passed here.
+ * @param ontologyPrefix  Already slugified (`slugifyForCurie`), or null when the
+ *              source cannot produce one.
+ */
+export function newSetSchemeFrom(
+	sets: readonly DiscoveredImportSet[],
+	ontologyPrefix: string | null,
+): 'new' | 'new-set-qualified' {
+	if (ontologyPrefix === null || IDENTITY_SENTINEL_FORMS.has(ontologyPrefix)) return 'new';
+	return sets.some((set) => set.ontologyPrefixes.includes(ontologyPrefix)) ? 'new-set-qualified' : 'new';
+}
+
+/**
+ * AM-18. The same rule for a caller that holds no discovered-set snapshot of its
+ * own: discover the WHOLE vault, then answer.
+ *
+ * Whole-vault deliberately. A caller that scopes discovery to its destination is
+ * asking "is that folder empty", which is the address question this amendment
+ * exists to delete.
+ */
+export async function newSetSchemeFor(
+	app: App,
+	ontologyPrefix: string | null,
+): Promise<'new' | 'new-set-qualified'> {
+	if (ontologyPrefix === null || IDENTITY_SENTINEL_FORMS.has(ontologyPrefix)) return 'new';
+	return newSetSchemeFrom(await discoverImportSets(app, undefined), ontologyPrefix);
 }
 
 /**

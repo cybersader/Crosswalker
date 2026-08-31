@@ -48,7 +48,7 @@ import {
 	type RecipeMatch,
 	type RecipeRegistryEntry,
 } from './recipe-registry';
-import { discoverImportSets, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
+import { discoverImportSets, newSetSchemeFrom, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
 import { countUnindexedMarkdownFiles } from '../views/evidence-link-modal';
 
 /**
@@ -2320,39 +2320,19 @@ export class ImportFlow {
 	 * AM-13. The new-set option this source should mint, on EVERY route to a new
 	 * set: the explicit `new` click and the no-click default alike (AM-15).
 	 *
-	 * Same rule the crosswalk modal has always had. A new set whose curie space
-	 * overlaps an existing set's mints set-qualified identities, so two releases
-	 * of one framework coexist by construction instead of meeting as an AM-12
-	 * collision on every row. `endpoint-v1` stays the answer when nothing
-	 * collides, so every pre-existing import path keeps the identities it already
-	 * wrote.
+	 * AM-18 (2026-08-31): the RULE itself now lives once, in `import-set.ts`
+	 * beside the mint, and this delegates to it. The wizard's own copy was the
+	 * only correct one of three; the modal asked whether a folder was empty and
+	 * the dev command asked nothing. What stays here is the wizard's cached
+	 * whole-vault snapshot, which is deliberately not re-read at generate time
+	 * (AM-10: a null snapshot is an unasked question, not an empty vault) - so
+	 * the pure form of the rule is the one this calls.
 	 */
 	private newSetOption(): ImportSetOption {
-		return this.newSetCollidesWithExistingIdentities() ? 'new-set-qualified' : 'new';
-	}
-
-	/**
-	 * AM-13. Would a new set minted for this source write curies into a space an
-	 * existing set already occupies?
-	 *
-	 * The signal is a shared REAL ontology prefix. The prefix is the whole left
-	 * half of every curie this source produces, and discovery already carries the
-	 * prefixes every existing set's notes actually show, so this compares stamped
-	 * fact against stamped fact rather than guessing. A sentinel prefix is not a
-	 * fact about anything (it is what a nameless classic import stamps), so it
-	 * signals nothing; an unbuildable source has no prefix and signals nothing
-	 * either, and both degrade to the plain default.
-	 *
-	 * Deliberately compares against `ontologyPrefixes` (what the notes hold) and
-	 * NOT against a set's pinned `ontology`: a set already minted set-qualified
-	 * carries the unqualified ontology as its pin while its notes carry the
-	 * qualified prefix, and it is the notes that decide whether a space is taken.
-	 */
-	private newSetCollidesWithExistingIdentities(): boolean {
-		if (this.discoveredSets === null) return false;
-		const prefix = this.sourceIdentityKeys().ontologyPrefix;
-		if (prefix === null || ImportFlow.isIdentitySentinel(prefix)) return false;
-		return this.discoveredSets.some((set) => set.ontologyPrefixes.includes(prefix));
+		// `?? []` matches the pre-AM-18 behaviour exactly: an unanswered discovery
+		// question collides with nothing and degrades to the plain default. The
+		// caller above already fails closed on a null snapshot.
+		return newSetSchemeFrom(this.discoveredSets ?? [], this.sourceIdentityKeys().ontologyPrefix);
 	}
 
 	private validateImportSetSelection(): boolean {
