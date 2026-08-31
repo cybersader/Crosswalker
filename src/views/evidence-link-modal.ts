@@ -7,10 +7,12 @@
  */
 
 import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
-import { readNoteFrontmatter } from '../export/vault-reader';
+import { readNoteFrontmatter, readNoteFrontmatterState } from '../export/vault-reader';
 import {
 	buildEvidenceLink,
 	evidenceLinkCurie,
+	legacyEvidenceLinkCurie,
+	legacyEvidenceLinkPath,
 	type EvidenceCoverage,
 	type EvidenceStatus,
 } from './evidence-link';
@@ -18,6 +20,7 @@ import { readReviewGroupCids, type ReviewGroupCids } from '../generation/hash';
 // AM-17. The same door the engine passes through, not a second copy of it.
 import { addressRefusal, crossSetAddressMessage } from '../generation/generation-engine';
 import { buildIdentityIndex } from '../generation/identity-index';
+import { countUnindexedMarkdownFiles } from '../generation/import-set';
 
 /** A control note the user can link evidence to. */
 export interface ControlCandidate {
@@ -78,20 +81,12 @@ export function listControlCandidates(app: App): ControlCandidate[] {
 /**
  * Markdown files Obsidian has not finished parsing yet.
  *
- * `getFileCache` returns null both for a file with no frontmatter and for one
- * the metadata cache has not reached. On a large vault, opening this modal
- * during startup indexing therefore yields zero candidates, which is
- * indistinguishable from "you have not imported anything" unless we look. Found
- * by screenshotting the modal against a real vault mid-index, where it claimed
- * an imported vault had no controls.
+ * AM-24 (2026-08-31): the implementation moved next to the rules that must not
+ * run without it (`src/generation/import-set.ts`) and is re-exported here for
+ * the callers that already reach for it through this module. One measurement of
+ * "is the vault readable yet", not one per window.
  */
-export function countUnindexedMarkdownFiles(app: App): number {
-	let unindexed = 0;
-	for (const file of app.vault.getMarkdownFiles()) {
-		if (!app.metadataCache.getFileCache(file)) unindexed += 1;
-	}
-	return unindexed;
-}
+export { countUnindexedMarkdownFiles };
 
 export interface EvidenceLinkModalDeps {
 	app: App;
@@ -254,61 +249,184 @@ export class EvidenceLinkModal extends Modal {
 		});
 
 		try {
-			const folder = note.path.slice(0, note.path.lastIndexOf('/'));
-			if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
-				await this.app.vault.createFolder(folder);
+			// AM-17 (2026-08-31). THE DOOR. The write used to be `vault.modify` on
+			// whatever `getAbstractFileByPath` found: `resolveWriteTarget`'s pre-AM-14
+			// body verbatim, on a window instead of the engine. The junction folder is
+			// a user SETTING, so pointing it at a folder that already holds notes, or
+			// having any note whose basename matched the junction shape, meant a
+			// person's note was replaced in full while the notice said the link had
+			// been "updated".
+			//
+			// AM-23 (2026-08-31). And the lookup comes BEFORE THE CREATE, not only
+			// before the update. The old order asked the address first, so renaming or
+			// dragging a junction note in Obsidian - a thing Obsidian invites - left
+			// nothing at the address and the next link for that pair created a SECOND
+			// note holding the same curie. Two notes with one identity is a permanent
+			// `Ambiguous identity` collision that fails every later import in the
+			// vault, and a link double-counted by every coverage tally.
+			//
+			// So: identity first, address second, create last. Exactly the engine's
+			// order, and the same helpers, rather than a second copy of the answer.
+			const expectedCurie = evidenceLinkCurie(this.control.curie, this.control.path, evidencePath);
+			// AM-22. What links written before the identity scheme changed are stamped
+			// with. Recognised so a re-link adopts and restamps the note that already
+			// exists instead of doubling it.
+			const legacyCurie = legacyEvidenceLinkCurie(this.control.path, evidencePath);
+
+			// Vault-wide, because the questions are "who already holds this identity"
+			// and "whose is the note at this address", and a scoped index by
+			// construction cannot answer about the notes it excluded.
+			const index = await buildIdentityIndex(this.app);
+
+			// Two notes already claiming THIS link's identity is a state the window
+			// must not add a third opinion to: `get()` picks the first claimant and
+			// would rewrite it, arbitrarily. Named, so the user can find and remove
+			// the duplicate rather than discovering it as an `Ambiguous identity`
+			// error on some unrelated import weeks later.
+			const ambiguous = index.collisions.find((collision) => collision.curie === expectedCurie);
+			if (ambiguous) {
+				new Notice(
+					`Could not create the link: ${ambiguous.paths.length} notes already claim the identity ${ambiguous.curie} `
+					+ `(${ambiguous.paths.join(', ')}). Delete or fix all but one of them, then try again.`,
+					12000,
+				);
+				return;
 			}
-			const existing = this.app.vault.getAbstractFileByPath(note.path);
-			if (existing instanceof TFile) {
-				// AM-17 (2026-08-31). THE DOOR. This branch was `vault.modify` on
-				// whatever it found: `resolveWriteTarget`'s pre-AM-14 body verbatim, on
-				// a window instead of the engine. The path is deterministic
-				// (`<evidence folder>/<control>--has_evidence--<evidence>.md`) and the
-				// folder is user-configurable, so pointing it at a folder that already
-				// holds notes, or having any note whose basename matches that shape,
-				// meant a person's note was replaced in full while the notice said the
-				// link had been "updated".
-				//
-				// The test is IDENTITY, not address: this note may be updated only when
-				// the note already there IS the junction being written, which is what
-				// its own `curie` says. A foreign junction, another set's note, a user's
-				// note, or a note nothing can be read off all fail that test and get a
-				// named refusal instead. Read fail-closed (cache lag is not absence),
-				// because a cache miss read as "no curie" would refuse a legitimate
-				// re-link.
-				const expectedCurie = evidenceLinkCurie(this.control.path, evidencePath);
-				const existingFrontmatter = await readNoteFrontmatter(this.app, existing);
-				const existingCurie = typeof existingFrontmatter?.curie === 'string'
-					? existingFrontmatter.curie.trim()
-					: null;
-				if (existingCurie !== expectedCurie) {
-					// Vault-wide, because the question is "whose is the note at this
-					// address", and a scoped index by construction cannot answer about
-					// the notes it excluded. Built only on this branch, so the ordinary
-					// create and the ordinary re-link cost nothing.
-					const index = await buildIdentityIndex(this.app);
-					const refusal = addressRefusal(index, existing.path, null);
+			// A contested LEGACY identity is a different matter and must not block
+			// this link: the old identifier was basename-derived and therefore not
+			// unique, so several notes legitimately hold it and none of them is
+			// necessarily ours. The alias lookup is dropped for this run; the address
+			// probes below still check each candidate's recorded pair, which is the
+			// only thing that could tell them apart anyway.
+			const legacyUsable = !index.collisions.some((collision) => collision.curie === legacyCurie);
+
+			// The note that IS this link, wherever it sits. A rename moved it; the
+			// identity did not move with it.
+			const existing = await this.findExistingLink(
+				index,
+				{ expectedCurie, legacyCurie, legacyUsable, evidencePath },
+				[note.path, legacyEvidenceLinkPath(this.deps.folder, this.control.path, evidencePath)],
+			);
+
+			let writtenPath: string;
+			if (existing) {
+				await this.app.vault.modify(existing, note.markdown);
+				writtenPath = existing.path;
+				new Notice(
+					existing.path === note.path
+						? 'Updated the existing link for this control and evidence.'
+						: `Updated the existing link for this control and evidence, at ${existing.path}.`,
+				);
+			} else {
+				// Nothing holds this identity. Now, and only now, is the address the
+				// question: whatever sits there is not this link, so it is refused by
+				// name rather than overwritten.
+				const occupant = this.app.vault.getAbstractFileByPath(note.path);
+				if (occupant instanceof TFile) {
+					const refusal = addressRefusal(index, occupant.path, null);
 					new Notice(
 						refusal
 							? `Could not create the link. ${crossSetAddressMessage(refusal)}`
-							: `Could not create the link: a different note already sits at ${existing.path}. `
+							: `Could not create the link: a different note already sits at ${occupant.path}. `
 								+ 'Move or rename that note, or change the evidence link folder in settings.',
 						12000,
 					);
 					return;
 				}
-				await this.app.vault.modify(existing, note.markdown);
-				new Notice('Updated the existing link for this control and evidence.');
-			} else {
+				const folder = note.path.slice(0, note.path.lastIndexOf('/'));
+				if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
+					await this.app.vault.createFolder(folder);
+				}
 				await this.app.vault.create(note.path, note.markdown);
+				writtenPath = note.path;
 				new Notice('Evidence link created.');
 			}
-			const file = this.app.vault.getAbstractFileByPath(note.path);
+			const file = this.app.vault.getAbstractFileByPath(writtenPath);
 			if (file instanceof TFile) await this.app.workspace.getLeaf(true).openFile(file);
 			this.close();
 		} catch (err) {
 			new Notice(`Could not create the link: ${err instanceof Error ? err.message : String(err)}`);
 		}
+	}
+
+	/**
+	 * AM-22/AM-23. Which note, if any, IS this link.
+	 *
+	 * Three lookups, in strictly decreasing strength:
+	 *
+	 *  1. The CURRENT identity, through the index. Injective by construction
+	 *     (AM-22), so a hit is proof and needs no second opinion.
+	 *  2. The LEGACY identity, through the index, PLUS a check that the note it
+	 *     finds names this exact pair. The legacy curie is the basename-derived
+	 *     one, and basenames are not unique: two releases of one framework share
+	 *     control file names, so the old identifier can name r4's link when the
+	 *     user is linking r5's. Adopting on the alias alone would restage the
+	 *     original defect through its own migration path. The note's recorded
+	 *     `subject_curie`/`subject` and `object` are what settle it.
+	 *  3. A known former ADDRESS, whose occupant's own recorded identity then
+	 *     decides. Needed because the index admits only notes carrying a
+	 *     `_crosswalker` block, and the oldest links carry none. The address
+	 *     proposes; the identity disposes. This is not identity-from-address.
+	 *
+	 * Failure mode prevented: the identity scheme change doubling every link in an
+	 * existing vault - a second note per pair, double-counted by every coverage
+	 * tally, with the first silently abandoned - and its opposite, adopting the
+	 * WRONG pre-existing link because the old identifier was ambiguous.
+	 *
+	 * A note that cannot be read is neither adopted nor claimed about; it falls
+	 * through to the address branch, which names that state exactly (AM-19).
+	 */
+	private async findExistingLink(
+		index: { get(curie: string): TFile | null },
+		pair: { expectedCurie: string; legacyCurie: string; legacyUsable: boolean; evidencePath: string },
+		addresses: readonly string[],
+	): Promise<TFile | null> {
+		const current = index.get(pair.expectedCurie);
+		if (current) return current;
+
+		const legacyHolder = pair.legacyUsable ? index.get(pair.legacyCurie) : null;
+		if (legacyHolder && await this.namesThisPair(legacyHolder, pair.evidencePath)) return legacyHolder;
+
+		const seen = new Set<string>();
+		for (const path of addresses) {
+			if (seen.has(path)) continue;
+			seen.add(path);
+			const candidate = this.app.vault.getAbstractFileByPath(path);
+			if (!(candidate instanceof TFile)) continue;
+			const read = await readNoteFrontmatterState(this.app, candidate);
+			if (read.state !== 'ok') continue;
+			const curie = typeof read.frontmatter.curie === 'string' ? read.frontmatter.curie.trim() : '';
+			if (curie === pair.expectedCurie) return candidate;
+			if (curie === pair.legacyCurie && this.frontmatterNamesThisPair(read.frontmatter, pair.evidencePath)) {
+				return candidate;
+			}
+		}
+		return null;
+	}
+
+	/** Does this note record the control and evidence the user is linking now? */
+	private async namesThisPair(file: TFile, evidencePath: string): Promise<boolean> {
+		const read = await readNoteFrontmatterState(this.app, file);
+		return read.state === 'ok' && this.frontmatterNamesThisPair(read.frontmatter, evidencePath);
+	}
+
+	/**
+	 * The pair a junction note says it is about, read off the note.
+	 *
+	 * `subject_curie` is preferred because it is the control's own identity;
+	 * the `subject` wikilink is the fallback for a link written when the control
+	 * carried no curie, where a path was all there was to record.
+	 */
+	private frontmatterNamesThisPair(fm: Record<string, unknown>, evidencePath: string): boolean {
+		const control = this.control;
+		if (!control) return false;
+		const subjectCurie = typeof fm.subject_curie === 'string' ? fm.subject_curie.trim() : '';
+		const subject = typeof fm.subject === 'string' ? fm.subject : '';
+		const object = typeof fm.object === 'string' ? fm.object : '';
+		const subjectMatches = control.curie && subjectCurie
+			? subjectCurie === control.curie
+			: subject.includes(`[[${control.path}`);
+		return subjectMatches && object.includes(`[[${evidencePath}`);
 	}
 
 	onClose(): void {

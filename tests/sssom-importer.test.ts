@@ -368,3 +368,22 @@ subject_id	predicate_id	object_id	mapping_set_id	subject_label	object_label	mapp
 		]);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// AM-26 sweep (2026-08-31): NOT COVERED HERE, and the reason is worth recording.
+//
+// `preflightMappingSetDestinations` is meant to refuse an import into a folder
+// already holding another mapping set's edges, and pass 10 gave it a
+// raw-frontmatter fallback so a cache-cold crosswalk note could no longer slip
+// past it. No test asserts that fallback because the guard CANNOT FIRE: the
+// `destinationSets` map it iterates is constructed empty at
+// `sssom-importer.ts:173` and nothing ever writes to it. `git log -S` puts it in
+// that state since `b74bb17a` (release isolation held), which removed the
+// per-mapping-set subfolder that used to populate it — so the guard has never
+// run in any shipped build, and every import already lands in the shared pair
+// root regardless of what is there.
+//
+// Any test written here would pass for the wrong reason (an empty loop refuses
+// nothing), so this is left as a written gap rather than a green assertion.
+// Reopening it is a product decision, not a test one.
+// ---------------------------------------------------------------------------

@@ -48,8 +48,7 @@ import {
 	type RecipeMatch,
 	type RecipeRegistryEntry,
 } from './recipe-registry';
-import { discoverImportSets, newSetSchemeFrom, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
-import { countUnindexedMarkdownFiles } from '../views/evidence-link-modal';
+import { discoverImportSets, newSetSchemeFrom, settleVaultIndex, type DiscoveredImportSet, type ImportSetOption } from '../generation/import-set';
 
 /**
  * Curated per-import root for a recognized recipe (spec §7m), or `null` when the
@@ -2152,14 +2151,16 @@ export class ImportFlow {
 	 * content scan), so a cold cache would show a vault with fewer sets than it has
 	 * and quietly mint a duplicate of one of them.
 	 *
-	 * Wait once, then RE-CHECK. `waitForMetadataResolve` resolves on its own
-	 * timeout as well as on the event, so the fact that the await returned is not
-	 * evidence of anything.
+	 * AM-24 (2026-08-31): the wait-then-recount MECHANISM is now
+	 * `settleVaultIndex`, shared with the qualification rule that carries the same
+	 * precondition internally. The wizard keeps its own message and its own
+	 * blocked-screen handling; what it no longer keeps is a second copy of how the
+	 * measurement is taken. `settleVaultIndex` resolves on its own timeout as well
+	 * as on the `resolved` event, so its return value is always a fresh count and
+	 * never an assumption that the await meant anything.
 	 */
 	private async ensureVaultIndexed(app: App): Promise<boolean> {
-		if (countUnindexedMarkdownFiles(app) === 0) return true;
-		await this.waitForMetadataResolve();
-		const remaining = countUnindexedMarkdownFiles(app);
+		const remaining = await settleVaultIndex(app);
 		if (remaining > 0) {
 			this.plugin.debug.warn('wizard', 'vault-not-indexed', `Vault still indexing: ${remaining} file(s) unread`, { remaining });
 		}

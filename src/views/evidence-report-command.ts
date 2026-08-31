@@ -21,7 +21,7 @@ import {
 	listUnbaselinedValidJunctions,
 } from '../tier2/evidence-coverage';
 import { readProjectionStatus } from '../tier2/projector';
-import { readNoteFrontmatter } from '../export/vault-reader';
+import { readNoteFrontmatterState } from '../export/vault-reader';
 import { renderEvidenceReport } from './evidence-report';
 
 /** One ontology the index knows about, as offered in the chooser. */
@@ -151,8 +151,21 @@ export async function writeEvidenceReport(
 		// A report has no curie, so the identity it is checked against is the marker
 		// it stamps on itself. Only a note that says it is a generated report may be
 		// overwritten by one.
-		const frontmatter = await readNoteFrontmatter(deps.app, existing);
-		if (frontmatter?.crosswalker_generated !== true) {
+		//
+		// AM-26 (2026-08-31). Read in THREE states, not two. The two-state read
+		// answered null both for a stranger's plain note and for a report of ours
+		// whose YAML a user had damaged, and the caller then told the second one "a
+		// note that Crosswalker did not generate sits here. Move or rename that
+		// note." - AM-19's exact false cause plus its banned instruction, at a site
+		// added by the same pass that wrote AM-19. Absence of a fact is never a fact.
+		const read = await readNoteFrontmatterState(deps.app, existing);
+		if (read.state === 'unreadable') {
+			throw new Error(
+				`Crosswalker could not read the properties of ${path}, so it could not tell whether that note is a report it generated. `
+				+ "Nothing was written. Fix that note's properties block, then run the report again.",
+			);
+		}
+		if (read.state !== 'ok' || read.frontmatter.crosswalker_generated !== true) {
 			throw new Error(
 				`a note that Crosswalker did not generate already sits at ${path}. `
 				+ 'Nothing was written. Move or rename that note, or change the report folder in settings.',

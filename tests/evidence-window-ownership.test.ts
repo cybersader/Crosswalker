@@ -105,8 +105,12 @@ const CONTROL: ControlCandidate = {
 	reviewCid: null,
 };
 const EVIDENCE = 'Evidence/MFA policy.md';
-const LINK_PATH = evidenceLinkPath(FOLDER, CONTROL.path, EVIDENCE);
-const LINK_CURIE = evidenceLinkCurie(CONTROL.path, EVIDENCE);
+// AM-22 (2026-08-31): the pair's identity and address are functions of the
+// CONTROL'S CURIE, not of its file name. Computed through the shipped functions
+// rather than written out, so this file pins the window's behaviour and never a
+// second opinion about what the identity is.
+const LINK_PATH = evidenceLinkPath(FOLDER, CONTROL.curie, CONTROL.path, EVIDENCE);
+const LINK_CURIE = evidenceLinkCurie(CONTROL.curie, CONTROL.path, EVIDENCE);
 
 interface ModalInternals {
 	control: ControlCandidate | null;

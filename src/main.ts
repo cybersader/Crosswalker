@@ -503,6 +503,29 @@ export default class CrosswalkerPlugin extends Plugin {
 
 					if (!picked) return;
 					const fx = BUNDLED_FIXTURES.find((f) => f.id === picked)!;
+
+					// AM-24 (2026-08-31). The qualification rule now refuses to answer
+					// from a half-read vault, and a refusal must reach the person who
+					// asked. Resolved BEFORE the "Importing..." notice, and caught here:
+					// left inline in the options object below, the throw would escape the
+					// command callback as an unhandled rejection, and the only symptom
+					// would be a command that did nothing at all.
+					let importSet: 'new' | 'new-set-qualified';
+					try {
+						// AM-18 (2026-08-31). WHICH new set is a question this route used
+						// to skip: the bare literal `new` always mints endpoint-v1, so
+						// loading a fixture into a vault that already held that ontology
+						// pair produced a set whose curie space was already occupied, and
+						// AM-12 then correctly refused every single row ("0 junction
+						// notes, N errors"). Not damage, but exactly the routine collision
+						// AM-13 exists to eliminate. One shared rule answers it here as
+						// everywhere else.
+						importSet = await newSetSchemeFor(this.app, SSSOM_CURIE_PREFIX);
+					} catch (err) {
+						new Notice(err instanceof Error ? err.message : String(err), 10000);
+						return;
+					}
+
 					new Notice(`Importing ${fx.displayName}...`, 3000);
 
 					const result = await importSssom(
@@ -518,15 +541,8 @@ export default class CrosswalkerPlugin extends Plugin {
 							// folder", which meant loading a bundled fixture could replace
 							// a real crosswalk a user had imported into the same pair.
 							//
-							// AM-18 (2026-08-31). WHICH new set is a question this route
-							// used to skip: the bare literal `new` always mints
-							// endpoint-v1, so loading a fixture into a vault that already
-							// held that ontology pair produced a set whose curie space was
-							// already occupied, and AM-12 then correctly refused every
-							// single row ("0 junction notes, N errors"). Not damage, but
-							// exactly the routine collision AM-13 exists to eliminate.
-							// One shared rule answers it here as everywhere else.
-							importSet: await newSetSchemeFor(this.app, SSSOM_CURIE_PREFIX),
+							// Resolved above, through the one shared qualification rule.
+							importSet,
 							// Nothing exists under a freshly minted set, so this only rules
 							// out rewriting a note the run does not own.
 							overwriteMode: 'skip',

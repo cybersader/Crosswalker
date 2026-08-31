@@ -130,6 +130,94 @@ const IDENTITY_SENTINEL_FORMS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * AM-24 (2026-08-31). What a decision surface says when it cannot see the vault.
+ *
+ * One message, so no caller invents its own wording for the same state.
+ */
+export const VAULT_STILL_INDEXING_MESSAGE =
+	'Obsidian is still indexing your vault. Wait a moment, then run this again.';
+
+/** Thrown by any rule that refuses to answer from a half-read vault. */
+export class VaultStillIndexingError extends Error {
+	constructor(message: string = VAULT_STILL_INDEXING_MESSAGE) {
+		super(message);
+		this.name = 'VaultStillIndexingError';
+	}
+}
+
+/**
+ * Markdown files Obsidian has not finished parsing yet.
+ *
+ * `getFileCache` returns null both for a file with no frontmatter and for one
+ * the metadata cache has not reached, so this is the only way to tell "the vault
+ * holds nothing" from "the vault has not been read yet". Found by screenshotting
+ * the evidence window against a real vault mid-index, where it claimed an
+ * imported vault had no controls.
+ *
+ * A host that exposes neither the file list nor the cache cannot be measured at
+ * all; that answers 0 rather than blocking every caller on an unmeasurable
+ * environment. Real Obsidian always exposes both.
+ */
+export function countUnindexedMarkdownFiles(app: App): number {
+	const getMarkdownFiles = app.vault?.getMarkdownFiles?.bind(app.vault);
+	const getFileCache = app.metadataCache?.getFileCache?.bind(app.metadataCache);
+	if (!getMarkdownFiles || !getFileCache) return 0;
+	let unindexed = 0;
+	for (const file of getMarkdownFiles()) {
+		if (!getFileCache(file)) unindexed += 1;
+	}
+	return unindexed;
+}
+
+/**
+ * Wait once for Obsidian's metadata cache to drain, then RE-CHECK.
+ *
+ * `resolved` fires once per full pass, and the wait also resolves on its own
+ * timeout, so the fact that the await returned is not evidence of anything. The
+ * number returned is a fresh count, never an assumption.
+ */
+export async function settleVaultIndex(app: App, timeoutMs = 4000): Promise<number> {
+	if (countUnindexedMarkdownFiles(app) === 0) return 0;
+	const on = app.metadataCache?.on?.bind(app.metadataCache);
+	const offref = app.metadataCache?.offref?.bind(app.metadataCache);
+	if (on && offref) {
+		await new Promise<void>((resolve) => {
+			let done = false;
+			const finish = () => {
+				if (done) return;
+				done = true;
+				try { offref(ref); } catch { /* a host that cannot unsubscribe still resolves */ }
+				resolve();
+			};
+			const ref = on('resolved', finish);
+			setTimeout(finish, timeoutMs);
+		});
+	}
+	return countUnindexedMarkdownFiles(app);
+}
+
+/**
+ * AM-24. Refuse to answer at all while the vault is half-read.
+ *
+ * Failure mode prevented: cache lag read as fact, SEVENTH appearance. Every
+ * vault-wide rule here reads the metadata cache, and whole-vault discovery has
+ * no raw-frontmatter fallback (deliberately, so it never becomes a whole-vault
+ * content scan). A cold cache therefore shows a vault with fewer sets than it
+ * has, and the qualification rule answers "nothing collides" about a vault it
+ * never saw - minting an unqualified set into an occupied curie space, whereupon
+ * every row is correctly refused and the user sees "0 notes created, N refused"
+ * with no cause.
+ *
+ * The precondition lives INSIDE the rule rather than in its callers, because
+ * callers forgetting it is exactly how the rule acquired three copies in the
+ * first place. Both command-palette entry points can be fired during startup
+ * indexing.
+ */
+export async function requireVaultIndexed(app: App): Promise<void> {
+	if (await settleVaultIndex(app) > 0) throw new VaultStillIndexingError();
+}
+
+/**
  * AM-18 (2026-08-31). WHICH new set to mint: the ONE implementation.
  *
  * Would a new set minted for this source write curies into a space an existing
@@ -184,6 +272,11 @@ export async function newSetSchemeFor(
 	app: App,
 	ontologyPrefix: string | null,
 ): Promise<'new' | 'new-set-qualified'> {
+	// AM-24. The precondition is the FIRST thing, not a step inside the branch
+	// that happens to read the vault. A caller cannot tell which branch it hit, so
+	// a function that sometimes checks and sometimes does not is a function whose
+	// contract nobody can state.
+	await requireVaultIndexed(app);
 	if (ontologyPrefix === null || IDENTITY_SENTINEL_FORMS.has(ontologyPrefix)) return 'new';
 	return newSetSchemeFrom(await discoverImportSets(app, undefined), ontologyPrefix);
 }

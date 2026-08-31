@@ -200,6 +200,46 @@ describe('writing the report', () => {
 		expect(app.files.size).toBe(1);
 	});
 
+	it('tells the user to FIX a damaged report, and never that it is a stranger\'s', async () => {
+		// AM-26 (2026-08-31), pass-9 record #3. The two-state read answered null
+		// both for a stranger's plain note and for a report of OURS whose YAML a
+		// user damaged, and this site then told the second one "a note that
+		// Crosswalker did not generate already sits at ... Move or rename that
+		// note." That is AM-19's exact false cause plus its banned destructive
+		// instruction, at a site added by the same pass that wrote AM-19.
+		//
+		// Nothing was established about the note, so nothing may be claimed about
+		// it: name the state, ask for the fix, write nothing.
+		seedOntology(db, 'nist-800-53', ['nist:AC-1']);
+		const app = mockApp();
+		const path = evidenceReportPath('Reports', 'nist-800-53');
+		const damaged = '---\n: : :\ncrosswalker_generated: true\n---\nA report a hand edit broke.\n';
+		app.files.set(path, damaged);
+
+		await expect(writeEvidenceReport(deps(app), 'nist-800-53'))
+			.rejects.toThrow(/could not read the properties/);
+		await expect(writeEvidenceReport(deps(app), 'nist-800-53'))
+			.rejects.toThrow(/Fix that note's properties block/);
+		await expect(writeEvidenceReport(deps(app), 'nist-800-53'))
+			.rejects.not.toThrow(/did not generate/);
+		await expect(writeEvidenceReport(deps(app), 'nist-800-53'))
+			.rejects.not.toThrow(/Move or rename/);
+		// Untouched, byte for byte.
+		expect(app.files.get(path)).toBe(damaged);
+	});
+
+	it('still calls a readable stranger\'s note a stranger\'s note', async () => {
+		// The control for the case above. `none` IS a fact about the file: it has
+		// no properties block, so it carries no marker, and saying so is honest.
+		// A guard that answered "fix your note" about everything would tell a
+		// person to repair a note they wrote on purpose.
+		seedOntology(db, 'nist-800-53', ['nist:AC-1']);
+		const app = mockApp();
+		const path = evidenceReportPath('Reports', 'nist-800-53');
+		app.files.set(path, 'Just prose, no properties block.\n');
+		await expect(writeEvidenceReport(deps(app), 'nist-800-53')).rejects.toThrow(/did not generate/);
+	});
+
 	it('reports an unknown index freshness rather than implying it is current', async () => {
 		// Nothing has projected in this database, so no stamp exists.
 		seedOntology(db, 'nist-800-53', ['nist:AC-1']);

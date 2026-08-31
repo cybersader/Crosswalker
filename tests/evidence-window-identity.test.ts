@@ -1,0 +1,439 @@
+/**
+ * evidence-window-identity.test.ts — AM-22 and AM-23 (2026-08-31): the evidence
+ * window asks WHICH LINK, and it asks before it creates.
+ *
+ * THE TWO DEFECTS THIS FILE PINS.
+ *
+ * AM-22. The junction's identity and address were both functions of
+ * `basename()`. Two releases of one framework — the case release isolation
+ * exists to support — share control file names, so `Frameworks/NIST-r4/AC-2.md`
+ * and `Frameworks/NIST-r5/AC-2.md` produced one path and one curie. Linking
+ * evidence to r5 therefore PASSED AM-17's identity door (the strings matched)
+ * and replaced r4's link in full: its approval, its reviewer, its review date,
+ * its `reviewed_against` baseline, and the reviewer's own prose. The notice said
+ * the link had been updated. Nothing could report it afterwards, because the
+ * identifier never changed, so no duplicate existed to be found.
+ *
+ * AM-23. The lookup ran only on the branch that OVERWRITES. The create branch
+ * asked the address and nothing else, so renaming or dragging a junction note in
+ * Obsidian — which Obsidian invites — left nothing at the address and the next
+ * link for that pair created a SECOND note holding the same curie. Two notes
+ * with one identity is a permanent `Ambiguous identity` collision that fails
+ * every later import in the vault, plus a link double-counted by every coverage
+ * tally.
+ *
+ * WHY A SECOND FILE. `evidence-window-ownership.test.ts` pins the DOOR (AM-17):
+ * what happens to whatever sits at the address. This file pins the LOOKUP: which
+ * note is this link, wherever it sits, and which notes are emphatically not it.
+ * Both drive the same private `create()` handler against a vault double, because
+ * what is written to the vault is the subject, not the modal's DOM.
+ */
+
+import { TFile, TFolder } from 'obsidian';
+import { EvidenceLinkModal, type ControlCandidate } from '../src/views/evidence-link-modal';
+import {
+	evidenceLinkCurie,
+	evidenceLinkPath,
+	legacyEvidenceLinkCurie,
+	legacyEvidenceLinkPath,
+} from '../src/views/evidence-link';
+import type { App } from 'obsidian';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const yaml = require('js-yaml') as { load: (s: string) => unknown };
+
+// ---------------------------------------------------------------------------
+// Notices, swapped on the LIVE module object (see the sibling file for why a
+// namespace import would leave src/ calling the original).
+// ---------------------------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const obsidianModule = require('obsidian') as { Notice: new (message: string, timeout?: number) => unknown };
+const RealNotice = obsidianModule.Notice;
+const notices: string[] = [];
+
+beforeAll(() => {
+	obsidianModule.Notice = class {
+		constructor(message: string) { notices.push(message); }
+	} as unknown as typeof RealNotice;
+});
+afterAll(() => { obsidianModule.Notice = RealNotice; });
+beforeEach(() => { notices.length = 0; });
+
+const said = (): string => notices.join('\n');
+
+function makeVault() {
+	const files = new Map<string, string>();
+	const folders = new Set<string>(['']);
+	const opened: string[] = [];
+	const app = {
+		vault: {
+			getMarkdownFiles: () => [...files.keys()].map((p) => new TFile(p)),
+			getAbstractFileByPath: (path: string) => {
+				if (files.has(path)) return new TFile(path);
+				if (folders.has(path)) return new TFolder(path);
+				return null;
+			},
+			create: async (path: string, content: string) => { files.set(path, content); return new TFile(path); },
+			modify: async (file: { path: string }, content: string) => { files.set(file.path, content); },
+			read: async (file: { path: string }) => files.get(file.path) ?? '',
+			cachedRead: async (file: { path: string }) => files.get(file.path) ?? '',
+			createFolder: async (path: string) => { folders.add(path); },
+		},
+		metadataCache: {
+			getFileCache: (file: { path: string }) => {
+				const text = files.get(file.path);
+				if (text === undefined) return null;
+				const match = /^---\n([\s\S]*?)\n---/.exec(text.replace(/\r\n/g, '\n'));
+				if (!match) return { frontmatter: undefined };
+				try {
+					return { frontmatter: (yaml.load(match[1]) ?? {}) as Record<string, unknown> };
+				} catch {
+					return { frontmatter: undefined };
+				}
+			},
+		},
+		workspace: {
+			getLeaf: () => ({ openFile: async (file: { path: string }) => { opened.push(file.path); } }),
+		},
+	};
+	return { app: app as unknown as App, files, folders, opened };
+}
+
+const FOLDER = 'Evidence/Junctions';
+const EVIDENCE = 'Evidence/MFA policy.md';
+
+/**
+ * Two releases of one framework, coexisting as two import sets. Same control id,
+ * same file name, different folders and different curies — which is exactly what
+ * `set-qualified-v1` mints and what the old scheme could not tell apart.
+ */
+const R4: ControlCandidate = {
+	path: 'Frameworks/NIST-r4/AC-2.md',
+	title: 'AC-2',
+	curie: 'nist:AC-2',
+	reviewCid: null,
+};
+const R5: ControlCandidate = {
+	path: 'Frameworks/NIST-r5/AC-2.md',
+	title: 'AC-2',
+	curie: 'nist-iset-bbbbbb:AC-2',
+	reviewCid: null,
+};
+
+const pathFor = (c: ControlCandidate, evidence = EVIDENCE): string =>
+	evidenceLinkPath(FOLDER, c.curie, c.path, evidence);
+const curieFor = (c: ControlCandidate, evidence = EVIDENCE): string =>
+	evidenceLinkCurie(c.curie, c.path, evidence);
+
+interface ModalInternals {
+	control: ControlCandidate | null;
+	evidencePath: string;
+	create(): Promise<void>;
+}
+
+/** Press "Create link" for one control/evidence pair. */
+async function pressCreateLink(app: App, control: ControlCandidate, evidence = EVIDENCE): Promise<void> {
+	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
+	modal.control = control;
+	modal.evidencePath = evidence;
+	await modal.create();
+}
+
+const note = (frontmatter: string, body = 'Body.\n'): string => `---\n${frontmatter}\n---\n${body}`;
+
+/** A junction note as the window itself would have written it, at any address. */
+function junction(opts: {
+	curie: string;
+	control: ControlCandidate;
+	evidence?: string;
+	setId?: string | null;
+	body?: string;
+}): string {
+	const lines = [
+		`curie: "${opts.curie}"`,
+		'kind: junction-note',
+		`subject: "[[${opts.control.path}|AC-2]]"`,
+		...(opts.control.curie ? [`subject_curie: "${opts.control.curie}"`] : []),
+		'predicate: has_evidence',
+		`object: "[[${opts.evidence ?? EVIDENCE}|MFA policy]]"`,
+		'coverage: full',
+		'status: approved',
+		'reviewer: "A reviewer"',
+	];
+	if (opts.setId !== null) {
+		lines.push('_crosswalker:', '  import_set:', `    id: ${opts.setId ?? 'iset-r4r4r4'}`);
+	}
+	return note(lines.join('\n'), opts.body ?? 'Reviewer prose that must survive.\n');
+}
+
+// ---------------------------------------------------------------------------
+// AM-22 at the window: release isolation.
+// ---------------------------------------------------------------------------
+
+describe('AM-22: linking against a second release never touches the first', () => {
+	it('leaves release 4\'s link byte-for-byte intact when release 5 is linked', async () => {
+		// THE defect. Before AM-22 this second click replaced the first note in
+		// full and reported it as an update.
+		const { app, files } = makeVault();
+		await pressCreateLink(app, R4);
+		const r4Path = pathFor(R4);
+		const r4Before = files.get(r4Path)!;
+		expect(r4Before).toBeDefined();
+		notices.length = 0;
+
+		await pressCreateLink(app, R5);
+
+		expect(files.get(r4Path)).toBe(r4Before);
+		expect(files.has(pathFor(R5))).toBe(true);
+		expect(files.size).toBe(2);
+		expect(said()).toContain('Evidence link created.');
+		expect(said()).not.toContain('Updated the existing link');
+	});
+
+	it('keeps the reviewer\'s work on the first link', async () => {
+		// What was actually lost: an approved attestation and the prose under it.
+		// Asserted separately from the byte comparison above so a future change to
+		// the note's shape cannot quietly turn that test green for the wrong reason.
+		const { app, files } = makeVault();
+		files.set(pathFor(R4), junction({ curie: curieFor(R4), control: R4, body: 'Approved 2026-08-01 by a reviewer.\n' }));
+		await pressCreateLink(app, R5);
+		expect(files.get(pathFor(R4))).toContain('Approved 2026-08-01 by a reviewer.');
+		expect(files.get(pathFor(R4))).toContain('reviewer: "A reviewer"');
+	});
+
+	it('still updates in place when the SAME release is linked twice', async () => {
+		// The control. A window that refused every second click would pass both
+		// tests above and be useless.
+		const { app, files } = makeVault();
+		await pressCreateLink(app, R4);
+		notices.length = 0;
+		await pressCreateLink(app, R4);
+		expect(files.size).toBe(1);
+		expect(said()).toContain('Updated the existing link');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AM-22 at the window: the legacy alias, and its limit.
+// ---------------------------------------------------------------------------
+
+describe('AM-22: a link written under the old scheme is adopted, not doubled', () => {
+	const LEGACY_CURIE = legacyEvidenceLinkCurie(R4.path, EVIDENCE);
+	const LEGACY_PATH = legacyEvidenceLinkPath(FOLDER, R4.path, EVIDENCE);
+
+	it('restamps the existing note in place when it carries a provenance block', async () => {
+		// Found through the identity index by its OLD curie. Without the alias a
+		// scheme change manufactures a second link for every pair a user re-links,
+		// double-counted by every coverage tally, with the first abandoned.
+		const { app, files } = makeVault();
+		files.set(LEGACY_PATH, junction({ curie: LEGACY_CURIE, control: R4 }));
+
+		await pressCreateLink(app, R4);
+
+		expect(files.size).toBe(1);
+		expect(files.has(pathFor(R4))).toBe(false);
+		expect(files.get(LEGACY_PATH)).toContain(`curie: ${curieFor(R4)}`);
+		expect(said()).toContain('Updated the existing link');
+	});
+
+	it('adopts the oldest links too, which carry no provenance block at all', async () => {
+		// The index admits only notes with a `_crosswalker` block, so these are
+		// invisible to it. Their identity is still recorded in their own `curie`,
+		// which the known former ADDRESS is consulted to find. The address proposes;
+		// the note's own identity disposes.
+		const { app, files } = makeVault();
+		files.set(LEGACY_PATH, junction({ curie: LEGACY_CURIE, control: R4, setId: null }));
+
+		await pressCreateLink(app, R4);
+
+		expect(files.size).toBe(1);
+		expect(files.get(LEGACY_PATH)).toContain(`curie: ${curieFor(R4)}`);
+		expect(said()).toContain('Updated the existing link');
+	});
+
+	it('finds a legacy link that has ALSO been moved, by its old identity', async () => {
+		// The case the legacy ADDRESS probe cannot reach and the legacy IDENTITY
+		// lookup can: an old link the user renamed. Without the alias in the index
+		// this pair gets a brand new note and the reviewer's old one is abandoned,
+		// which is the doubling the alias exists to prevent.
+		const { app, files } = makeVault();
+		const moved = `${FOLDER}/an old link I renamed.md`;
+		files.set(moved, junction({ curie: LEGACY_CURIE, control: R4 }));
+
+		await pressCreateLink(app, R4);
+
+		expect(files.size).toBe(1);
+		expect(files.get(moved)).toContain(`curie: ${curieFor(R4)}`);
+		expect(said()).toContain('Updated the existing link');
+	});
+
+	it('names the note it updated when that note is not at the expected address', async () => {
+		// "Updated the existing link" with no path, about a note somewhere else, is
+		// how a user concludes nothing happened and clicks again.
+		const { app, files } = makeVault();
+		files.set(LEGACY_PATH, junction({ curie: LEGACY_CURIE, control: R4 }));
+		await pressCreateLink(app, R4);
+		expect(said()).toContain(LEGACY_PATH);
+		expect(files.size).toBe(1);
+	});
+
+	it('does NOT adopt a legacy link that names a different pair', async () => {
+		// The tightening the legacy alias needs, and the reason the alias alone is
+		// not enough: the OLD identifier was basename-derived and is therefore not
+		// unique, so r4's legacy link answers to r5's legacy curie. Adopting on the
+		// alias alone would restage the original defect through its own migration
+		// path. The note's recorded subject and object settle it.
+		const { app, files } = makeVault();
+		const r4Legacy = junction({ curie: LEGACY_CURIE, control: R4 });
+		files.set(LEGACY_PATH, r4Legacy);
+
+		await pressCreateLink(app, R5);
+
+		expect(files.get(LEGACY_PATH)).toBe(r4Legacy);
+		expect(files.has(pathFor(R5))).toBe(true);
+		expect(files.size).toBe(2);
+	});
+
+	it('does NOT adopt a legacy link whose evidence is a different document', async () => {
+		// Same rule on the object side: the pair is both halves.
+		const { app, files } = makeVault();
+		const other = junction({ curie: LEGACY_CURIE, control: R4, evidence: 'Evidence/Something else.md' });
+		files.set(LEGACY_PATH, other);
+
+		await pressCreateLink(app, R4);
+
+		expect(files.get(LEGACY_PATH)).toBe(other);
+		expect(files.has(pathFor(R4))).toBe(true);
+		expect(files.size).toBe(2);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AM-23: identity first, address second, create last.
+// ---------------------------------------------------------------------------
+
+describe('AM-23: the lookup comes before the create', () => {
+	const RENAMED = `${FOLDER}/renamed by hand.md`;
+
+	it('finds a junction the user renamed, and updates it where it sits', async () => {
+		// A plain drag in Obsidian. The old order asked the address first, found
+		// nothing, and created a twin holding the same curie.
+		const { app, files } = makeVault();
+		files.set(RENAMED, junction({ curie: curieFor(R4), control: R4 }));
+
+		await pressCreateLink(app, R4);
+
+		expect(files.size).toBe(1);
+		expect(files.has(pathFor(R4))).toBe(false);
+		expect(files.get(RENAMED)).toContain(`curie: ${curieFor(R4)}`);
+		expect(said()).toContain('Updated the existing link');
+		expect(said()).toContain(RENAMED);
+	});
+
+	it('never leaves two notes holding one identity', async () => {
+		// The consequence, stated as the property rather than as the path: two
+		// claimants poison every later import in the vault with `Ambiguous
+		// identity`, from a window a user cannot connect to imports at all.
+		const { app, files } = makeVault();
+		files.set(RENAMED, junction({ curie: curieFor(R4), control: R4 }));
+		await pressCreateLink(app, R4);
+		const holders = [...files.entries()].filter(([, text]) => text.includes(`curie: ${curieFor(R4)}`));
+		expect(holders).toHaveLength(1);
+	});
+
+	it('creates only on a true identity miss', async () => {
+		// The other half. A lookup that answered "found" too eagerly would make the
+		// window unable to create anything.
+		const { app, files } = makeVault();
+		files.set(`${FOLDER}/unrelated junction.md`, junction({ curie: 'cwk:something-else', control: R5 }));
+
+		await pressCreateLink(app, R4);
+
+		expect(files.has(pathFor(R4))).toBe(true);
+		expect(files.size).toBe(2);
+		expect(said()).toContain('Evidence link created.');
+	});
+
+	it('refuses when two notes already claim this link, naming both', async () => {
+		// `get()` picks the first claimant and would rewrite it arbitrarily. The
+		// window must not add a third opinion to a vault that is already ambiguous;
+		// it names the state so the user can fix it, rather than leaving them to
+		// discover it as an import error weeks later.
+		const { app, files } = makeVault();
+		const a = `${FOLDER}/claimant a.md`;
+		const b = `${FOLDER}/claimant b.md`;
+		files.set(a, junction({ curie: curieFor(R4), control: R4 }));
+		files.set(b, junction({ curie: curieFor(R4), control: R4 }));
+		const before = new Map(files);
+
+		await pressCreateLink(app, R4);
+
+		expect([...files.keys()].sort()).toEqual([...before.keys()].sort());
+		expect(files.get(a)).toBe(before.get(a));
+		expect(files.get(b)).toBe(before.get(b));
+		expect(said()).toContain('Could not create the link');
+		expect(said()).toContain(a);
+		expect(said()).toContain(b);
+	});
+
+	it('a contested LEGACY identity does not block the link, it only drops the alias', async () => {
+		// Different matter entirely: the old identifier was never unique, so
+		// several notes legitimately hold it and none of them is necessarily ours.
+		// Refusing there would make the window unusable in any vault carrying two
+		// releases of one framework.
+		const { app, files } = makeVault();
+		const legacyCurie = legacyEvidenceLinkCurie(R4.path, EVIDENCE);
+		files.set(`${FOLDER}/old a.md`, junction({ curie: legacyCurie, control: R4 }));
+		files.set(`${FOLDER}/old b.md`, junction({ curie: legacyCurie, control: R5 }));
+
+		await pressCreateLink(app, R4);
+
+		expect(files.has(pathFor(R4))).toBe(true);
+		expect(said()).toContain('Evidence link created.');
+		expect(said()).not.toContain('Could not create the link');
+	});
+
+	it('does not open a note when it refused to write anything', async () => {
+		const { app, files, opened } = makeVault();
+		files.set(`${FOLDER}/claimant a.md`, junction({ curie: curieFor(R4), control: R4 }));
+		files.set(`${FOLDER}/claimant b.md`, junction({ curie: curieFor(R4), control: R4 }));
+		await pressCreateLink(app, R4);
+		expect(opened).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AM-23: what is found is not always adoptable.
+// ---------------------------------------------------------------------------
+
+describe('AM-23: a note at the address that is not this link is refused by name', () => {
+	it('refuses a foreign set\'s junction sitting at the expected address', async () => {
+		// Identity said nothing holds this curie, so the address is now the
+		// question — and the answer is a refusal that names the owning set, not an
+		// overwrite.
+		const { app, files } = makeVault();
+		const foreign = junction({ curie: 'cwk:some-other-link', control: R5, setId: 'iset-aaaaaa' });
+		files.set(pathFor(R4), foreign);
+
+		await pressCreateLink(app, R4);
+
+		expect(files.get(pathFor(R4))).toBe(foreign);
+		expect(said()).toContain('Could not create the link');
+		expect(said()).toContain('iset-aaaaaa');
+	});
+
+	it('refuses a note whose properties cannot be read, and never calls it a stranger\'s', async () => {
+		// AM-19's rule at this site: nothing was established about the note, so
+		// nothing may be claimed about it, and no destructive instruction attached.
+		const { app, files } = makeVault();
+		const damaged = note(': : :\ncurie: something');
+		files.set(pathFor(R4), damaged);
+
+		await pressCreateLink(app, R4);
+
+		expect(files.get(pathFor(R4))).toBe(damaged);
+		expect(said()).toContain('could not read the properties');
+		expect(said()).not.toContain("not Crosswalker's");
+		expect(said()).not.toContain('Move or rename');
+	});
+});

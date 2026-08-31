@@ -368,7 +368,18 @@ describe('the developer fixture command', () => {
 	});
 
 	it('carries no import-set literal of its own', () => {
-		expect(source).not.toMatch(/importSet:\s*'new'/);
-		expect(source).not.toMatch(/importSet:\s*'new-set-qualified'/);
+		// Matched with a terminator so the pattern names a VALUE handed to the
+		// importer (`importSet: 'new',`) rather than a type annotation on the
+		// variable that carries the shared rule's answer
+		// (`let importSet: 'new' | 'new-set-qualified';`, added by AM-24 when the
+		// rule gained a throw that has to be caught before the import starts).
+		// Without the terminator this assertion fails on a declaration that is the
+		// fix rather than the defect.
+		expect(source).not.toMatch(/importSet:\s*'new'\s*[,;)]/);
+		expect(source).not.toMatch(/importSet:\s*'new-set-qualified'\s*[,;)]/);
+		// And the assignment form, which the property-shorthand refactor makes the
+		// other way to smuggle a literal in.
+		expect(source).not.toMatch(/importSet\s*=\s*'new'/);
+		expect(source).not.toMatch(/importSet\s*=\s*'new-set-qualified'/);
 	});
 });

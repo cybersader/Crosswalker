@@ -39,6 +39,7 @@ import {
 	type SssomRow,
 } from './sssom-parser';
 import { sha256Hex } from '../generation/hash';
+import { readNoteFrontmatterState } from '../export/vault-reader';
 import type { ImportSetOption, ImportSetReference } from '../generation/import-set';
 import {
 	assertionBaseKey,
@@ -232,7 +233,7 @@ async function runImportSssom(
 	});
 
 	if (parsed.errors.length === 0) {
-		preflightMappingSetDestinations(app, destinationSets, parsed.errors);
+		await preflightMappingSetDestinations(app, destinationSets, parsed.errors);
 	}
 	if (parsed.errors.length > 0) {
 		result.skipped = 'parse-error';
@@ -415,11 +416,25 @@ function normalizeOptionalString(value: unknown): string {
 	return typeof value === 'string' ? value.trim() : '';
 }
 
-function preflightMappingSetDestinations(
+/**
+ * Refuse to import into a destination already holding edges from a different
+ * mapping set.
+ *
+ * Pass-9 secondary finding, closed 2026-08-31: this read the metadata cache and
+ * nothing else, so a crosswalk note Obsidian had not reached yet answered "no
+ * frontmatter", was skipped, and a guard whose entire purpose is to REFUSE a
+ * mismatch passed silently. Absence read as fact, inside a guard - the failure
+ * this project has now shipped fixes for six times.
+ *
+ * The raw read is bounded to files under the destination prefixes, exactly as
+ * `collectObservations` bounds its own fallback, so a cold cache costs a read
+ * per candidate note rather than a whole-vault content scan.
+ */
+async function preflightMappingSetDestinations(
 	app: App,
 	destinationSets: Map<string, string>,
 	errors: string[],
-): void {
+): Promise<void> {
 	const getMarkdownFiles = app.vault.getMarkdownFiles?.bind(app.vault);
 	if (!getMarkdownFiles) return;
 	const files = getMarkdownFiles();
@@ -427,8 +442,24 @@ function preflightMappingSetDestinations(
 		const prefix = `${leaf.replace(/\/+$/, '')}/`;
 		for (const file of files) {
 			if (!file.path.startsWith(prefix)) continue;
-			const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-			if (!fm || fm.kind !== 'crosswalk-edge') continue;
+			let fm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+			if (!fm) {
+				const read = await readNoteFrontmatterState(app, file);
+				if (read.state === 'unreadable') {
+					// Not "no mapping set id" and not "a different one": nothing is
+					// known. A note in the destination that cannot be read is a reason
+					// to stop, not a reason to proceed.
+					errors.push(
+						`Crosswalker could not read the properties of ${file.path} in destination ${leaf}, `
+						+ 'so it could not confirm the destination is safe to import into. '
+						+ "Fix that note's properties block, then import again.",
+					);
+					continue;
+				}
+				if (read.state === 'none') continue;
+				fm = read.frontmatter;
+			}
+			if (fm.kind !== 'crosswalk-edge') continue;
 			const storedId = normalizeMappingSetId(fm.mapping_set_id);
 			if (storedId !== expectedId) {
 				errors.push(
