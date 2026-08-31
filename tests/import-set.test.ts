@@ -3,7 +3,6 @@ import { TFile } from 'obsidian';
 import {
 	CURRENT_IMPORT_SET_SCHEME,
 	ImportSetProvenanceError,
-	MultipleImportSetsError,
 	discoverImportSets,
 	mintImportSetId,
 	recoverImportSetRoot,
@@ -90,7 +89,9 @@ describe('import-set ownership discovery and selection', () => {
 		expect(app.vault.cachedRead).toHaveBeenCalledTimes(1);
 	});
 
-	it('reuses the first import id on an immediate cache-cold re-import', async () => {
+	it('mints again on an immediate cache-cold re-import rather than adopting what it finds', async () => {
+		// AM-9: the engine has no opinion about what is in the folder. A caller that
+		// wants the first set refreshed passes its id; passing nothing means mint.
 		const files: TFile[] = [];
 		const contents = new Map<string, string>();
 		const app = {
@@ -105,7 +106,15 @@ describe('import-set ownership discovery and selection', () => {
 		files.push(new TFile('Frameworks/A.md'));
 		contents.set('Frameworks/A.md', rawStampedNote(first.id, first.scheme));
 
-		await expect(resolveImportSet(app, 'Frameworks')).resolves.toEqual(first);
+		const second = await resolveImportSet(app, 'Frameworks');
+		expect(second.id).not.toBe(first.id);
+		expect(second.scheme).toBe('endpoint-v1');
+
+		// The explicit choice still refreshes the first set.
+		await expect(resolveImportSet(app, 'Frameworks', { id: first.id })).resolves.toMatchObject({
+			id: first.id,
+			scheme: first.scheme,
+		});
 	});
 
 	it('throws a provenance error with the path for malformed cache-cold YAML', async () => {
@@ -137,27 +146,26 @@ describe('import-set ownership discovery and selection', () => {
 		expect(app.vault.cachedRead).not.toHaveBeenCalled();
 	});
 
-	it('defaults to the sole destination set and rejects an ambiguous destination', async () => {
+	it('mints a new set whatever the destination already holds', async () => {
+		// AM-9. One set in the folder used to mean "refresh it" and two used to mean
+		// "refuse". Both were the engine answering an ownership question nobody asked
+		// it, and the one-set answer is how a second framework was written into the
+		// first. Neither branch exists; the destination is an address, not an owner.
 		const one = mockApp({
 			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
 		});
 		await expect(resolveImportSet(one, 'Frameworks')).resolves.toEqual({
-			id: 'iset-abc123', scheme: 'endpoint-v1', destination: 'Frameworks',
+			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1', destination: 'Frameworks',
 		});
+		await expect(resolveImportSet(one, 'Frameworks')).resolves.not.toMatchObject({ id: 'iset-abc123' });
 
 		const many = mockApp({
 			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
 			'Frameworks/B.md': { id: 'iset-def456', scheme: 'endpoint-v1' },
 		});
-		await expect(resolveImportSet(many, 'Frameworks')).rejects.toThrow(MultipleImportSetsError);
-		try {
-			await resolveImportSet(many, 'Frameworks');
-		} catch (error) {
-			expect((error as MultipleImportSetsError).sets.map((set) => [set.id, set.noteCount])).toEqual([
-				['iset-abc123', 1],
-				['iset-def456', 1],
-			]);
-		}
+		const resolved = await resolveImportSet(many, 'Frameworks');
+		expect(['iset-abc123', 'iset-def456']).not.toContain(resolved.id);
+		expect(resolved.destination).toBe('Frameworks');
 	});
 
 	it('allows explicit empty-set refresh and new-set minting', async () => {
@@ -453,5 +461,87 @@ describe('a discovered set knows what produced it', () => {
 		const byId = new Map(sets.map((s) => [s.id, s]));
 		expect(byId.get('iset-abc123')!.ontologyPrefixes).toEqual(['attack-mini']);
 		expect(byId.get('iset-def456')!.ontologyPrefixes).toEqual(['cis-controls']);
+	});
+});
+
+// ===========================================================================
+// AM-9: THE ENGINE HAS EXACTLY TWO BEHAVIOURS.
+//
+// `resolveImportSet` is the single point where a generation run decides which
+// set it owns, and both generation entry points go through it. Four passes of
+// preselect-removal above it failed because a third behaviour lived here: given
+// no explicit option, discover the sets under the destination folder and
+// silently refresh the one you find.
+//
+// It is deleted rather than narrowed, so the claim these cases pin is
+// STRUCTURAL: an explicit `{id, scheme}` refreshes that set, and no other input
+// -- `undefined` included, whatever the folder holds -- can reach one.
+// ===========================================================================
+
+describe('resolveImportSet, the one place ownership is decided', () => {
+	/** A destination holding exactly one set: the shape adoption used to act on. */
+	const oneSetInTheDestination = () => mockApp({
+		'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
+		'Frameworks/Sub/B.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
+	});
+
+	it.each([
+		['no option at all', undefined],
+		['an explicit new set', 'new' as const],
+		['an explicit set-qualified new set', 'new-set-qualified' as const],
+	])('mints rather than adopting, given %s', async (_label, option) => {
+		const app = oneSetInTheDestination();
+		const resolved = await resolveImportSet(app, 'Frameworks', option);
+		expect(resolved.id).toMatch(/^iset-[a-z0-9]{6}$/);
+		expect(resolved.id).not.toBe('iset-abc123');
+		expect(resolved.destination).toBe('Frameworks');
+	});
+
+	it('mints a DIFFERENT set every time, so nothing converges on the folder occupant', async () => {
+		// One call minting is not the claim; the claim is that no repetition of
+		// "just write here" ever lands on what is already there.
+		const app = oneSetInTheDestination();
+		const ids = new Set<string>();
+		for (let i = 0; i < 5; i++) ids.add((await resolveImportSet(app, 'Frameworks')).id);
+		expect(ids.size).toBe(5);
+		expect(ids.has('iset-abc123')).toBe(false);
+	});
+
+	it('does not refuse an ambiguous destination either, because it is not asking the question', async () => {
+		// Two sets in the folder used to be a hard error, because the engine was
+		// trying to pick an owner and could not. Refusing was the safe half of a
+		// wrong question: nobody asked it to choose.
+		const app = mockApp({
+			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
+			'Frameworks/B.md': { id: 'iset-def456', scheme: 'endpoint-v1' },
+		});
+		const resolved = await resolveImportSet(app, 'Frameworks');
+		expect(['iset-abc123', 'iset-def456']).not.toContain(resolved.id);
+	});
+
+	it('refreshes the set an explicit id names, wherever in the vault that set lives', async () => {
+		// The control, and the other half of the contract: the explicit path is
+		// whole-vault by id, never scoped to the folder being written to. A refresh
+		// whose set sits somewhere else is the ordinary case for a legacy flat vault.
+		const app = mockApp({
+			'Elsewhere/A.md': { id: 'iset-abc123', scheme: 'set-qualified-v1' },
+		});
+		await expect(resolveImportSet(app, 'Frameworks', { id: 'iset-abc123' })).resolves.toMatchObject({
+			id: 'iset-abc123',
+			scheme: 'set-qualified-v1',
+		});
+	});
+
+	it('keeps the ontology an explicitly named set already carries, and does not pin one on a mint', async () => {
+		// AM-6 rides on the explicit branch, which is the only branch left that can
+		// see an existing set at all. A mint has nothing to inherit, so it takes the
+		// run's own proposal.
+		const app = mockStampedApp({
+			'Elsewhere/A.md': { setId: 'iset-abc123', curie: 'attack-mini:T1078' },
+		});
+		await expect(resolveImportSet(app, 'Frameworks', { id: 'iset-abc123' }, 'cis-controls-v8'))
+			.resolves.toMatchObject({ id: 'iset-abc123', ontology: 'attack-mini' });
+		await expect(resolveImportSet(app, 'Frameworks', undefined, 'cis-controls-v8'))
+			.resolves.toMatchObject({ ontology: 'cis-controls-v8' });
 	});
 });

@@ -16,6 +16,7 @@
 
 import { TFile, TFolder } from 'obsidian';
 import { generateFromRecipe } from '../src/generation/generation-engine';
+import { discoverImportSets, type ImportSetOption } from '../src/generation/import-set';
 import type { Recipe } from '../src/render';
 import type { ParsedData } from '../src/types/config';
 
@@ -124,6 +125,38 @@ const OPTS = {
 	facetsForRow: (row: Record<string, unknown>) => [{ namespace: 'tactic', value: String(row.tactic) }],
 };
 
+/**
+ * One import, with ownership said out loud.
+ *
+ * AM-9 (2026-08-30): the engine used to look at the destination folder and, if
+ * exactly one import set already lived there, silently refresh it. Every
+ * re-import in this file relied on that, which is why an omitted ownership
+ * option used to mean "refresh". The branch is deleted -- a folder is an
+ * address, and an address does not name an owner -- so an omitted option now
+ * MINTS A NEW SET, and "import twice is byte-identical" would be comparing two
+ * different `import_set.id` stamps written by two different sets.
+ *
+ * None of these cases is retired; a re-import is exactly what they are about.
+ * The first import into a vault mints, because there is nothing yet to name,
+ * and every later one names what the vault already holds -- which is what the
+ * wizard does after its review step, and what the SSSOM modal does after its
+ * refresh click.
+ *
+ * `ownership: new` is for the one case that deliberately runs a SECOND,
+ * unrelated import into the same vault.
+ */
+async function importInto(
+	app: any,
+	data: ParsedData,
+	recipe: Recipe,
+	opts: Parameters<typeof generateFromRecipe>[3] = OPTS,
+	ownership?: 'new',
+) {
+	const [existing] = await discoverImportSets(app, undefined);
+	const importSet: ImportSetOption | undefined = ownership ?? (existing ? { id: existing.id } : undefined);
+	return generateFromRecipe(app, data, recipe, { ...opts, ...(importSet ? { importSet } : {}) });
+}
+
 /** Strip the wall-clock provenance field so two imports compare byte-for-byte. */
 function normalize(files: Map<string, string>): Record<string, string> {
 	const out: Record<string, string> = {};
@@ -134,7 +167,7 @@ function normalize(files: Map<string, string>): Record<string, string> {
 describe('Pass 1.5 re-import — end-to-end via generateFromRecipe', () => {
 	it('materializes children + a facet hub and reports edgeCount', async () => {
 		const { app, files } = makeApp();
-		const result = await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		const result = await importInto(app, parsed(), RECIPE, OPTS);
 
 		expect(result.edgeCount).toBeGreaterThan(0);
 		// T1078 note gained children; a Persistence hub exists with members.
@@ -156,25 +189,25 @@ describe('Pass 1.5 re-import — end-to-end via generateFromRecipe', () => {
 
 	it('reports a removed concept without misreporting stamped facet hubs', async () => {
 		const { app } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const reduced = { columns: ['id', 'parent', 'tactic'], rows: ROWS.slice(0, 2), rowCount: 2 };
-		const result = await generateFromRecipe(app, reduced, RECIPE, OPTS);
+		const result = await importInto(app, reduced, RECIPE, OPTS);
 		expect(result.errors).toEqual([]);
 		expect(result.orphans).toEqual([{ curie: 'attack:T1078.002', path: 'Frameworks/T1078.002.md' }]);
 	});
 
 	it('import twice → byte-identical vault (produced_at normalized)', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const first = normalize(files);
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const second = normalize(files);
 		expect(second).toEqual(first);
 	});
 
 	it('user prose in a hub body survives re-import; members regenerate', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 
 		// User edits the hub note: adds prose below the H1 + a hand-added frontmatter key.
 		const hubPath = 'Frameworks/Persistence.md';
@@ -192,7 +225,7 @@ describe('Pass 1.5 re-import — end-to-end via generateFromRecipe', () => {
 		files.set(hubPath, edited);
 
 		// Re-import.
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const after = files.get(hubPath)!;
 
 		expect(after).toContain('My tradecraft notes on persistence.'); // prose survived
@@ -239,7 +272,7 @@ function folderNoteRecipe(parentNote: 'sibling' | 'folder-note'): Recipe {
 describe('Pass 1.5 folder-note relocation — re-import identity (design §4, the risky seam)', () => {
 	it('T1078 relocates to T1078/T1078.md; every inbound link still resolves', async () => {
 		const { app, files } = makeApp();
-		const result = await generateFromRecipe(app, parsed(), FOLDER_NOTE_RECIPE, OPTS);
+		const result = await importInto(app, parsed(), FOLDER_NOTE_RECIPE, OPTS);
 
 		expect(files.has('Frameworks/T1078/T1078.md')).toBe(true);
 		expect(files.has('Frameworks/T1078.md')).toBe(false); // no stray sibling
@@ -254,10 +287,10 @@ describe('Pass 1.5 folder-note relocation — re-import identity (design §4, th
 
 	it('re-import finds the relocated parent BY CURIE — byte-identical vault, zero duplicates', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), FOLDER_NOTE_RECIPE, OPTS);
+		await importInto(app, parsed(), FOLDER_NOTE_RECIPE, OPTS);
 		const first = normalize(files);
 
-		const result = await generateFromRecipe(app, parsed(), FOLDER_NOTE_RECIPE, OPTS);
+		const result = await importInto(app, parsed(), FOLDER_NOTE_RECIPE, OPTS);
 		const second = normalize(files);
 
 		expect(second).toEqual(first); // byte-identical (produced_at normalized)
@@ -271,10 +304,10 @@ describe('Pass 1.5 folder-note relocation — re-import identity (design §4, th
 
 	it('a third import with parent_note flipped back to sibling relocates T1078 back (least-surprising, design §5 flip-back)', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), FOLDER_NOTE_RECIPE, OPTS); // import 1: folder-note
-		await generateFromRecipe(app, parsed(), FOLDER_NOTE_RECIPE, OPTS); // import 2: folder-note (steady state)
+		await importInto(app, parsed(), FOLDER_NOTE_RECIPE, OPTS); // import 1: folder-note
+		await importInto(app, parsed(), FOLDER_NOTE_RECIPE, OPTS); // import 2: folder-note (steady state)
 
-		const result = await generateFromRecipe(app, parsed(), folderNoteRecipe('sibling'), OPTS); // import 3: flip to sibling
+		const result = await importInto(app, parsed(), folderNoteRecipe('sibling'), OPTS); // import 3: flip to sibling
 
 		expect(files.has('Frameworks/T1078.md')).toBe(true); // relocated back
 		expect(files.has('Frameworks/T1078/T1078.md')).toBe(false); // no orphan left behind
@@ -297,7 +330,7 @@ describe('Pass 1.5 folder-note relocation — re-import identity (design §4, th
 
 	it('a streamed source keeps every parent as a sibling, with a deviation (v1 restriction)', async () => {
 		const { app, files } = makeApp();
-		const result = await generateFromRecipe(app, parsedStreamed(), FOLDER_NOTE_RECIPE, OPTS);
+		const result = await importInto(app, parsedStreamed(), FOLDER_NOTE_RECIPE, OPTS);
 
 		expect(files.has('Frameworks/T1078.md')).toBe(true); // sibling, not relocated
 		expect(files.has('Frameworks/T1078/T1078.md')).toBe(false);
@@ -335,7 +368,7 @@ function levelHubRecipe(waypointMarker: boolean): Recipe {
 describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 	it('T1078.md (sibling parent) hosts a managed Contents section listing its sub-techniques', async () => {
 		const { app, files } = makeApp();
-		const result = await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		const result = await importInto(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
 
 		expect(result.edgeCount).toBeGreaterThan(0);
 		const t1078 = files.get('Frameworks/T1078.md')!;
@@ -347,7 +380,7 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 
 	it('a pure structural root folder with no matching concept note gets a synthetic hub note', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		await importInto(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
 
 		// "Frameworks" is the basePath; nothing in this fixture is named "Frameworks",
 		// so it's synthetic — the import's home note.
@@ -373,16 +406,16 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 
 	it('import twice → byte-identical vault (level hubs included)', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		await importInto(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
 		const first = normalize(files);
-		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		await importInto(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
 		const second = normalize(files);
 		expect(second).toEqual(first);
 	});
 
 	it('user prose on the synthetic home note survives re-import; the Contents section regenerates', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		await importInto(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
 
 		const homePath = 'Frameworks/Frameworks.md';
 		const original = files.get(homePath)!;
@@ -391,7 +424,7 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 			.replace('kind: hub', 'kind: hub\nreviewer: alice');
 		files.set(homePath, edited);
 
-		await generateFromRecipe(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
+		await importInto(app, parsed(), LEVEL_HUB_RECIPE, OPTS);
 		const after = files.get(homePath)!;
 
 		expect(after).toContain('Welcome to my compliance vault.'); // prose survived
@@ -402,19 +435,19 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 
 	it('waypoint_marker: false (default) never appends the trigger comment', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), levelHubRecipe(false), OPTS);
+		await importInto(app, parsed(), levelHubRecipe(false), OPTS);
 		expect(files.get('Frameworks/T1078.md')).not.toContain('%% Waypoint %%');
 		expect(files.get('Frameworks/Frameworks.md')).not.toContain('%% Waypoint %%');
 	});
 
 	it('waypoint_marker: true appends the trigger comment to hosted AND synthetic hub notes, idempotently', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+		await importInto(app, parsed(), levelHubRecipe(true), OPTS);
 		expect(files.get('Frameworks/T1078.md')).toContain('%% Waypoint %%');
 		expect(files.get('Frameworks/Frameworks.md')).toContain('%% Waypoint %%');
 
 		// Re-import: still exactly one marker each, never duplicated.
-		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+		await importInto(app, parsed(), levelHubRecipe(true), OPTS);
 		const t1078Markers = (files.get('Frameworks/T1078.md')!.match(/%% Waypoint %%/g) ?? []).length;
 		const homeMarkers = (files.get('Frameworks/Frameworks.md')!.match(/%% Waypoint %%/g) ?? []).length;
 		expect(t1078Markers).toBe(1);
@@ -423,7 +456,7 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 
 	it('does not strip a block Waypoint has already expanded on the home note', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+		await importInto(app, parsed(), levelHubRecipe(true), OPTS);
 
 		// Simulate Waypoint itself having expanded the marker into its listing.
 		const homePath = 'Frameworks/Frameworks.md';
@@ -433,7 +466,7 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 		);
 		files.set(homePath, withExpansion);
 
-		await generateFromRecipe(app, parsed(), levelHubRecipe(true), OPTS);
+		await importInto(app, parsed(), levelHubRecipe(true), OPTS);
 		const after = files.get(homePath)!;
 		expect(after).toContain('%% Begin Waypoint %%');
 		expect(after).toContain('[[Some Hand-Added Note]]');
@@ -471,7 +504,7 @@ const RECIPE_WRAPPED_FOLDER: Recipe = {
 describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 	it('every generated note carries a well-formed concept_cid and recipe.hash', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const t1078 = crosswalkerBlock(files.get('Frameworks/T1078.md')!);
 		expect(t1078.conceptCid).toMatch(/^sha256-[a-f0-9]{64}$/);
 		expect(t1078.recipeHash).toMatch(/^sha256-[a-f0-9]{64}$/);
@@ -479,7 +512,7 @@ describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 
 	it('concept_cid is identical across DIFFERENT concepts\' notes only when their (curie, row) differ — sanity: distinct rows get distinct cids', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const cid1078 = crosswalkerBlock(files.get('Frameworks/T1078.md')!).conceptCid;
 		const cid1078001 = crosswalkerBlock(files.get('Frameworks/T1078.001.md')!).conceptCid;
 		expect(cid1078).toBeDefined();
@@ -489,9 +522,9 @@ describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 
 	it('concept_cid is stable under a PLACEMENT-only change: same (curie, row) rendered by two different recipes → same cid, different path', async () => {
 		const { app: appA, files: filesA } = makeApp();
-		await generateFromRecipe(appA, parsed(), RECIPE, OPTS);
+		await importInto(appA, parsed(), RECIPE, OPTS);
 		const { app: appB, files: filesB } = makeApp();
-		await generateFromRecipe(appB, parsed(), RECIPE_WRAPPED_FOLDER, OPTS);
+		await importInto(appB, parsed(), RECIPE_WRAPPED_FOLDER, OPTS);
 
 		// Different recipe → different path (placement changed).
 		expect(filesA.has('Frameworks/T1078.md')).toBe(true);
@@ -512,12 +545,12 @@ describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 
 	it('concept_cid changes when the row content changes, same recipe (source-version drift)', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const before = crosswalkerBlock(files.get('Frameworks/T1078.md')!).conceptCid;
 
 		const editedRows = ROWS.map((r) => (r.id === 'T1078' ? { ...r, tactic: 'Defense Evasion' } : r));
 		const editedParsed: ParsedData = { columns: ['id', 'parent', 'tactic'], rows: editedRows, rowCount: editedRows.length };
-		await generateFromRecipe(app, editedParsed, RECIPE, OPTS);
+		await importInto(app, editedParsed, RECIPE, OPTS);
 		const after = crosswalkerBlock(files.get('Frameworks/T1078.md')!).conceptCid;
 
 		expect(after).not.toBe(before);
@@ -525,12 +558,12 @@ describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 
 	it('recipe.hash is STABLE across a re-import where only row content changed (recipe target untouched)', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const before = crosswalkerBlock(files.get('Frameworks/T1078.md')!).recipeHash;
 
 		const editedRows = ROWS.map((r) => (r.id === 'T1078' ? { ...r, tactic: 'Defense Evasion' } : r));
 		const editedParsed: ParsedData = { columns: ['id', 'parent', 'tactic'], rows: editedRows, rowCount: editedRows.length };
-		await generateFromRecipe(app, editedParsed, RECIPE, OPTS);
+		await importInto(app, editedParsed, RECIPE, OPTS);
 		const after = crosswalkerBlock(files.get('Frameworks/T1078.md')!).recipeHash;
 
 		expect(after).toBe(before);
@@ -538,31 +571,33 @@ describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 
 	it('recipe.hash CHANGES when the recipe target changes (layout, also_emit, or enrichment)', async () => {
 		const { app: appLayout, files: filesLayout } = makeApp();
-		await generateFromRecipe(appLayout, parsed(), RECIPE, OPTS);
+		await importInto(appLayout, parsed(), RECIPE, OPTS);
 		const baseHash = crosswalkerBlock(filesLayout.get('Frameworks/T1078.md')!).recipeHash;
-		await generateFromRecipe(appLayout, parsed(), RECIPE_WRAPPED_FOLDER, { ...OPTS, basePath: 'Frameworks2' });
+		// A SECOND, unrelated import, not a refresh of the first: a different
+		// recipe into a different root, run only to compare the two hashes.
+		await importInto(appLayout, parsed(), RECIPE_WRAPPED_FOLDER, { ...OPTS, basePath: 'Frameworks2' }, 'new');
 		const layoutHash = crosswalkerBlock(filesLayout.get('Frameworks2/Wrapped/T1078.md')!).recipeHash;
 		expect(layoutHash).not.toBe(baseHash);
 
 		const alsoEmitChanged: Recipe = { ...RECIPE, target: { ...RECIPE.target, also_emit: { ...RECIPE.target.also_emit, tags: ['different-tag'] } } };
 		const { app: appAlso, files: filesAlso } = makeApp();
-		await generateFromRecipe(appAlso, parsed(), alsoEmitChanged, OPTS);
+		await importInto(appAlso, parsed(), alsoEmitChanged, OPTS);
 		const alsoEmitHash = crosswalkerBlock(filesAlso.get('Frameworks/T1078.md')!).recipeHash;
 		expect(alsoEmitHash).not.toBe(baseHash);
 
 		const enrichmentChanged: Recipe = { ...RECIPE, target: { ...RECIPE.target, enrichment: { ...RECIPE.target.enrichment, children_lists: false } } };
 		const { app: appEnrich, files: filesEnrich } = makeApp();
-		await generateFromRecipe(appEnrich, parsed(), enrichmentChanged, OPTS);
+		await importInto(appEnrich, parsed(), enrichmentChanged, OPTS);
 		const enrichmentHash = crosswalkerBlock(filesEnrich.get('Frameworks/T1078.md')!).recipeHash;
 		expect(enrichmentHash).not.toBe(baseHash);
 	});
 
 	it('determinism double-run: re-running the identical import produces byte-identical concept_cid and recipe.hash', async () => {
 		const { app, files } = makeApp();
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS);
+		await importInto(app, parsed(), RECIPE, OPTS);
 		const first = crosswalkerBlock(files.get('Frameworks/T1078.md')!);
 
-		await generateFromRecipe(app, parsed(), RECIPE, OPTS); // re-import, unchanged source + recipe
+		await importInto(app, parsed(), RECIPE, OPTS); // re-import, unchanged source + recipe
 		const second = crosswalkerBlock(files.get('Frameworks/T1078.md')!);
 
 		expect(second.conceptCid).toBe(first.conceptCid);

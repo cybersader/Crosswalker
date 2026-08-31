@@ -187,16 +187,20 @@ describe('generateNotes orphan detection', () => {
 		expect(result.orphans).toBeUndefined();
 	});
 
-	it('blocks an ambiguous destination and reports the available set ids and counts', async () => {
+	it('mints into a destination two other sets already share, and orphans neither', async () => {
+		// AM-9. This used to be a hard block, because the engine tried to pick an
+		// owner out of the folder and could not. It no longer picks: no option means
+		// a new set, and a new set owns nothing, so the two sets already there are
+		// untouched and cannot be reported as orphans of this run.
 		const app = makeApp({
 			'Frameworks/A.md': { curie: 'attack:A', recipeId: RECIPE_ID, importSetId: 'iset-abc123' },
 			'Frameworks/B.md': { curie: 'attack:B', recipeId: RECIPE_ID, importSetId: 'iset-def456' },
 		});
 		const autoOptions = { ...OPTIONS, importSet: undefined };
 		const result = await generateNotes(app, parsed(['A']), CONFIG, autoOptions);
-		expect(result.success).toBe(false);
-		expect(result.errors[0].message).toContain('iset-abc123 (1 notes)');
-		expect(result.errors[0].message).toContain('iset-def456 (1 notes)');
+		expect(result.errors).toEqual([]);
+		expect(result.success).toBe(true);
+		expect(result.orphans ?? []).toEqual([]);
 	});
 
 	it('never reports a hand-written note with no provenance', async () => {

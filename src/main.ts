@@ -507,7 +507,18 @@ export default class CrosswalkerPlugin extends Plugin {
 						fx.tsv,
 						null, // no projection callback
 						null, // no closure callback
-						{},
+						{
+							// AM-9. This developer command has no ownership control on it
+							// at all, so it says the only safe thing there is to say: a new
+							// set. It used to pass nothing, and the engine read that as
+							// "refresh whichever crosswalk already sits in this mapping
+							// folder", which meant loading a bundled fixture could replace
+							// a real crosswalk a user had imported into the same pair.
+							importSet: 'new',
+							// Nothing exists under a freshly minted set, so this only rules
+							// out rewriting a note the run does not own.
+							overwriteMode: 'skip',
+						},
 						this.debug,
 					);
 					const created = result.generation?.created ?? 0;

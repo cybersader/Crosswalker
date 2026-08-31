@@ -281,14 +281,31 @@ export class ImportFlow {
 	 * the first. Cached because `currentOutputPath()` reads it and is called ~16
 	 * times per render, and because it must stay synchronous.
 	 *
-	 * Null means discovery has not run (or could not run) yet, which every reader
-	 * treats as "no sets known" — the new-set branch.
+	 * AM-10. TRI-STATE, and the third state is not the empty one.
+	 *   - a list (possibly empty): discovery ran, and this is what the vault holds
+	 *   - null: discovery has not run, or could not run
+	 *
+	 * Failure mode prevented: `?? []` reading "we have not looked yet" as "there is
+	 * nothing there". The review screen then draws no ownership control while the
+	 * vault holds three sets, which is a lie the user acts on, and the generation
+	 * path proceeds on a picture it never took. Same rule as the metadata cache:
+	 * absent-because-pending is never absent-because-none.
+	 *
+	 * Every reader either awaits `prepareStep3` first or fails closed on null. A
+	 * flow constructed with no vault at all is NOT null: `prepareStep3` records an
+	 * empty list there, because "there is no vault" is itself a complete answer.
 	 */
 	private discoveredSets: DiscoveredImportSet[] | null = null;
 	/** Discovery threw (malformed provenance somewhere). Shown, not swallowed. */
 	private setDiscoveryError: string | null = null;
 	/** Obsidian had not finished indexing when step 3 was entered (A-4). */
 	private indexingBlocked: string | null = null;
+	/**
+	 * A-4 / AM-10. The one wording for "the vault has not been read yet", so the
+	 * cold-cache refusal and the not-yet-discovered refusal cannot drift into two
+	 * different explanations of the same state.
+	 */
+	private static readonly STILL_INDEXING = 'Obsidian is still indexing your vault. Wait a moment and open the import again.';
 	/** Source state step-3 preparation last SETTLED for, so the vault scan runs once. */
 	private step3Signature: string | null = null;
 	/**
@@ -474,6 +491,13 @@ export class ImportFlow {
 			}
 		}
 
+		// AM-10. The third entry into step 3, and the only one that can land
+		// straight on step 4 with a live Generate button. Await the vault scan
+		// before the caller renders: a draft resumed while Obsidian is still
+		// indexing would otherwise draw the Generate screen over an unasked
+		// question, and one click writes with nobody having chosen an owner.
+		if (this.currentStep >= 3) await this.prepareStep3();
+
 		this.plugin.debug.info('drafts', 'resumed', 'Draft hydrated into wizard', {
 			draftId: draft.id,
 			step: this.currentStep,
@@ -585,12 +609,13 @@ export class ImportFlow {
 
 		header.createEl('h2', { text: 'Import structured data' });
 
-		// Step 3 is reachable three ways (Next from step 2, the recognized-recipe
-		// fast path, and a draft resume), and step 4 directly from a draft resume.
-		// Arming here rather than on the Next path covers all four: an entry that
-		// skipped the vault lookup would silently keep the new-set default and write
-		// a second copy of a set it already owns. Signature-guarded, so this is one
-		// string compare on every render after the first.
+		// AM-10. All four entries (Next from step 2, the recognized-recipe fast
+		// path, a draft resume onto step 3 or step 4) now AWAIT `prepareStep3`
+		// before they render, so this arm is a backstop for a future fifth entry
+		// rather than the mechanism. It stays fire-and-forget on purpose: a render
+		// cannot await, and a render that silently proceeded on a null list is
+		// exactly what the awaits above exist to prevent. Signature-guarded, so
+		// this is one string compare on every render after the first.
 		if (this.currentStep >= 3) {
 			void this.prepareStep3()
 				.then(({ changed }) => { if (changed) this.renderStep(); })
@@ -1209,9 +1234,9 @@ export class ImportFlow {
 		// Actions — one confident primary, escape hatches beside it.
 		const actions = card.createEl('div', { cls: 'crosswalker-recognized-actions' });
 		const importBtn = actions.createEl('button', { cls: 'mod-cta', text: 'Import with this configuration' });
-		importBtn.addEventListener('click', () => this.startRecognizedRecipe(3));
+		importBtn.addEventListener('click', () => { void this.startRecognizedRecipe(3); });
 		const customizeBtn = actions.createEl('button', { text: 'Customize' });
-		customizeBtn.addEventListener('click', () => this.startRecognizedRecipe(2));
+		customizeBtn.addEventListener('click', () => { void this.startRecognizedRecipe(2); });
 		const scratchBtn = actions.createEl('button', { cls: 'crosswalker-recognized-quiet', text: 'Start from scratch' });
 		scratchBtn.addEventListener('click', () => {
 			this.recognizedDismissed = true;
@@ -1230,7 +1255,7 @@ export class ImportFlow {
 	 * the review screen (`toStep` 3) or the workbench (`toStep` 2, "Customize"). The
 	 * SAME recipe/render pipeline drives generation; the card just fronts it with trust.
 	 */
-	private startRecognizedRecipe(toStep: number): void {
+	private async startRecognizedRecipe(toStep: number): Promise<void> {
 		if (!this.recognizedMatch || !this.parsedData) return;
 		const { entry } = this.recognizedMatch;
 		this.recognizedFastPath = true;
@@ -1256,6 +1281,12 @@ export class ImportFlow {
 			toStep,
 		});
 		this.scheduleDraftSave();
+		// AM-10. One of the three entries into step 3, and the one that skips the
+		// step-2 Next gate entirely. Await the vault scan BEFORE the first render:
+		// a review screen drawn on `discoveredSets === null` shows no ownership
+		// control at all, so there is nothing on screen for the user to click and
+		// no way to tell that from a vault with no imports in it.
+		if (toStep >= 3) await this.prepareStep3();
 		this.renderStep();
 	}
 
@@ -1843,7 +1874,14 @@ export class ImportFlow {
 	private refreshTargetSet(): DiscoveredImportSet | null {
 		const choice = this.importSetChoice;
 		if (!choice || typeof choice === 'string') return null;
-		return (this.discoveredSets ?? []).find((set) => set.id === choice.id) ?? null;
+		// AM-10. Undiscovered reads as "not refreshing" here on purpose: this is a
+		// synchronous display helper called several times per render, and the
+		// fail-closed lives at the two places that decide something, which are
+		// `selectedImportSet` and `newSetOccupancyProblem`. A choice cannot be set
+		// before discovery in any case, because the only control that sets one is
+		// drawn from the discovered list.
+		if (this.discoveredSets === null) return null;
+		return this.discoveredSets.find((set) => set.id === choice.id) ?? null;
 	}
 
 	/** Where a refresh writes: the set's own root, or null when not refreshing. */
@@ -1874,7 +1912,13 @@ export class ImportFlow {
 	 */
 	private newSetOccupancyProblem(): string | null {
 		if (this.refreshTargetSet()) return null;
-		const sets = this.discoveredSets ?? [];
+		// AM-10. Nothing discovered yet is not "the folder is free". Say so, rather
+		// than returning a clean bill of health nobody checked for; `selectedImportSet`
+		// fails closed on the same state, so this only decides which message shows.
+		if (this.discoveredSets === null) {
+			return this.indexingBlocked ?? this.setDiscoveryError ?? ImportFlow.STILL_INDEXING;
+		}
+		const sets = this.discoveredSets;
 		if (sets.length === 0) return null;
 		const root = this.currentOutputPath().trim().replace(/\/+$/, '');
 		if (!root) return null;
@@ -2011,6 +2055,13 @@ export class ImportFlow {
 		// vault has nothing to discover and nothing to block on.
 		const app = this.app as App | undefined;
 		if (!app?.vault?.getMarkdownFiles || !app.metadataCache) {
+			// AM-10. An EMPTY list, not null. "There is no vault" is a complete
+			// answer to "what sets exist", so it must not read as "we have not
+			// looked yet" - the readers below fail closed on that, and this seam
+			// would then block a flow that has nothing to block on.
+			this.discoveredSets = [];
+			this.setDiscoveryError = null;
+			this.indexingBlocked = null;
 			this.step3Signature = signature;
 			return { ok: true, changed: false };
 		}
@@ -2034,7 +2085,7 @@ export class ImportFlow {
 		const before = this.step3StateKey();
 		try {
 			if (!(await this.ensureVaultIndexed(app))) {
-				this.indexingBlocked = 'Obsidian is still indexing your vault. Wait a moment and open the import again.';
+				this.indexingBlocked = ImportFlow.STILL_INDEXING;
 				this.discoveredSets = null;
 				this.setDiscoveryError = null;
 				// A refusal is not a settled answer: let the next entry ask again.
@@ -2075,7 +2126,10 @@ export class ImportFlow {
 		return [
 			this.indexingBlocked ?? '',
 			this.setDiscoveryError ?? '',
-			(this.discoveredSets ?? []).map((set) => `${set.id}@${set.root ?? ''}`).join(','),
+			// AM-10. Null and an empty list draw different screens, so they must not
+			// hash the same: `?? []` here made "discovery finished, nothing found"
+			// look unchanged from "discovery has not run" and suppressed the re-render.
+			this.discoveredSets === null ? '<undiscovered>' : this.discoveredSets.map((set) => `${set.id}@${set.root ?? ''}`).join(','),
 			choiceKey,
 		].join('|');
 	}
@@ -2124,7 +2178,15 @@ export class ImportFlow {
 			container.createEl('p', { text: this.setDiscoveryError, cls: 'crosswalker-warning' });
 			return;
 		}
-		const sets = this.discoveredSets ?? [];
+		// AM-10. Null reached this render, so discovery has not run. Drawing the
+		// zero-sets screen here would tell the user this vault holds no imports
+		// while it may hold three, and the ownership control they need would not
+		// exist. Say what is actually true and draw nothing to act on.
+		if (this.discoveredSets === null) {
+			container.createEl('p', { text: ImportFlow.STILL_INDEXING, cls: 'crosswalker-warning' });
+			return;
+		}
+		const sets = this.discoveredSets;
 		if (sets.length === 0) return;
 
 		const refreshing = this.refreshTargetSet();
@@ -2200,30 +2262,33 @@ export class ImportFlow {
 	 * generation resolves. Throws when the answer is not established; callers turn
 	 * that into a Notice rather than generating on a guess.
 	 */
-	private selectedImportSet(): ImportSetOption | undefined {
+	private selectedImportSet(): ImportSetOption {
 		if (this.indexingBlocked) throw new Error(this.indexingBlocked);
 		if (this.setDiscoveryError) throw new Error(this.setDiscoveryError);
+		// AM-10. Null is not an empty vault, it is an unasked question. Every entry
+		// into step 3 and step 4 awaits `prepareStep3`, so reaching here on null is
+		// a bug in the navigation; fail closed rather than generate on a picture
+		// nobody took. Belt-and-braces since AM-9 (the engine mints rather than
+		// adopts now), and it stays because a screen that lists no sets while the
+		// vault holds three is a lie the user acts on.
+		if (this.discoveredSets === null) throw new Error(ImportFlow.STILL_INDEXING);
 
 		const choice = this.importSetChoice;
 		if (typeof choice === 'string') return choice;
 		if (choice) {
-			const set = (this.discoveredSets ?? []).find((candidate) => candidate.id === choice.id);
+			const set = this.discoveredSets.find((candidate) => candidate.id === choice.id);
 			if (!set) throw new Error('Choose an import set to refresh, or choose to import as a new set.');
 			const problem = this.refreshRootProblem();
 			if (problem) throw new Error(problem);
 			return { id: set.id };
 		}
 
-		const sets = this.discoveredSets ?? [];
-		// Nothing discovered: leave the decision to the engine's own mint path, which
-		// is what an empty vault (and a flow with no vault at all) has always done.
-		if (sets.length === 0) return undefined;
-		// AM-5. Sets exist and none was chosen, so this is a new set. There is no
-		// longer a `several candidates, ask the user` branch here: nothing ever
-		// preselects a refresh, so an unanswered matching question cannot exist.
-		// Minting EXPLICITLY still matters, because the engine's own
-		// destination-scoped fallback would otherwise adopt whichever set happens
-		// to share the folder, which is the misattribution this design removes.
+		// AM-5 + AM-9. No click, so this is a new set - including on an empty vault,
+		// where `undefined` would once have been equivalent. It is not equivalent
+		// any more and it never was worth relying on: the engine used to read
+		// `undefined` as "adopt whatever shares the destination folder". Saying
+		// `new` out loud is the whole point of the rule, so nothing below the click
+		// is left with a decision to make.
 		return 'new';
 	}
 
@@ -3659,6 +3724,11 @@ export class ImportFlow {
 			new Notice('No data to generate. Please go back and select a file.');
 			return;
 		}
+		// AM-10. Step 4 is reachable without ever having passed the step-2 Next
+		// gate (a draft resumes straight onto it). Signature-guarded, so on every
+		// normal path this is one string compare; on the path that skipped
+		// discovery it is the scan that has to happen before anything is written.
+		await this.prepareStep3();
 		if (!this.validateImportSetSelection()) return;
 
 		// Phase 3.5c: thread a fresh trace_id through the entire generation

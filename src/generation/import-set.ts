@@ -96,14 +96,6 @@ interface ImportSetObservation {
 	ontology: string | null;
 }
 
-/** A destination contains several ownership sets and no caller selected one. */
-export class MultipleImportSetsError extends Error {
-	constructor(public readonly sets: DiscoveredImportSet[]) {
-		super(`Destination contains multiple import sets: ${sets.map((set) => `${set.id} (${set.noteCount} notes)`).join(', ')}. Choose one or import as a new set.`);
-		this.name = 'MultipleImportSetsError';
-	}
-}
-
 /** Stored import-set provenance is malformed or disagrees within one set. */
 export class ImportSetProvenanceError extends Error {
 	constructor(message: string, public readonly paths: string[]) {
@@ -122,10 +114,18 @@ export async function discoverImportSets(app: App, basePath?: string): Promise<D
 }
 
 /**
- * Apply the shared selection rules used by both generation entry points.
- * Explicit ids may name an empty/wiped set. A caller that knows the fixed
- * scheme can carry it with the id; otherwise the backwards-compatible
- * endpoint-v1 default applies. Existing notes always remain authoritative.
+ * Resolve the import set one generation run writes under. Shared by both
+ * generation entry points.
+ *
+ * AM-9. Exactly two behaviours, and no third:
+ *   - an explicit `{id, scheme}` refreshes THAT set (existing notes stay
+ *     authoritative for its scheme and pinned ontology; an explicit id may name
+ *     an empty or wiped set, and a caller that knows the fixed scheme may carry
+ *     it, otherwise the backwards-compatible endpoint-v1 default applies)
+ *   - anything else, `undefined` included, MINTS A NEW SET
+ *
+ * There is deliberately no "look at the destination and adopt what is there"
+ * path. See the note above the mint below for why.
  */
 export async function resolveImportSet(
 	app: App,
@@ -178,15 +178,26 @@ export async function resolveImportSet(
 		return stamp({ id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME }, proposed);
 	}
 
-	const destinationSets = await discoverImportSets(app, basePath);
-	if (destinationSets.length === 1) {
-		return stamp(
-			{ id: destinationSets[0].id, scheme: destinationSets[0].scheme },
-			pinnedOntologyOf(destinationSets[0], proposed),
-		);
-	}
-	if (destinationSets.length > 1) throw new MultipleImportSetsError(destinationSets);
-
+	// AM-9. THE ENGINE HAS NO OPINION ABOUT WHAT IS IN THE FOLDER.
+	//
+	// A destination-discovery branch used to sit here: look at the folder, and if
+	// exactly one set already lives there, refresh it. That was the original guess,
+	// and every preselect deleted from the wizard and the crosswalk modal above it
+	// was a copy of this one. It is deleted rather than narrowed.
+	//
+	// Failure mode prevented: writing one framework into another framework's set
+	// with nobody having chosen it. A folder is an address, and an address does not
+	// name an owner. Two frameworks legitimately share a legacy flat root; a
+	// deterministic mapping folder holds crosswalks from two different providers; a
+	// user drags a folder somewhere new. In each case the engine, asked to write
+	// somewhere, would silently take over the notes it found and report the rows it
+	// no longer produced as orphans, by which time the originals are overwritten.
+	// The cost of the opposite mistake is a duplicate folder the user can see and
+	// delete, so the default here is always the harmless one.
+	//
+	// Ownership is decided by the caller, on screen, by a click. The engine
+	// executes that decision: an explicit {id, scheme} refreshes that set, and
+	// anything else - undefined included - mints a new one.
 	return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME }, proposed);
 }
 

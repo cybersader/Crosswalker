@@ -256,7 +256,22 @@ export class SssomImportModal extends Modal {
 		);
 	}
 
-	/** Inline refresh-vs-coexist choice for the detected crosswalk destination. */
+	/**
+	 * AM-11. Ownership review for the crosswalk destination, the same shape as the
+	 * wizard review: every set that lives here is listed, a new set is the default,
+	 * and a refresh happens only because someone clicked for it.
+	 *
+	 * Failure mode prevented: this surface used to adopt the single set it found in
+	 * the destination folder without anyone choosing it. A crosswalk folder is named
+	 * after the ontology PAIR, so a vendor crosswalk and an in-house crosswalk
+	 * between the same two frameworks land in the same folder while being different
+	 * bodies of work. Adopting meant the second import silently replaced the first,
+	 * assertion by assertion, and orphaned the rows the two did not share. The
+	 * folder is deterministic; the owner is not.
+	 *
+	 * Returns whether the Import button may be enabled. There is always a default
+	 * now, so the only answer that blocks is a discovery that threw.
+	 */
 	private async renderImportSetChoice(container: HTMLElement, basePath: string): Promise<boolean> {
 		let sets: DiscoveredImportSet[];
 		try {
@@ -270,99 +285,108 @@ export class SssomImportModal extends Modal {
 		}
 		if (sets.length === 0) return true;
 
+		const refreshing = this.refreshTargetSet(sets);
 		const wrap = container.createDiv({ cls: 'crosswalker-import-set-review' });
-		wrap.createEl('h4', { text: 'Existing crosswalk import' });
-		if (sets.length === 1) {
-			const set = sets[0];
-			const importingNew = this.isNewSetChoice();
-			const line = wrap.createEl('p', { cls: 'setting-item-description' });
-			if (importingNew) {
-				line.setText(
-					'Importing as a new set with set-qualified identities. This release will sit alongside the existing release.',
-				);
-				const refresh = wrap.createEl('button', { text: `Refresh ${describeImportSet(set)} instead` });
-				refresh.addEventListener('click', () => {
-					this.importSetChoice = { id: set.id, scheme: set.scheme };
-					void this.refreshPreview();
-				});
-			} else {
-				line.setText(
-					`Refreshing ${set.id} (${set.noteCount} existing notes). This replaces that release while preserving its identities.`,
-				);
-				const fresh = wrap.createEl('button', { text: 'Keep both as a new set' });
-				fresh.addEventListener('click', () => {
-					this.importSetChoice = 'new-set-qualified';
-					void this.refreshPreview();
-				});
-			}
-			return true;
+		wrap.createEl('h4', { text: 'Existing crosswalk imports' });
+
+		const line = wrap.createEl('p', { cls: 'setting-item-description' });
+		if (refreshing) {
+			line.setText(
+				`Refreshing ${refreshing.id} (${refreshing.noteCount} existing notes). This replaces that release while preserving its identities.`,
+			);
+		} else {
+			line.setText(sets.length === 1
+				? 'Importing as a new set with set-qualified identities. The crosswalk import already here stays separate.'
+				: `Importing as a new set with set-qualified identities. The ${sets.length} crosswalk imports already here stay separate.`);
 		}
 
-		wrap.createEl('p', {
-			text: 'Choose a set to refresh and replace, or create a new set so this release can coexist with the existing releases.',
-			cls: 'mod-warning',
-		});
+		// Every set, with the facts that tell them apart. A minted id is deliberately
+		// meaningless, so a user deciding which release to replace needs its size and
+		// its folder in front of them.
 		const list = wrap.createEl('ul');
-		for (const set of sets) {
-			list.createEl('li', { text: `${set.id}: ${set.noteCount} notes (${set.scheme})` });
-		}
+		for (const set of sets) list.createEl('li', { text: describeImportSet(set) });
+
+		// A new set is FIRST and is what a fresh review shows, because it is the only
+		// choice that cannot damage anything: a new set owns no notes.
 		new Setting(wrap)
 			.setName('Import set')
-			.setDesc('Refreshing preserves the selected set identity. A new set uses set-qualified identities.')
+			.setDesc('A new set is the default and uses set-qualified identities. Choose an existing set only to refresh and replace the notes it already owns.')
 			.addDropdown((dropdown) => {
-				dropdown.addOption('', 'Choose one');
+				dropdown.addOption('__new__', 'Keep this release as a new set');
 				for (const set of sets) dropdown.addOption(set.id, describeImportSet(set));
-				dropdown.addOption('__new__', 'Keep this release alongside them as a new set');
-				const choice = this.importSetChoice;
-				const value = this.isNewSetChoice()
-					? '__new__'
-					: (this.isExistingSetChoice(choice) ? choice.id : '');
-				dropdown.setValue(value).onChange((selected) => {
-					const selectedSet = sets.find((set) => set.id === selected);
-					this.importSetChoice = selected === '__new__'
-						? 'new-set-qualified'
-						: (selectedSet ? { id: selectedSet.id, scheme: selectedSet.scheme } : null);
+				dropdown.setValue(refreshing ? refreshing.id : '__new__').onChange((selected) => {
+					const picked = sets.find((set) => set.id === selected);
+					this.importSetChoice = picked ? { id: picked.id, scheme: picked.scheme } : 'new-set-qualified';
 					void this.refreshPreview();
 				});
 			});
-		return this.importSetChoice !== null;
+
+		// The existing button, in its original role and now its only one: the
+		// one-click route into a refresh when a single set sits at this destination.
+		if (!refreshing && sets.length === 1) {
+			const set = sets[0];
+			const refresh = wrap.createEl('button', { text: `Refresh ${describeImportSet(set)} instead` });
+			refresh.addEventListener('click', () => {
+				this.importSetChoice = { id: set.id, scheme: set.scheme };
+				void this.refreshPreview();
+			});
+		}
+		if (refreshing) {
+			const fresh = wrap.createEl('button', { text: 'Keep both as a new set' });
+			fresh.addEventListener('click', () => {
+				this.importSetChoice = 'new-set-qualified';
+				void this.refreshPreview();
+			});
+		}
+		return true;
+	}
+
+	/** The set an explicit refresh choice names, or null when none was chosen. */
+	private refreshTargetSet(sets: readonly DiscoveredImportSet[]): DiscoveredImportSet | null {
+		const choice = this.importSetChoice;
+		if (!this.isExistingSetChoice(choice)) return null;
+		return sets.find((set) => set.id === choice.id) ?? null;
 	}
 
 	private async importSetsForDestination(basePath: string): Promise<DiscoveredImportSet[]> {
 		if (basePath !== this.importSetChoiceBasePath) {
+			// A different destination is a different ownership question, so an answer
+			// given about the previous one does not carry over.
 			this.importSetChoiceBasePath = basePath;
 			this.importSetChoice = null;
 		}
 		const sets = await discoverImportSets(this.app, basePath);
-		if (sets.length === 1 && this.importSetChoice === null) {
-			this.importSetChoice = { id: sets[0].id, scheme: sets[0].scheme };
-		} else if (sets.length > 1) {
-			const choice = this.importSetChoice;
-			if (this.isExistingSetChoice(choice) && !sets.some((set) => set.id === choice.id)) {
-				this.importSetChoice = null;
-			}
-		} else if (sets.length === 0) {
+		// AM-11. NOTHING PRESELECTS A REFRESH HERE. A `sets.length === 1` branch used
+		// to assign that set as the choice, which made "one crosswalk already lives in
+		// this folder" mean "you meant to overwrite it".
+		const choice = this.importSetChoice;
+		if (this.isExistingSetChoice(choice) && !sets.some((set) => set.id === choice.id)) {
+			// The chosen set is not at this destination any more, so the choice names
+			// nothing. Falling back to the default is the safe direction.
 			this.importSetChoice = null;
 		}
 		return sets;
 	}
 
-	private async selectedImportSet(): Promise<ImportSetOption | undefined> {
-		if (!this.detectedSource || !this.detectedTarget) return undefined;
+	/**
+	 * The ownership option the import runs with. AM-11: an explicit choice, or a new
+	 * set. There is no "adopt whichever one is already there" answer, here or in the
+	 * engine below it.
+	 */
+	private async selectedImportSet(): Promise<ImportSetOption> {
+		if (!this.detectedSource || !this.detectedTarget) return 'new';
 		const basePath = `_crosswalker/mappings/${this.detectedSource}-to-${this.detectedTarget}`;
 		const sets = await this.importSetsForDestination(basePath);
-		if (sets.length === 0) return undefined;
-		if (sets.length === 1) {
-			return this.isNewSetChoice()
-				? this.importSetChoice!
-				: { id: sets[0].id, scheme: sets[0].scheme };
+		const choice = this.importSetChoice;
+		if (this.isExistingSetChoice(choice)) {
+			const set = sets.find((candidate) => candidate.id === choice.id);
+			if (!set) throw new Error('Choose an import set to refresh, or choose to keep this release as a new set.');
+			return { id: set.id, scheme: set.scheme };
 		}
-		if (this.importSetChoice) return this.importSetChoice;
-		throw new Error('Choose an import set to refresh, or choose to keep this release as a new set.');
-	}
-
-	private isNewSetChoice(): boolean {
-		return this.importSetChoice === 'new' || this.importSetChoice === 'new-set-qualified';
+		// No click, so a new set. Set-qualified when other releases already sit at
+		// this destination, so the two cannot collide on one edge curie; the plain
+		// default when the folder is empty and there is nothing to coexist with.
+		return sets.length === 0 ? 'new' : 'new-set-qualified';
 	}
 
 	private isExistingSetChoice(choice: ImportSetOption | null = this.importSetChoice): choice is { id: string } {
@@ -385,13 +409,20 @@ export class SssomImportModal extends Modal {
 			return;
 		}
 
-		let importSet: ImportSetOption | undefined;
+		let importSet: ImportSetOption;
 		try {
 			importSet = await this.selectedImportSet();
 		} catch (error) {
 			new Notice(error instanceof Error ? error.message : String(error));
 			return;
 		}
+		// AM-11. Not a hardcoded 'replace'. The importer's own default rewrote
+		// whatever it landed on, which combined with the deleted preselect above to
+		// replace another provider's crosswalk with nobody having asked for it. A
+		// new set owns no notes, so nothing can be overwritten and the harmless
+		// value is correct; a refresh is a click on a line that says it replaces
+		// that release, so replace is what that click means.
+		const refreshing = this.isExistingSetChoice(importSet);
 
 		const progressNotice = new Notice('SSSOM import: starting…', 0);
 		try {
@@ -402,6 +433,7 @@ export class SssomImportModal extends Modal {
 				this.plugin.precomputeClosure,
 				{
 					importSet,
+					overwriteMode: refreshing ? 'replace' : 'skip',
 					onProgress: (current, total, msg) => {
 						progressNotice.setMessage(`SSSOM import: ${msg} (${current}/${total})`);
 					},

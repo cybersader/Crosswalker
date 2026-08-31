@@ -122,6 +122,7 @@ import {
 	LEGACY_RECIPE_ID_SENTINEL,
 } from '../src/generation/legacy-recipe-shim';
 import { MappingWorkbench } from '../src/import/workbench';
+import { RECIPE_REGISTRY } from '../src/import/recipe-registry';
 import { analyzeColumns } from '../src/import/parsers/csv-parser';
 import { DEFAULT_SETTINGS } from '../src/settings/settings-data';
 import type { DebugLog } from '../src/utils/debug';
@@ -425,6 +426,11 @@ interface FlowInternals {
 	// EVERY set appears in, the single-candidate suggestion, and the one method
 	// both the dropdown's onChange and the offer button's listener call.
 	renderImportSetReview(container: HTMLElement): void;
+	// AM-10. The two entries into step 3 that finish by RENDERING rather than
+	// by returning an answer, so the only way to observe whether they waited
+	// for discovery is to hold discovery open and watch them.
+	startRecognizedRecipe(toStep: number): Promise<void>;
+	hydrateFromDraft(draft: unknown): Promise<void>;
 	offeredRefreshSet(sets: readonly DiscoveredImportSet[]): DiscoveredImportSet | null;
 	chooseImportSet(choice: ImportSetOption | null): void;
 	discoveredSets: DiscoveredImportSet[] | null;
@@ -1446,12 +1452,29 @@ describe('the results screen', () => {
 // ===========================================================================
 
 describe('a skip refresh accounts for the hubs its kept rows imply', () => {
+	/**
+	 * The set this vault already holds, named explicitly.
+	 *
+	 * AM-9 (2026-08-30): these four cases used to leave the ownership option out
+	 * and let the ENGINE work out that the one set in the destination folder was
+	 * the one being refreshed. That branch is deleted, and an omitted option now
+	 * means a brand-new set -- whose owned identity index is empty, so every
+	 * assertion here about orphan bookkeeping would pass for the wrong reason and
+	 * the falsifying case below would stop failing at all. They are not retired:
+	 * a refresh is still exactly what they are about. It is now SAID, the same way
+	 * the recipe-path sibling below has always said it.
+	 */
+	async function refreshTarget(vault: Vault): Promise<ImportSetOption> {
+		const [set] = await discoverImportSets(vault.app, undefined);
+		return { id: set.id };
+	}
+
 	it('reports no orphans on a vault this engine generated moments earlier', async () => {
 		// No de-migration, no destination change, no legacy curies. Every row is
 		// skipped, so under the old behaviour the enrichment batch was empty and
 		// all three hubs were reported gone.
 		const vault = await seedVault();
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'skip'));
+		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'skip', { importSet: await refreshTarget(vault) }));
 		// The rows really were kept, so "no orphans" is not "nothing happened".
 		expect(result.skipped).toHaveLength(ROWS.length);
 		expect(result.created).toEqual([]);
@@ -1464,7 +1487,7 @@ describe('a skip refresh accounts for the hubs its kept rows imply', () => {
 		// A suppressed report and a clean report both read as an empty list, so the
 		// absence of the warning is what separates them.
 		const vault = await seedVault();
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'skip'));
+		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'skip', { importSet: await refreshTarget(vault) }));
 		expect(result.warnings ?? []).toEqual([]);
 		expect(result.errors).toEqual([]);
 	});
@@ -1479,7 +1502,7 @@ describe('a skip refresh accounts for the hubs its kept rows imply', () => {
 			rows: ROWS.filter((r) => r.tactic === 'Persistence').map((r) => ({ ...r })),
 			rowCount: 3,
 		};
-		const result = await generateNotes(vault.app, persistenceOnly, CONFIG, options(SHARED_ROOT, 'skip'));
+		const result = await generateNotes(vault.app, persistenceOnly, CONFIG, options(SHARED_ROOT, 'skip', { importSet: await refreshTarget(vault) }));
 		expect((result.orphans ?? []).map((o) => o.curie).sort()).toEqual([
 			`${ONTOLOGY}:T1590`,
 			`${ONTOLOGY}:T1595`,
@@ -1514,7 +1537,7 @@ describe('a skip refresh accounts for the hubs its kept rows imply', () => {
 
 	it('does not orphan them under replace either, which is the control', async () => {
 		const vault = await seedVault();
-		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'replace'));
+		const result = await generateNotes(vault.app, parsed(), CONFIG, options(SHARED_ROOT, 'replace', { importSet: await refreshTarget(vault) }));
 		expect(result.orphans ?? []).toEqual([]);
 	});
 });
@@ -2524,3 +2547,477 @@ describe('a run that could not check for orphans', () => {
 		expect(result.orphansChecked).toBe(false);
 	});
 });
+
+// ===========================================================================
+// 16. AM-9: THE ENGINE NEVER ADOPTS.
+//
+// Pass 5 removed the wizard preselect and A-8 still failed, because the
+// preselect was a COPY. The original guess lived one level down, in
+// `resolveImportSet`: given no explicit choice it discovered the sets under the
+// destination folder and silently refreshed the single one it found. Every
+// surface above it inherited that answer by passing `undefined`.
+//
+// The branch is deleted. A folder is an address, and an address does not name
+// an owner: two frameworks legitimately share a legacy flat root, a
+// deterministic mapping folder holds crosswalks from two providers, a user
+// drags a folder somewhere new. So the engine has exactly two behaviours -- an
+// explicit `{id, scheme}` refreshes THAT set, anything else mints -- and the
+// tests below are written at the engine boundary, because that is the only
+// place the claim "nothing below the click can choose a set" can be true.
+//
+// WHAT ADOPTION ACTUALLY DID, WHICH IS WHY THE ORPHAN ASSERTION IS THE SHARP ONE
+//
+// `ownedIdentityIndex` is scoped to the resolved set. Adopting framework A's
+// set for a run that produces framework B's curies means every one of A's notes
+// is in the index and none of them is produced, so the run reports the whole of
+// framework A as orphaned -- and, since AM-6, writes B's notes under A's pinned
+// ontology as well. The single worst outcome this product has, reached by
+// importing a second framework into a folder that already held one.
+// ===========================================================================
+
+/**
+ * A layout with no enrichment at all: concept notes, flat, in the base path.
+ *
+ * Deliberately hub-free. Hub curies are minted per ontology with nothing
+ * set-qualifying them, and the identity index `resolveWriteTarget` consults is
+ * whole-vault, so two imports sharing a folder can reach across a set boundary
+ * through a hub for reasons that have nothing to do with ownership defaults
+ * (section 13 pins that gap with `it.failing`). Removing hubs here keeps these
+ * tests about the one thing they are about.
+ */
+function flatRecipe(ontology: string, recipeId = `custom-${ontology}`): Recipe {
+	return {
+		recipe: recipeId,
+		source: { ontology, levels: ['leaf'] },
+		target: {
+			layout: [{ level: 'leaf', mechanism: 'file', template: '{technique_id}.md' }],
+			enrichment: { children_lists: false, facet_notes: 'none', level_hubs: 'none' },
+		},
+	};
+}
+
+/** Six rows whose ids nothing else in this file uses, so nothing collides. */
+function disjointRows(prefix: string): ParsedData {
+	return {
+		columns: [...COLUMNS],
+		rows: ROWS.map((row, i) => ({ ...row, technique_id: `${prefix}-${i}`, tactic: 'Inventory' })),
+		rowCount: ROWS.length,
+	};
+}
+
+/** The import set stamped on one note, as the vault currently holds it. */
+function setIdOf(text: string): string | null {
+	const provenance = frontmatterOf(text)._crosswalker as Record<string, unknown> | undefined;
+	const block = provenance?.import_set as Record<string, unknown> | undefined;
+	return typeof block?.id === 'string' ? block.id : null;
+}
+
+/** Every distinct import-set id the notes in a vault carry. */
+function setIdsInVault(files: Map<string, string>): string[] {
+	return [...new Set([...files.values()].map(setIdOf).filter((id): id is string => id !== null))].sort();
+}
+
+/** A vault holding exactly one framework, flat, in the shared output folder. */
+async function vaultWithOneSetInTheSharedRoot() {
+	const vault = makeVault();
+	const seed = await generateNotes(vault.app, parsed(), CONFIG, {
+		...options(SHARED_ROOT, 'replace', { recipeOverride: flatRecipe(ONTOLOGY), importSet: 'new' }),
+	});
+	if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+	// The scenario is about a hub-free import; a hub here would mean the recipe
+	// above stopped being the thing this section reasons about.
+	if (pathsOfKind(vault.files, 'hub').length > 0) throw new Error('seed produced hubs');
+	forgetSeedWrites(vault);
+	return vault;
+}
+
+describe.each(['replace', 'skip'] as const)(
+	'a second framework written into the folder the first already occupies (overwriteMode %s)',
+	(overwriteMode) => {
+		/** The second import, with the ownership option ABSENT -- not `new`, absent. */
+		async function secondFrameworkWithNoChoice(entryPoint: 'generateNotes' | 'generateFromRecipe') {
+			const vault = await vaultWithOneSetInTheSharedRoot();
+			const before = new Map(vault.files);
+			const [first] = await discoverImportSets(vault.app, undefined);
+			const rows = disjointRows('CIS');
+			const recipe = flatRecipe('cis-controls-v8');
+			const result = entryPoint === 'generateNotes'
+				? await generateNotes(vault.app, rows, CONFIG, {
+					...options(SHARED_ROOT, overwriteMode, { recipeOverride: recipe }),
+					sourceFileName: 'cis-controls-v8.csv',
+				})
+				: await generateFromRecipe(vault.app, rows, recipe, {
+					basePath: SHARED_ROOT,
+					overwriteMode,
+					createFolders: true,
+					sourceFileName: 'cis-controls-v8.csv',
+				});
+			return { vault, before, first, result };
+		}
+
+		it.each(['generateNotes', 'generateFromRecipe'] as const)(
+			'mints its own set through %s rather than adopting the one already there',
+			async (entryPoint) => {
+				const { vault, first, result } = await secondFrameworkWithNoChoice(entryPoint);
+				expect(result.errors).toEqual([]);
+				const after = await discoverImportSets(vault.app, undefined);
+				expect(after).toHaveLength(2);
+				expect(after.map((set) => set.id)).toContain(first.id);
+				const minted = after.map((set) => set.id).filter((id) => id !== first.id);
+				expect(minted).toHaveLength(1);
+				expect(minted[0]).toMatch(/^iset-[a-z0-9]{6}$/);
+			},
+		);
+
+		it.each(['generateNotes', 'generateFromRecipe'] as const)(
+			'reports none of the first framework notes as orphans of this run (%s)',
+			async (entryPoint) => {
+				// The sharp one. Adoption put the first framework's whole identity
+				// index under this run ownership while producing none of it.
+				const { result } = await secondFrameworkWithNoChoice(entryPoint);
+				expect(result.orphansChecked).toBe(true);
+				expect(result.orphans ?? []).toEqual([]);
+			},
+		);
+
+		it.each(['generateNotes', 'generateFromRecipe'] as const)(
+			'leaves every note the first framework owns byte for byte (%s)',
+			async (entryPoint) => {
+				const { vault, before, first } = await secondFrameworkWithNoChoice(entryPoint);
+				for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+				const stillOwned = [...before.keys()].filter((path) => setIdOf(vault.files.get(path)!) === first.id);
+				expect(stillOwned).toHaveLength(before.size);
+			},
+		);
+
+		it.each(['generateNotes', 'generateFromRecipe'] as const)(
+			'writes its notes under its OWN ontology, not the pin it would have inherited (%s)',
+			async (entryPoint) => {
+				// AM-6 pins the ontology to the set, so adoption did not merely
+				// mis-attribute the notes: it minted them under the wrong ontology too.
+				const { vault, before } = await secondFrameworkWithNoChoice(entryPoint);
+				const fresh = [...vault.files].filter(([path]) => !before.has(path));
+				expect(fresh.length).toBeGreaterThan(0);
+				for (const [, text] of fresh) {
+					expect(String(frontmatterOf(text).curie)).toMatch(/^cis-controls-v8:/);
+				}
+			},
+		);
+	},
+);
+
+describe('the only route into an existing set is naming it', () => {
+	it('refreshes the set an explicit id names, in the same vault where nothing else can', async () => {
+		// The control for the whole section: if no input reached the existing set,
+		// every assertion above would also hold on a build that could not refresh
+		// at all.
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		const [first] = await discoverImportSets(vault.app, undefined);
+		const result = await generateNotes(vault.app, parsed(), CONFIG, {
+			...options(SHARED_ROOT, 'replace', { recipeOverride: flatRecipe(ONTOLOGY), importSet: { id: first.id } }),
+		});
+		expect(result.errors).toEqual([]);
+		expect(await discoverImportSets(vault.app, undefined)).toHaveLength(1);
+		expect(setIdsInVault(vault.files)).toEqual([first.id]);
+		expect(result.orphans ?? []).toEqual([]);
+	});
+});
+
+// ===========================================================================
+// 17. AM-10: "NOT YET DISCOVERED" IS NOT "NONE".
+//
+// `discoveredSets` starts null and the readers collapsed that with `?? []`,
+// which is this project own "cache lag is not absence" rule broken inside the
+// code written to remove guessing. Two things followed. The review screen drew
+// the zero-sets screen -- no ownership control at all -- while the vault held
+// three sets, which is a lie the user acts on. And `selectedImportSet` returned
+// `undefined` on the empty list, which WAS the engine adoption path: the
+// wizard way of saying "you decide" to the one component that must not.
+//
+// So: a list (possibly empty) means discovery ran, null means it has not, and
+// every reader either awaits discovery first or fails closed on null.
+// ===========================================================================
+
+/** The one wording for "the vault has not been read yet", read off the class. */
+const STILL_INDEXING = (ImportFlow as unknown as { STILL_INDEXING: string }).STILL_INDEXING;
+
+describe('a step-3 reader that runs before discovery has', () => {
+	it('refuses to hand out an ownership answer, rather than inventing an empty vault', async () => {
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		const { flow } = makeFlow(vault.app);
+		expect(inner(flow).discoveredSets).toBeNull();
+		expect(() => inner(flow).selectedImportSet()).toThrow(STILL_INDEXING);
+	});
+
+	it('does not certify the destination as free when nobody has looked at it', async () => {
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		const { flow } = makeFlow(vault.app);
+		expect(inner(flow).newSetOccupancyProblem()).toBe(STILL_INDEXING);
+	});
+
+	it('says so on the review screen instead of drawing the no-imports-here screen', async () => {
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		const { flow } = makeFlow(vault.app);
+		const { texts, dropdown } = captureReview(flow);
+		expect(texts).toContain(STILL_INDEXING);
+		// And nothing to act on: an ownership control drawn over an unasked
+		// question is worse than none, because it looks answered.
+		expect(dropdown).toBeNull();
+	});
+
+	it('re-renders once discovery finishes, rather than hashing null and empty the same', async () => {
+		// `step3StateKey` decides whether the screen is redrawn. With null and an
+		// empty list hashing identically, a vault with no imports never redrew: the
+		// user kept the indexing message on a vault that had finished indexing.
+		const vault = makeVault();
+		const { prepared } = await askWhereItLands(vault.app);
+		expect(prepared.changed).toBe(true);
+	});
+});
+
+describe('an answered question, even when the answer is nothing', () => {
+	it('records an empty list for an empty vault, and says new out loud', async () => {
+		// `undefined` here was the adoption path. An empty vault has nothing to
+		// adopt today, and the value was never worth relying on for that.
+		const vault = makeVault();
+		const { flow } = await askWhereItLands(vault.app);
+		expect(inner(flow).discoveredSets).toEqual([]);
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+
+	it('records an empty list for a flow with no vault at all', async () => {
+		// The seam the destination tests are built on. "There is no vault" is a
+		// complete answer, so it must not read as "we have not looked yet" -- the
+		// readers fail closed on that, and this flow has nothing to block on.
+		const { flow } = makeFlow({});
+		await inner(flow).prepareStep3(true);
+		expect(inner(flow).discoveredSets).toEqual([]);
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+});
+
+describe('every entry that can reach a write waits for discovery first', () => {
+	it('generates from a step 4 that was never prepared, instead of refusing it', async () => {
+		// E-L scenario: a draft resumes straight onto step 4 with a live Generate
+		// button and no step-2 Next gate behind it. Without the await, the AM-10
+		// fail-closed fires and the user is told to wait on a vault that is idle;
+		// before AM-10 the same click handed the engine `undefined` and adopted.
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		// A DIFFERENT ontology on purpose. Two imports sharing one ontology label
+		// share their concept curies, and the identity index `resolveWriteTarget`
+		// consults is whole-vault rather than set-scoped, so the second run would
+		// reconcile onto the first framework's notes and relocate them -- section
+		// 13's pinned gap, and nothing to do with who owns the set.
+		const { flow } = makeFlow(vault.app, {
+			globalRoot: 'Second',
+			ontology: 'cis-controls-v8',
+			sourceFileName: 'cis-controls-v8.csv',
+			data: disjointRows('CIS'),
+		});
+		flow.currentStep = 4;
+		flow.overwriteMode = 'replace';
+		expect(inner(flow).discoveredSets).toBeNull();
+
+		await flow.generate();
+
+		expect(inner(flow).discoveredSets).not.toBeNull();
+		expect(noticeText()).not.toContain(STILL_INDEXING);
+		expect(vault.create).toHaveBeenCalled();
+		expect(await discoverImportSets(vault.app, undefined)).toHaveLength(2);
+	});
+
+	it('holds the Next button off step 2 until the scan settles', async () => {
+		// The one entry that always awaited. Asserted so a refactor cannot quietly
+		// make it the exception.
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		const { flow } = makeFlow(vault.app);
+		flow.currentStep = 2;
+		expect(inner(flow).discoveredSets).toBeNull();
+		expect(await flow.validateCurrentStep()).toBe(true);
+		expect(inner(flow).discoveredSets).not.toBeNull();
+	});
+});
+
+
+// ---------------------------------------------------------------------------
+// The two entries that cannot be observed by their result, because both of them
+// finish by rendering rather than by returning an answer.
+//
+// `prepareStep3` is held open, so an entry that AWAITS it is distinguishable
+// from one that fires it and renders anyway. The distinction is the whole of
+// AM-10 on these paths: a review screen drawn on a null list shows no ownership
+// control at all, and there is no way to tell that from a vault with no imports.
+// ---------------------------------------------------------------------------
+
+/** Hold the vault scan open until the test releases it. */
+function gateDiscovery(flow: ImportFlow): { release: () => void } {
+	let release!: () => void;
+	const gate = new Promise<void>((resolve) => { release = resolve; });
+	const real = inner(flow).prepareStep3.bind(flow);
+	(flow as unknown as Record<string, unknown>).prepareStep3 = async (force?: boolean) => {
+		await gate;
+		return real(force);
+	};
+	return { release: () => release() };
+}
+
+/** Enough microtask turns for a body with no await on discovery to finish. */
+async function drainMicrotasks(): Promise<void> {
+	for (let i = 0; i < 25; i++) await Promise.resolve();
+}
+
+describe('the two entries that end in a render rather than an answer', () => {
+	it('holds the recognized-recipe fast path until the vault has been read', async () => {
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		const data = parsed();
+		const { flow } = makeFlow(vault.app, { data });
+		flow.columnInfos = analyzeColumns(data);
+		(flow as unknown as { recognizedMatch: unknown }).recognizedMatch = {
+			entry: RECIPE_REGISTRY[0],
+			score: 100,
+		};
+		const gate = gateDiscovery(flow);
+		// What the list held every time this entry drew the screen. The wizard's
+		// full renderer needs Obsidian chrome the mock does not carry, and the
+		// claim is about WHEN it is called, not what it paints.
+		const listAtRender: Array<DiscoveredImportSet[] | null> = [];
+		(flow as unknown as Record<string, unknown>).renderStep = () => {
+			listAtRender.push(inner(flow).discoveredSets);
+		};
+
+		let settled = false;
+		const entered = inner(flow).startRecognizedRecipe(3).then(() => { settled = true; });
+		await drainMicrotasks();
+		// Still waiting, and nothing drawn. Without the await it would already have
+		// rendered step 3 with no ownership control on it and nothing to press.
+		expect(settled).toBe(false);
+		expect(listAtRender).toEqual([]);
+
+		gate.release();
+		await entered;
+		expect(inner(flow).discoveredSets).not.toBeNull();
+		expect(listAtRender).toHaveLength(1);
+		expect(listAtRender[0]).not.toBeNull();
+	});
+
+	it('holds a resumed draft until the vault has been read', async () => {
+		// The only entry that lands straight on step 4, with a live Generate button
+		// and no step-2 Next gate behind it.
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		vault.files.set('sources/attack-mini.csv', 'technique_id,name,tactic,domain\n');
+		const { flow } = makeFlow(vault.app);
+		// Re-reading the source is a different concern with its own tests; what is
+		// under test here is whether the resume waits for the OWNERSHIP scan.
+		(flow as unknown as Record<string, unknown>).reparseFromVault = async () => true;
+		const gate = gateDiscovery(flow);
+
+		let settled = false;
+		const entered = inner(flow).hydrateFromDraft({
+			id: 'draft-1',
+			currentStep: 4,
+			sourceType: 'csv',
+			sourceFile: { name: SOURCE_FILE, vaultPath: 'sources/attack-mini.csv' },
+			outputPath: SHARED_ROOT,
+			overwriteMode: 'replace',
+		}).then(() => { settled = true; });
+		await drainMicrotasks();
+		expect(settled).toBe(false);
+
+		gate.release();
+		await entered;
+		expect(inner(flow).discoveredSets).not.toBeNull();
+	});
+});
+
+// ===========================================================================
+// 18. A-8, FINAL: THE SOURCES THAT DEFEATED MATCHING, AT THE ENGINE.
+//
+// Section 13 shows the three pass-4 escape routes landing as new sets in the
+// WIZARD. That is half the claim. A-8 restated says a second unrelated
+// framework lands in its own set "any path, with no click, because nothing else
+// is possible", and "nothing else is possible" can only be true at the engine
+// boundary -- every surface above it is one more place a preselect can grow
+// back.
+//
+// So each route is replayed here with no wizard in the picture at all: two
+// imports into ONE destination folder, the second with the ownership option
+// ABSENT. That is the exact shape the deleted branch acted on, and it is the
+// shape a headless caller, an E2E harness, or a future surface will present.
+//
+// Each route also asserts the fact that PAIRED the two sources, so a build that
+// stopped stamping recipe ids or ontologies would fail here rather than pass
+// for having nothing left to match on.
+// ===========================================================================
+
+describe.each(['replace', 'skip'] as const)(
+	'a second import into one folder, with nobody choosing (overwriteMode %s)',
+	(overwriteMode) => {
+		/** The two sources, and the stamped fact that made pass-4 matching pair them. */
+		const ROUTES = [
+			{
+				label: 'two crosswalk exports under the generic xwalk ontology and one recipe id',
+				first: { ontology: 'xwalk', recipeId: 'olir-crosswalk-edge', source: 'csf-to-iso.csv' },
+				second: { ontology: 'xwalk', recipeId: 'olir-crosswalk-edge', source: 'cis-to-nist.csv' },
+				shared: 'both' as const,
+			},
+			{
+				label: 'one saved config re-applied, so two frameworks stamp one recipe id',
+				first: { ontology: 'nist-csf-2', recipeId: 'cfg-shared-mapping', source: 'csf.csv' },
+				second: { ontology: 'cis-controls-v8', recipeId: 'cfg-shared-mapping', source: 'cis.csv' },
+				shared: 'recipe' as const,
+			},
+			{
+				label: 'two vendor exports that derive one ontology from the stem controls.csv',
+				first: { ontology: 'controls', recipeId: 'legacy-config', source: 'controls.csv' },
+				second: { ontology: 'controls', recipeId: 'legacy-config', source: 'controls.csv' },
+				shared: 'both' as const,
+			},
+		];
+
+		/** Import one source into `DEST`, with the ownership option left out. */
+		async function importWithNoChoice(
+			vault: Vault,
+			spec: { ontology: string; recipeId: string; source: string },
+			rows: ParsedData,
+		) {
+			return generateNotes(vault.app, rows, CONFIG, {
+				...options(SHARED_ROOT, overwriteMode, { recipeOverride: flatRecipe(spec.ontology, spec.recipeId) }),
+				sourceFileName: spec.source,
+			});
+		}
+
+		async function replayRoute(route: typeof ROUTES[number]) {
+			const vault = makeVault();
+			const seed = await importWithNoChoice(vault, route.first, disjointRows('FIRST'));
+			if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+			forgetSeedWrites(vault);
+			const before = new Map(vault.files);
+			const [first] = await discoverImportSets(vault.app, undefined);
+			const result = await importWithNoChoice(vault, route.second, disjointRows('SECOND'));
+			const sets = await discoverImportSets(vault.app, undefined);
+			return { vault, before, first, result, sets };
+		}
+
+		it.each(ROUTES.map((route) => [route.label, route] as const))(
+			'%s',
+			async (_label, route) => {
+				const { vault, before, first, result, sets } = await replayRoute(route);
+
+				// The two sources really are paired by the facts pass 4 matched on.
+				const second = sets.find((set) => set.id !== first.id)!;
+				if (route.shared === 'both') {
+					expect(second.ontologyPrefixes).toEqual(first.ontologyPrefixes);
+				}
+				expect(second.recipeIds).toEqual(first.recipeIds);
+
+				// And it changed nothing: two sets, no orphans, first import intact.
+				expect(result.errors).toEqual([]);
+				expect(sets).toHaveLength(2);
+				expect(result.orphansChecked).toBe(true);
+				expect(result.orphans ?? []).toEqual([]);
+				expect(result.moved ?? []).toEqual([]);
+				for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+			},
+		);
+	},
+);
