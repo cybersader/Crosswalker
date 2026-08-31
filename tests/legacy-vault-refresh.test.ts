@@ -68,6 +68,19 @@
  *  15. A run that could not check for orphans says so, and never prints a zero
  *      (AM-7). AM-8 -- the same rule at the SSSOM entry point -- lives in
  *      tests/sssom-import-modal-errors.test.ts, because it is a different modal.
+ *  16. The engine never adopts: an explicit id refreshes, anything else mints
+ *      (AM-9), asserted at the engine boundary because that is the only place
+ *      "nothing below the click can choose a set" can be true.
+ *  17. "Not yet discovered" is not "none" (AM-10).
+ *  18. The pass-4 escape routes replayed at the engine, with no wizard at all.
+ *  19. A write never crosses a set boundary: the owned index RESOLVES, the
+ *      vault-wide index only DETECTS, and a foreign claim is reported by name
+ *      and refused -- concepts, hubs, and notes that carry no owner at all
+ *      (AM-12), in both overwrite modes.
+ *  20. A new set whose curie space is already occupied mints set-qualified, so
+ *      two releases of one framework coexist by construction (AM-13).
+ *  21. A-8's final sentence end to end: the escape routes at the NOTE level,
+ *      through a real wizard, in both overwrite modes.
  *
  * THE THREE GAPS THIS FILE USED TO PIN WITH `it.failing`, AND WHERE THEY WENT
  *
@@ -95,15 +108,33 @@
  *     asserted the same default on the classic path. Replaced by 'offers its OWN
  *     set when the same source comes back, and refreshes only on the click'.
  *
- * THE ONE GAP THIS FILE STILL PINS WITH `it.failing`
+ * THE FOURTH GAP, RETIRED BY AM-12 AND AM-13
  *
- *   A recipe mints one root-hub curie per ontology (`<ontology>:hub/_root`) with
- *   nothing set-qualifying it, and the identity index `resolveWriteTarget`
- *   consults is whole-vault rather than scoped to the writing set. So a second
- *   import under a SHARED ontology label -- two crosswalks under `xwalk`, the
- *   exact escape route AM-5 names -- lands as its own new set and still renames
- *   the first set's root hub into its own folder. Section 13's
- *   'leaves the first crosswalk holding its own root hub'.
+ *   Section 13's 'leaves the first crosswalk holding its own root hub' was
+ *   `it.failing` through pass 6. A recipe mints one root-hub curie per ontology
+ *   (`<ontology>:hub/_root`) with nothing set-qualifying it, and the identity
+ *   index `resolveWriteTarget` consulted was whole-vault rather than scoped to
+ *   the writing set -- so a second import under a SHARED ontology label landed
+ *   as its own new set and still renamed the first set's root hub into its own
+ *   folder and re-stamped it. It is an ordinary `it` now, and the two halves of
+ *   the close are tested apart in sections 19 and 20: AM-13 stops the identity
+ *   spaces overlapping, AM-12 refuses the write if they ever do.
+ *
+ *   NOTHING IN THIS FILE IS PINNED WITH `it.failing` ANY MORE.
+ *
+ * TESTS RETIRED BY AM-12, AND WHY
+ *
+ *   Section 6's `skipIntoAMovedRoot` used to hand the engine no ownership
+ *   option at all, which under AM-9 mints a new set and under AM-12 refuses
+ *   every seeded row -- so no move was even proposed and "the move was
+ *   suppressed" became unfalsifiable. It now names the seeded set explicitly,
+ *   because a move is only reachable INSIDE the set that owns the notes, which
+ *   is the only place a move was ever legitimate.
+ *
+ *   Section 13's `twoXwalkCrosswalks` used to hard-code `importSet: 'new'` for
+ *   the second import, discarding the ownership answer the flow above it was
+ *   built to produce. It threads that answer now, which is what lets AM-13
+ *   qualify the mint.
  */
 
 import { TFile, TFolder } from 'obsidian';
@@ -386,6 +417,39 @@ function deMigrateToPreFix(files: Map<string, string>, root: string): void {
 function deMigrateOntologyPin(files: Map<string, string>): void {
 	for (const [path, text] of [...files]) {
 		files.set(path, text.replace(/\n[ \t]+ontology: [^\n]*/g, ''));
+	}
+}
+
+/**
+ * Strip the whole `import_set` block, leaving `_crosswalker` provenance behind.
+ *
+ * AM-12. A note written before import sets existed carries provenance and no
+ * OWNER, which is a real and different state from "owned by another set": there
+ * is no set id to send the user to. The vault this produces is the one a very
+ * early Crosswalker left, and the only way to reach the second branch of the
+ * cross-set collision message.
+ *
+ * Line-based rather than a YAML round-trip so every other byte is untouched:
+ * the block is a mapping key on its own line and its members are indented
+ * under it, so dropping the key and everything more-indented than it is exact.
+ */
+function deMigrateImportSetStamp(files: Map<string, string>): void {
+	for (const [path, text] of [...files]) {
+		const out: string[] = [];
+		let dropDeeperThan: number | null = null;
+		for (const line of text.split('\n')) {
+			const indent = line.length - line.trimStart().length;
+			if (dropDeeperThan !== null) {
+				if (line.trim() !== '' && indent > dropDeeperThan) continue;
+				dropDeeperThan = null;
+			}
+			if (/^\s+import_set:\s*$/.test(line)) {
+				dropDeeperThan = indent;
+				continue;
+			}
+			out.push(line);
+		}
+		files.set(path, out.join('\n'));
 	}
 }
 
@@ -674,10 +738,10 @@ async function classicReview(app: unknown, opts: Parameters<typeof makeClassicFl
  */
 async function classicImport(
 	app: unknown,
-	opts: Parameters<typeof makeClassicFlow>[1] & { refresh?: boolean },
+	opts: Parameters<typeof makeClassicFlow>[1] & { refresh?: boolean; overwriteMode?: 'skip' | 'replace' },
 ) {
 	const { flow, texts, close } = makeClassicFlow(app, opts);
-	flow.overwriteMode = 'replace';
+	flow.overwriteMode = opts.overwriteMode ?? 'replace';
 	await inner(flow).prepareStep3(true);
 	if (opts.refresh) pressTheOffer(flow);
 	flow.currentStep = 4;
@@ -686,6 +750,52 @@ async function classicImport(
 	const resolved = inner(flow).selectedImportSet();
 	await flow.generate();
 	return { flow, texts, close, choice, destination, resolved };
+}
+
+/**
+ * One whole import, driven end to end through a real `ImportFlow`: read the
+ * vault, take NO action on the ownership review, then press Generate.
+ *
+ * The workbench sibling of `classicImport`, and the shape A-8's final sentence
+ * is written about -- "any path, with no click". Nothing here reaches past the
+ * UI: the ownership answer is whatever the flow itself resolves, and the recipe
+ * the engine runs is the one the flow builds, so a fixture cannot accidentally
+ * hand the engine an ontology the wizard never saw.
+ *
+ * `destination` overrides the derived per-import root the way the destination
+ * field does, which is the only way to put two imports of ONE source file (two
+ * releases of one framework) into two folders.
+ */
+async function wizardImport(
+	app: unknown,
+	opts: Parameters<typeof makeFlow>[1] & { overwriteMode?: 'skip' | 'replace'; destination?: string } = {},
+) {
+	const { flow, texts, close } = makeFlow(app, opts);
+	flow.overwriteMode = opts.overwriteMode ?? 'replace';
+	if (opts.destination !== undefined) {
+		(flow as unknown as { destinationEdited: boolean }).destinationEdited = true;
+		flow.outputPath = opts.destination;
+	}
+	await inner(flow).prepareStep3(true);
+	const choice = inner(flow).importSetChoice;
+	const resolved = inner(flow).selectedImportSet();
+	const destination = inner(flow).currentOutputPath();
+	flow.currentStep = 4;
+	await flow.generate();
+	return { flow, texts, close, choice, resolved, destination };
+}
+
+/** Every note in the vault under one root, path -> text. */
+function notesUnder(files: Map<string, string>, root: string): Map<string, string> {
+	return new Map([...files].filter(([path]) => path.startsWith(`${root}/`)));
+}
+
+/** Every curie carried by the notes under one root, sorted. */
+function curiesUnder(files: Map<string, string>, root: string): string[] {
+	return [...notesUnder(files, root).values()]
+		.map((text) => frontmatterOf(text).curie)
+		.filter((curie): curie is string => typeof curie === 'string')
+		.sort();
 }
 
 /** Everything the results screen draws for one result, as a user would read it. */
@@ -844,7 +954,10 @@ describe('a refresh is offered the folder its own set already occupies', () => {
 		// ontology prefix, one candidate. Still not a refresh.
 		expect(inner(flow).offeredRefreshSet(sets)).toBe(sets[0]);
 		expect(inner(flow).importSetChoice).toBeNull();
-		expect(inner(flow).selectedImportSet()).toBe('new');
+		// A new set, and under AM-13 the set-qualified one, because the set it
+		// matches already occupies this source's curie space. Not an object, which
+		// is the only shape a refresh ever takes.
+		expect(inner(flow).selectedImportSet()).toBe('new-set-qualified');
 	});
 
 	it('matches on the two facts the write loop actually stamps', async () => {
@@ -1313,6 +1426,24 @@ describe('a new set refuses to mint into a folder another set already owns', () 
 
 describe('a suppressed move under skip mode', () => {
 	/**
+	 * Name the seeded set EXPLICITLY on the run under test.
+	 *
+	 * AM-12 (2026-08-30): with the ownership option left out, the engine mints a
+	 * new set (AM-9) and every seeded note then belongs to somebody else, so the
+	 * run is refused wholesale and no move is ever proposed. A move -- suppressed
+	 * or not -- is only reachable INSIDE the set that owns the notes, which is the
+	 * only place a move was ever legitimate. Threading the id is what keeps these
+	 * tests about move suppression rather than about the refusal above it.
+	 */
+	function refreshingTheSeededSet(
+		sets: readonly DiscoveredImportSet[],
+		base: GenerationOptions,
+	): GenerationOptions {
+		if (sets.length !== 1) throw new Error(`Expected one seeded set, found ${sets.length}`);
+		return { ...base, importSet: { id: sets[0].id, scheme: sets[0].scheme } };
+	}
+
+	/**
 	 * The only way to ask the engine for a move it must then suppress: point a
 	 * refresh at a different root. Part A keeps a refresh out of this state, and
 	 * the engine must not depend on the wizard for its own safety (E1/E2).
@@ -1320,7 +1451,10 @@ describe('a suppressed move under skip mode', () => {
 	async function skipIntoAMovedRoot(recipeOverride: Recipe = RECIPE, rows: ParsedData = parsed()) {
 		const vault = await seedPreFixVault(recipeOverride);
 		const before = new Map(vault.files);
-		const result = await generateNotes(vault.app, rows, CONFIG, options(DERIVED_ROOT, 'skip', { recipeOverride }));
+		const result = await generateNotes(vault.app, rows, CONFIG, refreshingTheSeededSet(
+			await discoverImportSets(vault.app, undefined),
+			options(DERIVED_ROOT, 'skip', { recipeOverride }),
+		));
 		return { vault, before, result };
 	}
 
@@ -1371,7 +1505,10 @@ describe('a suppressed move under skip mode', () => {
 		const vault = await seedPreFixVault(FACET_RECIPE);
 		const result = await generateNotes(
 			vault.app, rowsPlusTwoNew(), CONFIG,
-			options(DERIVED_ROOT, 'replace', { recipeOverride: FACET_RECIPE }),
+			refreshingTheSeededSet(
+				await discoverImportSets(vault.app, undefined),
+				options(DERIVED_ROOT, 'replace', { recipeOverride: FACET_RECIPE }),
+			),
 		);
 		expect(vault.files.has(`${DERIVED_ROOT}/Enterprise.md`)).toBe(true);
 		expect(vault.files.has(`${SHARED_ROOT}/Enterprise.md`)).toBe(false);
@@ -1807,7 +1944,10 @@ describe('the classic import path, which carries no ontology of its own', () => 
 
 		const again = await classicReview(vault.app, { sourceFileName: FIRST_SOURCE });
 		expect(again.choice).toBeNull();
-		expect(inner(again.flow).selectedImportSet()).toBe('new');
+		// AM-13: a NEW set, and specifically the set-qualified one, because this
+		// source's own prior import already occupies the `controls`-style curie
+		// space its stem derives. Still not a refresh, which is what AM-5 is about.
+		expect(inner(again.flow).selectedImportSet()).toBe('new-set-qualified');
 		// The stem is what makes the offer possible at all: with both stamped
 		// values sentinels there is nothing to recognise the source by.
 		const offered = inner(again.flow).offeredRefreshSet(inner(again.flow).discoveredSets ?? []);
@@ -2051,7 +2191,12 @@ describe('the ownership review preselects nothing, whatever the vault holds', ()
 		const { flow } = await askWhereItLands(vault.app);
 		expect((inner(flow).discoveredSets ?? [])).toHaveLength(ontologies.length);
 		expect(inner(flow).importSetChoice).toBeNull();
-		expect(inner(flow).selectedImportSet()).toBe('new');
+		// A NEW set in every case -- which is the claim of this section -- and
+		// under AM-13 the set-qualified one, because `attack-mini` is in every
+		// vault above and this source proposes that same curie space. The
+		// distinction that matters here is new-versus-refresh: an existing set is
+		// an object, and neither of the two mint options ever is.
+		expect(inner(flow).selectedImportSet()).toBe('new-set-qualified');
 		expect(inner(flow).currentOutputPath()).toBe(DERIVED_ROOT);
 	});
 
@@ -2067,7 +2212,10 @@ describe('the ownership review preselects nothing, whatever the vault holds', ()
 		flow.sourceFile = { name: 'a-completely-different-export.csv' } as File;
 		await inner(flow).prepareStep3(true);
 		expect(inner(flow).importSetChoice).toBeNull();
-		expect(inner(flow).selectedImportSet()).toBe('new');
+		// The workbench carries the ontology, not the file name, so this source
+		// still proposes `attack-mini` and AM-13 still qualifies the mint. What
+		// was forgotten is the REFRESH, which is the whole point.
+		expect(inner(flow).selectedImportSet()).toBe('new-set-qualified');
 	});
 
 	it('opens the chooser on importing as a new set, ahead of every existing set', async () => {
@@ -2204,8 +2352,8 @@ describe('the sources that defeated matching land as new sets with no click', ()
 	 * different crosswalk exports stamp the same two facts. Rows are disjoint on
 	 * BOTH axes -- concept curies are `<ontology>:<id>` and level-hub curies are
 	 * `<ontology>:hub/<layout segments>` -- so nothing here shares an identity
-	 * except the one the recipe mints unconditionally (see the `it.failing`
-	 * below).
+	 * except the one the recipe mints unconditionally, which is the assertion
+	 * immediately below.
 	 */
 	async function twoXwalkCrosswalks() {
 		const vault = makeVault();
@@ -2220,11 +2368,17 @@ describe('the sources that defeated matching land as new sets with no click', ()
 		});
 		const firstBefore = new Map(vault.files);
 
-		const secondRows: ParsedData = {
-			columns: [...COLUMNS],
-			rows: ROWS.map((row, i) => ({ ...row, technique_id: `X${i}`, tactic: `Mapping ${i % 2}` })),
-			rowCount: ROWS.length,
-		};
+		// Disjoint on both axes -- ids and tactic -- so the only identity the two
+		// crosswalks share is the one the recipe mints unconditionally.
+		//
+		// `disjointRows` rather than a local literal: the ids it emits (`XW-0`...)
+		// are ones the shape workbench can actually read. Bare `X0`..`X5` defeat
+		// its leaf-column detection, `buildRecipe()` throws, `sourceIdentityKeys`
+		// falls into its catch and proposes NO ontology -- which reads downstream
+		// as "nothing collides" and mints endpoint-v1. The fixture then tested a
+		// disagreement between the flow's ontology and the engine's that cannot
+		// occur in the product, where one recipe feeds both.
+		const secondRows = disjointRows('XW');
 		const { flow } = makeFlow(vault.app, {
 			globalRoot: 'Crosswalks', sourceFileName: 'cis-to-nist.csv', ontology: 'xwalk', data: secondRows,
 		});
@@ -2232,8 +2386,13 @@ describe('the sources that defeated matching land as new sets with no click', ()
 		const choice = inner(flow).importSetChoice;
 		const resolved = inner(flow).selectedImportSet();
 		const destination = inner(flow).currentOutputPath();
+		// The wizard's OWN answer is what the engine is handed. Hard-coding `new`
+		// here was a harness bug: it discarded the one decision the flow above was
+		// constructed to make, so the run wrote endpoint-v1 identities the wizard
+		// had already declined to mint (AM-13) and met the first crosswalk's root
+		// hub head-on.
 		const result = await generateNotes(vault.app, secondRows, CONFIG, {
-			...options(destination, 'replace', { recipeOverride: xwalkRecipe, importSet: 'new' }),
+			...options(destination, 'replace', { recipeOverride: xwalkRecipe, importSet: resolved }),
 			sourceFileName: 'cis-to-nist.csv',
 		});
 		return { vault, flow, firstBefore, choice, resolved, destination, result };
@@ -2248,7 +2407,8 @@ describe('the sources that defeated matching land as new sets with no click', ()
 		expect(existing.ontologyPrefixes).toContain('xwalk');
 
 		expect(choice).toBeNull();
-		expect(resolved).toBe('new');
+		// AM-13: `xwalk` is already occupied, so the new set is set-qualified.
+		expect(resolved).toBe('new-set-qualified');
 		expect(destination).toBe('Crosswalks/cis-to-nist');
 		expect(result.errors).toEqual([]);
 		expect(await discoverImportSets(vault.app, undefined)).toHaveLength(2);
@@ -2259,24 +2419,23 @@ describe('the sources that defeated matching land as new sets with no click', ()
 		}
 	});
 
-	// PINNED GAP, and the one clause of A-8 restated that this pass does not
-	// close. `it.failing` rather than a deleted test: the suite stays green while
-	// the gap stays visible, which is the idiom the skip-mode clauses used above.
+	// FORMERLY THE PINNED GAP (`it.failing` through pass 6), now an ordinary
+	// assertion. It is the defect AM-12 and AM-13 were written for.
 	//
 	// A recipe mints ONE root-hub curie per ontology, `<ontology>:hub/_root`, with
 	// nothing set-qualifying it. Two crosswalks under the shared `xwalk` label
-	// therefore claim one identity no matter how disjoint their rows are, and the
-	// whole-vault identity index that `resolveWriteTarget` consults is not scoped
-	// to the writing set -- so the SECOND import, a brand-new set nobody clicked
-	// anything to create, renames the FIRST crosswalk's root hub into its own
-	// folder and re-stamps it into its own set. The first crosswalk is left with
-	// no root hub, and the move is reported on the second import's screen.
+	// therefore claimed one identity no matter how disjoint their rows were, and
+	// the identity index `resolveWriteTarget` consulted was whole-vault rather
+	// than scoped to the writing set -- so the SECOND import, a brand-new set
+	// nobody clicked anything to create, renamed the FIRST crosswalk's root hub
+	// into its own folder and re-stamped it into its own set. The first crosswalk
+	// was left with no root hub, and the move was reported on the second import's
+	// screen.
 	//
-	// AM-5 removed the ownership GUESS; it did not stop a write from reaching
-	// across a set boundary by identity. Closing this is an identity-scope
-	// question (set-qualify hub curies, or refuse a move whose source belongs to
-	// another set), not an ownership-default one.
-	it.failing('leaves the first crosswalk holding its own root hub', async () => {
+	// Both halves of the close are load-bearing and section 19 and 20 test them
+	// apart: AM-13 stops the two identity spaces overlapping in the first place,
+	// and AM-12 refuses the write if they ever do.
+	it('leaves the first crosswalk holding its own root hub', async () => {
 		const { vault, firstBefore, result } = await twoXwalkCrosswalks();
 		const firstHubs = [...firstBefore].filter(([, text]) => frontmatterOf(text).kind === 'hub');
 		expect(firstHubs.length).toBeGreaterThan(0);
@@ -2331,7 +2490,10 @@ describe('the sources that defeated matching land as new sets with no click', ()
 		});
 
 		expect(second.choice).toBeNull();
-		expect(second.resolved).toBe('new');
+		// AM-13: one stem, one derived ontology, one curie space -- so the second
+		// vendor's set is minted set-qualified and the two coexist at the note
+		// level, rather than meeting as an AM-12 refusal on every hub.
+		expect(second.resolved).toBe('new-set-qualified');
 		expect(second.destination).toBe('Vendor B/controls');
 		expect(await discoverImportSets(vault.app, undefined)).toHaveLength(2);
 		for (const [path, text] of firstBefore) expect(vault.files.get(path)).toBe(text);
@@ -2522,7 +2684,7 @@ describe('a run that could not check for orphans', () => {
 	it('says it on the results screen too, in place of the count', async () => {
 		const { second } = await refreshWithATruncatedSource();
 		expect(second.texts).toContain(
-			'🕳️ Orphans: not checked. This run could not confirm it read the whole source, so it cannot say whether any notes are missing.',
+			'Orphans: not checked. This run could not confirm it read the whole source, so it cannot say whether any notes are missing.',
 		);
 		expect(second.texts.filter((line) => /no longer in the source/.test(line))).toEqual([]);
 	});
@@ -2578,12 +2740,14 @@ describe('a run that could not check for orphans', () => {
 /**
  * A layout with no enrichment at all: concept notes, flat, in the base path.
  *
- * Deliberately hub-free. Hub curies are minted per ontology with nothing
- * set-qualifying them, and the identity index `resolveWriteTarget` consults is
- * whole-vault, so two imports sharing a folder can reach across a set boundary
- * through a hub for reasons that have nothing to do with ownership defaults
- * (section 13 pins that gap with `it.failing`). Removing hubs here keeps these
- * tests about the one thing they are about.
+ * Deliberately hub-free. A hub curie under `endpoint-v1` is minted per ontology
+ * with nothing set-qualifying it, so two imports sharing an ontology label meet
+ * at a hub identity for reasons that have nothing to do with ownership
+ * defaults. Since AM-12 that meeting is a reported refusal rather than an
+ * annexation (section 19), and since AM-13 the wizard avoids it entirely
+ * (section 20) -- but either way it is a different question from the one this
+ * section asks, and removing hubs keeps these tests about the one thing they
+ * are about.
  */
 function flatRecipe(ontology: string, recipeId = `custom-${ontology}`): Recipe {
 	return {
@@ -2804,10 +2968,11 @@ describe('every entry that can reach a write waits for discovery first', () => {
 		// before AM-10 the same click handed the engine `undefined` and adopted.
 		const vault = await vaultWithOneSetInTheSharedRoot();
 		// A DIFFERENT ontology on purpose. Two imports sharing one ontology label
-		// share their concept curies, and the identity index `resolveWriteTarget`
-		// consults is whole-vault rather than set-scoped, so the second run would
-		// reconcile onto the first framework's notes and relocate them -- section
-		// 13's pinned gap, and nothing to do with who owns the set.
+		// share their concept curies, and this test is about WHETHER THE ENTRY
+		// WAITED for discovery -- so it must not also be about what happens when
+		// two sets claim one identity. Before AM-12 that shape silently relocated
+		// the first framework's notes; since AM-12 it is a refused run carrying
+		// errors (section 19). Either way, a different question.
 		const { flow } = makeFlow(vault.app, {
 			globalRoot: 'Second',
 			ontology: 'cis-controls-v8',
@@ -3019,5 +3184,725 @@ describe.each(['replace', 'skip'] as const)(
 				for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
 			},
 		);
+	},
+);
+
+
+// ===========================================================================
+// 19. AM-12: A WRITE NEVER CROSSES A SET BOUNDARY.
+//
+// Pass 6 made "nothing below the click can choose a SET" true. It was still
+// false of the NOTES. Write resolution ran through `buildIdentityIndex(app)`
+// with no set filter, so a run whose curies collided with another set's --
+// which `endpoint-v1` permits by construction, since two releases of one
+// framework mint the same curies -- took that set's notes as `existingFile`,
+// moved them into its own root, merged into them, and re-stamped them with its
+// own set id. The orphan pass has used the OWNED index since R3 settled
+// ownership in August; the write path predates R3 and was never brought under
+// it. These tests apply the ratified rule, they do not introduce one.
+//
+// The split is the whole design: the owned index RESOLVES, the vault-wide index
+// only DETECTS. A hit outside the owned set is reported BY NAME and the row is
+// not written -- not adopted, not moved, not re-stamped, and with no fall back
+// to `getAbstractFileByPath`. A refused row with a named owner beats an annexed
+// framework.
+//
+// Written at the ENGINE and in BOTH overwrite modes, because `skip` and
+// `replace` differ only in what happens after a target is resolved, and the
+// claim is that no target is resolved at all.
+// ===========================================================================
+
+/**
+ * Two sets under one ontology, both minted `endpoint-v1`, writing the SAME rows
+ * into two folders. Every concept curie the second run produces is already held
+ * by the first set.
+ *
+ * The second run names `importSet: 'new'` EXPLICITLY. Through the wizard AM-13
+ * would mint it set-qualified and there would be no collision to refuse, so a
+ * fixture that took that route would be testing AM-13 instead. A headless
+ * caller, an E2E harness, a saved draft from before AM-13, or any producer that
+ * emits Tier 1 directly still reaches exactly this shape -- and `endpoint-v1`
+ * stays the default precisely so those paths keep their identities.
+ */
+async function aSecondSetClaimingTheFirstIdentities(
+	overwriteMode: 'skip' | 'replace',
+	entryPoint: EntryPoint,
+) {
+	const vault = await oneFlatSetInTheSharedRoot(entryPoint);
+	const before = new Map(vault.files);
+	const [first] = await discoverImportSets(vault.app, undefined);
+	const result = await writeIntoSecond(vault, entryPoint, overwriteMode, identified(parsed()));
+	return { vault, before, first, result };
+}
+
+/** The two write loops. Both resolved through a vault-wide index before AM-12. */
+type EntryPoint = 'generateNotes' | 'generateFromRecipe';
+
+const ENTRY_POINTS: EntryPoint[] = ['generateNotes', 'generateFromRecipe'];
+
+/**
+ * The same rows carrying an explicit `id` column.
+ *
+ * The two write loops mint a curie's LOCAL PART differently: `generateNotes`
+ * uses the resolved filename stem, while `generateFromRecipe` uses
+ * `defaultCurieLocalPart`, which reads `curie` / `id` / `subject_id` / ... and
+ * falls back to `row-<n>` when it finds none of them. With only `technique_id`
+ * present the recipe path mints `attack-mini:row-1`, which collides with
+ * nothing a `generateNotes` seed wrote -- so a fixture meant to be ABOUT a
+ * collision would have run green for the want of a column. Naming the id is
+ * what lets one fixture drive both loops and mean the same thing in each.
+ */
+function identified(data: ParsedData): ParsedData {
+	return {
+		columns: [...data.columns, 'id'],
+		rows: data.rows.map((row) => ({ ...row, id: row.technique_id })),
+		rowCount: data.rowCount,
+	};
+}
+
+/** One flat, hub-free set in the shared root, written by the loop under test. */
+async function oneFlatSetInTheSharedRoot(entryPoint: EntryPoint) {
+	const vault = makeVault();
+	// Seeded through the SAME loop the act under test uses. A cross-seeded
+	// fixture would be comparing two curie conventions rather than two sets.
+	const seed = await writeInto(vault, entryPoint, SHARED_ROOT, 'replace', identified(parsed()), SOURCE_FILE);
+	if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+	if (pathsOfKind(vault.files, 'hub').length > 0) throw new Error('seed produced hubs');
+	forgetSeedWrites(vault);
+	return vault;
+}
+
+/** A second import into `Second`, through either loop, owned by nobody yet. */
+async function writeIntoSecond(
+	vault: Vault,
+	entryPoint: EntryPoint,
+	overwriteMode: 'skip' | 'replace',
+	rows: ParsedData,
+) {
+	return writeInto(vault, entryPoint, 'Second', overwriteMode, rows, 'attack-mini-2024.csv');
+}
+
+/**
+ * One flat import, through either write loop. The ownership option is `new` on
+ * the classic path and ABSENT on the recipe path, which under AM-9 are the same
+ * answer: mint, `endpoint-v1`.
+ */
+async function writeInto(
+	vault: Vault,
+	entryPoint: EntryPoint,
+	basePath: string,
+	overwriteMode: 'skip' | 'replace',
+	rows: ParsedData,
+	sourceFileName: string,
+) {
+	const recipe = flatRecipe(ONTOLOGY);
+	return entryPoint === 'generateNotes'
+		? generateNotes(vault.app, rows, CONFIG, {
+			...options(basePath, overwriteMode, { recipeOverride: recipe, importSet: 'new' }),
+			sourceFileName,
+		})
+		: generateFromRecipe(vault.app, rows, recipe, {
+			basePath, overwriteMode, createFolders: true, sourceFileName,
+		});
+}
+
+/** The message a refused row reports, anchored so one curie cannot match another. */
+function collisionsNaming(result: GenerationResult, curie: string): string[] {
+	return result.errors
+		.map((e) => e.message)
+		.filter((m) => m.startsWith(`Cross-set identity collision: ${curie} is claimed by `));
+}
+
+describe.each(['replace', 'skip'] as const)(
+	'a run whose concept identities another set already holds (overwriteMode %s)',
+	(overwriteMode) => {
+		it.each(ENTRY_POINTS)('reports every one of them by curie, owning set, and file (%s)', async (entryPoint) => {
+			// "Something is in the way" is not something a user can act on. The
+			// message has to name the identity, who holds it, and where it lives.
+			const { before, first, result } = await aSecondSetClaimingTheFirstIdentities(overwriteMode, entryPoint);
+			// The identities are read back off the seeded vault, never rebuilt from
+			// a literal: what the seed actually wrote is the fact under test.
+			expect(before.size).toBe(ROWS.length);
+			expect(result.errors).toHaveLength(ROWS.length);
+			for (const [path, text] of before) {
+				const named = collisionsNaming(result, String(frontmatterOf(text).curie));
+				expect(named).toHaveLength(1);
+				expect(named[0]).toContain(`import set ${first.id}`);
+				expect(named[0]).toContain(path);
+				expect(named[0]).toContain('Nothing was written for it.');
+			}
+		});
+
+		it.each(ENTRY_POINTS)('writes nothing for them: no note, no merge, no rename (%s)', async (entryPoint) => {
+			const { vault, before, result } = await aSecondSetClaimingTheFirstIdentities(overwriteMode, entryPoint);
+			expect(result.created).toEqual([]);
+			expect(result.skipped).toEqual([]);
+			expect(result.moved ?? []).toEqual([]);
+			expect(vault.create).not.toHaveBeenCalled();
+			expect(vault.modify).not.toHaveBeenCalled();
+			expect(vault.rename).not.toHaveBeenCalled();
+			expect([...vault.files.keys()].sort()).toEqual([...before.keys()].sort());
+		});
+
+		it.each(ENTRY_POINTS)('leaves the first set notes byte for byte, still stamped with its own id (%s)', async (entryPoint) => {
+			// Not moved, not merged, not re-stamped -- the three things adoption did.
+			const { vault, before, first } = await aSecondSetClaimingTheFirstIdentities(overwriteMode, entryPoint);
+			for (const [path, text] of before) {
+				expect(vault.files.get(path)).toBe(text);
+				expect(setIdOf(text)).toBe(first.id);
+			}
+		});
+
+		it.each(ENTRY_POINTS)('leaves the vault holding one set, because a refused run writes no member (%s)', async (entryPoint) => {
+			// The engine mints an id for the refused run (AM-9), and an id nothing
+			// was stamped with is not a set. A second set appearing here would mean
+			// something was written after all.
+			const { vault, first } = await aSecondSetClaimingTheFirstIdentities(overwriteMode, entryPoint);
+			const sets = await discoverImportSets(vault.app, undefined);
+			expect(sets).toHaveLength(1);
+			expect(sets[0].id).toBe(first.id);
+		});
+
+		it.each(ENTRY_POINTS)('does not claim the orphan question was answered on a run that refused rows (%s)', async (entryPoint) => {
+			// AM-7 meeting AM-12: a refused row is a row this run did not vouch for,
+			// so it cannot also say the framework is intact.
+			const { result } = await aSecondSetClaimingTheFirstIdentities(overwriteMode, entryPoint);
+			expect(result.orphansChecked).toBe(false);
+			expect(result.orphans).toBeUndefined();
+		});
+
+		it.each(ENTRY_POINTS)('writes normally into the same vault when the identities do NOT collide (%s)', async (entryPoint) => {
+			// The control. Without it every assertion above is satisfied by a build
+			// that simply refuses everything, and the product would be worse, not
+			// safer. Same vault, same folder, same ontology, different ids.
+			const vault = await oneFlatSetInTheSharedRoot(entryPoint);
+			const before = new Map(vault.files);
+			const result = await writeIntoSecond(vault, entryPoint, overwriteMode, identified(disjointRows('CIS')));
+			expect(result.errors).toEqual([]);
+			expect(result.created).toHaveLength(ROWS.length);
+			expect(await discoverImportSets(vault.app, undefined)).toHaveLength(2);
+			for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+		});
+	},
+);
+
+/**
+ * The same rule for HUBS, isolated.
+ *
+ * Two imports under one ontology whose rows are disjoint on both axes, so the
+ * only identity they share is the one the recipe mints unconditionally:
+ * `<ontology>:hub/_root`. That is the exact state that produced this file's
+ * long-standing `it.failing` -- a brand-new set, nobody clicked anything, and
+ * the first import's root hub was renamed into the second import's folder and
+ * re-stamped into its set.
+ */
+async function aSecondSetClaimingTheFirstRootHub(overwriteMode: 'skip' | 'replace', entryPoint: EntryPoint) {
+	const vault = makeVault();
+	const seed = await writeWithHubs(vault, entryPoint, 'Frameworks/first', 'replace', identified(parsed()), 'first.csv');
+	if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+	forgetSeedWrites(vault);
+	const before = new Map(vault.files);
+	const rootCurie = `${ONTOLOGY}:hub/_root`;
+	const held = [...before].find(([, text]) => frontmatterOf(text).curie === rootCurie);
+	if (!held) throw new Error(`seed produced no ${rootCurie}`);
+	const [first] = await discoverImportSets(vault.app, undefined);
+	const result = await writeWithHubs(
+		vault, entryPoint, 'Frameworks/second', overwriteMode, identified(disjointRows('SECOND')), 'second.csv',
+	);
+	return { vault, before, first, result, rootCurie, heldAt: held[0], heldText: held[1] };
+}
+
+/**
+ * One import of the hub-bearing `RECIPE` layout, through either write loop.
+ * Both loops run the SAME enrichment pass, and each hands it its own pair of
+ * indexes -- so both call sites have to be held to the rule, and only a fixture
+ * that goes through each of them can say so.
+ */
+async function writeWithHubs(
+	vault: Vault,
+	entryPoint: EntryPoint,
+	basePath: string,
+	overwriteMode: 'skip' | 'replace',
+	rows: ParsedData,
+	sourceFileName: string,
+) {
+	return entryPoint === 'generateNotes'
+		? generateNotes(vault.app, rows, CONFIG, {
+			...options(basePath, overwriteMode, { importSet: 'new' }),
+			sourceFileName,
+		})
+		: generateFromRecipe(vault.app, rows, RECIPE, {
+			basePath, overwriteMode, createFolders: true, sourceFileName,
+		});
+}
+
+describe.each(['replace', 'skip'] as const)(
+	'a run whose HUB identity another set already holds (overwriteMode %s)',
+	(overwriteMode) => {
+		it.each(ENTRY_POINTS)('refuses the hub, naming the set that holds it and the file it lives in (%s)', async (entryPoint) => {
+			const { first, result, rootCurie, heldAt } = await aSecondSetClaimingTheFirstRootHub(overwriteMode, entryPoint);
+			const named = collisionsNaming(result, rootCurie);
+			expect(named).toHaveLength(1);
+			expect(named[0]).toContain(`import set ${first.id}`);
+			expect(named[0]).toContain(heldAt);
+		});
+
+		it.each(ENTRY_POINTS)('leaves that hub exactly where it was, in the set that owns it (%s)', async (entryPoint) => {
+			const { vault, first, result, heldAt, heldText } = await aSecondSetClaimingTheFirstRootHub(overwriteMode, entryPoint);
+			expect(vault.files.get(heldAt)).toBe(heldText);
+			expect(setIdOf(vault.files.get(heldAt)!)).toBe(first.id);
+			expect(result.moved ?? []).toEqual([]);
+			expect(vault.rename).not.toHaveBeenCalled();
+		});
+
+		it.each(ENTRY_POINTS)('still writes its own rows, so the refusal is surgical rather than a stop (%s)', async (entryPoint) => {
+			// A refusal that took the whole import down with it would be a different
+			// product defect. Only the colliding identity is dropped.
+			const { vault, result } = await aSecondSetClaimingTheFirstRootHub(overwriteMode, entryPoint);
+			expect(result.created.length).toBeGreaterThanOrEqual(ROWS.length);
+			for (const path of result.created) expect(path.startsWith('Frameworks/second/')).toBe(true);
+			expect(curiesUnder(vault.files, 'Frameworks/second').length).toBeGreaterThanOrEqual(ROWS.length);
+		});
+
+		it.each(ENTRY_POINTS)('leaves no two files claiming one identity, and no second root hub (%s)', async (entryPoint) => {
+			const { vault, rootCurie } = await aSecondSetClaimingTheFirstRootHub(overwriteMode, entryPoint);
+			expect(duplicateCuries(vault.files)).toEqual([]);
+			expect(curiesUnder(vault.files, 'Frameworks/second')).not.toContain(rootCurie);
+		});
+	},
+);
+
+/** Six rows with ids nothing else uses, all filed under one named tactic. */
+function disjointRowsInTactic(prefix: string, tactic: string): ParsedData {
+	return {
+		columns: [...COLUMNS],
+		rows: ROWS.map((row, i) => ({ ...row, technique_id: `${prefix}-${i}`, tactic })),
+		rowCount: ROWS.length,
+	};
+}
+
+describe.each(['replace', 'skip'] as const)(
+	'a hub another set holds only under its legacy address alias (overwriteMode %s)',
+	(overwriteMode) => {
+		/**
+		 * A hub resolves through its own curie OR through an address-derived legacy
+		 * alias (A-5's F-5), so BOTH have to be checked: adopting a note via the
+		 * alias crosses the same boundary as adopting it directly, and the alias is
+		 * the half a curie-only check would miss.
+		 *
+		 * The only fixture in this file where two sets share one ROOT, because that
+		 * is what makes the address-derived aliases line up. `seedPreFixVault`
+		 * rewrites the first set's hub curies into the absolute form, so its hubs
+		 * hold ONLY the alias -- the second set's primary hub curies collide with
+		 * nothing, and the alias is the whole of what is at stake.
+		 */
+		async function aSecondSetUnderOneRoot() {
+			const vault = await seedPreFixVault();
+			forgetSeedWrites(vault);
+			const before = new Map(vault.files);
+			const [first] = await discoverImportSets(vault.app, undefined);
+			const result = await generateNotes(vault.app, disjointRowsInTactic('SECOND', 'Persistence'), CONFIG, {
+				...options(SHARED_ROOT, overwriteMode, { importSet: 'new' }),
+				sourceFileName: 'second.csv',
+			});
+			return { vault, before, first, result };
+		}
+
+		it('refuses it by the alias, naming the set that holds it', async () => {
+			const { first, result } = await aSecondSetUnderOneRoot();
+			const alias = `${ONTOLOGY}:hub/ontologies/persistence`;
+			const named = collisionsNaming(result, alias);
+			expect(named).toHaveLength(1);
+			expect(named[0]).toContain(`import set ${first.id}`);
+			expect(named[0]).toContain(HUB_WITH_PROSE);
+		});
+
+		it('leaves every hub of the first set byte for byte, prose and all', async () => {
+			// Without the alias check the second set writes its own Persistence hub
+			// straight over this file, at the address the first set already occupies.
+			const { vault, before, first } = await aSecondSetUnderOneRoot();
+			for (const [path, text] of before) {
+				if (frontmatterOf(text).kind !== 'hub') continue;
+				expect(vault.files.get(path)).toBe(text);
+				expect(setIdOf(text)).toBe(first.id);
+			}
+			expect(vault.rename).not.toHaveBeenCalled();
+			expect(duplicateCuries(vault.files)).toEqual([]);
+		});
+	},
+);
+
+describe('an identity held by a note from before import sets existed', () => {
+	/**
+	 * A null owner is a real and different case, not a missing string. Naming a
+	 * fabricated set there would point the user at something they cannot find,
+	 * and the action that resolves it is a different action.
+	 */
+	async function aSecondSetCollidingWithUnownedNotes() {
+		const vault = await vaultWithOneSetInTheSharedRoot();
+		deMigrateImportSetStamp(vault.files);
+		expect(await discoverImportSets(vault.app, undefined)).toEqual([]);
+		const before = new Map(vault.files);
+		const result = await generateNotes(vault.app, parsed(), CONFIG, {
+			...options('Second', 'replace', { recipeOverride: flatRecipe(ONTOLOGY), importSet: 'new' }),
+			sourceFileName: 'attack-mini-2024.csv',
+		});
+		return { vault, before, result };
+	}
+
+	it('names the file and an action, never a set id that does not exist', async () => {
+		const { result } = await aSecondSetCollidingWithUnownedNotes();
+		expect(result.errors).toHaveLength(ROWS.length);
+		for (const row of ROWS) {
+			const named = collisionsNaming(result, `${ONTOLOGY}:${row.technique_id}`);
+			expect(named).toHaveLength(1);
+			expect(named[0]).toContain('a note from an earlier import that carries no import set');
+			expect(named[0]).toContain('Move or delete that note');
+			// Not "import set undefined", and not the owned-set wording either: the
+			// action that resolves an unowned collision is a different action.
+			expect(named[0]).not.toContain('claimed by import set');
+			expect(named[0]).not.toContain('Refresh that set instead');
+		}
+	});
+
+	it('adopts none of them, which is what an unowned note is most at risk of', async () => {
+		const { vault, before } = await aSecondSetCollidingWithUnownedNotes();
+		for (const [path, text] of before) expect(vault.files.get(path)).toBe(text);
+		expect(vault.rename).not.toHaveBeenCalled();
+		expect(await discoverImportSets(vault.app, undefined)).toEqual([]);
+	});
+});
+
+// ===========================================================================
+// 20. AM-13: A NEW SET THAT WOULD COLLIDE MINTS SET-QUALIFIED.
+//
+// AM-12 refuses a colliding write. Refusing is the right answer to an accident
+// and the wrong answer to the ordinary case: a second RELEASE of one framework
+// legitimately mints the same curies as the first, and a product that answers
+// that with one refusal per row has not delivered release isolation, it has
+// blocked it. The crosswalk modal already minted `set-qualified-v1` when other
+// releases existed; the wizard now does the same, so two releases occupy
+// different identity spaces BY CONSTRUCTION and AM-12's report stays rare.
+//
+// The qualification lands on the PREFIX, not on the leaf, because enrichment
+// builds hub and facet curies out of the prefix alone. A leaf-only rule would
+// leave every hub colliding and make AM-12's refusal routine, which is the
+// opposite of what AM-13 is for -- section 19's hub tests are what that would
+// look like on every import.
+//
+// `endpoint-v1` stays the default whenever nothing collides, so every
+// pre-existing import path keeps the identities it already wrote.
+// ===========================================================================
+
+describe('what a new set mints, given what the vault already holds', () => {
+	/** One framework already in the vault, under its own ontology and root. */
+	async function seedFramework(vault: Vault, ontology: string, root: string, importSet: ImportSetOption = 'new') {
+		const recipe: Recipe = {
+			...RECIPE,
+			recipe: `custom-${ontology}`,
+			source: { ontology, levels: ['tactic', 'leaf'] },
+		};
+		const seed = await generateNotes(vault.app, parsed(), CONFIG, {
+			...options(root, 'replace', { recipeOverride: recipe, importSet }),
+			sourceFileName: `${ontology}.csv`,
+		});
+		if (seed.errors.length > 0) throw new Error(`seed failed: ${JSON.stringify(seed.errors)}`);
+	}
+
+	it('mints the plain endpoint form into an empty vault', async () => {
+		const vault = makeVault();
+		const { flow } = await askWhereItLands(vault.app);
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+
+	it('mints the plain endpoint form when nothing in the vault shares this curie space', async () => {
+		// The control that keeps AM-13 from being "always qualify", which would
+		// rename the identities of every import path that already exists.
+		const vault = makeVault();
+		await seedFramework(vault, 'cis-controls-v8', 'Ontologies/cis-controls-v8');
+		const { flow } = await askWhereItLands(vault.app);
+		expect((inner(flow).discoveredSets ?? [])).toHaveLength(1);
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+
+	it('mints set-qualified when an existing set already occupies it', async () => {
+		const vault = makeVault();
+		await seedFramework(vault, ONTOLOGY, 'Ontologies/attack-mini-2023');
+		const { flow } = await askWhereItLands(vault.app);
+		expect(inner(flow).importSetChoice).toBeNull();
+		expect(inner(flow).selectedImportSet()).toBe('new-set-qualified');
+	});
+
+	it('reads the prefixes the notes carry, not the ontology the set is pinned to', async () => {
+		// A set already minted set-qualified carries the UNQUALIFIED ontology as
+		// its pin and the QUALIFIED prefix on every note. Its curie space is
+		// `<ontology>-<set id>`, which a plain `<ontology>` import does not enter,
+		// so there is nothing to qualify away from. Comparing against the pin
+		// instead would qualify every subsequent import of that framework for ever.
+		const vault = makeVault();
+		await seedFramework(vault, ONTOLOGY, 'Ontologies/attack-mini-2023', 'new-set-qualified');
+		const [set] = await discoverImportSets(vault.app, undefined);
+
+		expect(set.scheme).toBe('set-qualified-v1');
+		expect(set.ontology).toBe(ONTOLOGY);
+		expect(set.ontologyPrefixes).toEqual([`${ONTOLOGY}-${set.id}`]);
+
+		const { flow } = await askWhereItLands(vault.app);
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+
+	it('still offers that set as a refresh, which a prefix-only comparison would lose', async () => {
+		// AM-5's offer compares the source's bare ontology against the set. Once
+		// AM-13 qualifies a set's PREFIXES, the pin is the only place the bare
+		// ontology survives -- so a set stops being offerable the moment it becomes
+		// the thing AM-13 exists to create, unless the pin counts too.
+		const vault = makeVault();
+		await seedFramework(vault, ONTOLOGY, 'Ontologies/attack-mini-2023', 'new-set-qualified');
+		const [set] = await discoverImportSets(vault.app, undefined);
+		const { flow } = await askWhereItLands(vault.app);
+		expect(inner(flow).offeredRefreshSet(inner(flow).discoveredSets ?? [])?.id).toBe(set.id);
+	});
+
+	it('refreshes a set-qualified set with no ontology pin without renaming a thing', async () => {
+		// AM-6 meeting AM-13. A set-qualified set carrying no pin recovers its
+		// ontology from the prefix its own notes show -- and that prefix is ALREADY
+		// qualified. Appending the set id a second time there renames every note
+		// the set owns, which is the exact failure AM-6 exists to prevent, so the
+		// qualification has to be idempotent.
+		const vault = makeVault();
+		await seedFramework(vault, ONTOLOGY, 'Ontologies/attack-mini-2023', 'new-set-qualified');
+		deMigrateOntologyPin(vault.files);
+		const [set] = await discoverImportSets(vault.app, undefined);
+		expect(set.scheme).toBe('set-qualified-v1');
+		expect(set.ontology).toBeUndefined();
+		const before = new Map(vault.files);
+
+		const result = await generateNotes(vault.app, parsed(), CONFIG, {
+			...options('Ontologies/attack-mini-2023', 'replace', {
+				recipeOverride: {
+					...RECIPE,
+					recipe: `custom-${ONTOLOGY}`,
+					source: { ontology: ONTOLOGY, levels: ['tactic', 'leaf'] },
+				},
+				importSet: { id: set.id, scheme: set.scheme },
+			}),
+			sourceFileName: `${ONTOLOGY}.csv`,
+		});
+
+		expect(result.errors).toEqual([]);
+		expect(result.moved ?? []).toEqual([]);
+		expect(result.orphans ?? []).toEqual([]);
+		expect(curiesUnder(vault.files, 'Ontologies/attack-mini-2023'))
+			.toEqual(curiesUnder(before, 'Ontologies/attack-mini-2023'));
+		expect(duplicateCuries(vault.files)).toEqual([]);
+	});
+
+	it('never qualifies away from a placeholder, which is not a fact about anything', async () => {
+		// `unknown` is stamped on every nameless classic import ever run. Treating
+		// it as an occupied curie space would set-qualify every classic import in
+		// every vault that holds one, which is a rename of the whole identity
+		// layer triggered by a sentinel.
+		const vault = makeVault();
+		await generateNotes(vault.app, parsed(), CONFIG, {
+			basePath: SHARED_ROOT, overwriteMode: 'replace', createFolders: true, importSet: 'new',
+		});
+		const { flow } = await classicReview(vault.app, { sourceFileName: `${LEGACY_ONTOLOGY_SENTINEL}.csv` });
+		expect((inner(flow).discoveredSets ?? [])[0].ontologyPrefixes).toEqual([LEGACY_ONTOLOGY_SENTINEL]);
+		expect(inner(flow).sourceIdentityKeys().ontologyPrefix).toBe(LEGACY_ONTOLOGY_SENTINEL);
+		expect(inner(flow).selectedImportSet()).toBe('new');
+	});
+});
+
+describe.each(['replace', 'skip'] as const)(
+	'two releases of one framework in one vault (overwriteMode %s)',
+	(overwriteMode) => {
+		/**
+		 * The same source file, imported twice into two folders, end to end through
+		 * the wizard with NOBODY clicking anything on the second run. Same file name
+		 * is the point: it is what makes the two share an ontology, which is what
+		 * makes them two releases of one framework rather than two frameworks.
+		 */
+		async function importTwoReleases() {
+			const vault = makeVault();
+			await wizardImport(vault.app, { destination: 'Ontologies/attack-mini-2023' });
+			forgetSeedWrites(vault);
+			const before = new Map(vault.files);
+			const [first] = await discoverImportSets(vault.app, undefined);
+			notices.length = 0;
+			const second = await wizardImport(vault.app, {
+				destination: 'Ontologies/attack-mini-2024',
+				overwriteMode,
+			});
+			const sets = await discoverImportSets(vault.app, undefined);
+			const latest = sets.find((set) => set.id !== first.id)!;
+			return { vault, before, first, second, sets, latest };
+		}
+
+		it('mints a set-qualified second set without anyone choosing one', async () => {
+			const { second, sets, latest } = await importTwoReleases();
+			expect(second.choice).toBeNull();
+			expect(second.resolved).toBe('new-set-qualified');
+			expect(sets).toHaveLength(2);
+			expect(latest.scheme).toBe('set-qualified-v1');
+			expect(latest.id).toMatch(/^iset-[a-z0-9]{6}$/);
+		});
+
+		it('qualifies the PREFIX, so hubs land in the same identity space as concepts', async () => {
+			// The clause a leaf-only rule fails. Enrichment derives hub curies from
+			// the prefix alone; qualify only the leaf and every hub still collides.
+			const { vault, latest } = await importTwoReleases();
+			const curies = curiesUnder(vault.files, 'Ontologies/attack-mini-2024');
+			expect(curies.length).toBeGreaterThan(ROWS.length);
+			for (const curie of curies) expect(curie.startsWith(`${ONTOLOGY}-${latest.id}:`)).toBe(true);
+			expect(curies.some((curie) => curie.includes(':hub/'))).toBe(true);
+		});
+
+		it('touches zero notes of the first release', async () => {
+			const { vault, before, first } = await importTwoReleases();
+			for (const [path, text] of before) {
+				expect(vault.files.get(path)).toBe(text);
+				expect(setIdOf(text)).toBe(first.id);
+			}
+			expect(vault.rename).not.toHaveBeenCalled();
+		});
+
+		it('orphans none of them, and says so to the user', async () => {
+			// The notice rather than the result object: this is the run that closes
+			// the wizard, so the notice is the only place the user ever sees it.
+			await importTwoReleases();
+			expect(noticeText()).toContain('Nothing moved.');
+			expect(noticeText()).toContain('No orphans.');
+			expect(noticeText()).not.toContain('Orphans not checked.');
+			expect(noticeText()).not.toContain('finished with');
+			expect(noticeText()).not.toContain('Cross-set identity collision');
+		});
+
+		it('leaves no two files claiming one identity', async () => {
+			const { vault } = await importTwoReleases();
+			expect(duplicateCuries(vault.files)).toEqual([]);
+		});
+	},
+);
+
+// ===========================================================================
+// 21. A-8, FINAL SENTENCE, ONE LEVEL DOWN.
+//
+// "Nothing below the click can choose a set, AND NOTHING BELOW THE SET CAN
+// CHOOSE A NOTE. Every write lands inside the owned set or is reported. A
+// second import of a colliding source, any path, no click: new set-qualified
+// set, zero foreign notes touched, zero foreign orphans."
+//
+// Section 16 proved the first half at the engine boundary. Section 19 and 20
+// prove the two mechanisms of the second half in isolation. This section is the
+// criterion itself: the pass-4 escape routes replayed at the NOTE level, in
+// both overwrite modes, driven end to end through a real wizard with the
+// ownership review left untouched.
+//
+// Section 13 shows those routes landing as separate SETS. That was never the
+// whole claim: a separate set that annexes the other set's root hub has
+// isolated the ownership record and nothing else.
+// ===========================================================================
+
+describe.each(['replace', 'skip'] as const)(
+	'a second import of a colliding source, with no click (overwriteMode %s)',
+	(overwriteMode) => {
+		/** Everything a run must be able to say about the framework it did not touch. */
+		function expectForeignVaultUntouched(vault: Vault, before: Map<string, string>, ownerId: string) {
+			for (const [path, text] of before) {
+				expect(vault.files.get(path)).toBe(text);
+				expect(setIdOf(text)).toBe(ownerId);
+			}
+			expect(vault.rename).not.toHaveBeenCalled();
+			expect(duplicateCuries(vault.files)).toEqual([]);
+			expect(noticeText()).toContain('Nothing moved.');
+			expect(noticeText()).toContain('No orphans.');
+			expect(noticeText()).not.toContain('finished with');
+			expect(noticeText()).not.toContain('Cross-set identity collision');
+		}
+
+		it('two crosswalk exports under the shared xwalk label keep their own root hubs', async () => {
+			// The route that produced this file's `it.failing` for three passes. One
+			// generic recipe backs every crosswalk, so two unrelated exports carry
+			// one ontology label and therefore one root-hub identity.
+			const vault = makeVault();
+			await wizardImport(vault.app, {
+				globalRoot: 'Crosswalks', sourceFileName: 'csf-to-iso.csv', ontology: 'xwalk',
+				data: disjointRows('CSF'),
+			});
+			forgetSeedWrites(vault);
+			const before = new Map(vault.files);
+			const [firstSet] = await discoverImportSets(vault.app, undefined);
+			notices.length = 0;
+
+			const second = await wizardImport(vault.app, {
+				globalRoot: 'Crosswalks', sourceFileName: 'cis-to-nist.csv', ontology: 'xwalk',
+				data: disjointRows('XW'), overwriteMode,
+			});
+
+			expect(second.choice).toBeNull();
+			expect(second.resolved).toBe('new-set-qualified');
+			expect(second.destination).toBe('Crosswalks/cis-to-nist');
+			expectForeignVaultUntouched(vault, before, firstSet.id);
+
+			// Both root hubs exist, in different identity spaces. Before AM-13 there
+			// was one, and it had been moved into the second import's folder.
+			const [latest] = (await discoverImportSets(vault.app, undefined)).filter((set) => set.id !== firstSet.id);
+			expect(curiesUnder(vault.files, 'Crosswalks/csf-to-iso')).toContain('xwalk:hub/_root');
+			expect(curiesUnder(vault.files, 'Crosswalks/cis-to-nist')).toContain(`xwalk-${latest.id}:hub/_root`);
+		});
+
+		it('two vendor exports both named controls.csv keep their own notes', async () => {
+			// The classic path derives its ontology from the file stem, and a stem is
+			// not an owner: `controls.csv` is what half the GRC world exports.
+			const vault = makeVault();
+			await classicImport(vault.app, { sourceFileName: 'controls.csv' });
+			forgetSeedWrites(vault);
+			const before = new Map(vault.files);
+			const [firstSet] = await discoverImportSets(vault.app, undefined);
+			notices.length = 0;
+
+			const second = await classicImport(vault.app, {
+				sourceFileName: 'controls.csv',
+				globalRoot: 'Vendor B',
+				data: disjointRows('VB'),
+				overwriteMode,
+			});
+
+			expect(second.choice).toBeNull();
+			expect(second.resolved).toBe('new-set-qualified');
+			expectForeignVaultUntouched(vault, before, firstSet.id);
+			const [latest] = (await discoverImportSets(vault.app, undefined)).filter((set) => set.id !== firstSet.id);
+			for (const curie of curiesUnder(vault.files, 'Vendor B/controls')) {
+				expect(curie.startsWith(`controls-${latest.id}:`)).toBe(true);
+			}
+		});
+
+		it('one saved config re-applied to two frameworks keeps both on endpoint identities', async () => {
+			// The third route, and the one AM-13 must NOT qualify: a shared recipe id
+			// is not a shared curie space, so there is nothing to move away from and
+			// the second framework keeps the plain identities its ontology implies.
+			const vault = makeVault();
+			const CONFIG_ID = 'cfg-shared-mapping';
+			await classicImport(vault.app, { sourceFileName: 'attack-mini.csv', appliedConfigId: CONFIG_ID });
+			forgetSeedWrites(vault);
+			const before = new Map(vault.files);
+			const [firstSet] = await discoverImportSets(vault.app, undefined);
+			notices.length = 0;
+
+			const second = await classicImport(vault.app, {
+				sourceFileName: 'cis-controls-v8.csv',
+				data: disjointRows('CIS'),
+				appliedConfigId: CONFIG_ID,
+				overwriteMode,
+			});
+
+			expect(second.choice).toBeNull();
+			expect(second.resolved).toBe('new');
+			expect((await discoverImportSets(vault.app, undefined)).every((set) => set.recipeIds.includes(CONFIG_ID))).toBe(true);
+			expectForeignVaultUntouched(vault, before, firstSet.id);
+			for (const curie of curiesUnder(vault.files, 'Ontologies/cis-controls-v8')) {
+				expect(curie.startsWith('cis-controls-v8:')).toBe(true);
+			}
+		});
 	},
 );

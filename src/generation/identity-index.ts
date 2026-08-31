@@ -35,6 +35,16 @@ export interface IdentityCollision {
 export interface IdentityIndex {
 	/** The note currently holding this curie, or null if the vault has none. */
 	get(curie: string): TFile | null;
+	/**
+	 * The import set that owns the note holding this curie, or null when the vault
+	 * has no such note or the note carries no import-set stamp.
+	 *
+	 * AM-12 (2026-08-30). A vault-wide index is used for DETECTION: a run must be
+	 * able to say WHO already claims an identity before it decides not to write it.
+	 * Naming the owning set is what turns a refused row from "something is in the
+	 * way" into an error a user can act on.
+	 */
+	owner(curie: string): string | null;
 	/** Every curie the index holds — the vault side of a reconciliation. */
 	curies(): string[];
 	/** Curies held by more than one note. Non-empty means the vault is ambiguous. */
@@ -95,6 +105,7 @@ async function readRawFrontmatter(app: App, file: TFile): Promise<Record<string,
  */
 export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOptions = {}): Promise<IdentityIndex> {
 	const byCurie = new Map<string, TFile>();
+	const ownerByCurie = new Map<string, string>();
 	const claims = new Map<string, string[]>();
 
 	for (const file of app.vault.getMarkdownFiles()) {
@@ -113,12 +124,16 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 		const provenance = (fm as Record<string, unknown>)._crosswalker;
 		if (!provenance || typeof provenance !== 'object') continue;
 
+		// Read once, whether or not this build filters on it: `owner()` reports it
+		// for every indexed curie, and a second read of the same block would be a
+		// second place for the shape of the provenance to be assumed.
+		const importSetBlock = (provenance as Record<string, unknown>).import_set;
+		const importSetId = importSetBlock && typeof importSetBlock === 'object'
+			? readString((importSetBlock as Record<string, unknown>).id)
+			: null;
+
 		if (options.importSetId !== undefined) {
-			const importSet = (provenance as Record<string, unknown>).import_set;
-			const id = importSet && typeof importSet === 'object'
-				? readString((importSet as Record<string, unknown>).id)
-				: null;
-			if (id !== options.importSetId) continue;
+			if (importSetId !== options.importSetId) continue;
 		} else if (options.recipeId !== undefined) {
 			const recipe = (provenance as Record<string, unknown>).recipe;
 			const id = recipe && typeof recipe === 'object'
@@ -136,6 +151,9 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 		} else {
 			claims.set(curie, [file.path]);
 			byCurie.set(curie, file);
+			// The FIRST claimant, matching `get()`. A collision is reported rather
+			// than arbitrated, so the two stay consistent with each other.
+			if (importSetId) ownerByCurie.set(curie, importSetId);
 		}
 	}
 
@@ -147,6 +165,7 @@ export async function buildIdentityIndex(app: App, options: BuildIdentityIndexOp
 
 	return {
 		get: (curie: string) => byCurie.get(curie) ?? null,
+		owner: (curie: string) => ownerByCurie.get(curie) ?? null,
 		curies: () => [...byCurie.keys()],
 		collisions,
 		size: byCurie.size,

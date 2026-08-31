@@ -1959,7 +1959,11 @@ export class ImportFlow {
 			// recipeOverride and stamps the recipe's own id; a classic import stamps
 			// the applied config's id when it has one.
 			const recipeId = workbenchMode ? recipe.recipe : (this.appliedConfig?.id ?? recipe.recipe);
-			// Mirrors generateNotes' `ontologyId` + `curiePrefix`.
+			// Mirrors generateNotes' `ontologyId`, slugified the same way. Deliberately
+			// the UNQUALIFIED prefix: AM-13's set-qualified form depends on a set id
+			// that does not exist yet at this point, and both readers below want the
+			// bare ontology - the offer compares it against a set's pin, and the
+			// collision test asks whether that bare space is already occupied.
 			const ontologyId = recipe.source?.ontology ?? config.name ?? LEGACY_ONTOLOGY_SENTINEL;
 			return {
 				recipeId: recipeId ?? null,
@@ -1989,7 +1993,14 @@ export class ImportFlow {
 	private offeredRefreshSet(sets: readonly DiscoveredImportSet[]): DiscoveredImportSet | null {
 		const prefix = this.sourceIdentityKeys().ontologyPrefix;
 		if (prefix === null || ImportFlow.isIdentitySentinel(prefix)) return null;
-		const candidates = sets.filter((set) => set.ontologyPrefixes.includes(prefix));
+		// The pinned ontology counts as well as the stamped curie prefixes. A set
+		// minted set-qualified (AM-13) writes `<ontology>-<set id>` prefixes, so a
+		// prefix-only comparison would stop offering it the moment it became the
+		// thing AM-13 exists to create. The pin is the unqualified ontology, which
+		// is exactly what this source proposes.
+		const candidates = sets.filter((set) =>
+			set.ontologyPrefixes.includes(prefix)
+			|| (set.ontology !== undefined && slugifyForCurie(set.ontology) === prefix));
 		return candidates.length === 1 ? candidates[0] : null;
 	}
 
@@ -2289,7 +2300,39 @@ export class ImportFlow {
 		// `undefined` as "adopt whatever shares the destination folder". Saying
 		// `new` out loud is the whole point of the rule, so nothing below the click
 		// is left with a decision to make.
-		return 'new';
+		//
+		// AM-13. WHICH new set, though, is decided by whether its identities would
+		// collide. Same rule the crosswalk modal has always had, now on this
+		// surface too: a new set whose curie space overlaps an existing set's mints
+		// set-qualified identities, so the two releases coexist by construction
+		// instead of meeting as an AM-12 collision on every row. `endpoint-v1`
+		// stays the answer when nothing collides, so every pre-existing import path
+		// keeps the identities it already wrote.
+		return this.newSetCollidesWithExistingIdentities() ? 'new-set-qualified' : 'new';
+	}
+
+	/**
+	 * AM-13. Would a new set minted for this source write curies into a space an
+	 * existing set already occupies?
+	 *
+	 * The signal is a shared REAL ontology prefix. The prefix is the whole left
+	 * half of every curie this source produces, and discovery already carries the
+	 * prefixes every existing set's notes actually show, so this compares stamped
+	 * fact against stamped fact rather than guessing. A sentinel prefix is not a
+	 * fact about anything (it is what a nameless classic import stamps), so it
+	 * signals nothing; an unbuildable source has no prefix and signals nothing
+	 * either, and both degrade to the plain default.
+	 *
+	 * Deliberately compares against `ontologyPrefixes` (what the notes hold) and
+	 * NOT against a set's pinned `ontology`: a set already minted set-qualified
+	 * carries the unqualified ontology as its pin while its notes carry the
+	 * qualified prefix, and it is the notes that decide whether a space is taken.
+	 */
+	private newSetCollidesWithExistingIdentities(): boolean {
+		if (this.discoveredSets === null) return false;
+		const prefix = this.sourceIdentityKeys().ontologyPrefix;
+		if (prefix === null || ImportFlow.isIdentitySentinel(prefix)) return false;
+		return this.discoveredSets.some((set) => set.ontologyPrefixes.includes(prefix));
 	}
 
 	private validateImportSetSelection(): boolean {
@@ -4030,7 +4073,12 @@ export class ImportFlow {
 		// is the whole point: the user must know the question was not answered.
 		if (result.orphansChecked === false) {
 			summary.createEl('p', {
-				text: '🕳️ Orphans: not checked. This run could not confirm it read the whole source, so it cannot say whether any notes are missing.',
+				// No leading icon here, unlike its siblings. `obsidianmd/ui/sentence-case`
+				// lowercases the first word of any literal that starts with anything
+				// non-alphabetic, so an emoji in front of `Orphans` fails the gate; the
+				// sibling lines are template literals, which the rule never inspects.
+				// The words are what carry the meaning, so the icon is what gives way.
+				text: 'Orphans: not checked. This run could not confirm it read the whole source, so it cannot say whether any notes are missing.',
 			});
 		} else if (orphans.length > 0) {
 			summary.createEl('p', {

@@ -150,7 +150,13 @@ async function importInto(
 	data: ParsedData,
 	recipe: Recipe,
 	opts: Parameters<typeof generateFromRecipe>[3] = OPTS,
-	ownership?: 'new',
+	/**
+	 * AM-13: `'new-set-qualified'` as well as `'new'`. A second import that mints
+	 * the SAME curies as the first (same ontology, same rows, different recipe)
+	 * needs its own identity space, or AM-12 refuses every row of it and nothing
+	 * is written for the caller to inspect.
+	 */
+	ownership?: ImportSetOption,
 ) {
 	const [existing] = await discoverImportSets(app, undefined);
 	const importSet: ImportSetOption | undefined = ownership ?? (existing ? { id: existing.id } : undefined);
@@ -575,7 +581,12 @@ describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 		const baseHash = crosswalkerBlock(filesLayout.get('Frameworks/T1078.md')!).recipeHash;
 		// A SECOND, unrelated import, not a refresh of the first: a different
 		// recipe into a different root, run only to compare the two hashes.
-		await importInto(appLayout, parsed(), RECIPE_WRAPPED_FOLDER, { ...OPTS, basePath: 'Frameworks2' }, 'new');
+		//
+		// `new-set-qualified`, which is what the wizard mints for it (AM-13): the
+		// two imports share an ontology and a row set, so under `endpoint-v1` they
+		// would claim the same curies and AM-12 would refuse the second one
+		// wholesale -- leaving no note here to read a hash off.
+		await importInto(appLayout, parsed(), RECIPE_WRAPPED_FOLDER, { ...OPTS, basePath: 'Frameworks2' }, 'new-set-qualified');
 		const layoutHash = crosswalkerBlock(filesLayout.get('Frameworks2/Wrapped/T1078.md')!).recipeHash;
 		expect(layoutHash).not.toBe(baseHash);
 

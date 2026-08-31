@@ -429,7 +429,11 @@ export async function generateNotes(
 		// copy of the whole framework, with every original reported as an orphan.
 		// A set with no pin (legacy, or genuinely new) falls back to the proposal.
 		const ontologyId = importSet.ontology ?? proposedOntologyId;
-		const curiePrefix = slugifyForCurie(ontologyId);
+		// AM-13. The SET's scheme decides the identity space, not just the ontology.
+		// A set minted set-qualified writes qualified curies for its concepts and
+		// for every hub enrichment derives from this prefix, which is what lets a
+		// second release of the same framework exist beside the first.
+		const curiePrefix = curiePrefixFor(importSet, ontologyId);
 		const enrichRecords: EnrichRecord[] = [];
 		// AM-2. Rows this run KEPT rather than wrote (overwriteMode 'skip').
 		//
@@ -506,7 +510,7 @@ export async function generateNotes(
 						mapping,
 						options,
 						recipe,
-						ontologyId,
+						curiePrefix,
 						renderReport,
 						recipeHash,
 						provenanceRecipeId,
@@ -578,7 +582,18 @@ export async function generateNotes(
 					// enrichment is on) the folder-note-relocated path by curie — see
 					// resolveWriteTarget's docstring (re-import identity, design §4).
 					const fullPath = normalizePath(noteData.path);
-					const target = resolveWriteTarget(app, fullPath, noteData.curie, enrichmentEnabled, identityIndex);
+					// AM-12. A write never crosses a set boundary. The vault-wide index
+					// is consulted for DETECTION only: a note elsewhere in the vault
+					// already holding this curie, under a different set, is reported and
+					// the row is dropped - not adopted, not moved, not restamped, and
+					// with no fall back to the address below. A refused row with a named
+					// owner beats an annexed framework.
+					const foreign = foreignSetClaim(ownedIdentityIndex, identityIndex, noteData.curie);
+					if (foreign) {
+						result.errors.push({ row: rowNum, message: crossSetCollisionMessage(noteData.curie, foreign) });
+						return;
+					}
+					const target = resolveWriteTarget(app, fullPath, noteData.curie, enrichmentEnabled, ownedIdentityIndex);
 					const existingFile = target.existingFile;
 					const writePath = target.writePath;
 
@@ -768,7 +783,7 @@ export async function generateNotes(
 					importSet,
 					producedCuries,
 					isStreamed,
-					identityIndex,
+					{ owned: ownedIdentityIndex, vaultWide: identityIndex },
 					debug,
 				);
 			} catch (enrichErr) {
@@ -862,6 +877,100 @@ function recordConflict(
 }
 
 /**
+ * AM-13 (2026-08-30). The curie prefix one import set mints under.
+ *
+ * `endpoint-v1` is the ontology slug and nothing else, so every set minted
+ * before this existed keeps the exact identities it already wrote.
+ * `set-qualified-v1` appends the set id, which is what makes two releases of one
+ * framework - or two crosswalks over one pair - occupy DIFFERENT identity spaces
+ * instead of fighting over one. Applied at the prefix rather than at the leaf so
+ * concept notes, facet hubs and level hubs are all qualified by the same rule:
+ * enrichment builds hub curies from this prefix alone, so qualifying only the
+ * concept leaf would leave every hub colliding and AM-12 refusing them.
+ *
+ * Idempotent on purpose. A legacy set-qualified set carrying no ontology pin
+ * recovers its ontology from the prefix its own notes show, and that prefix is
+ * already qualified; re-appending the id there would rename every note the set
+ * owns, which is the exact failure AM-6 exists to prevent.
+ */
+export function curiePrefixFor(importSet: ImportSetReference, ontologyId: string): string {
+	const base = slugifyForCurie(ontologyId);
+	if (importSet.scheme !== 'set-qualified-v1') return base;
+	const suffix = `-${importSet.id}`;
+	return base.endsWith(suffix) ? base : `${base}${suffix}`;
+}
+
+/**
+ * AM-12 (2026-08-30). A note in the vault that already claims this identity and
+ * is NOT owned by the set this run writes, or null.
+ *
+ * R3 settled in August that reconciliation only touches notes carrying matching
+ * import-set provenance. The orphan pass has used the owned index since; the
+ * write path never did, and resolved every row through a vault-wide index. A new
+ * set whose curies collide with an existing set's - which `endpoint-v1` permits,
+ * because two releases of one framework mint the same curies - therefore took the
+ * other set's notes as `existingFile`, moved them, merged into them, and
+ * restamped them with the new set's id. This is the detection half of applying
+ * the ratified rule to the write path: the owned index resolves, the vault-wide
+ * index only reports.
+ */
+function foreignSetClaim(
+	owned: IdentityIndex | undefined,
+	vaultWide: IdentityIndex | undefined,
+	curie: string,
+): ForeignClaim | null {
+	if (!vaultWide) return null;
+	// Owned wins outright. A note this run owns is this run's to reconcile, and
+	// the vault-wide index holds it too.
+	if (owned?.get(curie)) return null;
+	const claimant = vaultWide.get(curie);
+	if (!claimant) return null;
+	// A null owner is a real and different case, not a missing string: a note
+	// written before import sets existed carries provenance but no ownership, so
+	// there is no set to send the user to. Naming a fabricated owner there would
+	// point them at something they cannot find.
+	return { path: claimant.path, setId: vaultWide.owner(curie) };
+}
+
+/** A note outside the set this run writes that already holds one of its identities. */
+interface ForeignClaim {
+	path: string;
+	setId: string | null;
+}
+
+/**
+ * The error a refused row reports. Names the identity, the owner, and the file,
+ * because "something is in the way" is not something a user can act on, and ends
+ * with the action that fits the case that actually occurred.
+ */
+function crossSetCollisionMessage(curie: string, claim: ForeignClaim): string {
+	return claim.setId
+		? `Cross-set identity collision: ${curie} is claimed by import set ${claim.setId} at ${claim.path}. `
+			+ 'Nothing was written for it. Refresh that set instead, or rename this source so it uses its own identities.'
+		: `Cross-set identity collision: ${curie} is claimed by ${claim.path}, a note from an earlier import that carries no import set. `
+			+ 'Nothing was written for it. Move or delete that note, or rename this source so it uses its own identities.';
+}
+
+/**
+ * AM-12 for hubs. A hub resolves through its own curie OR through an
+ * address-derived legacy alias, so BOTH have to be checked: adopting a note via
+ * an alias claimed by another set crosses the same boundary as adopting it
+ * directly. Returns the first identity that is claimed elsewhere.
+ */
+function foreignHubClaim(
+	owned: IdentityIndex | undefined,
+	vaultWide: IdentityIndex | undefined,
+	curie: string | null,
+	legacyCuries: readonly string[] | undefined,
+): { curie: string; claim: ForeignClaim } | null {
+	for (const candidate of [...(curie ? [curie] : []), ...(legacyCuries ?? [])]) {
+		const claim = foreignSetClaim(owned, vaultWide, candidate);
+		if (claim) return { curie: candidate, claim };
+	}
+	return null;
+}
+
+/**
  * Resolve the actual write target for a row, accounting for a prior Pass 1.5
  * folder-note relocation (batch-enrichment design §4 — the "risky seam").
  * `render()` always computes the SIBLING-shaped path (Pass 1 knows nothing
@@ -885,7 +994,7 @@ function resolveWriteTarget(
 	siblingPath: string,
 	curie: string,
 	enrichmentEnabled: boolean,
-	identityIndex?: IdentityIndex,
+	ownedIndex?: IdentityIndex,
 ): { existingFile: TFile | null; writePath: string; moveFrom?: string } {
 	const direct = app.vault.getAbstractFileByPath(siblingPath);
 	if (direct instanceof TFile) return { existingFile: direct, writePath: siblingPath };
@@ -896,7 +1005,11 @@ function resolveWriteTarget(
 	// by curie is what turns "write a second note" into "move the one that exists".
 	// Checked before the folder-note guess below because it subsumes it: identity is
 	// a fact about the note, whereas a candidate path is only a guess.
-	const byIdentity = identityIndex?.get(curie) ?? null;
+	// AM-12: the OWNED index, never the vault-wide one. Resolving a write through
+	// every Crosswalker note in the vault is how a run annexed another set's notes.
+	// The caller has already refused any row whose identity is claimed outside this
+	// set, so a hit here is always a note this run owns.
+	const byIdentity = ownedIndex?.get(curie) ?? null;
 	if (byIdentity) {
 		if (enrichmentEnabled) {
 			// Enrichment relocates concepts to their folder-note shape on purpose, so a
@@ -939,16 +1052,22 @@ function buildNoteDataViaRender(
 	mapping: MappingConfig,
 	options: GenerationOptions,
 	recipe: ReturnType<typeof legacyConfigToRecipe>,
-	ontologyId: string,
+	/**
+	 * The ALREADY-RESOLVED curie prefix (`curiePrefixFor`), not the raw ontology.
+	 * AM-13: the prefix depends on the set's scheme as well as its ontology, and a
+	 * second derivation here would silently write unqualified concept curies while
+	 * enrichment wrote qualified hub curies for the same run.
+	 */
+	curiePrefix: string,
 	report?: RenderReport,
 	recipeHash?: string,
 	provenanceRecipeId?: string,
 	importSet?: ImportSetReference,
 ): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[] } {
-	// 1. Build a CURIE for this row. Strategy: ontology + filename stem.
+	// 1. Build a CURIE for this row: the run's curie prefix + filename stem.
 	//    The filename is whatever the recipe's leaf file template resolves to.
 	const filenameStem = deriveFilenameStem(row, mapping, rowNum);
-	const curie = `${slugifyForCurie(ontologyId)}:${filenameStem}`;
+	const curie = `${curiePrefix}:${filenameStem}`;
 
 	// 2. render() expects a SourceScope object — the row IS the scope (column
 	//    names map to template variables).
@@ -2019,7 +2138,11 @@ export async function generateFromRecipe(
 	// import and orphans the first. An explicit `options.curiePrefix` still wins
 	// over both: that caller is naming the identity space on purpose.
 	const ontologyId = importSet.ontology ?? proposedOntologyId;
-	const curiePrefix = options.curiePrefix ?? slugifyForCurie(ontologyId);
+	// AM-13. Scheme-aware, same rule as generateNotes. An explicit
+	// `options.curiePrefix` still wins over both: the SSSOM importer names its own
+	// identity space and already qualifies its LEAF by scheme, so it must not be
+	// qualified a second time at the prefix.
+	const curiePrefix = options.curiePrefix ?? curiePrefixFor(importSet, ontologyId);
 	const ownedIdentityIndex = await buildIdentityIndex(app, { importSetId: importSet.id });
 
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
@@ -2316,7 +2439,15 @@ export async function generateFromRecipe(
 			// 7. Existing-file handling + merge. Consults BOTH the sibling path AND
 			//    (when enrichment is on) the folder-note-relocated path by curie —
 			//    see resolveWriteTarget's docstring (re-import identity, design §4).
-			const target = resolveWriteTarget(app, fullPath, curie, enrichmentEnabled, identityIndex);
+			// AM-12. Same rule as generateNotes: the owned index resolves, the
+			// vault-wide index only reports, and a claim held by another set stops
+			// the row here rather than annexing the note that holds it.
+			const foreignClaim = foreignSetClaim(ownedIdentityIndex, identityIndex, curie);
+			if (foreignClaim) {
+				result.errors.push({ row: rowNum, message: crossSetCollisionMessage(curie, foreignClaim) });
+				return;
+			}
+			const target = resolveWriteTarget(app, fullPath, curie, enrichmentEnabled, ownedIdentityIndex);
 			const existingFile = target.existingFile;
 			const writePath = target.writePath;
 
@@ -2519,7 +2650,7 @@ export async function generateFromRecipe(
 				importSet,
 				producedCuries,
 				isStreamed,
-				identityIndex,
+				{ owned: ownedIdentityIndex, vaultWide: identityIndex },
 				debug,
 			);
 		} catch (enrichErr) {
@@ -2610,18 +2741,20 @@ function resolveHubTarget(
 	desiredPath: string,
 	curie: string | null,
 	legacyCuries: string[] | undefined,
-	identityIndex?: IdentityIndex,
+	ownedIndex?: IdentityIndex,
 ): { existingFile: TFile | null; writePath: string; moveFrom?: string; adoptedAlias?: string } {
-	const byIdentity = curie && identityIndex ? identityIndex.get(curie) : null;
+	// AM-12: the OWNED index. A hub held by another set is refused by the caller
+	// before this runs, so anything found here belongs to the set being written.
+	const byIdentity = curie && ownedIndex ? ownedIndex.get(curie) : null;
 	if (byIdentity) {
 		return byIdentity.path === desiredPath
 			? { existingFile: byIdentity, writePath: desiredPath }
 			: { existingFile: byIdentity, writePath: desiredPath, moveFrom: byIdentity.path };
 	}
 
-	if (identityIndex && legacyCuries) {
+	if (ownedIndex && legacyCuries) {
 		for (const alias of legacyCuries) {
-			const aliased = identityIndex.get(alias);
+			const aliased = ownedIndex.get(alias);
 			if (!aliased) continue;
 			return aliased.path === desiredPath
 				? { existingFile: aliased, writePath: desiredPath, adoptedAlias: alias }
@@ -2764,7 +2897,12 @@ async function applyEnrichment(
 	importSet: ImportSetReference,
 	producedCuries: Set<string>,
 	streamed: boolean,
-	identityIndex?: IdentityIndex,
+	/**
+	 * AM-12. Two indexes, two jobs: `owned` RESOLVES a hub to the note this set
+	 * already has, `vaultWide` only DETECTS one held by a different set. Passing a
+	 * single vault-wide index here is what let hub writes cross a set boundary.
+	 */
+	indexes: { owned?: IdentityIndex; vaultWide?: IdentityIndex } | undefined,
 	debug?: DebugLog,
 ): Promise<void> {
 	const config = recipe.target.enrichment ?? {};
@@ -2889,13 +3027,21 @@ async function applyEnrichment(
 		// Hub ownership and produced membership are recorded together. Splitting
 		// these operations is what previously made successful hubs look orphaned.
 		const hubCurie = typeof frontmatter.curie === 'string' ? frontmatter.curie : null;
+		// AM-12. Detection before ownership: a hub identity claimed by another set is
+		// reported and this hub is left entirely alone. Recording it as produced
+		// first would vouch for a note this run refused to write.
+		const foreignHub = foreignHubClaim(indexes?.owned, indexes?.vaultWide, hubCurie, hub.legacyCuries);
+		if (foreignHub) {
+			result.errors.push({ row: 0, message: crossSetCollisionMessage(foreignHub.curie, foreignHub.claim) });
+			continue;
+		}
 		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
 		// Identity first: a facet hub curie is already address-independent, but it
 		// was resolved by path alone, so a changed destination created a duplicate
 		// instead of finding the hub that exists.
-		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, identityIndex);
+		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, indexes?.owned);
 		const existing = target.existingFile;
 		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
 		if (existing instanceof TFile) {
@@ -2945,6 +3091,14 @@ async function applyEnrichment(
 		// Hub ownership and produced membership are recorded together. Splitting
 		// these operations is what previously made successful hubs look orphaned.
 		const hubCurie = typeof frontmatter.curie === 'string' ? frontmatter.curie : null;
+		// AM-12. Detection before ownership: a hub identity claimed by another set is
+		// reported and this hub is left entirely alone. Recording it as produced
+		// first would vouch for a note this run refused to write.
+		const foreignHub = foreignHubClaim(indexes?.owned, indexes?.vaultWide, hubCurie, hub.legacyCuries);
+		if (foreignHub) {
+			result.errors.push({ row: 0, message: crossSetCollisionMessage(foreignHub.curie, foreignHub.claim) });
+			continue;
+		}
 		if (hubCurie) producedCuries.add(hubCurie);
 		let body = hub.body;
 
@@ -2952,7 +3106,7 @@ async function applyEnrichment(
 		// A level hub whose curie moved with its folder is the silent case: no
 		// collision, no error, just two files and a batch of new orphans. The alias
 		// is what lets the existing note keep its content and be restamped instead.
-		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, identityIndex);
+		const target = resolveHubTarget(app, fullPath, hubCurie, hub.legacyCuries, indexes?.owned);
 		const existing = target.existingFile;
 		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, debug);
 		if (existing instanceof TFile) {
