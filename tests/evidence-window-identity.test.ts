@@ -91,6 +91,21 @@ function makeVault() {
 					return { frontmatter: undefined };
 				}
 			},
+			/**
+			 * AM-30. Obsidian's own link resolution, modelled the way it actually
+			 * behaves: the recorded path first, then a unique file name anywhere in
+			 * the vault. This is what lets a recorded wikilink still name a document
+			 * the user has dragged into another folder — the case the amendment
+			 * exists for, and one no amount of recomputation can cover.
+			 */
+			getFirstLinkpathDest: (linkpath: string) => {
+				if (files.has(linkpath)) return new TFile(linkpath);
+				const withExtension = linkpath.endsWith('.md') ? linkpath : `${linkpath}.md`;
+				if (files.has(withExtension)) return new TFile(withExtension);
+				const name = (linkpath.split('/').pop() ?? linkpath).replace(/\.md$/, '');
+				const found = [...files.keys()].filter((path) => path.split('/').pop() === `${name}.md`);
+				return found.length === 1 ? new TFile(found[0]) : null;
+			},
 		},
 		workspace: {
 			getLeaf: () => ({ openFile: async (file: { path: string }) => { opened.push(file.path); } }),
@@ -221,10 +236,18 @@ describe('AM-22: a link written under the old scheme is adopted, not doubled', (
 	const LEGACY_CURIE = legacyEvidenceLinkCurie(R4.path, EVIDENCE);
 	const LEGACY_PATH = legacyEvidenceLinkPath(FOLDER, R4.path, EVIDENCE);
 
-	it('restamps the existing note in place when it carries a provenance block', async () => {
-		// Found through the identity index by its OLD curie. Without the alias a
-		// scheme change manufactures a second link for every pair a user re-links,
-		// double-counted by every coverage tally, with the first abandoned.
+	it('updates the existing note in place when it carries a provenance block', async () => {
+		// Found by the PAIR it records, not by any recomputed identifier. Without
+		// that, a scheme change manufactures a second link for every pair a user
+		// re-links, double-counted by every coverage tally, with the first abandoned.
+		//
+		// AM-30 (2026-08-31) narrowed what "adopted" means here. This declaration
+		// used to require the note to be RESTAMPED with the curie a mint would
+		// choose today; it now requires the opposite. A curie already recorded on a
+		// note is that note's identity, and recomputing it is the defect the whole
+		// amendment is about: the recomputation is a function of the evidence file's
+		// vault path, so it changes when a user moves a document and the junction
+		// that plainly exists is then found by nothing.
 		const { app, files } = makeVault();
 		files.set(LEGACY_PATH, junction({ curie: LEGACY_CURIE, control: R4 }));
 
@@ -232,30 +255,29 @@ describe('AM-22: a link written under the old scheme is adopted, not doubled', (
 
 		expect(files.size).toBe(1);
 		expect(files.has(pathFor(R4))).toBe(false);
-		expect(files.get(LEGACY_PATH)).toContain(`curie: ${curieFor(R4)}`);
+		expect(files.get(LEGACY_PATH)).toContain(`curie: ${LEGACY_CURIE}`);
 		expect(said()).toContain('Updated the existing link');
 	});
 
 	it('adopts the oldest links too, which carry no provenance block at all', async () => {
-		// The index admits only notes with a `_crosswalker` block, so these are
-		// invisible to it. Their identity is still recorded in their own `curie`,
-		// which the known former ADDRESS is consulted to find. The address proposes;
-		// the note's own identity disposes.
+		// The identity index admits only notes with a `_crosswalker` block, so these
+		// are invisible to it — and were reachable before only through a guessed
+		// former ADDRESS. The pair scan reads every era for free, because the filter
+		// is `kind: junction-note`, which every version of this window has written.
 		const { app, files } = makeVault();
 		files.set(LEGACY_PATH, junction({ curie: LEGACY_CURIE, control: R4, setId: null }));
 
 		await pressCreateLink(app, R4);
 
 		expect(files.size).toBe(1);
-		expect(files.get(LEGACY_PATH)).toContain(`curie: ${curieFor(R4)}`);
+		expect(files.get(LEGACY_PATH)).toContain(`curie: ${LEGACY_CURIE}`);
 		expect(said()).toContain('Updated the existing link');
 	});
 
-	it('finds a legacy link that has ALSO been moved, by its old identity', async () => {
-		// The case the legacy ADDRESS probe cannot reach and the legacy IDENTITY
-		// lookup can: an old link the user renamed. Without the alias in the index
-		// this pair gets a brand new note and the reviewer's old one is abandoned,
-		// which is the doubling the alias exists to prevent.
+	it('finds a legacy link that has ALSO been moved', async () => {
+		// The case no address probe can reach: an old link the user renamed. The
+		// note still SAYS which control and which document it is about, and that
+		// statement survives every rename.
 		const { app, files } = makeVault();
 		const moved = `${FOLDER}/an old link I renamed.md`;
 		files.set(moved, junction({ curie: LEGACY_CURIE, control: R4 }));
@@ -263,7 +285,7 @@ describe('AM-22: a link written under the old scheme is adopted, not doubled', (
 		await pressCreateLink(app, R4);
 
 		expect(files.size).toBe(1);
-		expect(files.get(moved)).toContain(`curie: ${curieFor(R4)}`);
+		expect(files.get(moved)).toContain(`curie: ${LEGACY_CURIE}`);
 		expect(said()).toContain('Updated the existing link');
 	});
 
@@ -408,6 +430,170 @@ describe('AM-23: the lookup comes before the create', () => {
 		files.set(`${FOLDER}/claimant b.md`, junction({ curie: curieFor(R4), control: R4 }));
 		await pressCreateLink(app, R4);
 		expect(opened).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// AM-30: a junction's curie is minted once. Existence is answered by the pair.
+//
+// THE DEFECT PASS 11 CONFIRMED. `evidenceLinkCurie` is a function of the evidence
+// document's vault path in both halves — the readable head and the pair hash — and
+// that function was being used as a LOOKUP KEY on every click. So: link a control
+// to `Evidence/pentest.md`, move the document to `Evidence/2026/pentest.md`, click
+// again for the same real pair. The key changed, the address changed, and the
+// pre-AM-22 basename form matched only notes written before that scheme. Nothing
+// found the junction that plainly existed, and a SECOND note was written for the
+// pair — double-counted by every coverage tally, with the reviewer's approval and
+// prose left on the abandoned one.
+//
+// A path may seed a mint; it may never be needed again after it. So the question
+// is put to the notes: a junction SAYS which subject and which object it is about,
+// and that statement is a recorded fact that survives every rename.
+// ---------------------------------------------------------------------------
+
+describe('AM-30: moving the evidence document does not manufacture a second link', () => {
+	const MOVED = 'Evidence/2026/MFA policy.md';
+
+	/**
+	 * The user drags the document into a subfolder. Obsidian rewrites wikilinks
+	 * pointing at it, which is its default, so the junction now records the new
+	 * path. Both this and the un-rewritten case below must find the same note.
+	 */
+	function moveEvidence(files: Map<string, string>, rewriteLinks: boolean): void {
+		for (const [path, text] of [...files]) {
+			if (!rewriteLinks) continue;
+			files.set(path, text.split(EVIDENCE).join(MOVED));
+		}
+	}
+
+	it('finds and updates the junction it just wrote, keeping the identity it minted', async () => {
+		// The mint is stamped once. Recomputing it here is what produced the twin.
+		const { app, files } = makeVault();
+		await pressCreateLink(app, R4);
+		const junctionPath = pathFor(R4);
+		const minted = curieFor(R4);
+		moveEvidence(files, true);
+		notices.length = 0;
+
+		await pressCreateLink(app, R4, MOVED);
+
+		expect(files.size).toBe(1);
+		expect(files.get(junctionPath)).toContain(`curie: ${minted}`);
+		expect(said()).toContain('Updated the existing link');
+	});
+
+	it('proves the recomputed identity really did move, so the test above is not vacuous', () => {
+		// If the mint happened to be stable across the move, every assertion in this
+		// block would pass for the wrong reason. It is not stable: the pair hash and
+		// the readable head both take the document's path.
+		expect(curieFor(R4, MOVED)).not.toBe(curieFor(R4));
+		expect(pathFor(R4, MOVED)).not.toBe(pathFor(R4));
+	});
+
+	it('finds it even when the recorded wikilink was never rewritten', async () => {
+		// The harder half: the note still records the OLD path. Obsidian's own link
+		// resolution follows the document, so the recorded statement still names it.
+		const { app, files } = makeVault();
+		await pressCreateLink(app, R4);
+		const junctionPath = pathFor(R4);
+		const minted = curieFor(R4);
+		moveEvidence(files, false);
+		files.set(MOVED, '# MFA policy\n');
+		notices.length = 0;
+
+		await pressCreateLink(app, R4, MOVED);
+
+		expect(files.size).toBe(2);
+		expect(files.get(junctionPath)).toContain(`curie: ${minted}`);
+		expect(said()).toContain('Updated the existing link');
+	});
+
+	it('finds an AM-22-era junction after the document moved', async () => {
+		// Seeded as the window wrote it between AM-22 and AM-30: the pair-hashed
+		// curie at the pair-hashed address. Both were functions of the old path.
+		const { app, files } = makeVault();
+		files.set(pathFor(R4), junction({ curie: curieFor(R4), control: R4 }));
+		files.set(MOVED, '# MFA policy\n');
+		moveEvidence(files, true);
+
+		await pressCreateLink(app, R4, MOVED);
+
+		const junctions = [...files.keys()].filter((path) => path.startsWith(`${FOLDER}/`));
+		expect(junctions).toHaveLength(1);
+		expect(files.get(pathFor(R4))).toContain(`curie: ${curieFor(R4)}`);
+		expect(said()).toContain('Updated the existing link');
+	});
+
+	it('finds a pre-AM-22 junction after the document moved', async () => {
+		// The oldest era: a basename-derived curie, no provenance block, invisible to
+		// the identity index. It still records the pair.
+		const { app, files } = makeVault();
+		const legacyCurie = legacyEvidenceLinkCurie(R4.path, EVIDENCE);
+		const legacyPath = legacyEvidenceLinkPath(FOLDER, R4.path, EVIDENCE);
+		files.set(legacyPath, junction({ curie: legacyCurie, control: R4, setId: null }));
+		files.set(MOVED, '# MFA policy\n');
+		moveEvidence(files, true);
+
+		await pressCreateLink(app, R4, MOVED);
+
+		const junctions = [...files.keys()].filter((path) => path.startsWith(`${FOLDER}/`));
+		expect(junctions).toHaveLength(1);
+		expect(files.get(legacyPath)).toContain(`curie: ${legacyCurie}`);
+		expect(said()).toContain('Updated the existing link');
+	});
+
+	it('never leaves two notes recording one real pair, whatever era the first was', async () => {
+		// The consequence, stated as the property rather than as a path. A second
+		// junction for one pair is counted twice by every coverage tally, and the
+		// first is silently abandoned with its approval on it.
+		for (const seed of ['mint', 'am22', 'legacy'] as const) {
+			const { app, files } = makeVault();
+			if (seed === 'mint') await pressCreateLink(app, R4);
+			if (seed === 'am22') files.set(pathFor(R4), junction({ curie: curieFor(R4), control: R4 }));
+			if (seed === 'legacy') {
+				files.set(
+					legacyEvidenceLinkPath(FOLDER, R4.path, EVIDENCE),
+					junction({ curie: legacyEvidenceLinkCurie(R4.path, EVIDENCE), control: R4, setId: null }),
+				);
+			}
+			files.set(MOVED, '# MFA policy\n');
+			moveEvidence(files, true);
+
+			await pressCreateLink(app, R4, MOVED);
+
+			const junctions = [...files.keys()].filter((path) => path.startsWith(`${FOLDER}/`));
+			expect({ seed, junctions: junctions.length }).toEqual({ seed, junctions: 1 });
+		}
+	});
+
+	it('does not relocate the note it found to the address a mint would choose today', async () => {
+		// The note IS the record. Moving it to today's rendered address would
+		// re-couple its identity to a path, which is the coupling being removed.
+		const { app, files } = makeVault();
+		const renamed = `${FOLDER}/a name the reviewer chose.md`;
+		files.set(renamed, junction({ curie: curieFor(R4), control: R4 }));
+		files.set(MOVED, '# MFA policy\n');
+		moveEvidence(files, true);
+
+		await pressCreateLink(app, R4, MOVED);
+
+		expect([...files.keys()].filter((path) => path.startsWith(`${FOLDER}/`))).toEqual([renamed]);
+		expect(said()).toContain(renamed);
+	});
+
+	it('gives a junction that records the pair but no identity one now', async () => {
+		// These exist: a link written before junction notes carried a curie at all.
+		// Projection cannot see them. Nothing is being recomputed here — there is
+		// nothing recorded to recompute, so a mint is the only honest answer.
+		const { app, files } = makeVault();
+		const bare = `${FOLDER}/no identity.md`;
+		files.set(bare, junction({ curie: '', control: R4, setId: null }).replace('curie: ""\n', ''));
+
+		await pressCreateLink(app, R4);
+
+		expect(files.size).toBe(1);
+		expect(files.get(bare)).toContain(`curie: ${curieFor(R4)}`);
+		expect(said()).toContain('Updated the existing link');
 	});
 });
 

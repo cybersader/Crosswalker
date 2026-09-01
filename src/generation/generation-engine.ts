@@ -34,13 +34,18 @@ import {
 	type SourceScope,
 } from '../render';
 import { legacyConfigToRecipe, LEGACY_ONTOLOGY_SENTINEL } from './legacy-recipe-shim';
+// AM-28. `DeclaredCurieCharsetError` / `DeclaredCuriePrefixError` are thrown by
+// `declaredCurieLocalPart` and are deliberately NOT caught by name here: both row
+// loops already catch per row and push the message into `result.errors`, which is
+// the actionable refusal the amendment asks for. Naming them would add a second
+// place for the refusal wording to drift.
 import {
-	DeclaredCurieCharsetError,
+	declaredCurieLocalPart,
 	declaredIdentity,
+	edgeIdentityLocalPart,
 	injectiveCurieLocalPart,
-	isValidCurieLocalPart,
+	injectiveDeclaredIdLocalPart,
 	slugifyForCurie,
-	stripCuriePrefix,
 } from './curie';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
@@ -646,11 +651,14 @@ export async function generateNotes(
 
 					// This identity belongs to the current source set even when the note is
 					// skipped or merged rather than newly created.
-					producedCuries.add(noteData.curie);
 					// AM-27. Recorded only once the row is past every refusal above: a row
 					// this run declines to write has claimed nothing, so a later row with
 					// the same identity is the FIRST claimant, not a duplicate.
-					curieOrigins.set(noteData.curie, { row: rowNum, path: noteData.path });
+					// AM-31: through the one claim function, so the produced set and the
+					// origin map cannot record different things.
+					claimProducedCurie(producedCuries, curieOrigins, noteData.curie, {
+						row: rowNum, path: noteData.path, kind: 'row',
+					});
 
 					// The write target was resolved above (AM-14), before this row reserved
 					// anything. Consults BOTH the sibling path AND (when enrichment is on) the
@@ -844,6 +852,7 @@ export async function generateNotes(
 					result,
 					importSet,
 					producedCuries,
+					curieOrigins,
 					isStreamed,
 					{ owned: ownedIdentityIndex, vaultWide: identityIndex },
 					debug,
@@ -1066,13 +1075,60 @@ function crossSetCollisionMessage(curie: string, claim: ForeignClaim): string {
  * Deliberately identity-NEUTRAL, so it applies to legacy sets too. It changes no
  * curie and re-identifies nothing; it only refuses to write the second claimant,
  * by name, naming the first as well so the user can see which two rows disagree.
+ *
+ * AM-31 (2026-08-31). ONE RULE, ALL WRITERS. Until this amendment only the two
+ * row loops consulted the guard; every hub and facet writer added to
+ * `producedCuries` and checked nothing, so a hub identity equal to a row identity
+ * this run produced, or two hubs whose slugged values collapse, were written
+ * anyway. Hubs run after rows, so the row could not see the hub and the hub did
+ * not look. `row: 0` marks a claimant that is not a source row, and the message
+ * says so rather than pointing a user at a row number that does not exist.
  */
-type ProducedCurieOrigin = { row: number; path: string };
+type ProducedCurieOrigin = { row: number; path: string; kind: 'row' | 'hub' };
+
+/**
+ * Claim one identity for this run, or say who claimed it first.
+ *
+ * The single place a produced curie is recorded, so `producedCuries` (which
+ * orphan detection reads) and `curieOrigins` (which the refusal reads) cannot
+ * drift apart - the split between them is exactly what left hubs unguarded.
+ */
+function claimProducedCurie(
+	producedCuries: Set<string>,
+	curieOrigins: Map<string, ProducedCurieOrigin>,
+	curie: string,
+	origin: ProducedCurieOrigin,
+): ProducedCurieOrigin | null {
+	const first = curieOrigins.get(curie);
+	if (first) return first;
+	producedCuries.add(curie);
+	curieOrigins.set(curie, origin);
+	return null;
+}
+
+/** Who already holds this identity in this run, phrased for whatever it was. */
+function firstClaimantOf(first: ProducedCurieOrigin): string {
+	return first.kind === 'hub'
+		? `a hub note this import produced (${first.path})`
+		: `row ${first.row} (${first.path})`;
+}
 
 function duplicateCurieMessage(curie: string, first: ProducedCurieOrigin): string {
-	return `Duplicate identity in this import: ${curie} was already produced by row ${first.row} (${first.path}). `
+	return `Duplicate identity in this import: ${curie} was already produced by ${firstClaimantOf(first)}. `
 		+ 'Nothing was written for this row. Two rows resolve to one identity, so one of them would overwrite the other. '
 		+ 'Give them distinct values in the column your import uses for identity.';
+}
+
+/**
+ * AM-31. The same refusal for a hub, whose cause and cure are different: a user
+ * cannot fix a hub by editing an identity column, so the message names the
+ * grouping value instead.
+ */
+function duplicateHubCurieMessage(curie: string, hubPath: string, first: ProducedCurieOrigin): string {
+	return `Duplicate identity in this import: the note ${hubPath} would be written as ${curie}, `
+		+ `which was already produced by ${firstClaimantOf(first)}. Nothing was written for it. `
+		+ 'Two groups of notes resolve to one identity, so one would overwrite the other. '
+		+ 'Give them values that differ by more than punctuation or capitalisation.';
 }
 
 /**
@@ -1324,10 +1380,16 @@ function buildNoteDataViaRender(
 	// `filenameStem` stays on the legacy rule under BOTH derivations: it is only a
 	// fallback for the note's H1 (step 5b), a display concern, and changing what a
 	// heading says is not what this amendment is about.
+	//
+	// AM-28. `curiePrefix` is handed down rather than re-derived: a declared
+	// `curie` is checked against the prefix this run will actually WRITE, and is
+	// then kept verbatim, so the value in the vault is the value the source
+	// stated. Stripping the declared prefix and substituting ours is the silent
+	// rewrite the amendment forbids.
 	const filenameStem = deriveFilenameStem(row, mapping, rowNum);
 	const curie = `${curiePrefix}:${
 		derivationOf(importSet) === 'declared-facts-v1'
-			? declaredFactsLocalPart(row, () => deriveRawFilenameStem(row, mapping, rowNum))
+			? declaredFactsLocalPart(row, () => deriveRawFilenameStem(row, mapping, rowNum), curiePrefix)
 			: filenameStem
 	}`;
 
@@ -2593,9 +2655,12 @@ export async function generateFromRecipe(
 			// 1. Build CURIE for this row
 			// AM-27. The derivation is the SET's, not this version's. An override
 			// (the SSSOM importer) reads the same pin off the reference it is handed.
+			// AM-28. The prefix travels with the row: a declared `curie` is honoured
+			// verbatim only when it already carries the prefix this run writes, and is
+			// refused by name otherwise, never stripped and re-prefixed.
 			const localPart = options.curieLocalPart
 				? options.curieLocalPart(scope, rowNum, importSet)
-				: defaultCurieLocalPart(scope, rowNum, derivationOf(importSet));
+				: defaultCurieLocalPart(scope, rowNum, derivationOf(importSet), curiePrefix);
 			const curie = `${curiePrefix}:${localPart}`;
 			// The index deliberately does not return an arbitrary winner for a
 			// collision. Refuse this row instead of making the duplicate permanent.
@@ -2768,10 +2833,11 @@ export async function generateFromRecipe(
 
 			// This identity belongs to the current source set even when overwrite mode
 			// skips or merges the note rather than creating a new file.
-			producedCuries.add(curie);
 			// AM-27. Only once the row is past every refusal above: a row this run
 			// declined to write has claimed nothing.
-			curieOrigins.set(curie, { row: rowNum, path: fullPath });
+			// AM-31: through the one claim function, so the produced set and the origin
+			// map cannot record different things.
+			claimProducedCurie(producedCuries, curieOrigins, curie, { row: rowNum, path: fullPath, kind: 'row' });
 			// Recorded only for a row that survived validation, so a junction row
 			// later in the same run can never be stamped against a concept this run
 			// refused to write.
@@ -2984,6 +3050,7 @@ export async function generateFromRecipe(
 				result,
 				importSet,
 				producedCuries,
+				curieOrigins,
 				isStreamed,
 				{ owned: ownedIdentityIndex, vaultWide: identityIndex },
 				debug,
@@ -3232,6 +3299,13 @@ function markKeptHubsProduced(args: {
 			})),
 			{ ontology: curiePrefix, config: recipe.target.enrichment ?? {}, streamed, rootFolder: basePath },
 		);
+		// AM-31, deliberately NOT guarded here, and this is the reasoned exception
+		// to "one rule, all writers": this pass writes nothing, so there is nothing
+		// to refuse. It is also handed `[...enrichRecords, ...keptRecords]`, i.e.
+		// the SAME hubs `applyEnrichment` is about to write in a mixed skip/write
+		// run, so recording a claim here would make every one of those hubs refuse
+		// itself as a duplicate of its own bookkeeping entry. The guard belongs at
+		// the writers; this pass only vouches for what the run kept.
 		const mark = (hub: HubNote): void => {
 			const hubCurie = typeof hub.frontmatter.curie === 'string' ? hub.frontmatter.curie : null;
 			if (hubCurie) producedCuries.add(hubCurie);
@@ -3261,6 +3335,12 @@ async function applyEnrichment(
 	result: GenerationResult,
 	importSet: ImportSetReference,
 	producedCuries: Set<string>,
+	/**
+	 * AM-31. The run's claim ledger, shared with the row loops. A hub is a writer
+	 * like any other: it must not take an identity this run already produced, and
+	 * it must record the one it takes so nothing later can take it again.
+	 */
+	curieOrigins: Map<string, ProducedCurieOrigin>,
 	streamed: boolean,
 	/**
 	 * AM-12. Two indexes, two jobs: `owned` RESOLVES a hub to the note this set
@@ -3434,7 +3514,22 @@ async function applyEnrichment(
 			reportAddressRefusal(result, debug, target.refusal, 0, hubCurie ?? undefined);
 			continue;
 		}
-		if (hubCurie) producedCuries.add(hubCurie);
+		// AM-31. The within-run duplicate guard, at a hub writer. A facet value and
+		// a row identity, or two facet values whose slug collapses (`Access Control`
+		// and `access-control`), can produce one curie; before this the second was
+		// written anyway, leaving the vault holding one identity twice - permanent,
+		// and fatal to every later import in that vault. Refused HERE, above every
+		// write and above the relocation, so a refused hub is one this run never
+		// touched.
+		if (hubCurie) {
+			const firstClaim = claimProducedCurie(producedCuries, curieOrigins, hubCurie, {
+				row: 0, path: fullPath, kind: 'hub',
+			});
+			if (firstClaim) {
+				result.errors.push({ row: 0, message: duplicateHubCurieMessage(hubCurie, fullPath, firstClaim) });
+				continue;
+			}
+		}
 		let body = hub.body;
 
 		const existing = target.existingFile;
@@ -3445,7 +3540,21 @@ async function applyEnrichment(
 			// non-destructive, so an equality rule would REGRESS a working path and
 			// stop hubs updating. A facet hub therefore never conflicts on its body,
 			// only on unreadable properties or corrupt markers.
-			if (target.adoptedAlias) producedCuries.add(target.adoptedAlias);
+			// AM-31. The superseded identity is claimed too, and by the same rule: if
+			// something else in this run already produced it, two writers disagree
+			// about one identity and neither may proceed silently.
+			if (target.adoptedAlias) {
+				const firstClaim = claimProducedCurie(producedCuries, curieOrigins, target.adoptedAlias, {
+					row: 0, path: existing.path, kind: 'hub',
+				});
+				if (firstClaim) {
+					result.errors.push({
+						row: 0,
+						message: duplicateHubCurieMessage(target.adoptedAlias, existing.path, firstClaim),
+					});
+					continue;
+				}
+			}
 			const outcome = await mergeExistingNote({
 				app,
 				file: existing,
@@ -3518,7 +3627,18 @@ async function applyEnrichment(
 			reportAddressRefusal(result, debug, target.refusal, 0, hubCurie ?? undefined);
 			continue;
 		}
-		if (hubCurie) producedCuries.add(hubCurie);
+		// AM-31. Same guard as the facet hubs above, at the other hub writer. One
+		// rule, all writers: a level hub that would take an identity this run
+		// already produced is refused by name rather than written into a collision.
+		if (hubCurie) {
+			const firstClaim = claimProducedCurie(producedCuries, curieOrigins, hubCurie, {
+				row: 0, path: fullPath, kind: 'hub',
+			});
+			if (firstClaim) {
+				result.errors.push({ row: 0, message: duplicateHubCurieMessage(hubCurie, fullPath, firstClaim) });
+				continue;
+			}
+		}
 		let body = hub.body;
 
 		const existing = target.existingFile;
@@ -3526,7 +3646,20 @@ async function applyEnrichment(
 		if (existing instanceof TFile) {
 			// The adopted alias is recorded as produced so the identity this run
 			// deliberately superseded is not then reported as a note that vanished.
-			if (target.adoptedAlias) producedCuries.add(target.adoptedAlias);
+			// AM-31: claimed, not merely added, so a second writer of that same
+			// superseded identity is refused rather than silently agreed with.
+			if (target.adoptedAlias) {
+				const firstClaim = claimProducedCurie(producedCuries, curieOrigins, target.adoptedAlias, {
+					row: 0, path: existing.path, kind: 'hub',
+				});
+				if (firstClaim) {
+					result.errors.push({
+						row: 0,
+						message: duplicateHubCurieMessage(target.adoptedAlias, existing.path, firstClaim),
+					});
+					continue;
+				}
+			}
 			// Re-import: regenerate the managed Contents section, preserve user
 			// frontmatter + any prose outside it (title, notes, etc.).
 			//
@@ -3626,9 +3759,15 @@ function defaultCurieLocalPart(
 	row: Record<string, unknown>,
 	rowNum: number,
 	derivation: ImportSetDerivation,
+	/**
+	 * AM-28. The prefix this run will actually WRITE in front of the value
+	 * returned here. A declared `curie` is checked against it rather than being
+	 * stripped and re-prefixed, so a value that passes is reproduced verbatim.
+	 */
+	curiePrefix: string,
 ): string {
 	if (derivation === 'declared-facts-v1') {
-		return declaredFactsLocalPart(row, () => `row-${rowNum}`);
+		return declaredFactsLocalPart(row, () => `row-${rowNum}`, curiePrefix);
 	}
 	const candidate = row.curie ?? row.id ?? row.subject_id ?? row.control_id ?? row.code;
 	if (typeof candidate === 'string' && candidate.length > 0) {
@@ -3648,26 +3787,36 @@ function defaultCurieLocalPart(
  * only one that can be joined back to the source system; a stem read off a
  * filename template is a fact about where the note went, not about what it is.
  *
- * Three behaviours, in order:
- *   - a declared `curie` column is honoured exactly, or REFUSED BY NAME. Never
- *     sanitized: silently rewriting a declared identity puts a value in the vault
- *     that the source never asserted, and merges two rows whose declared curies
- *     differ only in a rejected character.
- *   - the remaining declared columns (`id`, `subject_id`, `control_id`, `code`)
- *     are identifiers, not declared CURIEs, so they may be made charset-safe -
- *     but injectively, so no two of them collapse together.
+ * Four behaviours, in order:
+ *   - a declared `curie` column is honoured VERBATIM, prefix included, or REFUSED
+ *     BY NAME (AM-28). Never sanitized and never re-prefixed: silently rewriting
+ *     a declared identity puts a value in the vault that the source never
+ *     asserted, and merges rows whose declared curies differ only in a rejected
+ *     character or in whose prefix they carry.
+ *   - a declared `id` is an identifier, not a declared CURIE, so it may be made
+ *     charset-safe - but injectively over the EXACT raw value (AM-28), so no two
+ *     of them collapse together.
+ *   - an EDGE-shaped row (AM-29: the run declares both a subject and an object)
+ *     is identified by its three endpoints together. `subject_id` used to sit in
+ *     the chain above, which gave every edge leaving one control that control's
+ *     identity - one identity for many edges. A relationship is never identified
+ *     by one of its ends. Concept-only identifiers (`control_id`, `code`) are
+ *     consulted only for a row that is not edge-shaped, for the same reason.
  *   - `lastResort` supplies the caller's fallback (the filename stem for the
  *     wizard path, `row-N` for the recipe path), also injectively.
  */
-function declaredFactsLocalPart(row: Record<string, unknown>, lastResort: () => string): string {
+function declaredFactsLocalPart(
+	row: Record<string, unknown>,
+	lastResort: () => string,
+	curiePrefix: string,
+): string {
 	const declared = declaredIdentity(row);
+	if (declared?.kind === 'edge') {
+		return edgeIdentityLocalPart(declared.subject, declared.predicate, declared.object);
+	}
 	if (declared) {
-		const local = stripCuriePrefix(declared.raw);
-		if (declared.column === 'curie') {
-			if (!isValidCurieLocalPart(local)) throw new DeclaredCurieCharsetError(declared.raw);
-			return local;
-		}
-		return injectiveCurieLocalPart(local);
+		if (declared.column === 'curie') return declaredCurieLocalPart(declared.raw, curiePrefix);
+		return injectiveDeclaredIdLocalPart(declared.raw);
 	}
 	return injectiveCurieLocalPart(lastResort());
 }

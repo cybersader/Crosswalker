@@ -134,7 +134,14 @@ function provenanceOf(text: string): Record<string, any> {
 const ROWS = [
 	// A row that DECLARES its identity, using two characters the spec's curie
 	// charset permits and `sanitizeFileName` destroys.
-	{ key: 'r1', curie: 'nist:AC-2/a' },
+	//
+	// AM-28 (2026-08-31): the prefix is `attack:` because that is the prefix this
+	// import writes. A declared curie is now honoured VERBATIM, prefix included, or
+	// refused by name — the previous behaviour kept only the local part and put the
+	// set's own prefix in front of it, so a source stating `nist:AC-2/a` inside an
+	// `attack` import had `attack:AC-2/a` written with no error. This fixture used
+	// to state exactly that, and so could never observe the substitution.
+	{ key: 'r1', curie: 'attack:AC-2/a' },
 	// A declared identifier (not a declared curie) that the filename sanitizer
 	// collapses onto the next row's.
 	{ key: 'r2', id: 'a/b' },

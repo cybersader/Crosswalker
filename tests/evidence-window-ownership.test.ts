@@ -169,11 +169,26 @@ describe('the link the window is for', () => {
 	});
 
 	it('updates a link written before import sets existed, which carries no ownership stamp', async () => {
-		// A pre-2026-08-28 link has this pair's curie and no `_crosswalker`
-		// import_set block. Its IDENTITY still says it is this link, so an address
-		// check would have refused a note the window itself wrote.
+		// A pre-2026-08-28 link carries no `_crosswalker` import_set block, so it is
+		// invisible to the identity index. An ownership check that treated that
+		// absence as "somebody else's" would refuse a note the window itself wrote.
+		//
+		// AM-30 (2026-08-31) changed what makes this note findable. It used to be
+		// found by the curie this window would MINT today, which is a function of the
+		// evidence document's vault path; it is now found by the pair it RECORDS,
+		// which is what every version of `buildEvidenceLink` has written and what
+		// survives a rename. The seed therefore carries the subject and object it
+		// always had in a real vault — a note recording only a curie was never a
+		// shape this window produced.
 		const { app, files } = makeVault();
-		files.set(LINK_PATH, note(`curie: ${LINK_CURIE}\nkind: junction-note`, 'Old link.\n'));
+		files.set(LINK_PATH, note([
+			`curie: ${LINK_CURIE}`,
+			'kind: junction-note',
+			`subject: "[[${CONTROL.path}|AC-2]]"`,
+			`subject_curie: "${CONTROL.curie}"`,
+			'predicate: has_evidence',
+			`object: "[[${EVIDENCE}|MFA policy]]"`,
+		].join('\n'), 'Old link.\n'));
 		await pressCreateLink(app);
 		expect(said()).toContain('Updated the existing link');
 		expect(files.get(LINK_PATH)).toContain('has_evidence');
