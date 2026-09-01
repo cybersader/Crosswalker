@@ -19,6 +19,44 @@ export type ImportSetScheme = typeof IMPORT_SET_SCHEMES[number];
  * endpoint-v1 so every pre-existing import path preserves its identities. */
 export const CURRENT_IMPORT_SET_SCHEME: ImportSetScheme = 'endpoint-v1';
 
+/**
+ * AM-27 (2026-08-31). HOW a set turns a source row into a CURIE local part.
+ *
+ * Pinned per set for exactly the reason `scheme` and `ontology` are: a run that
+ * derives identities differently from the run that wrote the notes recognises
+ * none of them, so it writes a second copy of the whole import and reports every
+ * original as an orphan. Changing a derivation rule in place is therefore not a
+ * bug fix, it is a vault-wide re-identification.
+ *
+ * - `filename-stem-v1` is the rule shipped since v0.1.0: the leaf filename stem
+ *   passed through the FILESYSTEM sanitizer. It is many-to-one (`AC 2` and
+ *   `AC-2` and `AC/2` all land on one curie) and it rewrites even a declared
+ *   `curie` column. It is kept, byte-exact and forever, because it is a recorded
+ *   fact about the notes already in people's vaults.
+ * - `declared-facts-v1` is the rule every NEW set mints under: the source's own
+ *   declared identity first, the filename stem only as a last resort, and any
+ *   sanitization that does happen is injective.
+ */
+export const IMPORT_SET_DERIVATIONS = ['filename-stem-v1', 'declared-facts-v1'] as const;
+export type ImportSetDerivation = typeof IMPORT_SET_DERIVATIONS[number];
+
+/**
+ * What an UNSTAMPED set derives under. Absence is not "unknown", it is a fact:
+ * every note written before this pin existed was written by the legacy rule.
+ */
+export const LEGACY_IMPORT_SET_DERIVATION: ImportSetDerivation = 'filename-stem-v1';
+
+/** What a new mint pins itself to. */
+export const CURRENT_IMPORT_SET_DERIVATION: ImportSetDerivation = 'declared-facts-v1';
+
+/**
+ * The derivation a run must use. One reader, so no call site invents its own
+ * default and re-identifies a legacy vault by omission.
+ */
+export function derivationOf(reference?: Pick<ImportSetReference, 'derivation'>): ImportSetDerivation {
+	return reference?.derivation ?? LEGACY_IMPORT_SET_DERIVATION;
+}
+
 export interface ImportSetReference {
 	id: string;
 	scheme: ImportSetScheme;
@@ -50,6 +88,20 @@ export interface ImportSetReference {
 	 * already show, because the notes are the fact.
 	 */
 	ontology?: string;
+	/**
+	 * AM-27. The identity-derivation rule this set is pinned to, stamped at mint
+	 * beside `scheme` and `ontology`.
+	 *
+	 * Failure mode prevented: fixing the derivation rule for everyone. The legacy
+	 * rule runs a concept's identity through a filename sanitizer, which is
+	 * many-to-one; replacing it globally would give every note in every existing
+	 * vault a new curie, so the next refresh would match nothing it owns, write a
+	 * duplicate framework, and orphan the original.
+	 *
+	 * Absent means `filename-stem-v1` (see `derivationOf`). Absence is the
+	 * recorded state of every set minted before this pin, not a missing answer.
+	 */
+	derivation?: ImportSetDerivation;
 }
 
 export type ImportSetOption =
@@ -96,6 +148,8 @@ interface ImportSetObservation {
 	ontologyPrefix: string | null;
 	/** The ontology pinned in this note's import_set block, if any (AM-6). */
 	ontology: string | null;
+	/** The derivation pinned in this note's import_set block, if any (AM-27). */
+	derivation: string | null;
 }
 
 /** Stored import-set provenance is malformed or disagrees within one set. */
@@ -321,12 +375,22 @@ export async function resolveImportSet(
 		...(ontology ? { ontology } : {}),
 	});
 
+	// AM-27. A mint is the ONLY place the new derivation enters a vault. Every
+	// other branch below either carries an existing set's pin forward or leaves
+	// the field absent, which is the legacy rule. That is the whole safety
+	// argument: no note that already exists can change identity.
+	const mint = (scheme: ImportSetScheme): ImportSetReference => ({
+		id: mintImportSetId(collectKnownIds(app)),
+		scheme,
+		derivation: CURRENT_IMPORT_SET_DERIVATION,
+	});
+
 	if (option === 'new') {
-		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME }, proposed);
+		return stamp(mint(CURRENT_IMPORT_SET_SCHEME), proposed);
 	}
 
 	if (option === 'new-set-qualified') {
-		return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: 'set-qualified-v1' }, proposed);
+		return stamp(mint('set-qualified-v1'), proposed);
 	}
 
 	if (option && typeof option === 'object') {
@@ -341,8 +405,30 @@ export async function resolveImportSet(
 					existing.paths,
 				);
 			}
-			return stamp({ id: existing.id, scheme: existing.scheme }, pinnedOntologyOf(existing, proposed));
+			// AM-27. The set's own pin, re-stamped unchanged. An existing set is
+			// refreshed under the rule its notes were written by, whatever this
+			// version's current rule happens to be.
+			return stamp(
+				{
+					id: existing.id,
+					scheme: existing.scheme,
+					...(existing.derivation ? { derivation: existing.derivation } : {}),
+				},
+				pinnedOntologyOf(existing, proposed),
+			);
 		}
+		// AM-27. An explicit id whose notes this call did not see: emptied, wiped, or
+		// - and this is the case that decides the branch - simply not in the metadata
+		// cache yet. Whole-vault discovery has no raw-frontmatter fallback by design,
+		// so "no observations" is NOT proof of "no notes". The derivation is therefore
+		// left ABSENT, which is the legacy rule.
+		//
+		// Failure mode prevented: cache lag re-identifying a whole framework. Minting
+		// the current rule here would, on a cold cache, give a legacy set's refresh a
+		// derivation none of its existing notes were written under, so the run would
+		// match nothing it owns and write a duplicate of the entire import. An
+		// actually-empty set pays nothing for the caution: it has no notes to
+		// re-identify, and the rows it writes are consistent with what it stamps.
 		return stamp({ id: option.id, scheme: option.scheme ?? CURRENT_IMPORT_SET_SCHEME }, proposed);
 	}
 
@@ -366,7 +452,7 @@ export async function resolveImportSet(
 	// Ownership is decided by the caller, on screen, by a click. The engine
 	// executes that decision: an explicit {id, scheme} refreshes that set, and
 	// anything else - undefined included - mints a new one.
-	return stamp({ id: mintImportSetId(collectKnownIds(app)), scheme: CURRENT_IMPORT_SET_SCHEME }, proposed);
+	return stamp(mint(CURRENT_IMPORT_SET_SCHEME), proposed);
 }
 
 /**
@@ -435,6 +521,7 @@ async function collectObservations(app: App, basePath?: string, onlyId?: string)
 		}
 		const destination = readString((raw as Record<string, unknown>).destination);
 		const ontology = readString((raw as Record<string, unknown>).ontology);
+		const derivation = readString((raw as Record<string, unknown>).derivation);
 		// Two stamped facts about WHAT produced this note, kept beside the ownership
 		// id so a caller can ask "has this source written here before?" without
 		// re-deriving anything from the note's address. Both are optional: a note
@@ -451,6 +538,7 @@ async function collectObservations(app: App, basePath?: string, onlyId?: string)
 			recipeId,
 			ontologyPrefix: curiePrefix(readString((fm as Record<string, unknown>).curie)),
 			ontology,
+			derivation,
 		});
 	}
 	return observations;
@@ -497,6 +585,7 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 		const paths = group.map((entry) => entry.path).sort();
 		const recorded = recordedDestination(group);
 		const pinnedOntology = agreedOntology(group);
+		const pinnedDerivation = agreedDerivation(id, group);
 		sets.push({
 			id,
 			scheme,
@@ -507,6 +596,7 @@ function buildDiscoveredSets(observations: ImportSetObservation[]): DiscoveredIm
 			ontologyPrefixes: distinctSorted(group.map((entry) => entry.ontologyPrefix)),
 			...(recorded ? { destination: recorded } : {}),
 			...(pinnedOntology ? { ontology: pinnedOntology } : {}),
+			...(pinnedDerivation ? { derivation: pinnedDerivation } : {}),
 		});
 	}
 	sets.sort((a, b) => a.id.localeCompare(b.id));
@@ -595,6 +685,54 @@ function recordedDestination(group: readonly ImportSetObservation[]): string | n
 function agreedOntology(group: readonly ImportSetObservation[]): string | null {
 	const stamped = new Set(group.map((entry) => entry.ontology).filter((value): value is string => value !== null));
 	return stamped.size === 1 ? [...stamped][0] : null;
+}
+
+/**
+ * AM-27. The derivation every member of a set agrees on, or null when none is
+ * stamped (a legacy set, which `derivationOf` reads as `filename-stem-v1`).
+ *
+ * Disagreement REFUSES, the way `scheme` does, rather than degrading to a
+ * default the way `ontology` does. The difference is that ontology has a second
+ * observable to recover from - the prefixes the notes' own curies show - while a
+ * derivation rule leaves no trace in the note it produced. Picking either answer
+ * for a mixed set re-identifies the half that disagreed: every one of those notes
+ * falls outside the run's index, so the run writes duplicates and reports the
+ * originals as orphans. Refusing by name costs the user one message and damages
+ * nothing.
+ *
+ * A partly-stamped set counts as disagreement for the same reason: unstamped IS
+ * `filename-stem-v1`, so "some stamped, some not" is two rules in one set.
+ */
+function agreedDerivation(id: string, group: readonly ImportSetObservation[]): ImportSetDerivation | null {
+	const stamped = new Set(group.map((entry) => entry.derivation ?? LEGACY_IMPORT_SET_DERIVATION));
+	if (stamped.size === 1) {
+		const only = [...stamped][0];
+		if (!isImportSetDerivation(only)) {
+			const paths = group.map((entry) => entry.path).sort();
+			throw new ImportSetProvenanceError(
+				`Import set ${id} records an identity derivation this version does not know: ${only}. `
+				+ 'It was probably written by a newer Crosswalker. Update the plugin, then run this again.',
+				paths,
+			);
+		}
+		return only === LEGACY_IMPORT_SET_DERIVATION && group.every((entry) => entry.derivation === null)
+			? null
+			: only;
+	}
+	const paths = group.map((entry) => entry.path).sort();
+	const details = group
+		.map((entry) => `${entry.path} (${entry.derivation ?? LEGACY_IMPORT_SET_DERIVATION})`)
+		.sort()
+		.join(', ');
+	throw new ImportSetProvenanceError(
+		`Import set ${id} records two different identity derivations, so its notes cannot all be recognised by one rule: ${details}. `
+		+ 'Restore the notes that disagree from a backup, or move them out of this folder, then run the import again.',
+		paths,
+	);
+}
+
+function isImportSetDerivation(value: unknown): value is ImportSetDerivation {
+	return typeof value === 'string' && (IMPORT_SET_DERIVATIONS as readonly string[]).includes(value);
 }
 
 /**

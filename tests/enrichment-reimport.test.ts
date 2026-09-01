@@ -401,12 +401,17 @@ describe('Pass 1.5 level hubs — end-to-end via generateFromRecipe', () => {
 		// no longer be the right one (2026-08-29). `ontology` pins the identity
 		// space the same way `scheme` does, so a refresh mints curies the set's own
 		// notes already answer to rather than recomputing them from its own recipe
-		// (AM-6, 2026-08-30).
+		// (AM-6, 2026-08-30). `derivation` pins HOW a row becomes a curie, for the
+		// same reason: a refresh that derives identities differently recognises none
+		// of the notes it owns (AM-27, 2026-08-31). This set was minted by this run,
+		// so it carries the current rule; a set written before the pin existed
+		// carries no `derivation` key at all, which is the legacy rule.
 		expect(homeFm._crosswalker.import_set).toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/),
 			scheme: 'endpoint-v1',
 			destination: 'Frameworks',
 			ontology: 'attack-hubs',
+			derivation: 'declared-facts-v1',
 		});
 	});
 

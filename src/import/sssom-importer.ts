@@ -40,7 +40,8 @@ import {
 } from './sssom-parser';
 import { sha256Hex } from '../generation/hash';
 import { readNoteFrontmatterState } from '../export/vault-reader';
-import type { ImportSetOption, ImportSetReference } from '../generation/import-set';
+import { derivationOf, type ImportSetOption, type ImportSetReference } from '../generation/import-set';
+import { injectiveEndpointToken } from '../generation/curie';
 import {
 	assertionBaseKey,
 	mappingOccurrenceContentKey,
@@ -482,16 +483,34 @@ export function sssomEdgeCurie(
 	row: Record<string, unknown>,
 	importSet: ImportSetReference,
 ): string {
-	const subj = sanitizeCuriePart(row.subject_id);
-	const obj = sanitizeCuriePart(row.object_id);
+	// AM-27. The endpoint sanitizer is part of the identity, so which one runs is
+	// the SET's pinned derivation, not this version's preference. Under the legacy
+	// pin the collapsing form below is reproduced byte-for-byte, because it is what
+	// every junction note already in a vault carries.
+	const sanitize = derivationOf(importSet) === 'declared-facts-v1'
+		? injectiveEndpointToken
+		: legacySanitizeCuriePart;
+	const subj = sanitize(String(row.subject_id ?? 'unknown'));
+	const obj = sanitize(String(row.object_id ?? 'unknown'));
 	if (importSet.scheme === 'endpoint-v1') return `cw-${subj}-${obj}`;
 	if (importSet.scheme === 'set-qualified-v1') return `cwset-${importSet.id}-${subj}-${obj}`;
 	const exhaustive: never = importSet.scheme;
 	throw new Error(`Unsupported import set scheme: ${String(exhaustive)}.`);
 }
 
-function sanitizeCuriePart(value: unknown): string {
-	return String(value ?? 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');
+/**
+ * AM-27. `filename-stem-v1` only. FROZEN.
+ *
+ * Many-to-one: `NIST:AC-2` and `NIST/AC-2` and `NIST AC 2` all become
+ * `NIST-AC-2`, so two SSSOM rows mapping different endpoints produce one edge
+ * identity, and the second row silently replaces the first's assertion. Kept
+ * unchanged anyway - it is a record of what is in people's vaults, and changing
+ * it would re-identify every junction note ever imported. New sets get
+ * `injectiveEndpointToken`, which keeps the same readable shape and appends a
+ * digest of the exact endpoint whenever a character had to be replaced.
+ */
+function legacySanitizeCuriePart(value: string): string {
+	return value.replace(/[^a-zA-Z0-9_-]+/g, '-');
 }
 
 /** Convert a SssomRow to a plain Record for the generation engine. */

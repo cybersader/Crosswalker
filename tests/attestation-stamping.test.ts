@@ -19,7 +19,7 @@ import { applyMigrations } from '../src/tier2/migrations';
 import { projectFromTier1 } from '../src/tier2/projector';
 import { generateFromRecipe } from '../src/generation/generation-engine';
 import { computeReviewCid, computeReviewGroupCids } from '../src/generation/hash';
-import { buildEvidenceLink, reviewedAgainstFor, type EvidenceLinkInput } from '../src/views/evidence-link';
+import { buildEvidenceLink, evidenceLinkPath, reviewedAgainstFor, type EvidenceLinkInput } from '../src/views/evidence-link';
 import { EvidenceLinkModal, readReviewCid, readReviewGroups } from '../src/views/evidence-link-modal';
 import {
 	evidenceCoverageByConcept,
@@ -539,7 +539,13 @@ describe('the modal looks at the file before concluding a control has no fingerp
 		'',
 	].join('\n');
 
-	const LINK_PATH = 'Evidence/Junctions/AC-2--has_evidence--MFA policy.md';
+	// AM-22 (2026-08-31): the address carries a pair hash, so two controls sharing
+	// a file name no longer want one file. Computed through the shipped function
+	// rather than written out, so this file pins the window's behaviour and never
+	// a second, stale opinion about where a link goes. The literal it replaced was
+	// the pre-AM-22 address, and it silently made all three assertions below look
+	// at a file the window had never written.
+	const LINK_PATH = evidenceLinkPath('Evidence/Junctions', CONTROL_CURIE, CONTROL_PATH, 'Evidence/MFA policy.md');
 
 	async function runModal(app: any, control: { path: string; title: string; curie: string | null; reviewCid: string | null }) {
 		const modal = new EvidenceLinkModal({ app, folder: 'Evidence/Junctions', initialControl: control });

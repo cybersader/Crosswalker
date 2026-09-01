@@ -790,7 +790,21 @@ function stripSlashes(p: string): string {
 	return p.replace(/^\/+|\/+$/g, '');
 }
 
-/** Slug a value for a curie local part (lowercase, non-alnum → `-`). */
+/**
+ * Slug a value for a curie local part (lowercase, non-alnum → `-`).
+ *
+ * AM-27 (2026-08-31), deferred with a reason. This is many-to-one exactly like
+ * the sanitizers that amendment made injective: two facet values `Access
+ * Control` and `access-control` produce one hub curie, so one hub note holds two
+ * facets' membership. It is NOT covered by AM-27's rule, which is scoped to the
+ * identity a source ROW derives, and it cannot be corrected here without the
+ * same pinning: hub curies are already in vaults, so changing this function
+ * silently re-identifies every hub note ever written. `enrich()` is pure and
+ * receives no `ImportSetReference`, so pinning it means plumbing the set's
+ * derivation through this module - a separate change with its own proof
+ * obligations, not a line edit. The within-run duplicate guard does not reach it
+ * either: hubs are not rows.
+ */
 function slug(value: string): string {
 	return value
 		.trim()

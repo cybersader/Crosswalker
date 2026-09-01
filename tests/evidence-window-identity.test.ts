@@ -337,7 +337,16 @@ describe('AM-23: the lookup comes before the create', () => {
 		const { app, files } = makeVault();
 		files.set(RENAMED, junction({ curie: curieFor(R4), control: R4 }));
 		await pressCreateLink(app, R4);
-		const holders = [...files.entries()].filter(([, text]) => text.includes(`curie: ${curieFor(R4)}`));
+		// Counted by PARSED identity, not by substring. A substring count reads
+		// `curie: "cwk:..."` and `curie: cwk:...` as different notes, which would
+		// leave this test green in exactly the case it exists to catch: the window
+		// creating a second, unquoted claimant beside a seeded quoted one.
+		const holders = [...files.values()].filter((text) => {
+			const match = /^---\n([\s\S]*?)\n---/.exec(text.replace(/\r\n/g, '\n'));
+			if (!match) return false;
+			const fm = (yaml.load(match[1]) ?? {}) as Record<string, unknown>;
+			return fm.curie === curieFor(R4);
+		});
 		expect(holders).toHaveLength(1);
 	});
 

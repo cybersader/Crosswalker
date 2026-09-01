@@ -9,7 +9,7 @@ tags: [schema, foundation, v0-1, architecture]
 
 
 :::tip[Current contract verification]
-**Status last verified:** 2026-08-30 — re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql`.
+**Status last verified:** 2026-08-31 — re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql`.
 
 The machine-readable contracts and canonical SQL remain authoritative. Sections §3 and §7 below summarize the shipped shapes. Historical TypeScript/YAML sketches are labeled as history and must not be used as implementation contracts.
 
@@ -126,7 +126,7 @@ Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schem
 | `produced_at` | Yes | ISO 8601 production timestamp |
 | `producer` | No | Producer name and version |
 | `recipe` | No | Recipe identifier and content hash used for this output |
-| `import_set` | No | Durable ownership stamp. Four properties, two of them required when the block is present (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set`): `id` (required) matches `^iset-[a-z0-9]{6}$`; `scheme` (required) is fixed at mint, closed enum `endpoint-v1` or `set-qualified-v1`; `destination` (optional) records the folder the set was last written to; `ontology` (optional) pins the CURIE prefix the set mints under. See the two subsections below |
+| `import_set` | No | Durable ownership stamp. Five properties, two of them required when the block is present (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set`): `id` (required) matches `^iset-[a-z0-9]{6}$`; `scheme` (required) is fixed at mint, closed enum `endpoint-v1` or `set-qualified-v1`; `destination` (optional) records the folder the set was last written to; `ontology` (optional) pins the CURIE prefix the set mints under; `derivation` (optional) pins how the set turns a source row into a CURIE local part, closed enum `filename-stem-v1` or `declared-facts-v1`. See the two subsections below |
 | `concept_cid` | No | Content identifier for the declared concept-identity scope; layout and mapping-only defaults do not enter a concept's scope |
 | `review_cid` | No | The same identity record hashed with the review-normalization rule applied to every string value, so cosmetically-different content (citation markers, curly quotes, collapsed whitespace, markdown link destinations) hashes identically here and differently in `concept_cid`. This normalized whole-row hash is the only changed/not-changed gate. Absent means the producer computed none, which is not a claim that the content is unchanged |
 | `review_groups` | No | Three recipe-driven explanation hashes, all required when the block is present: `wording`, `scope`, and `housekeeping` (source: `spec/tier1.schema.json § $defs.review_group_cids`). They classify a changed `review_cid`; they never replace or narrow the whole-row gate |
@@ -134,7 +134,7 @@ Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schem
 
 #### What is pinned to the set, and why
 
-`scheme`, `destination` and `ontology` are all recorded on the set rather than recomputed per run. They exist because the same question - *where does this import already live, and under what names?* - was previously answered by looking at the vault, and looking at the vault answers a different question: it describes an address, not an owner.
+`scheme`, `destination`, `ontology` and `derivation` are all recorded on the set rather than recomputed per run. They exist because the same question - *where does this import already live, and under what names?* - was previously answered by looking at the vault, and looking at the vault answers a different question: it describes an address, not an owner.
 
 | Property | Required | Pinned when | What a run does with it |
 |---|---:|---|---|
@@ -142,8 +142,15 @@ Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schem
 | `scheme` | Yes | Mint | Fixes crosswalk-assertion identity for the life of the set. A refresh may not change it |
 | `destination` | No | Re-stamped every run | A hint about where the set lives, so a refresh does not have to infer a root from a derived default. Never authority: nothing updates it when a user renames the folder in the file explorer, so a reader re-validates it against the set's actual note paths before writing there |
 | `ontology` | No | Mint; a legacy set is pinned on its first refresh to the prefix its own notes already carry | The CURIE prefix a refresh mints under. A run uses the pin in preference to the ontology its own recipe implies |
+| `derivation` | No | Mint | Which rule turns a source row into a CURIE local part. A run uses the set's pin, never this version's current rule |
 
 `ontology` prevents a specific and total failure: a refresh that recomputes the ontology from its own recipe can land on a different answer than the one the set's notes carry - a renamed saved config, a differently named export file - and every CURIE it then writes matches none of the notes it owns. The run writes a second copy of the whole import beside the first and reports every original as an orphan. Absent on notes written before the pin existed, which is why a legacy set is pinned from its own notes rather than from the run.
+
+`derivation` prevents the same failure from the opposite direction, and it is why the identity rule could be corrected at all. The rule shipped since v0.1.0 builds a concept's CURIE local part out of its leaf filename stem, passed through the filesystem sanitizer, so `AC 2`, `AC-2` and `AC/2` all collapse onto one identity and even a declared `curie` column gets rewritten. Correcting that rule in place would give every note in every existing vault a new CURIE, and the next refresh would recognise none of them. So the rule is pinned instead: a set stamped `filename-stem-v1`, or carrying no stamp at all, keeps the legacy derivation byte-exact forever, and only a newly minted set derives under `declared-facts-v1` (source: `src/generation/import-set.ts § derivationOf`).
+
+`declared-facts-v1` consults the source's own identity columns first, in the order `curie`, `id`, `subject_id`, `control_id`, `code`, and falls back to the filename stem only when none is present. A declared `curie` outside the CURIE charset is refused for that row by name rather than rewritten. Any sanitization that does happen is injective: a value already inside the charset passes through unchanged, and any other value becomes `<safe form>..<short digest of the exact raw value>`, so two distinct source values can never produce one CURIE (source: `src/generation/curie.ts § injectiveCurieLocalPart`).
+
+Independently of any pin, a single run refuses to produce one CURIE twice. The second row to claim an identity is reported by name alongside the row that claimed it first, and nothing is written for it. That guard changes no identity, so it applies to legacy sets as well as new ones (source: `src/generation/generation-engine.ts § duplicateCurieMessage`).
 
 Neither optional property is an ownership decision. Ownership is carried only by `id`, and the set a run writes under is chosen by the caller, never inferred by the engine from what happens to sit in the destination folder (source: `src/generation/import-set.ts § resolveImportSet`).
 
@@ -153,6 +160,8 @@ Crosswalk assertion identity (the stable name of one mapping note) follows the o
 
 - `endpoint-v1`: `cw-<sanitized-subject>-<sanitized-object>`. This is the original form and remains byte-identical on refresh.
 - `set-qualified-v1`: `cwset-<import-set-id>-<sanitized-subject>-<sanitized-object>`. The `cwset-` marker makes the form visibly distinct; the minted set id lets equal endpoint pairs in different import sets coexist. Row order and mapping-set metadata do not enter either form.
+
+Endpoint sanitization follows the set's `derivation` pin for the same reason the concept rule does: under `filename-stem-v1` the original many-to-one form is reproduced byte-for-byte, and only a set minted under `declared-facts-v1` sanitizes endpoints injectively (source: `src/import/sssom-importer.ts § sssomEdgeCurie`).
 
 A refresh always reuses the stored scheme. Choosing coexistence mints a new import set whose assertions use `set-qualified-v1`; no existing note is migrated, moved, or re-identified. See the [import-set ownership decision](/crosswalker/agent-context/zz-log/2026-08-21-import-set-ownership/#how-this-dissolves-release-isolation-rather-than-mitigating-it).
 
@@ -210,7 +219,7 @@ A mapping set (one published collection of mapping assertions) gives repeated as
 
 ### Additive compatibility
 
-All six 2026-08-21 additions are optional at their containing-record boundary: `parent_curie`, `subject_curie`, `object_curie`, `mapping_set_id`, `predicate_modifier`, and `_crosswalker.import_set`. When `import_set` is present, both its `id` and `scheme` are required (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set`). Legacy Tier 1 records without an ownership stamp therefore continue to validate. Producers clear a declared managed field when its rendered source becomes empty, but never clear a `user_preserve` field.
+All six 2026-08-21 additions are optional at their containing-record boundary: `parent_curie`, `subject_curie`, `object_curie`, `mapping_set_id`, `predicate_modifier`, and `_crosswalker.import_set`. When `import_set` is present, both its `id` and `scheme` are required (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set`). Legacy Tier 1 records without an ownership stamp therefore continue to validate. The 2026-08-31 addition of `_crosswalker.import_set.derivation` is optional for the same reason and carries a further guarantee: its absence is a meaningful value, not a missing one, and means `filename-stem-v1`. Producers clear a declared managed field when its rendered source becomes empty, but never clear a `user_preserve` field.
 
 ## §4 Recipe Schema Contract and ImportRecipe specification
 

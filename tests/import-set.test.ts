@@ -154,8 +154,13 @@ describe('import-set ownership discovery and selection', () => {
 		const one = mockApp({
 			'Frameworks/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
 		});
+		// AM-27 (2026-08-31): a mint is the one place the current identity-derivation
+		// rule enters a vault, so every minted reference carries the pin. Asserted
+		// with toEqual rather than toMatchObject so a mint that stopped pinning, or
+		// pinned something else, fails here.
 		await expect(resolveImportSet(one, 'Frameworks')).resolves.toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1', destination: 'Frameworks',
+			derivation: 'declared-facts-v1',
 		});
 		await expect(resolveImportSet(one, 'Frameworks')).resolves.not.toMatchObject({ id: 'iset-abc123' });
 
@@ -172,14 +177,20 @@ describe('import-set ownership discovery and selection', () => {
 		const app = mockApp({
 			'Other/A.md': { id: 'iset-abc123', scheme: 'endpoint-v1' },
 		});
+		// AM-27: an explicit id whose notes this call did not see keeps NO derivation.
+		// Absence is the legacy rule, and "no observations" is not proof of "no
+		// notes" - the cache may simply not have reached them yet.
 		await expect(resolveImportSet(app, 'Frameworks', { id: 'iset-zzzz99' })).resolves.toEqual({
 			id: 'iset-zzzz99', scheme: 'endpoint-v1', destination: 'Frameworks',
 		});
+		// A mint, by contrast, pins the current rule on both schemes.
 		await expect(resolveImportSet(app, 'Frameworks', 'new')).resolves.toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1', destination: 'Frameworks',
+			derivation: 'declared-facts-v1',
 		});
 		await expect(resolveImportSet(app, 'Frameworks', 'new-set-qualified')).resolves.toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'set-qualified-v1', destination: 'Frameworks',
+			derivation: 'declared-facts-v1',
 		});
 	});
 
@@ -370,6 +381,7 @@ describe('a discovered set knows where it lives', () => {
 		const app = mockApp({});
 		await expect(resolveImportSet(app, '', 'new')).resolves.toEqual({
 			id: expect.stringMatching(/^iset-[a-z0-9]{6}$/), scheme: 'endpoint-v1',
+			derivation: 'declared-facts-v1',
 		});
 	});
 });

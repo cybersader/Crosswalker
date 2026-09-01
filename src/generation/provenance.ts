@@ -95,6 +95,12 @@ export function buildProvenance(input: ProvenanceInput, pluginVersion: string): 
 			// recipe, and a recomputation that lands on a different answer writes a
 			// second copy of the framework and orphans the first.
 			...(input.importSet.ontology ? { ontology: input.importSet.ontology } : {}),
+			// AM-27. The identity-derivation rule the set is pinned to. Omitted when
+			// absent, and absence is the legacy filename-stem rule: a set written
+			// before this pin existed must keep deriving the identities its notes
+			// already carry, or the next refresh recognises none of them and writes
+			// the whole framework a second time.
+			...(input.importSet.derivation ? { derivation: input.importSet.derivation } : {}),
 		};
 	}
 

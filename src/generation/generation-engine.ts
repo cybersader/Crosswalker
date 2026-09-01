@@ -34,11 +34,18 @@ import {
 	type SourceScope,
 } from '../render';
 import { legacyConfigToRecipe, LEGACY_ONTOLOGY_SENTINEL } from './legacy-recipe-shim';
-import { slugifyForCurie } from './curie';
+import {
+	DeclaredCurieCharsetError,
+	declaredIdentity,
+	injectiveCurieLocalPart,
+	isValidCurieLocalPart,
+	slugifyForCurie,
+	stripCuriePrefix,
+} from './curie';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 import { buildProvenance } from './provenance';
-import { resolveImportSet, type ImportSetOption, type ImportSetReference } from './import-set';
+import { derivationOf, resolveImportSet, type ImportSetDerivation, type ImportSetOption, type ImportSetReference } from './import-set';
 import {
 	computeConceptCid,
 	computeRecipeHash,
@@ -411,6 +418,10 @@ export async function generateNotes(
 		// (two source rows rendering to the same vault path).
 		const emittedPaths = new Set<string>();
 		const producedCuries = new Set<string>();
+		// AM-27. Which ROW produced each curie, so the duplicate refusal can name
+		// both claimants. `producedCuries` alone cannot: it also carries the hub
+		// identities enrichment implies, which have no row.
+		const curieOrigins = new Map<string, ProducedCurieOrigin>();
 		const sourceOrderStamper = new SourceOrderStamper();
 
 		// Pass 1.5 enrichment (v0.1.6.1): the wizard/workbench path shares the
@@ -550,6 +561,16 @@ export async function generateNotes(
 						return;
 					}
 
+					// AM-27. Within-run injectivity. Sits beside the cross-set refusal
+					// because both are answers about identity alone: a row refused here
+					// must not reserve its rendered path against a later row, must not be
+					// counted as produced, and must not cost a render or a folder.
+					const firstClaim = curieOrigins.get(noteData.curie);
+					if (firstClaim) {
+						result.errors.push({ row: rowNum, message: duplicateCurieMessage(noteData.curie, firstClaim) });
+						return;
+					}
+
 					// Path collision detection — fail loud rather than silently
 					// overwriting one row's output with another's. (Runs in the sync
 					// prefix, so it's deterministic by row order under concurrency.)
@@ -626,6 +647,10 @@ export async function generateNotes(
 					// This identity belongs to the current source set even when the note is
 					// skipped or merged rather than newly created.
 					producedCuries.add(noteData.curie);
+					// AM-27. Recorded only once the row is past every refusal above: a row
+					// this run declines to write has claimed nothing, so a later row with
+					// the same identity is the FIRST claimant, not a duplicate.
+					curieOrigins.set(noteData.curie, { row: rowNum, path: noteData.path });
 
 					// The write target was resolved above (AM-14), before this row reserved
 					// anything. Consults BOTH the sibling path AND (when enrichment is on) the
@@ -1027,6 +1052,30 @@ function crossSetCollisionMessage(curie: string, claim: ForeignClaim): string {
 }
 
 /**
+ * AM-27 (2026-08-31). What one run has already claimed, so it cannot claim it twice.
+ *
+ * Failure mode prevented: one import writing two rows onto one identity. Two
+ * source rows whose identities collapse together (any derivation can do this -
+ * the legacy one collapses on characters, an injective one still collapses when
+ * the source itself repeats a code) either overwrite each other at one address,
+ * or land at two addresses and leave the vault holding one curie twice. The
+ * second is permanent: the identity index reports it as `Ambiguous identity` and
+ * every later import in that vault fails, from a cause the user cannot connect to
+ * the import that caused it.
+ *
+ * Deliberately identity-NEUTRAL, so it applies to legacy sets too. It changes no
+ * curie and re-identifies nothing; it only refuses to write the second claimant,
+ * by name, naming the first as well so the user can see which two rows disagree.
+ */
+type ProducedCurieOrigin = { row: number; path: string };
+
+function duplicateCurieMessage(curie: string, first: ProducedCurieOrigin): string {
+	return `Duplicate identity in this import: ${curie} was already produced by row ${first.row} (${first.path}). `
+		+ 'Nothing was written for this row. Two rows resolve to one identity, so one of them would overwrite the other. '
+		+ 'Give them distinct values in the column your import uses for identity.';
+}
+
+/**
  * AM-14 (2026-08-30). Why a note sitting at a rendered address may not be adopted.
  *
  * Three cases, kept apart because they are three different things for a user to
@@ -1257,10 +1306,30 @@ function buildNoteDataViaRender(
 	provenanceRecipeId?: string,
 	importSet?: ImportSetReference,
 ): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[] } {
-	// 1. Build a CURIE for this row: the run's curie prefix + filename stem.
-	//    The filename is whatever the recipe's leaf file template resolves to.
+	// 1. Build a CURIE for this row, under the derivation THIS SET IS PINNED TO.
+	//
+	// AM-27. Why identity may not pass through a filename sanitizer: a filename
+	// sanitizer exists to make a string safe for a filesystem, and it does that by
+	// mapping many strings onto one (`AC 2`, `AC-2` and `AC/2` all become `AC-2`).
+	// An identity built that way is not an identity: two source rows that differ
+	// only in a collapsed character claim one CURIE, which is a permanent
+	// `Ambiguous identity` collision failing every later import in the vault, and -
+	// when they also share an address - one row silently overwriting the other.
+	//
+	// The legacy rule did exactly that, so it is kept byte-exact for the sets that
+	// already carry it rather than corrected underneath them: correcting it would
+	// change the curie of every note in every existing vault, and the next refresh
+	// would match none of them.
+	//
+	// `filenameStem` stays on the legacy rule under BOTH derivations: it is only a
+	// fallback for the note's H1 (step 5b), a display concern, and changing what a
+	// heading says is not what this amendment is about.
 	const filenameStem = deriveFilenameStem(row, mapping, rowNum);
-	const curie = `${curiePrefix}:${filenameStem}`;
+	const curie = `${curiePrefix}:${
+		derivationOf(importSet) === 'declared-facts-v1'
+			? declaredFactsLocalPart(row, () => deriveRawFilenameStem(row, mapping, rowNum))
+			: filenameStem
+	}`;
 
 	// 2. render() expects a SourceScope object — the row IS the scope (column
 	//    names map to template variables).
@@ -1513,8 +1582,32 @@ export function composeDocumentBody(titleText: string | null, body: string): str
 /**
  * Pulled from buildNoteData's filename logic — returns the stem (no .md) for
  * use in CURIE generation.
+ *
+ * AM-27. `filename-stem-v1` ONLY. Frozen: this must keep returning byte-for-byte
+ * what it returned before, because it is the recorded derivation of every set
+ * minted before the pin existed. `sanitizeFileName` at the end is the collapse
+ * the amendment names - it is kept here deliberately, and kept OUT of
+ * `deriveRawFilenameStem` below, which is what the injective rule sanitizes
+ * itself.
  */
 function deriveFilenameStem(
+	row: Record<string, any>,
+	mapping: MappingConfig,
+	rowNum: number,
+): string {
+	return sanitizeFileName(deriveRawFilenameStem(row, mapping, rowNum));
+}
+
+/**
+ * The filename stem BEFORE any sanitizer touches it.
+ *
+ * AM-27. Identity may not pass through a filename sanitizer, so the injective
+ * derivation needs the exact source value: the hash that disambiguates a
+ * collapsed value is taken over THIS string, not over the collapsed one. Taking
+ * it after sanitization would hash two already-merged values to one digest and
+ * disambiguate nothing.
+ */
+function deriveRawFilenameStem(
 	row: Record<string, any>,
 	mapping: MappingConfig,
 	rowNum: number,
@@ -1545,7 +1638,7 @@ function deriveFilenameStem(
 	if (filename.endsWith('.md')) {
 		filename = filename.slice(0, -3);
 	}
-	return sanitizeFileName(filename);
+	return filename;
 }
 
 // AM-18. `slugifyForCurie` now lives in `./curie` so `import-set.ts` can share
@@ -2392,6 +2485,9 @@ export async function generateFromRecipe(
 
 	const emittedPaths = new Set<string>();
 	const producedCuries = new Set<string>();
+	// AM-27. Which row produced each curie, so the duplicate refusal can name both
+	// claimants. Same guard, same reason, as the wizard path above.
+	const curieOrigins = new Map<string, ProducedCurieOrigin>();
 	// Ch 43 re-attestation: review fingerprints of concepts produced by THIS run,
 	// so a recipe that emits a concept and an evidence link for it in one pass can
 	// stamp the link against the concept it just wrote.
@@ -2495,9 +2591,11 @@ export async function generateFromRecipe(
 				: sourceScope;
 
 			// 1. Build CURIE for this row
+			// AM-27. The derivation is the SET's, not this version's. An override
+			// (the SSSOM importer) reads the same pin off the reference it is handed.
 			const localPart = options.curieLocalPart
 				? options.curieLocalPart(scope, rowNum, importSet)
-				: defaultCurieLocalPart(scope, rowNum);
+				: defaultCurieLocalPart(scope, rowNum, derivationOf(importSet));
 			const curie = `${curiePrefix}:${localPart}`;
 			// The index deliberately does not return an arbitrary winner for a
 			// collision. Refuse this row instead of making the duplicate permanent.
@@ -2513,6 +2611,14 @@ export async function generateFromRecipe(
 			const foreignClaim = foreignSetClaim(ownedIdentityIndex, identityIndex, curie);
 			if (foreignClaim) {
 				result.errors.push({ row: rowNum, message: crossSetCollisionMessage(curie, foreignClaim) });
+				return;
+			}
+
+			// AM-27. Within-run injectivity, beside the other two identity-only
+			// refusals and above every record this row would otherwise leave behind.
+			const firstClaim = curieOrigins.get(curie);
+			if (firstClaim) {
+				result.errors.push({ row: rowNum, message: duplicateCurieMessage(curie, firstClaim) });
 				return;
 			}
 
@@ -2663,6 +2769,9 @@ export async function generateFromRecipe(
 			// This identity belongs to the current source set even when overwrite mode
 			// skips or merges the note rather than creating a new file.
 			producedCuries.add(curie);
+			// AM-27. Only once the row is past every refusal above: a row this run
+			// declined to write has claimed nothing.
+			curieOrigins.set(curie, { row: rowNum, path: fullPath });
 			// Recorded only for a row that survived validation, so a junction row
 			// later in the same run can never be stamped against a concept this run
 			// refused to write.
@@ -3504,10 +3613,23 @@ export function buildDefaultBody(
 }
 
 /**
- * Default per-row CURIE local part: row.curie's local part if present, else
- * row.id, else row.subject_id, else row-N.
+ * Default per-row CURIE local part, under the derivation the set is pinned to.
+ *
+ * AM-27. `filename-stem-v1` is frozen: row.curie's local part if present, else
+ * row.id / row.subject_id / row.control_id / row.code, else row-N, all of it
+ * through `sanitizeFileName`. That last step is the defect - it rewrites even a
+ * DECLARED curie, so a source that states `nist:AC-2(1)/a` gets a different
+ * identity written into the vault than the one it declared - but it is what every
+ * set minted before the pin already carries, and it is kept for exactly those.
  */
-function defaultCurieLocalPart(row: Record<string, unknown>, rowNum: number): string {
+function defaultCurieLocalPart(
+	row: Record<string, unknown>,
+	rowNum: number,
+	derivation: ImportSetDerivation,
+): string {
+	if (derivation === 'declared-facts-v1') {
+		return declaredFactsLocalPart(row, () => `row-${rowNum}`);
+	}
 	const candidate = row.curie ?? row.id ?? row.subject_id ?? row.control_id ?? row.code;
 	if (typeof candidate === 'string' && candidate.length > 0) {
 		// If it's already a full CURIE, take the local part
@@ -3516,4 +3638,36 @@ function defaultCurieLocalPart(row: Record<string, unknown>, rowNum: number): st
 		return sanitizeFileName(local);
 	}
 	return `row-${rowNum}`;
+}
+
+/**
+ * AM-27. `declared-facts-v1`: one rule, shared by both generation entry points.
+ *
+ * Declared facts first. The source's own identity columns are consulted before
+ * anything derived from an address, because an identity a source STATES is the
+ * only one that can be joined back to the source system; a stem read off a
+ * filename template is a fact about where the note went, not about what it is.
+ *
+ * Three behaviours, in order:
+ *   - a declared `curie` column is honoured exactly, or REFUSED BY NAME. Never
+ *     sanitized: silently rewriting a declared identity puts a value in the vault
+ *     that the source never asserted, and merges two rows whose declared curies
+ *     differ only in a rejected character.
+ *   - the remaining declared columns (`id`, `subject_id`, `control_id`, `code`)
+ *     are identifiers, not declared CURIEs, so they may be made charset-safe -
+ *     but injectively, so no two of them collapse together.
+ *   - `lastResort` supplies the caller's fallback (the filename stem for the
+ *     wizard path, `row-N` for the recipe path), also injectively.
+ */
+function declaredFactsLocalPart(row: Record<string, unknown>, lastResort: () => string): string {
+	const declared = declaredIdentity(row);
+	if (declared) {
+		const local = stripCuriePrefix(declared.raw);
+		if (declared.column === 'curie') {
+			if (!isValidCurieLocalPart(local)) throw new DeclaredCurieCharsetError(declared.raw);
+			return local;
+		}
+		return injectiveCurieLocalPart(local);
+	}
+	return injectiveCurieLocalPart(lastResort());
 }
