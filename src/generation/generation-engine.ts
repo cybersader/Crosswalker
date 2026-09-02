@@ -2632,13 +2632,49 @@ export async function generateFromRecipe(
 	 * fill these in later: a resolve pass would stamp a fingerprint the IMPORTER
 	 * computed against content no human reviewed, which is fabricating an approval
 	 * with extra steps.
+	 *
+	 * AM-39 (closing adversarial CONFIRMED 7). "Not indexed yet" is NOT one of
+	 * those real answers, and this line used to accept it as one - a metadata-cache
+	 * miss read as "this note carries no fingerprint". The asymmetry was provable
+	 * one line above: `identityIndex` finds a cache-cold note by READING IT off
+	 * disk, and then this asked the cache the same question and believed the
+	 * silence. The consequence is permanent and invisible: a link imported while
+	 * Obsidian was still indexing is written with no baseline, so no later upstream
+	 * edit can ever invalidate it, and it is indistinguishable from a link that
+	 * honestly had none. Cache lag is not absence (`project_cache_lag_is_not_absence`,
+	 * ninth appearance). `ok` is read, `none` is the real null, and `unreadable`
+	 * says so rather than passing for absence.
 	 */
-	const resolveSubjectReviewBaseline = (subjectCurie: string): ReviewBaseline | null => {
+	const resolveSubjectReviewBaseline = async (
+		subjectCurie: string,
+		rowNum: number,
+	): Promise<ReviewBaseline | null> => {
 		const fromThisRun = producedReviewBaselines.get(subjectCurie);
 		if (fromThisRun) return fromThisRun;
 		const file = identityIndex.get(subjectCurie);
 		if (!file) return null;
-		const provenance = app.metadataCache.getFileCache(file)?.frontmatter?._crosswalker;
+		const cached = app.metadataCache.getFileCache(file);
+		let provenance = cached?.frontmatter?._crosswalker;
+		// The discriminator is the CACHE ENTRY, not the key: an entry that exists
+		// and carries no `_crosswalker` is a fact (Obsidian read this note and it
+		// has no provenance), while no entry at all is Obsidian not having reached
+		// the file yet. Only the second is worth a disk read, so a bulk import of
+		// links against genuinely unfingerprinted subjects pays nothing.
+		if (!cached) {
+			const read = await readNoteFrontmatterState(app, file);
+			if (read.state === 'unreadable') {
+				result.warnings ??= [];
+				result.warnings.push({
+					row: rowNum,
+					message: `The properties of ${file.path} could not be read, so this approved link was written with `
+						+ 'no review baseline and Crosswalker cannot tell you later if that note changes. '
+						+ 'Fix that note\'s properties, then re-import.',
+				});
+				return null;
+			}
+			if (read.state !== 'ok') return null;
+			provenance = read.frontmatter._crosswalker;
+		}
 		if (!provenance || typeof provenance !== 'object') return null;
 		const source = provenance as Record<string, unknown>;
 		const value = source.review_cid;
@@ -2850,7 +2886,7 @@ export async function generateFromRecipe(
 				const subjectCurie = typeof frontmatter.subject_curie === 'string'
 					? frontmatter.subject_curie
 					: null;
-				const subjectBaseline = subjectCurie ? resolveSubjectReviewBaseline(subjectCurie) : null;
+				const subjectBaseline = subjectCurie ? await resolveSubjectReviewBaseline(subjectCurie, rowNum) : null;
 				const reviewedAgainst = reviewedAgainstFor(
 					subjectCurie,
 					subjectBaseline?.reviewCid,
@@ -3318,6 +3354,20 @@ interface OwnedHubValueIndex {
 function hubValuesKey(values: readonly string[]): string {
 	return JSON.stringify(values);
 }
+
+/**
+ * AM-39. The keys that RECORD what a hub is about, declared managed on every hub
+ * write whether or not this run computed them.
+ *
+ * Managed keys are otherwise derived from the fresh frontmatter, which means a
+ * key the run could not compute is absent, and an absent key is preserved as
+ * though the user had written it. For a record the product itself matches on,
+ * that is a stale assertion nothing can retract: `buildOwnedHubValueIndex` keeps
+ * offering the note as the hub for values it no longer covers, and a later run
+ * whose folder genuinely has those values adopts it, moves it, and restamps it.
+ * A record that cannot be cleared is not a record.
+ */
+const HUB_VALUE_RECORD_KEYS: readonly string[] = ['hub_levels', 'hub_values'];
 
 /** A frontmatter value that is a list of strings, or null. */
 function readStringArray(value: unknown): string[] | null {
@@ -3827,24 +3877,33 @@ async function applyEnrichment(
 		let body = hub.body;
 
 		const existing = target.existingFile;
+		// The adopted alias is recorded as produced so the identity this run
+		// deliberately superseded is not then reported as a note that vanished.
+		// AM-31: claimed, not merely added, so a second writer of that same
+		// superseded identity is refused rather than silently agreed with.
+		//
+		// AM-39. Claimed ABOVE the relocation, exactly as the curie claim above is.
+		// AM-31's invariant is "above every write and above the relocation", and
+		// this was the one claim below it. It was unreachable until AM-33 step 3,
+		// whose whole purpose is an alias on a note that has MOVED: a hub refused
+		// here after the move had already run was physically renamed to the new
+		// address and then abandoned by `continue` with nothing written into it, so
+		// a refusal left the vault rearranged. A refusal must leave the vault
+		// exactly as it found it.
+		if (existing instanceof TFile && target.adoptedAlias) {
+			const firstClaim = claimProducedCurie(producedCuries, curieOrigins, target.adoptedAlias, {
+				row: 0, path: existing.path, kind: 'hub',
+			});
+			if (firstClaim) {
+				result.errors.push({
+					row: 0,
+					message: duplicateHubCurieMessage(target.adoptedAlias, existing.path, firstClaim),
+				});
+				continue;
+			}
+		}
 		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, producedThisRun, debug);
 		if (existing instanceof TFile) {
-			// The adopted alias is recorded as produced so the identity this run
-			// deliberately superseded is not then reported as a note that vanished.
-			// AM-31: claimed, not merely added, so a second writer of that same
-			// superseded identity is refused rather than silently agreed with.
-			if (target.adoptedAlias) {
-				const firstClaim = claimProducedCurie(producedCuries, curieOrigins, target.adoptedAlias, {
-					row: 0, path: existing.path, kind: 'hub',
-				});
-				if (firstClaim) {
-					result.errors.push({
-						row: 0,
-						message: duplicateHubCurieMessage(target.adoptedAlias, existing.path, firstClaim),
-					});
-					continue;
-				}
-			}
 			// Re-import: regenerate the managed Contents section, preserve user
 			// frontmatter + any prose outside it (title, notes, etc.).
 			//
@@ -3868,7 +3927,17 @@ async function applyEnrichment(
 			}
 			if (Object.keys(existingNote.frontmatter).length > 0) {
 				try {
-					const managedKeys = computeManagedKeys(frontmatter, userPreserve);
+					// AM-39. `hub_levels`/`hub_values` are ALWAYS managed on a hub, even
+					// in a run that computes none. Managed keys are otherwise the keys
+					// the fresh frontmatter happens to carry, so a run that could not
+					// compute values simply omitted them and the merge preserved the
+					// note's OLD values as if they were a user annotation. A stale
+					// record is worse than no record: the value index keeps offering
+					// that note as the hub for values it no longer covers, and step 3
+					// then moves it and restamps it into a folder that is about
+					// something else. Declaring them managed makes "no values this run"
+					// delete the claim instead of leaving it standing.
+					const managedKeys = computeManagedKeys(frontmatter, userPreserve, HUB_VALUE_RECORD_KEYS);
 					const merged = mergeFrontmatter(existingNote.frontmatter, frontmatter, managedKeys);
 					Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
 					Object.assign(frontmatter, merged);

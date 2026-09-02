@@ -19,7 +19,10 @@ import { readReviewGroupCids, type ReviewGroupCids } from '../generation/hash';
 // AM-17. The same door the engine passes through, not a second copy of it.
 import { addressRefusal, crossSetAddressMessage } from '../generation/generation-engine';
 import { buildIdentityIndex } from '../generation/identity-index';
-import { countUnindexedMarkdownFiles, requireVaultIndexed } from '../generation/import-set';
+import { countUnindexedMarkdownFiles } from '../generation/import-set';
+// AM-39. The same merge machinery a re-import uses, not a second copy of it.
+import { readExistingNote, ExistingNoteReadError, type ExistingNote, splitNoteText } from '../generation/existing-note';
+import { scanRegions, findSpan, replaceRegion, wrapRegion } from '../generation/managed-body';
 
 /** A control note the user can link evidence to. */
 export interface ControlCandidate {
@@ -87,6 +90,126 @@ export function listControlCandidates(app: App): ControlCandidate[] {
  */
 export { countUnindexedMarkdownFiles };
 
+const EVIDENCE_COVERAGES = ['full', 'partial', 'none'] as const;
+const EVIDENCE_STATUSES = ['proposed', 'in_review', 'approved'] as const;
+
+/** A frontmatter value that is one of a closed set of strings, or null. */
+function readEnum<T extends string>(value: unknown, allowed: readonly string[]): T | null {
+	return typeof value === 'string' && allowed.includes(value) ? (value as T) : null;
+}
+
+/** `[[Path|Label]]` -> `Path`, or null when the value is not a wikilink. */
+function wikilinkTarget(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	const match = /\[\[([^\]|#^]+)/.exec(value);
+	return match ? match[1].trim() : null;
+}
+
+/**
+ * AM-39. The frontmatter keys THIS WINDOW writes, and therefore owns.
+ *
+ * Everything else a junction note carries belongs to whoever put it there: the
+ * reviewer's `reviewer`, `review_date`, `confidence`, `expires_at` and `notes`,
+ * a recipe's extra columns, another plugin's keys. The window has no control for
+ * any of them and no opinion about them, so an update carries them across
+ * untouched rather than dropping them because it did not happen to re-emit them.
+ * `tags` is deliberately NOT here: a user's hand-added tag survives, matching the
+ * list-union rule `mergeFrontmatter` applies on re-import.
+ */
+const WINDOW_MANAGED_KEYS: ReadonlySet<string> = new Set([
+	'curie', 'kind', 'title', 'subject', 'subject_curie', 'predicate', 'object',
+	'coverage', 'status', 'scope', 'reviewed_against', '_crosswalker',
+]);
+
+/** One top-level frontmatter key and the raw lines that belong to it. */
+interface FrontmatterBlock { key: string; lines: string[] }
+
+/**
+ * Split a properties block into its top-level keys, keeping every line as it is
+ * written.
+ *
+ * Deliberately textual. A user's key is carried across an update by copying its
+ * BYTES, so a quoted string keeps its quotes, a date keeps its shape, a comment
+ * keeps its place, and a value this product does not understand is not
+ * re-serialised into something it would rather have. A key's block runs until
+ * the next line that starts a top-level key; indented lines and block-sequence
+ * dashes belong to the key above them.
+ */
+function frontmatterBlocks(text: string): FrontmatterBlock[] {
+	const out: FrontmatterBlock[] = [];
+	let current: FrontmatterBlock | null = null;
+	for (const line of text.split('\n')) {
+		const startsTopLevel = line !== ''
+			&& !/^[\s-]/.test(line)
+			&& !line.trimStart().startsWith('#')
+			&& line.includes(':');
+		if (startsTopLevel) {
+			current = { key: line.slice(0, line.indexOf(':')).trim().replace(/^["']|["']$/g, ''), lines: [line] };
+			out.push(current);
+		} else if (current) {
+			current.lines.push(line);
+		} else {
+			// Anything before the first key (a leading comment, a blank line) is
+			// nobody's value and is kept under a key no writer can own.
+			current = { key: '', lines: [line] };
+			out.push(current);
+		}
+	}
+	return out;
+}
+
+/**
+ * The merged properties block: this window's keys as it just wrote them, plus
+ * every key the note already carried that the window does not own, verbatim.
+ */
+function mergeFrontmatterText(freshText: string, existingText: string, managed: ReadonlySet<string>): string {
+	const carried = frontmatterBlocks(existingText).filter((block) => !managed.has(block.key));
+	const carriedKeys = new Set(carried.map((block) => block.key));
+	const out: string[] = [];
+	for (const block of frontmatterBlocks(freshText)) {
+		// The note's own value wins for a key the window does not own, so a second
+		// click never re-asserts a default over a person's answer.
+		if (carriedKeys.has(block.key)) continue;
+		out.push(...block.lines);
+	}
+	for (const block of carried) out.push(...block.lines);
+	return out.join('\n');
+}
+
+/**
+ * AM-39. What an existing evidence link becomes when this window updates it.
+ *
+ * The frontmatter merges (managed keys only). The body is the note's, not the
+ * window's, unless the window can show that it owns it: a managed `body` region
+ * is rebuilt inside its markers with everything around it untouched, and a body
+ * byte-identical to what the window itself last wrote for this note is
+ * refreshed. Anything else is a person's writing and is left exactly as it is,
+ * even at the cost of a stale sentence in it. Losing a paragraph someone wrote
+ * is not recoverable; a stale sentence is.
+ */
+function mergeIntoExistingLink(
+	current: ExistingNote,
+	freshMarkdown: string,
+	previousBody: string | null,
+): { ok: true; markdown: string } | { ok: false; detail: string } {
+	const scan = scanRegions(current.body);
+	if (!scan.ok) return { ok: false, detail: scan.detail };
+	const fresh = splitNoteText(freshMarkdown);
+	let body: string;
+	if (findSpan(scan.spans, 'body')) {
+		body = replaceRegion(current.body, scan.spans, 'body', wrapRegion('body', fresh.body));
+	} else if (previousBody !== null && current.body === previousBody) {
+		body = fresh.body;
+	} else {
+		body = current.body;
+	}
+	const frontmatter = mergeFrontmatterText(fresh.frontmatterText, current.frontmatterText, WINDOW_MANAGED_KEYS);
+	return {
+		ok: true,
+		markdown: body.trim() ? `---\n${frontmatter}\n---\n\n${body}` : `---\n${frontmatter}\n---\n`,
+	};
+}
+
 export interface EvidenceLinkModalDeps {
 	app: App;
 	folder: string;
@@ -102,6 +225,18 @@ export class EvidenceLinkModal extends Modal {
 	private status: EvidenceStatus = 'proposed';
 	/** Renamed from `scope`: Modal already owns that property. */
 	private evidenceScope = '';
+	/**
+	 * AM-39. Which of the three review fields the person actually set in this
+	 * window. A field they never touched must not overwrite what the existing
+	 * link already records: pressing "Create link" a second time on an approved,
+	 * partially-scoped link used to silently reset it to the form's defaults
+	 * (proposed, full, no scope), because the window rebuilt the note from its own
+	 * controls and had never read the note's. An untouched control is a question
+	 * nobody answered, not an answer of "default".
+	 */
+	private touched: { coverage: boolean; status: boolean; scope: boolean } = {
+		coverage: false, status: false, scope: false,
+	};
 
 	constructor(private readonly deps: EvidenceLinkModalDeps) {
 		super(deps.app);
@@ -160,7 +295,7 @@ export class EvidenceLinkModal extends Modal {
 				drop.addOption('partial', 'Partial');
 				drop.addOption('none', 'None, this evidence does not cover it');
 				drop.setValue(this.coverage);
-				drop.onChange((value) => { this.coverage = value as EvidenceCoverage; });
+				drop.onChange((value) => { this.coverage = value as EvidenceCoverage; this.touched.coverage = true; });
 			});
 
 		new Setting(contentEl)
@@ -171,14 +306,14 @@ export class EvidenceLinkModal extends Modal {
 				drop.addOption('in_review', 'In review');
 				drop.addOption('approved', 'Approved');
 				drop.setValue(this.status);
-				drop.onChange((value) => { this.status = value as EvidenceStatus; });
+				drop.onChange((value) => { this.status = value as EvidenceStatus; this.touched.status = true; });
 			});
 
 		new Setting(contentEl)
 			.setName('Scope')
 			.setDesc('Optional. Which part of the control this covers.')
 			.addText((text) => {
-				text.onChange((value) => { this.evidenceScope = value; });
+				text.onChange((value) => { this.evidenceScope = value; this.touched.scope = true; });
 			});
 
 		new Setting(contentEl).addButton((button) => {
@@ -204,35 +339,6 @@ export class EvidenceLinkModal extends Modal {
 		// hand-writing the note, which is what this command exists to replace.
 		if (!this.app.vault.getAbstractFileByPath(evidencePath)) {
 			new Notice(`No note found at ${evidencePath}. Creating the link anyway.`);
-		}
-
-		// Only an approval records a baseline, so only an approval needs the
-		// control's fingerprint resolved — and resolved honestly.
-		let controlReviewCid = this.control.reviewCid;
-		let controlReviewGroups = this.control.reviewGroups ?? null;
-		if (this.status === 'approved' && controlReviewCid === null) {
-			const controlFile = this.app.vault.getAbstractFileByPath(this.control.path);
-			if (controlFile instanceof TFile && !this.app.metadataCache.getFileCache(controlFile)) {
-				// A null cache entry means EITHER no frontmatter OR not indexed
-				// yet. Reading the second as the first would stamp "no baseline"
-				// onto a control that has a perfectly good fingerprint — the
-				// mistake behind three bugs in one week
-				// (`project_cache_lag_is_not_absence`). Look at the file before
-				// concluding anything, for this ONE control only.
-				const fromDisk = await readNoteFrontmatter(this.app, controlFile);
-				if (fromDisk === null) {
-					new Notice('Obsidian is still reading this control. Try again in a moment.');
-					return;
-				}
-				controlReviewCid = readReviewCid(fromDisk);
-				controlReviewGroups = readReviewGroups(fromDisk);
-			}
-			if (controlReviewCid === null) {
-				new Notice(
-					'This control has no content fingerprint, so Crosswalker cannot tell you later if it changes. '
-					+ 'The link was still created and still counts.',
-				);
-			}
 		}
 
 		try {
@@ -264,12 +370,17 @@ export class EvidenceLinkModal extends Modal {
 			// So: which note names this pair, wherever it sits and whatever era it was
 			// written in; then the address; then, and only then, a mint.
 			//
-			// The whole-vault read below is only meaningful against a vault Obsidian
-			// has finished reading. A half-read vault answers "no junction names this
-			// pair" about junctions it never saw, which is exactly how a duplicate
-			// gets written (`project_cache_lag_is_not_absence`).
-			await requireVaultIndexed(this.app);
-
+			// AM-40 (2026-09-01). There used to be a `requireVaultIndexed` gate here,
+			// and it is deliberately gone. Both readers below already raw-read any
+			// file the metadata cache missed - `junctionsNamingThisPair` through
+			// `readNoteFrontmatterState`, `buildIdentityIndex` through its own disk
+			// fallback - so the gate refused what the code beneath it could already
+			// see, while genuinely blocking the ordinary case it was aimed at:
+			// Obsidian still indexing at startup, where nothing is wrong and the
+			// user is simply told to come back later. A fail-closed precondition
+			// belongs where the read is BLIND, not where it can see. (It stays in
+			// `newSetSchemeFor`, whose whole-vault discovery is cache-only by design.)
+			//
 			// Vault-wide, because the questions are "who already holds this identity"
 			// and "whose is the note at this address", and a scoped index by
 			// construction cannot answer about the notes it excluded.
@@ -302,6 +413,70 @@ export class EvidenceLinkModal extends Modal {
 			}
 			const existing = named[0] ?? null;
 
+			// AM-39. The note this window is about to change, read ONCE and read
+			// fail-closed, through the same reader generation uses. Everything below
+			// that needs to know what the link already says asks this, so the window
+			// cannot form two opinions about the note it is updating.
+			let current: ExistingNote | null = null;
+			if (existing) {
+				try {
+					current = await readExistingNote(this.app, existing.file);
+				} catch (readErr) {
+					const detail = readErr instanceof ExistingNoteReadError ? readErr.detail : String(readErr);
+					new Notice(
+						`Could not update the link: ${existing.file.path} could not be read (${detail}). `
+						+ 'Fix that note, then try again.',
+						12000,
+					);
+					return;
+				}
+			}
+
+			// AM-39. The three review controls prefill from the note. A control the
+			// person did not answer keeps what the link already records; only a
+			// control they actually set overwrites it. Without this, a second click
+			// on an approved link silently reset it to the form's defaults and told
+			// the user it had been "updated".
+			const recordedFm = current?.frontmatter ?? {};
+			const coverage = this.answered('coverage')
+				? this.coverage
+				: (readEnum<EvidenceCoverage>(recordedFm.coverage, EVIDENCE_COVERAGES) ?? this.coverage);
+			const status = this.answered('status')
+				? this.status
+				: (readEnum<EvidenceStatus>(recordedFm.status, EVIDENCE_STATUSES) ?? this.status);
+			const scope = this.answered('scope')
+				? this.evidenceScope.trim()
+				: (typeof recordedFm.scope === 'string' ? recordedFm.scope : this.evidenceScope.trim());
+
+			// Only an approval records a baseline, so only an approval needs the
+			// control's fingerprint resolved — and resolved honestly.
+			let controlReviewCid = this.control.reviewCid;
+			let controlReviewGroups = this.control.reviewGroups ?? null;
+			if (status === 'approved' && controlReviewCid === null) {
+				const controlFile = this.app.vault.getAbstractFileByPath(this.control.path);
+				if (controlFile instanceof TFile && !this.app.metadataCache.getFileCache(controlFile)) {
+					// A null cache entry means EITHER no frontmatter OR not indexed
+					// yet. Reading the second as the first would stamp "no baseline"
+					// onto a control that has a perfectly good fingerprint — the
+					// mistake behind three bugs in one week
+					// (`project_cache_lag_is_not_absence`). Look at the file before
+					// concluding anything, for this ONE control only.
+					const fromDisk = await readNoteFrontmatter(this.app, controlFile);
+					if (fromDisk === null) {
+						new Notice('Obsidian is still reading this control. Try again in a moment.');
+						return;
+					}
+					controlReviewCid = readReviewCid(fromDisk);
+					controlReviewGroups = readReviewGroups(fromDisk);
+				}
+				if (controlReviewCid === null) {
+					new Notice(
+						'This control has no content fingerprint, so Crosswalker cannot tell you later if it changes. '
+						+ 'The link was still created and still counts.',
+					);
+				}
+			}
+
 			// The identity: the one the existing note already carries, READ OFF IT, or
 			// a fresh mint when nothing records this pair yet. A recorded curie is
 			// never recomputed - that recomputation IS the defect above. A junction
@@ -329,6 +504,19 @@ export class EvidenceLinkModal extends Modal {
 			// legitimate link belonging to the other release. A mint is the real
 			// error case: that identity is being introduced now, and introducing it
 			// onto an existing claim is a collision this window would itself create.
+			//
+			// DEFERRED, 2026-09-01 (adversarial CONFIRMED 6), and left here in the
+			// open rather than silently: AM-36's text scopes the refusal by the
+			// identity's ERA ("the current injective identity only") while this
+			// scopes it by whether one is being INTRODUCED. They differ in exactly
+			// one case - updating a note whose recorded curie is already the current
+			// mint form while a second note also claims it. The era reading would be
+			// `if (!recorded || curieIsCurrentForm(curie))`. It is not made here
+			// because a declaration pins the shipped reading with both arguments
+			// written out (`tests/evidence-window-unreadable-and-pair.test.ts`, "the
+			// contested identifier is the CURRENT scheme"), and because the update
+			// restamps nothing and adds no claimant, so the contest is exactly as bad
+			// after as before. The ruling is the architect's; the site is this line.
 			if (!recorded) {
 				const claimants = index.collisions.find((collision) => collision.curie === curie)?.paths
 					?? (index.get(curie) ? [index.get(curie)!.path] : []);
@@ -350,20 +538,48 @@ export class EvidenceLinkModal extends Modal {
 				controlReviewCid,
 				controlReviewGroups,
 				evidencePath,
-				coverage: this.coverage,
-				status: this.status,
-				scope: this.evidenceScope.trim() || undefined,
+				coverage,
+				status,
+				scope: scope || undefined,
 				folder: this.deps.folder,
 				curie,
 			});
 
 			let writtenPath: string;
 			if (existing) {
+				// `current` is set for every `existing` above, or the window already
+				// returned. Stated as a refusal rather than an assertion so a future
+				// edit that separates them cannot fall through to the create branch and
+				// write a second note for a pair that already has one.
+				if (!current) {
+					new Notice(`Could not update the link at ${existing.file.path}: it could not be read.`, 12000);
+					return;
+				}
 				// Updated WHERE IT SITS, under the identity it already carries. Its
 				// address is not corrected to the one a mint would choose today: the
 				// note is the record, and moving it would only re-couple the identity
 				// to a path again.
-				await this.app.vault.modify(existing.file, note.markdown);
+				//
+				// AM-39. MERGED, not replaced. This was `vault.modify(file,
+				// note.markdown)`: the whole note overwritten by a rebuild from three
+				// form controls. `reviewer`, `review_date`, `confidence`, `expires_at`
+				// and `notes` are exactly the keys the bulk recipe declares
+				// `user_preserve` "so the review workflow is not clobbered on
+				// re-import" - the re-import honoured it and this window silently
+				// deleted them, an approval and its date and its expiry, while
+				// reporting that the link had been "updated". A window that can
+				// destroy an attestation is not a lighter-weight door than an import;
+				// it is the same door with no lock.
+				const merged = mergeIntoExistingLink(current, note.markdown, this.previousRenderBody(current, evidencePath));
+				if (!merged.ok) {
+					new Notice(
+						`Could not update the link at ${existing.file.path}: ${merged.detail} `
+						+ 'Fix that note, then try again.',
+						12000,
+					);
+					return;
+				}
+				await this.app.vault.modify(existing.file, merged.markdown);
 				writtenPath = existing.file.path;
 				new Notice(
 					existing.file.path === note.path
@@ -400,6 +616,65 @@ export class EvidenceLinkModal extends Modal {
 		} catch (err) {
 			new Notice(`Could not create the link: ${err instanceof Error ? err.message : String(err)}`);
 		}
+	}
+
+	/**
+	 * AM-39. Did the person actually answer this control?
+	 *
+	 * A touch is the direct evidence. A value that differs from the form's own
+	 * default is accepted as an answer too, because the command's entry points set
+	 * these fields directly and a value nobody could have arrived at by leaving
+	 * the form alone is an answer however it got there. The one case neither can
+	 * see is choosing the value the default already showed, which is
+	 * indistinguishable from not choosing: the note's own value is kept, so
+	 * nothing is overwritten by a click that changed nothing.
+	 */
+	private answered(field: 'coverage' | 'status' | 'scope'): boolean {
+		if (this.touched[field]) return true;
+		if (field === 'coverage') return this.coverage !== 'full';
+		if (field === 'status') return this.status !== 'proposed';
+		return this.evidenceScope.trim() !== '';
+	}
+
+	/**
+	 * AM-39. The body this window would have written for the link AS THE NOTE NOW
+	 * RECORDS IT, or null when the note does not record enough to say.
+	 *
+	 * This is how the window recognises its own unedited output without keeping a
+	 * marker in it: rebuild from the note's recorded facts and compare. Equal
+	 * means nobody has touched the text since it was generated, so refreshing it
+	 * loses nothing. Different means somebody wrote something, and the window is
+	 * not the author of that.
+	 *
+	 * Built from what the NOTE says (its recorded subject, object, coverage,
+	 * status, scope, curie and baseline), never from the form's current values -
+	 * comparing against the new values would only ever tell us whether the user
+	 * changed anything.
+	 */
+	private previousRenderBody(current: ExistingNote, fallbackEvidencePath: string): string | null {
+		const control = this.control;
+		if (!control) return null;
+		const fm = current.frontmatter;
+		const coverage = readEnum<EvidenceCoverage>(fm.coverage, EVIDENCE_COVERAGES);
+		const status = readEnum<EvidenceStatus>(fm.status, EVIDENCE_STATUSES);
+		const curie = typeof fm.curie === 'string' && fm.curie.trim() !== '' ? fm.curie.trim() : null;
+		if (!coverage || !status || !curie) return null;
+		const against = fm.reviewed_against && typeof fm.reviewed_against === 'object' && !Array.isArray(fm.reviewed_against)
+			? fm.reviewed_against as Record<string, unknown>
+			: null;
+		const built = buildEvidenceLink({
+			controlPath: wikilinkTarget(fm.subject) ?? control.path,
+			controlCurie: typeof fm.subject_curie === 'string' ? fm.subject_curie : null,
+			controlReviewCid: against && typeof against.review_cid === 'string' ? against.review_cid : null,
+			controlReviewGroups: against ? readReviewGroupCids(against.review_groups) : null,
+			evidencePath: wikilinkTarget(fm.object) ?? fallbackEvidencePath,
+			coverage,
+			status,
+			scope: typeof fm.scope === 'string' && fm.scope !== '' ? fm.scope : undefined,
+			folder: this.deps.folder,
+			curie,
+		});
+		return splitNoteText(built.markdown).body;
 	}
 
 	/**
@@ -443,6 +718,14 @@ export class EvidenceLinkModal extends Modal {
 	 * exact outcome this whole lookup exists to prevent, produced by the rule it
 	 * cites. Everything else in this window fails closed; this line used to fail
 	 * open into a mint. Absence is never read as fact (eighth appearance).
+	 *
+	 * SCOPE, stated rather than discovered (adversarial SUSPECTED 8): the refusal
+	 * covers the whole vault, because the question does. A file's kind cannot be
+	 * known without reading it, so a note anywhere whose properties will not parse
+	 * blocks every evidence link until it is fixed. That is AM-35's frozen answer
+	 * and the copy names the file and the action; whether the product should
+	 * eventually offer a narrower escape (skip this note, and say which links may
+	 * therefore be duplicated) is a UX decision left to the architect.
 	 */
 	private async junctionsNamingThisPair(
 		evidencePath: string,
@@ -486,6 +769,18 @@ export class EvidenceLinkModal extends Modal {
 	 * updating a note that asserts some other relationship would silently rewrite
 	 * what it asserts. A note that states no predicate at all predates the field
 	 * and can only be one of ours.
+	 *
+	 * KNOWN AND DEFERRED, 2026-09-01 (adversarial SUSPECTED 9): the object side is
+	 * always matched by resolving a wikilink, because an evidence document is a
+	 * user's own file and has no identity to match on, and `linkNames` ends at
+	 * basename resolution. Two documents (or two framework releases) sharing a
+	 * basename can therefore steer a hand-written or bulk-imported junction to the
+	 * wrong single match. Not closed here for two reasons: nothing this builder
+	 * writes is reachable that way (it records full paths), and AM-39 removed the
+	 * damage - an update now merges managed keys and leaves the body and the
+	 * reviewer's own fields alone, so a wrong match no longer destroys an
+	 * attestation. Closing it properly means an identity for evidence documents,
+	 * which is a design question, not a line edit.
 	 */
 	private frontmatterNamesThisPair(fm: Record<string, unknown>, evidencePath: string): boolean {
 		const control = this.control;

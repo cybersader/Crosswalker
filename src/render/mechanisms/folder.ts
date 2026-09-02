@@ -35,12 +35,25 @@ const VARIADIC_DEFAULTS = {
  * for one, in the same order and at the same moment it lands. Recording here
  * rather than at the call sites is what makes the two folder paths (fixed and
  * variadic) incapable of disagreeing about what a level produced.
+ *
+ * AM-37: one value per DIRECTORY SEGMENT, not one per layout entry. A rendered
+ * folder segment can carry its own separator two ways this project's own
+ * recipes use: a literal in the template (`Frameworks/{catalog.name}`) and a
+ * source cell that contains one (`IT/OT`, `2024/Q1`). Either lands as two
+ * directories, so recording one value for it made the values count disagree
+ * with the segments count, and the consumer (hub identity) silently reverted to
+ * deriving identity from the path - the exact defect the values exist to
+ * remove. The split is verbatim, empty pieces included, because the invariant
+ * being bought is byte-level: the k-th value IS the k-th segment of the
+ * rendered directory, so the two can be compared, and slugging either one gives
+ * the same string.
  */
 function appendFolderSegment(address: Address, segment: string, level: string, values?: LayoutValue[]): void {
 	address.primary.path = address.primary.path
 		? `${address.primary.path}/${segment}`
 		: segment;
-	values?.push({ level, value: segment });
+	if (!values) return;
+	for (const piece of segment.split('/')) values.push({ level, value: piece });
 }
 
 export function applyFolder(

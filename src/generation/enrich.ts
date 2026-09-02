@@ -112,8 +112,12 @@ export interface EnrichNote {
 	 */
 	renderedPath?: string;
 	/**
-	 * AM-33 (2026-09-01). The VALUES this row's folder mechanisms produced, in
-	 * layout order — one per folder level that actually rendered a segment.
+	 * AM-33 / AM-37 (2026-09-01). The VALUES this row's layout produced, in order
+	 * — exactly one per DIRECTORY SEGMENT of the path render() computed, whatever
+	 * appended that segment (a folder mechanism, a literal separator inside a
+	 * folder template, the directory prefix of a file template). The k-th value is
+	 * byte-identical to the k-th segment, so the list can be checked against the
+	 * path rather than trusted; a mismatch is a bug and the hub is refused by name.
 	 *
 	 * Carried beside the path rather than re-derived from it. Level-hub identity
 	 * used to be `slugPath(dirname(note.path))`, recomputed every run and handed
@@ -122,9 +126,11 @@ export interface EnrichNote {
 	 * for, and the first orphaned with the user's prose still on it. A path may
 	 * seed a one-time mint; it may never be needed again after it.
 	 *
-	 * Absent when the caller has nothing to hand over (a harness that calls
-	 * `enrich()` directly, a note produced by something other than `render()`).
-	 * The hub pass then falls back to the path-derived form and says so.
+	 * Absent (never merely empty) when the caller has nothing to hand over (a
+	 * harness that calls `enrich()` directly, a note produced by something other
+	 * than `render()`). The hub pass then falls back to the path-derived form and
+	 * says so. An EMPTY list is a positive statement that the layout produced no
+	 * directories, and is checked like any other.
 	 */
 	layoutValues?: LayoutValue[];
 }
@@ -575,8 +581,11 @@ function computeLevelHubs(
 		else filesOf.set(dir, [e]);
 	}
 
-	// A hub's curie is computed from its folder path RELATIVE to the import root,
-	// never from its full vault path. Identity must not be derived from address:
+	// The import root, stripped. Since AM-33 a hub's curie is derived from the
+	// layout VALUES rather than from a path at all; this remains the input to the
+	// LEGACY forms (the identities existing vaults were written under) and to the
+	// documented fallback for a caller that hands over no values.
+	// Identity must not be derived from address:
 	// an address is a choice the user can change (a different destination, a
 	// renamed output folder), and an identity that moves with it is not an
 	// identity at all — the same hub acquires a second name, the re-import cannot
@@ -594,27 +603,53 @@ function computeLevelHubs(
 	//
 	// The values arrive from render() on each note (`EnrichNote.layoutValues`);
 	// nothing here parses them back out of a path. Alignment is by construction:
-	// render appends exactly one value per folder segment it emits, in order, so
-	// the k-th ancestor of a note's RENDERED directory is described by the first k
-	// values. `renderedPath` is the anchor rather than `path` because a relocation
-	// pass may have inserted a folder render() never emitted, and a value list
-	// aligned against that would describe the wrong level.
+	// AM-37 makes render append exactly one value per DIRECTORY SEGMENT of the
+	// path it produced, whatever appended that segment, so the k-th ancestor of a
+	// note's RENDERED directory is described by the first k values and the k-th
+	// value is byte-identical to the k-th segment. `renderedPath` is the anchor
+	// rather than `path` because a relocation pass may have inserted a folder
+	// render() never emitted, and a value list aligned against that would describe
+	// the wrong level. The root is stripped from both sides by `relativeToRoot`,
+	// which is sound because the caller prefixes the root onto render's own output
+	// (`basePath + '/' + address.primary.path`), so the segments it removes are
+	// exactly the ones no layout entry produced.
 	//
-	// The count check is deliberate and fails closed: if the segments and the
-	// values disagree, the layout is not the shape this alignment assumes, and a
-	// guess at that point is precisely the failure mode being removed. Such a
-	// folder simply has no recorded values and keeps the path-derived identity.
+	// AM-37. A count disagreement is now a BUG, not a case. It used to `continue`,
+	// which left the folder with no recorded values, which sent hub identity back
+	// to parsing the path - the very rule these values exist to replace, reached
+	// silently, on shapes shipped recipes use. Such a folder is refused by name
+	// below instead: no hub note, and a deviation the caller surfaces as a
+	// warning. Nothing is guessed and nothing is quiet.
 	//
 	// Iterated in curie order so which note describes a shared folder is
 	// deterministic, the same discipline every other derived list here follows.
 	const valuesByFolder = new Map<string, LayoutValue[]>();
+	const unalignedFolders = new Map<string, string>();
 	for (const e of [...entries].sort((a, b) => cmp(a.note.curie, b.note.curie))) {
 		const lv = e.note.layoutValues;
-		if (!lv || lv.length === 0) continue;
+		// Absent (not empty) means this caller collects no values at all - a
+		// harness, or a note produced by something other than render(). That is a
+		// fact about the caller, not a disagreement, and it keeps the documented
+		// path-derived fallback (see `EnrichNote.layoutValues`).
+		if (!lv) continue;
 		const renderedDir = relativeToRoot(dirOf(e.note.renderedPath ?? e.path));
 		const segs = renderedDir === '' ? [] : renderedDir.split('/');
-		if (segs.length !== lv.length) continue;
 		let abs = rootIsTrackedAncestor && root !== undefined ? root : '';
+		if (segs.length !== lv.length) {
+			for (const seg of segs) {
+				abs = abs === '' ? seg : `${abs}/${seg}`;
+				if (!unalignedFolders.has(abs)) {
+					unalignedFolders.set(
+						abs,
+						`No index note was created for the folder "${abs}". This import produced ${segs.length} folder `
+						+ `levels for "${e.note.curie}" but recorded ${lv.length} values for them, so Crosswalker cannot `
+						+ 'say what that folder is about and will not guess from its path. The notes themselves were '
+						+ 'written normally. Please report this with the recipe that produced it.',
+					);
+				}
+			}
+			continue;
+		}
 		for (let i = 0; i < segs.length; i++) {
 			abs = abs === '' ? segs[i] : `${abs}/${segs[i]}`;
 			if (!valuesByFolder.has(abs)) valuesByFolder.set(abs, lv.slice(0, i + 1));
@@ -622,23 +657,32 @@ function computeLevelHubs(
 	}
 
 	/**
-	 * AM-33. A hub's identity, from the values when they are known.
+	 * AM-38. ONE derivation for a hub's identity, given the ordered parts that
+	 * describe the folder chain. Two derivations were two places to disagree, and
+	 * they did: the value form slugged a part whole (`slug()` collapses `/` to
+	 * `-`) while the path form split on `/` first, so a single separator inside a
+	 * folder value produced two different identities for one hub. That silently
+	 * re-identified every level hub in an existing vault - no duplicate note, no
+	 * error, just a curie that changed under everything keyed on it.
 	 *
-	 * The value form and the relative-path form coincide byte-for-byte whenever
-	 * the folder chain IS the layout chain, which is the ordinary case — and that
-	 * is intended, not incidental: an existing vault must not have every hub
-	 * re-identified underneath it (AM-27's pinning rule). They diverge exactly
-	 * where the path stopped describing the layout, which is exactly where the old
-	 * rule silently minted a second hub.
+	 * The two callers differ ONLY in what they hand in, so byte-compatibility is a
+	 * property of the input rather than a coincidence to be re-checked: AM-37
+	 * guarantees the k-th value is byte-identical to the k-th path segment, so
+	 * `parts.map(slug).join('/')` is the same string either way. The root folder
+	 * has no parts at all, so it gets a reserved local part rather than an empty
+	 * one, which every import under the same ontology prefix would otherwise
+	 * share by accident.
 	 */
+	const hubCurieFromParts = (parts: readonly string[]): string =>
+		`${ontology}:hub/${parts.length === 0 ? ROOT_HUB_LOCAL_PART : parts.map(slug).join('/')}`;
 	const valueHubCurieOf = (f: string): string | null => {
 		const values = valuesByFolder.get(f);
 		if (!values || values.length === 0) return null;
-		return `${ontology}:hub/${values.map((v) => slug(v.value)).join('/')}`;
+		return hubCurieFromParts(values.map((v) => v.value));
 	};
 	const pathHubCurieOf = (f: string): string => {
 		const rel = relativeToRoot(f);
-		return `${ontology}:hub/${rel === '' ? ROOT_HUB_LOCAL_PART : slugPath(rel)}`;
+		return hubCurieFromParts(rel === '' ? [] : rel.split('/'));
 	};
 	const hubCurieOf = (f: string): string => valueHubCurieOf(f) ?? pathHubCurieOf(f);
 	/**
@@ -700,6 +744,22 @@ function computeLevelHubs(
 	const sortedFolders = [...folders].sort(cmp);
 	for (const f of sortedFolders) {
 		const id = identityOf(f);
+		// AM-37. The refusal. A folder whose values and segments disagree is a
+		// folder this run cannot describe, and the alternative to saying so is
+		// deriving its identity from its address again - which is how a moved or
+		// re-rooted vault ended up with a second hub note for a folder that already
+		// had one, the first orphaned with the user's prose on it. Refusing one hub
+		// costs an index note; guessing costs the identity.
+		//
+		// Scoped to folders that would MINT an identity. A folder hosted by an
+		// existing note takes that note's curie, so no path is being read and there
+		// is nothing to refuse; dropping its Contents list would be a loss with no
+		// corresponding risk.
+		const unaligned = id.hostedPath ? undefined : unalignedFolders.get(f);
+		if (unaligned) {
+			result.deviations.push(unaligned);
+			continue;
+		}
 		const childRefs: { curie: string; label: string }[] = [];
 		for (const e of filesOf.get(f) ?? []) childRefs.push({ curie: e.note.curie, label: basename(e.path) });
 		for (const g of subfoldersOf.get(f) ?? []) {

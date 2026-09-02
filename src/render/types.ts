@@ -103,11 +103,21 @@ export interface RenderReport {
 }
 
 /**
- * AM-33 (2026-09-01). One folder level's VALUE, as the layout produced it.
+ * AM-33 / AM-37 (2026-09-01). One rendered DIRECTORY SEGMENT, beside the layout
+ * level that produced it.
  *
- * A folder mechanism turns a source fact into a directory segment. That segment
- * is a value, and it is recorded here at the moment it is produced, in order,
- * beside the level it belongs to.
+ * A layout turns source facts into directory segments. Each segment is a value,
+ * recorded here at the moment it is produced, in order, beside the level it
+ * belongs to. One entry per segment, whatever appended it: a folder mechanism,
+ * a literal separator inside a folder template (`Frameworks/{catalog.name}`
+ * produces TWO, the second being the level's own rendered text), or the
+ * directory prefix of a file template. A literal's rendered text is its value;
+ * the level name beside it is descriptive, and repeats when one entry produced
+ * several segments.
+ *
+ * The count is therefore never a matter of luck: it equals the depth of the
+ * rendered directory by construction, so a consumer that compares them treats a
+ * mismatch as the bug it is instead of falling back to reading the path.
  *
  * Failure mode prevented: hub identity being RECOMPUTED by parsing a note's
  * final vault path (`dirname(path)`) on every run and used as the lookup key.
