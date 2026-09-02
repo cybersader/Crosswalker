@@ -78,8 +78,10 @@
  */
 
 import { replaceRegion, scanRegions, wrapRegion } from './managed-body';
-import type { RecipeEnrichment } from '../render';
+import type { RecipeEnrichment, LayoutValue } from '../render';
 import type { FacetMembership } from '../import/mapping/facets';
+
+export type { LayoutValue };
 
 /** A rendered note handed to enrichment (pre-provenance, pre-enrichment). */
 export interface EnrichNote {
@@ -109,6 +111,22 @@ export interface EnrichNote {
 	 * other than render() put this note where it currently is.
 	 */
 	renderedPath?: string;
+	/**
+	 * AM-33 (2026-09-01). The VALUES this row's folder mechanisms produced, in
+	 * layout order — one per folder level that actually rendered a segment.
+	 *
+	 * Carried beside the path rather than re-derived from it. Level-hub identity
+	 * used to be `slugPath(dirname(note.path))`, recomputed every run and handed
+	 * straight to the index as a lookup key, so anything that moved a note moved
+	 * the key with it: a second hub note for a folder the vault already had one
+	 * for, and the first orphaned with the user's prose still on it. A path may
+	 * seed a one-time mint; it may never be needed again after it.
+	 *
+	 * Absent when the caller has nothing to hand over (a harness that calls
+	 * `enrich()` directly, a note produced by something other than `render()`).
+	 * The hub pass then falls back to the path-derived form and says so.
+	 */
+	layoutValues?: LayoutValue[];
 }
 
 /** A materialized facet or level hub note (pre-provenance — the caller attaches _crosswalker). */
@@ -148,6 +166,18 @@ export interface HubNote {
 	 * concluding that a hub does not exist yet.
 	 */
 	legacyCuries?: string[];
+	/**
+	 * AM-33 (2026-09-01). Level hubs only: the ordered layout values this hub
+	 * covers — the facts its identity was minted from, carried so the caller can
+	 * (a) write them onto the note and (b) find an existing hub by reading them
+	 * back off owned hub notes when neither the current identity nor a legacy
+	 * form matches.
+	 *
+	 * Failure mode prevented: the only record of what a hub is about being the
+	 * folder it sits in, so the answer to "does this hub already exist" has to be
+	 * recomputed from an address every single run.
+	 */
+	levelValues?: LayoutValue[];
 }
 
 /** One parent-note relocation the caller must physically apply to the vault. */
@@ -455,8 +485,14 @@ interface FolderIdentity {
 	label: string;
 	/** Set when a note already in the batch hosts this folder's content (see step 4.5). */
 	hostedPath?: string;
-	/** Synthetic hubs only: the address-derived curie this hub used to carry. */
-	legacyCurie?: string;
+	/**
+	 * Synthetic hubs only: the address-derived curies this hub may already carry,
+	 * newest superseded first. AM-33 added a second form (root-relative), so this
+	 * is a list rather than the single value it was.
+	 */
+	legacyCuries?: string[];
+	/** AM-33. Synthetic hubs only: the ordered layout values this hub's identity was minted from. */
+	levelValues?: LayoutValue[];
 }
 
 /**
@@ -553,12 +589,75 @@ function computeLevelHubs(
 		if (f === root) return '';
 		return f.startsWith(`${root}/`) ? f.slice(root.length + 1) : f;
 	};
-	const hubCurieOf = (f: string): string => {
+
+	// AM-33. Folder -> the ordered layout VALUES that produced it.
+	//
+	// The values arrive from render() on each note (`EnrichNote.layoutValues`);
+	// nothing here parses them back out of a path. Alignment is by construction:
+	// render appends exactly one value per folder segment it emits, in order, so
+	// the k-th ancestor of a note's RENDERED directory is described by the first k
+	// values. `renderedPath` is the anchor rather than `path` because a relocation
+	// pass may have inserted a folder render() never emitted, and a value list
+	// aligned against that would describe the wrong level.
+	//
+	// The count check is deliberate and fails closed: if the segments and the
+	// values disagree, the layout is not the shape this alignment assumes, and a
+	// guess at that point is precisely the failure mode being removed. Such a
+	// folder simply has no recorded values and keeps the path-derived identity.
+	//
+	// Iterated in curie order so which note describes a shared folder is
+	// deterministic, the same discipline every other derived list here follows.
+	const valuesByFolder = new Map<string, LayoutValue[]>();
+	for (const e of [...entries].sort((a, b) => cmp(a.note.curie, b.note.curie))) {
+		const lv = e.note.layoutValues;
+		if (!lv || lv.length === 0) continue;
+		const renderedDir = relativeToRoot(dirOf(e.note.renderedPath ?? e.path));
+		const segs = renderedDir === '' ? [] : renderedDir.split('/');
+		if (segs.length !== lv.length) continue;
+		let abs = rootIsTrackedAncestor && root !== undefined ? root : '';
+		for (let i = 0; i < segs.length; i++) {
+			abs = abs === '' ? segs[i] : `${abs}/${segs[i]}`;
+			if (!valuesByFolder.has(abs)) valuesByFolder.set(abs, lv.slice(0, i + 1));
+		}
+	}
+
+	/**
+	 * AM-33. A hub's identity, from the values when they are known.
+	 *
+	 * The value form and the relative-path form coincide byte-for-byte whenever
+	 * the folder chain IS the layout chain, which is the ordinary case — and that
+	 * is intended, not incidental: an existing vault must not have every hub
+	 * re-identified underneath it (AM-27's pinning rule). They diverge exactly
+	 * where the path stopped describing the layout, which is exactly where the old
+	 * rule silently minted a second hub.
+	 */
+	const valueHubCurieOf = (f: string): string | null => {
+		const values = valuesByFolder.get(f);
+		if (!values || values.length === 0) return null;
+		return `${ontology}:hub/${values.map((v) => slug(v.value)).join('/')}`;
+	};
+	const pathHubCurieOf = (f: string): string => {
 		const rel = relativeToRoot(f);
 		return `${ontology}:hub/${rel === '' ? ROOT_HUB_LOCAL_PART : slugPath(rel)}`;
 	};
-	/** The address-derived form this hub was written under before the fix above. */
-	const legacyHubCurieOf = (f: string): string => `${ontology}:hub/${slugPath(f)}`;
+	const hubCurieOf = (f: string): string => valueHubCurieOf(f) ?? pathHubCurieOf(f);
+	/**
+	 * The address-derived forms this hub may already be written under, newest
+	 * superseded first: the root-relative form (pre-AM-33) and the full-vault-path
+	 * form (pre-F-4). Both are computed from the CURRENT render, so both can only
+	 * match a hub that has not moved — stated here because the caller's step 2
+	 * relies on exactly that limitation and answers a moved hub by reading notes
+	 * instead (step 3).
+	 */
+	const legacyHubCuriesOf = (f: string): string[] => {
+		// Deduplicated: with no import root the two forms are the same string, and a
+		// list that names one alias twice would have the alias-adoption guard claim
+		// the same identity twice and refuse the hub as a duplicate of itself.
+		const out = new Set<string>();
+		out.add(pathHubCurieOf(f));
+		out.add(`${ontology}:hub/${slugPath(f)}`);
+		return [...out];
+	};
 
 	// Pass A: every folder's link identity — hosted by an existing same-
 	// basename note (wherever it currently lives), or synthetic.
@@ -568,9 +667,19 @@ function computeLevelHubs(
 		const cached = identity.get(f);
 		if (cached) return cached;
 		const host = byBasename.get(label);
-		const id: FolderIdentity = host
-			? { curie: host.curie, label, hostedPath: finalPath(host) }
-			: { curie: hubCurieOf(f), label, legacyCurie: legacyHubCurieOf(f) };
+		let id: FolderIdentity;
+		if (host) {
+			id = { curie: host.curie, label, hostedPath: finalPath(host) };
+		} else {
+			const curie = hubCurieOf(f);
+			const values = valuesByFolder.get(f);
+			id = {
+				curie,
+				label,
+				legacyCuries: legacyHubCuriesOf(f).filter((c) => c !== curie),
+				...(values ? { levelValues: values } : {}),
+			};
+		}
 		identity.set(f, id);
 		return id;
 	};
@@ -618,11 +727,29 @@ function computeLevelHubs(
 			result.levelHubs.notes.push({
 				path: joinMd(f, id.label),
 				curie: id.curie,
-				frontmatter: { curie: id.curie, kind: 'hub', children: links },
+				// AM-33. The values go ONTO the note. A hub that records what it is
+				// about can be found again by reading it, which is the only lookup
+				// that survives a moved destination, a changed layout above it, and a
+				// derivation the product later improves. Without this the sole record
+				// of a hub's subject is the folder it happens to sit in, and the
+				// answer to "does this hub already exist" has to be recomputed from an
+				// address on every run - the defect this closes.
+				frontmatter: {
+					curie: id.curie,
+					kind: 'hub',
+					children: links,
+					...(id.levelValues
+						? {
+							hub_levels: id.levelValues.map((v) => v.level),
+							hub_values: id.levelValues.map((v) => v.value),
+						}
+						: {}),
+				},
 				body: `# ${id.label}\n\n${buildManagedChildrenSection('Contents', links, facetGroup)}`,
 				childrenLinks: links,
 				...(facetGroup.length > 0 ? { facetLinks: rootFacetLinks } : {}),
-				...(id.legacyCurie && id.legacyCurie !== id.curie ? { legacyCuries: [id.legacyCurie] } : {}),
+				...(id.legacyCuries && id.legacyCuries.length > 0 ? { legacyCuries: id.legacyCuries } : {}),
+				...(id.levelValues ? { levelValues: id.levelValues } : {}),
 			});
 		}
 	}

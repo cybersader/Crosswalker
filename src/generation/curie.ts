@@ -306,7 +306,7 @@ export class DeclaredCurieCharsetError extends Error {
 }
 
 /**
- * AM-28. A declared `curie` whose PREFIX is not the one this import writes.
+ * AM-28. A declared `curie` whose PREFIX is not this set's ontology.
  *
  * Thrown, not repaired. The previous behaviour kept only the local part and put
  * the set's own prefix in front of it, so a source stating `other:AC-2` had
@@ -316,15 +316,23 @@ export class DeclaredCurieCharsetError extends Error {
  * reason - it is not a CURIE, and accepting it would put it back in collision
  * with the fully-qualified form.
  *
- * The expected prefix is the one that will actually be WRITTEN (set-qualified
- * sets carry the set id in it), because that is the value the vault will hold and
- * therefore the only one a source can be checked against without a silent rewrite.
+ * AM-34 (2026-09-01). The prefix a source is checked against is the set's BASE
+ * ontology prefix, not the prefix the vault will hold. Under AM-13 a second
+ * release of a framework is minted `set-qualified-v1` and writes
+ * `nist-iset-<id>:`, an id that does not exist until the import runs - so
+ * checking against the written prefix refused every row of Crosswalker's own CSV
+ * export (`curie` is its first column), which is the release-isolation flow and
+ * the portability round-trip. Set-qualification is applied AFTER this check, as
+ * the scheme's uniform, recorded, invertible re-prefixing: distinct declared
+ * curies stay distinct, the set stamp records the scheme and id that produced
+ * the transform, and export inverts it. A genuinely foreign prefix still refuses
+ * by name, which is what this error is for.
  */
 export class DeclaredCuriePrefixError extends Error {
 	constructor(public readonly declared: string, public readonly expectedPrefix: string) {
 		super(
-			`The curie column on this row is "${declared}", but this import writes identifiers beginning with `
-			+ `"${expectedPrefix}:". Crosswalker will not change an identity a source states. `
+			`The curie column on this row is "${declared}", but this import's identifiers belong to `
+			+ `"${expectedPrefix}". Crosswalker will not change an identity a source states. `
 			+ `Either write the value as "${expectedPrefix}:..." in your source, or clear the curie column and `
 			+ 'let the import derive an identity from another column.',
 		);
@@ -335,9 +343,14 @@ export class DeclaredCuriePrefixError extends Error {
 /**
  * AM-28. The local part of a DECLARED `curie`, verbatim, or a named refusal.
  *
- * The caller puts `expectedPrefix` back in front of the returned value, so a
- * value that passes is reproduced byte-for-byte as the source wrote it. Nothing
- * here sanitizes: every rejection is a refusal for that row alone.
+ * AM-34. `expectedBasePrefix` is the set's BASE ontology prefix. The caller puts
+ * the set's RESOLVED prefix back in front of the returned value - the same
+ * prefix for every row, so the local parts a source declared stay exactly as
+ * distinct from each other as the source made them, and the set stamp records
+ * the scheme and id needed to invert the transform. A value that passes is
+ * therefore reproduced byte-for-byte in its local half, and its prefix is the
+ * set's, openly and uniformly. Nothing here sanitizes: every rejection is a
+ * refusal for that row alone.
  *
  * Checked in this order because it is the order a person diagnoses in: a value
  * whose local half the spec rejects is malformed whoever's prefix it carries, and

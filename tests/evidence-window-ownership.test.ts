@@ -237,10 +237,19 @@ describe('what sits at that address, when it is not this link', () => {
 		// AM-19's rule, at this window: the note may be one Crosswalker wrote and a
 		// hand edit damaged. "Move or rename that note" would be a destructive
 		// instruction attached to a cause nothing established.
+		//
+		// REALIGNED for AM-35 (2026-09-01), not weakened. Same claim, same outcome,
+		// different refusing site: the pair scan now fails closed on an unreadable
+		// note before the address is consulted, because that note may be the junction
+		// being looked for. The message names the file and the action, so it is still
+		// one a user can act on; it no longer speaks of importing again, because the
+		// thing to fix is that note's properties.
 		const { files, before } = await refuse(note(': : :\ncurie: something'));
 		expect(files.get(LINK_PATH)).toBe(before);
-		expect(said()).toContain('could not read the properties');
-		expect(said()).toContain('import again');
+		expect(said()).toContain('Could not create the link');
+		expect(said()).toContain('could not be read');
+		expect(said()).toContain(LINK_PATH);
+		expect(said()).toContain('Fix that note');
 		expect(said()).not.toContain("not Crosswalker's");
 		expect(said()).not.toContain('Move or rename');
 		expect(said()).not.toContain('Updated the existing link');

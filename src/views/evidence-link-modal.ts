@@ -277,7 +277,21 @@ export class EvidenceLinkModal extends Modal {
 
 			// The note that IS this link, wherever it sits. A rename moved it; the
 			// pair it records did not move with it.
-			const named = await this.junctionsNamingThisPair(evidencePath);
+			//
+			// AM-35: a note whose properties could not be read stops this outright.
+			// The one note nothing could be read off may be the junction being looked
+			// for, and treating it as "not this pair" is how a duplicate gets minted.
+			const scan = await this.junctionsNamingThisPair(evidencePath);
+			if (!scan.ok) {
+				new Notice(
+					`Could not create the link: the properties of ${scan.unreadablePath} could not be read, so Crosswalker `
+					+ 'cannot tell whether it is already the link for this control and this evidence. '
+					+ 'Fix that note\'s properties, then try again.',
+					12000,
+				);
+				return;
+			}
+			const named = scan.junctions;
 			if (named.length > 1) {
 				new Notice(
 					`Could not create the link: ${named.length} notes already record this control and this evidence `
@@ -299,20 +313,35 @@ export class EvidenceLinkModal extends Modal {
 			// Nobody but this link may hold this link's identity. Two notes with one
 			// curie is a permanent `Ambiguous identity` collision that fails every
 			// later import in the vault, so it is named here - where the user can act
-			// on it - rather than met weeks later on an unrelated import. Covers both
-			// a mint landing on an occupied identity and an existing junction whose
-			// identity some other note has also taken.
-			const claimants = index.collisions.find((collision) => collision.curie === curie)?.paths
-				?? (index.get(curie) ? [index.get(curie)!.path] : []);
-			const contested = claimants.filter((path) => path !== existing?.file.path);
-			if (contested.length > 0) {
-				new Notice(
-					`Could not create the link: ${contested.length} note${contested.length === 1 ? '' : 's'} already claim the `
-					+ `identity ${curie} (${contested.join(', ')}). `
-					+ `Delete or fix ${contested.length === 1 ? 'it' : 'all but one of them'}, then try again.`,
-					12000,
-				);
-				return;
+			// on it - rather than met weeks later on an unrelated import.
+			//
+			// AM-36 (2026-09-01). THE PAIR WINS: this check applies to a MINT only.
+			// When the pair scan named exactly one junction, that note IS this link,
+			// positively identified by a fact it records; updating it under the
+			// identity it already carries adds no claimant, so a pre-existing contest
+			// over that identity is neither caused nor worsened here. And a contest
+			// over a LEGACY identifier is expected rather than exceptional - the
+			// pre-AM-22 basename form was never unique, so two releases of one
+			// framework share it by construction.
+			//
+			// Failure mode prevented: refusing a reviewer's link over an ambiguity
+			// they did not create, and instructing them to delete a perfectly
+			// legitimate link belonging to the other release. A mint is the real
+			// error case: that identity is being introduced now, and introducing it
+			// onto an existing claim is a collision this window would itself create.
+			if (!recorded) {
+				const claimants = index.collisions.find((collision) => collision.curie === curie)?.paths
+					?? (index.get(curie) ? [index.get(curie)!.path] : []);
+				const contested = claimants.filter((path) => path !== existing?.file.path);
+				if (contested.length > 0) {
+					new Notice(
+						`Could not create the link: ${contested.length} note${contested.length === 1 ? ' already claims' : 's already claim'} the `
+						+ `identity ${curie} (${contested.join(', ')}). `
+						+ `Delete or fix ${contested.length === 1 ? 'it' : 'all but one of them'}, then try again.`,
+						12000,
+					);
+					return;
+				}
 			}
 
 			const note = buildEvidenceLink({
@@ -401,15 +430,28 @@ export class EvidenceLinkModal extends Modal {
 	 * abandoned - and its opposite, adopting the WRONG pre-existing link because
 	 * the identifier that found it was not unique.
 	 *
-	 * A note that cannot be read is neither adopted nor claimed about (AM-19): it
-	 * is left out of the answer, and if it sits at the address the create branch
-	 * wants, that branch names its state exactly.
+	 * AM-35 (2026-09-01). A note that cannot be READ stops the scan instead of
+	 * dropping out of it. `NoteFrontmatterRead` is a tri-state built for exactly
+	 * this: `none` is a FACT (this file has no properties, so it is not a
+	 * junction), while `unreadable` is the ABSENCE of a fact - the bytes would not
+	 * read, or the properties block will not parse, so nothing at all is known,
+	 * including whether it is the very junction being looked for.
+	 *
+	 * Failure mode prevented: a junction whose YAML a hand edit damaged silently
+	 * leaving the answer, the window concluding that nothing records this pair,
+	 * and a SECOND junction being minted for a pair that already has one - the
+	 * exact outcome this whole lookup exists to prevent, produced by the rule it
+	 * cites. Everything else in this window fails closed; this line used to fail
+	 * open into a mint. Absence is never read as fact (eighth appearance).
 	 */
 	private async junctionsNamingThisPair(
 		evidencePath: string,
-	): Promise<{ file: TFile; curie: string | null }[]> {
+	): Promise<
+		| { ok: true; junctions: { file: TFile; curie: string | null }[] }
+		| { ok: false; unreadablePath: string }
+	> {
 		const control = this.control;
-		if (!control) return [];
+		if (!control) return { ok: true, junctions: [] };
 		const out: { file: TFile; curie: string | null }[] = [];
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			let fm = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
@@ -418,6 +460,10 @@ export class EvidenceLinkModal extends Modal {
 				// not reached is read rather than assumed empty. Absence of a cache
 				// entry has never meant absence of properties.
 				const read = await readNoteFrontmatterState(this.app, file);
+				// AM-35. `none` keeps scanning - a file with no properties is not a
+				// junction, and that is a fact. `unreadable` refuses: the one note that
+				// cannot be read may be the one that answers.
+				if (read.state === 'unreadable') return { ok: false, unreadablePath: file.path };
 				if (read.state !== 'ok') continue;
 				fm = read.frontmatter;
 			}
@@ -426,7 +472,7 @@ export class EvidenceLinkModal extends Modal {
 			const curie = typeof fm.curie === 'string' && fm.curie.trim() !== '' ? fm.curie.trim() : null;
 			out.push({ file, curie });
 		}
-		return out;
+		return { ok: true, junctions: out };
 	}
 
 	/**

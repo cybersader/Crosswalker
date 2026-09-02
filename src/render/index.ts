@@ -14,7 +14,7 @@
  * those emit on every note regardless of layout mechanism choice.
  */
 
-import type { ConceptIdentity, Address, RenderReport, VariadicConfig } from './types';
+import type { ConceptIdentity, Address, RenderReport, VariadicConfig, LayoutValue } from './types';
 import { renderTemplate, renderTemplateValue, RenderError } from './template';
 import { renderBodyProjection, type BodyProjection } from './body';
 import { applyFolder, applyVariadicFolder } from './mechanisms/folder';
@@ -32,6 +32,7 @@ export type {
 	RenderNoteCode,
 	RenderReport,
 	VariadicConfig,
+	LayoutValue,
 } from './types';
 export { RenderError } from './template';
 export { renderTemplate, renderTemplateValue } from './template';
@@ -173,8 +174,24 @@ export interface RecipeEnrichment {
  * `report` (optional): when provided, per-row deviations (skipped folder
  * levels, split/regex fallbacks) are recorded into it. Purely observational —
  * output is byte-identical with or without it.
+ *
+ * `layoutValues` (optional, AM-33): when provided, every folder level's rendered
+ * VALUE is appended to it, in layout order, as the level produces it. Also
+ * purely observational — the Address is byte-identical with or without it, so
+ * nothing hashed or asserted about render's output changes shape.
+ *
+ * Failure mode prevented: a consumer that needs to know what a folder level was
+ * ABOUT going back to `dirname(finalPath)` to find out. Parsing a path to
+ * recover the facts that built it is a guess, and hub identity was built on that
+ * guess (adversarial pass 12, CONFIRMED 1). The facts are handed over here
+ * instead, at the one moment they are known for certain.
  */
-export function render(recipe: Recipe, identity: ConceptIdentity, report?: RenderReport): Address {
+export function render(
+	recipe: Recipe,
+	identity: ConceptIdentity,
+	report?: RenderReport,
+	layoutValues?: LayoutValue[],
+): Address {
 	const address: Address = {
 		primary: { path: '' },
 		wikilinkTarget: '',
@@ -202,9 +219,10 @@ export function render(recipe: Recipe, identity: ConceptIdentity, report?: Rende
 						entry as Parameters<typeof applyVariadicFolder>[1],
 						identity.scope,
 						report,
+						layoutValues,
 					);
 				} else {
-					applyFolder(address, entry as Parameters<typeof applyFolder>[1], identity.scope, report);
+					applyFolder(address, entry as Parameters<typeof applyFolder>[1], identity.scope, report, layoutValues);
 				}
 				break;
 			case 'file':

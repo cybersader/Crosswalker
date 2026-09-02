@@ -407,21 +407,36 @@ describe('AM-23: the lookup comes before the create', () => {
 		expect(said()).toContain(b);
 	});
 
-	it('a contested LEGACY identity does not block the link, it only drops the alias', async () => {
+	it('a contested LEGACY identity does not block the link', async () => {
 		// Different matter entirely: the old identifier was never unique, so
 		// several notes legitimately hold it and none of them is necessarily ours.
 		// Refusing there would make the window unusable in any vault carrying two
 		// releases of one framework.
+		//
+		// REALIGNED for AM-30 + AM-36 (2026-09-01), not weakened. The claim under
+		// test is unchanged and is asserted more strongly than before: no refusal.
+		// What changed is where the write lands. This declaration used to require a
+		// note to be CREATED at today's rendered address, which was the pre-AM-30
+		// answer, reached because the lookup was a recomputed identifier that matched
+		// nothing. Under AM-30 the lookup is the pair, and `old a.md` records exactly
+		// this control and this evidence — so it IS the link and it is updated where
+		// it sits (the sibling declaration `does not relocate the note it found`
+		// pins that rule directly). AM-36 is what keeps the refusal off it.
 		const { app, files } = makeVault();
 		const legacyCurie = legacyEvidenceLinkCurie(R4.path, EVIDENCE);
 		files.set(`${FOLDER}/old a.md`, junction({ curie: legacyCurie, control: R4 }));
-		files.set(`${FOLDER}/old b.md`, junction({ curie: legacyCurie, control: R5 }));
+		const bBefore = junction({ curie: legacyCurie, control: R5 });
+		files.set(`${FOLDER}/old b.md`, bBefore);
 
 		await pressCreateLink(app, R4);
 
-		expect(files.has(pathFor(R4))).toBe(true);
-		expect(said()).toContain('Evidence link created.');
 		expect(said()).not.toContain('Could not create the link');
+		expect(said()).toContain('Updated the existing link');
+		expect(said()).toContain(`${FOLDER}/old a.md`);
+		// The other release's link is untouched and no third note was written.
+		expect(files.get(`${FOLDER}/old b.md`)).toBe(bBefore);
+		expect(files.has(pathFor(R4))).toBe(false);
+		expect(files.size).toBe(2);
 	});
 
 	it('does not open a note when it refused to write anything', async () => {
@@ -620,6 +635,16 @@ describe('AM-23: a note at the address that is not this link is refused by name'
 	it('refuses a note whose properties cannot be read, and never calls it a stranger\'s', async () => {
 		// AM-19's rule at this site: nothing was established about the note, so
 		// nothing may be claimed about it, and no destructive instruction attached.
+		//
+		// REALIGNED for AM-35 (2026-09-01), not weakened. The claim is the same and
+		// the outcome is the same — nothing written, no cause invented, no
+		// destructive instruction — but the refusal now comes from the PAIR SCAN
+		// rather than from the address branch beneath it, because the scan reaches
+		// every markdown file and a file it cannot read may be the very junction it
+		// is looking for. Consequence worth recording: with the scan failing closed
+		// first, the address branch's own unreadable refusal is no longer reachable
+		// for a damaged markdown note. `tests/evidence-window-unreadable-and-pair.test.ts`
+		// pins the new refusal directly.
 		const { app, files } = makeVault();
 		const damaged = note(': : :\ncurie: something');
 		files.set(pathFor(R4), damaged);
@@ -627,7 +652,10 @@ describe('AM-23: a note at the address that is not this link is refused by name'
 		await pressCreateLink(app, R4);
 
 		expect(files.get(pathFor(R4))).toBe(damaged);
-		expect(said()).toContain('could not read the properties');
+		expect(files.size).toBe(1);
+		expect(said()).toContain('Could not create the link');
+		expect(said()).toContain('could not be read');
+		expect(said()).toContain(pathFor(R4));
 		expect(said()).not.toContain("not Crosswalker's");
 		expect(said()).not.toContain('Move or rename');
 	});

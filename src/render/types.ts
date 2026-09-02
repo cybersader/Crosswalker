@@ -103,6 +103,29 @@ export interface RenderReport {
 }
 
 /**
+ * AM-33 (2026-09-01). One folder level's VALUE, as the layout produced it.
+ *
+ * A folder mechanism turns a source fact into a directory segment. That segment
+ * is a value, and it is recorded here at the moment it is produced, in order,
+ * beside the level it belongs to.
+ *
+ * Failure mode prevented: hub identity being RECOMPUTED by parsing a note's
+ * final vault path (`dirname(path)`) on every run and used as the lookup key.
+ * A path is a place, not a fact: it carries the import root, it carries whatever
+ * a relocation pass inserted, and it changes for reasons that have nothing to do
+ * with what the folder is ABOUT. When the key moved, the hub that plainly
+ * existed was found by nothing, a second one was written, and the first was
+ * orphaned with the user's prose on it. A path may seed a one-time mint; it may
+ * never be needed again after it (A-8 clause one).
+ */
+export interface LayoutValue {
+	/** The layout entry's declared level name (e.g. `family`, `tactic`). */
+	level: string;
+	/** The value that level rendered for this row — the segment, before it became part of any path. */
+	value: string;
+}
+
+/**
  * The Address output — what render() produces per concept.
  *
  * Per Ch 22 §3.1.

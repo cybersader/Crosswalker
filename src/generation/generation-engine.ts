@@ -49,6 +49,8 @@ import {
 } from './curie';
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
+// AM-33: the tri-state note read, for the hub value index's cache-cold fallback.
+import { readNoteFrontmatterState } from '../export/vault-reader';
 import { buildProvenance } from './provenance';
 import { derivationOf, resolveImportSet, type ImportSetDerivation, type ImportSetOption, type ImportSetReference } from './import-set';
 import {
@@ -72,6 +74,7 @@ import {
 	ensureWaypointMarker,
 	type EnrichNote,
 	type HubNote,
+	type LayoutValue,
 } from './enrich';
 import { wrapManagedBody, scanRegions } from './managed-body';
 import { mergeExistingNote, readExistingNote, ExistingNoteReadError } from './existing-note';
@@ -451,6 +454,10 @@ export async function generateNotes(
 		// for every hub enrichment derives from this prefix, which is what lets a
 		// second release of the same framework exist beside the first.
 		const curiePrefix = curiePrefixFor(importSet, ontologyId);
+		// AM-34. The un-qualified ontology prefix behind it. A source states this
+		// one; the vault holds the resolved one; the set stamp records what turns
+		// one into the other.
+		const basePrefix = baseCuriePrefixFor(importSet, ontologyId);
 		const enrichRecords: EnrichRecord[] = [];
 		// AM-2. Rows this run KEPT rather than wrote (overwriteMode 'skip').
 		//
@@ -528,6 +535,7 @@ export async function generateNotes(
 						options,
 						recipe,
 						curiePrefix,
+						basePrefix,
 						renderReport,
 						recipeHash,
 						provenanceRecipeId,
@@ -699,6 +707,8 @@ export async function generateNotes(
 								keptRecords.push({
 									path: skippedPath,
 									renderedPath: fullPath,
+									// AM-33: a kept row still describes the folders it implies.
+									layoutValues: noteData.layoutValues,
 									curie: noteData.curie,
 									frontmatter: { ...noteData.frontmatter },
 									facets: options.facetsForRow
@@ -780,6 +790,9 @@ export async function generateNotes(
 						enrichRecords.push({
 							path: writePath,
 							renderedPath: fullPath,
+							// AM-33: the folder values this row rendered, so hub identity is
+							// derived from facts rather than recovered from `dirname(path)`.
+							layoutValues: noteData.layoutValues,
 							curie: noteData.curie,
 							frontmatter: { ...noteData.frontmatter },
 							facets,
@@ -1007,6 +1020,30 @@ export function curiePrefixFor(importSet: ImportSetReference, ontologyId: string
 	if (importSet.scheme !== 'set-qualified-v1') return base;
 	const suffix = `-${importSet.id}`;
 	return base.endsWith(suffix) ? base : `${base}${suffix}`;
+}
+
+/**
+ * AM-34 (2026-09-01). The BASE ontology prefix behind `curiePrefixFor` - the
+ * exact inverse of the set-qualification it applies.
+ *
+ * Set-qualification is a uniform re-prefixing recorded on every note it touches
+ * (`_crosswalker.import_set` carries the scheme and the id that produced it), so
+ * it is invertible: strip the id suffix and the identity the source declared is
+ * back, byte-for-byte.
+ *
+ * Failure mode prevented: Crosswalker's own export becoming un-importable. A CSV
+ * export writes `curie` as its first column; a second release of that framework
+ * auto-mints set-qualified and writes `nist-iset-<id>:`; checking a declared
+ * curie against THAT refused every row and told the user to rewrite their source
+ * using a set id that does not exist until the import runs. The source states
+ * `nist:AC-2` and always will; the qualification is the vault's business, not the
+ * source's, and it is applied after the check rather than demanded before it.
+ */
+export function baseCuriePrefixFor(importSet: ImportSetReference, ontologyId: string): string {
+	const base = slugifyForCurie(ontologyId);
+	if (importSet.scheme !== 'set-qualified-v1') return base;
+	const suffix = `-${importSet.id}`;
+	return base.endsWith(suffix) ? base.slice(0, base.length - suffix.length) : base;
 }
 
 /**
@@ -1357,11 +1394,19 @@ function buildNoteDataViaRender(
 	 * enrichment wrote qualified hub curies for the same run.
 	 */
 	curiePrefix: string,
+	/**
+	 * AM-34. The set's BASE ontology prefix - the one a source's declared `curie`
+	 * is checked against. Handed down beside the resolved prefix rather than
+	 * re-derived here: a second derivation is a second place the two can disagree,
+	 * and the disagreement would be an identity written under a prefix nothing
+	 * else in the run uses.
+	 */
+	basePrefix: string,
 	report?: RenderReport,
 	recipeHash?: string,
 	provenanceRecipeId?: string,
 	importSet?: ImportSetReference,
-): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[] } {
+): { path: string; frontmatter: Record<string, any>; body: string; sourceRow: number; curie: string; tags: string[]; layoutValues: LayoutValue[] } {
 	// 1. Build a CURIE for this row, under the derivation THIS SET IS PINNED TO.
 	//
 	// AM-27. Why identity may not pass through a filename sanitizer: a filename
@@ -1387,9 +1432,12 @@ function buildNoteDataViaRender(
 	// stated. Stripping the declared prefix and substituting ours is the silent
 	// rewrite the amendment forbids.
 	const filenameStem = deriveFilenameStem(row, mapping, rowNum);
+	// AM-34. The declared prefix is checked against the BASE ontology; the
+	// resolved (possibly set-qualified) prefix is what goes in front. One check,
+	// one uniform transform, both recorded on the set.
 	const curie = `${curiePrefix}:${
 		derivationOf(importSet) === 'declared-facts-v1'
-			? declaredFactsLocalPart(row, () => deriveRawFilenameStem(row, mapping, rowNum), curiePrefix)
+			? declaredFactsLocalPart(row, () => deriveRawFilenameStem(row, mapping, rowNum), basePrefix)
 			: filenameStem
 	}`;
 
@@ -1417,9 +1465,13 @@ function buildNoteDataViaRender(
 		}
 		: sourceScope;
 
+	// AM-33. The folder levels' VALUES, collected as render produces them. Handed
+	// on to enrichment so hub identity never has to be recovered by parsing a
+	// path back apart.
+	const layoutValues: LayoutValue[] = [];
 	let address;
 	try {
-		address = render(recipe, { curie, scope: renderScope }, report);
+		address = render(recipe, { curie, scope: renderScope }, report, layoutValues);
 	} catch (err) {
 		if (err instanceof RenderError) {
 			throw new Error(`render() failed for row ${rowNum}: ${err.message}`);
@@ -1523,6 +1575,8 @@ function buildNoteDataViaRender(
 		// caller doesn't supply mapping-driven facet memberships).
 		curie,
 		tags: address.tags,
+		// AM-33: the folder levels' values, for the enrichment collector.
+		layoutValues,
 	};
 }
 
@@ -2481,6 +2535,10 @@ export async function generateFromRecipe(
 	// identity space and already qualifies its LEAF by scheme, so it must not be
 	// qualified a second time at the prefix.
 	const curiePrefix = options.curiePrefix ?? curiePrefixFor(importSet, ontologyId);
+	// AM-34. The base ontology prefix a source's declared `curie` is checked
+	// against. An explicit `options.curiePrefix` names its own identity space, so
+	// there is no qualification to invert and the two are the same value.
+	const baseCuriePrefix = options.curiePrefix ?? baseCuriePrefixFor(importSet, ontologyId);
 	const ownedIdentityIndex = await buildIdentityIndex(app, { importSetId: importSet.id });
 
 	// _crosswalker.recipe.hash: computed ONCE per generation run — see
@@ -2660,7 +2718,8 @@ export async function generateFromRecipe(
 			// refused by name otherwise, never stripped and re-prefixed.
 			const localPart = options.curieLocalPart
 				? options.curieLocalPart(scope, rowNum, importSet)
-				: defaultCurieLocalPart(scope, rowNum, derivationOf(importSet), curiePrefix);
+				// AM-34: checked against the base ontology, written under the resolved prefix.
+				: defaultCurieLocalPart(scope, rowNum, derivationOf(importSet), baseCuriePrefix);
 			const curie = `${curiePrefix}:${localPart}`;
 			// The index deliberately does not return an arbitrary winner for a
 			// collision. Refuse this row instead of making the duplicate permanent.
@@ -2693,9 +2752,13 @@ export async function generateFromRecipe(
 			//    source/identity scopes used for concept CID computation.
 			const renderScope = { ...scope, _crosswalker_curie_local_part: localPart };
 			const renderReport: RenderReport = { notes: [] };
+			// AM-33. The folder levels' values, collected as render produces them —
+			// same rule on both generation entry points, so hub identity cannot mean
+			// one thing through the wizard and another through a recipe.
+			const layoutValues: LayoutValue[] = [];
 			let address;
 			try {
-				address = render(recipe, { curie, scope: renderScope }, renderReport);
+				address = render(recipe, { curie, scope: renderScope }, renderReport, layoutValues);
 			} catch (err) {
 				if (err instanceof RenderError) {
 					result.errors.push({ row: rowNum, message: `render() failed: ${err.message}` });
@@ -2876,6 +2939,8 @@ export async function generateFromRecipe(
 						keptRecords.push({
 							path: existingFile.path,
 							renderedPath: fullPath,
+							// AM-33: a kept row still describes the folders it implies.
+							layoutValues,
 							curie,
 							frontmatter: { ...frontmatter },
 							facets: options.facetsForRow
@@ -2971,7 +3036,9 @@ export async function generateFromRecipe(
 				// `body` is the body AS ACTUALLY WRITTEN (merged when the note existed),
 				// never the fresh render — Pass 1.5 writes this back, so the unmerged
 				// render here would destroy the prose the row write just preserved.
-				enrichRecords.push({ path: writePath, renderedPath: fullPath, curie, frontmatter: { ...frontmatter }, facets, body });
+				// AM-33: `layoutValues` travels with the record so the hub pass derives
+				// identity from the values, not from `dirname(writePath)`.
+				enrichRecords.push({ path: writePath, renderedPath: fullPath, layoutValues, curie, frontmatter: { ...frontmatter }, facets, body });
 			}
 		} catch (rowError) {
 			const errorMessage = rowError instanceof Error ? rowError.message : String(rowError);
@@ -3137,6 +3204,22 @@ export function facetMembershipsFromTags(tags: string[]): FacetMembership[] {
  * old form as an alias is what keeps those hubs reconcilable instead of orphaned.
  * A hub can carry user prose and user frontmatter, so recreating one at the new
  * address and cleaning up the old is not available: it would destroy that content.
+ *
+ * AM-33 (2026-09-01). Three identity steps, values first and notes last, before
+ * the address is consulted at all:
+ *
+ *   1. the VALUE-derived identity, through the owned index;
+ *   2. the legacy PATH-derived forms — and these are computed from the CURRENT
+ *      render, so they can only ever match a hub that has not moved. That is
+ *      their whole and stated limitation: they reconcile a scheme upgrade at an
+ *      unchanged address and nothing else. A form recomputed from a path is
+ *      never trusted past this step;
+ *   3. owned hub notes whose RECORDED values equal these values, found by
+ *      reading the notes. This is the step that survives a moved destination, a
+ *      changed layout above the hub, and a later improvement to the derivation:
+ *      the note says what it is about, and a recorded fact does not move.
+ *
+ * Only then the address (AM-14), and only then a create.
  */
 function resolveHubTarget(
 	app: App,
@@ -3147,6 +3230,8 @@ function resolveHubTarget(
 	vaultWideIndex?: IdentityIndex,
 	ownedSetId?: string,
 	producedThisRun?: ReadonlySet<string>,
+	/** AM-33 step 3: this hub's layout values, and the owned hubs that record theirs. */
+	byValues?: { levelValues?: LayoutValue[]; index?: OwnedHubValueIndex },
 ): { existingFile: TFile | null; writePath: string; moveFrom?: string; adoptedAlias?: string; refusal?: AddressRefusal } {
 	// AM-12: the OWNED index. A hub held by another set is refused by the caller
 	// before this runs, so anything found here belongs to the set being written.
@@ -3167,6 +3252,25 @@ function resolveHubTarget(
 		}
 	}
 
+	// AM-33 step 3. The notes, read. Steps 1 and 2 both ask an INDEX about a value
+	// this run just computed; when the hub moved, or the layout above it changed,
+	// or the derivation improved, every computed form misses and the hub that
+	// plainly exists is found by nothing - which is how a second hub gets written
+	// and the first is orphaned carrying the user's prose. A hub records what it
+	// is about, and that record is matched here.
+	//
+	// The note's own recorded curie travels back as `adoptedAlias`, so the
+	// identity this run supersedes is claimed rather than reported as a note that
+	// vanished - the same treatment step 2's aliases already get.
+	if (byValues?.index && byValues.levelValues && byValues.levelValues.length > 0) {
+		const found = byValues.index.get(byValues.levelValues);
+		if (found) {
+			return found.file.path === desiredPath
+				? { existingFile: found.file, writePath: desiredPath, adoptedAlias: found.curie }
+				: { existingFile: found.file, writePath: desiredPath, moveFrom: found.file.path, adoptedAlias: found.curie };
+		}
+	}
+
 	// Address is consulted last, and since AM-12 the index it could not be seen in
 	// is the OWNED one, so this branch covers two cases: a note with no
 	// `_crosswalker` block of its own, and a note some other set owns that happens
@@ -3184,6 +3288,71 @@ function resolveHubTarget(
 		return { existingFile: direct, writePath: desiredPath };
 	}
 	return { existingFile: null, writePath: desiredPath };
+}
+
+/**
+ * AM-33 (2026-09-01). Owned hub notes, looked up by the VALUES they record.
+ *
+ * The third and last identity step for a hub. Steps 1 and 2 ask an index about a
+ * form this run just computed from the current render; this one asks the notes
+ * what they say about themselves. A recorded fact survives a moved destination,
+ * a changed layout above the hub, and any later improvement to the derivation -
+ * none of which a recomputed form survives.
+ *
+ * Keyed on the VALUES alone, not on the level NAMES beside them: renaming a
+ * layout level (`family` -> `control_family`) is a change to how the source is
+ * described, not to which folder this hub is about, and re-minting every hub for
+ * it would orphan them all. The level names are recorded on the note anyway, for
+ * a reader and for diagnosis.
+ *
+ * Scoped to the notes the OWNED index already admitted, so it costs a
+ * frontmatter read per owned note rather than a second whole-vault pass, and so
+ * it cannot reach across a set boundary (AM-12).
+ */
+interface OwnedHubValueIndex {
+	get(values: LayoutValue[]): { file: TFile; curie: string } | null;
+	size: number;
+}
+
+/** Canonical key for a hub's value chain. Values only - see `OwnedHubValueIndex`. */
+function hubValuesKey(values: readonly string[]): string {
+	return JSON.stringify(values);
+}
+
+/** A frontmatter value that is a list of strings, or null. */
+function readStringArray(value: unknown): string[] | null {
+	if (!Array.isArray(value)) return null;
+	if (!value.every((v) => typeof v === 'string')) return null;
+	return value as string[];
+}
+
+async function buildOwnedHubValueIndex(app: App, owned: IdentityIndex | undefined): Promise<OwnedHubValueIndex> {
+	const byKey = new Map<string, { file: TFile; curie: string }>();
+	if (owned) {
+		for (const curie of owned.curies()) {
+			const file = owned.get(curie);
+			if (!file) continue;
+			let fm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+			if (!fm || typeof fm !== 'object' || Array.isArray(fm)) {
+				// Cache lag is not absence (`project_cache_lag_is_not_absence`): a note
+				// Obsidian has not reached yet is read, never assumed to record nothing.
+				const read = await readNoteFrontmatterState(app, file);
+				if (read.state !== 'ok') continue;
+				fm = read.frontmatter;
+			}
+			if (fm.kind !== 'hub') continue;
+			const values = readStringArray(fm.hub_values);
+			if (!values || values.length === 0) continue;
+			const key = hubValuesKey(values);
+			// First claimant wins, matching the identity index's own collision rule,
+			// so the two cannot disagree about which note answers.
+			if (!byKey.has(key)) byKey.set(key, { file, curie });
+		}
+	}
+	return {
+		get: (values: LayoutValue[]) => byKey.get(hubValuesKey(values.map((v) => v.value))) ?? null,
+		size: byKey.size,
+	};
 }
 
 /**
@@ -3296,6 +3465,10 @@ function markKeptHubsProduced(args: {
 				frontmatter: r.frontmatter,
 				facets: r.facets,
 				renderedPath: r.renderedPath,
+				// AM-33: carried through. Dropping it here would silently put the hub
+				// pass back on the path-derived identity for kept rows only, so a
+				// skip refresh and a write refresh would disagree about what a hub is.
+				layoutValues: r.layoutValues,
 			})),
 			{ ontology: curiePrefix, config: recipe.target.enrichment ?? {}, streamed, rootFolder: basePath },
 		);
@@ -3362,6 +3535,8 @@ async function applyEnrichment(
 			frontmatter: r.frontmatter,
 			facets: r.facets,
 			renderedPath: r.renderedPath,
+			// AM-33: the values this row's folder levels rendered, carried to the hub pass.
+			layoutValues: r.layoutValues,
 		})),
 		{ ontology: curiePrefix, config, streamed, rootFolder: options.basePath },
 	);
@@ -3581,6 +3756,13 @@ async function applyEnrichment(
 		}
 	}
 
+	// AM-33 step 3's index. Built once, and only when at least one level hub
+	// actually carries recorded values, so an import with no level hubs (or one
+	// whose hubs predate the values) pays nothing for it.
+	const hubValueIndex = enrichment.levelHubs.notes.some((h) => h.levelValues && h.levelValues.length > 0)
+		? await buildOwnedHubValueIndex(app, indexes?.owned)
+		: undefined;
+
 	// 3. Synthetic level-hub notes (level_hubs='notes', pure structural folders
 	//    with no hosting concept note — module doc step 4.5). `hub.path` here is
 	//    ALREADY a full vault-relative path (it was built from `rootFolder`,
@@ -3622,6 +3804,9 @@ async function applyEnrichment(
 			indexes?.vaultWide,
 			importSet.id,
 			producedThisRun,
+			// AM-33 step 3: the values this hub is about, and the owned hubs that
+			// record theirs. Consulted only after both computed forms miss.
+			{ levelValues: hub.levelValues, index: hubValueIndex },
 		);
 		if (target.refusal) {
 			reportAddressRefusal(result, debug, target.refusal, 0, hubCurie ?? undefined);
@@ -3760,14 +3945,15 @@ function defaultCurieLocalPart(
 	rowNum: number,
 	derivation: ImportSetDerivation,
 	/**
-	 * AM-28. The prefix this run will actually WRITE in front of the value
-	 * returned here. A declared `curie` is checked against it rather than being
-	 * stripped and re-prefixed, so a value that passes is reproduced verbatim.
+	 * AM-28/AM-34. The set's BASE ontology prefix - the one a source may state.
+	 * A declared `curie` is checked against it rather than being stripped and
+	 * re-prefixed, so a value that passes is reproduced verbatim; the caller then
+	 * puts the set's resolved prefix in front, uniformly and invertibly.
 	 */
-	curiePrefix: string,
+	basePrefix: string,
 ): string {
 	if (derivation === 'declared-facts-v1') {
-		return declaredFactsLocalPart(row, () => `row-${rowNum}`, curiePrefix);
+		return declaredFactsLocalPart(row, () => `row-${rowNum}`, basePrefix);
 	}
 	const candidate = row.curie ?? row.id ?? row.subject_id ?? row.control_id ?? row.code;
 	if (typeof candidate === 'string' && candidate.length > 0) {
@@ -3808,14 +3994,19 @@ function defaultCurieLocalPart(
 function declaredFactsLocalPart(
 	row: Record<string, unknown>,
 	lastResort: () => string,
-	curiePrefix: string,
+	/**
+	 * AM-34. The set's BASE ontology prefix - what a source is entitled to state.
+	 * The caller re-prefixes with the set's resolved (possibly set-qualified)
+	 * prefix, uniformly, and the set stamp records what it takes to invert that.
+	 */
+	basePrefix: string,
 ): string {
 	const declared = declaredIdentity(row);
 	if (declared?.kind === 'edge') {
 		return edgeIdentityLocalPart(declared.subject, declared.predicate, declared.object);
 	}
 	if (declared) {
-		if (declared.column === 'curie') return declaredCurieLocalPart(declared.raw, curiePrefix);
+		if (declared.column === 'curie') return declaredCurieLocalPart(declared.raw, basePrefix);
 		return injectiveDeclaredIdLocalPart(declared.raw);
 	}
 	return injectiveCurieLocalPart(lastResort());

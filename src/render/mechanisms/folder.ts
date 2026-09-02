@@ -5,7 +5,7 @@
  * not polyhierarchical. Right when each concept has exactly one canonical home.
  */
 
-import type { Address, SourceScope, RenderReport, VariadicConfig } from '../types';
+import type { Address, SourceScope, RenderReport, VariadicConfig, LayoutValue } from '../types';
 import { renderTemplate, RenderError } from '../template';
 
 interface FolderLayoutEntry {
@@ -30,11 +30,17 @@ const VARIADIC_DEFAULTS = {
  * Append one folder segment to the primary path. Shared by the fixed-depth and
  * variadic folder paths so nesting behavior stays identical (variadic differs
  * only in *how many* segments it produces, never in how each one lands).
+ *
+ * AM-33: the segment is ALSO recorded as a `LayoutValue` when the caller asked
+ * for one, in the same order and at the same moment it lands. Recording here
+ * rather than at the call sites is what makes the two folder paths (fixed and
+ * variadic) incapable of disagreeing about what a level produced.
  */
-function appendFolderSegment(address: Address, segment: string): void {
+function appendFolderSegment(address: Address, segment: string, level: string, values?: LayoutValue[]): void {
 	address.primary.path = address.primary.path
 		? `${address.primary.path}/${segment}`
 		: segment;
+	values?.push({ level, value: segment });
 }
 
 export function applyFolder(
@@ -42,6 +48,7 @@ export function applyFolder(
 	entry: FolderLayoutEntry,
 	scope: SourceScope,
 	report?: RenderReport,
+	values?: LayoutValue[],
 ): void {
 	const segment = renderTemplate(entry.template, scope, report);
 	if (!segment) {
@@ -54,7 +61,7 @@ export function applyFolder(
 		return;
 	}
 
-	appendFolderSegment(address, segment);
+	appendFolderSegment(address, segment, entry.level, values);
 }
 
 /**
@@ -68,6 +75,7 @@ export function applyVariadicFolder(
 	entry: VariadicFolderLayoutEntry,
 	scope: SourceScope,
 	report?: RenderReport,
+	values?: LayoutValue[],
 ): void {
 	const cfg = entry.variadic;
 	const segmentMode = cfg.segment ?? VARIADIC_DEFAULTS.segment;
@@ -133,6 +141,6 @@ export function applyVariadicFolder(
 
 	// 6. Append each segment as a folder level (same path as fixed folders).
 	for (const segment of segments) {
-		appendFolderSegment(address, segment);
+		appendFolderSegment(address, segment, entry.level, values);
 	}
 }
