@@ -137,6 +137,13 @@ export class FileManager {
  * Kept byte-for-byte in step with `src/render/vault-path.ts`, which is the pure
  * copy the runtime-agnostic render layer uses. If those two ever drift, AM-44's
  * elementwise check refuses the hub by name instead of guessing.
+ *
+ * S5 (2026-09-04). The FIFTH behaviour, and the one a test could not have found
+ * by comparing the two copies to each other: the host answers `'/'` for a path
+ * that normalizes to nothing, and both copies answered `''`. A mock that is
+ * pinned as "the host's mutations" and answers a falsy string where the host
+ * answers a truthy one turns every emptiness guard in the product green under
+ * test and leaves it dead in a vault.
  */
 export function normalizePath(path: string): string {
   let out = path.replace(/([\\/])+/g, '/');
@@ -144,7 +151,8 @@ export function normalizePath(path: string): string {
   // Escapes, not the characters themselves: a literal non-breaking space in
   // source is invisible and one stray editor pass would silently delete the fold.
   out = out.replace(/\u00A0|\u202F/g, ' ');
-  return out.normalize('NFC');
+  out = out.normalize('NFC');
+  return out === '' ? '/' : out;
 }
 
 // parseYaml — minimal block-YAML parser covering exactly the dialect this

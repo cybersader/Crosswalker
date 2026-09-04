@@ -17,7 +17,11 @@ import {
 	type DropdownComponent,
 	type TextComponent,
 } from 'obsidian';
-import { readNoteFrontmatter, readNoteFrontmatterState } from '../export/vault-reader';
+// S7 (2026-09-04). ONE reader for "did the properties answer", the tri-state
+// one. The two-state convenience is deliberately not imported here: every read
+// in this file tells the user a cause, and null cannot tell a stranger's plain
+// note from a damaged note of our own.
+import { readNoteFrontmatterState } from '../export/vault-reader';
 import {
 	buildEvidenceLink,
 	evidenceLinkCurie,
@@ -413,6 +417,72 @@ interface PairResolution {
 	current: ExistingNote | null;
 }
 
+/**
+ * AM-48. What a lookup FOUND, before anything decides whether it still counts.
+ *
+ * `PairResolution` minus the pair itself: the pair is what the caller asked
+ * about, and only the caller knows whether that question is still the one on
+ * screen.
+ */
+type PairLookup = Pick<PairResolution, 'index' | 'existing' | 'current'>;
+
+/**
+ * AM-48. A named reason this pair cannot be resolved, carried out of the lookup
+ * rather than written into the form from inside it.
+ *
+ * Failure mode prevented: a stale lookup posting its refusal over a pair it is
+ * not about. The lookup states the reason; `resolvePair` decides whether the
+ * reason is still about the pair the person is looking at.
+ */
+class PairLookupRefusal extends Error {}
+
+/**
+ * S6 (2026-09-04). The vault's own file list, indexed, for the one question the
+ * metadata cache may not be able to answer yet: which file a recorded wikilink
+ * names.
+ */
+interface LinkFallbackIndex {
+	byPath: Set<string>;
+	byBasename: Map<string, string[]>;
+}
+
+/** S6. One snapshot of the vault's markdown files. Pure; reads no cache. */
+function buildLinkFallbackIndex(app: App): LinkFallbackIndex {
+	const byPath = new Set<string>();
+	const byBasename = new Map<string, string[]>();
+	for (const file of app.vault.getMarkdownFiles()) {
+		byPath.add(file.path);
+		// From the path, not from `TFile.basename`, so this answers the same way on
+		// any host that can list files.
+		const base = (file.path.split('/').pop() ?? file.path).replace(/\.md$/i, '');
+		const bucket = byBasename.get(base);
+		if (bucket) bucket.push(file.path);
+		else byBasename.set(base, [file.path]);
+	}
+	return { byPath, byBasename };
+}
+
+/**
+ * S6. Does `linkPath` name the file at `targetPath`, decided from the vault's
+ * file list rather than from the metadata cache?
+ *
+ * The two forms this can answer without an index of its own: a path (with or
+ * without the extension), and a BARE basename with no separator in it. A bare
+ * basename is only accepted when exactly ONE file in the vault carries it,
+ * because Obsidian's tie-break for a duplicated basename is a proximity rule
+ * this cannot reproduce, and guessing at it would put the scan back to
+ * concluding from something it does not know. A path-shaped link that names no
+ * file is a dangling link, which IS a fact: it names nothing, so it does not
+ * name the target.
+ */
+function linkFallbackResolves(index: LinkFallbackIndex, linkPath: string, targetPath: string): boolean {
+	if (index.byPath.has(linkPath)) return linkPath === targetPath;
+	if (index.byPath.has(`${linkPath}.md`)) return `${linkPath}.md` === targetPath;
+	if (linkPath.includes('/')) return false;
+	const named = index.byBasename.get(linkPath) ?? [];
+	return named.length === 1 && named[0] === targetPath;
+}
+
 export class EvidenceLinkModal extends Modal {
 	private controls: ControlCandidate[] = [];
 	private unreadableControls = new Set<string>();
@@ -439,6 +509,34 @@ export class EvidenceLinkModal extends Modal {
 	/** AM-43. The one lookup for the pair now displayed, and its lifecycle. */
 	private resolution: PairResolution | null = null;
 	private resolving = false;
+	/**
+	 * AM-48 (2026-09-04). Which lookup owns the form's contents.
+	 *
+	 * Incremented at the START of every lookup. A lookup whose token is no longer
+	 * the latest discards its whole result: it writes no control, no flag, no
+	 * resolution, and re-enables nothing.
+	 *
+	 * Failure mode prevented: a reviewer's approval silently reverted, and the
+	 * revert reported as a successful update. `resolving` was one boolean shared
+	 * by every lookup, so whichever finished FIRST re-enabled the controls while
+	 * another was still running; the reviewer set Status to Approved; the second
+	 * lookup then ran its prefill unconditionally, resetting `status` to the
+	 * note's own value and clearing `statusSetInThisWindow` (the act flag that is
+	 * the sole authority for writing an attestation); and the write reported
+	 * "Updated the existing link." The rule AM-43 states needs an owner for the
+	 * thing it is a rule about: what the form shows is what it writes, and only
+	 * one lookup at a time may decide what the form shows.
+	 */
+	private resolveToken = 0;
+	/**
+	 * AM-48. The pair the latest lookup is running FOR, recorded when it starts.
+	 *
+	 * Recorded at start rather than only on settle, because during a lookup
+	 * `resolution` is null, so an early return that tested `resolution` alone let
+	 * re-entering the SAME pair start a second lookup. The evidence field's blur
+	 * handler makes that ordinary use: type, click away, click back, click away.
+	 */
+	private inFlightPair: { controlPath: string; evidencePath: string } | null = null;
 	/** A named refusal from the last resolution (unreadable note, two junctions). */
 	private pairRefusal: string | null = null;
 
@@ -606,7 +704,13 @@ export class EvidenceLinkModal extends Modal {
 	 * true of it. Drop the resolution and look the new pair up once.
 	 */
 	private pairChanged(): void {
-		const evidencePath = normalizePath(this.evidencePath.trim());
+		// S5. Emptiness is a question about what the PERSON typed, so it is asked of
+		// the raw input. `normalizePath('')` is `'/'` on the host, which is truthy
+		// and resolves to the vault root, so normalizing first turned an empty
+		// evidence field into a real-looking path and would have minted a junction
+		// whose object is a link to nothing.
+		const raw = this.evidencePath.trim();
+		const evidencePath = raw === '' ? '' : normalizePath(raw);
 		if (this.resolution
 			&& this.resolution.controlPath === this.control?.path
 			&& this.resolution.evidencePath === evidencePath) {
@@ -616,6 +720,13 @@ export class EvidenceLinkModal extends Modal {
 		this.pairRefusal = null;
 		this.applyPairState();
 		if (!this.control || !evidencePath) return;
+		// AM-48. A lookup for THIS pair is already running, so it will answer this
+		// pair. Starting a second one is what produced two writers for one form.
+		if (this.inFlightPair
+			&& this.inFlightPair.controlPath === this.control.path
+			&& this.inFlightPair.evidencePath === evidencePath) {
+			return;
+		}
 		void this.resolvePair(this.control, evidencePath);
 	}
 
@@ -638,46 +749,38 @@ export class EvidenceLinkModal extends Modal {
 	 * While this runs the three review controls are DISABLED. They are questions
 	 * about a pair whose recorded state is not yet known, and an answer given
 	 * during the lookup would be overwritten by the prefill that lands after it.
+	 *
+	 * AM-48 (2026-09-04). This method now owns the LIFECYCLE only. The lookup
+	 * itself (`lookUpPair`) touches nothing: it returns what it found, and the
+	 * result is applied here in one place, guarded by the generation token. A
+	 * lookup that is no longer the latest returns from that guard having changed
+	 * no control, no flag, no enabled state and no resolution, so a person's
+	 * answer can never be overwritten by a lookup that started before it.
 	 */
 	private async resolvePair(control: ControlCandidate, evidencePath: string): Promise<void> {
+		const token = ++this.resolveToken;
+		this.inFlightPair = { controlPath: control.path, evidencePath };
 		this.resolving = true;
 		this.applyPairState();
+		let outcome: { refusal: string } | { found: PairLookup };
 		try {
-			// Vault-wide, because the questions are "who already holds this identity"
-			// and "whose is the note at this address", and a scoped index by
-			// construction cannot answer about the notes it excluded.
-			const index = await buildIdentityIndex(this.app);
-			const scan = await this.junctionsNamingThisPair(control, evidencePath);
-			if (!scan.ok) {
-				this.pairRefusal = `The properties of ${scan.unreadablePath} could not be read, so Crosswalker cannot tell `
-					+ 'whether it is already the link for this control and this evidence. Fix that note\'s properties, '
-					+ 'then try again.';
-				return;
-			}
-			const named = scan.junctions;
-			if (named.length > 1) {
-				this.pairRefusal = `${named.length} notes already record this control and this evidence `
-					+ `(${named.map((entry) => entry.file.path).join(', ')}). Delete or fix all but one of them, `
-					+ 'then try again.';
-				return;
-			}
-			const existing = named[0] ?? null;
+			outcome = { found: await this.lookUpPair(control, evidencePath) };
+		} catch (err) {
+			outcome = err instanceof PairLookupRefusal
+				? { refusal: err.message }
+				: { refusal: `Crosswalker could not check for an existing link (${err instanceof Error ? err.message : String(err)}).` };
+		}
 
-			// The note this window is about to change, read ONCE and read
-			// fail-closed, through the same reader generation uses. Everything below
-			// that needs to know what the link already says asks this, so the window
-			// cannot form two opinions about the note it is updating.
-			let current: ExistingNote | null = null;
-			if (existing) {
-				try {
-					current = await readExistingNote(this.app, existing.file);
-				} catch (readErr) {
-					const detail = readErr instanceof ExistingNoteReadError ? readErr.detail : String(readErr);
-					this.pairRefusal = `${existing.file.path} could not be read (${detail}). Fix that note, then try again.`;
-					return;
-				}
-			}
+		// AM-48. THE GENERATION CHECK. Everything below writes to the form; nothing
+		// above it does. A stale lookup stops here.
+		if (token !== this.resolveToken) return;
+		this.inFlightPair = null;
+		this.resolving = false;
 
+		if ('refusal' in outcome) {
+			this.pairRefusal = outcome.refusal;
+		} else {
+			const { index, existing, current } = outcome.found;
 			// The prefill. What the pair records is what the form shows; a pair that
 			// records nothing shows the form's own defaults, so one pair's answers can
 			// never be written onto another.
@@ -691,16 +794,64 @@ export class EvidenceLinkModal extends Modal {
 			this.scopeText?.setValue(this.evidenceScope);
 
 			this.resolution = { controlPath: control.path, evidencePath, index, existing, current };
-		} catch (err) {
-			this.pairRefusal = `Crosswalker could not check for an existing link (${err instanceof Error ? err.message : String(err)}).`;
-		} finally {
-			this.resolving = false;
-			this.applyPairState();
 		}
+		this.applyPairState();
+	}
+
+	/**
+	 * AM-48. The lookup, with no side effects at all.
+	 *
+	 * Separated from `resolvePair` so that "discard a stale result" is one early
+	 * return rather than a token test in front of every assignment. A refusal is
+	 * thrown as `PairLookupRefusal` for the same reason: an early `return` that
+	 * set `this.pairRefusal` in place would have been a write from a lookup that
+	 * may no longer own the form.
+	 */
+	private async lookUpPair(control: ControlCandidate, evidencePath: string): Promise<PairLookup> {
+		// Vault-wide, because the questions are "who already holds this identity"
+		// and "whose is the note at this address", and a scoped index by
+		// construction cannot answer about the notes it excluded.
+		const index = await buildIdentityIndex(this.app);
+		const scan = await this.junctionsNamingThisPair(control, evidencePath);
+		if (!scan.ok) {
+			throw new PairLookupRefusal(
+				`The properties of ${scan.unreadablePath} could not be read, so Crosswalker cannot tell `
+				+ 'whether it is already the link for this control and this evidence. Fix that note\'s properties, '
+				+ 'then try again.',
+			);
+		}
+		const named = scan.junctions;
+		if (named.length > 1) {
+			throw new PairLookupRefusal(
+				`${named.length} notes already record this control and this evidence `
+				+ `(${named.map((entry) => entry.file.path).join(', ')}). Delete or fix all but one of them, `
+				+ 'then try again.',
+			);
+		}
+		const existing = named[0] ?? null;
+
+		// The note this window is about to change, read ONCE and read fail-closed,
+		// through the same reader generation uses. Everything that needs to know
+		// what the link already says asks this, so the window cannot form two
+		// opinions about the note it is updating.
+		let current: ExistingNote | null = null;
+		if (existing) {
+			try {
+				current = await readExistingNote(this.app, existing.file);
+			} catch (readErr) {
+				const detail = readErr instanceof ExistingNoteReadError ? readErr.detail : String(readErr);
+				throw new PairLookupRefusal(`${existing.file.path} could not be read (${detail}). Fix that note, then try again.`);
+			}
+		}
+		return { index, existing, current };
 	}
 
 	/** The status line and what the person may answer, given what is known. */
 	private applyPairState(): void {
+		// AM-48. The gate is the RESOLUTION, never a "some lookup finished" flag.
+		// Only the current lookup can set one (a stale result is discarded before
+		// it reaches here), so the controls stay disabled until the lookup that
+		// owns the form settles, however many older ones land first.
 		const ready = this.resolution !== null;
 		this.coverageDrop?.setDisabled(!ready);
 		this.statusDrop?.setDisabled(!ready);
@@ -723,11 +874,17 @@ export class EvidenceLinkModal extends Modal {
 			new Notice('Choose a control first.');
 			return;
 		}
-		const evidencePath = normalizePath(this.evidencePath.trim());
-		if (!evidencePath) {
+		// S5 (2026-09-04). The guard tests the RAW input, before normalization.
+		// `normalizePath('')` returns `'/'` on the host, which is truthy and which
+		// `getAbstractFileByPath` resolves to the vault root, so an empty evidence
+		// field passed this guard, passed the "no note found" warning below, and
+		// minted a junction whose object was a link to nothing.
+		const rawEvidence = this.evidencePath.trim();
+		if (!rawEvidence) {
 			new Notice('Enter the path to the evidence document.');
 			return;
 		}
+		const evidencePath = normalizePath(rawEvidence);
 
 		// AM-43. What the form shows is what it writes, so it must have been shown.
 		// A submit with no resolution for the pair now named looks the pair up and
@@ -774,20 +931,39 @@ export class EvidenceLinkModal extends Modal {
 				: (recordedAgainst?.reviewGroups ?? null);
 			if (attesting && status === 'approved' && controlReviewCid === null) {
 				const controlFile = this.app.vault.getAbstractFileByPath(this.control.path);
-				if (controlFile instanceof TFile && !this.app.metadataCache.getFileCache(controlFile)) {
-					// A null cache entry means EITHER no frontmatter OR not indexed
-					// yet. Reading the second as the first would stamp "no baseline"
-					// onto a control that has a perfectly good fingerprint — the
-					// mistake behind three bugs in one week
-					// (`project_cache_lag_is_not_absence`). Look at the file before
-					// concluding anything, for this ONE control only.
-					const fromDisk = await readNoteFrontmatter(this.app, controlFile);
-					if (fromDisk === null) {
-						new Notice('Obsidian is still reading this control. Try again in a moment.');
+				if (controlFile instanceof TFile) {
+					// S7 (2026-09-04). Routed through the `!fm` reading, which is the
+					// one this repo settled on: a cache ENTRY that exists but carries no
+					// properties is a silence exactly like a missing entry, and the
+					// retired `!getFileCache` discriminator skipped the disk read for
+					// it. `readNoteFrontmatterState` accepts a cache entry only when it
+					// actually carries properties and reads the file otherwise, so this
+					// costs nothing when the cache has already answered.
+					//
+					// Failure mode prevented: stamping "no baseline" onto a control that
+					// has a perfectly good fingerprint, because the cache had not
+					// answered yet. That is the mistake behind three bugs in one week
+					// (`project_cache_lag_is_not_absence`), and the tri-state is what
+					// separates the two readings: `none` is the FACT that this control
+					// carries no properties, `unreadable` is the ABSENCE of any fact.
+					const read = await readNoteFrontmatterState(this.app, controlFile);
+					if (read.state === 'unreadable') {
+						// Named, and actionable. Not "wait a moment": the bytes have
+						// already been read from disk, so waiting changes nothing, and
+						// telling the user a false cause is the failure AM-19 removes.
+						new Notice(
+							`Crosswalker could not read the properties of ${this.control.path}, so it cannot record what `
+							+ 'you approved against. Fix that note\'s properties, then approve the link again.',
+							12000,
+						);
 						return;
 					}
-					controlReviewCid = readReviewCid(fromDisk);
-					controlReviewGroups = readReviewGroups(fromDisk);
+					if (read.state === 'ok') {
+						controlReviewCid = readReviewCid(read.frontmatter);
+						controlReviewGroups = readReviewGroups(read.frontmatter);
+					}
+					// `none` needs no branch: a control with no properties has no
+					// fingerprint, which is a fact, and the notice below states it.
 				}
 				if (controlReviewCid === null) {
 					new Notice(
@@ -1049,6 +1225,15 @@ export class EvidenceLinkModal extends Modal {
 		| { ok: false; unreadablePath: string }
 	> {
 		const out: { file: TFile; curie: string | null }[] = [];
+		// S6. ONE snapshot of the vault's file list per scan, built lazily and only
+		// if the metadata cache's link resolver actually goes silent. Local to the
+		// scan rather than held on the window, so a lookup this window has already
+		// abandoned cannot change what a later one sees (AM-48).
+		let fallback: LinkFallbackIndex | null = null;
+		const resolvesTo = (linkPath: string, targetPath: string): boolean => {
+			fallback ??= buildLinkFallbackIndex(this.app);
+			return linkFallbackResolves(fallback, linkPath, targetPath);
+		};
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			let fm = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
 			if (!fm) {
@@ -1063,7 +1248,7 @@ export class EvidenceLinkModal extends Modal {
 				fm = read.frontmatter;
 			}
 			if (fm.kind !== 'junction-note') continue;
-			if (!this.frontmatterNamesThisPair(fm, control, evidencePath)) continue;
+			if (!this.frontmatterNamesThisPair(fm, control, evidencePath, resolvesTo)) continue;
 			const curie = typeof fm.curie === 'string' && fm.curie.trim() !== '' ? fm.curie.trim() : null;
 			out.push({ file, curie });
 		}
@@ -1098,6 +1283,7 @@ export class EvidenceLinkModal extends Modal {
 		fm: Record<string, unknown>,
 		control: ControlCandidate,
 		evidencePath: string,
+		resolvesTo: (linkPath: string, targetPath: string) => boolean,
 	): boolean {
 		const predicate = typeof fm.predicate === 'string' ? fm.predicate.trim() : '';
 		if (predicate !== '' && predicate !== CANONICAL_EVIDENCE_PREDICATE) return false;
@@ -1106,8 +1292,8 @@ export class EvidenceLinkModal extends Modal {
 		const object = typeof fm.object === 'string' ? fm.object : '';
 		const subjectMatches = control.curie && subjectCurie
 			? subjectCurie === control.curie
-			: this.linkNames(subject, control.path);
-		return subjectMatches && this.linkNames(object, evidencePath);
+			: this.linkNames(subject, control.path, resolvesTo);
+		return subjectMatches && this.linkNames(object, evidencePath, resolvesTo);
 	}
 
 	/**
@@ -1118,15 +1304,36 @@ export class EvidenceLinkModal extends Modal {
 	 * resolution, which follows a move even when the link text was not rewritten.
 	 * Resolution is what makes this survive the case AM-30 exists for; the exact
 	 * comparison is what makes it work on hosts that expose no resolver.
+	 *
+	 * S6 (2026-09-04). `getFirstLinkpathDest` was the LAST cache-only read on the
+	 * `command -> window -> write` path, and its null answer was read as the fact
+	 * "this junction does not name the pair". It is not a fact: it is either that,
+	 * or the resolver has not been built yet. A junction dropped from the scan for
+	 * the second reason leaves the scan reporting that nothing records the pair,
+	 * and the window then MINTS A SECOND JUNCTION for a pair that already has one
+	 * - the exact error the scan exists to prevent, and the one AM-42 then cannot
+	 * repair because the new note carries no import set.
+	 *
+	 * So a null answer falls back to the vault's own file list, the same
+	 * authoritative source the fail-closed readers around it fall back to when the
+	 * cache is silent. The list is in memory and is never lagged: it answers
+	 * "which file does this link text name" as a fact, so the scan concludes only
+	 * from facts. Aliases still resolve through the resolver when it can answer;
+	 * what is removed is CONCLUDING from its silence.
 	 */
-	private linkNames(value: string, targetPath: string): boolean {
+	private linkNames(
+		value: string,
+		targetPath: string,
+		resolvesTo: (linkPath: string, targetPath: string) => boolean,
+	): boolean {
 		const match = /\[\[([^\]|#^]+)/.exec(value);
 		if (!match) return false;
 		const linkPath = match[1].trim();
 		if (linkPath === targetPath || `${linkPath}.md` === targetPath) return true;
 		const resolve = this.app.metadataCache.getFirstLinkpathDest?.bind(this.app.metadataCache);
 		const dest = resolve ? resolve(linkPath, '') : null;
-		return dest !== null && dest !== undefined && dest.path === targetPath;
+		if (dest !== null && dest !== undefined) return dest.path === targetPath;
+		return resolvesTo(linkPath, targetPath);
 	}
 
 	onClose(): void {

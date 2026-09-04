@@ -313,15 +313,57 @@ export function createFolderEnsurer(app: App): (path: string) => Promise<void> {
 // ============================================================================
 
 /**
+ * AM-49 (2026-09-04). THE IMPORT ROOT, NORMALIZED ONCE, AT THE ENGINE BOUNDARY.
+ *
+ * `options.basePath` is a raw user string: the wizard hands over the text of an
+ * input field, and a recorded destination is whatever was typed the first time.
+ * Every note path this engine writes goes through the host's `normalizePath`,
+ * which collapses separators and backslashes, strips edge separators, folds
+ * `U+00A0`/`U+202F` to an ordinary space, and normalizes to NFC. The root did
+ * not, and the root is what the enrichment pass compares those paths AGAINST.
+ *
+ * Failure mode prevented: an output folder pasted with a non-breaking space (or
+ * carrying a decomposed accent, a backslash, or an internal `//`) made the root
+ * a different string from the prefix of every note path. `rootIsTrackedAncestor`
+ * then went false, the root stopped being stripped, every layout value
+ * disagreed with its segment at index 0, AM-44 refused EVERY level hub in the
+ * import, and because a refused hub's curie never reaches `producedCuries` the
+ * orphan pass reported every hub the set owns as an orphan. The deviation
+ * blamed the recipe and the source row; the character was in the destination
+ * folder the user typed.
+ *
+ * The rule this exists to keep, in one sentence: a normalization applied to
+ * what you record must be applied to what you compare it against, and the
+ * boundary is ONE CALL SITE, not one sweep. So the value returned here is the
+ * one string every consumer sees: `fullPath` composition, `rootFolder:` at both
+ * enrichment call sites, ownership resolution, folder creation, and the
+ * orphan/refresh scans all read `options.basePath` and all now read this.
+ *
+ * Emptiness is preserved rather than normalized away: `normalizePath('')` is
+ * `'/'` on the host, which is truthy, and every `options.basePath ? ...` branch
+ * in this engine reads a falsy base as "write at the vault root". Both
+ * spellings of the root ('' and '/') therefore come back as ''.
+ */
+function normalizeBasePath(basePath: string): string {
+	const trimmed = basePath.trim();
+	if (trimmed === '') return '';
+	const normalized = normalizePath(trimmed);
+	return normalized === '/' ? '' : normalized;
+}
+
+/**
  * Generate notes from parsed data using the provided configuration.
  */
 export async function generateNotes(
 	app: App,
 	parsedData: ParsedData,
 	config: Partial<ImportRecipe>,
-	options: GenerationOptions,
+	rawOptions: GenerationOptions,
 	debug?: DebugLog
 ): Promise<GenerationResult> {
+	// AM-49. The boundary. Everything below reads `options`, so the normalized
+	// root is the only root this run has; there is no second spelling to diverge.
+	const options: GenerationOptions = { ...rawOptions, basePath: normalizeBasePath(rawOptions.basePath) };
 	const startTime = Date.now();
 	const result: GenerationResult = {
 		success: true,
@@ -2502,9 +2544,14 @@ export async function generateFromRecipe(
 	app: App,
 	parsedData: ParsedData,
 	recipe: Recipe,
-	options: RecipeImportOptions,
+	rawOptions: RecipeImportOptions,
 	debug?: DebugLog,
 ): Promise<GenerationResult> {
+	// AM-49. The other engine boundary, same rule (see `normalizeBasePath`): the
+	// root is normalized once here and every consumer below reads `options`, so
+	// the string the notes are written under and the string they are compared
+	// against cannot be two different strings.
+	const options: RecipeImportOptions = { ...rawOptions, basePath: normalizeBasePath(rawOptions.basePath) };
 	const startTime = Date.now();
 	const result: GenerationResult = {
 		success: true,

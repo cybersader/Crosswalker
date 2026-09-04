@@ -36,9 +36,19 @@
  */
 
 /**
- * The four mutations, in the host's own order. Kept as one expression per
- * mutation so a future divergence is visible line by line rather than buried in
- * a chained regex.
+ * The four mutations, in the host's own order, plus the host's own answer for a
+ * string that collapses to nothing. Kept as one expression per mutation so a
+ * future divergence is visible line by line rather than buried in a chained
+ * regex.
+ *
+ * S5 (2026-09-04). The host returns `'/'` \u2014 the vault root \u2014 for an input that
+ * normalizes to the empty string, and both copies returned `''`. A copy that
+ * answers a DIFFERENT string than the host is the whole failure this module
+ * exists to prevent, and this one is answered in the truthiness direction:
+ * `'/'` is truthy and `''` is not, so every caller that guards on "did the user
+ * give me a path" read an empty answer as a real one on the host and as an
+ * empty one here. See the modal's evidence-path guard, which now tests the RAW
+ * input for exactly this reason.
  */
 export function normalizeVaultPath(path: string): string {
 	let out = path.replace(/([\\/])+/g, '/');
@@ -46,7 +56,8 @@ export function normalizeVaultPath(path: string): string {
 	// Escapes, not the characters themselves: a literal non-breaking space in
 	// source is invisible and one stray editor pass would silently delete the fold.
 	out = out.replace(/\u00A0|\u202F/g, ' ');
-	return out.normalize('NFC');
+	out = out.normalize('NFC');
+	return out === '' ? '/' : out;
 }
 
 /**
@@ -60,7 +71,11 @@ export function normalizeVaultPath(path: string): string {
  * value and the k-th segment the same string.
  */
 export function normalizedPathPieces(segment: string): string[] {
+	// S5. A segment that collapses to nothing normalizes to `'/'` (the host's own
+	// answer for an empty path), never to `''`, so the empty-string early return
+	// this used to carry is gone: the filter below drops the two empty halves
+	// `'/'` splits into and reaches the same empty list, and one code path serves
+	// both spellings of "this segment contributes no directory".
 	const normalized = normalizeVaultPath(segment);
-	if (normalized === '') return [];
 	return normalized.split('/').filter((piece) => piece !== '');
 }

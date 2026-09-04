@@ -521,6 +521,15 @@ function computeLevelHubs(
 	const entries = notes.map((n) => ({ note: n, path: finalPath(n) }));
 	if (entries.length === 0) return;
 
+	// AM-49 (2026-09-04). `rootFolder` arrives ALREADY NORMALIZED: the engine
+	// normalizes the import root once at its own boundary (`normalizeBasePath`)
+	// and hands the same string to the path composition and to this pass, so the
+	// two can no longer be different spellings of one folder. `stripSlashes` is
+	// kept as a defensive no-op on that input, for the harness callers that pass a
+	// bare label; it is NOT the normalization, and it must never be mistaken for
+	// one. It removes edge separators and nothing else, which is a fraction of one
+	// of the host's four mutations, and treating it as sufficient is what made the
+	// root the one string in this comparison nobody had normalized.
 	const root = rootFolder !== undefined ? stripSlashes(rootFolder) : undefined;
 	// `root` scopes folder collection ONLY when it's a genuine ancestor of at
 	// least one note (the real generation-engine case: every note path is
@@ -649,6 +658,20 @@ function computeLevelHubs(
 	// deterministic, the same discipline every other derived list here follows.
 	const valuesByFolder = new Map<string, LayoutValue[]>();
 	const unalignedFolders = new Map<string, string>();
+	// AM-50 (2026-09-04). Did this RUN collect values at all?
+	//
+	// Two states were being read as one. "This caller hands over no values" is a
+	// fact about the caller (a bare harness, or notes produced by something other
+	// than render()), and the documented path-derived fallback exists for exactly
+	// it. "This caller collected values and none of them describe this folder" is
+	// something else entirely, and it is the state a MOVED NOTE produces: a note
+	// dragged out of its generated folder is found by curie at its new address on
+	// the next refresh, `folders` gains the new folder from the note's final path,
+	// no rendered chain ever described it, and nothing here disagreed with it
+	// either. It was in neither map, so it was not refused, and its hub identity
+	// was derived from its ADDRESS - in production, on the write path, with values
+	// available. Which is the one thing A-8 says never happens.
+	const valuesWereCollected = entries.some((e) => e.note.layoutValues !== undefined);
 	for (const e of [...entries].sort((a, b) => cmp(a.note.curie, b.note.curie))) {
 		const lv = e.note.layoutValues;
 		// Absent (not empty) means this caller collects no values at all - a
@@ -693,6 +716,45 @@ function computeLevelHubs(
 	}
 
 	/**
+	 * AM-50. The import root itself, which is the ONE folder whose identity is not
+	 * a claim about a layout at all.
+	 *
+	 * No row's chain describes the root: the value chain starts AT the root and
+	 * records the folders below it, so `valuesByFolder` never keys the root by
+	 * construction. Its identity is the set's own reserved local part
+	 * (`hub/_root`), which reads no address and moves with no destination, so the
+	 * refusal AM-50 adds must not fire on it. Getting this wrong would refuse the
+	 * home note of every import.
+	 */
+	const isImportRoot = (f: string): boolean => rootIsTrackedAncestor && root !== undefined && f === root;
+
+	/**
+	 * S4 (2026-09-04). WHICH NOTE HOSTS THIS FOLDER, keyed by the folder.
+	 *
+	 * `byBasename` is whole-batch and basename-keyed: any note ANYWHERE in the
+	 * import whose basename equals the folder's last segment answered "this folder
+	 * is hosted". As an identity rule that is step 4.5's own long-standing
+	 * behaviour; as a REFUSAL EXEMPTION it is a bypass, because whether a folder's
+	 * values disagree with it is a question about values that a basename cannot
+	 * answer. An unrelated row sharing a last segment made a genuine disagreement
+	 * disappear.
+	 *
+	 * Hosting is therefore decided by PLACEMENT: the note inside the folder
+	 * (`f/<label>.md`, the folder-note form) or the note beside it
+	 * (`dirOf(f)/<label>.md`, the sibling form this codebase calls the production
+	 * shape). Both are notes the run actually put at that folder, so the hosting
+	 * row's own chain reached it. A note somewhere else in the import that merely
+	 * shares the name is not hosting anything.
+	 */
+	const hostByFolder = new Map<string, EnrichNote>();
+	for (const f of folders) {
+		const host = byBasename.get(basename(f));
+		if (!host) continue;
+		const hostDir = dirOf(finalPath(host));
+		if (hostDir === f || hostDir === dirOf(f)) hostByFolder.set(f, host);
+	}
+
+	/**
 	 * AM-44. Is this folder one the run declines to describe, and why?
 	 *
 	 * Consulted BEFORE `identityOf` and INSIDE the parent's children loop, which
@@ -709,11 +771,31 @@ function computeLevelHubs(
 	 *   - a folder HOSTED by an existing note takes that note's own curie, so no
 	 *     path is read and dropping its Contents list would be a loss with no
 	 *     corresponding risk.
+	 *
+	 * AM-50 (2026-09-04) adds the THIRD state, and it is the one that was missing:
+	 * a folder no row described AT ALL. Refusing only the folders a row described
+	 * WRONGLY adopted the easy half of the rule - it declined to guess when it
+	 * knew it disagreed, and guessed freely when it knew nothing.
 	 */
 	const refusalFor = (f: string): string | undefined => {
+		// AM-50. The root is described by the set, not by a row. See `isImportRoot`.
+		if (isImportRoot(f)) return undefined;
 		if (valuesByFolder.has(f)) return undefined;
-		if (byBasename.has(basename(f))) return undefined;
-		return unalignedFolders.get(f);
+		if (hostByFolder.has(f)) return undefined;
+		const unaligned = unalignedFolders.get(f);
+		if (unaligned) return unaligned;
+		// The caller collects no values at all, so "no row described this folder" is
+		// true of every folder and says nothing. The documented path-derived
+		// fallback covers this state and only this state.
+		if (!valuesWereCollected) return undefined;
+		// AM-50. This run DID collect values and none of them reach this folder.
+		// Named as what it is, with the cause a user can actually act on. The
+		// ordinary way to arrive here is a generated note moved by hand: it is
+		// found by its curie at the new address, so its folder joins the import
+		// without any row's layout ever placing anything there.
+		return `No index note was created for the folder "${f}". No row of this run describes the folder; the note may `
+			+ 'have been moved. The notes themselves were written normally, and Crosswalker will not name a folder from '
+			+ 'its path. Move the note back, or re-run the import so the folder is described by the layout.';
 	};
 
 	/**
@@ -744,7 +826,27 @@ function computeLevelHubs(
 		const rel = relativeToRoot(f);
 		return hubCurieFromParts(rel === '' ? [] : rel.split('/'));
 	};
-	const hubCurieOf = (f: string): string => valueHubCurieOf(f) ?? pathHubCurieOf(f);
+	/**
+	 * AM-50 (2026-09-04). A LEVEL HUB'S IDENTITY COMES FROM VALUES OR FROM NOWHERE.
+	 *
+	 * The `?? pathHubCurieOf(f)` this used to end with was the address route,
+	 * still open. It was justified as "the documented fallback for a caller that
+	 * hands over no values", and that caller is real - but it was not the caller
+	 * that reached it. A production run with complete, correct values reached it
+	 * for any folder its values did not describe, and derived the hub's identity
+	 * from the folder's path with no refusal, no deviation and no warning. An
+	 * address is a choice the user can change; an identity that moves with it is
+	 * not an identity.
+	 *
+	 * So the fallback now serves ONLY the two states it was written for: a run
+	 * that collected no values at all, and the import root, whose reserved local
+	 * part reads no address (see `isImportRoot`). When the run did collect values,
+	 * any OTHER folder they do not describe has no identity here, and `refusalFor`
+	 * above has already refused it by name, so this returns null on a path nothing
+	 * reaches.
+	 */
+	const hubCurieOf = (f: string): string | null =>
+		valueHubCurieOf(f) ?? (valuesWereCollected && !isImportRoot(f) ? null : pathHubCurieOf(f));
 	/**
 	 * The address-derived forms this hub may already be written under, newest
 	 * superseded first: the root-relative form (pre-AM-33) and the full-vault-path
@@ -765,8 +867,14 @@ function computeLevelHubs(
 
 	// Pass A: every folder's link identity — hosted by an existing same-
 	// basename note (wherever it currently lives), or synthetic.
+	//
+	// AM-50. NULL means "this run cannot name this folder", which is the answer
+	// for a folder no row described. Every caller is already behind `refusalFor`,
+	// so null is unreachable in practice; it is returned rather than guessed so
+	// that a future edit which forgets the refusal cannot silently re-open the
+	// address route instead of failing visibly.
 	const identity = new Map<string, FolderIdentity>();
-	const identityOf = (f: string): FolderIdentity => {
+	const identityOf = (f: string): FolderIdentity | null => {
 		const label = basename(f);
 		const cached = identity.get(f);
 		if (cached) return cached;
@@ -776,6 +884,7 @@ function computeLevelHubs(
 			id = { curie: host.curie, label, hostedPath: finalPath(host) };
 		} else {
 			const curie = hubCurieOf(f);
+			if (curie === null) return null;
 			const values = valuesByFolder.get(f);
 			id = {
 				curie,
@@ -820,6 +929,9 @@ function computeLevelHubs(
 			continue;
 		}
 		const id = identityOf(f);
+		// AM-50. Unreachable behind the refusal above; the belt is here so a folder
+		// this run cannot name can never be written under a name taken from its path.
+		if (!id) continue;
 		const childRefs: { curie: string; label: string }[] = [];
 		for (const e of filesOf.get(f) ?? []) childRefs.push({ curie: e.note.curie, label: basename(e.path) });
 		for (const g of subfoldersOf.get(f) ?? []) {
@@ -829,6 +941,7 @@ function computeLevelHubs(
 			// user cannot repair by hand because the next run rewrites it.
 			if (refusalFor(g)) continue;
 			const gid = identityOf(g);
+			if (!gid) continue;
 			childRefs.push({ curie: gid.curie, label: gid.label });
 		}
 		childRefs.sort((a, b) => cmp(a.curie, b.curie));
@@ -893,10 +1006,15 @@ function computeLevelHubs(
 		// the folder's own identity, not also as an unrelated top-level file.
 		// AM-44: the same rule as Pass B's children loop - this is a parent's
 		// children loop too, and a refused folder has no hub note to link to.
-		const topFolders = sortedFolders.filter((f) => !folders.has(dirOf(f)) && !refusalFor(f));
-		const topFolderLabels = new Set(topFolders.map((f) => identityOf(f).label));
-		for (const f of topFolders) {
-			const id = identityOf(f);
+		// AM-50. Identified ONCE, and a folder with no identity drops out of both
+		// lists together, so the label filter below can never be steered by a
+		// folder the run declined to name.
+		const topFolders = sortedFolders
+			.filter((f) => !folders.has(dirOf(f)) && !refusalFor(f))
+			.map((f) => identityOf(f))
+			.filter((id): id is FolderIdentity => id !== null);
+		const topFolderLabels = new Set(topFolders.map((id) => id.label));
+		for (const id of topFolders) {
 			childRefs.push({ curie: id.curie, label: id.label });
 		}
 		for (const e of entries) {
