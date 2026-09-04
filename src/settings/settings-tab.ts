@@ -30,6 +30,7 @@ import {
 	DEFAULT_EVIDENCE_JUNCTION_FOLDER,
 	DEFAULT_EVIDENCE_REPORT_FOLDER,
 	DEFAULT_TIER2_SIDECAR_PATH,
+	tier2SidecarPath,
 } from './folder-settings';
 import type { Enrichment } from '../import/mapping/types';
 import {
@@ -1042,7 +1043,11 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 				});
 			});
 		refreshSidecar = this.addPreview(details, 'Index file', (el) => {
-			this.renderPathChip(el, 'database', sidecarPathDisplay(this.plugin.settings.tier2SidecarPath));
+			// S14 (2026-09-04). Through the accessor, like every other reader of this
+			// setting. Reading the field raw showed the text as typed while
+			// `openSidecar` and `clearSidecar` act on the normalized value, so the
+			// chip could name a file the buttons beside it do not open.
+			this.renderPathChip(el, 'database', sidecarPathDisplay(tier2SidecarPath(this.plugin.settings)));
 		});
 	}
 

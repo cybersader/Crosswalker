@@ -53,6 +53,8 @@ import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 // directory segment it produced are compared after the SAME four mutations the
 // path itself received. Comparing raw would call an honest hub misplaced.
 import { normalizedPathPieces } from '../render/vault-path';
+// S16: the ONE spelling of a folder a person typed. See `normalizeBasePath`.
+import { normalizeFolderSetting } from '../settings/folder-settings';
 // AM-33: the tri-state note read, for the hub value index's cache-cold fallback.
 import { readNoteFrontmatterState, type NoteFrontmatterRead } from '../export/vault-reader';
 import { buildProvenance } from './provenance';
@@ -351,10 +353,15 @@ export function createFolderEnsurer(app: App): (path: string) => Promise<void> {
  * spellings of the root ('' and '/') therefore come back as ''.
  */
 function normalizeBasePath(basePath: string): string {
-	const trimmed = basePath.trim();
-	if (trimmed === '') return '';
-	const normalized = normalizePath(trimmed);
-	return normalized === '/' ? '' : normalized;
+	// S16 (2026-09-04). ONE SPELLING, not a third copy of its body. This function
+	// reproduced `normalizeFolderSetting` line for line, on the host instead of the
+	// mirror, and a copy is a second answer waiting to drift from the first: the
+	// destination the wizard compares against the vault and the destination the
+	// engine writes to would then be two different strings for one folder. AM-58
+	// made the mirror host-free, so the parity risk is removed rather than pinned.
+	// The host's own `normalizePath` stays only where the engine hands a path to
+	// the vault, applied to an already-normalized string.
+	return normalizeFolderSetting(basePath);
 }
 
 /**
@@ -900,7 +907,16 @@ export async function generateNotes(
 		// two-pass shape - one pass accounting over both, one pass writing from half -
 		// is what rewrote a hub's Contents from a batch that had never seen the rows
 		// the list names.
-		if (enrichmentEnabled && enrichRecords.length + keptRecords.length > 0 && !sourceStageFailure) {
+		//
+		// AM-61 (2026-09-04). THE GATE IS WHERE AM-2 PUT IT: a run that produced
+		// nothing writes nothing and stamps nothing. AM-60 widened the population AND
+		// the gate in one expression; widening the gate is a separate change, and it
+		// is the one that made an all-skip refresh rewrite every index note in an
+		// untouched collection - moving `produced_at`, adding provenance fields the
+		// notes never carried, and re-identifying hubs written under an earlier
+		// scheme. Pass 18's ground needed the LISTS widened; its own scenario already
+		// had this gate open.
+		if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
 			try {
 				await applyEnrichment(
 					app,
@@ -3198,7 +3214,10 @@ export async function generateFromRecipe(
 
 	// AM-60. ONE POPULATION, ONE PASS. See the matching comment on the wizard path
 	// above, and `applyEnrichment`'s own header for the failure mode.
-	if (enrichmentEnabled && enrichRecords.length + keptRecords.length > 0 && !sourceStageFailure) {
+	//
+	// AM-61. THE GATE IS WHERE AM-2 PUT IT - a run that produced nothing writes
+	// nothing and stamps nothing. Same reasoning as the wizard path above.
+	if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
 		try {
 			await applyEnrichment(
 				app,
@@ -3537,6 +3556,9 @@ async function readOwnedHubsByFolder(
 		const read = await readFrontmatterForRun(app, file);
 		if (read.state === 'unreadable') {
 			unreadable.push(file.path);
+			// S18 (2026-09-04). The FOLDER is withheld too, not merely the note. See
+			// `withhold` for what that changes.
+			withhold(byFolder, folder);
 			continue;
 		}
 		if (read.state !== 'ok') continue;
@@ -3565,9 +3587,17 @@ async function readOwnedHubsByFolder(
 		// the directory it produced are the same string only after those mutations.
 		if (usable && !recordedChainDescribesFolder(usable, folder)) {
 			misplaced.push(file.path);
+			// S18 (2026-09-04). ONE VOICE PER FOLDER. This note is named in the S12
+			// warning below, and the folder it sits in is now marked withheld, so the
+			// enrichment pass does not ALSO announce that this import has no index note
+			// for that folder. It has one; this run declines to use it.
+			withhold(byFolder, folder);
 			continue;
 		}
 		const existing = byFolder.get(folder);
+		// S18. A withheld folder stays withheld: a second, readable hub in the same
+		// folder does not restore a picture the first one made incomplete.
+		if (existing && existing.state === 'withheld') continue;
 		if (existing) {
 			// AM-59. Paths AND curies, index for index, so the refusal can account for
 			// every note it names. Sorted by path so the message and the accounting are
@@ -3593,6 +3623,23 @@ async function readOwnedHubsByFolder(
 }
 
 /**
+ * S18 (2026-09-04). Mark a folder as holding an index note this run READ AND
+ * WITHHELD - unreadable, or (S12) recording a different folder.
+ *
+ * Sticky and fail-closed: once withheld, a later readable hub in the same folder
+ * does not restore the picture, because the withheld note is still sitting there
+ * and the run still cannot say which note describes the folder.
+ *
+ * Failure mode prevented: two voices about one folder. Without the state the
+ * folder was simply absent from the map, so the enrichment pass took AM-55's
+ * third row and printed "This import has no index note for the folder ..." beside
+ * a warning naming a note in that very folder.
+ */
+function withhold(byFolder: Map<string, OwnedHubAtFolder>, folder: string): void {
+	byFolder.set(folder, { state: 'withheld' });
+}
+
+/**
  * S12. Does this hub note's recorded chain describe the folder it was found in?
  *
  * The chain's LAST value is the folder the note claims to be about, and the
@@ -3611,6 +3658,46 @@ function recordedChainDescribesFolder(values: { level: string; value: string }[]
 	const folderPieces = normalizedPathPieces(basenameOf(folder));
 	if (valuePieces.length === 0 || folderPieces.length === 0) return false;
 	return valuePieces[valuePieces.length - 1] === folderPieces[folderPieces.length - 1];
+}
+
+/**
+ * AM-62 (2026-09-04). The provenance block for a hub whose folder this run HELD.
+ *
+ * Two forms of one thing, so the caller can decide with the first and write with
+ * the second:
+ *   - `preserved` — exactly what the note already carries. Compared against the
+ *     bytes on disk to answer "does this run have anything new to say".
+ *   - `stamped` — the same block with `produced_at` moved, used only when the
+ *     answer is yes.
+ *
+ * Failure mode prevented: a run that kept a folder rewriting the record of where
+ * that folder's index note came from. The fresh block carries this run's
+ * timestamp, this run's recipe hash, and whatever provenance fields the current
+ * version emits - including ones the existing note predates. Merged in
+ * wholesale, that is a run asserting authorship of a note it did not write.
+ *
+ * A note carrying no `_crosswalker` block at all (or an unreadable one) has
+ * nothing to preserve, so the fresh block is used for both: writing provenance
+ * onto a note that has none is a gain, not an overwrite.
+ */
+function heldHubProvenance(
+	existingFrontmatter: Record<string, unknown>,
+	fresh: unknown,
+): { preserved: unknown; stamped: unknown } {
+	const recorded = existingFrontmatter._crosswalker;
+	if (!recorded || typeof recorded !== 'object' || Array.isArray(recorded)) {
+		return { preserved: fresh, stamped: fresh };
+	}
+	const preserved = recorded as Record<string, unknown>;
+	const freshProducedAt = fresh && typeof fresh === 'object' && !Array.isArray(fresh)
+		? (fresh as Record<string, unknown>).produced_at
+		: undefined;
+	return {
+		preserved,
+		stamped: freshProducedAt === undefined
+			? preserved
+			: { ...preserved, produced_at: freshProducedAt },
+	};
 }
 
 /** The last path segment of a vault-relative folder path. */
@@ -3792,6 +3879,13 @@ async function applyEnrichment(
 	 * still does: a kept row contributes to every list and receives no write.
 	 * Managed index notes are a separate decision (AM-55's table), because the run
 	 * maintains those regions and a kept row's folder still has to be described.
+	 *
+	 * AM-61. Handed to `enrich()` as well, not just used here. A batch widened for
+	 * reading is not widened for acting: every decision taken over the wider batch -
+	 * which folders this run DESCRIBES, which it HOLDS, and which notes it plans to
+	 * move - is told which half it may act on. Used here for the same reason at the
+	 * three sites that touch the vault (the rename, the step-1 patch, and the
+	 * address bypass below).
 	 */
 	writeSet: ReadonlySet<string>,
 	result: GenerationResult,
@@ -3839,7 +3933,18 @@ async function applyEnrichment(
 			// AM-33: the values this row's folder levels rendered, carried to the hub pass.
 			layoutValues: r.layoutValues,
 		})),
-		{ ontology: curiePrefix, config, streamed, rootFolder: options.basePath, ownedHubsByFolder },
+		{
+			ontology: curiePrefix,
+			config,
+			streamed,
+			rootFolder: options.basePath,
+			ownedHubsByFolder,
+			// AM-61. The derivation is TOLD which half of the population it may act
+			// on. Without it a kept row described its own folder and outranked the
+			// identity the note on disk already carries, and `computeRelocations`
+			// planned moves this pass then refused - a plan the same run contradicts.
+			writeSet,
+		},
 	);
 	result.edgeCount = enrichment.edgeCount;
 
@@ -3875,10 +3980,18 @@ async function applyEnrichment(
 	// absent from them; without this a hub resolving onto an address an earlier
 	// row of the SAME run wrote would refuse itself as `not Crosswalker's`.
 	// Ownership is the stamp on the note, and that stamp names this set.
+	//
+	// S17 (2026-09-04). THE BYPASS IS THE WRITE SET, not the population. A kept
+	// note is an OCCUPANT of its address, not something this run produced there.
+	// With the population widened (AM-60) every kept path entered this set, so a
+	// synthetic level hub whose address happens to hold a kept row's note skipped
+	// the ownership check entirely and merged into that note under a hub identity -
+	// a write outside the write set, in the mode that promises not to touch it. The
+	// ordinary same-set re-import is unaffected: a note stamped with this set is
+	// admitted by `addressRefusal` on its own stamp, with no bypass needed.
 	const producedThisRun = new Set<string>([
-		...records.map((r) => normalizePath(r.path)),
+		...records.filter((r) => writeSet.has(r.path)).map((r) => normalizePath(r.path)),
 		...result.created.map((path) => normalizePath(path)),
-		...result.skipped.map((path) => normalizePath(path)),
 	]);
 
 	// 0. Parent-note relocations (batch-enrichment design §3 step 2) — physically
@@ -4254,6 +4367,46 @@ async function applyEnrichment(
 				&& facetGroup.every((g) => g.links.length === 0);
 			body = mergeManagedChildrenSection(existingNote.body, freshSection, freshIsEmpty);
 			if (config.waypoint_marker) body = ensureWaypointMarker(body);
+			if (hub.heldFolder) {
+				// AM-62 (2026-09-04). A RUN THAT HAS NOTHING NEW TO SAY DOES NOT SAY IT
+				// AGAIN.
+				//
+				// This hub describes a folder the run HELD: no row it wrote reaches that
+				// folder, and the hub's identity and recorded values were read back off
+				// this very note. The only thing this run can legitimately change here is
+				// the children list. Everything the note already records about where it
+				// came from is kept as recorded - a run that wrote nothing for this
+				// folder has no standing to restamp when the note was produced, which
+				// plugin version produced it, or which recipe hash it came from, and
+				// adding a provenance field the note never carried is a change made to a
+				// note the user was told would be left alone.
+				//
+				// `produced_at` therefore moves only when the note is actually written,
+				// and the comparison is against the bytes on disk: a byte-identical write
+				// is not a write. Without this, every index note in an untouched part of
+				// a collection took a new modification time on a refresh that changed one
+				// row somewhere else.
+				const held = heldHubProvenance(existingNote.frontmatter, frontmatter._crosswalker);
+				frontmatter._crosswalker = held.preserved;
+				const candidate = buildNoteContent(frontmatter, body);
+				let onDisk: string | null = null;
+				try {
+					onDisk = await app.vault.read(existing);
+				} catch {
+					// Unreadable here is not evidence of "unchanged": fall through to the
+					// write, which is exactly what this pass did before AM-62.
+					onDisk = null;
+				}
+				if (onDisk !== null && onDisk === candidate) {
+					debug?.info('generation', 'hub-unchanged', `Hub ${hubCurie ?? writePath} left exactly as it was`, {
+						path: writePath,
+					});
+					continue;
+				}
+				// Something did change, so the note is written - and a note this run
+				// writes records when this run wrote it.
+				frontmatter._crosswalker = held.stamped;
+			}
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
 			if (config.waypoint_marker) body = ensureWaypointMarker(body);

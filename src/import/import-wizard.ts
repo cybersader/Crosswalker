@@ -1864,6 +1864,30 @@ export class ImportFlow {
 	 * leaves the answer in `discoveredSets`.
 	 */
 	private currentOutputPath(): string {
+		// AM-63 (2026-09-04). THROUGH THE ONE NORMALIZER, at the one place every
+		// surface reads.
+		//
+		// Failure mode prevented: a guard comparing a raw typed string against
+		// normalized vault paths. The destination is free text, and the occupancy
+		// check that stops a new import set landing in another set's folder built its
+		// prefix from it with a local `.trim().replace(/\/+$/, '')` - a fraction of
+		// one of the four mutations a vault path actually receives. `Frameworks//NIST`
+		// typed over an occupied `Frameworks/NIST` matched no vault path, the guard
+		// reported the folder free, and the engine then normalized the same string and
+		// minted a second set into the first one's folder. A backslash and a pasted
+		// non-breaking space reach the same place.
+		//
+		// Normalizing HERE also makes the string the wizard displays the string the
+		// engine writes, which is the rule this accessor exists for.
+		return normalizeFolderSetting(this.currentOutputPathRaw());
+	}
+
+	/**
+	 * The destination AS CHOSEN, before normalization. Private and used by exactly
+	 * one caller: nothing may compare this against a vault path, which is the whole
+	 * point of AM-63.
+	 */
+	private currentOutputPathRaw(): string {
 		const refreshRoot = this.refreshTargetRoot();
 		if (refreshRoot) return refreshRoot;
 		if (this.destinationEdited) {
@@ -1924,7 +1948,9 @@ export class ImportFlow {
 		}
 		const sets = this.discoveredSets;
 		if (sets.length === 0) return null;
-		const root = this.currentOutputPath().trim().replace(/\/+$/, '');
+		// AM-63. The accessor already returns the one normalized spelling; the local
+		// second spelling that used to be here is what let this guard miss.
+		const root = this.currentOutputPath();
 		if (!root) return null;
 		const prefix = `${root}/`;
 		const occupant = sets.find((set) => set.paths.some((path) => path.startsWith(prefix)));
@@ -2465,7 +2491,8 @@ export class ImportFlow {
 	}
 
 	private async revealDestinationInExplorer(): Promise<void> {
-		const target = this.currentOutputPath().trim().replace(/\/+$/, '');
+		// AM-63. Same rule here: one normalizer, at the accessor.
+		const target = this.currentOutputPath();
 		// Walk up to the nearest existing folder (target or an ancestor).
 		let folder: TFolder | null = null;
 		let probe = target;

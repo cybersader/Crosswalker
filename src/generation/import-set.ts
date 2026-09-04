@@ -636,7 +636,14 @@ function collectKnownIds(app: App): Set<string> {
 
 function isWithinDestination(path: string, basePath?: string): boolean {
 	if (basePath === undefined) return true;
-	const destination = normalizePath(basePath).replace(/\/+$/, '');
+	// S13 (2026-09-04). THE ONE NORMALIZER. This was the host's `normalizePath`
+	// plus a redundant trailing-separator strip and no trim at all - a second
+	// spelling, compared against fully normalized vault paths to decide which notes
+	// a refresh believes belong to a destination. A normalization applied to what
+	// you record must be applied to what you compare it against, through the SAME
+	// function; S6 routed this module's other normalizer for exactly this reason
+	// and missed this one.
+	const destination = normalizeFolderSetting(basePath);
 	if (!destination) return true;
 	return path.startsWith(`${destination}/`);
 }

@@ -11,7 +11,9 @@
  * note in `evidence-report.ts`.
  */
 
-import { App, FuzzySuggestModal, Notice, TFile, normalizePath } from 'obsidian';
+import { App, FuzzySuggestModal, Notice, TFile } from 'obsidian';
+// S15: the one composition of a configured folder plus a file name.
+import { joinInFolder } from './evidence-link';
 import {
 	conceptsWithoutValidEvidence,
 	diagnoseExcludedJunctions,
@@ -59,10 +61,18 @@ export function listOntologiesForReport(db: any): OntologyChoice[] {
 	}));
 }
 
-/** Vault path for one ontology's report. Stable, so re-runs replace in place. */
+/**
+ * Vault path for one ontology's report. Stable, so re-runs replace in place.
+ *
+ * S15 (2026-09-04). Composed through the SAME `joinInFolder` the junction path
+ * uses. This used to compose `${folder}/...` and normalize with the host, which
+ * is a second composition rule for the same class of settings value: it and the
+ * junction path agreed only because both callers happened to pre-normalize
+ * through the accessors first.
+ */
 export function evidenceReportPath(folder: string, ontologyId: string): string {
 	const safe = ontologyId.replace(/[\\/:*?"<>|]/g, '-');
-	return normalizePath(`${folder}/Evidence coverage - ${safe}.md`);
+	return joinInFolder(folder, `Evidence coverage - ${safe}.md`);
 }
 
 /** Chooser shown only when the vault holds more than one ontology. */
