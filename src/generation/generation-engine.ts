@@ -908,15 +908,21 @@ export async function generateNotes(
 		// is what rewrote a hub's Contents from a batch that had never seen the rows
 		// the list names.
 		//
-		// AM-61 (2026-09-04). THE GATE IS WHERE AM-2 PUT IT: a run that produced
-		// nothing writes nothing and stamps nothing. AM-60 widened the population AND
-		// the gate in one expression; widening the gate is a separate change, and it
-		// is the one that made an all-skip refresh rewrite every index note in an
-		// untouched collection - moving `produced_at`, adding provenance fields the
-		// notes never carried, and re-identifying hubs written under an earlier
-		// scheme. Pass 18's ground needed the LISTS widened; its own scenario already
-		// had this gate open.
-		if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
+		// AM-64 (2026-09-04). THERE IS NO GATE. ACCOUNTING IS A READ; THE GATE
+		// GOVERNED WRITES AND WAS GOVERNING ACCOUNTING TOO.
+		//
+		// AM-61 put the gate back at `enrichRecords.length > 0` to stop an all-skip
+		// refresh restamping every index note. It stopped the restamp and it also
+		// stopped the one derivation that accounts for the hubs the kept rows imply,
+		// so the same refresh reported three notes sitting in the vault as no longer
+		// in the source - with `orphansChecked: true`, which is a clean report of a
+		// false fact and worse than the restamp it removed.
+		//
+		// The orphan question is a read over the whole population. So this runs
+		// whenever the run HAS a population, and every writer downstream asks the
+		// write set for itself (see `applyEnrichment`'s hub loops). A run with no
+		// population at all derives nothing.
+		if (enrichmentEnabled && enrichRecords.length + keptRecords.length > 0 && !sourceStageFailure) {
 			try {
 				await applyEnrichment(
 					app,
@@ -3215,9 +3221,10 @@ export async function generateFromRecipe(
 	// AM-60. ONE POPULATION, ONE PASS. See the matching comment on the wizard path
 	// above, and `applyEnrichment`'s own header for the failure mode.
 	//
-	// AM-61. THE GATE IS WHERE AM-2 PUT IT - a run that produced nothing writes
-	// nothing and stamps nothing. Same reasoning as the wizard path above.
-	if (enrichmentEnabled && enrichRecords.length > 0 && !sourceStageFailure) {
+	// AM-64. THERE IS NO GATE: accounting is a read over the whole population, and
+	// every writer asks the write set for itself. Same reasoning as the wizard path
+	// above, where the failure mode is written out in full.
+	if (enrichmentEnabled && enrichRecords.length + keptRecords.length > 0 && !sourceStageFailure) {
 		try {
 			await applyEnrichment(
 				app,
@@ -3556,9 +3563,12 @@ async function readOwnedHubsByFolder(
 		const read = await readFrontmatterForRun(app, file);
 		if (read.state === 'unreadable') {
 			unreadable.push(file.path);
-			// S18 (2026-09-04). The FOLDER is withheld too, not merely the note. See
-			// `withhold` for what that changes.
-			withhold(byFolder, folder);
+			// S18 / residual ruling 4 (2026-09-04). The FOLDER carries the observation
+			// too, not merely the note - but as its OWN state. An unreadable index note
+			// is a different fact from an S12-misplaced one and a different voice speaks
+			// for it: AM-55's second row, which says what was observed. See
+			// `markIncomplete`.
+			markIncomplete(byFolder, folder, 'unreadable');
 			continue;
 		}
 		if (read.state !== 'ok') continue;
@@ -3591,13 +3601,14 @@ async function readOwnedHubsByFolder(
 			// warning below, and the folder it sits in is now marked withheld, so the
 			// enrichment pass does not ALSO announce that this import has no index note
 			// for that folder. It has one; this run declines to use it.
-			withhold(byFolder, folder);
+			markIncomplete(byFolder, folder, 'withheld');
 			continue;
 		}
 		const existing = byFolder.get(folder);
-		// S18. A withheld folder stays withheld: a second, readable hub in the same
-		// folder does not restore a picture the first one made incomplete.
-		if (existing && existing.state === 'withheld') continue;
+		// S18. A folder whose picture is already incomplete stays incomplete: a
+		// second, readable hub in the same folder does not restore what the first one
+		// made unanswerable.
+		if (existing && (existing.state === 'withheld' || existing.state === 'unreadable')) continue;
 		if (existing) {
 			// AM-59. Paths AND curies, index for index, so the refusal can account for
 			// every note it names. Sorted by path so the message and the accounting are
@@ -3623,20 +3634,33 @@ async function readOwnedHubsByFolder(
 }
 
 /**
- * S18 (2026-09-04). Mark a folder as holding an index note this run READ AND
- * WITHHELD - unreadable, or (S12) recording a different folder.
+ * S18 (2026-09-04), split by residual ruling 4. Mark a folder as holding an index
+ * note this run READ but cannot act on.
  *
- * Sticky and fail-closed: once withheld, a later readable hub in the same folder
- * does not restore the picture, because the withheld note is still sitting there
- * and the run still cannot say which note describes the folder.
+ * Two states, because two different voices speak for them:
+ *   - `withheld` (S12: the note records a different folder) - the caller's own
+ *     warning names the note, so the enrichment pass says nothing;
+ *   - `unreadable` (the properties could not be read) - AM-55's second row speaks,
+ *     naming exactly what was observed.
  *
- * Failure mode prevented: two voices about one folder. Without the state the
- * folder was simply absent from the map, so the enrichment pass took AM-55's
+ * Both are sticky and fail-closed: once a folder's picture is incomplete, a later
+ * readable hub in the same folder does not restore it, because the first note is
+ * still sitting there and the run still cannot say which one describes the folder.
+ *
+ * Failure mode prevented: two voices about one folder, or none. Without any state
+ * the folder was simply absent from the map, so the enrichment pass took AM-55's
  * third row and printed "This import has no index note for the folder ..." beside
- * a warning naming a note in that very folder.
+ * a warning naming a note in that very folder; with one shared state the
+ * unreadable folder lost its message altogether.
  */
-function withhold(byFolder: Map<string, OwnedHubAtFolder>, folder: string): void {
-	byFolder.set(folder, { state: 'withheld' });
+function markIncomplete(
+	byFolder: Map<string, OwnedHubAtFolder>,
+	folder: string,
+	state: 'withheld' | 'unreadable',
+): void {
+	const existing = byFolder.get(folder);
+	if (existing && (existing.state === 'withheld' || existing.state === 'unreadable')) return;
+	byFolder.set(folder, { state });
 }
 
 /**
@@ -4166,6 +4190,21 @@ async function applyEnrichment(
 		let body = hub.body;
 
 		const existing = target.existingFile;
+		// AM-64 (2026-09-04). THE FACET HUB'S PROVENANCE, AS RECORDED, read before the
+		// merge replaces it. Used only to answer "does this run have anything new to
+		// say about this note" - a candidate carrying THIS run's `produced_at` differs
+		// from the note on disk every single time, so a comparison against the fresh
+		// block could never answer anything. An unreadable note yields nothing to
+		// preserve, which falls through to the write: the behaviour this writer had
+		// before the amendment, and the safe direction.
+		let recordedFacetProvenance: unknown;
+		if (existing instanceof TFile) {
+			try {
+				recordedFacetProvenance = (await readExistingNote(app, existing)).frontmatter._crosswalker;
+			} catch {
+				recordedFacetProvenance = undefined;
+			}
+		}
 		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, producedThisRun, debug);
 		if (existing instanceof TFile) {
 			// Re-import through the SAME shared merger the row writes use. `kind:
@@ -4203,8 +4242,53 @@ async function applyEnrichment(
 			Object.keys(frontmatter).forEach((k) => delete frontmatter[k]);
 			Object.assign(frontmatter, outcome.frontmatter);
 			body = outcome.body;
+			// AM-64 (2026-09-04). THE AM-62 RULE, AT THE SECOND HUB WRITER. An existing
+			// facet hub is written only when its managed region or its members list
+			// actually differs, and `produced_at` moves only on a write.
+			//
+			// Failure mode prevented: a run that wrote no note touching every facet hub
+			// in the vault. AM-62 closed this at the level-hub writer and left this one
+			// open, which the gate hid; with the gate gone (AM-64) an all-skip refresh
+			// reaches this loop, and without the rule it would restamp every facet hub -
+			// new mtime, new `produced_at`, provenance fields the notes never carried -
+			// on a pass that produced nothing.
+			//
+			// The comparison is against the bytes on disk, with the recorded provenance
+			// put back, so everything else in the candidate is what the merge just
+			// derived. A serialization difference therefore fails SAFE: the run writes,
+			// which is what this writer did before.
+			const facetProvenance = heldHubProvenance({ _crosswalker: recordedFacetProvenance }, frontmatter._crosswalker);
+			frontmatter._crosswalker = facetProvenance.preserved;
+			const facetCandidate = buildNoteContent(frontmatter, body);
+			let facetOnDisk: string | null = null;
+			try {
+				facetOnDisk = await app.vault.read(existing);
+			} catch {
+				facetOnDisk = null;
+			}
+			if (facetOnDisk !== null && facetOnDisk === facetCandidate) {
+				debug?.info('generation', 'facet-hub-unchanged', `Facet hub ${hubCurie ?? writePath} left exactly as it was`, {
+					path: writePath,
+				});
+				continue;
+			}
+			frontmatter._crosswalker = facetProvenance.stamped;
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
+			// AM-64. AN ABSENT FACET HUB IS CREATED ONLY FOR A RUN THAT WROTE ONE OF ITS
+			// MEMBERS. Its curie is already claimed above, so the hub is ACCOUNTED FOR
+			// and simply not written - the orphan pass will not call it vanished.
+			//
+			// Failure mode prevented: a run that wrote nothing inventing notes. Every
+			// member of this hub is a row the run held, so the facet note describes
+			// notes nobody touched; creating it also re-creates one the user deleted on
+			// purpose, on the pass that was supposed to leave the vault alone.
+			if (!hub.hasWriteSetMember) {
+				debug?.info('generation', 'facet-hub-not-created', `Facet hub ${hubCurie ?? writePath} accounted for, not created`, {
+					path: writePath,
+				});
+				continue;
+			}
 			body = wrapManagedBody(hub.body);
 			const parentPath = getParentPath(writePath);
 			if (parentPath) await ensureFolderExists(app, parentPath).catch(() => {});
@@ -4310,7 +4394,28 @@ async function applyEnrichment(
 				continue;
 			}
 		}
-		const writePath = await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, producedThisRun, debug);
+		// AM-64 (2026-09-04). A HELD-ONLY FOLDER'S ABSENT INDEX NOTE IS NEVER CREATED.
+		//
+		// Its curie is already claimed above, so the folder is ACCOUNTED FOR and
+		// simply not written; the orphan pass will not call it vanished. Reached when
+		// the user deleted the index note of a folder this run wrote nothing into -
+		// AM-55's third row, refused by name in the deviation the derivation already
+		// emitted. Restoring it here would be the run undoing a deletion on a pass
+		// that was meant to leave the folder alone.
+		if (hub.heldFolder && !(existing instanceof TFile)) {
+			debug?.info('generation', 'held-hub-not-created', `Hub ${hubCurie ?? fullPath} accounted for, not created`, {
+				path: fullPath,
+			});
+			continue;
+		}
+		// AM-64. A held-only folder's index note is not MOVED either: a rename is a
+		// write, and this run has nothing new to say about the folder. The relocation
+		// exists for a hub whose address the run is actively re-deciding, which is a
+		// described folder's hub. Without this, an all-skip refresh could still rename
+		// an index note the user had renamed by hand.
+		const writePath = hub.heldFolder && existing instanceof TFile
+			? existing.path
+			: await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, producedThisRun, debug);
 		if (existing instanceof TFile) {
 			// Re-import: regenerate the managed Contents section, preserve user
 			// frontmatter + any prose outside it (title, notes, etc.).
@@ -4388,6 +4493,18 @@ async function applyEnrichment(
 				// row somewhere else.
 				const held = heldHubProvenance(existingNote.frontmatter, frontmatter._crosswalker);
 				frontmatter._crosswalker = held.preserved;
+				// AM-64 (2026-09-04). IDENTITY IS PRESERVED TOO, not only provenance.
+				//
+				// For a folder held with a recorded identity the two already agree - the
+				// derivation read the curie off this very note (AM-61). They part company
+				// at the IMPORT ROOT, whose identity is the set's own reserved local part
+				// and is therefore recomputed every run: on a vault whose root hub was
+				// written under the older address-derived form, an all-skip refresh
+				// rewrote that note purely to restamp its curie. A run that wrote nothing
+				// into a folder does not re-identify its index note; a Replace run, which
+				// writes rows into the folder, is not held and restamps as before.
+				const recordedCurie = existingNote.frontmatter.curie;
+				if (typeof recordedCurie === 'string' && recordedCurie !== '') frontmatter.curie = recordedCurie;
 				const candidate = buildNoteContent(frontmatter, body);
 				let onDisk: string | null = null;
 				try {

@@ -56,6 +56,17 @@ function keptNote(): EnrichNote {
 	};
 }
 
+/**
+ * AM-65 (2026-09-04). THE WRITE SET, STATED. `enrich()` no longer infers which
+ * half of a batch it may act on from `renderedPath` vs `path`; the caller says so,
+ * and omitting it is a refusal by name rather than "everything is writable".
+ *
+ * Every batch below is the single row this run KEPT, so nothing in it is writable.
+ * The assertions are unchanged - this is the test supplying a fact it previously
+ * left the engine to guess.
+ */
+const NOTHING_WRITABLE: ReadonlySet<string> = new Set<string>();
+
 const hubByPath = (result: ReturnType<typeof enrich>, path: string) =>
 	result.levelHubs.notes.find((h) => h.path === path);
 const deviationFor = (result: ReturnType<typeof enrich>, folder: string) =>
@@ -66,7 +77,7 @@ describe('AM-55 row 1: a usable recorded chain exempts the folder -- rewritten, 
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[FOLDER, { state: 'one', path: `${FOLDER}/Persistence.md`, curie: `${ONT}:hub/persistence`, values: [{ level: 'tactic', value: 'Persistence' }] }],
 		]);
-		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		expect(deviationFor(result, FOLDER)).toBeUndefined();
 		const hub = hubByPath(result, `${FOLDER}/Persistence.md`);
@@ -83,7 +94,7 @@ describe('AM-55 row 2: present, no usable chain -- refused with the row-2 text A
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[FOLDER, { state: 'one', path: `${FOLDER}/Persistence.md`, curie: `${ONT}:hub/persistence` }],
 		]);
-		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		expect(hubByPath(result, `${FOLDER}/Persistence.md`)).toBeUndefined();
 		const deviation = deviationFor(result, FOLDER);
@@ -100,7 +111,7 @@ describe('AM-55 row 2: present, no usable chain -- refused with the row-2 text A
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[FOLDER, { state: 'one', path: `${FOLDER}/Persistence.md`, curie: `${ONT}:hub/persistence`, values: [] }],
 		]);
-		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		expect(deviationFor(result, FOLDER)).toContain('was left as it was and not updated this run');
 		expect(result.levelHubs.keptExistingCuries).toEqual([`${ONT}:hub/persistence`]);
@@ -110,7 +121,7 @@ describe('AM-55 row 2: present, no usable chain -- refused with the row-2 text A
 describe('AM-55 row 3: no hub in the folder at all -- refused with the row-3 text, and nothing to account for', () => {
 	it('an empty ownedHubsByFolder map (nothing recorded, nothing on disk) refuses with the row-3 text and marks no curie produced', () => {
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map();
-		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		expect(hubByPath(result, `${FOLDER}/Persistence.md`)).toBeUndefined();
 		const deviation = deviationFor(result, FOLDER);
@@ -125,7 +136,7 @@ describe('AM-55 row 3: no hub in the folder at all -- refused with the row-3 tex
 	});
 
 	it('no ownedHubsByFolder option supplied at all behaves identically to an empty map (the caller-optional contract)', () => {
-		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: NOTHING_WRITABLE });
 		expect(deviationFor(result, FOLDER)).toContain('This import has no index note for the folder');
 		expect(result.levelHubs.keptExistingCuries).toEqual([]);
 	});
@@ -140,7 +151,7 @@ describe('AM-55/AM-59 "many": two index notes in one folder is a refusal by NAME
 				curies: [`${ONT}:hub/persistence`, `${ONT}:hub/persistence-copy`],
 			}],
 		]);
-		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		expect(hubByPath(result, `${FOLDER}/Persistence.md`)).toBeUndefined();
 		const deviation = deviationFor(result, FOLDER);
@@ -164,18 +175,18 @@ describe('AM-56 disclosure: every AM-55 refusal text carries the trailing stale-
 	it('row 2, row 3, and "many" all end with the disclosure that a stale host list is left as it was, not un-written', () => {
 		const disclosure = "Any list that still names this folder's index note is left as it was.";
 		const many = enrich([keptNote()], {
-			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: NOTHING_WRITABLE,
 			ownedHubsByFolder: new Map([[FOLDER, { state: 'many', paths: [`${FOLDER}/A.md`, `${FOLDER}/B.md`], curies: [`${ONT}:hub/a`, `${ONT}:hub/b`] }]]),
 		});
 		expect(deviationFor(many, FOLDER)).toContain(disclosure);
 
 		const row2 = enrich([keptNote()], {
-			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: NOTHING_WRITABLE,
 			ownedHubsByFolder: new Map([[FOLDER, { state: 'one', path: `${FOLDER}/Persistence.md`, curie: `${ONT}:hub/persistence` }]]),
 		});
 		expect(deviationFor(row2, FOLDER)).toContain(disclosure);
 
-		const row3 = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder: new Map() });
+		const row3 = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder: new Map(), writeSet: NOTHING_WRITABLE });
 		expect(deviationFor(row3, FOLDER)).toContain(disclosure);
 	});
 });

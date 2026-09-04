@@ -269,14 +269,19 @@ describe('AM-55: the shared deviationsSeen ledger reports one identical deviatio
 			layoutValues: [{ level: 'tactic', value: 'IA' }],
 		});
 
+		// AM-65 (2026-09-04). THE WRITE SET, STATED: both passes see the same single
+		// row this run KEPT, so nothing in either batch is writable. `enrich()` no
+		// longer infers that from `renderedPath` vs `path`, and omitting the set is a
+		// refusal by name. The assertions below are unchanged.
+		const NOTHING_WRITABLE: ReadonlySet<string> = new Set<string>();
 		// "Pass 1" (mirrors markKeptHubsProduced): sees the kept record, no
 		// recorded hub for its old folder.
-		const pass1 = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const pass1 = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: NOTHING_WRITABLE });
 		// "Pass 2" (mirrors applyEnrichment): a SEPARATE enrich() call that, in
 		// this constructed scenario, is ALSO handed the same kept-shaped record
 		// (standing in for the organic case pass 18 could not build) and
 		// therefore computes the byte-identical text.
-		const pass2 = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const pass2 = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: NOTHING_WRITABLE });
 
 		expect(pass1.deviations).toEqual(pass2.deviations);
 		expect(pass1.deviations.some((d) => d.includes('kept in place'))).toBe(true);

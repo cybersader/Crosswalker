@@ -33,6 +33,20 @@ const ONT = 'hg';
 const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_hubs: 'notes' as const };
 const ROOT = 'Frameworks';
 
+/**
+ * AM-65 (2026-09-04). THE WRITE SET, STATED. `enrich()` no longer infers which
+ * half of a batch it may act on from `renderedPath` vs `path`; the caller says so,
+ * and omitting it is a refusal by name rather than "everything is writable".
+ *
+ * Every fixture below therefore declares the same fact it always meant: a kept
+ * note is EXCLUDED (an empty set, when the batch is one kept row), every live note
+ * is INCLUDED. The assertions are unchanged - this is the test supplying a fact it
+ * previously left the engine to guess.
+ */
+const writable = (...notes: EnrichNote[]): Set<string> => new Set(notes.map((n) => n.path));
+/** A batch of one KEPT row: nothing in it is writable. */
+const NOTHING_WRITABLE: ReadonlySet<string> = new Set<string>();
+
 const hubCuriesOf = (result: ReturnType<typeof enrich>): string[] =>
 	result.levelHubs.notes.map((h) => h.curie).sort();
 const hubPathsOf = (result: ReturnType<typeof enrich>): string[] =>
@@ -79,7 +93,7 @@ describe('AM-50: a folder no row of this run describes is refused, never named f
 			facets: [],
 			layoutValues: [{ level: 'x', value: 'X' }],
 		}];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: NOTHING_WRITABLE });
 
 		// Refused by name, not silently identified from its path.
 		expect(hubCuriesOf(result)).not.toContain(`${ONT}:hub/elsewhere`);
@@ -116,7 +130,7 @@ describe('AM-50: a folder no row of this run describes is refused, never named f
 			frontmatter: {},
 			facets: [],
 		}];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) });
 
 		expect(result.deviations).toEqual([]);
 		expect(hubCuriesOf(result)).toContain(`${ONT}:hub/group`);
@@ -130,7 +144,7 @@ describe('AM-50: a folder no row of this run describes is refused, never named f
 			facets: [],
 			layoutValues: [{ level: 'group', value: 'Group' }],
 		}];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) });
 
 		expect(result.deviations).toEqual([]);
 		expect(hubCuriesOf(result)).toContain(`${ONT}:hub/group`);
@@ -167,7 +181,7 @@ describe('S4: an unrelated row\'s basename no longer exempts a real disagreement
 			facets: [],
 			layoutValues: [{ level: 'deep', value: 'Somewhere' }, { level: 'x', value: 'Deep' }],
 		};
-		const result = enrich([disagreeing, unrelated], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([disagreeing, unrelated], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(disagreeing, unrelated) });
 
 		// Pre-S4, `byBasename.get('Group')` would have found `unrelated` (the only
 		// note with that basename) and exempted Frameworks/Group from refusal
@@ -194,7 +208,7 @@ describe('S4: an unrelated row\'s basename no longer exempts a real disagreement
 			frontmatter: {},
 			facets: [],
 		};
-		const result = enrich([disagreeing, host], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([disagreeing, host], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(disagreeing, host) });
 
 		// Exempted: the folder is hosted, so it is not refused, and its identity
 		// is the host note's own curie (never a synthesized `hub/group`).
@@ -218,7 +232,7 @@ describe('S4: an unrelated row\'s basename no longer exempts a real disagreement
 			frontmatter: {},
 			facets: [],
 		};
-		const result = enrich([disagreeing, host], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([disagreeing, host], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(disagreeing, host) });
 
 		expect(result.deviations.find((d) => d.includes(`${ROOT}/Group"`))).toBeUndefined();
 		expect(result.levelHubs.hostedChildrenByPath.has(`${ROOT}/Group.md`)).toBe(true);

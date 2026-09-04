@@ -199,6 +199,19 @@ export interface HubNote {
 	 * one row somewhere else. A byte-identical write is not a write.
 	 */
 	heldFolder?: true;
+	/**
+	 * AM-64 (2026-09-04). Facet hubs only: at least one of this hub's members is a
+	 * row the run WRITES.
+	 *
+	 * The caller needs it to answer one question and only one: may an ABSENT facet
+	 * hub be created on this run? A facet hub whose every member the run held is a
+	 * note about notes the run did not touch, so bringing it into existence is the
+	 * run inventing a note on a pass that wrote nothing - including re-creating one
+	 * the user deleted on purpose. An EXISTING facet hub is decided by the AM-62
+	 * rule instead (write only when its managed region or members list differs),
+	 * which is a comparison, not this flag.
+	 */
+	hasWriteSetMember?: true;
 }
 
 /** One parent-note relocation the caller must physically apply to the vault. */
@@ -326,12 +339,24 @@ export interface EnrichOptions {
 	 *   - WHOLE POPULATION (`notes`): `folders`, `hostByFolder`, `hubChildren` and
 	 *     every Contents list, `edgeCount`, the curies the caller accounts for.
 	 *
-	 * ABSENT means "every note in this batch is writable" — the state of every
-	 * caller that hands over one population and no distinction (the golden-vault
-	 * harness, unit callers). It is NOT a licence for a kept row to describe a
-	 * folder; the engine always passes the set.
+	 * AM-65 (2026-09-04). REQUIRED. There is no "absent means everything is
+	 * writable" reading any more, and `enrich()` refuses by name when it is missing
+	 * rather than deriving from a guess.
+	 *
+	 * Failure mode prevented: a fact the derivation needs arriving as a default.
+	 * While the field was optional, every caller that had not been updated lost
+	 * `keptFolders` silently - `isWritable` answered true for every note, so no
+	 * folder was ever held, every kept row described its own folder, and AM-52's,
+	 * AM-54's and AM-55's exemptions all collapsed into AM-50's "the note may have
+	 * been moved" refusal. Twenty-four declarations across seven files went red on
+	 * one omitted argument, and none of them named the cause.
+	 *
+	 * The pre-AM-61 inference this replaced - `dirOf(renderedPath) !== dirOf(path)`
+	 * therefore kept - is gone with it and must not return as a fallback. That is
+	 * the project's own anti-rule (identity, never path) at this module's centre: a
+	 * fact recovered from a path comparison rather than recorded.
 	 */
-	writeSet?: ReadonlySet<string>;
+	writeSet: ReadonlySet<string>;
 }
 
 /**
@@ -355,22 +380,38 @@ export type OwnedHubAtFolder =
 	| { state: 'one'; path: string; curie: string; values?: LayoutValue[] }
 	| { state: 'many'; paths: string[]; curies: string[] }
 	/**
-	 * S18 (2026-09-04). ONE VOICE PER FOLDER: the caller read an index note here and
-	 * withheld it, and has already spoken about it by name.
-	 *
-	 * Two observations reach this state, and the caller reports both itself: a note
-	 * whose properties could not be read (cache lag is not absence), and a note whose
-	 * recorded chain describes a different folder (S12). Both mean the run's picture
-	 * of this folder is incomplete, and in both the caller suppresses orphan
-	 * reporting for the run and names the note in a warning.
+	 * S18 (2026-09-04). ONE VOICE PER FOLDER: the caller read an index note here,
+	 * found that its recorded chain describes a DIFFERENT folder (S12), withheld it,
+	 * and has already named it in a warning.
 	 *
 	 * Without this state such a folder was simply ABSENT from the map, so the third
 	 * row of AM-55's table spoke for it as well - "This import has no index note for
 	 * the folder ..." printed beside a warning naming a note sitting in that very
 	 * folder. Two messages about one folder, one of them contradicting the other.
 	 * Present-but-withheld is a fact; absent is a different fact.
+	 *
+	 * Residual ruling 4 (2026-09-04). THIS ARM IS S12 ALONE. Pass 20 folded the
+	 * unreadable note in here too, which silenced a folder the run has something
+	 * true and specific to say about; see the `unreadable` arm below.
 	 */
-	| { state: 'withheld' };
+	| { state: 'withheld' }
+	/**
+	 * Residual ruling 4 (2026-09-04). The caller found an index note here and could
+	 * not READ it - cache lag is not absence.
+	 *
+	 * A separate fact from `withheld`, because a different voice speaks for it. The
+	 * S12 folder is named by the caller's own warning, so the enrichment pass says
+	 * nothing; this folder's own message is AM-55's second row, which names exactly
+	 * what was observed ("its recorded identity could not be read") and is not
+	 * silenced. Row 3 - "this import has no index note for the folder" - excludes
+	 * both, because there is one and the run read it.
+	 *
+	 * Failure mode prevented: removing a message the user could act on. Told that
+	 * no index note exists, they create one; told nothing at all, they see an
+	 * unexplained gap; told that the note could not be read, they wait for indexing
+	 * or fix its properties.
+	 */
+	| { state: 'unreadable' };
 
 /** AM-55. Folder -> the index note(s) it holds. See `EnrichOptions.ownedHubsByFolder`. */
 export type OwnedHubsByFolder = ReadonlyMap<string, OwnedHubAtFolder>;
@@ -383,6 +424,18 @@ export const HUB_MIN_MEMBERS = 2;
  * Pure + deterministic. Never mutates the input notes.
  */
 export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResult {
+	// AM-65 (2026-09-04). REFUSED BY NAME, BEFORE ANYTHING IS DERIVED.
+	//
+	// Failure mode prevented: a missing write set read as "everything is writable".
+	// The type makes the omission a compile error; this makes it a named refusal
+	// for a caller the compiler never saw (a JavaScript caller, a test fixture
+	// built through a cast). Deriving anything at all without it would produce a
+	// result in which no folder is held, every kept row describes its own folder,
+	// and a legacy hub is re-identified under the current scheme - silently, with
+	// no evidence of the omission anywhere in the output.
+	if (opts.writeSet === undefined || opts.writeSet === null) {
+		throw new Error('enrich(): writeSet is required; without it every kept row would describe its own folder');
+	}
 	const config = opts.config ?? {};
 	const result: EnrichmentResult = {
 		childrenByPath: new Map(),
@@ -421,10 +474,11 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 	}
 	result.edgeCount += parentLinkEdges;
 
-	// AM-61. The write set, as a predicate. Absent means every note is writable —
-	// see `EnrichOptions.writeSet`.
+	// AM-61/AM-65. The write set, as a predicate. Membership is the WHOLE test: a
+	// note is writable because the caller said so, never because its rendered and
+	// final paths happen to agree. See `EnrichOptions.writeSet`.
 	const writeSet = opts.writeSet;
-	const isWritable = (note: EnrichNote): boolean => writeSet === undefined || writeSet.has(note.path);
+	const isWritable = (note: EnrichNote): boolean => writeSet.has(note.path);
 
 	// --- 2. Folder-note relocation (parent_note). Computes a curie→newPath
 	//     override; children lists + downstream consumers use the FINAL path. ---
@@ -479,6 +533,9 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 					members,
 				},
 				body: `# ${g.value}\n`,
+				// AM-64. Recorded from the write set, for the caller's create decision
+				// only. See `HubNote.hasWriteSetMember`.
+				...(sorted.some((m) => isWritable(m)) ? { hasWriteSetMember: true as const } : {}),
 			};
 			result.hubs.push(hub);
 			result.edgeCount += members.length;
@@ -713,6 +770,29 @@ function computeLevelHubs(
 	}
 	if (folders.size === 0 && (root === undefined || root === '')) return;
 
+	/**
+	 * AM-64 (2026-09-04). The folders this run WRITES INTO: the same ancestor walk,
+	 * over the write set alone. A folder outside this set is one no row the run
+	 * writes lies within, at any depth.
+	 *
+	 * This is the fact the caller's held-only decision needs, and it is the one the
+	 * amendment's own table names ("a row the run writes describes it"). Its
+	 * complement covers the import root as well, which is the folder the older
+	 * "identified from the note already in it" test could not reach: the root's
+	 * identity is the set's own reserved local part, never a recorded one, so on an
+	 * all-skip refresh it was the single hub still rewritten - restamped out of the
+	 * legacy address-derived curie the vault held, on a run that wrote nothing.
+	 */
+	const writtenFolders = new Set<string>();
+	for (const e of entries) {
+		if (!isWritable(e.note)) continue;
+		let dir = dirOf(e.path);
+		while (dir !== '' && inScope(dir)) {
+			writtenFolders.add(dir);
+			dir = dirOf(dir);
+		}
+	}
+
 	// Direct subfolders, one pass.
 	const subfoldersOf = new Map<string, string[]>();
 	for (const f of folders) {
@@ -945,15 +1025,23 @@ function computeLevelHubs(
 	 * written row the same question mixes the two halves of the batch back together:
 	 * a relocated or moved row would claim the kept exemption (and, through it, the
 	 * recorded-identity route) for a folder this run is actively describing.
+	 *
+	 * AM-65 (2026-09-04). THE WRITE SET IS THE WHOLE TEST. The old co-condition -
+	 * `renderedPath` present AND its directory differing from the final path's - was
+	 * the inference this arc removes: a fact about who holds a folder, recovered
+	 * from a path comparison. It also made the exemption conditional on the row
+	 * having been RECATEGORISED, so an ordinary all-skip refresh (nothing moved
+	 * anywhere) held no folder at all, every hub the kept rows imply went
+	 * unaccounted, and the run reported notes sitting in the vault as gone.
+	 *
+	 * The comparison is not a fallback and must not return as one: a note whose
+	 * rendered folder differs from its own and which IS in the write set is a
+	 * relocation this run performs, not a hold.
 	 */
 	const keptFolders = new Set<string>();
 	for (const e of entries) {
 		if (isWritable(e.note)) continue;
-		const rendered = e.note.renderedPath;
-		if (rendered === undefined) continue;
-		const holder = dirOf(e.path);
-		if (holder === dirOf(rendered)) continue;
-		let dir = holder;
+		let dir = dirOf(e.path);
 		while (dir !== '' && !isImportRoot(dir) && inScope(dir)) {
 			if (folders.has(dir)) keptFolders.add(dir);
 			dir = dirOf(dir);
@@ -1034,6 +1122,26 @@ function computeLevelHubs(
 	const STALE_LIST_DISCLOSURE = "Any list that still names this folder's index note is left as it was.";
 
 	/**
+	 * Residual ruling 5 (2026-09-04). Is this recorded curie one THIS import could
+	 * have minted - this ontology's prefix, and a local part after it?
+	 *
+	 * Deliberately a shape test and nothing more. It does not ask whether the local
+	 * part is one the current derivation would produce, because that is exactly the
+	 * question AM-61 removed: a hub written under an earlier derivation records a
+	 * perfectly good identity that today's rule would spell differently, and
+	 * re-deriving it renames every hub in an existing vault.
+	 *
+	 * Failure mode prevented: carrying a foreign or malformed name forward as this
+	 * import's identity. The owned index, the orphan diff and every Contents entry
+	 * would then be keyed on a curie this import never minted, and nothing in the
+	 * run would say so.
+	 */
+	const isCurieOfThisOntology = (curie: string): boolean => {
+		const i = curie.indexOf(':');
+		return i > 0 && curie.slice(0, i) === ontology && curie.length > i + 1;
+	};
+
+	/**
 	 * AM-44. Is this folder one the run declines to describe, and why?
 	 *
 	 * Consulted BEFORE `identityOf` and INSIDE the parent's children loop, which
@@ -1092,13 +1200,44 @@ function computeLevelHubs(
 					+ `again. ${STALE_LIST_DISCLOSURE}`;
 			}
 			// S18 (2026-09-04). ONE VOICE PER FOLDER. The caller read an index note in
-			// this folder and withheld it (unreadable, or S12-misplaced), has already
-			// named that note in a warning, and has already declared the run's picture
-			// incomplete so nothing is reported as vanished. A second message from here
-			// would be this pass asserting "no index note" about a folder the caller can
-			// see one in. Silence, and no hub: `identityOf` has no values and no record
-			// to work from, so it returns null and Pass B writes nothing.
+			// this folder, found that its recorded chain describes a DIFFERENT folder
+			// (S12), has already named that note in a warning, and has already declared
+			// the run's picture incomplete so nothing is reported as vanished. A second
+			// message from here would be this pass asserting "no index note" about a
+			// folder the caller can see one in. Silence, and no hub: `identityOf` has no
+			// values and no record to work from, so it returns null and Pass B writes
+			// nothing.
 			if (observed?.state === 'withheld') return undefined;
+			// Residual ruling 4 (2026-09-04). THE UNREADABLE FOLDER IS NOT SILENCED. It
+			// reaches AM-55's second row, whose text already says exactly what was
+			// observed. Pass 20 routed it through `withheld` alongside the S12 folder,
+			// which removed the only message about it: the caller's warning names the
+			// note as one it could not read, and nothing then said what happened to the
+			// folder's index note. Nothing is accounted for here - the run could not read
+			// the note, so it has no identity to vouch for, and the caller has already
+			// suppressed orphan reporting for the whole run.
+			if (observed?.state === 'unreadable') {
+				return `The index note for the folder "${f}" was left as it was: its recorded identity could not be read. `
+					+ 'The notes in it were kept in place by Skip existing. Re-run with Replace to re-establish it. '
+					+ STALE_LIST_DISCLOSURE;
+			}
+			// Residual ruling 5 (2026-09-04). A RECORDED IDENTITY THAT IS NOT THIS
+			// IMPORT'S IS REPORTED, NEVER REPAIRED.
+			//
+			// The recorded curie is the fact the note carries and the engine neither
+			// adopts nor re-derives it - a hand edit is the user's act on their own note.
+			// But a curie belonging to some other prefix (or no prefix at all) cannot be
+			// carried forward as this import's identity either: everything keyed on it -
+			// the owned index, the orphan diff, the parent's Contents - would be keyed on
+			// a name this import never minted. So it is named, once, and nothing is
+			// written or re-minted for the folder. The curie is still accounted for,
+			// because the note demonstrably exists and this run just read it.
+			if (observed?.state === 'one' && !isCurieOfThisOntology(observed.curie)) {
+				keptExistingCuries.add(observed.curie);
+				return `The index note for the folder "${f}" was left as it was: its recorded identity is not a curie of `
+					+ 'this import. The notes in it were kept in place by Skip existing. Re-run with Replace to '
+					+ `re-establish it. ${STALE_LIST_DISCLOSURE}`;
+			}
 			// Row 1. The hub keeps the identity it already records, so it is written and
 			// listed exactly as before.
 			if (recordedValuesOf(f)) return undefined;
@@ -1224,21 +1363,42 @@ function computeLevelHubs(
 	const recordedHubCurieOf = (f: string): string | null => {
 		const observed = keptObservationOf(f);
 		if (observed?.state !== 'one') return null;
+		// Residual ruling 5 (2026-09-04). A recorded curie that is not this import's
+		// is not an identity this run may carry. `refusalFor` has already named it;
+		// returning null here is what stops the folder being written under it, and no
+		// repair or re-derivation is attempted - see `isCurieOfThisOntology`.
+		if (!isCurieOfThisOntology(observed.curie)) return null;
 		return recordedValuesOf(f) ? observed.curie : null;
 	};
 
 	/**
-	 * AM-62. Is this folder AM-55's first row - held by a row this run kept, hosted
-	 * by nothing, described by no row this run writes, and identified entirely from
-	 * the note already sitting in it?
+	 * AM-62/AM-64. Is this folder HELD-ONLY - no row this run writes lies within it
+	 * at any depth, and nothing places a note at it?
 	 *
 	 * Asked with the same precedence `refusalFor` and `identityOf` use, so the three
 	 * cannot disagree about which folders these are.
+	 *
+	 * AM-64 (2026-09-04) replaced the older third clause ("identified entirely from
+	 * the note already sitting in it") with `writtenFolders`. Two failure modes:
+	 *
+	 *   - the IMPORT ROOT could never satisfy the old clause, because its identity
+	 *     is the set's own reserved local part rather than a recorded one. So on an
+	 *     all-skip refresh it was the one hub still rewritten - restamped out of the
+	 *     legacy address-derived curie the vault held, its provenance replaced, its
+	 *     `produced_at` moved, on a run that wrote no note at all;
+	 *   - the clause conflated "held" with "has a usable record". A held folder
+	 *     WITHOUT one is refused by `refusalFor` and emits no hub, so the record
+	 *     test was never the thing deciding, and stating it here invited the two to
+	 *     drift apart.
+	 *
+	 * A described folder always contains the row that describes it, so it is in
+	 * `writtenFolders` and is never held - the amendment's "a row the run writes
+	 * describes it", read off the population rather than restated.
 	 */
 	const heldByRecord = (f: string): boolean =>
 		!hostByFolder.has(f)
 		&& !valuesByFolder.has(f)
-		&& recordedHubCurieOf(f) !== null;
+		&& !writtenFolders.has(f);
 	const hubCurieOf = (f: string): string | null =>
 		valueHubCurieOf(f)
 		?? recordedHubCurieOf(f)
@@ -1404,11 +1564,13 @@ function computeLevelHubs(
 				...(facetGroup.length > 0 ? { facetLinks: rootFacetLinks } : {}),
 				...(id.legacyCuries && id.legacyCuries.length > 0 ? { legacyCuries: id.legacyCuries } : {}),
 				...(id.levelValues ? { levelValues: id.levelValues } : {}),
-				// AM-62. This folder is HELD, not described: no row this run writes
-				// reaches it, and everything on this hub - its identity and its recorded
-				// values - was read back off the note that is already there. So the run
-				// has nothing new to say about it beyond a children list that may have
-				// changed, and the caller writes it only when something actually differs.
+				// AM-62/AM-64. This folder is HELD-ONLY: no row this run writes lies
+				// within it, at any depth. The run therefore has nothing new to say about
+				// its index note beyond a children list that may have changed, so the
+				// caller preserves the identity and provenance the note already carries,
+				// writes it only when something actually differs, and never CREATES one
+				// that is absent - a run that wrote nothing here does not restore a note
+				// the user removed.
 				...(heldByRecord(f) ? { heldFolder: true as const } : {}),
 			});
 		}

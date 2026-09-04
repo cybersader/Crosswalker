@@ -13,20 +13,32 @@
  * dropped out of `producedCuries`, and A-8's own acceptance clause ("zero new
  * orphans, skip included") failed on an ordinary refresh no user action caused.
  *
- * WHY `applyEnrichment` (the WRITE pass) TOUCHES THE OLD FOLDER'S HUB, AS OF
- * AM-60 (2026-09-04, pass 19). Before AM-60, `applyEnrichment` only ever
- * received `enrichRecords` -- the rows actually CREATED this run -- so an
- * all-skip refresh (this scenario) left it empty and the write pass never ran
- * at all; only `markKeptHubsProduced` (bookkeeping, no vault I/O) accounted
- * for the kept hub without writing it, which is what row 1 of AM-55's table
- * asked for but never delivered ("Hub write" never fired as a write -- pass
- * 18's own residual risk #2). AM-60 collapsed the two-pass shape: there is now
- * ONE `enrich()` call over the WHOLE population (`[...enrichRecords,
- * ...keptRecords]`), and a kept folder with a USABLE recorded chain (row 1) is
- * genuinely REWRITTEN from that chain -- idempotently, so the CONTENT is
- * byte-identical except for the wall-clock `produced_at` provenance field,
- * which this test now normalizes away, the same way
- * `enrichment-reimport.test.ts`'s own `normalize()` helper does.
+ * WHAT `applyEnrichment` DOES WITH THE OLD FOLDER'S HUB -- RE-POINTED BY AM-64
+ * (2026-09-04, pass 21). This block previously asserted the OPPOSITE of the
+ * rule now in force, and it is re-pointed rather than deleted because the
+ * scenario it drives is the one both rules disagree about.
+ *
+ * The history, because the assertion flipped twice. Before AM-60,
+ * `applyEnrichment` received `enrichRecords` alone, so an all-skip refresh
+ * (this scenario) left it empty and the write pass never ran; only
+ * `markKeptHubsProduced` (bookkeeping, no vault I/O) accounted for the kept
+ * hub. AM-60 collapsed the two passes into one over the WHOLE population and
+ * widened the gate with them, so row 1 became a real WRITE -- which is what
+ * this test was rewritten to assert in pass 19. AM-61 narrowed the gate back
+ * and, with it, lost the accounting: the same refresh then reported three
+ * notes sitting in the vault as no longer in the source.
+ *
+ * AM-64 separates the two questions that were riding on one gate. ACCOUNTING
+ * IS A READ over the whole population and always runs; WRITING is decided
+ * writer by writer against the write set. A folder no row of this run writes
+ * into is HELD-ONLY: its index note is accounted for under the identity it
+ * carries on disk, its provenance and identity are preserved, and it is
+ * written only when its managed region or children list actually differs. On
+ * this all-skip refresh nothing differs, so the assertion below is
+ * ACCOUNTED AND NOT WRITTEN -- zero `modify` calls for that hub, and the file
+ * byte-identical to what the seeding run left. The orphan assertions in this
+ * file are unchanged: zero orphans was always the answer, and AM-64 is how it
+ * is reached without touching a note.
  */
 
 import { TFile, TFolder } from 'obsidian';
@@ -122,11 +134,6 @@ function frontmatterOf(text: string): any {
 	return match ? (yaml.load(match[1]) as any) : {};
 }
 
-/** Strip the wall-clock provenance field so two writes compare byte-for-byte. */
-function normalizeProducedAt(text: string): string {
-	return text.replace(/produced_at: "[^"]*"/g, 'produced_at: "<ts>"');
-}
-
 function run(app: any, rec: Recipe, parsed: ParsedData, overwriteMode: 'skip' | 'replace', importSet: any) {
 	return generateFromRecipe(app, parsed, rec, {
 		basePath: BASE,
@@ -177,20 +184,18 @@ describe('AM-52 end to end: a skip refresh with a row recategorised between leve
 		expect(files.has(`${BASE}/IA/IA.md`)).toBe(false);
 	});
 
-	it('rewrites the old hub IDEMPOTENTLY from its own recorded chain (AM-60, pass 19: one population, one pass -- row 1 is now a real write, not just an account), and it still lists T1', async () => {
+	it('accounts for the old hub under its own recorded identity WITHOUT writing it (AM-64, pass 21: accounting is a read, the write set decides writes), and it still lists T1', async () => {
 		const { files, persistenceHubBefore, modifyCalls } = await seedThenRefresh();
 		const after = files.get(`${BASE}/Persistence/Persistence.md`)!;
-		// GENUINELY rewritten this run, not merely unchanged because nothing
-		// touched it -- the positive signal `produced_at` alone cannot give,
-		// since a note that was never written at all also normalizes equal to
-		// itself.
-		expect(modifyCalls).toContain(`${BASE}/Persistence/Persistence.md`);
-		// Content-identical except the wall-clock provenance field: AM-60 runs the
-		// write pass over the WHOLE population (including this kept row's folder),
-		// and row 1's usable recorded chain means it is rewritten from ITS OWN
-		// identity -- the same identity it already carried, so nothing observable
-		// changes except that the note was genuinely touched this run.
-		expect(normalizeProducedAt(after)).toBe(normalizeProducedAt(persistenceHubBefore));
+		// AM-64. This folder is HELD-ONLY: no row this refresh writes lies within
+		// it. Its curie is claimed so the orphan pass above answers zero, and no
+		// write is issued -- not the note's bytes, not its `produced_at`, not the
+		// provenance fields a newer plugin version would add. A run that has
+		// nothing new to say does not say it again.
+		expect(modifyCalls).not.toContain(`${BASE}/Persistence/Persistence.md`);
+		// Byte for byte, including the wall-clock provenance field: a note that was
+		// never written cannot differ from itself in any respect.
+		expect(after).toBe(persistenceHubBefore);
 		expect(after).toContain('[[T1]]');
 	});
 

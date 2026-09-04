@@ -59,6 +59,17 @@ const ONT = 'hg';
 const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_hubs: 'notes' as const };
 const ROOT = 'Frameworks';
 
+/**
+ * AM-65 (2026-09-04). THE WRITE SET, STATED. `enrich()` no longer infers which
+ * half of a batch it may act on from `renderedPath` vs `path`; the caller says so,
+ * and omitting it is a refusal by name rather than "everything is writable".
+ *
+ * Every batch below is a single row this run KEPT, so nothing in it is writable.
+ * The assertions are unchanged - this is the test supplying a fact it previously
+ * left the engine to guess.
+ */
+const NOTHING_WRITABLE: ReadonlySet<string> = new Set<string>();
+
 const hubByPath = (result: ReturnType<typeof enrich>, path: string) =>
 	result.levelHubs.notes.find((h) => h.path === path);
 
@@ -77,7 +88,7 @@ describe('AM-52: a folder holding a row this run KEPT, with a RECORDED identity,
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[`${ROOT}/Persistence`, { state: 'one', path: `${ROOT}/Persistence/Persistence.md`, curie: `${ONT}:hub/persistence`, values: [{ level: 'tactic', value: 'Persistence' }] }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		// No refusal at all for Persistence -- the recorded identity answers it.
 		expect(result.deviations).toEqual([]);
@@ -110,7 +121,7 @@ describe('AM-52/AM-55: a folder holding a kept row with NO usable recorded ident
 			facets: [],
 			layoutValues: [{ level: 'tactic', value: 'IA' }],
 		}];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT }); // no ownedHubsByFolder at all
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: NOTHING_WRITABLE }); // no ownedHubsByFolder at all
 
 		expect(hubByPath(result, `${ROOT}/Persistence/Persistence.md`)).toBeUndefined();
 		const deviation = result.deviations.find((d) => d.includes(`${ROOT}/Persistence`));
@@ -139,7 +150,7 @@ describe('AM-52/AM-55: a folder holding a kept row with NO usable recorded ident
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[`${ROOT}/Persistence`, { state: 'one', path: `${ROOT}/Persistence/Persistence.md`, curie: `${ONT}:hub/persistence` }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		const deviation = result.deviations.find((d) => d.includes(`${ROOT}/Persistence`));
 		expect(deviation).toBeDefined();
@@ -172,7 +183,7 @@ describe('AM-54 (2026-09-04, pass 18): AM-52\'s exemption reaches the WHOLE chai
 			[`${ROOT}/Cat/Sub`, { state: 'one', path: `${ROOT}/Cat/Sub/Sub.md`, curie: `${ONT}:hub/cat-sub`, values: [{ level: 'cat', value: 'Cat' }, { level: 'sub', value: 'Sub' }] }],
 			[`${ROOT}/Cat`, { state: 'one', path: `${ROOT}/Cat/Cat.md`, curie: `${ONT}:hub/cat`, values: [{ level: 'cat', value: 'Cat' }] }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		// The DIRECT holder: exempt, via its recorded identity.
 		expect(hubByPath(result, `${ROOT}/Cat/Sub/Sub.md`)).toBeDefined();

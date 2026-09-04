@@ -26,6 +26,17 @@ const ONT = 'hg';
 const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_hubs: 'notes' as const };
 const ROOT = 'Frameworks';
 
+/**
+ * AM-65 (2026-09-04). THE WRITE SET, STATED. `enrich()` no longer infers which
+ * half of a batch it may act on from `renderedPath` vs `path`; the caller says so,
+ * and omitting it is a refusal by name rather than "everything is writable".
+ *
+ * The kept row is EXCLUDED and the live row is INCLUDED, which is what each
+ * fixture already meant. The assertions are unchanged - this is the test supplying
+ * a fact it previously left the engine to guess.
+ */
+const NOTHING_WRITABLE: ReadonlySet<string> = new Set<string>();
+
 const hubByPath = (result: ReturnType<typeof enrich>, path: string) =>
 	result.levelHubs.notes.find((h) => h.path === path);
 const deviationFor = (result: ReturnType<typeof enrich>, folder: string) =>
@@ -57,7 +68,7 @@ describe('AM-54: a kept note three folders deep exempts all three ancestors, not
 			[`${ROOT}/A/B`, { state: 'one', path: `${ROOT}/A/B/B.md`, curie: `${ONT}:hub/stale-ab`, values: [{ level: 'l1', value: 'RecA' }, { level: 'l2', value: 'RecB' }] }],
 			[`${ROOT}/A/B/C`, { state: 'one', path: `${ROOT}/A/B/C/C.md`, curie: `${ONT}:hub/stale-abc`, values: [{ level: 'l1', value: 'RecA' }, { level: 'l2', value: 'RecB' }, { level: 'l3', value: 'RecC' }] }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		// No refusal anywhere on the chain.
 		expect(deviationFor(result, `${ROOT}/A`)).toBeUndefined();
@@ -115,7 +126,7 @@ describe('AM-54: a folder described by a LIVE chain is never treated as kept, ev
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[`${ROOT}/A`, { state: 'one', path: `${ROOT}/A/A.md`, curie: `${ONT}:hub/stale-a`, values: [{ level: 'l1', value: 'WrongRecordedValue' }] }],
 		]);
-		const result = enrich([kept, live], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich([kept, live], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: new Set([live.path]) });
 
 		// Never refused (it's described), and never carrying the kept-cause text.
 		expect(deviationFor(result, `${ROOT}/A`)).toBeUndefined();
@@ -145,7 +156,7 @@ describe('AM-54: the import root is never added to keptFolders, even when everyt
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[ROOT, { state: 'one', path: `${ROOT}/${ROOT}.md`, curie: `${ONT}:hub/should-never-be-used`, values: [{ level: 'bogus', value: 'ShouldNotAppear' }] }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
 		const root = hubByPath(result, `${ROOT}/${ROOT}.md`);
 		expect(root).toBeDefined();
