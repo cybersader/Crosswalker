@@ -117,6 +117,8 @@ interface ModalInternals {
 	evidencePath: string;
 	coverage: string;
 	status: string;
+	pairRefusal: string | null;
+	resolvePair(control: ControlCandidate, evidencePath: string): Promise<void>;
 	create(): Promise<void>;
 }
 
@@ -126,12 +128,33 @@ interface ModalInternals {
  * Reaches the private handler rather than the button because the modal's DOM is
  * not the subject here; what is written to the vault is. The two fields set are
  * exactly the two the form collects.
+ *
+ * AM-43 (2026-09-02): the pair lookup is now a separate, awaited step —
+ * `resolvePair` is driven directly, mirroring what the DOM's change/blur
+ * handlers would trigger.
  */
-async function pressCreateLink(app: App): Promise<void> {
+async function pressCreateLink(app: App): Promise<ModalInternals> {
 	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
 	modal.control = CONTROL;
 	modal.evidencePath = EVIDENCE;
+	await modal.resolvePair(CONTROL, EVIDENCE);
 	await modal.create();
+	return modal;
+}
+
+/**
+ * The pair lookup alone, for a scan the design means to REFUSE. `create()` is
+ * deliberately not called: with no resolution it only re-triggers the lookup
+ * (`pairChanged()` clears `pairRefusal` before the async re-run lands) and
+ * shows a generic "Checking..." notice, which a real UI never reaches because
+ * the submit button stays disabled while `pairRefusal` is set.
+ */
+async function resolveOnly(app: App): Promise<ModalInternals> {
+	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
+	modal.control = CONTROL;
+	modal.evidencePath = EVIDENCE;
+	await modal.resolvePair(CONTROL, EVIDENCE);
+	return modal;
 }
 
 const note = (frontmatter: string, body = 'Body.\n'): string => `---\n${frontmatter}\n---\n${body}`;
@@ -203,8 +226,16 @@ describe('what sits at that address, when it is not this link', () => {
 	async function refuse(existing: string) {
 		const { app, files } = makeVault();
 		files.set(LINK_PATH, existing);
-		await pressCreateLink(app);
-		return { files, before: existing };
+		const modal = await pressCreateLink(app);
+		return { files, before: existing, modal };
+	}
+
+	/** Same shape, for a refusal that lives in the pair scan (see `resolveOnly`). */
+	async function refuseAtScan(existing: string) {
+		const { app, files } = makeVault();
+		files.set(LINK_PATH, existing);
+		const modal = await resolveOnly(app);
+		return { files, before: existing, modal };
 	}
 
 	it('refuses another set\'s junction note, naming the set that owns it', async () => {
@@ -244,15 +275,20 @@ describe('what sits at that address, when it is not this link', () => {
 		// being looked for. The message names the file and the action, so it is still
 		// one a user can act on; it no longer speaks of importing again, because the
 		// thing to fix is that note's properties.
-		const { files, before } = await refuse(note(': : :\ncurie: something'));
+		//
+		// AM-43 (2026-09-02): the pair scan is vault-wide and runs BEFORE `create()`
+		// now, so this refusal is asserted on `pairRefusal`, not on a `Notice` —
+		// `create()` itself never got far enough to see this note (`resolution` is
+		// null, so it only re-checked and reported "Checking...").
+		const { files, before, modal } = await refuseAtScan(note(': : :\ncurie: something'));
 		expect(files.get(LINK_PATH)).toBe(before);
-		expect(said()).toContain('Could not create the link');
-		expect(said()).toContain('could not be read');
-		expect(said()).toContain(LINK_PATH);
-		expect(said()).toContain('Fix that note');
-		expect(said()).not.toContain("not Crosswalker's");
-		expect(said()).not.toContain('Move or rename');
+		expect(modal.pairRefusal).toContain('could not be read');
+		expect(modal.pairRefusal).toContain(LINK_PATH);
+		expect(modal.pairRefusal).toContain('Fix that note');
+		expect(modal.pairRefusal).not.toContain("not Crosswalker's");
+		expect(modal.pairRefusal).not.toContain('Move or rename');
 		expect(said()).not.toContain('Updated the existing link');
+		expect(said()).not.toContain('Could not create the link');
 	});
 
 	it('refuses a note with no properties at all', async () => {

@@ -7,6 +7,7 @@
 
 import type { Address, SourceScope, RenderReport, LayoutValue } from '../types';
 import { renderTemplate, RenderError } from '../template';
+import { normalizedPathPieces } from '../vault-path';
 
 interface FileLayoutEntry {
 	level: string;
@@ -42,8 +43,15 @@ export function applyFile(
 	// a silent revert to the rule the values exist to replace. Every piece
 	// except the last is a directory; the last is the file itself and is
 	// deliberately not a layout value.
+	//
+	// AM-45: normalized first, then the filename dropped, so the pieces recorded
+	// are the ones the vault path will actually have. Splitting the raw template
+	// output instead recorded a piece that `normalizePath` was about to change or
+	// remove, and a value that differs from its segment by NFC alone keeps the
+	// counts equal - invisible to an arity check, and enough to move every hub
+	// identity beneath it.
 	if (values) {
-		const pieces = segment.split('/');
+		const pieces = normalizedPathPieces(segment);
 		for (let i = 0; i < pieces.length - 1; i++) values.push({ level: entry.level, value: pieces[i] });
 	}
 

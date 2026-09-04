@@ -614,12 +614,36 @@ function computeLevelHubs(
 	// (`basePath + '/' + address.primary.path`), so the segments it removes are
 	// exactly the ones no layout entry produced.
 	//
-	// AM-37. A count disagreement is now a BUG, not a case. It used to `continue`,
-	// which left the folder with no recorded values, which sent hub identity back
-	// to parsing the path - the very rule these values exist to replace, reached
+	// AM-37. A disagreement is a BUG, not a case. It used to `continue`, which
+	// left the folder with no recorded values, which sent hub identity back to
+	// parsing the path - the very rule these values exist to replace, reached
 	// silently, on shapes shipped recipes use. Such a folder is refused by name
 	// below instead: no hub note, and a deviation the caller surfaces as a
 	// warning. Nothing is guessed and nothing is quiet.
+	//
+	// AM-44 (2026-09-02). The comparison is ELEMENTWISE AND LOCAL, on three
+	// counts, each of which was a real defect in the arity version:
+	//
+	//   (a) BYTE-FOR-BYTE AT EACH INDEX, never by count. The invariant AM-38
+	//       relies on is POSITIONAL IDENTITY - the k-th value IS the k-th segment
+	//       - and arity cannot see a value that differs from its segment while
+	//       the lengths match. An NFC-decomposed cell (`Zugänge` written as `a` +
+	//       U+0308) and a layout that puts a `file` entry before a `folder` entry
+	//       both land there, and both would have silently derived a DIFFERENT hub
+	//       identity than the shipped path form did, with no duplicate note and no
+	//       error to notice it by.
+	//
+	//   (b) FROM THE FIRST DISAGREEING INDEX DOWN, for this row's chain only. The
+	//       old loop marked EVERY folder from the import root's first child to the
+	//       row's own leaf, so one malformed cell at level 2 refused the level-1
+	//       hub for the whole catalog - a folder thousands of clean rows describe
+	//       perfectly. Folders ABOVE the disagreement are described correctly by
+	//       this row and are recorded like any other.
+	//
+	//   (c) A FOLDER ANY ROW ESTABLISHED IS NEVER REFUSED for a sibling's deeper
+	//       disagreement: `valuesByFolder` wins over `unalignedFolders` at the
+	//       consultation site below. A refusal is for a folder nothing could
+	//       describe, not for a folder something else described fine.
 	//
 	// Iterated in curie order so which note describes a shared folder is
 	// deterministic, the same discipline every other derived list here follows.
@@ -634,27 +658,63 @@ function computeLevelHubs(
 		if (!lv) continue;
 		const renderedDir = relativeToRoot(dirOf(e.note.renderedPath ?? e.path));
 		const segs = renderedDir === '' ? [] : renderedDir.split('/');
-		let abs = rootIsTrackedAncestor && root !== undefined ? root : '';
-		if (segs.length !== lv.length) {
-			for (const seg of segs) {
-				abs = abs === '' ? seg : `${abs}/${seg}`;
-				if (!unalignedFolders.has(abs)) {
-					unalignedFolders.set(
-						abs,
-						`No index note was created for the folder "${abs}". This import produced ${segs.length} folder `
-						+ `levels for "${e.note.curie}" but recorded ${lv.length} values for them, so Crosswalker cannot `
-						+ 'say what that folder is about and will not guess from its path. The notes themselves were '
-						+ 'written normally. Please report this with the recipe that produced it.',
-					);
-				}
-			}
-			continue;
+		// The first index where the record and the path stop being the same string.
+		// A value list DEEPER than the directory disagrees at no index that names a
+		// folder, so its surplus tail simply describes nothing and is dropped by the
+		// slice below; a value list SHORTER than the directory disagrees at the
+		// first segment it does not reach.
+		let firstDisagreement = -1;
+		for (let i = 0; i < segs.length; i++) {
+			if (i >= lv.length || lv[i].value !== segs[i]) { firstDisagreement = i; break; }
 		}
+		let abs = rootIsTrackedAncestor && root !== undefined ? root : '';
 		for (let i = 0; i < segs.length; i++) {
 			abs = abs === '' ? segs[i] : `${abs}/${segs[i]}`;
+			if (firstDisagreement !== -1 && i >= firstDisagreement) {
+				// Named, not counted: the folder, the row that disagreed, and the cell
+				// whose recorded value did not match the directory it produced. A
+				// deviation a user cannot trace to a source cell is a deviation they
+				// cannot fix.
+				if (!unalignedFolders.has(abs)) {
+					const recorded = i < lv.length ? `the value "${lv[i].value}" for level "${lv[i].level}"` : 'no value at all';
+					unalignedFolders.set(
+						abs,
+						`No index note was created for the folder "${abs}". While placing "${e.note.curie}" this import `
+						+ `recorded ${recorded} at that folder level, but the level was written as "${segs[i]}", so `
+						+ 'Crosswalker cannot say what the folder is about and will not guess from its path. The notes '
+						+ 'themselves were written normally. Please report this with the recipe and the source row that '
+						+ 'produced it.',
+					);
+				}
+				continue;
+			}
 			if (!valuesByFolder.has(abs)) valuesByFolder.set(abs, lv.slice(0, i + 1));
 		}
 	}
+
+	/**
+	 * AM-44. Is this folder one the run declines to describe, and why?
+	 *
+	 * Consulted BEFORE `identityOf` and INSIDE the parent's children loop, which
+	 * is the whole point: the old order computed a path-derived identity for the
+	 * refused folder anyway and the parent then listed `[[label]]` for a hub note
+	 * that was never written. That is a dangling managed link, or worse a silent
+	 * resolution to whatever unrelated note happens to share the basename, sitting
+	 * inside the one hub that survived. A hub the run declines to write is not
+	 * identified, not listed in Contents, and not linked to.
+	 *
+	 * Two exemptions, both of them "there is nothing here to guess":
+	 *   - a folder ANY row described by values (`valuesByFolder`) is aligned, and
+	 *     a sibling row's deeper disagreement says nothing about it;
+	 *   - a folder HOSTED by an existing note takes that note's own curie, so no
+	 *     path is read and dropping its Contents list would be a loss with no
+	 *     corresponding risk.
+	 */
+	const refusalFor = (f: string): string | undefined => {
+		if (valuesByFolder.has(f)) return undefined;
+		if (byBasename.has(basename(f))) return undefined;
+		return unalignedFolders.get(f);
+	};
 
 	/**
 	 * AM-38. ONE derivation for a hub's identity, given the ordered parts that
@@ -743,7 +803,6 @@ function computeLevelHubs(
 	// Pass B: direct children (sorted by curie), materialize.
 	const sortedFolders = [...folders].sort(cmp);
 	for (const f of sortedFolders) {
-		const id = identityOf(f);
 		// AM-37. The refusal. A folder whose values and segments disagree is a
 		// folder this run cannot describe, and the alternative to saying so is
 		// deriving its identity from its address again - which is how a moved or
@@ -751,18 +810,24 @@ function computeLevelHubs(
 		// had one, the first orphaned with the user's prose on it. Refusing one hub
 		// costs an index note; guessing costs the identity.
 		//
-		// Scoped to folders that would MINT an identity. A folder hosted by an
-		// existing note takes that note's curie, so no path is being read and there
-		// is nothing to refuse; dropping its Contents list would be a loss with no
-		// corresponding risk.
-		const unaligned = id.hostedPath ? undefined : unalignedFolders.get(f);
+		// AM-44. Asked BEFORE `identityOf`, so a folder the run will not write is
+		// never given an identity in the first place. Identifying it and then
+		// declining to write it is what left the parent hub linking to a note that
+		// does not exist.
+		const unaligned = refusalFor(f);
 		if (unaligned) {
 			result.deviations.push(unaligned);
 			continue;
 		}
+		const id = identityOf(f);
 		const childRefs: { curie: string; label: string }[] = [];
 		for (const e of filesOf.get(f) ?? []) childRefs.push({ curie: e.note.curie, label: basename(e.path) });
 		for (const g of subfoldersOf.get(f) ?? []) {
+			// AM-44. A refused subfolder is not linked to. Its hub note is not being
+			// written, so a `[[label]]` here is a link to nothing (or to whatever
+			// unrelated note shares the basename), emitted into a MANAGED section the
+			// user cannot repair by hand because the next run rewrites it.
+			if (refusalFor(g)) continue;
 			const gid = identityOf(g);
 			childRefs.push({ curie: gid.curie, label: gid.label });
 		}
@@ -826,7 +891,9 @@ function computeLevelHubs(
 		// before filtering top-level files — a folder's HOST note (e.g. sibling
 		// `T1078.md` beside top-level `T1078/`) must be represented ONCE, via
 		// the folder's own identity, not also as an unrelated top-level file.
-		const topFolders = sortedFolders.filter((f) => !folders.has(dirOf(f)));
+		// AM-44: the same rule as Pass B's children loop - this is a parent's
+		// children loop too, and a refused folder has no hub note to link to.
+		const topFolders = sortedFolders.filter((f) => !folders.has(dirOf(f)) && !refusalFor(f));
 		const topFolderLabels = new Set(topFolders.map((f) => identityOf(f).label));
 		for (const f of topFolders) {
 			const id = identityOf(f);

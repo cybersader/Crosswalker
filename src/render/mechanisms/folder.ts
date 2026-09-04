@@ -7,6 +7,7 @@
 
 import type { Address, SourceScope, RenderReport, VariadicConfig, LayoutValue } from '../types';
 import { renderTemplate, RenderError } from '../template';
+import { normalizedPathPieces } from '../vault-path';
 
 interface FolderLayoutEntry {
 	level: string;
@@ -43,17 +44,25 @@ const VARIADIC_DEFAULTS = {
  * directories, so recording one value for it made the values count disagree
  * with the segments count, and the consumer (hub identity) silently reverted to
  * deriving identity from the path - the exact defect the values exist to
- * remove. The split is verbatim, empty pieces included, because the invariant
- * being bought is byte-level: the k-th value IS the k-th segment of the
- * rendered directory, so the two can be compared, and slugging either one gives
- * the same string.
+ * remove.
+ *
+ * AM-45: the pieces are recorded IN THE FORM THE PATH TAKES. The engine hands
+ * the assembled path to Obsidian's `normalizePath` before it reaches the vault,
+ * and that folds separators, strips edges, folds non-breaking spaces and
+ * normalizes to NFC. A piece recorded before those mutations is a different
+ * string from the segment it describes, and the difference NFC makes leaves the
+ * segment COUNT intact - so an arity check cannot see it and the value form
+ * silently derives a different hub identity than the shipped path form did.
+ * Normalizing here, and dropping the pieces that collapse to nothing exactly as
+ * the path drops them, is what makes the k-th value byte-identical to the k-th
+ * segment rather than merely the same length.
  */
 function appendFolderSegment(address: Address, segment: string, level: string, values?: LayoutValue[]): void {
 	address.primary.path = address.primary.path
 		? `${address.primary.path}/${segment}`
 		: segment;
 	if (!values) return;
-	for (const piece of segment.split('/')) values.push({ level, value: piece });
+	for (const piece of normalizedPathPieces(segment)) values.push({ level, value: piece });
 }
 
 export function applyFolder(

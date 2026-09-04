@@ -269,30 +269,36 @@ const hubCuriesOf = (result: ReturnType<typeof enrich>): string[] =>
 describe('AM-37: a values/segments disagreement refuses the hub, and says so', () => {
 	const ROOT = 'Frameworks';
 
-	it('writes no hub note for a chain whose values do not cover its segments', () => {
-		// The pass-13 behaviour was `continue`: no values recorded, and the hub
-		// minted under `slugPath(path)` regardless. The identity that came out was
-		// an address, and nothing said so.
+	it('writes no hub note for the folder past the disagreement, but keeps the aligned one above it', () => {
+		// AM-44 (2026-09-02) sharpened this from an arity check (mark the WHOLE
+		// chain) to an elementwise one (mark from the first disagreeing INDEX
+		// down, for this row's chain only). `values[0] = "Ops"` agrees with
+		// `segs[0] = "Ops"`, so "Ops" is aligned and gets its hub; the chain only
+		// disagrees at index 1 (`Team`, which nothing recorded a value for), so
+		// only "Ops/Team" is refused. One malformed cell no longer refuses a
+		// folder thousands of clean rows describe perfectly — see
+		// `hub-refusal-elementwise-am44.test.ts` for the dedicated coverage.
 		const result = enrich(
 			batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT),
 			{ ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT },
 		);
-		expect(hubCuriesOf(result)).toEqual([`${ONT}:hub/_root`]);
-		expect(hubCuriesOf(result)).not.toContain(`${ONT}:hub/ops`);
+		expect(hubCuriesOf(result)).toEqual([`${ONT}:hub/_root`, `${ONT}:hub/ops`]);
 		expect(hubCuriesOf(result)).not.toContain(`${ONT}:hub/ops/team`);
 	});
 
-	it('names each refused folder, says it will not guess, and does not blame the user', () => {
+	it('names the refused folder, says it will not guess, and does not blame the user', () => {
 		// The user can do nothing about this and must not be told to. The copy
 		// names the folder, states that the notes themselves were written, and
 		// asks for a report — an actionable message rather than a raw internal.
+		// Only ONE folder is named under AM-44 (see the sibling declaration): the
+		// aligned "Ops" is not a deviation at all.
 		const result = enrich(
 			batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT),
 			{ ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT },
 		);
-		expect(result.deviations).toHaveLength(2);
+		expect(result.deviations).toHaveLength(1);
 		const said = result.deviations.join('\n');
-		expect(said).toContain('Frameworks/Ops');
+		expect(said).not.toContain('Frameworks/Ops"');
 		expect(said).toContain('Frameworks/Ops/Team');
 		expect(said).toContain('will not guess');
 		expect(said).toContain('The notes themselves were written normally.');

@@ -50,7 +50,7 @@ import {
 import { mergeFrontmatter, computeDeclaredManagedKeys, computeManagedKeys } from './frontmatter-merge';
 import { buildIdentityIndex, type IdentityIndex } from './identity-index';
 // AM-33: the tri-state note read, for the hub value index's cache-cold fallback.
-import { readNoteFrontmatterState } from '../export/vault-reader';
+import { readNoteFrontmatterState, type NoteFrontmatterRead } from '../export/vault-reader';
 import { buildProvenance } from './provenance';
 import { derivationOf, resolveImportSet, type ImportSetDerivation, type ImportSetOption, type ImportSetReference } from './import-set';
 import {
@@ -2653,28 +2653,25 @@ export async function generateFromRecipe(
 		if (fromThisRun) return fromThisRun;
 		const file = identityIndex.get(subjectCurie);
 		if (!file) return null;
-		const cached = app.metadataCache.getFileCache(file);
-		let provenance = cached?.frontmatter?._crosswalker;
-		// The discriminator is the CACHE ENTRY, not the key: an entry that exists
-		// and carries no `_crosswalker` is a fact (Obsidian read this note and it
-		// has no provenance), while no entry at all is Obsidian not having reached
-		// the file yet. Only the second is worth a disk read, so a bulk import of
-		// links against genuinely unfingerprinted subjects pays nothing.
-		if (!cached) {
-			const read = await readNoteFrontmatterState(app, file);
-			if (read.state === 'unreadable') {
-				result.warnings ??= [];
-				result.warnings.push({
-					row: rowNum,
-					message: `The properties of ${file.path} could not be read, so this approved link was written with `
-						+ 'no review baseline and Crosswalker cannot tell you later if that note changes. '
-						+ 'Fix that note\'s properties, then re-import.',
-				});
-				return null;
-			}
-			if (read.state !== 'ok') return null;
-			provenance = read.frontmatter._crosswalker;
+		// S8 (ruled 2026-09-02). ONE discriminator, shared with the hub-value index
+		// below: an entry that carries no properties is not the cache answering,
+		// so the note is read. This costs a disk read for a subject whose cache
+		// entry is momentarily empty, which is bounded to edge-subject baselines
+		// and is the price of never recording "no baseline" for a note that has
+		// one. Absence is not a fact (`project_cache_lag_is_not_absence`).
+		const read = await readFrontmatterForRun(app, file);
+		if (read.state === 'unreadable') {
+			result.warnings ??= [];
+			result.warnings.push({
+				row: rowNum,
+				message: `The properties of ${file.path} could not be read, so this approved link was written with `
+					+ 'no review baseline and Crosswalker cannot tell you later if that note changes. '
+					+ 'Fix that note\'s properties, then re-import.',
+			});
+			return null;
 		}
+		if (read.state !== 'ok') return null;
+		const provenance = read.frontmatter._crosswalker;
 		if (!provenance || typeof provenance !== 'object') return null;
 		const source = provenance as Record<string, unknown>;
 		const value = source.review_cid;
@@ -3369,6 +3366,28 @@ function hubValuesKey(values: readonly string[]): string {
  */
 const HUB_VALUE_RECORD_KEYS: readonly string[] = ['hub_levels', 'hub_values'];
 
+/**
+ * SUSPECTED 8, ruled 2026-09-02. THE ONE DISCRIMINATOR for "did the cache answer
+ * about this note?", used by every read in this file that has a disk fallback.
+ *
+ * There were two readings of that question here, added in the same pass. One
+ * asked whether a cache ENTRY existed (`!cached`) and treated an entry whose
+ * `frontmatter` was momentarily absent as a fact about the note; the other asked
+ * whether the FRONTMATTER was there (`!fm`) and re-read the file. The second is
+ * the safe one, and coexisting readings of the same question is how this project
+ * has accumulated nine recorded instances of absence read as fact.
+ *
+ * `readNoteFrontmatterState` IS that reading: it accepts a cache entry only when
+ * it actually carries properties, reads the file otherwise, and answers with the
+ * tri-state (`ok` / `none` / `unreadable`) so a caller can tell a note that has
+ * no properties from a note nothing could be read from. This wrapper exists to
+ * be the single seam: Part B's `readIndexed` accessor replaces its body, and
+ * these are its first callers.
+ */
+function readFrontmatterForRun(app: App, file: TFile): Promise<NoteFrontmatterRead> {
+	return readNoteFrontmatterState(app, file);
+}
+
 /** A frontmatter value that is a list of strings, or null. */
 function readStringArray(value: unknown): string[] | null {
 	if (!Array.isArray(value)) return null;
@@ -3382,14 +3401,13 @@ async function buildOwnedHubValueIndex(app: App, owned: IdentityIndex | undefine
 		for (const curie of owned.curies()) {
 			const file = owned.get(curie);
 			if (!file) continue;
-			let fm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
-			if (!fm || typeof fm !== 'object' || Array.isArray(fm)) {
-				// Cache lag is not absence (`project_cache_lag_is_not_absence`): a note
-				// Obsidian has not reached yet is read, never assumed to record nothing.
-				const read = await readNoteFrontmatterState(app, file);
-				if (read.state !== 'ok') continue;
-				fm = read.frontmatter;
-			}
+			// S8 (ruled 2026-09-02): the same discriminator the review-baseline read
+			// uses. Cache lag is not absence (`project_cache_lag_is_not_absence`): a
+			// note Obsidian has not reached yet, or whose entry carries no
+			// properties, is read rather than assumed to record nothing.
+			const read = await readFrontmatterForRun(app, file);
+			if (read.state !== 'ok') continue;
+			const fm = read.frontmatter;
 			if (fm.kind !== 'hub') continue;
 			const values = readStringArray(fm.hub_values);
 			if (!values || values.length === 0) continue;

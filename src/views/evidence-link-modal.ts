@@ -6,7 +6,17 @@
  * that decides whether coverage works cannot be entered backwards.
  */
 
-import { App, Modal, Notice, Setting, TFile, normalizePath } from 'obsidian';
+import {
+	App,
+	Modal,
+	Notice,
+	Setting,
+	TFile,
+	normalizePath,
+	type ButtonComponent,
+	type DropdownComponent,
+	type TextComponent,
+} from 'obsidian';
 import { readNoteFrontmatter, readNoteFrontmatterState } from '../export/vault-reader';
 import {
 	buildEvidenceLink,
@@ -18,7 +28,7 @@ import { CANONICAL_EVIDENCE_PREDICATE } from '../tier2/evidence-coverage';
 import { readReviewGroupCids, type ReviewGroupCids } from '../generation/hash';
 // AM-17. The same door the engine passes through, not a second copy of it.
 import { addressRefusal, crossSetAddressMessage } from '../generation/generation-engine';
-import { buildIdentityIndex } from '../generation/identity-index';
+import { buildIdentityIndex, type IdentityIndex } from '../generation/identity-index';
 import { countUnindexedMarkdownFiles } from '../generation/import-set';
 // AM-39. The same merge machinery a re-import uses, not a second copy of it.
 import { readExistingNote, ExistingNoteReadError, type ExistingNote, splitNoteText } from '../generation/existing-note';
@@ -55,6 +65,19 @@ export function readReviewGroups(fm: unknown): ReviewGroupCids | null {
 	return readReviewGroupCids((provenance as Record<string, unknown>).review_groups);
 }
 
+/** The result of one whole-vault pass for control notes. */
+export interface ControlCandidateScan {
+	/** Concept notes this command can link evidence to, by path order. */
+	controls: ControlCandidate[];
+	/**
+	 * Notes whose properties could not be read at all, so nothing is known about
+	 * them — including whether they are controls. Never silently dropped: the
+	 * count is shown, and a note the command was INVOKED FROM being in here is a
+	 * refusal rather than a reason to offer a different control.
+	 */
+	unreadable: string[];
+}
+
 /**
  * Concept notes in the vault, newest-imported first by path order.
  *
@@ -62,12 +85,37 @@ export function readReviewGroups(fm: unknown): ReviewGroupCids | null {
  * crosswalk edge. Linking evidence to an evidence link is not meaningful, and
  * offering it invites exactly the inverted-direction mistake this command
  * exists to prevent.
+ *
+ * AM-46 (2026-09-02). READ FAIL-CLOSED, exactly like the pair scan below. This
+ * used to be `getFileCache(file)?.frontmatter` and nothing else, run in the
+ * modal's constructor: a note Obsidian had not reached yet simply was not a
+ * control, so a partly-indexed vault produced a SILENTLY SHORT list with nothing
+ * to indicate anything was missing. Cache lag is not absence
+ * (`project_cache_lag_is_not_absence`); a cache miss is read off disk, and the
+ * only thing that keeps a file out of the answer is a fact about the file.
+ *
+ * Failure mode prevented: the command being run from a control note Obsidian
+ * had not indexed, finding nothing for it, and quietly linking the evidence to
+ * A DIFFERENT CONTROL — the first one in the list. That is an audit fact
+ * attached to the wrong subject, written while the notice says the link was
+ * created. AM-40's ruling put the gate where the read can see; this is the read
+ * that was still blind, one frame above where the gate used to sit.
  */
-export function listControlCandidates(app: App): ControlCandidate[] {
+export async function scanControlCandidates(app: App): Promise<ControlCandidateScan> {
 	const out: ControlCandidate[] = [];
+	const unreadable: string[] = [];
 	for (const file of app.vault.getMarkdownFiles()) {
-		const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-		if (!fm || typeof fm.curie !== 'string' || fm.curie === '') continue;
+		let fm = app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+		if (!fm) {
+			const read = await readNoteFrontmatterState(app, file);
+			// `none` is a fact (this file has no properties, so it is not a control).
+			// `unreadable` is the absence of a fact and is reported, never counted as
+			// a "no".
+			if (read.state === 'unreadable') { unreadable.push(file.path); continue; }
+			if (read.state !== 'ok') continue;
+			fm = read.frontmatter;
+		}
+		if (typeof fm.curie !== 'string' || fm.curie === '') continue;
 		if (fm.kind === 'junction-note' || fm.kind === 'crosswalk-edge') continue;
 		out.push({
 			path: file.path,
@@ -77,7 +125,8 @@ export function listControlCandidates(app: App): ControlCandidate[] {
 			reviewGroups: readReviewGroups(fm),
 		});
 	}
-	return out.sort((a, b) => a.path.localeCompare(b.path));
+	out.sort((a, b) => a.path.localeCompare(b.path));
+	return { controls: out, unreadable };
 }
 
 /**
@@ -92,6 +141,10 @@ export { countUnindexedMarkdownFiles };
 
 const EVIDENCE_COVERAGES = ['full', 'partial', 'none'] as const;
 const EVIDENCE_STATUSES = ['proposed', 'in_review', 'approved'] as const;
+
+/** What the three review controls show before anything is known about a pair. */
+const FORM_DEFAULT_COVERAGE: EvidenceCoverage = 'full';
+const FORM_DEFAULT_STATUS: EvidenceStatus = 'proposed';
 
 /** A frontmatter value that is one of a closed set of strings, or null. */
 function readEnum<T extends string>(value: unknown, allowed: readonly string[]): T | null {
@@ -113,13 +166,42 @@ function wikilinkTarget(value: unknown): string | null {
  * a recipe's extra columns, another plugin's keys. The window has no control for
  * any of them and no opinion about them, so an update carries them across
  * untouched rather than dropping them because it did not happen to re-emit them.
- * `tags` is deliberately NOT here: a user's hand-added tag survives, matching the
- * list-union rule `mergeFrontmatter` applies on re-import.
+ *
+ * AM-41 (2026-09-02). `reviewed_against` LEFT this set. It is not a field the
+ * window has an opinion about; it is the RECORD OF AN ACT — what the approver
+ * read when they approved. Owning it meant re-emitting it against the control's
+ * CURRENT fingerprint on every update, so a reviewer who opened the window to
+ * adjust a scope on an already-drifted approval silently re-baselined the
+ * attestation and the drift report flipped the row back to current. That is a
+ * fabricated audit fact, which is the one outcome the whole re-attestation
+ * mechanism exists to prevent. It is written only by the act that produces it
+ * (see `statusSetInThisWindow`), and carried byte-for-byte otherwise.
+ *
+ * AM-42 (2026-09-02). `_crosswalker` LEFT this set too. The window's own
+ * provenance block carries no `import_set`, so overwriting the note's block
+ * stripped the junction's OWNERSHIP: the recipe that created the link could no
+ * longer find it in its owned index, the address branch refused the row, and the
+ * remedy the product offered the user was to delete the reviewed note. A
+ * junction a recipe created still belongs to that recipe after any number of
+ * window edits. On a CREATE the window still emits its own block — a
+ * window-minted junction belongs to no import set, and that is a fact about it.
+ *
+ * `tags` is deliberately not here either, but for a third reason: it is
+ * LIST-UNIONED with the note's own value (see `unionListBlock`), exactly as
+ * `mergeFrontmatter` does on re-import, so a hand-added tag survives AND a
+ * removed `evidence/junction` tag comes back.
  */
 const WINDOW_MANAGED_KEYS: ReadonlySet<string> = new Set([
 	'curie', 'kind', 'title', 'subject', 'subject_curie', 'predicate', 'object',
-	'coverage', 'status', 'scope', 'reviewed_against', '_crosswalker',
+	'coverage', 'status', 'scope',
 ]);
+
+/**
+ * Keys whose fresh value is UNIONED with the note's existing value rather than
+ * replacing it or being dropped. Mirrors `frontmatter-merge.ts`'s
+ * `LIST_UNION_KEYS`, which is the rule a re-import applies to the same note.
+ */
+const LIST_UNION_KEYS: ReadonlySet<string> = new Set(['tags']);
 
 /** One top-level frontmatter key and the raw lines that belong to it. */
 interface FrontmatterBlock { key: string; lines: string[] }
@@ -158,21 +240,95 @@ function frontmatterBlocks(text: string): FrontmatterBlock[] {
 	return out;
 }
 
+/** One item of a YAML list, with any surrounding quotes removed for comparison. */
+function unquote(value: string): string {
+	const trimmed = value.trim();
+	return /^(".*"|'.*')$/.test(trimmed) ? trimmed.slice(1, -1) : trimmed;
+}
+
+/** The items of a `key: [a, b]` or `key:\n  - a\n  - b` block, or null. */
+function readListBlock(lines: string[]): { items: string[]; inline: boolean } | null {
+	if (lines.length === 0) return null;
+	const head = lines[0];
+	const colon = head.indexOf(':');
+	if (colon < 0) return null;
+	const inlineValue = head.slice(colon + 1).trim();
+	if (inlineValue.startsWith('[') && inlineValue.endsWith(']')) {
+		// A flow list continued over several lines is not a shape this product
+		// writes and not one this parser will guess at.
+		if (lines.length > 1 && lines.slice(1).some((l) => l.trim() !== '')) return null;
+		const inner = inlineValue.slice(1, -1).trim();
+		return { items: inner === '' ? [] : inner.split(',').map((i) => i.trim()).filter((i) => i !== ''), inline: true };
+	}
+	if (inlineValue !== '') return null;
+	const items: string[] = [];
+	for (const line of lines.slice(1)) {
+		if (line.trim() === '') continue;
+		const match = /^\s*-\s*(.*)$/.exec(line);
+		if (!match) return null;
+		items.push(match[1].trim());
+	}
+	return { items, inline: false };
+}
+
+/**
+ * AM-42. The union of a list key's fresh and existing values, in the note's own
+ * style, or null when either side is a shape this parser will not guess at.
+ *
+ * Fresh items first then the note's extras, de-duplicated — the same order and
+ * the same rule `frontmatter-merge.ts` applies on re-import, so the window and a
+ * refresh cannot disagree about what a junction's tags are.
+ *
+ * Failure mode prevented: the comment on `WINDOW_MANAGED_KEYS` promising a
+ * union while the code carried the note's block and dropped the fresh one, so a
+ * junction whose `evidence/junction` tag someone deleted by hand never got it
+ * back through this window (a re-import would have restored it) and the note
+ * stayed invisible to every tag-driven view.
+ */
+function unionListBlock(freshLines: string[], existingLines: string[]): string[] | null {
+	const fresh = readListBlock(freshLines);
+	const existing = readListBlock(existingLines);
+	if (!fresh || !existing) return null;
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const item of [...fresh.items, ...existing.items]) {
+		const key = unquote(item);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(item);
+	}
+	// The note's own style is kept: rewriting a user's block list into a flow list
+	// is a diff they did not ask for on a key they own half of.
+	const head = existingLines[0];
+	const keyText = head.slice(0, head.indexOf(':') + 1);
+	if (existing.inline) return [`${keyText} [${out.join(', ')}]`];
+	return [keyText, ...out.map((item) => `  - ${item}`)];
+}
+
 /**
  * The merged properties block: this window's keys as it just wrote them, plus
  * every key the note already carried that the window does not own, verbatim.
  */
 function mergeFrontmatterText(freshText: string, existingText: string, managed: ReadonlySet<string>): string {
 	const carried = frontmatterBlocks(existingText).filter((block) => !managed.has(block.key));
-	const carriedKeys = new Set(carried.map((block) => block.key));
+	const carriedByKey = new Map(carried.map((block) => [block.key, block]));
+	const unioned = new Set<string>();
 	const out: string[] = [];
 	for (const block of frontmatterBlocks(freshText)) {
+		const existing = carriedByKey.get(block.key);
+		if (existing && LIST_UNION_KEYS.has(block.key)) {
+			const union = unionListBlock(block.lines, existing.lines);
+			// Unparseable on either side: the note's bytes are kept untouched. A tag
+			// list nobody can read is not a tag list to rewrite.
+			if (union) { out.push(...union); unioned.add(block.key); }
+			continue;
+		}
 		// The note's own value wins for a key the window does not own, so a second
 		// click never re-asserts a default over a person's answer.
-		if (carriedKeys.has(block.key)) continue;
+		if (existing) continue;
 		out.push(...block.lines);
 	}
-	for (const block of carried) out.push(...block.lines);
+	for (const block of carried) { if (!unioned.has(block.key)) out.push(...block.lines); }
 	return out.join('\n');
 }
 
@@ -191,6 +347,7 @@ function mergeIntoExistingLink(
 	current: ExistingNote,
 	freshMarkdown: string,
 	previousBody: string | null,
+	managed: ReadonlySet<string>,
 ): { ok: true; markdown: string } | { ok: false; detail: string } {
 	const scan = scanRegions(current.body);
 	if (!scan.ok) return { ok: false, detail: scan.detail };
@@ -203,52 +360,141 @@ function mergeIntoExistingLink(
 	} else {
 		body = current.body;
 	}
-	const frontmatter = mergeFrontmatterText(fresh.frontmatterText, current.frontmatterText, WINDOW_MANAGED_KEYS);
+	const frontmatter = mergeFrontmatterText(fresh.frontmatterText, current.frontmatterText, managed);
 	return {
 		ok: true,
 		markdown: body.trim() ? `---\n${frontmatter}\n---\n\n${body}` : `---\n${frontmatter}\n---\n`,
 	};
 }
 
+/** The `reviewed_against` block a junction note already records, or null. */
+function readRecordedReviewedAgainst(fm: Record<string, unknown> | undefined): {
+	reviewCid: string | null;
+	reviewGroups: ReviewGroupCids | null;
+} | null {
+	if (!fm) return null;
+	const against = fm.reviewed_against;
+	if (!against || typeof against !== 'object' || Array.isArray(against)) return null;
+	const source = against as Record<string, unknown>;
+	const cid = typeof source.review_cid === 'string' && source.review_cid.trim() !== '' ? source.review_cid.trim() : null;
+	return { reviewCid: cid, reviewGroups: readReviewGroupCids(source.review_groups) };
+}
+
 export interface EvidenceLinkModalDeps {
 	app: App;
 	folder: string;
-	/** Pre-selected control, when the command runs from an open control note. */
-	initialControl?: ControlCandidate;
+	/**
+	 * AM-46. The path of the note the command was INVOKED FROM, when it was
+	 * invoked from one — not a resolved candidate.
+	 *
+	 * The caller used to resolve it against a cache-only read of its own, so a
+	 * control Obsidian had not indexed yielded `undefined` and the window fell
+	 * through to the first control in the list. The window resolves it against
+	 * the one fail-closed scan instead, and a path it cannot read is a refusal
+	 * rather than a reason to offer a different control.
+	 */
+	initialControlPath?: string;
+}
+
+/**
+ * AM-43. What the window knows about the (control, evidence) pair now displayed.
+ *
+ * Resolved ONCE per pair, before the review controls are answerable, so the form
+ * can show the pair's recorded state and then write exactly what it shows.
+ */
+interface PairResolution {
+	controlPath: string;
+	evidencePath: string;
+	/** Vault-wide, for the mint-collision check and the address refusal. */
+	index: IdentityIndex;
+	/** The note that IS this link, or null when nothing records the pair. */
+	existing: { file: TFile; curie: string | null } | null;
+	/** That note as read from disk, fail-closed. Null when there is no note. */
+	current: ExistingNote | null;
 }
 
 export class EvidenceLinkModal extends Modal {
-	private controls: ControlCandidate[];
-	private control: ControlCandidate | null;
+	private controls: ControlCandidate[] = [];
+	private unreadableControls = new Set<string>();
+	private control: ControlCandidate | null = null;
 	private evidencePath = '';
-	private coverage: EvidenceCoverage = 'full';
-	private status: EvidenceStatus = 'proposed';
+	private coverage: EvidenceCoverage = FORM_DEFAULT_COVERAGE;
+	private status: EvidenceStatus = FORM_DEFAULT_STATUS;
 	/** Renamed from `scope`: Modal already owns that property. */
 	private evidenceScope = '';
 	/**
-	 * AM-39. Which of the three review fields the person actually set in this
-	 * window. A field they never touched must not overwrite what the existing
-	 * link already records: pressing "Create link" a second time on an approved,
-	 * partially-scoped link used to silently reset it to the form's defaults
-	 * (proposed, full, no scope), because the window rebuilt the note from its own
-	 * controls and had never read the note's. An untouched control is a question
-	 * nobody answered, not an answer of "default".
+	 * AM-41. Did the person set `status` IN THIS WINDOW, IN THIS SESSION?
+	 *
+	 * This is a record of an ACT, not a reading of the form's state: the dropdown
+	 * sets it when it fires, and nothing else can. It is the only thing that
+	 * authorises writing `reviewed_against`, because a review baseline is what the
+	 * approver read at the moment they approved, and no amount of inspecting a
+	 * form afterwards can recover whether anybody approved anything.
+	 *
+	 * Cleared on every pair resolution: an act performed on one pair says nothing
+	 * about the next one.
 	 */
-	private touched: { coverage: boolean; status: boolean; scope: boolean } = {
-		coverage: false, status: false, scope: false,
-	};
+	private statusSetInThisWindow = false;
+
+	/** AM-43. The one lookup for the pair now displayed, and its lifecycle. */
+	private resolution: PairResolution | null = null;
+	private resolving = false;
+	/** A named refusal from the last resolution (unreadable note, two junctions). */
+	private pairRefusal: string | null = null;
+
+	private coverageDrop: DropdownComponent | null = null;
+	private statusDrop: DropdownComponent | null = null;
+	private scopeText: TextComponent | null = null;
+	private submitButton: ButtonComponent | null = null;
+	private pairStatusEl: HTMLElement | null = null;
 
 	constructor(private readonly deps: EvidenceLinkModalDeps) {
 		super(deps.app);
-		this.controls = listControlCandidates(deps.app);
-		this.control = deps.initialControl ?? null;
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-
 		new Setting(contentEl).setName('Link evidence to a control').setHeading();
+		contentEl.createEl('p', { text: 'Reading the controls in this vault.' });
+		void this.loadControls();
+	}
+
+	/**
+	 * AM-46. The control list, read fail-closed, before anything is drawn.
+	 *
+	 * This was a cache-only read in the constructor. Reading it here costs one
+	 * asynchronous pass and buys the two things the constructor could not have:
+	 * a note the cache missed is read rather than dropped, and the number of
+	 * notes nothing could be read from is a fact the window can state instead of
+	 * a silence the user has to notice.
+	 */
+	private async loadControls(): Promise<void> {
+		const scan = await scanControlCandidates(this.app);
+		this.controls = scan.controls;
+		this.unreadableControls = new Set(scan.unreadable);
+		this.renderForm();
+	}
+
+	private renderForm(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		new Setting(contentEl).setName('Link evidence to a control').setHeading();
+
+		// AM-46. The note the command was invoked from could not be READ. Not
+		// "is not a control" (that is an answer, and the window simply offers the
+		// list); nothing at all is known about it, and substituting a different
+		// control would attach the reviewer's evidence to the wrong subject while
+		// reporting success.
+		const invokedFrom = this.deps.initialControlPath;
+		if (invokedFrom && this.unreadableControls.has(invokedFrom)) {
+			contentEl.createEl('p', {
+				text: `Crosswalker cannot read the control note you opened this from (${invokedFrom}), so it cannot tell `
+					+ 'which control you meant. Fix that note\'s properties, or open a control that reads cleanly, then '
+					+ 'run this command again.',
+			});
+			return;
+		}
 
 		if (this.controls.length === 0) {
 			const unindexed = countUnindexedMarkdownFiles(this.deps.app);
@@ -264,6 +510,14 @@ export class EvidenceLinkModal extends Modal {
 			text: 'Records that a document provides evidence for a control. The link is a note, so you can review and update it later.',
 		});
 
+		// AM-46. The short list is stated, not left to be noticed.
+		if (this.unreadableControls.size > 0) {
+			contentEl.createEl('p', {
+				text: `${this.unreadableControls.size} notes could not be read, so this list may be short. `
+					+ 'If the control you want is missing, fix that note\'s properties and run this command again.',
+			});
+		}
+
 		new Setting(contentEl)
 			.setName('Control')
 			.setDesc('The control that needs evidence.')
@@ -271,11 +525,18 @@ export class EvidenceLinkModal extends Modal {
 				for (const candidate of this.controls) {
 					drop.addOption(candidate.path, `${candidate.title} (${candidate.curie})`);
 				}
-				const selected = this.control?.path ?? this.controls[0].path;
+				// A note the command was invoked from that READS cleanly but is not a
+				// control is a fact, not a failure: the window shows the list and the
+				// person picks. Only an unreadable one refuses (above).
+				const preselected = invokedFrom
+					? this.controls.find((c) => c.path === invokedFrom)
+					: undefined;
+				const selected = (preselected ?? this.controls[0]).path;
 				drop.setValue(selected);
 				this.control = this.controls.find((c) => c.path === selected) ?? this.controls[0];
 				drop.onChange((value) => {
 					this.control = this.controls.find((c) => c.path === value) ?? null;
+					this.pairChanged();
 				});
 			});
 
@@ -285,7 +546,12 @@ export class EvidenceLinkModal extends Modal {
 			.addText((text) => {
 				text.setPlaceholder('Evidence/MFA policy.md');
 				text.onChange((value) => { this.evidencePath = value; });
+				// AM-43: the lookup runs when the pair is FIXED, never per keystroke.
+				// Leaving the field is what fixes it.
+				text.inputEl.addEventListener('blur', () => { this.pairChanged(); });
 			});
+
+		this.pairStatusEl = contentEl.createEl('p', { text: '' });
 
 		new Setting(contentEl)
 			.setName('Coverage')
@@ -295,7 +561,8 @@ export class EvidenceLinkModal extends Modal {
 				drop.addOption('partial', 'Partial');
 				drop.addOption('none', 'None, this evidence does not cover it');
 				drop.setValue(this.coverage);
-				drop.onChange((value) => { this.coverage = value as EvidenceCoverage; this.touched.coverage = true; });
+				drop.onChange((value) => { this.coverage = value as EvidenceCoverage; });
+				this.coverageDrop = drop;
 			});
 
 		new Setting(contentEl)
@@ -306,14 +573,21 @@ export class EvidenceLinkModal extends Modal {
 				drop.addOption('in_review', 'In review');
 				drop.addOption('approved', 'Approved');
 				drop.setValue(this.status);
-				drop.onChange((value) => { this.status = value as EvidenceStatus; this.touched.status = true; });
+				drop.onChange((value) => {
+					this.status = value as EvidenceStatus;
+					// AM-41. The act, recorded where it happens.
+					this.statusSetInThisWindow = true;
+				});
+				this.statusDrop = drop;
 			});
 
 		new Setting(contentEl)
 			.setName('Scope')
 			.setDesc('Optional. Which part of the control this covers.')
 			.addText((text) => {
-				text.onChange((value) => { this.evidenceScope = value; this.touched.scope = true; });
+				text.setValue(this.evidenceScope);
+				text.onChange((value) => { this.evidenceScope = value; });
+				this.scopeText = text;
 			});
 
 		new Setting(contentEl).addButton((button) => {
@@ -321,7 +595,127 @@ export class EvidenceLinkModal extends Modal {
 				.setButtonText('Create link')
 				.setCta()
 				.onClick(() => { void this.create(); });
+			this.submitButton = button;
 		});
+
+		this.applyPairState();
+	}
+
+	/**
+	 * AM-43. The pair changed, so what the form shows is no longer known to be
+	 * true of it. Drop the resolution and look the new pair up once.
+	 */
+	private pairChanged(): void {
+		const evidencePath = normalizePath(this.evidencePath.trim());
+		if (this.resolution
+			&& this.resolution.controlPath === this.control?.path
+			&& this.resolution.evidencePath === evidencePath) {
+			return;
+		}
+		this.resolution = null;
+		this.pairRefusal = null;
+		this.applyPairState();
+		if (!this.control || !evidencePath) return;
+		void this.resolvePair(this.control, evidencePath);
+	}
+
+	/**
+	 * AM-43. THE ONE LOOKUP. Runs when the pair is fixed, sets the controls from
+	 * what the pair's note records, and hands `create()` a resolution it does not
+	 * re-derive.
+	 *
+	 * Failure mode prevented: prefill at WRITE time. The window used to display
+	 * `Full` / `Proposed` / no scope whatever the note said, and reconcile at
+	 * submit by asking whether each control "had been answered". Two things
+	 * followed, and both were reported as success. A reviewer reading the form was
+	 * told a link was proposed when the note said approved. And REVOKING AN
+	 * APPROVAL WAS IMPOSSIBLE: an Obsidian dropdown fires no change event when the
+	 * value chosen is the value already shown, so selecting `Proposed` on a
+	 * dropdown displaying `Proposed` was indistinguishable from not choosing, and
+	 * the note kept its approval. The safety-critical direction was the one that
+	 * silently did nothing.
+	 *
+	 * While this runs the three review controls are DISABLED. They are questions
+	 * about a pair whose recorded state is not yet known, and an answer given
+	 * during the lookup would be overwritten by the prefill that lands after it.
+	 */
+	private async resolvePair(control: ControlCandidate, evidencePath: string): Promise<void> {
+		this.resolving = true;
+		this.applyPairState();
+		try {
+			// Vault-wide, because the questions are "who already holds this identity"
+			// and "whose is the note at this address", and a scoped index by
+			// construction cannot answer about the notes it excluded.
+			const index = await buildIdentityIndex(this.app);
+			const scan = await this.junctionsNamingThisPair(control, evidencePath);
+			if (!scan.ok) {
+				this.pairRefusal = `The properties of ${scan.unreadablePath} could not be read, so Crosswalker cannot tell `
+					+ 'whether it is already the link for this control and this evidence. Fix that note\'s properties, '
+					+ 'then try again.';
+				return;
+			}
+			const named = scan.junctions;
+			if (named.length > 1) {
+				this.pairRefusal = `${named.length} notes already record this control and this evidence `
+					+ `(${named.map((entry) => entry.file.path).join(', ')}). Delete or fix all but one of them, `
+					+ 'then try again.';
+				return;
+			}
+			const existing = named[0] ?? null;
+
+			// The note this window is about to change, read ONCE and read
+			// fail-closed, through the same reader generation uses. Everything below
+			// that needs to know what the link already says asks this, so the window
+			// cannot form two opinions about the note it is updating.
+			let current: ExistingNote | null = null;
+			if (existing) {
+				try {
+					current = await readExistingNote(this.app, existing.file);
+				} catch (readErr) {
+					const detail = readErr instanceof ExistingNoteReadError ? readErr.detail : String(readErr);
+					this.pairRefusal = `${existing.file.path} could not be read (${detail}). Fix that note, then try again.`;
+					return;
+				}
+			}
+
+			// The prefill. What the pair records is what the form shows; a pair that
+			// records nothing shows the form's own defaults, so one pair's answers can
+			// never be written onto another.
+			const fm = current?.frontmatter ?? {};
+			this.coverage = readEnum<EvidenceCoverage>(fm.coverage, EVIDENCE_COVERAGES) ?? FORM_DEFAULT_COVERAGE;
+			this.status = readEnum<EvidenceStatus>(fm.status, EVIDENCE_STATUSES) ?? FORM_DEFAULT_STATUS;
+			this.evidenceScope = typeof fm.scope === 'string' ? fm.scope : '';
+			this.statusSetInThisWindow = false;
+			this.coverageDrop?.setValue(this.coverage);
+			this.statusDrop?.setValue(this.status);
+			this.scopeText?.setValue(this.evidenceScope);
+
+			this.resolution = { controlPath: control.path, evidencePath, index, existing, current };
+		} catch (err) {
+			this.pairRefusal = `Crosswalker could not check for an existing link (${err instanceof Error ? err.message : String(err)}).`;
+		} finally {
+			this.resolving = false;
+			this.applyPairState();
+		}
+	}
+
+	/** The status line and what the person may answer, given what is known. */
+	private applyPairState(): void {
+		const ready = this.resolution !== null;
+		this.coverageDrop?.setDisabled(!ready);
+		this.statusDrop?.setDisabled(!ready);
+		this.scopeText?.setDisabled(!ready);
+		this.submitButton?.setDisabled(!ready);
+		if (!this.pairStatusEl) return;
+		let text: string;
+		if (this.pairRefusal) text = `Cannot link this pair yet. ${this.pairRefusal}`;
+		else if (this.resolving) text = 'Checking for an existing link.';
+		else if (!this.resolution) text = 'Enter the evidence path. Crosswalker checks whether this pair already has a link.';
+		else if (this.resolution.existing) {
+			text = `This control and this evidence already have a link at ${this.resolution.existing.file.path}. `
+				+ 'The values below are what it records. Change them to update it.';
+		} else text = 'No link exists for this control and this evidence yet.';
+		this.pairStatusEl.setText(text);
 	}
 
 	private async create(): Promise<void> {
@@ -334,6 +728,18 @@ export class EvidenceLinkModal extends Modal {
 			new Notice('Enter the path to the evidence document.');
 			return;
 		}
+
+		// AM-43. What the form shows is what it writes, so it must have been shown.
+		// A submit with no resolution for the pair now named looks the pair up and
+		// returns: the person sees the pair's recorded state and clicks again. The
+		// alternative is reconciling at write time, which is the defect.
+		const resolution = this.resolution;
+		if (!resolution || resolution.controlPath !== this.control.path || resolution.evidencePath !== evidencePath) {
+			this.pairChanged();
+			new Notice('Checking for an existing link for this control and this evidence. Review the values, then click the button again.');
+			return;
+		}
+
 		// Warn but do not block: evidence may legitimately be added before the
 		// document lands in the vault, and refusing would push the user back to
 		// hand-writing the note, which is what this command exists to replace.
@@ -342,117 +748,31 @@ export class EvidenceLinkModal extends Modal {
 		}
 
 		try {
-			// AM-17 (2026-08-31). THE DOOR. The write used to be `vault.modify` on
-			// whatever `getAbstractFileByPath` found: `resolveWriteTarget`'s pre-AM-14
-			// body verbatim, on a window instead of the engine. The junction folder is
-			// a user SETTING, so pointing it at a folder that already holds notes, or
-			// having any note whose basename matched the junction shape, meant a
-			// person's note was replaced in full while the notice said the link had
-			// been "updated".
-			//
-			// AM-23 (2026-08-31). And the lookup comes BEFORE THE CREATE, not only
-			// before the update. The old order asked the address first, so renaming or
-			// dragging a junction note in Obsidian - a thing Obsidian invites - left
-			// nothing at the address and the next link for that pair created a SECOND
-			// note holding the same curie. Two notes with one identity is a permanent
-			// `Ambiguous identity` collision that fails every later import in the
-			// vault, and a link double-counted by every coverage tally.
-			//
-			// AM-30 (2026-08-31). And the question is asked of the NOTES, not of a
-			// recomputed key. The lookup used to be the curie this window would mint
-			// today, and that curie is a function of the evidence file's vault path:
-			// move the evidence document, re-link the same real pair, and the "same"
-			// identity came out different, so nothing found the junction that plainly
-			// existed and a SECOND one was written for the pair - double-counted by
-			// every coverage tally. A path may seed a mint; it may never be needed
-			// again after it.
-			//
-			// So: which note names this pair, wherever it sits and whatever era it was
-			// written in; then the address; then, and only then, a mint.
-			//
-			// AM-40 (2026-09-01). There used to be a `requireVaultIndexed` gate here,
-			// and it is deliberately gone. Both readers below already raw-read any
-			// file the metadata cache missed - `junctionsNamingThisPair` through
-			// `readNoteFrontmatterState`, `buildIdentityIndex` through its own disk
-			// fallback - so the gate refused what the code beneath it could already
-			// see, while genuinely blocking the ordinary case it was aimed at:
-			// Obsidian still indexing at startup, where nothing is wrong and the
-			// user is simply told to come back later. A fail-closed precondition
-			// belongs where the read is BLIND, not where it can see. (It stays in
-			// `newSetSchemeFor`, whose whole-vault discovery is cache-only by design.)
-			//
-			// Vault-wide, because the questions are "who already holds this identity"
-			// and "whose is the note at this address", and a scoped index by
-			// construction cannot answer about the notes it excluded.
-			const index = await buildIdentityIndex(this.app);
+			const { index, existing, current } = resolution;
 
-			// The note that IS this link, wherever it sits. A rename moved it; the
-			// pair it records did not move with it.
-			//
-			// AM-35: a note whose properties could not be read stops this outright.
-			// The one note nothing could be read off may be the junction being looked
-			// for, and treating it as "not this pair" is how a duplicate gets minted.
-			const scan = await this.junctionsNamingThisPair(evidencePath);
-			if (!scan.ok) {
-				new Notice(
-					`Could not create the link: the properties of ${scan.unreadablePath} could not be read, so Crosswalker `
-					+ 'cannot tell whether it is already the link for this control and this evidence. '
-					+ 'Fix that note\'s properties, then try again.',
-					12000,
-				);
-				return;
-			}
-			const named = scan.junctions;
-			if (named.length > 1) {
-				new Notice(
-					`Could not create the link: ${named.length} notes already record this control and this evidence `
-					+ `(${named.map((entry) => entry.file.path).join(', ')}). Delete or fix all but one of them, then try again.`,
-					12000,
-				);
-				return;
-			}
-			const existing = named[0] ?? null;
+			// AM-43. Exactly what the controls display. No comparison to a default,
+			// no "did they answer" question: the control's state IS the person's
+			// answer, and an untouched control displays the note's own value, so
+			// writing it back is idempotent.
+			const coverage = this.coverage;
+			const status = this.status;
+			const scope = this.evidenceScope.trim();
 
-			// AM-39. The note this window is about to change, read ONCE and read
-			// fail-closed, through the same reader generation uses. Everything below
-			// that needs to know what the link already says asks this, so the window
-			// cannot form two opinions about the note it is updating.
-			let current: ExistingNote | null = null;
-			if (existing) {
-				try {
-					current = await readExistingNote(this.app, existing.file);
-				} catch (readErr) {
-					const detail = readErr instanceof ExistingNoteReadError ? readErr.detail : String(readErr);
-					new Notice(
-						`Could not update the link: ${existing.file.path} could not be read (${detail}). `
-						+ 'Fix that note, then try again.',
-						12000,
-					);
-					return;
-				}
-			}
-
-			// AM-39. The three review controls prefill from the note. A control the
-			// person did not answer keeps what the link already records; only a
-			// control they actually set overwrites it. Without this, a second click
-			// on an approved link silently reset it to the form's defaults and told
-			// the user it had been "updated".
-			const recordedFm = current?.frontmatter ?? {};
-			const coverage = this.answered('coverage')
-				? this.coverage
-				: (readEnum<EvidenceCoverage>(recordedFm.coverage, EVIDENCE_COVERAGES) ?? this.coverage);
-			const status = this.answered('status')
-				? this.status
-				: (readEnum<EvidenceStatus>(recordedFm.status, EVIDENCE_STATUSES) ?? this.status);
-			const scope = this.answered('scope')
-				? this.evidenceScope.trim()
-				: (typeof recordedFm.scope === 'string' ? recordedFm.scope : this.evidenceScope.trim());
-
-			// Only an approval records a baseline, so only an approval needs the
-			// control's fingerprint resolved — and resolved honestly.
-			let controlReviewCid = this.control.reviewCid;
-			let controlReviewGroups = this.control.reviewGroups ?? null;
-			if (status === 'approved' && controlReviewCid === null) {
+			// AM-41. An attestation is an act. `reviewed_against` is written only
+			// when the person set `status` in THIS window: to `approved`, against the
+			// control's fingerprint as it is now; to anything else, not at all, which
+			// REMOVES the note's baseline because a revoked approval has no baseline.
+			// If they did not set `status`, the note's own record is carried
+			// byte-for-byte whatever the control's fingerprint has become, so a
+			// drifted approval keeps reporting as drifted through any number of scope
+			// edits.
+			const attesting = this.statusSetInThisWindow;
+			const recordedAgainst = readRecordedReviewedAgainst(current?.frontmatter);
+			let controlReviewCid = attesting ? this.control.reviewCid : (recordedAgainst?.reviewCid ?? null);
+			let controlReviewGroups = attesting
+				? (this.control.reviewGroups ?? null)
+				: (recordedAgainst?.reviewGroups ?? null);
+			if (attesting && status === 'approved' && controlReviewCid === null) {
 				const controlFile = this.app.vault.getAbstractFileByPath(this.control.path);
 				if (controlFile instanceof TFile && !this.app.metadataCache.getFileCache(controlFile)) {
 					// A null cache entry means EITHER no frontmatter OR not indexed
@@ -505,18 +825,10 @@ export class EvidenceLinkModal extends Modal {
 			// error case: that identity is being introduced now, and introducing it
 			// onto an existing claim is a collision this window would itself create.
 			//
-			// DEFERRED, 2026-09-01 (adversarial CONFIRMED 6), and left here in the
-			// open rather than silently: AM-36's text scopes the refusal by the
-			// identity's ERA ("the current injective identity only") while this
-			// scopes it by whether one is being INTRODUCED. They differ in exactly
-			// one case - updating a note whose recorded curie is already the current
-			// mint form while a second note also claims it. The era reading would be
-			// `if (!recorded || curieIsCurrentForm(curie))`. It is not made here
-			// because a declaration pins the shipped reading with both arguments
-			// written out (`tests/evidence-window-unreadable-and-pair.test.ts`, "the
-			// contested identifier is the CURRENT scheme"), and because the update
-			// restamps nothing and adds no claimant, so the contest is exactly as bad
-			// after as before. The ruling is the architect's; the site is this line.
+			// The era reading of AM-36's text (refuse whenever the CURRENT mint form
+			// is contested, update or not) was ruled out on 2026-09-02: the code is
+			// the spec, a committed declaration pins this reading with both arguments
+			// written out, and the update restamps nothing and adds no claimant.
 			if (!recorded) {
 				const claimants = index.collisions.find((collision) => collision.curie === curie)?.paths
 					?? (index.get(curie) ? [index.get(curie)!.path] : []);
@@ -547,10 +859,10 @@ export class EvidenceLinkModal extends Modal {
 
 			let writtenPath: string;
 			if (existing) {
-				// `current` is set for every `existing` above, or the window already
-				// returned. Stated as a refusal rather than an assertion so a future
-				// edit that separates them cannot fall through to the create branch and
-				// write a second note for a pair that already has one.
+				// `current` is set for every `existing` above, or the resolution refused.
+				// Stated as a refusal rather than an assertion so a future edit that
+				// separates them cannot fall through to the create branch and write a
+				// second note for a pair that already has one.
 				if (!current) {
 					new Notice(`Could not update the link at ${existing.file.path}: it could not be read.`, 12000);
 					return;
@@ -570,7 +882,21 @@ export class EvidenceLinkModal extends Modal {
 				// reporting that the link had been "updated". A window that can
 				// destroy an attestation is not a lighter-weight door than an import;
 				// it is the same door with no lock.
-				const merged = mergeIntoExistingLink(current, note.markdown, this.previousRenderBody(current, evidencePath));
+				//
+				// AM-41. `reviewed_against` is owned by this write ONLY when the person
+				// set the status here. Owned means the fresh block wins, and when the
+				// status they set is not `approved` the fresh note carries no block at
+				// all, so the baseline is removed. Not owned means the note's own bytes
+				// are carried, and a re-attestation nobody performed cannot happen.
+				const managed = attesting
+					? new Set([...WINDOW_MANAGED_KEYS, 'reviewed_against'])
+					: WINDOW_MANAGED_KEYS;
+				const merged = mergeIntoExistingLink(
+					current,
+					note.markdown,
+					this.previousRenderBody(current, evidencePath),
+					managed,
+				);
 				if (!merged.ok) {
 					new Notice(
 						`Could not update the link at ${existing.file.path}: ${merged.detail} `
@@ -619,24 +945,6 @@ export class EvidenceLinkModal extends Modal {
 	}
 
 	/**
-	 * AM-39. Did the person actually answer this control?
-	 *
-	 * A touch is the direct evidence. A value that differs from the form's own
-	 * default is accepted as an answer too, because the command's entry points set
-	 * these fields directly and a value nobody could have arrived at by leaving
-	 * the form alone is an answer however it got there. The one case neither can
-	 * see is choosing the value the default already showed, which is
-	 * indistinguishable from not choosing: the note's own value is kept, so
-	 * nothing is overwritten by a click that changed nothing.
-	 */
-	private answered(field: 'coverage' | 'status' | 'scope'): boolean {
-		if (this.touched[field]) return true;
-		if (field === 'coverage') return this.coverage !== 'full';
-		if (field === 'status') return this.status !== 'proposed';
-		return this.evidenceScope.trim() !== '';
-	}
-
-	/**
 	 * AM-39. The body this window would have written for the link AS THE NOTE NOW
 	 * RECORDS IT, or null when the note does not record enough to say.
 	 *
@@ -650,6 +958,12 @@ export class EvidenceLinkModal extends Modal {
 	 * status, scope, curie and baseline), never from the form's current values -
 	 * comparing against the new values would only ever tell us whether the user
 	 * changed anything.
+	 *
+	 * Ruled ACCEPTED AS IMPLEMENTED on 2026-09-02 against AM-39's literal "the
+	 * same merge machinery": `mergeExistingNote` would call `adoptLegacyBody` in
+	 * strict mode for a body with no region markers and refuse every ordinary
+	 * update. The clause meant managed-keys plus region semantics, which is what
+	 * this does.
 	 */
 	private previousRenderBody(current: ExistingNote, fallbackEvidencePath: string): string | null {
 		const control = this.control;
@@ -728,20 +1042,18 @@ export class EvidenceLinkModal extends Modal {
 	 * therefore be duplicated) is a UX decision left to the architect.
 	 */
 	private async junctionsNamingThisPair(
+		control: ControlCandidate,
 		evidencePath: string,
 	): Promise<
 		| { ok: true; junctions: { file: TFile; curie: string | null }[] }
 		| { ok: false; unreadablePath: string }
 	> {
-		const control = this.control;
-		if (!control) return { ok: true, junctions: [] };
 		const out: { file: TFile; curie: string | null }[] = [];
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			let fm = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
 			if (!fm) {
-				// Belt and braces behind `requireVaultIndexed`: a file the cache has
-				// not reached is read rather than assumed empty. Absence of a cache
-				// entry has never meant absence of properties.
+				// A file the cache has not reached is read rather than assumed empty.
+				// Absence of a cache entry has never meant absence of properties.
 				const read = await readNoteFrontmatterState(this.app, file);
 				// AM-35. `none` keeps scanning - a file with no properties is not a
 				// junction, and that is a fact. `unreadable` refuses: the one note that
@@ -751,7 +1063,7 @@ export class EvidenceLinkModal extends Modal {
 				fm = read.frontmatter;
 			}
 			if (fm.kind !== 'junction-note') continue;
-			if (!this.frontmatterNamesThisPair(fm, evidencePath)) continue;
+			if (!this.frontmatterNamesThisPair(fm, control, evidencePath)) continue;
 			const curie = typeof fm.curie === 'string' && fm.curie.trim() !== '' ? fm.curie.trim() : null;
 			out.push({ file, curie });
 		}
@@ -782,9 +1094,11 @@ export class EvidenceLinkModal extends Modal {
 	 * attestation. Closing it properly means an identity for evidence documents,
 	 * which is a design question, not a line edit.
 	 */
-	private frontmatterNamesThisPair(fm: Record<string, unknown>, evidencePath: string): boolean {
-		const control = this.control;
-		if (!control) return false;
+	private frontmatterNamesThisPair(
+		fm: Record<string, unknown>,
+		control: ControlCandidate,
+		evidencePath: string,
+	): boolean {
 		const predicate = typeof fm.predicate === 'string' ? fm.predicate.trim() : '';
 		if (predicate !== '' && predicate !== CANONICAL_EVIDENCE_PREDICATE) return false;
 		const subjectCurie = typeof fm.subject_curie === 'string' ? fm.subject_curie.trim() : '';

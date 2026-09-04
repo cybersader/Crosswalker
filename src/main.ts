@@ -40,7 +40,7 @@ import { generateNotes, generateFromRecipe } from './generation/generation-engin
 import { openSidecar, clearSidecar, type SidecarHandle } from './tier2/sidecar';
 import { runEvidenceReportCommand } from './views/evidence-report-command';
 import { runHousekeepingRebaselineCommand } from './views/rebaseline-housekeeping';
-import { EvidenceLinkModal, listControlCandidates } from './views/evidence-link-modal';
+import { EvidenceLinkModal } from './views/evidence-link-modal';
 import { projectFromTier1, type ProjectionResult } from './tier2/projector';
 import {
 	getConceptsByOntology,
@@ -770,14 +770,20 @@ export default class CrosswalkerPlugin extends Plugin {
 			name: 'Evidence: link evidence to a control',
 			callback: () => {
 				// Pre-select the control when run from an open control note.
+				//
+				// AM-46 (2026-09-02). The PATH is handed over, not a resolved
+				// candidate. This used to resolve it here against a cache-only read
+				// of the whole vault, so a control Obsidian had not indexed yet
+				// resolved to nothing and the window silently selected a DIFFERENT
+				// control (the first in its list) for the reviewer's evidence. The
+				// window resolves the path against its one fail-closed scan instead,
+				// and a note it cannot read is a refusal by name rather than a
+				// substitution. Cache lag is not absence.
 				const active = this.app.workspace.getActiveFile();
-				const initialControl = active
-					? listControlCandidates(this.app).find((c) => c.path === active.path)
-					: undefined;
 				new EvidenceLinkModal({
 					app: this.app,
 					folder: this.settings.evidenceJunctionFolder,
-					initialControl,
+					initialControlPath: active?.path,
 				}).open();
 			},
 		});

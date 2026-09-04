@@ -127,7 +127,10 @@ interface ModalInternals {
 	coverage: string;
 	status: string;
 	evidenceScope: string;
-	touched: { coverage: boolean; status: boolean; scope: boolean };
+	/** AM-41. Set only by the status dropdown's onChange; nothing else may set it. */
+	statusSetInThisWindow: boolean;
+	pairRefusal: string | null;
+	resolvePair(control: ControlCandidate, evidencePath: string): Promise<void>;
 	create(): Promise<void>;
 }
 
@@ -135,6 +138,12 @@ interface ModalInternals {
  * Press "Create link". `set` names the controls the person actually ANSWERED —
  * anything omitted is a control they never touched, which is the case the whole
  * prefill clause is about.
+ *
+ * AM-43 (2026-09-02): the pair lookup is a separate, awaited step now — prefill
+ * is display-time, not write-time. `resolvePair` is driven directly (the DOM's
+ * blur/change events are not present in this harness), and `set` names the
+ * controls answered AFTER the prefill lands, exactly mirroring a person reading
+ * the form and then changing what they mean to change.
  */
 async function pressCreateLink(
 	app: App,
@@ -144,9 +153,10 @@ async function pressCreateLink(
 	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
 	modal.control = control;
 	modal.evidencePath = EVIDENCE;
-	if (set.coverage !== undefined) { modal.coverage = set.coverage; modal.touched.coverage = true; }
-	if (set.status !== undefined) { modal.status = set.status; modal.touched.status = true; }
-	if (set.scope !== undefined) { modal.evidenceScope = set.scope; modal.touched.scope = true; }
+	await modal.resolvePair(control, EVIDENCE);
+	if (set.coverage !== undefined) modal.coverage = set.coverage;
+	if (set.status !== undefined) { modal.status = set.status; modal.statusSetInThisWindow = true; }
+	if (set.scope !== undefined) modal.evidenceScope = set.scope;
 	await modal.create();
 }
 
@@ -423,14 +433,29 @@ describe('AM-40: the window answers correctly with a cold metadata cache', () =>
 		// AM-35 is not what AM-40 removed. The fail-closed refusal that lives
 		// where the read happens is untouched, and a cold cache does not turn it
 		// into a mint.
+		//
+		// AM-43 moved this refusal from a Notice at submit time into the pair
+		// lookup's own state: the lookup runs once, before the controls are even
+		// answerable, and the submit button stays disabled while `pairRefusal` is
+		// set — so a real UI never lets `create()` run at all here. `create()`
+		// itself now only re-triggers the lookup and reports "Checking...".
 		const { app, files } = makeVault({ coldCache: true });
 		files.set(CONTROL.path, `---\ncurie: ${CONTROL.curie}\n---\n\n# AC-2\n`);
 		files.set(EVIDENCE, '# MFA policy\n');
 		files.set('Notes/Damaged.md', '---\n: : :\n  - broken\n---\n\nText.\n');
 
-		await pressCreateLink(app);
+		// `create()` is deliberately NOT called here: with no resolution, it only
+		// re-triggers the lookup (`pairChanged()` clears `pairRefusal` and fires a
+		// new async `resolvePair`) and shows a generic "Checking..." notice — a
+		// real UI never reaches it anyway, because the submit button stays
+		// disabled while `pairRefusal` is set.
+		const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
+		modal.control = CONTROL;
+		modal.evidencePath = EVIDENCE;
+		await modal.resolvePair(CONTROL, EVIDENCE);
 
 		expect(files.has(LINK_PATH)).toBe(false);
-		expect(said()).toContain('Notes/Damaged.md');
+		expect(modal.pairRefusal).toContain('Notes/Damaged.md');
+		expect(modal.pairRefusal).toContain('could not be read');
 	});
 });

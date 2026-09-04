@@ -116,14 +116,41 @@ const curieFor = (c: ControlCandidate, evidence = EVIDENCE): string => evidenceL
 interface ModalInternals {
 	control: ControlCandidate | null;
 	evidencePath: string;
+	pairRefusal: string | null;
+	resolvePair(control: ControlCandidate, evidencePath: string): Promise<void>;
 	create(): Promise<void>;
 }
 
-async function pressCreateLink(app: App, control: ControlCandidate, evidence = EVIDENCE): Promise<void> {
+/**
+ * AM-43 (2026-09-02): the pair lookup runs once, before `create()`, so it is
+ * driven explicitly here rather than left for `create()` to discover it never
+ * ran. `create()` is still exercised afterwards for the legitimate paths (a
+ * pair the scan resolved, whether to an update or a mint) — see
+ * `pairRefusalFor` below for the pair-scan-level refusal cases, which now
+ * surface in `pairRefusal` rather than as a `Notice`.
+ */
+async function pressCreateLink(app: App, control: ControlCandidate, evidence = EVIDENCE): Promise<ModalInternals> {
 	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
 	modal.control = control;
 	modal.evidencePath = evidence;
+	await modal.resolvePair(control, evidence);
 	await modal.create();
+	return modal;
+}
+
+/**
+ * The pair lookup alone, for a scan the design means to REFUSE. `create()` is
+ * deliberately not called: with no resolution it only re-triggers the lookup
+ * (clearing `pairRefusal`) and shows a generic "Checking..." notice, which a
+ * real UI never reaches because the submit button stays disabled while
+ * `pairRefusal` is set.
+ */
+async function resolveOnly(app: App, control: ControlCandidate, evidence = EVIDENCE): Promise<ModalInternals> {
+	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
+	modal.control = control;
+	modal.evidencePath = evidence;
+	await modal.resolvePair(control, evidence);
+	return modal;
 }
 
 const note = (frontmatter: string, body = 'Body.\n'): string => `---\n${frontmatter}\n---\n${body}`;
@@ -157,15 +184,20 @@ describe('AM-35: a junction whose properties cannot be read stops the link', () 
 		// The note nothing could be read off MAY be the junction being looked for.
 		// A refusal that does not say which file it is about is one the user cannot
 		// act on, so the path is the load-bearing half of this message.
+		//
+		// AM-43 (2026-09-02): this refusal now lives in the pair lookup, run once
+		// BEFORE `create()` — the submit button stays disabled while it is set, so
+		// a real UI never reaches `create()` here. It is asserted on `pairRefusal`
+		// rather than on a `Notice`.
 		const { app, files } = makeVault();
 		const damagedPath = `${FOLDER}/damaged.md`;
 		files.set(damagedPath, DAMAGED);
 
-		await pressCreateLink(app, R4);
+		const modal = await resolveOnly(app, R4);
 
-		expect(said()).toContain('Could not create the link');
-		expect(said()).toContain(damagedPath);
-		expect(said()).toContain('could not be read');
+		expect(modal.pairRefusal).toContain(damagedPath);
+		expect(modal.pairRefusal).toContain('could not be read');
+		expect(files.has(pathFor(R4))).toBe(false);
 	});
 
 	it('writes nothing at all, so no second junction is minted for this pair', async () => {
@@ -177,7 +209,7 @@ describe('AM-35: a junction whose properties cannot be read stops the link', () 
 		files.set(damagedPath, DAMAGED);
 		const before = new Map(files);
 
-		await pressCreateLink(app, R4);
+		await resolveOnly(app, R4);
 
 		expect([...files.keys()].sort()).toEqual([...before.keys()].sort());
 		expect(files.get(damagedPath)).toBe(DAMAGED);
@@ -192,10 +224,9 @@ describe('AM-35: a junction whose properties cannot be read stops the link', () 
 		const { app, files } = makeVault();
 		files.set('Somewhere else/a damaged note.md', DAMAGED);
 
-		await pressCreateLink(app, R4);
+		const modal = await resolveOnly(app, R4);
 
-		expect(said()).toContain('Could not create the link');
-		expect(said()).toContain('Somewhere else/a damaged note.md');
+		expect(modal.pairRefusal).toContain('Somewhere else/a damaged note.md');
 		expect(files.has(pathFor(R4))).toBe(false);
 	});
 
@@ -206,11 +237,11 @@ describe('AM-35: a junction whose properties cannot be read stops the link', () 
 		const { app, files } = makeVault();
 		files.set(`${FOLDER}/damaged.md`, DAMAGED);
 
-		await pressCreateLink(app, R4);
+		const modal = await resolveOnly(app, R4);
 
-		expect(said()).not.toContain("not Crosswalker's");
-		expect(said()).not.toContain('Move or rename');
-		expect(said()).not.toContain('Delete');
+		expect(modal.pairRefusal).not.toContain("not Crosswalker's");
+		expect(modal.pairRefusal).not.toContain('Move or rename');
+		expect(modal.pairRefusal).not.toContain('Delete');
 	});
 
 	it('keeps scanning past a note that has NO properties, which is a fact', async () => {
@@ -234,7 +265,8 @@ describe('AM-35: a junction whose properties cannot be read stops the link', () 
 		files.set(`${FOLDER}/the link.md`, junction({ curie: curieFor(R4), control: R4 }));
 		files.set('Notes/A plain note.md', 'Just prose.\n');
 
-		await pressCreateLink(app, R4);
+		const modal = await pressCreateLink(app, R4);
+		expect(modal.pairRefusal).toBeNull();
 
 		expect(said()).toContain('Updated the existing link');
 		expect([...files.keys()].filter((p) => p.startsWith(`${FOLDER}/`))).toEqual([`${FOLDER}/the link.md`]);

@@ -143,15 +143,39 @@ const curieFor = (c: ControlCandidate, evidence = EVIDENCE): string =>
 interface ModalInternals {
 	control: ControlCandidate | null;
 	evidencePath: string;
+	pairRefusal: string | null;
+	resolvePair(control: ControlCandidate, evidencePath: string): Promise<void>;
 	create(): Promise<void>;
 }
 
-/** Press "Create link" for one control/evidence pair. */
-async function pressCreateLink(app: App, control: ControlCandidate, evidence = EVIDENCE): Promise<void> {
+/**
+ * Press "Create link" for one control/evidence pair.
+ *
+ * AM-43 (2026-09-02): the pair lookup is a separate, awaited step — driven
+ * directly here, mirroring the DOM's change/blur handlers.
+ */
+async function pressCreateLink(app: App, control: ControlCandidate, evidence = EVIDENCE): Promise<ModalInternals> {
 	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
 	modal.control = control;
 	modal.evidencePath = evidence;
+	await modal.resolvePair(control, evidence);
 	await modal.create();
+	return modal;
+}
+
+/**
+ * The pair lookup alone, for a scan the design means to REFUSE. `create()` is
+ * deliberately not called: with no resolution it only re-triggers the lookup
+ * (`pairChanged()` clears `pairRefusal` before the async re-run lands) and
+ * shows a generic "Checking..." notice, which a real UI never reaches because
+ * the submit button stays disabled while `pairRefusal` is set.
+ */
+async function resolveOnly(app: App, control: ControlCandidate, evidence = EVIDENCE): Promise<ModalInternals> {
+	const modal = new EvidenceLinkModal({ app, folder: FOLDER }) as unknown as ModalInternals;
+	modal.control = control;
+	modal.evidencePath = evidence;
+	await modal.resolvePair(control, evidence);
+	return modal;
 }
 
 const note = (frontmatter: string, body = 'Body.\n'): string => `---\n${frontmatter}\n---\n${body}`;
@@ -390,6 +414,10 @@ describe('AM-23: the lookup comes before the create', () => {
 		// window must not add a third opinion to a vault that is already ambiguous;
 		// it names the state so the user can fix it, rather than leaving them to
 		// discover it as an import error weeks later.
+		//
+		// AM-43 (2026-09-02): this refusal ("N notes already record this pair")
+		// lives in the pair SCAN too (more than one junction names the pair), so it
+		// is asserted on `pairRefusal` via `resolveOnly` rather than on a `Notice`.
 		const { app, files } = makeVault();
 		const a = `${FOLDER}/claimant a.md`;
 		const b = `${FOLDER}/claimant b.md`;
@@ -397,14 +425,13 @@ describe('AM-23: the lookup comes before the create', () => {
 		files.set(b, junction({ curie: curieFor(R4), control: R4 }));
 		const before = new Map(files);
 
-		await pressCreateLink(app, R4);
+		const modal = await resolveOnly(app, R4);
 
 		expect([...files.keys()].sort()).toEqual([...before.keys()].sort());
 		expect(files.get(a)).toBe(before.get(a));
 		expect(files.get(b)).toBe(before.get(b));
-		expect(said()).toContain('Could not create the link');
-		expect(said()).toContain(a);
-		expect(said()).toContain(b);
+		expect(modal.pairRefusal).toContain(a);
+		expect(modal.pairRefusal).toContain(b);
 	});
 
 	it('a contested LEGACY identity does not block the link', async () => {
@@ -645,18 +672,20 @@ describe('AM-23: a note at the address that is not this link is refused by name'
 		// first, the address branch's own unreadable refusal is no longer reachable
 		// for a damaged markdown note. `tests/evidence-window-unreadable-and-pair.test.ts`
 		// pins the new refusal directly.
+		//
+		// AM-43 (2026-09-02): and since the scan is now a separate step BEFORE
+		// `create()`, this refusal is asserted on `pairRefusal`, not on a `Notice`.
 		const { app, files } = makeVault();
 		const damaged = note(': : :\ncurie: something');
 		files.set(pathFor(R4), damaged);
 
-		await pressCreateLink(app, R4);
+		const modal = await resolveOnly(app, R4);
 
 		expect(files.get(pathFor(R4))).toBe(damaged);
 		expect(files.size).toBe(1);
-		expect(said()).toContain('Could not create the link');
-		expect(said()).toContain('could not be read');
-		expect(said()).toContain(pathFor(R4));
-		expect(said()).not.toContain("not Crosswalker's");
-		expect(said()).not.toContain('Move or rename');
+		expect(modal.pairRefusal).toContain('could not be read');
+		expect(modal.pairRefusal).toContain(pathFor(R4));
+		expect(modal.pairRefusal).not.toContain("not Crosswalker's");
+		expect(modal.pairRefusal).not.toContain('Move or rename');
 	});
 });
