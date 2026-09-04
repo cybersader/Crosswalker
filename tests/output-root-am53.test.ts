@@ -30,7 +30,7 @@
  */
 
 import { TFolder, normalizePath } from 'obsidian';
-import { outputRootPath, normalizeOutputRoot, outputRootFile } from '../src/settings/output-root';
+import { outputRootPath, normalizeFolderSetting as normalizeOutputRoot, outputRootFile } from '../src/settings/folder-settings';
 import type { App } from 'obsidian';
 
 function makeApp(folders: string[]): App {

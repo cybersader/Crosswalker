@@ -75,6 +75,8 @@ import {
 	type EnrichNote,
 	type HubNote,
 	type LayoutValue,
+	type OwnedHubAtFolder,
+	type OwnedHubsByFolder,
 } from './enrich';
 import { wrapManagedBody, scanRegions } from './managed-body';
 import { mergeExistingNote, readExistingNote, ExistingNoteReadError } from './existing-note';
@@ -876,12 +878,14 @@ export async function generateNotes(
 		// (children lists + facet hub notes + edgeCount, re-import-safe merge).
 		let enrichmentComplete = true;
 
-		// AM-52. Read once per run, and only when the run kept something: this is the
-		// only state that consults it, and a run that moved everything asks the vault
-		// nothing extra.
-		const recordedHubValues = enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure
-			? await buildRecordedHubValues(app, ownedIdentityIndex)
+		// AM-52/AM-55. Read once per run, and only when the run kept something: this is
+		// the only state that consults it, and a run that moved everything asks the
+		// vault nothing extra.
+		const ownedHubs = enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure
+			? await readOwnedHubsByFolder(app, ownedIdentityIndex)
 			: undefined;
+		// AM-55. One ledger per run, shared by both passes.
+		const deviationsSeen = new Set<string>();
 
 		// AM-2. Account for the rows this run KEPT, so a skip refresh of an
 		// unchanged set reports zero orphans. Bookkeeping only, no writes.
@@ -894,7 +898,8 @@ export async function generateNotes(
 				records: [...enrichRecords, ...keptRecords],
 				producedCuries,
 				result,
-				recordedHubValues,
+				ownedHubs,
+				deviationsSeen,
 				debug,
 			}) && enrichmentComplete;
 		}
@@ -918,7 +923,8 @@ export async function generateNotes(
 					curieOrigins,
 					isStreamed,
 					{ owned: ownedIdentityIndex, vaultWide: identityIndex },
-					recordedHubValues,
+					ownedHubs?.byFolder,
+					deviationsSeen,
 					debug,
 				);
 			} catch (enrichErr) {
@@ -3180,12 +3186,14 @@ export async function generateFromRecipe(
 	// the same managed-merge path so re-imports stay idempotent + user-safe.
 	let enrichmentComplete = true;
 
-	// AM-52. Read once per run, and only when the run kept something: this is the
-	// only state that consults it, and a run that moved everything asks the vault
+	// AM-52/AM-55. Read once per run, and only when the run kept something: this is
+	// the only state that consults it, and a run that moved everything asks the vault
 	// nothing extra.
-	const recordedHubValues = enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure
-		? await buildRecordedHubValues(app, ownedIdentityIndex)
+	const ownedHubs = enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure
+		? await readOwnedHubsByFolder(app, ownedIdentityIndex)
 		: undefined;
+	// AM-55. One ledger per run, shared by both passes.
+	const deviationsSeen = new Set<string>();
 
 	// AM-2. Account for the rows this run KEPT, so a skip refresh of an unchanged
 	// set reports zero orphans. Bookkeeping only, no writes.
@@ -3198,7 +3206,8 @@ export async function generateFromRecipe(
 			records: [...enrichRecords, ...keptRecords],
 			producedCuries,
 			result,
-			recordedHubValues,
+			ownedHubs,
+			deviationsSeen,
 			debug,
 		}) && enrichmentComplete;
 	}
@@ -3217,7 +3226,8 @@ export async function generateFromRecipe(
 				curieOrigins,
 				isStreamed,
 				{ owned: ownedIdentityIndex, vaultWide: identityIndex },
-				recordedHubValues,
+				ownedHubs?.byFolder,
+				deviationsSeen,
 				debug,
 			);
 		} catch (enrichErr) {
@@ -3489,52 +3499,77 @@ async function buildOwnedHubValueIndex(app: App, owned: IdentityIndex | undefine
 }
 
 /**
- * AM-52 (2026-09-04). What the level hub note AT EACH FOLDER already records about
- * it: its `hub_values` chain, keyed by that folder.
+ * AM-52 (2026-09-04), reshaped by AM-55. WHAT THE VAULT HOLDS at each folder: the
+ * index note sitting in it, keyed by that folder.
  *
  * `enrich()` is pure and reads no vault, so the one fact it cannot obtain for
  * itself is what the vault already says. This supplies it, for the single state
- * AM-52 adds: a folder holding a row this refresh KEPT at an address the layout no
- * longer chooses (a source release that recategorises a row, imported with Skip
- * existing). Such a folder is described by no chain of this run, so without its
- * recorded identity its hub is refused, drops out of `producedCuries`, and the
- * orphan pass reports the index note of a folder that still holds notes as
- * vanished.
+ * AM-52/AM-54 add: a folder on the chain of a row this refresh KEPT at an address
+ * the layout no longer chooses (a source release that recategorises a row, imported
+ * with Skip existing). Such a folder is described by no chain of this run, so
+ * without what its index note already records its hub is refused, drops out of
+ * `producedCuries`, and the orphan pass reports the index note of a folder that
+ * still holds notes as vanished.
  *
- * Only the folder's OWN level hub answers for it: the level-hub address is
- * `<folder>/<folder basename>.md`, and a facet hub that happens to sit in the same
- * folder records values about something else entirely.
+ * AM-55, three changes, each of them a failure mode:
  *
- * Fail-closed on a half-record. `hub_levels` and `hub_values` are written together
- * and are read together; a note carrying one without the other is not a record this
- * run will act on, and the folder is refused by name rather than named from its
- * path.
+ *   - KEYED BY PLACEMENT (`dirOf(hubPath)`), not by the `<folder>/<basename>.md`
+ *     address. A hub describes the folder it SITS IN - the S4 rule - and requiring
+ *     the address verbatim meant a hub `applyHubRelocation` had left at its old
+ *     name answered for nothing, so its folder was refused and its own note
+ *     reported as vanished.
+ *   - TWO HUBS IN ONE FOLDER IS A REFUSAL BY NAME, not a pick. First-claimant-wins
+ *     is right for an identity index, where the question is "which note answers to
+ *     this curie"; here the question is "what is this folder about", and picking
+ *     writes one note's identity over the other's meaning.
+ *   - UNREADABLE IS REPORTED, NOT DROPPED. A note the host could not read is not a
+ *     note that records nothing (`project_cache_lag_is_not_absence`, tenth recorded
+ *     instance and the last one on this path). Dropping it collapsed the two into a
+ *     false orphan on a note sitting in the vault; the caller suppresses orphan
+ *     reporting for the run instead.
+ *
+ * Fail-closed on a half-record: `hub_levels` and `hub_values` are written together
+ * and are read together. Such a note is still PRESENT (AM-55's second row) - it is
+ * left as it is and accounted for - it just carries no chain this run can act on.
  */
-async function buildRecordedHubValues(app: App, owned: IdentityIndex | undefined): Promise<Map<string, LayoutValue[]>> {
-	const byFolder = new Map<string, LayoutValue[]>();
-	if (!owned) return byFolder;
+async function readOwnedHubsByFolder(
+	app: App,
+	owned: IdentityIndex | undefined,
+): Promise<{ byFolder: Map<string, OwnedHubAtFolder>; unreadable: string[] }> {
+	const byFolder = new Map<string, OwnedHubAtFolder>();
+	const unreadable: string[] = [];
+	if (!owned) return { byFolder, unreadable };
 	for (const curie of owned.curies()) {
 		const file = owned.get(curie);
 		if (!file) continue;
 		const folder = getParentPath(file.path);
 		if (!folder) continue;
-		if (file.path !== `${folder}/${folder.slice(folder.lastIndexOf('/') + 1)}.md`) continue;
 		// S8 (ruled 2026-09-02): the same discriminator every read in this file uses.
 		// Cache lag is not absence.
 		const read = await readFrontmatterForRun(app, file);
+		if (read.state === 'unreadable') {
+			unreadable.push(file.path);
+			continue;
+		}
 		if (read.state !== 'ok') continue;
 		const fm = read.frontmatter;
 		if (fm.kind !== 'hub') continue;
+		const existing = byFolder.get(folder);
+		if (existing) {
+			const paths = existing.state === 'many' ? [...existing.paths, file.path] : [existing.path, file.path];
+			byFolder.set(folder, { state: 'many', paths: paths.sort() });
+			continue;
+		}
 		const values = readStringArray(fm.hub_values);
 		const levels = readStringArray(fm.hub_levels);
-		if (!values || values.length === 0) continue;
-		if (!levels || levels.length !== values.length) continue;
-		// First claimant wins, matching the identity index's own collision rule.
-		if (!byFolder.has(folder)) {
-			byFolder.set(folder, values.map((value, i) => ({ level: levels[i], value })));
-		}
+		const usable = values && values.length > 0 && levels && levels.length === values.length
+			? values.map((value, i) => ({ level: levels[i], value }))
+			: undefined;
+		byFolder.set(folder, { state: 'one', path: file.path, curie, ...(usable ? { values: usable } : {}) });
 	}
-	return byFolder;
+	// Deterministic order for the message that names them.
+	unreadable.sort();
+	return { byFolder, unreadable };
 }
 
 /**
@@ -3637,15 +3672,51 @@ function markKeptHubsProduced(args: {
 	producedCuries: Set<string>;
 	result: GenerationResult;
 	/**
-	 * AM-52. What the hub note at each folder already records. Handed in rather than
-	 * read here so this pass and the WRITING pass derive the same identity for a
+	 * AM-52/AM-55. What the vault holds at each folder. Handed in rather than read
+	 * here so this pass and the WRITING pass derive the same identity for a
 	 * kept-in-place folder: two derivations would mark one curie as produced and
 	 * write another, which is an orphan report on a hub that is sitting right there.
 	 */
-	recordedHubValues?: ReadonlyMap<string, LayoutValue[]>;
+	ownedHubs?: { byFolder: OwnedHubsByFolder; unreadable: readonly string[] };
+	/**
+	 * AM-55. The run's deviation ledger, shared with `applyEnrichment`.
+	 *
+	 * Failure mode prevented: BOTH the message nobody sees and the message everybody
+	 * sees twice. This pass is the only one handed the rows a run kept, so a
+	 * deviation about a kept folder is computed here and nowhere else; before AM-55
+	 * it was discarded here, so the kept-cause refusal could not reach a user at all.
+	 * Forwarding it without a shared ledger goes the other way: in a mixed run both
+	 * passes compute the same deviation over overlapping records and the results
+	 * screen shows it twice.
+	 */
+	deviationsSeen: Set<string>;
 	debug?: DebugLog;
 }): boolean {
-	const { recipe, curiePrefix, basePath, streamed, records, producedCuries, result, recordedHubValues, debug } = args;
+	const { recipe, curiePrefix, basePath, streamed, records, producedCuries, result, ownedHubs, deviationsSeen, debug } = args;
+	// AM-55. A note that could not be READ is not a note that records nothing. An
+	// index note whose read fails transiently would otherwise take the "no record"
+	// branch, be refused, and be published as an orphan while it sits in the vault.
+	// Same consequence as a failed derivation: say so, and do not publish a list
+	// derived from an incomplete picture. `project_cache_lag_is_not_absence`.
+	let complete = true;
+	if (ownedHubs && ownedHubs.unreadable.length > 0) {
+		const named = ownedHubs.unreadable.slice(0, 5).join(', ');
+		const rest = ownedHubs.unreadable.length > 5 ? `, and ${ownedHubs.unreadable.length - 5} more` : '';
+		result.warnings ??= [];
+		result.warnings.push({
+			row: 0,
+			// Named as "notes", not as "index notes": a note nothing could be read from
+			// cannot be shown to be an index note either, and a message that asserts
+			// what the run could not observe is the shape this arc exists to remove.
+			message: `Could not read ${ownedHubs.unreadable.length === 1 ? 'a note' : `${ownedHubs.unreadable.length} notes`} `
+				+ `in this collection, so notes no longer in the source were not reported: ${named}${rest}. Wait for `
+				+ 'Obsidian to finish indexing the vault, or fix the properties in those notes, then run the import again.',
+		});
+		debug?.warn('generation', 'kept-hub-unreadable', 'Owned notes could not be read during kept-row bookkeeping', {
+			paths: ownedHubs.unreadable,
+		});
+		complete = false;
+	}
 	try {
 		const implied = enrich(
 			records.map((r) => ({
@@ -3659,8 +3730,21 @@ function markKeptHubsProduced(args: {
 				// skip refresh and a write refresh would disagree about what a hub is.
 				layoutValues: r.layoutValues,
 			})),
-			{ ontology: curiePrefix, config: recipe.target.enrichment ?? {}, streamed, rootFolder: basePath, recordedHubValues },
+			{ ontology: curiePrefix, config: recipe.target.enrichment ?? {}, streamed, rootFolder: basePath, ownedHubsByFolder: ownedHubs?.byFolder },
 		);
+		// AM-55. THE SURFACE. This is the only pass handed the rows a run kept, so a
+		// deviation about a kept folder is computed here or nowhere. Discarding them
+		// is what left the kept-cause refusal with no audience at all: the pass that
+		// could see the cause could not speak, and the pass that could speak never saw
+		// it.
+		if (implied.deviations.length > 0) {
+			result.warnings ??= [];
+			for (const d of implied.deviations) {
+				if (deviationsSeen.has(d)) continue;
+				deviationsSeen.add(d);
+				result.warnings.push({ row: 0, message: d });
+			}
+		}
 		// AM-31, deliberately NOT guarded here, and this is the reasoned exception
 		// to "one rule, all writers": this pass writes nothing, so there is nothing
 		// to refuse. It is also handed `[...enrichRecords, ...keptRecords]`, i.e.
@@ -3675,7 +3759,12 @@ function markKeptHubsProduced(args: {
 		};
 		for (const hub of implied.hubs) mark(hub);
 		for (const hub of implied.levelHubs.notes) mark(hub);
-		return true;
+		// AM-55, second row of the table. An index note this run LEFT EXACTLY AS IT IS
+		// still exists, so reporting it as no longer in the source is a claim the run
+		// has evidence against. It emits no hub note (there is no identity to write),
+		// which is precisely why its curie has to be accounted for here.
+		for (const curie of implied.levelHubs.keptExistingCuries) producedCuries.add(curie);
+		return complete;
 	} catch (bookkeepErr) {
 		const msg = bookkeepErr instanceof Error ? bookkeepErr.message : String(bookkeepErr);
 		result.warnings ??= [];
@@ -3711,10 +3800,13 @@ async function applyEnrichment(
 	 */
 	indexes: { owned?: IdentityIndex; vaultWide?: IdentityIndex } | undefined,
 	/**
-	 * AM-52. The same recorded-hub map the kept-row bookkeeping pass was given, so
-	 * the writing pass and the accounting pass agree about a kept-in-place folder.
+	 * AM-52/AM-55. The same observation of the vault the kept-row bookkeeping pass
+	 * was given, so the writing pass and the accounting pass agree about a
+	 * kept-in-place folder.
 	 */
-	recordedHubValues: ReadonlyMap<string, LayoutValue[]> | undefined,
+	ownedHubsByFolder: OwnedHubsByFolder | undefined,
+	/** AM-55. The run's deviation ledger. See `markKeptHubsProduced`. */
+	deviationsSeen: Set<string>,
 	debug?: DebugLog,
 ): Promise<void> {
 	const config = recipe.target.enrichment ?? {};
@@ -3732,13 +3824,19 @@ async function applyEnrichment(
 			// AM-33: the values this row's folder levels rendered, carried to the hub pass.
 			layoutValues: r.layoutValues,
 		})),
-		{ ontology: curiePrefix, config, streamed, rootFolder: options.basePath, recordedHubValues },
+		{ ontology: curiePrefix, config, streamed, rootFolder: options.basePath, ownedHubsByFolder },
 	);
 	result.edgeCount = enrichment.edgeCount;
 
+	// AM-55. Through the run's one ledger, so a deviation both passes compute over
+	// overlapping records is shown once rather than twice.
 	if (enrichment.deviations.length > 0) {
 		result.warnings ??= [];
-		for (const d of enrichment.deviations) result.warnings.push({ row: 0, message: d });
+		for (const d of enrichment.deviations) {
+			if (deviationsSeen.has(d)) continue;
+			deviationsSeen.add(d);
+			result.warnings.push({ row: 0, message: d });
+		}
 	}
 
 	const recordsByPath = new Map(records.map((r) => [r.path, r]));
@@ -3835,7 +3933,15 @@ async function applyEnrichment(
 		};
 		let body = record.body;
 		if (patch.hubChildren) {
-			body = mergeManagedChildrenSection(body, buildManagedChildrenSection('Contents', patch.hubChildren));
+			// AM-56. `[]` is truthy, so this branch ran for a host with nothing to
+			// list and appended a visible `## Contents` / `*(nothing yet)*` block to a
+			// note that never carried one. An empty list rewrites a region, it never
+			// creates one.
+			body = mergeManagedChildrenSection(
+				body,
+				buildManagedChildrenSection('Contents', patch.hubChildren),
+				patch.hubChildren.length === 0,
+			);
 			if (config.waypoint_marker) body = ensureWaypointMarker(body);
 		}
 		await app.vault.modify(file, buildNoteContent(frontmatter, body));
@@ -4097,7 +4203,11 @@ async function applyEnrichment(
 			// managed section from these fields, never by re-parsing `body`).
 			const facetGroup = hub.facetLinks ? [{ label: 'Facets', links: hub.facetLinks }] : [];
 			const freshSection = buildManagedChildrenSection('Contents', hub.childrenLinks ?? [], facetGroup);
-			body = mergeManagedChildrenSection(existingNote.body, freshSection);
+			// AM-56. An empty section never CREATES a managed region on a note that
+			// has none; it only rewrites one this run already maintains.
+			const freshIsEmpty = (hub.childrenLinks ?? []).length === 0
+				&& facetGroup.every((g) => g.links.length === 0);
+			body = mergeManagedChildrenSection(existingNote.body, freshSection, freshIsEmpty);
 			if (config.waypoint_marker) body = ensureWaypointMarker(body);
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {

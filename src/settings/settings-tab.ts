@@ -25,7 +25,11 @@ import {
 	draftPathDisplay,
 	type PreviewTreeNode,
 } from './setting-previews';
-import { outputRootPath } from './output-root';
+import {
+	outputRootPath,
+	DEFAULT_EVIDENCE_JUNCTION_FOLDER,
+	DEFAULT_EVIDENCE_REPORT_FOLDER,
+} from './folder-settings';
 import type { Enrichment } from '../import/mapping/types';
 import {
 	buildParentPlacementPreview,
@@ -991,11 +995,11 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					.setPlaceholder('Evidence/junctions')
 					.setValue(this.plugin.settings.evidenceJunctionFolder)
 					.onChange(async (value) => {
-						this.plugin.settings.evidenceJunctionFolder = value || 'Evidence/Junctions';
+						this.plugin.settings.evidenceJunctionFolder = value || DEFAULT_EVIDENCE_JUNCTION_FOLDER;
 						await this.plugin.saveSettings();
 					});
 				new FolderSuggest(this.app, text.inputEl, async (value) => {
-					this.plugin.settings.evidenceJunctionFolder = value || 'Evidence/Junctions';
+					this.plugin.settings.evidenceJunctionFolder = value || DEFAULT_EVIDENCE_JUNCTION_FOLDER;
 					await this.plugin.saveSettings();
 				});
 			});
@@ -1008,11 +1012,11 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					.setPlaceholder('Reports')
 					.setValue(this.plugin.settings.evidenceReportFolder)
 					.onChange(async (value) => {
-						this.plugin.settings.evidenceReportFolder = value || 'Reports';
+						this.plugin.settings.evidenceReportFolder = value || DEFAULT_EVIDENCE_REPORT_FOLDER;
 						await this.plugin.saveSettings();
 					});
 				new FolderSuggest(this.app, text.inputEl, async (value) => {
-					this.plugin.settings.evidenceReportFolder = value || 'Reports';
+					this.plugin.settings.evidenceReportFolder = value || DEFAULT_EVIDENCE_REPORT_FOLDER;
 					await this.plugin.saveSettings();
 				});
 			});

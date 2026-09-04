@@ -581,3 +581,285 @@ describe('Level-hub identity — a skip refresh that leaves a recategorised row 
 		expect(movedCause).toEqual([]);
 	});
 });
+
+/**
+ * AM-54 (2026-09-04). AN EXEMPTION GRANTED TO A FOLDER IS GRANTED TO THE CHAIN
+ * THAT CONTAINS IT.
+ *
+ * THE DEFECT THIS PINS. `folders` is walked from each note's FINAL path and
+ * collects every ANCESTOR of it. AM-52's kept-in-place exemption collected only
+ * the directory the note literally sits in. So on any layout deeper than one
+ * folder level, the holder was exempt and every folder above it fell straight
+ * back into AM-50's third state: described by no chain of this run (the chains
+ * all describe the NEW address), hosting nothing, disagreeing with nothing. Its
+ * hub was refused, its curie never reached `producedCuries`, and the results
+ * screen reported an orphan on a refresh where nothing left the source and every
+ * note was exactly where it had been.
+ *
+ * THE SHAPE, and why it is this shape. Two folder levels plus a file - the
+ * shipped multi-folder layout - and a second release that changes ONLY the
+ * catalog label. A catalog rename is the ordinary case: no exotic input, no
+ * hand-edited vault, no recategorised row. Every row is kept where it is, so
+ * both family folders are leaf holders and are exempt under AM-52 alone; the
+ * CATALOG folder above them is the one the defect refuses. `AC` holds one
+ * control and `AU` holds two so the run is not degenerate at either arity.
+ *
+ * WHAT THIS DECLARATION DISCRIMINATES ON. In an all-skip refresh no enrichment
+ * record survives, so `applyEnrichment` never runs and the only pass that calls
+ * `enrich()` is `markKeptHubsProduced`, which writes nothing. Two consequences,
+ * recorded so the assertions are read for what they are:
+ *
+ *   - The notes on disk, their curies, and the root hub's Contents list are
+ *     BYTE-IDENTICAL under the defect too, because nothing is written either
+ *     way. Those three assertions are the amendment's terms restated ("both hub
+ *     levels still present with their recorded curies", "the hub under the old
+ *     catalog label still listed in the root's Contents"), not discriminators.
+ *   - The two LOAD-BEARING assertions are the orphan list and the refusal
+ *     warning. Under the defect the catalog folder's hub curie is missing from
+ *     `producedCuries` and the run reports it as vanished, and - since AM-55
+ *     made `markKeptHubsProduced` forward `implied.deviations` into
+ *     `result.warnings` - the same run tells the user their note "may have been
+ *     moved" when nobody moved anything.
+ *
+ * Hubs are located by PLACEMENT rather than by a guessed filename (AM-55's own
+ * rule: a hub describes the folder it sits in), and every value is read off the
+ * note's OWN BYTES, never the metadata cache - `project_cache_lag_is_not_absence`,
+ * and this declaration turns a missing value into a verdict.
+ */
+const BASE_54 = 'Frameworks/AM54-Kept-Chain-Test';
+const CATALOG_54_V1 = 'AM54 Chain Rev 5';
+const CATALOG_54_V2 = 'AM54 Chain Rev 6';
+
+// Release 1. Three rows, two families, one catalog.
+const ROWS_54_V1 = [
+	{ id: 'AC-1', 'catalog.name': CATALOG_54_V1, 'family.id': 'AC', 'control.id': 'AC-1', 'control.title': 'Policy and Procedures' },
+	{ id: 'AU-1', 'catalog.name': CATALOG_54_V1, 'family.id': 'AU', 'control.id': 'AU-1', 'control.title': 'Audit Policy' },
+	{ id: 'AU-2', 'catalog.name': CATALOG_54_V1, 'family.id': 'AU', 'control.id': 'AU-2', 'control.title': 'Audit Events' },
+];
+
+// Release 2. ONLY the catalog label changes. No row is recategorised, so every
+// family folder still holds exactly the notes it held: the one folder the layout
+// stops describing is the catalog folder, which is an ANCESTOR of every holder.
+const ROWS_54_V2 = ROWS_54_V1.map((r) => ({ ...r, 'catalog.name': CATALOG_54_V2 }));
+
+function recipe54() {
+	return {
+		recipe: 'am54-kept-chain',
+		source: { ontology: 'am54', levels: ['catalog', 'family', 'control'] },
+		target: {
+			layout: [
+				{ level: 'catalog', mechanism: 'folder' as const, template: '{catalog.name}' },
+				{ level: 'family', mechanism: 'folder' as const, template: '{family.id}' },
+				{ level: 'control', mechanism: 'file' as const, template: '{control.id}.md' },
+			],
+			also_emit: {
+				frontmatter: { managed: { title: '{control.title}' } },
+			},
+			enrichment: { level_hubs: 'notes' as const },
+		},
+	};
+}
+
+interface HubAt54 {
+	path: string;
+	curie: unknown;
+	text: string;
+}
+
+interface Outcome54 {
+	firstErrors: unknown[];
+	secondErrors: unknown[];
+	firstCreated: number;
+	secondCreated: number;
+	secondSkipped: number;
+	secondWarnings: string[];
+	secondOrphans: string[];
+	secondOrphansChecked: unknown;
+	notesBefore: string[];
+	notesAfter: string[];
+	rootHubBefore: HubAt54 | null;
+	rootHubAfter: HubAt54 | null;
+	catalogHubBefore: HubAt54 | null;
+	catalogHubAfter: HubAt54 | null;
+	familyHubBefore: HubAt54 | null;
+	familyHubAfter: HubAt54 | null;
+}
+
+describe('Level-hub identity — a skip refresh after a catalog rename, two folder levels deep (AM-54)', function () {
+	this.timeout(120_000);
+
+	before(async () => {
+		// Clean slate: a rerun must not be testing a previous run's leftovers.
+		await browser.executeObsidian(async ({ app }, dir) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const folder = app.vault.getAbstractFileByPath(dir);
+			if (folder) {
+				// @ts-expect-error — internal trash API; safe in the test vault
+				await app.vault.trash(folder, false);
+			}
+			const deadline = Date.now() + 5000;
+			while (app.vault.getAbstractFileByPath(dir) && Date.now() < deadline) await sleep(50);
+		}, BASE_54);
+	});
+
+	it('keeps every level of the kept chain and reports zero orphans when only the catalog label changes', async () => {
+		const out54: Outcome54 = await browser.executeObsidian(
+			async ({ app, obsidian }, args) => {
+				// @ts-expect-error — internal API
+				const plugin = app.plugins.plugins['crosswalker'];
+				const columns = ['id', 'catalog.name', 'family.id', 'control.id', 'control.title'];
+				const options = {
+					basePath: args.base,
+					overwriteMode: 'replace',
+					createFolders: true,
+					sourceFileName: 'am54-kept-chain.csv',
+				};
+
+				const readText = async (path: string): Promise<string | null> => {
+					const file = app.vault.getAbstractFileByPath(path);
+					if (!file) return null;
+					// @ts-expect-error — TFile at runtime
+					return (await app.vault.read(file)) as string;
+				};
+				const frontmatterOf = (text: string): Record<string, any> | null => {
+					const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+					return match ? (obsidian.parseYaml(match[1]) as Record<string, any> | null) : null;
+				};
+				const readFm = async (path: string): Promise<Record<string, any> | null> => {
+					const text = await readText(path);
+					return text === null ? null : frontmatterOf(text);
+				};
+
+				const dirOf = (p: string): string => {
+					const i = p.lastIndexOf('/');
+					return i < 0 ? '' : p.slice(0, i);
+				};
+				const listMarkdown = (): string[] =>
+					app.vault
+						.getMarkdownFiles()
+						.map((f: any) => String(f.path))
+						.filter((p: string) => p.startsWith(`${args.base}/`))
+						.sort();
+
+				// AM-55's rule, applied to the assertion side: a hub is the note that
+				// SITS IN the folder, not a filename this test predicts.
+				const hubIn = async (dir: string) => {
+					const candidates = listMarkdown().filter((p) => dirOf(p) === dir);
+					for (const p of candidates) {
+						const text = await readText(p);
+						if (text === null) continue;
+						const fm = frontmatterOf(text);
+						if (fm && fm.kind === 'hub') return { path: p, curie: fm.curie, text };
+					}
+					return null;
+				};
+
+				const first = await plugin.runImportFromRecipe(
+					{ columns, rows: args.rowsV1, rowCount: args.rowsV1.length },
+					args.recipe,
+					options,
+				);
+
+				// AM-9: the engine never adopts a set it happens to find at the
+				// destination, so the refresh below names the set the first run minted.
+				const firstControl = await readFm(`${args.base}/${args.catalogV1}/AC/AC-1.md`);
+				const importSetId = firstControl?._crosswalker?.import_set?.id;
+				if (typeof importSetId !== 'string') throw new Error('first import stamped no import set id');
+
+				const catalogDir = `${args.base}/${args.catalogV1}`;
+				const familyDir = `${catalogDir}/AC`;
+
+				const notesBefore = listMarkdown();
+				const rootHubBefore = await hubIn(args.base);
+				const catalogHubBefore = await hubIn(catalogDir);
+				const familyHubBefore = await hubIn(familyDir);
+
+				// The renamed release, imported with Skip existing.
+				const second = await plugin.runImportFromRecipe(
+					{ columns, rows: args.rowsV2, rowCount: args.rowsV2.length },
+					args.recipe,
+					{ ...options, overwriteMode: 'skip', importSet: { id: importSetId } },
+				);
+
+				const notesAfter = listMarkdown();
+				const rootHubAfter = await hubIn(args.base);
+				const catalogHubAfter = await hubIn(catalogDir);
+				const familyHubAfter = await hubIn(familyDir);
+
+				const messages = (r: any): string[] => (r.warnings ?? []).map((w: any) => String(w?.message ?? ''));
+				const orphanCuries = (r: any): string[] => (r.orphans ?? []).map((o: any) => String(o?.curie ?? ''));
+
+				return {
+					firstErrors: first.errors ?? [],
+					secondErrors: second.errors ?? [],
+					firstCreated: (first.created ?? []).length,
+					secondCreated: (second.created ?? []).length,
+					secondSkipped: (second.skipped ?? []).length,
+					secondWarnings: messages(second),
+					secondOrphans: orphanCuries(second),
+					secondOrphansChecked: second.orphansChecked,
+					notesBefore,
+					notesAfter,
+					rootHubBefore,
+					rootHubAfter,
+					catalogHubBefore,
+					catalogHubAfter,
+					familyHubBefore,
+					familyHubAfter,
+				};
+			},
+			{
+				base: BASE_54,
+				catalogV1: CATALOG_54_V1,
+				rowsV1: ROWS_54_V1,
+				rowsV2: ROWS_54_V2,
+				recipe: recipe54(),
+			},
+		);
+
+		expect(out54.firstErrors).toEqual([]);
+		expect(out54.secondErrors).toEqual([]);
+
+		// 3 control notes + 4 hub notes (root, catalog, AC, AU).
+		expect(out54.firstCreated).toBe(7);
+
+		// The refresh kept all three rows where they were: skip never moves, which
+		// is the precondition for the state under test rather than an extra claim.
+		expect(out54.secondSkipped).toBe(3);
+		expect(out54.secondCreated).toBe(0);
+
+		// HUB COUNT UNCHANGED, stated as the whole note set under the root: nothing
+		// was written, nothing was removed, and no hub note appeared or vanished.
+		expect(out54.notesAfter).toEqual(out54.notesBefore);
+
+		// BOTH HUB LEVELS STILL PRESENT WITH THEIR RECORDED CURIES. The catalog hub
+		// is the level the defect refused; the family hub is the level AM-52 already
+		// covered, asserted alongside so a fix that traded one for the other fails.
+		expect(out54.catalogHubBefore).not.toBe(null);
+		expect(out54.familyHubBefore).not.toBe(null);
+		expect(typeof out54.catalogHubBefore?.curie).toBe('string');
+		expect(typeof out54.familyHubBefore?.curie).toBe('string');
+		expect(out54.catalogHubAfter?.path).toBe(out54.catalogHubBefore?.path);
+		expect(out54.catalogHubAfter?.curie).toBe(out54.catalogHubBefore?.curie);
+		expect(out54.familyHubAfter?.path).toBe(out54.familyHubBefore?.path);
+		expect(out54.familyHubAfter?.curie).toBe(out54.familyHubBefore?.curie);
+
+		// THE HUB UNDER THE OLD CATALOG LABEL STILL LISTED IN THE ROOT'S CONTENTS,
+		// and the root hub's managed region left exactly as it was.
+		expect(out54.rootHubBefore).not.toBe(null);
+		expect(out54.rootHubBefore?.text).toContain(`[[${CATALOG_54_V1}]]`);
+		expect(out54.rootHubAfter?.text).toBe(out54.rootHubBefore?.text);
+
+		// ZERO ORPHANS — load-bearing. `orphansChecked` is asserted alongside because
+		// AM-7 made an empty `orphans` mean either "a complete run found none" or
+		// "nobody could look"; only the first is the claim here.
+		expect(out54.secondOrphansChecked).toBe(true);
+		expect(out54.secondOrphans).toEqual([]);
+
+		// AND NO REFUSAL — load-bearing since AM-55 gave the kept-row pass a surface.
+		// Under the defect the same run tells the user the note "may have been moved"
+		// on a refresh where nothing moved.
+		const movedCause = out54.secondWarnings.filter((m) => m.includes('the note may have been moved'));
+		expect(movedCause).toEqual([]);
+	});
+});

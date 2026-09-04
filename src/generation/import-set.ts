@@ -9,7 +9,7 @@
 
 import { App, normalizePath, parseYaml, TFile } from 'obsidian';
 import { slugifyForCurie } from './curie';
-import { normalizeOutputRoot } from '../settings/output-root';
+import { normalizeFolderSetting } from '../settings/folder-settings';
 import { IDENTITY_SENTINELS } from './legacy-recipe-shim';
 
 export const IMPORT_SET_ID_PATTERN = /^iset-[a-z0-9]{6}$/;
@@ -795,5 +795,5 @@ export function recoverImportSetRoot(paths: readonly string[]): string | null {
  * case instead of relying on the fallback for it.
  */
 function normalizeFolder(value: string): string {
-	return normalizeOutputRoot(value);
+	return normalizeFolderSetting(value);
 }

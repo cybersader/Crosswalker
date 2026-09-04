@@ -30,10 +30,30 @@
  * agree by the time a record reaches `enrich()` -- see the updated comment on
  * hub-refusal-am50-and-s4.test.ts's "a note relocated away..." case, which now
  * demonstrates AM-52's no-recorded-identity branch rather than AM-50's.
+ *
+ * AM-55 UPDATE (2026-09-04, pass 18). `recordedHubValues` (folder -> a bare
+ * values chain) is now `ownedHubsByFolder` (folder -> the tri-state
+ * `OwnedHubAtFolder`: `{ state: 'one', path, curie, values? }` or
+ * `{ state: 'many', paths }`), because the old shape collapsed "no index note
+ * here", "one here that records nothing usable", and "one here nobody could
+ * read" into a single absent map entry -- see hub-refusal-am55-tri-state.test.ts
+ * for the full three-row table this test's second describe block now defers
+ * to. The kept-cause text also changed: the old single sentence ("...keep them
+ * and their index note stays as it was") is gone, replaced by AM-55's two texts
+ * (present-but-unusable vs. absent), each naming the consequence the run
+ * actually delivers.
+ *
+ * AM-54 UPDATE (2026-09-04, pass 18). The THIRD describe block below used to
+ * pin CONFIRMED 1 (pass-17's own defect) as accepted behaviour: an ancestor two
+ * levels above a kept folder took the MOVED cause because `keptFolders` marked
+ * only the direct holder. AM-54 fixed that -- the ancestor is now walked too --
+ * so this block now pins the FIX: the ancestor is exempt via its own recorded
+ * identity, same as the direct holder. See hub-refusal-am54-chain.test.ts for
+ * the dedicated coverage (three folders deep, live-chain precedence, and the
+ * import root).
  */
 
-import { enrich, type EnrichNote } from '../src/generation/enrich';
-import type { LayoutValue } from '../src/render';
+import { enrich, type EnrichNote, type OwnedHubsByFolder } from '../src/generation/enrich';
 
 const ONT = 'hg';
 const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_hubs: 'notes' as const };
@@ -54,10 +74,10 @@ describe('AM-52: a folder holding a row this run KEPT, with a RECORDED identity,
 			facets: [],
 			layoutValues: [{ level: 'tactic', value: 'IA' }],
 		}];
-		const recordedHubValues = new Map<string, LayoutValue[]>([
-			[`${ROOT}/Persistence`, [{ level: 'tactic', value: 'Persistence' }]],
+		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
+			[`${ROOT}/Persistence`, { state: 'one', path: `${ROOT}/Persistence/Persistence.md`, curie: `${ONT}:hub/persistence`, values: [{ level: 'tactic', value: 'Persistence' }] }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, recordedHubValues });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
 
 		// No refusal at all for Persistence -- the recorded identity answers it.
 		expect(result.deviations).toEqual([]);
@@ -80,8 +100,8 @@ describe('AM-52: a folder holding a row this run KEPT, with a RECORDED identity,
 	});
 });
 
-describe('AM-52: a folder holding a kept row with NO recorded identity is refused with the KEPT cause, never the MOVED cause', () => {
-	it('no recordedHubValues supplied at all: the deviation names Skip existing, not a moved note', () => {
+describe('AM-52/AM-55: a folder holding a kept row with NO usable recorded identity is refused with the KEPT cause, never the MOVED cause', () => {
+	it('no ownedHubsByFolder entry at all (row 3): the deviation names Skip existing, not a moved note', () => {
 		const notes: EnrichNote[] = [{
 			path: `${ROOT}/Persistence/T1.md`,
 			renderedPath: `${ROOT}/IA/T1.md`,
@@ -90,25 +110,19 @@ describe('AM-52: a folder holding a kept row with NO recorded identity is refuse
 			facets: [],
 			layoutValues: [{ level: 'tactic', value: 'IA' }],
 		}];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT }); // no recordedHubValues at all
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT }); // no ownedHubsByFolder at all
 
 		expect(hubByPath(result, `${ROOT}/Persistence/Persistence.md`)).toBeUndefined();
 		const deviation = result.deviations.find((d) => d.includes(`${ROOT}/Persistence`));
 		expect(deviation).toBeDefined();
-		expect(deviation).toContain('This folder holds notes the refresh kept in place');
-		expect(deviation).toContain('Skip existing was chosen');
-		expect(deviation).toContain('re-run with Replace');
+		expect(deviation).toContain('kept in place by Skip existing');
+		expect(deviation).toContain('Re-run with Replace');
 		// Never the address-derived cause this state used to fall through to.
 		expect(deviation).not.toContain('the note may');
 		expect(deviation).not.toContain('have been moved');
-
-		// Absent from the parent's Contents -- no dangling link to a hub that was
-		// never written.
-		const root = hubByPath(result, `${ROOT}/${ROOT}.md`);
-		expect(root!.childrenLinks ?? []).not.toContain('[[Persistence]]');
 	});
 
-	it('a half-record (hub_values with no matching hub_levels) is fail-closed to the SAME kept cause, not a guess', () => {
+	it('a present hub with no usable chain (row 2: hub_values with no matching hub_levels) is fail-closed to the SAME kept cause, not a guess', () => {
 		const notes: EnrichNote[] = [{
 			path: `${ROOT}/Persistence/T1.md`,
 			renderedPath: `${ROOT}/IA/T1.md`,
@@ -117,31 +131,35 @@ describe('AM-52: a folder holding a kept row with NO recorded identity is refuse
 			facets: [],
 			layoutValues: [{ level: 'tactic', value: 'IA' }],
 		}];
-		// The caller (buildRecordedHubValues) never hands over a half-record in
+		// The caller (readOwnedHubsByFolder) never hands over a half-record in
 		// practice -- it reads hub_levels and hub_values TOGETHER or not at all --
-		// but `enrich()` itself must not assume a well-formed map either. Passing
-		// an empty array is the shape "found nothing to record" collapses to.
-		const recordedHubValues = new Map<string, LayoutValue[]>([
-			[`${ROOT}/Persistence`, []],
+		// but `enrich()` itself must not assume a well-formed map either. A `one`
+		// state with no `values` field is the shape "found nothing usable to
+		// record" collapses to.
+		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
+			[`${ROOT}/Persistence`, { state: 'one', path: `${ROOT}/Persistence/Persistence.md`, curie: `${ONT}:hub/persistence` }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, recordedHubValues });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
 
 		const deviation = result.deviations.find((d) => d.includes(`${ROOT}/Persistence`));
 		expect(deviation).toBeDefined();
-		expect(deviation).toContain('Skip existing was chosen');
+		expect(deviation).toContain('kept in place by Skip existing');
+		// AM-55 row 2's accounting: the note demonstrably exists, so its curie is
+		// still marked produced even though it was not written.
+		expect(result.levelHubs.keptExistingCuries).toEqual([`${ONT}:hub/persistence`]);
 	});
 });
 
-describe('AM-52 does not widen the address route: an ancestor no row of this run holds a kept record in still gets the MOVED cause', () => {
-	it('an ancestor TWO levels above a kept folder, described by no chain and holding no kept record itself, is still refused as undescribed', () => {
+describe('AM-54 (2026-09-04, pass 18): AM-52\'s exemption reaches the WHOLE chain, so an ancestor holding no kept record itself is exempt too, via ITS OWN recorded identity', () => {
+	it('an ancestor TWO levels above a kept folder, described by no chain and holding no kept record of its own, is exempt because AM-54 walks the chain and the ancestor has ITS OWN recorded identity', () => {
 		// A three-level layout: Root/Category/Section/Item.md. This run's one row
 		// is kept in place at Root/Cat/Sub/Item.md but renders to
-		// Root/OtherCat/Sub/Item.md -- a top-level recategorisation. Root/Cat/Sub
-		// (the DIRECT holder) is a kept folder and is exempt below via a recorded
-		// identity; Root/Cat (its ANCESTOR) holds no note of this run's batch at
-		// all and no chain describes it either -- AM-52's positive-evidence rule
-		// (`dirOf(path) !== dirOf(renderedPath)`) is about the note's OWN
-		// directory, not its ancestors, so this stays AM-50's undescribed state.
+		// Root/OtherCat/Sub/Item.md -- a top-level recategorisation. AM-54 (fixing
+		// pass-17's CONFIRMED 1) walks the WHOLE chain from the holder, so
+		// Root/Cat/Sub (the direct holder) AND Root/Cat (its ancestor) both join
+		// keptFolders -- and since Root/Cat's own index note DOES record a usable
+		// chain here, it is exempt and rewritten from it, exactly like the direct
+		// holder.
 		const notes: EnrichNote[] = [{
 			path: `${ROOT}/Cat/Sub/Item.md`,
 			renderedPath: `${ROOT}/OtherCat/Sub/Item.md`,
@@ -150,23 +168,19 @@ describe('AM-52 does not widen the address route: an ancestor no row of this run
 			facets: [],
 			layoutValues: [{ level: 'cat', value: 'OtherCat' }, { level: 'sub', value: 'Sub' }],
 		}];
-		const recordedHubValues = new Map<string, LayoutValue[]>([
-			[`${ROOT}/Cat/Sub`, [{ level: 'cat', value: 'Cat' }, { level: 'sub', value: 'Sub' }]],
-			// Deliberately no entry for Root/Cat -- nothing recorded it either.
+		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
+			[`${ROOT}/Cat/Sub`, { state: 'one', path: `${ROOT}/Cat/Sub/Sub.md`, curie: `${ONT}:hub/cat-sub`, values: [{ level: 'cat', value: 'Cat' }, { level: 'sub', value: 'Sub' }] }],
+			[`${ROOT}/Cat`, { state: 'one', path: `${ROOT}/Cat/Cat.md`, curie: `${ONT}:hub/cat`, values: [{ level: 'cat', value: 'Cat' }] }],
 		]);
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, recordedHubValues });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
 
 		// The DIRECT holder: exempt, via its recorded identity.
 		expect(hubByPath(result, `${ROOT}/Cat/Sub/Sub.md`)).toBeDefined();
 		expect(result.deviations.find((d) => d.includes(`${ROOT}/Cat/Sub"`))).toBeUndefined();
 
-		// The ANCESTOR: still refused, and still with the MOVED cause -- AM-52
-		// only ever exempts the folder a kept record directly sits in.
-		expect(hubByPath(result, `${ROOT}/Cat/Cat.md`)).toBeUndefined();
-		const ancestorDeviation = result.deviations.find((d) => d.includes(`${ROOT}/Cat"`));
-		expect(ancestorDeviation).toBeDefined();
-		expect(ancestorDeviation).toContain('the note may');
-		expect(ancestorDeviation).toContain('have been moved');
-		expect(ancestorDeviation).not.toContain('Skip existing');
+		// The ANCESTOR: ALSO exempt now (AM-54's fix), via ITS OWN recorded
+		// identity -- never the MOVED cause pass 17 shipped this as.
+		expect(hubByPath(result, `${ROOT}/Cat/Cat.md`)).toBeDefined();
+		expect(result.deviations.find((d) => d.includes(`${ROOT}/Cat"`))).toBeUndefined();
 	});
 });

@@ -77,7 +77,7 @@
  * result (move files, patch parents, write hubs) through the vault/merge path.
  */
 
-import { replaceRegion, scanRegions, wrapRegion } from './managed-body';
+import { findSpan, replaceRegion, scanRegions, wrapRegion } from './managed-body';
 import type { RecipeEnrichment, LayoutValue } from '../render';
 import type { FacetMembership } from '../import/mapping/facets';
 
@@ -215,6 +215,22 @@ export interface EnrichmentResult {
 		 * doc comment; callers must NOT re-prefix with basePath.
 		 */
 		notes: HubNote[];
+		/**
+		 * AM-55 (2026-09-04). Curies of index notes this run LEFT EXACTLY AS THEY
+		 * ARE, which the caller must still account for as produced.
+		 *
+		 * Failure mode prevented: a false orphan report on a note the run can see.
+		 * The second row of AM-55's table is a folder whose notes were kept in place
+		 * and whose index note carries no usable record (a hub written before
+		 * `hub_values` existed, or a half-record). Nothing is written for it - the
+		 * run has no identity to write - but the note demonstrably EXISTS, so
+		 * reporting it as no longer in the source is a statement the run has
+		 * evidence against. It emits no `HubNote`, so without this list the caller
+		 * has nothing to mark and the orphan pass names it.
+		 *
+		 * Sorted, deterministic, and deduplicated.
+		 */
+		keptExistingCuries: string[];
 	};
 	/** Graph edge count: parent links + children entries + member entries + level-hub child-link entries. */
 	edgeCount: number;
@@ -252,21 +268,44 @@ export interface EnrichOptions {
 	 */
 	rootFolder?: string;
 	/**
-	 * AM-52 (2026-09-04). What an EXISTING level hub note already records about the
-	 * folder it sits in: its `hub_values` chain, keyed by that folder.
+	 * AM-52 (2026-09-04), reshaped by AM-55. WHAT THE VAULT ACTUALLY HOLDS at each
+	 * folder: the index note sitting in it, keyed by that folder.
 	 *
 	 * Supplied by the caller because `enrich()` is pure and reads no vault. Consulted
-	 * for one state only, the fourth one below: a folder holding a row THIS RUN KEPT
-	 * at an address the layout no longer chooses. The values are the hub's own
+	 * for one state only: a folder that holds a row THIS RUN KEPT at an address the
+	 * layout no longer chooses (AM-54's chain). The recorded values are the hub's own
 	 * record, so the identity derived from them is the identity the note on disk
 	 * already carries, which is what makes the hub survive the refresh instead of
 	 * being reported as vanished.
 	 *
-	 * Absent means "the caller cannot say", which is not "the hub records nothing":
-	 * such a folder is refused by name rather than named from its path.
+	 * Failure mode prevented by the SHAPE (AM-55): the map used to be
+	 * folder -> values, which collapsed three different observations into one absent
+	 * entry - "no index note is here", "one is here but records nothing this run can
+	 * use", and "the caller could not read it". Each has a different consequence, and
+	 * a refusal that cannot tell them apart tells the user something the run
+	 * contradicts. An entry that is present is a fact about a note that exists; an
+	 * ABSENT entry means only "no index note sits in this folder", and a note the
+	 * caller could not READ is reported separately (it never reaches here, and the
+	 * caller suppresses orphan reporting for the run instead).
 	 */
-	recordedHubValues?: ReadonlyMap<string, LayoutValue[]>;
+	ownedHubsByFolder?: OwnedHubsByFolder;
 }
+
+/**
+ * AM-55 (2026-09-04). The index note (or notes) a folder holds, as observed in the
+ * vault by the caller.
+ *
+ * `one` carries the note's own identity and, when it records one, the chain it
+ * covers. `many` is a refusal by name rather than a pick: two index notes in one
+ * folder is a question about which one describes the folder, and picking the first
+ * writes one note's identity over the other's meaning.
+ */
+export type OwnedHubAtFolder =
+	| { state: 'one'; path: string; curie: string; values?: LayoutValue[] }
+	| { state: 'many'; paths: string[] };
+
+/** AM-55. Folder -> the index note(s) it holds. See `EnrichOptions.ownedHubsByFolder`. */
+export type OwnedHubsByFolder = ReadonlyMap<string, OwnedHubAtFolder>;
 
 /** Facet hub notes are materialized only for values with at least this many members. */
 export const HUB_MIN_MEMBERS = 2;
@@ -280,7 +319,7 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 	const result: EnrichmentResult = {
 		childrenByPath: new Map(),
 		hubs: [],
-		levelHubs: { hostedChildrenByPath: new Map(), notes: [] },
+		levelHubs: { hostedChildrenByPath: new Map(), notes: [], keptExistingCuries: [] },
 		edgeCount: 0,
 		deviations: [],
 		relocations: [],
@@ -376,7 +415,7 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 	}
 
 	// --- 4.5. Level hub notes (hierarchy MOCs). ---
-	computeLevelHubs(notes, finalPath, byBasename, config, opts.ontology, opts.rootFolder, opts.recordedHubValues, result);
+	computeLevelHubs(notes, finalPath, byBasename, config, opts.ontology, opts.rootFolder, opts.ownedHubsByFolder, result);
 
 	return result;
 }
@@ -529,7 +568,7 @@ function computeLevelHubs(
 	config: RecipeEnrichment,
 	ontology: string,
 	rootFolder: string | undefined,
-	recordedHubValues: ReadonlyMap<string, LayoutValue[]> | undefined,
+	ownedHubsByFolder: OwnedHubsByFolder | undefined,
 	result: EnrichmentResult,
 ): void {
 	if (config.level_hubs !== 'notes') return;
@@ -768,6 +807,21 @@ function computeLevelHubs(
 	 * Positive evidence only, exactly like flip-back: `renderedPath` is set AND
 	 * differs in DIRECTORY from the final path. A note whose rendered and final
 	 * directories agree is not evidence of anything.
+	 *
+	 * AM-54 (2026-09-04). THE WHOLE CHAIN, not the leaf. An exemption granted to a
+	 * folder is granted to the chain that contains it.
+	 *
+	 * Failure mode prevented: `folders` is walked from each note's final path and
+	 * collects every ANCESTOR of it, while this collected only the directory the note
+	 * literally sits in. So on any layout deeper than one folder level, the holder was
+	 * exempt and every folder above it fell straight back into AM-50's third state:
+	 * described by no chain of this run (the chains all describe the NEW address),
+	 * hosting nothing, disagreeing with nothing. Its hub was refused, dropped out of
+	 * `producedCuries`, and the results screen reported an orphan on a refresh where
+	 * nothing left the source and every note was exactly where it had been. A catalog
+	 * rename on the shipped two-level recipe is enough; no exotic input, no
+	 * hand-edited vault. The walk stops BELOW the import root, which is exempt on its
+	 * own terms (`isImportRoot`) and must never be described as kept.
 	 */
 	const keptFolders = new Set<string>();
 	for (const e of entries) {
@@ -775,8 +829,20 @@ function computeLevelHubs(
 		if (rendered === undefined) continue;
 		const holder = dirOf(e.path);
 		if (holder === dirOf(rendered)) continue;
-		if (folders.has(holder)) keptFolders.add(holder);
+		let dir = holder;
+		while (dir !== '' && !isImportRoot(dir) && inScope(dir)) {
+			if (folders.has(dir)) keptFolders.add(dir);
+			dir = dirOf(dir);
+		}
 	}
+
+	/**
+	 * AM-55. What the vault holds at this folder, for the kept state only. Gated on
+	 * `keptFolders` so a fact about an ordinary folder can never become a second
+	 * address route for it.
+	 */
+	const keptObservationOf = (f: string): OwnedHubAtFolder | undefined =>
+		(keptFolders.has(f) ? ownedHubsByFolder?.get(f) : undefined);
 
 	/**
 	 * AM-52. The identity such a folder's hub ALREADY CARRIES, read off the existing
@@ -785,10 +851,20 @@ function computeLevelHubs(
 	 * keep the record the vault already has.
 	 */
 	const recordedValuesOf = (f: string): LayoutValue[] | null => {
-		if (!keptFolders.has(f)) return null;
-		const values = recordedHubValues?.get(f);
+		const observed = keptObservationOf(f);
+		if (observed?.state !== 'one') return null;
+		const values = observed.values;
 		return values && values.length > 0 ? values : null;
 	};
+
+	/**
+	 * AM-55. Index notes this run leaves exactly as they are and must still account
+	 * for. Accumulated by `refusalFor` because that is the ONE place the precedence
+	 * between hosted / described / kept / undescribed is decided, and a second copy
+	 * of that ladder here is a second answer waiting to drift from it. `refusalFor`
+	 * is called for every folder in Pass B below, is idempotent, and this is a set.
+	 */
+	const keptExistingCuries = new Set<string>();
 
 	/**
 	 * S4 (2026-09-04). WHICH NOTE HOSTS THIS FOLDER, keyed by the folder.
@@ -817,6 +893,23 @@ function computeLevelHubs(
 	}
 
 	/**
+	 * AM-56 (2026-09-04). The trailing sentence every refusal about a folder carries.
+	 *
+	 * A fact about the vault is never recovered from the batch, not to identify a note
+	 * and not to UN-WRITE one. A previous run may have written this folder's Contents
+	 * list into some other note's managed region; whether it did is a fact that note
+	 * carries, and nothing in this batch can answer it. The retraction that tried
+	 * (whole-batch basename, the rule placement replaced) could by construction only
+	 * ever name a note that was NOT the host, and appended an empty managed region to
+	 * it. So the stale list is DISCLOSED rather than rewritten.
+	 *
+	 * Extension point, named and not built: a `hosted_folders` key recorded on the
+	 * host note would make hosting a fact the vault carries. When that lands, the
+	 * retraction returns as a read of that record and this sentence goes away.
+	 */
+	const STALE_LIST_DISCLOSURE = "Any list that still names this folder's index note is left as it was.";
+
+	/**
 	 * AM-44. Is this folder one the run declines to describe, and why?
 	 *
 	 * Consulted BEFORE `identityOf` and INSIDE the parent's children loop, which
@@ -842,27 +935,52 @@ function computeLevelHubs(
 	const refusalFor = (f: string): string | undefined => {
 		// AM-50. The root is described by the set, not by a row. See `isImportRoot`.
 		if (isImportRoot(f)) return undefined;
-		if (valuesByFolder.has(f)) return undefined;
+		// AM-54. The precedence, top to bottom: hosted by placement, then described by
+		// a chain of this run, then kept in place, then undescribed. A DESCRIBED folder
+		// is never treated as kept - a live chain outranks a recorded one, so a folder
+		// this run can name is named from what it just rendered and never from what a
+		// previous run wrote down.
 		if (hostByFolder.has(f)) return undefined;
+		if (valuesByFolder.has(f)) return undefined;
 		const unaligned = unalignedFolders.get(f);
 		if (unaligned) return unaligned;
 		// The caller collects no values at all, so "no row described this folder" is
 		// true of every folder and says nothing. The documented path-derived
 		// fallback covers this state and only this state.
 		if (!valuesWereCollected) return undefined;
-		// AM-52. The FOURTH state, asked before AM-50's: this folder holds a row this
-		// run kept in place. A folder holding a note the run vouched for is not a
-		// folder the run knows nothing about.
+		// AM-52/AM-54. THE FOURTH STATE, asked before AM-50's: this folder is on the
+		// chain of a row this run kept in place. A folder holding a note the run
+		// vouched for is not a folder the run knows nothing about.
 		if (keptFolders.has(f)) {
-			// The hub keeps the identity it already records, so it is written and
+			const observed = keptObservationOf(f);
+			// AM-55. Two index notes in one folder is a question, not a pick. Choosing
+			// the first would write one note's identity over the other's meaning, and
+			// the run has no way to tell which one describes the folder.
+			if (observed?.state === 'many') {
+				return `No index note was written for the folder "${f}": it holds more than one index note `
+					+ `(${observed.paths.map((p) => `"${p}"`).join(', ')}), so Crosswalker cannot say which one `
+					+ 'describes the folder. Keep one of them and rename or remove the others, then run the import '
+					+ `again. ${STALE_LIST_DISCLOSURE}`;
+			}
+			// Row 1. The hub keeps the identity it already records, so it is written and
 			// listed exactly as before.
 			if (recordedValuesOf(f)) return undefined;
-			// Nothing records what this folder is about and this run will not read it
-			// off the path, so the hub is refused. The cause is the one actually
-			// observed, and the two actions are the two that exist.
-			return `No index note was created for the folder "${f}". This folder holds notes the refresh kept in place `
-				+ 'because Skip existing was chosen; re-run with Replace to move them, or keep them and their index note '
-				+ 'stays as it was.';
+			// AM-55 row 2. THE NOTE IS THERE and this run has no identity to write onto
+			// it, so it is left byte for byte and accounted for as produced. Saying it
+			// "stays as it was" while the same run reported it as vanished was the
+			// failure mode: the cause was the one observed, and the consequence clause -
+			// the half the user acts on - was false.
+			if (observed?.state === 'one') {
+				keptExistingCuries.add(observed.curie);
+				return `The index note for the folder "${f}" was left as it was and not updated this run: the notes in `
+					+ 'it were kept in place by Skip existing and the index note predates recorded identity. Re-run with '
+					+ `Replace to re-establish it. ${STALE_LIST_DISCLOSURE}`;
+			}
+			// AM-55 row 3. No index note is in the folder at all, so there is nothing to
+			// leave alone and nothing to account for.
+			return `No index note exists for the folder "${f}" and none was created: the notes in it were kept in `
+				+ 'place by Skip existing and no earlier run recorded this folder\'s identity. Re-run with Replace to '
+				+ `create it. ${STALE_LIST_DISCLOSURE}`;
 		}
 		// AM-50. This run DID collect values and none of them reach this folder.
 		// Named as what it is, with the cause a user can actually act on. The
@@ -871,7 +989,7 @@ function computeLevelHubs(
 		// without any row's layout ever placing anything there.
 		return `No index note was created for the folder "${f}". No row of this run describes the folder; the note may `
 			+ 'have been moved. The notes themselves were written normally, and Crosswalker will not name a folder from '
-			+ 'its path. Move the note back, or re-run the import so the folder is described by the layout.';
+			+ `its path. Move the note back, or re-run the import so the folder is described by the layout. ${STALE_LIST_DISCLOSURE}`;
 	};
 
 	/**
@@ -1017,20 +1135,6 @@ function computeLevelHubs(
 
 	// Pass B: direct children (sorted by curie), materialize.
 	const sortedFolders = [...folders].sort(cmp);
-	/**
-	 * S7 ruling (2026-09-04). Notes whose managed Contents region was written for a
-	 * folder THIS RUN REFUSES.
-	 *
-	 * Failure mode prevented: a stale managed region, in the one part of a note the
-	 * user is told not to edit because the next run rewrites it. A folder hosted
-	 * under the whole-batch basename rule (before S4 and the S7 ruling narrowed
-	 * hosting to placement) put its children list into that note; refused now, it
-	 * emits no entry, and the writer only touches the entries present, so the note
-	 * would keep a Contents list this run no longer stands behind. An empty entry is
-	 * added AFTER the loop and only where nothing else claimed the path, so a folder
-	 * that legitimately hosts there always wins.
-	 */
-	const staleHostedPaths = new Set<string>();
 	for (const f of sortedFolders) {
 		// AM-37. The refusal. A folder whose values and segments disagree is a
 		// folder this run cannot describe, and the alternative to saying so is
@@ -1045,11 +1149,9 @@ function computeLevelHubs(
 		// does not exist.
 		const unaligned = refusalFor(f);
 		if (unaligned) {
+			// AM-56. The refusal is DISCLOSED and nothing is un-written. See
+			// `STALE_LIST_DISCLOSURE` for why a retraction cannot be aimed from here.
 			result.deviations.push(unaligned);
-			// S7 ruling. The note a PREVIOUS run would have hosted this folder under
-			// (whole-batch basename) has a managed region to retract.
-			const formerHost = byBasename.get(basename(f));
-			if (formerHost) staleHostedPaths.add(finalPath(formerHost));
 			continue;
 		}
 		const id = identityOf(f);
@@ -1116,16 +1218,6 @@ function computeLevelHubs(
 		}
 	}
 
-	// S7 ruling. Retract the managed region of a note that hosted only refused
-	// folders. Applied after the loop and never over an entry a folder actually
-	// claimed, so a legitimate hosting always wins and this can only ever empty a
-	// region nothing this run stands behind.
-	for (const path of staleHostedPaths) {
-		if (!result.levelHubs.hostedChildrenByPath.has(path)) {
-			result.levelHubs.hostedChildrenByPath.set(path, []);
-		}
-	}
-
 	// Root/home hub fallback: only when `rootFolder` was given a name but isn't
 	// itself a tracked ancestor folder (no note path is actually prefixed by
 	// it) — the bare golden-vault harness case (module header's step 4.5 note).
@@ -1186,6 +1278,13 @@ function computeLevelHubs(
 			}
 		}
 	}
+
+	// AM-55. The index notes this run left exactly as they are, for the caller to
+	// account for. Written LAST, after every `refusalFor` call this pass makes
+	// (Pass B, the children loops, and the root fallback's filter), so a curie can
+	// never be observed after the list the caller reads has been fixed. Sorted, like
+	// every other derived list here.
+	result.levelHubs.keptExistingCuries = [...keptExistingCuries].sort(cmp);
 
 	result.levelHubs.notes.sort((a, b) => cmp(a.path, b.path));
 }
@@ -1424,9 +1523,29 @@ export function buildManagedChildrenSection(
  * after whatever's already there (first-import shape: `# Title\n\n<section>`
  * still applies via the caller; this function only handles the block itself).
  */
-export function mergeManagedChildrenSection(existingBody: string, freshSection: string): string {
+export function mergeManagedChildrenSection(
+	existingBody: string,
+	freshSection: string,
+	/**
+	 * AM-56 (2026-09-04). The fresh section lists NOTHING. An empty section is never
+	 * APPENDED; it only rewrites a region the note already carries.
+	 *
+	 * Failure mode prevented: creating a managed region on a note that never had one.
+	 * `buildManagedChildrenSection` renders an empty list as a visible
+	 * `## Contents` / `*(nothing yet)*`, and an empty array is truthy, so a caller
+	 * handing over "nothing to list" wrote that block into the note - inside the one
+	 * part of a note the user is told the next run owns and must not edit by hand.
+	 * Rewriting an existing region to empty is honest, because the run maintains that
+	 * region and stands behind its emptiness. Manufacturing one is not.
+	 */
+	freshIsEmpty = false,
+): string {
 	const block = freshSection.replace(/\n+$/, '');
 	const scan = scanRegions(existingBody);
+	// AM-56. Nothing to list, and no region of ours to rewrite: leave the note's
+	// bytes exactly as they are. `replaceRegion` appends a missing region too, so the
+	// question is whether a CHILDREN region is there, not whether any region is.
+	if (freshIsEmpty && !(scan.ok && findSpan(scan.spans, 'children'))) return existingBody;
 	if (scan.ok && scan.spans.length > 0) {
 		// Byte-preserving: everything outside the region keeps its exact bytes —
 		// line endings, trailing whitespace, blank-line runs. Since 2026-08-27 this

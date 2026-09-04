@@ -63,11 +63,14 @@ describe('AM-50: a folder no row of this run describes is refused, never named f
 		// to simulate "a user dragged the file by hand" -- is INDISTINGUISHABLE,
 		// from inside `enrich()`, from a genuine skip-mode kept row, and AM-52's
 		// fourth refusal state (asked BEFORE this one) now claims it: with no
-		// `recordedHubValues` entry for Frameworks/Elsewhere (none supplied here),
-		// the folder is refused with the KEPT cause, never the MOVED cause below --
-		// see hub-refusal-am52-kept-not-moved.test.ts for the exempt/refused pair
-		// this state now owns, and for the still-reachable MOVED cause (an
-		// ancestor two levels up that AM-52 does not mark).
+		// `ownedHubsByFolder` entry for Frameworks/Elsewhere (none supplied here),
+		// the folder is refused with the KEPT cause (AM-55 row 3), never the MOVED
+		// cause below -- see hub-refusal-am52-kept-not-moved.test.ts for the
+		// exempt/refused pair this state now owns, and
+		// hub-refusal-am54-chain.test.ts for AM-54's fix to the OTHER pass-17
+		// finding this exact fixture shape used to demonstrate (an ancestor two
+		// levels up now DOES get walked and marked, where it used to fall through
+		// to the MOVED cause).
 		const notes: EnrichNote[] = [{
 			path: `${ROOT}/Elsewhere/A.md`,
 			renderedPath: `${ROOT}/X/A.md`,
@@ -84,9 +87,11 @@ describe('AM-50: a folder no row of this run describes is refused, never named f
 		expect(result.deviations.length).toBeGreaterThan(0);
 		const deviation = result.deviations.find((d) => d.includes(`${ROOT}/Elsewhere`));
 		expect(deviation).toBeDefined();
-		// AM-52: the KEPT cause, since no recorded identity was supplied for this
-		// folder and its shape is a kept-row shape. Never the MOVED wording.
-		expect(deviation).toContain('kept in place because Skip existing was chosen');
+		// AM-52/AM-55: the KEPT cause (row 3 -- no index note recorded at all), since
+		// no ownedHubsByFolder entry was supplied for this folder and its shape is a
+		// kept-row shape. Never the MOVED wording.
+		expect(deviation).toContain('kept in place by Skip existing');
+		expect(deviation).toContain('Re-run with Replace to create it');
 		expect(deviation).not.toContain('the note may');
 		expect(deviation).not.toContain('have been moved');
 

@@ -40,6 +40,7 @@ import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
 import type { RecipeDocumentOrigin } from './recipe-document';
 import { buildShapeMapRecap, deriveDestinationDefault, preferredParentNote, detectWaypointPlugin, type Provenance } from './mapping/view-model';
 import { computePlan } from './mapping/plan';
+import { outputRootPath, normalizeFolderSetting } from '../settings/folder-settings';
 import { deriveFacetMemberships } from './mapping/facets';
 import {
 	bestRecognizedRecipe,
@@ -76,7 +77,11 @@ export function recognizedDestination(entry: RecipeRegistryEntry, globalDefault:
 	// A single-segment suggestion is the registry's generic fallback ("Frameworks"),
 	// not a per-import root. Derive from the source file name instead.
 	if (tail.length === 0) return null;
-	const root = (globalDefault ?? '').trim().replace(/\/+$/, '') || 'Frameworks';
+	// AM-53, extended (2026-09-04). THROUGH THE ONE NORMALIZATION, for the same
+	// reason `deriveDestinationDefault` is: what this composes is shown to the user
+	// as the destination they accept, and a second spelling of the normalization made
+	// the shown string and the written string differ.
+	const root = normalizeFolderSetting(globalDefault ?? '') || 'Frameworks';
 	return `${root}/${tail.join('/')}`;
 }
 
@@ -1213,7 +1218,7 @@ export class ImportFlow {
 		// (when live — spec §7m curated defaults) what the enrichment hint adds.
 		const rowCount = this.parsedData?.rowCount ?? 0;
 		const shapes = summarizeRecipeShapes(entry);
-		const dest = resolveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null, entry);
+		const dest = resolveDestinationDefault(outputRootPath(this.plugin.settings), this.sourceFile?.name ?? null, entry);
 		const enrichment = honestEnrichment(entry);
 		card.createEl('p', { cls: 'crosswalker-recognized-desc', text: entry.description });
 		const summary = card.createEl('div', { cls: 'crosswalker-recognized-summary' });
@@ -1265,7 +1270,7 @@ export class ImportFlow {
 		// LIVE recommendedEnrichment hint rides along on the seeded mapping.
 		// Records the curated ROOT, not a user choice: `destinationEdited` stays
 		// false so the breadcrumb still reads as autofilled and stays editable.
-		this.curatedDestination = recognizedDestination(entry, this.plugin.settings.defaultOutputPath);
+		this.curatedDestination = recognizedDestination(entry, outputRootPath(this.plugin.settings));
 		// Seed from the COMPLETE canonical recipe. The RecipeDocument keeps every
 		// deferred/read-only field while exposing its editable mapping to the workbench.
 		// No curated overlay is applied here: an untouched recognized recipe must retain
@@ -1866,7 +1871,7 @@ export class ImportFlow {
 			if (chosen) return chosen;
 		}
 		return this.curatedDestination
-			?? deriveDestinationDefault(this.plugin.settings.defaultOutputPath, this.sourceFile?.name ?? null);
+			?? deriveDestinationDefault(outputRootPath(this.plugin.settings), this.sourceFile?.name ?? null);
 	}
 
 	/** The discovered set this import is refreshing, or null when minting a new one. */

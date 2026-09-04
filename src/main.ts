@@ -1,6 +1,6 @@
 import { Plugin, Notice, TFile, TFolder, MarkdownView, Platform, apiVersion, normalizePath, type WorkspaceLeaf } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
-import { outputRootPath, outputRootFile } from './settings/output-root';
+import { outputRootPath, outputRootFile, evidenceJunctionFolder, evidenceReportFolder } from './settings/folder-settings';
 import {
 	isImportableExtension,
 	formatOntologyStatusLabel,
@@ -783,7 +783,10 @@ export default class CrosswalkerPlugin extends Plugin {
 				const active = this.app.workspace.getActiveFile();
 				new EvidenceLinkModal({
 					app: this.app,
-					folder: this.settings.evidenceJunctionFolder,
+					// AM-57 (2026-09-04). Through the accessor, so the folder composed into
+					// the junction's vault path is normalized once here rather than by each
+					// site that composes with it, and never not at all.
+					folder: evidenceJunctionFolder(this.settings),
 					initialControlPath: active?.path,
 				}).open();
 			},
@@ -801,7 +804,8 @@ export default class CrosswalkerPlugin extends Plugin {
 					app: this.app,
 					openTier2: this.openTier2,
 					refreshForReport: this.runProjection,
-					reportFolder: this.settings.evidenceReportFolder,
+					// AM-57. Same accessor discipline as the junction folder above.
+					reportFolder: evidenceReportFolder(this.settings),
 				});
 			},
 		});

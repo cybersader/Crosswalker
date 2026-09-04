@@ -28,12 +28,12 @@ import type { CrosswalkerSettings } from './settings-data';
  * spelling of it. This is that function.
  */
 export function outputRootPath(settings: Pick<CrosswalkerSettings, 'defaultOutputPath'>): string {
-	return normalizeOutputRoot(settings.defaultOutputPath);
+	return normalizeFolderSetting(settings.defaultOutputPath);
 }
 
 /**
- * AM-53. The normalization itself, for the one caller that reads a root from
- * somewhere other than settings.
+ * AM-53. The normalization itself, for the callers that read a folder from
+ * somewhere other than the output-root setting.
  *
  * S6 ruling (2026-09-04) routes `import-set.ts`'s `normalizeFolder` here. That was
  * trim plus edge separators, which is a fraction of one of the host's four
@@ -41,8 +41,13 @@ export function outputRootPath(settings: Pick<CrosswalkerSettings, 'defaultOutpu
  * enough - and its result was then compared against fully normalized vault paths
  * to decide where a refresh believes an import set lives. A second spelling of one
  * normalization is a second answer to one question.
+ *
+ * AM-57 (2026-09-04). Renamed from `normalizeOutputRoot` because the output root is
+ * not the only folder a person types into settings, and every one of them is
+ * composed into a vault path the same way. Same body: the rule was never specific
+ * to the root, only its name was.
  */
-export function normalizeOutputRoot(value: string): string {
+export function normalizeFolderSetting(value: string): string {
 	const trimmed = value.trim();
 	if (trimmed === '') return '';
 	const normalized = normalizePath(trimmed);
@@ -71,4 +76,37 @@ export function outputRootFile(
 ): TAbstractFile | null {
 	const root = outputRootPath(settings);
 	return app.vault.getAbstractFileByPath(root === '' ? '/' : root);
+}
+
+/**
+ * AM-57. The fallbacks the settings tab writes when a person clears the field, and
+ * the fallbacks the accessors apply when the stored value normalizes to nothing.
+ * Named once so the two cannot drift into disagreeing about where evidence lands.
+ */
+export const DEFAULT_EVIDENCE_JUNCTION_FOLDER = 'Evidence/Junctions';
+export const DEFAULT_EVIDENCE_REPORT_FOLDER = 'Reports';
+
+/**
+ * AM-57 (2026-09-04). THE ONE READING of the evidence link folder.
+ *
+ * Failure mode prevented: the output root's own bug, one settings field over. This
+ * value is composed straight into a vault path (`<folder>/<name>-<hash>.md`) which
+ * is then handed to `getAbstractFileByPath`, `createFolder` and `create`. Typed
+ * with a trailing separator it produced `Evidence/Junctions//X.md`: the occupant
+ * check answered null on a key the file map does not hold, so the address refusal
+ * that exists to stop a junction from landing on somebody else's note could not
+ * fire, and the note was created at a path nobody had normalized. The four
+ * characters AM-49 names (an NBSP, a backslash, an internal `//`, a bare `/`) all
+ * reach the same place.
+ *
+ * The default is applied here rather than at each composition site, so "the person
+ * cleared the field" has one answer instead of one per caller.
+ */
+export function evidenceJunctionFolder(settings: Pick<CrosswalkerSettings, 'evidenceJunctionFolder'>): string {
+	return normalizeFolderSetting(settings.evidenceJunctionFolder) || DEFAULT_EVIDENCE_JUNCTION_FOLDER;
+}
+
+/** AM-57. THE ONE READING of the coverage report folder. Same rule, same reason. */
+export function evidenceReportFolder(settings: Pick<CrosswalkerSettings, 'evidenceReportFolder'>): string {
+	return normalizeFolderSetting(settings.evidenceReportFolder) || DEFAULT_EVIDENCE_REPORT_FOLDER;
 }

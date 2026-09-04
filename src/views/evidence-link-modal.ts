@@ -468,6 +468,16 @@ function buildLinkFallbackIndex(app: App): LinkFallbackIndex {
 		byPath.add(file.path);
 		// From the path, not from `TFile.basename`, so this answers the same way on
 		// any host that can list files.
+		//
+		// S8, ruled 2026-09-04, ACCEPTED AS IS. Only `.md` is stripped, so a file with
+		// an extension keys under its full name (`Access.pdf`) and shares no bucket
+		// with `Access.md`. A file with NO extension is the one exception: a vault file
+		// literally named `Access` joins `Access.md` here, `linkFallbackResolves`
+		// refuses the now-ambiguous bare basename, and the scan concludes nothing
+		// records the pair and mints a second junction, which the existing message
+		// discloses. Fail-closed and left as is: guessing at Obsidian's proximity
+		// tie-break would put the scan back to concluding from something it does not
+		// know, which is the defect this index exists to remove.
 		const base = (file.path.split('/').pop() ?? file.path).replace(/\.md$/i, '');
 		const bucket = byBasename.get(base);
 		if (bucket) bucket.push(file.path);
@@ -991,11 +1001,16 @@ export class EvidenceLinkModal extends Modal {
 		// controls `applyPairState` leaves live, because they are what changes the
 		// pair; that is exactly why the write must disable them. Submit joins them so
 		// the re-entry guard above has a visible counterpart.
+		//
+		// The three `setDisabled` calls are INSIDE the try (ruled 2026-09-04): they
+		// are host calls, and a throw from one of them above the try would leave
+		// `writing` true with no `finally` to clear it, which is a window that
+		// silently refuses every further click.
 		this.writing = true;
-		this.controlDrop?.setDisabled(true);
-		this.evidenceText?.setDisabled(true);
-		this.submitButton?.setDisabled(true);
 		try {
+			this.controlDrop?.setDisabled(true);
+			this.evidenceText?.setDisabled(true);
+			this.submitButton?.setDisabled(true);
 			const { index, existing, current } = resolution;
 
 			// AM-41. `reviewed_against` is written only
@@ -1190,6 +1205,13 @@ export class EvidenceLinkModal extends Modal {
 					);
 					return;
 				}
+				// AM-57 (2026-09-04). `note.path` is composed by `evidenceLinkPath`,
+				// which normalizes the configured folder, so the occupant lookup above
+				// and this folder derivation both act on a path the vault's own file
+				// map can hold. Before that, a settings value with a trailing separator
+				// produced `Evidence/Junctions//X.md`: the lookup answered null on a key
+				// nothing holds, the address refusal could not fire, and `createFolder`
+				// was handed a folder nobody had normalized.
 				const folder = note.path.slice(0, note.path.lastIndexOf('/'));
 				if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
 					await this.app.vault.createFolder(folder);

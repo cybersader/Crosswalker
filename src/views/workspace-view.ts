@@ -16,7 +16,7 @@
 
 import { App, ItemView, WorkspaceLeaf, TAbstractFile, TFile, TFolder, setIcon, parseYaml } from 'obsidian';
 import CrosswalkerPlugin from '../main';
-import { outputRootFile } from '../settings/output-root';
+import { outputRootFile } from '../settings/folder-settings';
 import { ImportFlow, type ImportFlowHost } from '../import/import-wizard';
 import { ConfigBrowserModal } from '../config/config-browser-modal';
 import {

@@ -24,12 +24,19 @@
  *      next run rewrites it. It no longer will.
  *
  * THE RULE. `identityOf` reads `hostByFolder` -- the exact set `refusalFor`
- * consults -- so hosting answers the same way on both paths. And
- * `staleHostedPaths` collects, for every REFUSED folder, the note the OLD
- * basename rule would have hosted it under; after the main pass, any such
- * path nothing else claimed is set to an EMPTY managed region, retracting it
- * rather than leaving it stale. Never over a real entry: a folder that
- * legitimately hosts there always wins.
+ * consults -- so hosting answers the same way on both paths.
+ *
+ * AM-56 (2026-09-04, pass 18): the SECOND half of this file's original rule --
+ * `staleHostedPaths`, which retracted a refused folder's former (pre-S4) host
+ * to an empty managed region -- is WITHDRAWN. It picked its target by
+ * whole-batch basename, the exact rule this same S7 ruling removed from the
+ * hosting exemption two hundred lines above, reopened on the write path; by
+ * construction it could only ever name a note that was NOT the folder's host,
+ * and it manufactured an empty `## Contents` region on that unrelated note
+ * (pass-17 CONFIRMED 2). The stale-region describe block below now pins the
+ * opposite: a refused folder's disclosure sentence, and NO touch at all on an
+ * unrelated same-basename note. See hub-refusal-am56-retraction-withdrawn.test.ts
+ * for the full rule.
  */
 
 import { enrich, type EnrichNote } from '../src/generation/enrich';
@@ -97,8 +104,15 @@ describe('S7 (write path): identityOf hosts a folder by PLACEMENT, never by an u
 	});
 });
 
-describe('S7 (stale-region retraction): a refused folder\'s former (pre-S4) host has its Contents region emptied, not left stale', () => {
-	it('a far-away note that would have hosted this folder under the OLD basename rule gets its managed region retracted to empty', () => {
+describe('S7 (stale-region retraction, WITHDRAWN by AM-56 2026-09-04): a refused folder never touches an unrelated note under the OLD basename rule', () => {
+	// AM-56 withdrew the retraction this describe block originally pinned: whether
+	// a note hosts a folder's Contents region is a fact the VAULT carries, not one
+	// this batch recovers by whole-batch basename -- see
+	// hub-refusal-am56-retraction-withdrawn.test.ts for the full rule and the
+	// CONFIRMED 2 defect (an empty region manufactured on an unrelated note) this
+	// closes. The retraction's own doc comment and `staleHostedPaths` are gone;
+	// this test now pins the opposite of what it originally asserted.
+	it('a far-away note that would have hosted this folder under the OLD basename rule is left completely untouched -- no hosted-Contents entry at all', () => {
 		// "Group" genuinely disagrees (values say WRONG, the directory is Group) --
 		// a real, row-caused refusal.
 		const disagreeing: EnrichNote = {
@@ -121,16 +135,17 @@ describe('S7 (stale-region retraction): a refused folder\'s former (pre-S4) host
 		};
 		const result = enrich([disagreeing, unrelated], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
 
-		// Refused, as S4 already pins.
+		// Refused, as S4 already pins. (This is the AM-44 elementwise-disagreement
+		// refusal, which does not carry AM-56's disclosure sentence -- only the
+		// AM-50/AM-55 refusal texts do; see hub-refusal-am56-retraction-withdrawn
+		// .test.ts for that assertion on the texts that DO carry it.)
 		expect(hubCuriesOf(result)).not.toContain(`${ONT}:hub/group`);
 		expect(result.deviations.find((d) => d.includes(`${ROOT}/Group`))).toBeDefined();
 
-		// THE NEW ASSERTION S7 ADDS: the former host's managed Contents region is
-		// explicitly retracted to empty -- present in the map, holding nothing --
-		// rather than simply absent (which would leave whatever list a PRIOR run
-		// had written there untouched on disk).
-		expect(result.levelHubs.hostedChildrenByPath.has(formerHostPath)).toBe(true);
-		expect(result.levelHubs.hostedChildrenByPath.get(formerHostPath)).toEqual([]);
+		// AM-56: nothing recovers a "former host" from the batch by basename any
+		// more, so the unrelated note gains NO hosted-Contents entry at all --
+		// neither a stale one nor a retracted-to-empty one.
+		expect(result.levelHubs.hostedChildrenByPath.has(formerHostPath)).toBe(false);
 	});
 
 	it('never retracts over a real hosting claim: the SAME note that is Group\'s only basename match also genuinely hosts a DIFFERENT Group folder elsewhere, and its real Contents list survives', () => {

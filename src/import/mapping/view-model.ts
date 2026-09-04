@@ -34,6 +34,7 @@ import type {
 	PartRef,
 } from './types';
 import { destinationRank, toSourceRefs, isConstantRef, DEFAULT_MISSING } from './types';
+import { normalizeFolderSetting } from '../../settings/folder-settings';
 
 // ============================================================================
 // Shape cards (the coarse, per-mapping summary view — M2)
@@ -436,7 +437,13 @@ export function deriveDestinationDefault(outputPath: string, sourceFileName: str
 	// ownership: with one collection already in that folder, the review screen
 	// preselects refreshing it, so the NEXT unrelated source is attributed to the
 	// first and every concept in the first is reported missing from the new one.
-	const root = (outputPath ?? '').trim().replace(/\/+$/, '') || 'Frameworks';
+	// AM-53, extended (2026-09-04). THROUGH THE ONE NORMALIZATION. This was a
+	// second spelling of it - trim plus TRAILING separators, verbatim the
+	// `stripSlashes` shape AM-49 records as insufficient - so the destination this
+	// derives and DISPLAYS for the user to accept was not the destination the
+	// engine went on to write. `Frame//works` was shown as `Frame//works/nist` and
+	// written as `Frame/works/nist`.
+	const root = normalizeFolderSetting(outputPath ?? '') || 'Frameworks';
 	const base = basenameNoExt(sourceFileName ?? '');
 	return base ? `${root}/${base}` : `${root}/Imported`;
 }
