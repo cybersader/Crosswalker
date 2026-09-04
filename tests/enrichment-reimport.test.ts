@@ -512,6 +512,107 @@ const RECIPE_WRAPPED_FOLDER: Recipe = {
 	},
 };
 
+/**
+ * AM-60 (2026-09-04, pass 19): ONE POPULATION, ONE PASS -- the `overwriteMode:
+ * 'skip'` twin of this file's `'replace'`-only re-import coverage.
+ *
+ * THE DEFECT THIS PINS (pass-18 CONFIRMED 2 / Ground 3). `applyEnrichment`
+ * used to receive `enrichRecords` ALONE (the rows this run actually WROTE),
+ * never the rows it kept. In the DEFAULT overwrite mode (Skip existing), a
+ * refresh that adds one row to an existing framework computed every
+ * ancestor's managed Contents from a batch of ONE and rewrote the hub to name
+ * only the new row -- twenty existing links vanish from the one region a
+ * user is told not to hand-edit, with zero warnings and zero orphans. AM-60
+ * hands `applyEnrichment` the WHOLE in-scope population
+ * (`[...enrichRecords, ...keptRecords]`) so every list it derives (Contents
+ * included) is computed over what the folder actually holds, while confining
+ * the note-body WRITE itself to the rows this run produced (`writeSet`).
+ */
+const TACTIC_FOLDER_RECIPE: Recipe = {
+	recipe: 'am60-tactic-folder',
+	source: { ontology: 'am60', levels: ['tactic', 'leaf'] },
+	target: {
+		layout: [
+			{ level: 'tactic', mechanism: 'folder', template: '{tactic}' },
+			{ level: 'leaf', mechanism: 'file', template: '{id}.md' },
+		],
+		enrichment: { children_lists: true, facet_notes: 'none', parent_note: 'sibling', level_hubs: 'notes' },
+	},
+};
+
+function am60RowsV1(): ParsedData {
+	const rows = [
+		{ id: 'T1', name: 'One', tactic: 'Persistence' },
+		{ id: 'T2', name: 'Two', tactic: 'Persistence' },
+	];
+	return { columns: ['id', 'name', 'tactic'], rows, rowCount: rows.length };
+}
+
+/** Same two rows, unchanged -- plus ONE new row appended to the same tactic. */
+function am60RowsV2(): ParsedData {
+	const rows = [
+		{ id: 'T1', name: 'One', tactic: 'Persistence' },
+		{ id: 'T2', name: 'Two', tactic: 'Persistence' },
+		{ id: 'T3', name: 'Three', tactic: 'Persistence' },
+	];
+	return { columns: ['id', 'name', 'tactic'], rows, rowCount: rows.length };
+}
+
+const AM60_OPTS = {
+	basePath: 'Frameworks',
+	createFolders: true,
+	strictValidation: false,
+	curieLocalPart: (row: Record<string, unknown>) => String(row.id),
+};
+
+describe('AM-60 end to end: Skip existing, one new row added to an existing folder -- the parent hub\'s Contents lists every child the folder holds, not just the one row this run wrote', () => {
+	it('two rows imported, one row added, refreshed with Skip existing: the tactic hub\'s Contents names all three', async () => {
+		const { app, files } = makeApp();
+		await importInto(app, am60RowsV1(), TACTIC_FOLDER_RECIPE, { ...AM60_OPTS, overwriteMode: 'replace' });
+
+		const hubPath = 'Frameworks/Persistence/Persistence.md';
+		expect(files.get(hubPath)).toContain('- [[T1]]');
+		expect(files.get(hubPath)).toContain('- [[T2]]');
+
+		const result = await importInto(app, am60RowsV2(), TACTIC_FOLDER_RECIPE, { ...AM60_OPTS, overwriteMode: 'skip' });
+		expect(result.errors).toEqual([]);
+		// T1 and T2 were left exactly where they were (Skip existing); only T3 is
+		// newly created.
+		expect(result.created).toEqual(['Frameworks/Persistence/T3.md']);
+		expect(result.skipped).toEqual(expect.arrayContaining(['Frameworks/Persistence/T1.md', 'Frameworks/Persistence/T2.md']));
+
+		const hub = files.get(hubPath)!;
+		// THE FIX: the parent's Contents lists every child the folder holds --
+		// the two rows this run left alone AND the one row it wrote -- not just
+		// the single row `applyEnrichment` was, before AM-60, handed alone.
+		expect(hub).toContain('- [[T1]]');
+		expect(hub).toContain('- [[T2]]');
+		expect(hub).toContain('- [[T3]]');
+		const contentsLinks = (/## Contents\n([\s\S]*?)(\n##|\n%%|$)/.exec(hub)?.[1] ?? '')
+			.split('\n').filter((l) => l.trim().startsWith('- [['));
+		expect(contentsLinks).toHaveLength(3);
+
+		expect(result.orphans ?? []).toEqual([]);
+	});
+
+	it('no second derivation survives: markKeptHubsProduced no longer exists as a symbol in generation-engine.ts', () => {
+		// AM-60's own invariant, checked structurally rather than behaviourally:
+		// the two-pass shape (a bookkeeping `enrich()` call over the whole
+		// population, a SEPARATE writing `enrich()` call over half of it) is what
+		// produced two answers for one folder. There is now exactly one call, and
+		// the function that used to be the bookkeeping half is gone -- not merely
+		// unused, not renamed and kept around, gone.
+		const fs = require('node:fs') as typeof import('node:fs');
+		const path = require('node:path') as typeof import('node:path');
+		const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'generation', 'generation-engine.ts'), 'utf-8');
+		// No DECLARATION and no CALL SITE -- a historical mention in a comment
+		// (the header explaining what AM-60 removed and why) is fine and expected.
+		expect(source).not.toMatch(/function markKeptHubsProduced/);
+		expect(source).not.toMatch(/[^.]\bmarkKeptHubsProduced\(/);
+		expect(source).toContain('reportOwnedHubReadProblems'); // what's left of it (AM-60's own naming)
+	});
+});
+
 describe('concept_cid + recipe.hash (Ch 43 deliverable §2 wiring)', () => {
 	it('every generated note carries a well-formed concept_cid and recipe.hash', async () => {
 		const { app, files } = makeApp();

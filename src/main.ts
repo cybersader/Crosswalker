@@ -1,6 +1,6 @@
 import { Plugin, Notice, TFile, TFolder, MarkdownView, Platform, apiVersion, normalizePath, type WorkspaceLeaf } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
-import { outputRootPath, outputRootFile, evidenceJunctionFolder, evidenceReportFolder } from './settings/folder-settings';
+import { outputRootPath, outputRootFile, evidenceJunctionFolder, evidenceReportFolder, tier2SidecarPath } from './settings/folder-settings';
 import {
 	isImportableExtension,
 	formatOntologyStatusLabel,
@@ -141,7 +141,11 @@ export default class CrosswalkerPlugin extends Plugin {
 	openTier2 = async (): Promise<SidecarHandle> => {
 		if (this.tier2Handle) return this.tier2Handle;
 		const handle = await openSidecar(this, this.app, {
-			sidecarPath: this.settings.tier2SidecarPath,
+			// S10 (2026-09-04). Through the accessor, so the path this opens the
+			// query index at is normalized by the SAME function every other
+			// path-shaped setting is, and cannot disagree with the path the clear
+			// command below hands to the pool.
+			sidecarPath: tier2SidecarPath(this.settings),
 		});
 		// Cache BEFORE any projection below, so the reprojection path cannot
 		// re-enter this function and open a second handle.
@@ -858,7 +862,10 @@ export default class CrosswalkerPlugin extends Plugin {
 							throw new Error('the query index could not be closed, so it was not cleared. Reload Obsidian and try again.');
 						}
 					}
-					const result = await clearSidecar(this, this.settings.tier2SidecarPath);
+					// S10. The same accessor the open path reads. A clear that keys the
+					// pool differently from the open finds no files, deletes nothing, and
+					// reports the index as already empty.
+					const result = await clearSidecar(this, tier2SidecarPath(this.settings));
 					// clearSidecar throws when it cannot verify the file is gone, so
 					// reaching here means the reset actually happened. Each outcome
 					// gets its own wording: announcing a deletion that did not occur

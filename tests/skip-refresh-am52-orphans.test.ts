@@ -13,15 +13,20 @@
  * dropped out of `producedCuries`, and A-8's own acceptance clause ("zero new
  * orphans, skip included") failed on an ordinary refresh no user action caused.
  *
- * WHY `applyEnrichment` (the WRITE pass) NEVER TOUCHES THE OLD FOLDER HERE.
- * Both write loops only call `applyEnrichment` with `enrichRecords` -- the rows
- * actually CREATED this run -- never `keptRecords`. When every row in a batch
- * is kept (this scenario: nothing in the source changed shape enough to force
- * a write), `enrichRecords` is empty and the write pass does not run at all;
- * only `markKeptHubsProduced` (bookkeeping, no vault I/O) runs, and it is the
- * one this test exercises. The old hub note is therefore asserted UNCHANGED,
- * not rewritten -- that is the correct outcome, not a gap: nothing this run
- * did needed it touched.
+ * WHY `applyEnrichment` (the WRITE pass) TOUCHES THE OLD FOLDER'S HUB, AS OF
+ * AM-60 (2026-09-04, pass 19). Before AM-60, `applyEnrichment` only ever
+ * received `enrichRecords` -- the rows actually CREATED this run -- so an
+ * all-skip refresh (this scenario) left it empty and the write pass never ran
+ * at all; only `markKeptHubsProduced` (bookkeeping, no vault I/O) accounted
+ * for the kept hub without writing it, which is what row 1 of AM-55's table
+ * asked for but never delivered ("Hub write" never fired as a write -- pass
+ * 18's own residual risk #2). AM-60 collapsed the two-pass shape: there is now
+ * ONE `enrich()` call over the WHOLE population (`[...enrichRecords,
+ * ...keptRecords]`), and a kept folder with a USABLE recorded chain (row 1) is
+ * genuinely REWRITTEN from that chain -- idempotently, so the CONTENT is
+ * byte-identical except for the wall-clock `produced_at` provenance field,
+ * which this test now normalizes away, the same way
+ * `enrichment-reimport.test.ts`'s own `normalize()` helper does.
  */
 
 import { TFile, TFolder } from 'obsidian';
@@ -35,6 +40,11 @@ const yaml = require('js-yaml') as { load: (s: string) => unknown };
 function makeApp() {
 	const files = new Map<string, string>();
 	const folders = new Set<string>(['']);
+	// AM-60 (pass 19): a call log for `modify`, so a test can tell "genuinely
+	// rewritten this run" apart from "never touched" even when the rewrite is
+	// content-idempotent -- the two are indistinguishable by reading `files`
+	// alone once `produced_at` is normalized away.
+	const modifyCalls: string[] = [];
 	const rename = async (file: { path: string }, to: string) => {
 		const text = files.get(file.path);
 		files.delete(file.path);
@@ -51,7 +61,7 @@ function makeApp() {
 				return null;
 			},
 			create: async (path: string, content: string) => { files.set(path, content); return new TFile(path); },
-			modify: async (file: { path: string }, content: string) => { files.set(file.path, content); },
+			modify: async (file: { path: string }, content: string) => { modifyCalls.push(file.path); files.set(file.path, content); },
 			read: async (file: { path: string }) => files.get(file.path) ?? '',
 			cachedRead: async (file: { path: string }) => files.get(file.path) ?? '',
 			createFolder: async (path: string) => { folders.add(path); },
@@ -69,7 +79,7 @@ function makeApp() {
 		},
 		fileManager: { renameFile: rename },
 	};
-	return { app: app as any, files };
+	return { app: app as any, files, modifyCalls };
 }
 
 const BASE = 'Ontologies';
@@ -112,6 +122,11 @@ function frontmatterOf(text: string): any {
 	return match ? (yaml.load(match[1]) as any) : {};
 }
 
+/** Strip the wall-clock provenance field so two writes compare byte-for-byte. */
+function normalizeProducedAt(text: string): string {
+	return text.replace(/produced_at: "[^"]*"/g, 'produced_at: "<ts>"');
+}
+
 function run(app: any, rec: Recipe, parsed: ParsedData, overwriteMode: 'skip' | 'replace', importSet: any) {
 	return generateFromRecipe(app, parsed, rec, {
 		basePath: BASE,
@@ -125,7 +140,7 @@ function run(app: any, rec: Recipe, parsed: ParsedData, overwriteMode: 'skip' | 
 
 describe('AM-52 end to end: a skip refresh with a row recategorised between levels', () => {
 	async function seedThenRefresh() {
-		const { app, files } = makeApp();
+		const { app, files, modifyCalls } = makeApp();
 		const first = await run(app, recipe(), parsedV1(), 'replace', 'new');
 		expect(first.errors).toEqual([]);
 		expect(files.has(`${BASE}/Persistence/T1.md`)).toBe(true);
@@ -133,9 +148,10 @@ describe('AM-52 end to end: a skip refresh with a row recategorised between leve
 		const setId = frontmatterOf(files.get(`${BASE}/Persistence/T1.md`)!)?._crosswalker?.import_set?.id;
 		expect(typeof setId).toBe('string');
 		const persistenceHubBefore = files.get(`${BASE}/Persistence/Persistence.md`)!;
+		modifyCalls.length = 0; // only the REFRESH run's calls matter to this suite
 
 		const second = await run(app, recipe(), parsedV2Recategorized(), 'skip', { id: setId });
-		return { app, files, second, persistenceHubBefore };
+		return { app, files, second, persistenceHubBefore, modifyCalls };
 	}
 
 	it('reports zero new orphans -- the recategorised row\'s old folder is accounted for, not reported vanished', async () => {
@@ -161,13 +177,21 @@ describe('AM-52 end to end: a skip refresh with a row recategorised between leve
 		expect(files.has(`${BASE}/IA/IA.md`)).toBe(false);
 	});
 
-	it('leaves the old hub exactly as it was -- nothing in this run needed it rewritten, and it still lists T1', async () => {
-		const { files, persistenceHubBefore } = await seedThenRefresh();
-		// A run where every row is kept never calls the WRITE pass at all (see the
-		// file header), so the hub the run KEPT accounting for is not touched --
-		// asserted byte-for-byte, which is the strongest form of "still there".
-		expect(files.get(`${BASE}/Persistence/Persistence.md`)).toBe(persistenceHubBefore);
-		expect(persistenceHubBefore).toContain('[[T1]]');
+	it('rewrites the old hub IDEMPOTENTLY from its own recorded chain (AM-60, pass 19: one population, one pass -- row 1 is now a real write, not just an account), and it still lists T1', async () => {
+		const { files, persistenceHubBefore, modifyCalls } = await seedThenRefresh();
+		const after = files.get(`${BASE}/Persistence/Persistence.md`)!;
+		// GENUINELY rewritten this run, not merely unchanged because nothing
+		// touched it -- the positive signal `produced_at` alone cannot give,
+		// since a note that was never written at all also normalizes equal to
+		// itself.
+		expect(modifyCalls).toContain(`${BASE}/Persistence/Persistence.md`);
+		// Content-identical except the wall-clock provenance field: AM-60 runs the
+		// write pass over the WHOLE population (including this kept row's folder),
+		// and row 1's usable recorded chain means it is rewritten from ITS OWN
+		// identity -- the same identity it already carried, so nothing observable
+		// changes except that the note was genuinely touched this run.
+		expect(normalizeProducedAt(after)).toBe(normalizeProducedAt(persistenceHubBefore));
+		expect(after).toContain('[[T1]]');
 	});
 
 	it('control: under Replace the row genuinely moves, Persistence is left with nothing describing it, and its hub is CORRECTLY orphaned -- proving the skip run above reports zero for the right reason, not because nothing is ever checked', async () => {

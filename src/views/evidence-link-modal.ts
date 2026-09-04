@@ -1212,7 +1212,14 @@ export class EvidenceLinkModal extends Modal {
 				// produced `Evidence/Junctions//X.md`: the lookup answered null on a key
 				// nothing holds, the address refusal could not fire, and `createFolder`
 				// was handed a folder nobody had normalized.
-				const folder = note.path.slice(0, note.path.lastIndexOf('/'));
+				//
+				// S11 (2026-09-04). The separator is LOCATED before it is sliced at.
+				// The vault root is now a folder a person can choose, so `note.path`
+				// can legitimately be `X.md` with no separator at all; `slice(0, -1)`
+				// on that yields `X.m`, which is truthy, so the next line would have
+				// created a FOLDER named after a truncated file name beside the note.
+				const sep = note.path.lastIndexOf('/');
+				const folder = sep === -1 ? '' : note.path.slice(0, sep);
 				if (folder && !this.app.vault.getAbstractFileByPath(folder)) {
 					await this.app.vault.createFolder(folder);
 				}

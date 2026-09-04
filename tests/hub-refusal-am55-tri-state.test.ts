@@ -23,7 +23,18 @@
  *   Row 2 -- present, no usable chain -> refused (kept cause), its curie still
  *                                        added to `levelHubs.keptExistingCuries`.
  *   Row 3 -- no hub in the folder  -> refused (kept cause), nothing to account.
- *   many  -- two hubs in one folder -> refused by NAME, neither curie accounted.
+ *   many  -- two hubs in one folder -> refused by NAME, BOTH curies accounted
+ *                                       (AM-59, pass 19 -- see below).
+ *
+ * AM-59 UPDATE (2026-09-04, pass 19). Pass 18's `many` branch refused and
+ * accounted for NOTHING, so the same run's orphan pass reported both competing
+ * notes as vanished over the refusal naming them present -- the ninth rule of
+ * the arc ("a refusal names the population it looked at") applied to its own
+ * `many` state. `OwnedHubAtFolder`'s `many` arm now carries `curies` alongside
+ * `paths`, index for index, and BOTH are added to `keptExistingCuries` before
+ * the refusal returns. The row-3 text also changed, from a vault-wide claim
+ * ("No index note exists for the folder") to one scoped to what the read
+ * actually covers ("This import has no index note for the folder").
  */
 
 import { enrich, type EnrichNote, type OwnedHubsByFolder } from '../src/generation/enrich';
@@ -104,7 +115,10 @@ describe('AM-55 row 3: no hub in the folder at all -- refused with the row-3 tex
 		expect(hubByPath(result, `${FOLDER}/Persistence.md`)).toBeUndefined();
 		const deviation = deviationFor(result, FOLDER);
 		expect(deviation).toBeDefined();
-		expect(deviation).toContain('No index note exists for the folder');
+		// AM-59 (pass 19): the sentence now names the POPULATION IT READ ("this
+		// import") rather than claiming a fact about the whole vault.
+		expect(deviation).toContain('This import has no index note for the folder');
+		expect(deviation).not.toContain('No index note exists for the folder');
 		expect(deviation).toContain('none was created');
 		expect(deviation).toContain('Re-run with Replace to create it');
 		expect(result.levelHubs.keptExistingCuries).toEqual([]);
@@ -112,15 +126,19 @@ describe('AM-55 row 3: no hub in the folder at all -- refused with the row-3 tex
 
 	it('no ownedHubsByFolder option supplied at all behaves identically to an empty map (the caller-optional contract)', () => {
 		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
-		expect(deviationFor(result, FOLDER)).toContain('No index note exists for the folder');
+		expect(deviationFor(result, FOLDER)).toContain('This import has no index note for the folder');
 		expect(result.levelHubs.keptExistingCuries).toEqual([]);
 	});
 });
 
-describe('AM-55 "many": two index notes in one folder is a refusal by NAME, never a pick, and neither curie is accounted for', () => {
-	it('names both paths in the refusal and marks nothing produced', () => {
+describe('AM-55/AM-59 "many": two index notes in one folder is a refusal by NAME, never a pick, and BOTH curies are accounted for', () => {
+	it('names both paths in the refusal and marks BOTH curies produced (AM-59, pass 19: refusing to pick is not evidence either note vanished)', () => {
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
-			[FOLDER, { state: 'many', paths: [`${FOLDER}/Persistence.md`, `${FOLDER}/Persistence-copy.md`] }],
+			[FOLDER, {
+				state: 'many',
+				paths: [`${FOLDER}/Persistence.md`, `${FOLDER}/Persistence-copy.md`],
+				curies: [`${ONT}:hub/persistence`, `${ONT}:hub/persistence-copy`],
+			}],
 		]);
 		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder });
 
@@ -131,9 +149,14 @@ describe('AM-55 "many": two index notes in one folder is a refusal by NAME, neve
 		expect(deviation).toContain(`${FOLDER}/Persistence.md`);
 		expect(deviation).toContain(`${FOLDER}/Persistence-copy.md`);
 		expect(deviation).toContain('cannot say which one');
-		// Neither of the two competing notes' curies is claimed as produced --
-		// picking one to mark would be exactly the "pick" the ruling forbids.
-		expect(result.levelHubs.keptExistingCuries).toEqual([]);
+		// AM-59: BOTH competing notes' curies are marked produced. The run read
+		// both this pass and is about to print their paths in the refusal above --
+		// letting the orphan pass call either one vanished would be a consequence
+		// clause the same run contradicts. Refusing to CHOOSE between them is not
+		// evidence that either one LEFT the source.
+		expect(result.levelHubs.keptExistingCuries.slice().sort()).toEqual(
+			[`${ONT}:hub/persistence`, `${ONT}:hub/persistence-copy`].sort(),
+		);
 	});
 });
 
@@ -142,7 +165,7 @@ describe('AM-56 disclosure: every AM-55 refusal text carries the trailing stale-
 		const disclosure = "Any list that still names this folder's index note is left as it was.";
 		const many = enrich([keptNote()], {
 			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
-			ownedHubsByFolder: new Map([[FOLDER, { state: 'many', paths: [`${FOLDER}/A.md`, `${FOLDER}/B.md`] }]]),
+			ownedHubsByFolder: new Map([[FOLDER, { state: 'many', paths: [`${FOLDER}/A.md`, `${FOLDER}/B.md`], curies: [`${ONT}:hub/a`, `${ONT}:hub/b`] }]]),
 		});
 		expect(deviationFor(many, FOLDER)).toContain(disclosure);
 

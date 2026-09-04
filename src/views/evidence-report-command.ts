@@ -135,7 +135,12 @@ export async function writeEvidenceReport(
 	});
 
 	const path = evidenceReportPath(deps.reportFolder, ontologyId);
-	const folder = path.slice(0, path.lastIndexOf('/'));
+	// S11 (2026-09-04). The separator is LOCATED before it is sliced at: the vault
+	// root is now a folder a person can choose, so this path can be
+	// `Evidence coverage - x.md` with no separator, and `slice(0, -1)` on that
+	// yields a truthy truncated file name that would be created as a folder.
+	const sep = path.lastIndexOf('/');
+	const folder = sep === -1 ? '' : path.slice(0, sep);
 	if (folder && !deps.app.vault.getAbstractFileByPath(folder)) {
 		await deps.app.vault.createFolder(folder);
 	}

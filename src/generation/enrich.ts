@@ -299,10 +299,18 @@ export interface EnrichOptions {
  * covers. `many` is a refusal by name rather than a pick: two index notes in one
  * folder is a question about which one describes the folder, and picking the first
  * writes one note's identity over the other's meaning.
+ *
+ * AM-59 (2026-09-04). `many` carries the CURIES as well as the paths, index for
+ * index. Failure mode prevented: a refusal and an orphan report about the same
+ * notes on one results screen. The refusal names two notes and asks the user to
+ * curate them; without the curies nothing could mark them produced, so the same
+ * run also announced that both were no longer in the source. Each index note the
+ * walk observed is a fact, and declining to choose between two facts is not
+ * evidence that either one vanished.
  */
 export type OwnedHubAtFolder =
 	| { state: 'one'; path: string; curie: string; values?: LayoutValue[] }
-	| { state: 'many'; paths: string[] };
+	| { state: 'many'; paths: string[]; curies: string[] };
 
 /** AM-55. Folder -> the index note(s) it holds. See `EnrichOptions.ownedHubsByFolder`. */
 export type OwnedHubsByFolder = ReadonlyMap<string, OwnedHubAtFolder>;
@@ -957,6 +965,11 @@ function computeLevelHubs(
 			// the first would write one note's identity over the other's meaning, and
 			// the run has no way to tell which one describes the folder.
 			if (observed?.state === 'many') {
+				// AM-59. BOTH curies are accounted for. The run read both notes this
+				// pass and is about to print their paths, so letting the orphan pass
+				// call them vanished is a consequence clause the same run contradicts.
+				// Refusing to choose is not evidence that either note left the source.
+				for (const curie of observed.curies) keptExistingCuries.add(curie);
 				return `No index note was written for the folder "${f}": it holds more than one index note `
 					+ `(${observed.paths.map((p) => `"${p}"`).join(', ')}), so Crosswalker cannot say which one `
 					+ 'describes the folder. Keep one of them and rename or remove the others, then run the import '
@@ -978,7 +991,16 @@ function computeLevelHubs(
 			}
 			// AM-55 row 3. No index note is in the folder at all, so there is nothing to
 			// leave alone and nothing to account for.
-			return `No index note exists for the folder "${f}" and none was created: the notes in it were kept in `
+			//
+			// AM-59 (2026-09-04). The sentence names THE POPULATION IT READ. The
+			// observation behind this branch is that no note in THIS IMPORT'S owned
+			// index sits in that folder carrying `kind: 'hub'`; a note belonging to
+			// another set, carrying no `import_set` block (every hub written before
+			// import sets landed), carrying no curie, or having lost `kind` is invisible
+			// to that walk. "No index note exists" is a claim about the whole vault made
+			// from a set-filtered read, and it is false about a note sitting in the
+			// folder while the message denies it.
+			return `This import has no index note for the folder "${f}" and none was created: the notes in it were kept in `
 				+ 'place by Skip existing and no earlier run recorded this folder\'s identity. Re-run with Replace to '
 				+ `create it. ${STALE_LIST_DISCLOSURE}`;
 		}
@@ -1249,12 +1271,46 @@ function computeLevelHubs(
 			if (topFolderLabels.has(lbl)) continue; // already represented via its folder's identity above
 			childRefs.push({ curie: e.note.curie, label: lbl });
 		}
-		if (childRefs.length > 0) {
+		/**
+		 * S9 (2026-09-04). WHICH NOTE HOSTS THE ROOT, decided by PLACEMENT - the same
+		 * test `hostByFolder` makes for every other folder.
+		 *
+		 * Failure mode prevented: a write target chosen from the whole batch by
+		 * basename. `byBasename` is basename-keyed and whole-batch, so any note
+		 * ANYWHERE in the import whose basename equalled the root's last segment
+		 * became the root's host, and this folder's entire Contents list was written
+		 * into that unrelated note's managed region. That is identity from a path
+		 * segment on the WRITE path - the rule S4 replaced at the refusal site and the
+		 * S7 ruling replaced for `identityOf` - and it is the one place it survived.
+		 * Two folders sharing a basename also overwrote each other's entry in
+		 * `hostedChildrenByPath`.
+		 *
+		 * Two candidates is a question, not a pick, and it is answered the way AM-55
+		 * answers two index notes in one folder: refused by name, nothing written. No
+		 * candidate is not a refusal - it is the ordinary state this fallback exists
+		 * for, and the synthetic hub below is its answer.
+		 *
+		 * This branch is the HARNESS path. It is gated on `!folders.has(root)`, and in
+		 * a real import every note path is prefixed by the destination, so the root is
+		 * always a tracked ancestor and Pass B above has already handled it. It is
+		 * fixed anyway because the rule is an absolute, not a risk assessment.
+		 */
+		const rootHostCandidates = entries.filter(
+			(e) => basename(e.note.path) === label && (dirOf(e.path) === root || dirOf(e.path) === dirOf(root)),
+		);
+		if (rootHostCandidates.length > 1) {
+			const named = rootHostCandidates.map((e) => `"${e.path}"`).sort().join(', ');
+			result.deviations.push(
+				`No index note was written for the folder "${root}": more than one note in this import is placed at it `
+				+ `and named after it (${named}), so Crosswalker cannot say which one describes the folder. Rename all `
+				+ `but one of them, then run the import again. ${STALE_LIST_DISCLOSURE}`,
+			);
+		} else if (childRefs.length > 0) {
 			childRefs.sort((a, b) => cmp(a.curie, b.curie));
 			const links = childRefs.map((c) => `[[${c.label}]]`);
 			result.edgeCount += links.length;
 			const facetGroup = rootFacetLinks.length > 0 ? [{ label: 'Facets', links: rootFacetLinks }] : [];
-			const host = byBasename.get(label);
+			const host = rootHostCandidates[0]?.note;
 			if (host) {
 				// See the matching comment in Pass B: hosted-root facets are a
 				// deliberately out-of-scope rare edge case.

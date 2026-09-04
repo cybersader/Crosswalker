@@ -154,6 +154,30 @@ describe('writing the report', () => {
 		expect(app.folders.has('Reports')).toBe(true);
 	});
 
+	/**
+	 * S11 (2026-09-04, pass 19): the vault root is now a REACHABLE
+	 * `reportFolder` (`evidenceReportFolder` normalizes `'/'` to `''` and
+	 * RETURNS it, rather than substituting the default). At the root,
+	 * `evidenceReportPath` composes `Evidence coverage - x.md` with NO leading
+	 * separator, so `path.lastIndexOf('/')` is `-1`.
+	 *
+	 * THE VAULT-DAMAGE MODE THIS PINS. Before the fix, the folder was derived
+	 * as `path.slice(0, path.lastIndexOf('/'))`. On a separator-free path that
+	 * is `slice(0, -1)` -- the TRUTHY string "Evidence coverage - x.m" (the
+	 * filename minus its last character) -- which the next line would have
+	 * handed to `createFolder`, creating a bogus folder beside the report
+	 * instead of skipping folder creation entirely.
+	 */
+	it('at the vault root (reportFolder ""), never creates a truncated bogus folder -- the separator is located BEFORE it is sliced at', async () => {
+		seedOntology(db, 'nist-800-53', ['nist:AC-1']);
+		const app = mockApp();
+		const path = await writeEvidenceReport({ ...deps(app), reportFolder: '' }, 'nist-800-53');
+		expect(path.startsWith('/')).toBe(false);
+		expect(path).not.toContain('/'); // a bare file name, no directory component
+		expect(app.folders.size).toBe(0); // createFolder was never called
+		expect(app.files.has(path)).toBe(true); // the report itself was still written
+	});
+
 	it('writes a report naming the uncovered control', async () => {
 		seedOntology(db, 'nist-800-53', ['nist:AC-1']);
 		const app = mockApp();

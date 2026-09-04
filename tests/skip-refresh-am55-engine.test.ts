@@ -176,6 +176,57 @@ describe('AM-55: a hub note that cannot be READ is not treated as a hub that rec
 });
 
 /**
+ * AM-59 (2026-09-04, pass 19), end to end: `many` is a refusal by NAME and
+ * BOTH competing notes are accounted for, so neither is reported as an orphan
+ * in the same run that just printed its path as present.
+ *
+ * THE DEFECT THIS PINS (pass-18 Ground 2 / CONFIRMED). A folder holding two
+ * `kind: hub` notes refused with a message naming both paths and asking the
+ * user to pick one, while the SAME run's orphan pass reported both notes as
+ * no longer in the source -- a consequence clause the run's own refusal text
+ * contradicts.
+ */
+describe('AM-59: two index notes in one kept folder -- refused by name, neither reported as an orphan', () => {
+	it('names both notes in a warning and reports zero orphans for either curie', async () => {
+		const { app, files } = makeApp();
+		const first = await run(app, recipe(), parsedV1(), 'replace', 'new');
+		expect(first.errors).toEqual([]);
+		const hubPath = `${BASE}/Persistence/Persistence.md`;
+		expect(files.has(hubPath)).toBe(true);
+		const setId = frontmatterOf(files.get(`${BASE}/Persistence/T1.md`)!)?._crosswalker?.import_set?.id;
+
+		// A second `kind: hub` note in the SAME folder, sharing every provenance
+		// field with the first (same import set, so it is "owned" the same way)
+		// but its own distinct curie -- e.g. a hub the user copied, or left beside
+		// a renamed one.
+		const copyPath = `${BASE}/Persistence/Persistence-copy.md`;
+		const copyContent = files.get(hubPath)!.replace(
+			/^curie: .*$/m,
+			'curie: skiprecat:hub/persistence-copy',
+		);
+		expect(copyContent).not.toBe(files.get(hubPath));
+		files.set(copyPath, copyContent);
+
+		const second = await run(app, recipe(), parsedV2Recategorized(), 'skip', { id: setId });
+		expect(second.errors).toEqual([]);
+
+		const warned = (second.warnings ?? []).map((w) => w.message).join('\n');
+		expect(warned).toContain('more than one index note');
+		expect(warned).toContain(hubPath);
+		expect(warned).toContain(copyPath);
+		expect(warned).toContain('cannot say which one');
+
+		// Refusing to pick is not evidence either note left the source: the run
+		// checked orphans (this is not the unreadable/misplaced suppression path)
+		// and reported neither curie.
+		expect(second.orphansChecked).toBe(true);
+		const orphanCuries = (second.orphans ?? []).map((o) => o.curie);
+		expect(orphanCuries).not.toContain('skiprecat:hub/persistence');
+		expect(orphanCuries).not.toContain('skiprecat:hub/persistence-copy');
+	});
+});
+
+/**
  * AM-55's shared-ledger dedup contract, tested directly.
  *
  * `markKeptHubsProduced` and `applyEnrichment` each call `enrich()` separately

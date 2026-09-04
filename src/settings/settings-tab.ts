@@ -29,6 +29,7 @@ import {
 	outputRootPath,
 	DEFAULT_EVIDENCE_JUNCTION_FOLDER,
 	DEFAULT_EVIDENCE_REPORT_FOLDER,
+	DEFAULT_TIER2_SIDECAR_PATH,
 } from './folder-settings';
 import type { Enrichment } from '../import/mapping/types';
 import {
@@ -1030,12 +1031,12 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 					.setPlaceholder('.crosswalker.sqlite')
 					.setValue(this.plugin.settings.tier2SidecarPath)
 					.onChange(async (value) => {
-						this.plugin.settings.tier2SidecarPath = value || '.crosswalker.sqlite';
+						this.plugin.settings.tier2SidecarPath = value || DEFAULT_TIER2_SIDECAR_PATH;
 						await this.plugin.saveSettings();
 						refreshSidecar();
 					});
 				new FolderSuggest(this.app, text.inputEl, async (value) => {
-					this.plugin.settings.tier2SidecarPath = value || '.crosswalker.sqlite';
+					this.plugin.settings.tier2SidecarPath = value || DEFAULT_TIER2_SIDECAR_PATH;
 					await this.plugin.saveSettings();
 					refreshSidecar();
 				});

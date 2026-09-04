@@ -1,4 +1,29 @@
-import { App, TAbstractFile, normalizePath } from 'obsidian';
+/**
+ * AM-58 (2026-09-04). THIS MODULE HAS NO VALUE IMPORT OF `obsidian`, and that is
+ * a load-bearing property rather than a style preference.
+ *
+ * Failure mode prevented: a spec that stops declaring. AM-57 routed
+ * `evidence-link.ts` - a module whose own header promises "no vault access, so
+ * the contract below is unit-testable" - through this one, and this one opened
+ * with a VALUE import of the host for `normalizePath`. Jest hides that behind
+ * `moduleNameMapper`; the wdio/tsx loader does not, and there is no `obsidian`
+ * package on disk, so `tests/e2e/ch43-release-drift.spec.ts` (which loads
+ * `buildEvidenceLink` on the Node side) died with `Cannot find module 'obsidian'`
+ * BEFORE Mocha registered a single line. Nine green declarations simply stopped
+ * existing, and a PASS -> FAIL diff cannot see a spec that emits nothing.
+ *
+ * So: `App` and `TAbstractFile` are TYPE-ONLY (erased at compile time, and a type
+ * import cannot drag the host into a Node process), and the normalization calls
+ * the AM-45 mirror in `src/render/vault-path.ts` instead of the host.
+ *
+ * Parity risk, named rather than hidden: the engine's `normalizeBasePath` still
+ * uses the host's `normalizePath`, so the output root is normalized by the mirror
+ * on the settings side and by the host at the engine boundary. They agree while
+ * the mirror is faithful; the mirror's faithfulness is the AM-45 mock-mutation
+ * test's job. A divergence is a bug in the mirror, never a second spelling here.
+ */
+import type { App, TAbstractFile } from 'obsidian';
+import { normalizeVaultPath } from '../render/vault-path';
 import type { CrosswalkerSettings } from './settings-data';
 
 /**
@@ -50,8 +75,12 @@ export function outputRootPath(settings: Pick<CrosswalkerSettings, 'defaultOutpu
 export function normalizeFolderSetting(value: string): string {
 	const trimmed = value.trim();
 	if (trimmed === '') return '';
-	const normalized = normalizePath(trimmed);
-	// The host's `normalizePath('')` is `'/'`, which is TRUTHY, so every
+	// AM-58. The AM-45 mirror, not the host. See the module header for why, and
+	// for where the parity between the two is pinned.
+	const normalized = normalizeVaultPath(trimmed);
+	// The host's `normalizePath('')` is `'/'` - and the AM-45 mirror answers `'/'`
+	// for exactly the same input, which is what makes this swap a no-op rather
+	// than a second spelling. `'/'` is TRUTHY, so every
 	// `if (!root)` emptiness guard in this product was dead for the supported
 	// "Vault root" state (settings renders it as such) and no vault event ever
 	// scheduled the ontology status-bar refresh. Both spellings of the root come
@@ -80,7 +109,7 @@ export function outputRootFile(
 
 /**
  * AM-57. The fallbacks the settings tab writes when a person clears the field, and
- * the fallbacks the accessors apply when the stored value normalizes to nothing.
+ * the fallbacks the accessors apply when the field is not stored at all (S11).
  * Named once so the two cannot drift into disagreeing about where evidence lands.
  */
 export const DEFAULT_EVIDENCE_JUNCTION_FOLDER = 'Evidence/Junctions';
@@ -102,11 +131,74 @@ export const DEFAULT_EVIDENCE_REPORT_FOLDER = 'Reports';
  * The default is applied here rather than at each composition site, so "the person
  * cleared the field" has one answer instead of one per caller.
  */
-export function evidenceJunctionFolder(settings: Pick<CrosswalkerSettings, 'evidenceJunctionFolder'>): string {
-	return normalizeFolderSetting(settings.evidenceJunctionFolder) || DEFAULT_EVIDENCE_JUNCTION_FOLDER;
+export function evidenceJunctionFolder(
+	settings: Partial<Pick<CrosswalkerSettings, 'evidenceJunctionFolder'>>,
+): string {
+	return evidenceFolderOf(settings.evidenceJunctionFolder, DEFAULT_EVIDENCE_JUNCTION_FOLDER);
 }
 
 /** AM-57. THE ONE READING of the coverage report folder. Same rule, same reason. */
-export function evidenceReportFolder(settings: Pick<CrosswalkerSettings, 'evidenceReportFolder'>): string {
-	return normalizeFolderSetting(settings.evidenceReportFolder) || DEFAULT_EVIDENCE_REPORT_FOLDER;
+export function evidenceReportFolder(
+	settings: Partial<Pick<CrosswalkerSettings, 'evidenceReportFolder'>>,
+): string {
+	return evidenceFolderOf(settings.evidenceReportFolder, DEFAULT_EVIDENCE_REPORT_FOLDER);
+}
+
+/**
+ * S11 (2026-09-04). These accessors mirror `outputRootPath`, NOT `outputRootFile`:
+ * a value that normalizes to nothing IS the vault root, and it is returned as
+ * such.
+ *
+ * Failure mode prevented: the very bug AM-57 exists to remove, one field over -
+ * the destination a person chose is not the destination that gets written. The
+ * folder suggester offers the vault root and the settings tab stores the bare
+ * separator it hands back; `normalizeFolderSetting('/')` is `''` by design, and
+ * `'' || DEFAULT` silently substituted `Evidence/Junctions`. The vault root was
+ * unreachable for these two settings and nothing said so.
+ *
+ * The default therefore applies to exactly ONE state: the stored field is
+ * `undefined`, i.e. a settings record written before the field existed. An empty
+ * or root-shaped value is a choice, not an absence. Composition sites join with a
+ * separator only when there is a folder to join, so an empty folder composes
+ * `<name>.md` and never `/<name>.md`.
+ */
+function evidenceFolderOf(stored: string | undefined, fallback: string): string {
+	if (stored === undefined) return fallback;
+	return normalizeFolderSetting(stored);
+}
+
+/**
+ * S10 (2026-09-04). THE ONE READING of the Tier 2 sidecar path - the fourth and
+ * last path-shaped setting (`settings-data.ts`), which AM-53 and AM-57 routed
+ * three of.
+ *
+ * Failure mode prevented: a second spelling of one normalization, on the setting
+ * that decides which file the query index lives in. Both consumers applied a bare
+ * `normalizePath`, which does not trim and answers `'/'` where this module answers
+ * `''`, so "open the index" and "clear the index" agreed with each other only by
+ * both being wrong in the same way; a leading space or a pasted non-breaking space
+ * would have keyed the sahpool VFS under a name the pool does not hold, and a
+ * clear that finds no files deletes nothing and reports the index as already
+ * empty.
+ *
+ * Unlike the evidence folders above, an empty value takes the DEFAULT here rather
+ * than meaning the vault root: this setting names a FILE, and the vault root is
+ * not a file name. The settings tab already stores `value || '.crosswalker.sqlite'`
+ * for the same reason, so the two agree.
+ */
+export const DEFAULT_TIER2_SIDECAR_PATH = '.crosswalker.sqlite';
+
+export function tier2SidecarPath(
+	settings: Partial<Pick<CrosswalkerSettings, 'tier2SidecarPath'>>,
+): string {
+	return normalizeSidecarPath(settings.tier2SidecarPath);
+}
+
+/**
+ * S10. The same reading for a caller that already holds the raw string rather
+ * than the settings record (the sidecar module's own two entry points, which are
+ * handed a path by their callers and must not re-spell the rule).
+ */
+export function normalizeSidecarPath(value: string | undefined): string {
+	return normalizeFolderSetting(value ?? '') || DEFAULT_TIER2_SIDECAR_PATH;
 }

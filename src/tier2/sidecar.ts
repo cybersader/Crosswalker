@@ -27,7 +27,8 @@
  * main thread with cooperative yielding handled by the projector.
  */
 
-import { App, Plugin, normalizePath } from 'obsidian';
+import { App, Plugin } from 'obsidian';
+import { normalizeSidecarPath } from '../settings/folder-settings';
 
 /**
  * Handle returned from openSidecar(). Wraps the sqlite-wasm
@@ -199,7 +200,15 @@ async function installSahPool(sqlite3: any): Promise<any> {
  * change exists to remove. Reimplementing the rule is how that came back.
  */
 function sahPoolKeyFor(sidecarPath: string): string {
-	return new URL(normalizePath(sidecarPath).replace(/^\/+/, ''), 'file://localhost/').pathname;
+	// S10 (2026-09-04). THE ONE normalization for this setting, shared with the
+	// open path and with the settings accessor. A bare `normalizePath` here was a
+	// second spelling: it does not trim, and it answers `'/'` where the accessor
+	// answers the default file name, so a pasted leading space keyed the pool
+	// under a name the pool does not hold - and a clear that finds no files
+	// deletes nothing and reports the index as already empty. The leading-slash
+	// strip is kept as a defensive no-op: the normalizer already removes edge
+	// separators, and the URL constructor must not be handed an absolute path.
+	return new URL(normalizeSidecarPath(sidecarPath).replace(/^\/+/, ''), 'file://localhost/').pathname;
 }
 
 /**
@@ -219,7 +228,9 @@ export async function openSidecar(
 	options: { sidecarPath?: string } = {},
 ): Promise<SidecarHandle> {
 	const sqlite3 = await initSqlite3(plugin);
-	const sidecarPath = normalizePath(options.sidecarPath ?? '.crosswalker.sqlite');
+	// S10. Same reading as `sahPoolKeyFor` and as the settings accessor, so open
+	// and clear cannot disagree about which file the query index is.
+	const sidecarPath = normalizeSidecarPath(options.sidecarPath);
 
 	// OPFS sahpool VFS is registered by sqlite-wasm at init when available.
 	// We open the database via the OPFS path. sqlite-wasm exposes the OO1

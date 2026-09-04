@@ -863,3 +863,282 @@ describe('Level-hub identity — a skip refresh after a catalog rename, two fold
 		expect(movedCause).toEqual([]);
 	});
 });
+
+/**
+ * AM-60 (2026-09-04). ONE POPULATION, ONE PASS: A LIST THE RUN MAINTAINS IS
+ * REWRITTEN ONLY FROM A BATCH THAT CAN SEE EVERYTHING THE LIST NAMES.
+ *
+ * THE DEFECT THIS PINS. The enrichment phase used to run over the records the
+ * run WROTE (`enrichRecords`), while the records it KEPT were accounted for in a
+ * second, write-less pass. Every list computed from the first population is
+ * therefore wrong for any folder the second one holds. The parent's managed
+ * `## Contents` region is such a list: on a Skip existing refresh that adds one
+ * row, the only record in the writing population is the new one, so the parent
+ * hub's Contents is rewritten from that single child and every sibling link the
+ * folder still holds silently disappears from the note.
+ *
+ * THE SHAPE, and why it is this shape. The shipped two-level layout
+ * (`folder {catalog}` / `folder {family}` / `file`), imported once with Replace,
+ * then the SAME source with exactly one row appended, refreshed with Skip
+ * existing. Nothing else changes: no label is edited, no row is recategorised,
+ * no note is moved. The appended row lands in a new family, so the catalog
+ * folder gains a second child and its Contents must name BOTH the family that
+ * was already there and the one that just arrived. That is the ordinary way a
+ * framework grows between releases, and it is the smallest input that makes the
+ * two populations differ.
+ *
+ * WHAT THIS DECLARATION DISCRIMINATES ON. Unlike the AM-52 and AM-54 witnesses,
+ * this refresh really does write: one record survives skipping, so the write
+ * pass runs under the defect too. The discriminators are therefore about what
+ * that pass could SEE:
+ *
+ *   - THE CATALOG HUB'S CONTENTS. Under the defect it is rewritten from the one
+ *     new child and reads `- [[AU]]` alone; the link to the family holding the
+ *     two notes that were skipped is gone from a note the user reads.
+ *   - THE ORPHAN LIST. The kept family's own hub identity is not in the writing
+ *     population either, so nothing marks it produced and the results screen can
+ *     report it as vanished on a refresh where nothing left the source.
+ *
+ * Both are asserted in ONE `expect` so a falsification cannot leave either
+ * untested behind the other's failure. Hubs are located by PLACEMENT, never by a
+ * filename this test predicts (AM-55's rule applied to the assertion side), and
+ * every value is read off the note's OWN BYTES, never the metadata cache
+ * (`project_cache_lag_is_not_absence`).
+ */
+const BASE_60 = 'Frameworks/AM60-Appended-Family-Test';
+const CATALOG_60 = 'AM60 Grown Catalog';
+
+// Release 1. One catalog, one family, two controls.
+const ROWS_60_V1 = [
+	{ id: 'AC-1', 'catalog.name': CATALOG_60, 'family.id': 'AC', 'control.id': 'AC-1', 'control.title': 'Policy and Procedures' },
+	{ id: 'AC-2', 'catalog.name': CATALOG_60, 'family.id': 'AC', 'control.id': 'AC-2', 'control.title': 'Account Management' },
+];
+
+// Release 2. THE SAME ROWS, plus one appended row in a new family. Nothing else
+// changes: same catalog label, same control ids, same titles.
+const ROWS_60_V2 = [
+	...ROWS_60_V1,
+	{ id: 'AU-1', 'catalog.name': CATALOG_60, 'family.id': 'AU', 'control.id': 'AU-1', 'control.title': 'Audit Policy' },
+];
+
+function recipe60() {
+	return {
+		recipe: 'am60-appended-family',
+		source: { ontology: 'am60', levels: ['catalog', 'family', 'control'] },
+		target: {
+			layout: [
+				{ level: 'catalog', mechanism: 'folder' as const, template: '{catalog.name}' },
+				{ level: 'family', mechanism: 'folder' as const, template: '{family.id}' },
+				{ level: 'control', mechanism: 'file' as const, template: '{control.id}.md' },
+			],
+			also_emit: {
+				frontmatter: { managed: { title: '{control.title}' } },
+			},
+			enrichment: { level_hubs: 'notes' as const },
+		},
+	};
+}
+
+interface HubAt60 {
+	path: string;
+	curie: unknown;
+	text: string;
+}
+
+interface Outcome60 {
+	firstErrors: unknown[];
+	secondErrors: unknown[];
+	firstCreated: number;
+	secondCreated: number;
+	secondSkipped: number;
+	secondWarnings: string[];
+	secondOrphans: string[];
+	secondOrphansChecked: unknown;
+	notesBefore: string[];
+	notesAfter: string[];
+	catalogHubBefore: HubAt60 | null;
+	catalogHubAfter: HubAt60 | null;
+	oldFamilyHubBefore: HubAt60 | null;
+	oldFamilyHubAfter: HubAt60 | null;
+	newFamilyHubAfter: HubAt60 | null;
+}
+
+describe('Level-hub identity — a skip refresh that appends one family row (AM-60)', function () {
+	this.timeout(120_000);
+
+	before(async () => {
+		// Clean slate: a rerun must not be testing a previous run's leftovers.
+		await browser.executeObsidian(async ({ app }, dir) => {
+			const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+			const folder = app.vault.getAbstractFileByPath(dir);
+			if (folder) {
+				// @ts-expect-error — internal trash API; safe in the test vault
+				await app.vault.trash(folder, false);
+			}
+			const deadline = Date.now() + 5000;
+			while (app.vault.getAbstractFileByPath(dir) && Date.now() < deadline) await sleep(50);
+		}, BASE_60);
+	});
+
+	it('keeps every sibling in the parent hub Contents, and reports zero orphans, when Skip existing adds one row', async () => {
+		const out60: Outcome60 = await browser.executeObsidian(
+			async ({ app, obsidian }, args) => {
+				// @ts-expect-error — internal API
+				const plugin = app.plugins.plugins['crosswalker'];
+				const columns = ['id', 'catalog.name', 'family.id', 'control.id', 'control.title'];
+				const options = {
+					basePath: args.base,
+					overwriteMode: 'replace',
+					createFolders: true,
+					sourceFileName: 'am60-appended-family.csv',
+				};
+
+				const readText = async (path: string): Promise<string | null> => {
+					const file = app.vault.getAbstractFileByPath(path);
+					if (!file) return null;
+					// @ts-expect-error — TFile at runtime
+					return (await app.vault.read(file)) as string;
+				};
+				const frontmatterOf = (text: string): Record<string, any> | null => {
+					const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+					return match ? (obsidian.parseYaml(match[1]) as Record<string, any> | null) : null;
+				};
+				const readFm = async (path: string): Promise<Record<string, any> | null> => {
+					const text = await readText(path);
+					return text === null ? null : frontmatterOf(text);
+				};
+
+				const dirOf = (p: string): string => {
+					const i = p.lastIndexOf('/');
+					return i < 0 ? '' : p.slice(0, i);
+				};
+				const listMarkdown = (): string[] =>
+					app.vault
+						.getMarkdownFiles()
+						.map((f: any) => String(f.path))
+						.filter((p: string) => p.startsWith(`${args.base}/`))
+						.sort();
+
+				// AM-55's rule on the assertion side: a hub is the note that SITS IN
+				// the folder and carries `kind: hub`, not a filename this test guesses.
+				const hubIn = async (dir: string) => {
+					const candidates = listMarkdown().filter((p) => dirOf(p) === dir);
+					for (const p of candidates) {
+						const text = await readText(p);
+						if (text === null) continue;
+						const fm = frontmatterOf(text);
+						if (fm && fm.kind === 'hub') return { path: p, curie: fm.curie, text };
+					}
+					return null;
+				};
+
+				const first = await plugin.runImportFromRecipe(
+					{ columns, rows: args.rowsV1, rowCount: args.rowsV1.length },
+					args.recipe,
+					options,
+				);
+
+				// AM-9: the engine never adopts a set it finds at the destination, so
+				// the refresh names the set the first run minted, read off a note's
+				// own bytes.
+				const firstControl = await readFm(`${args.base}/${args.catalog}/AC/AC-1.md`);
+				const importSetId = firstControl?._crosswalker?.import_set?.id;
+				if (typeof importSetId !== 'string') throw new Error('first import stamped no import set id');
+
+				const catalogDir = `${args.base}/${args.catalog}`;
+				const oldFamilyDir = `${catalogDir}/AC`;
+				const newFamilyDir = `${catalogDir}/AU`;
+
+				const notesBefore = listMarkdown();
+				const catalogHubBefore = await hubIn(catalogDir);
+				const oldFamilyHubBefore = await hubIn(oldFamilyDir);
+
+				// The grown release, imported with Skip existing.
+				const second = await plugin.runImportFromRecipe(
+					{ columns, rows: args.rowsV2, rowCount: args.rowsV2.length },
+					args.recipe,
+					{ ...options, overwriteMode: 'skip', importSet: { id: importSetId } },
+				);
+
+				const notesAfter = listMarkdown();
+				const catalogHubAfter = await hubIn(catalogDir);
+				const oldFamilyHubAfter = await hubIn(oldFamilyDir);
+				const newFamilyHubAfter = await hubIn(newFamilyDir);
+
+				const messages = (r: any): string[] => (r.warnings ?? []).map((w: any) => String(w?.message ?? ''));
+				const orphanCuries = (r: any): string[] => (r.orphans ?? []).map((o: any) => String(o?.curie ?? ''));
+
+				return {
+					firstErrors: first.errors ?? [],
+					secondErrors: second.errors ?? [],
+					firstCreated: (first.created ?? []).length,
+					secondCreated: (second.created ?? []).length,
+					secondSkipped: (second.skipped ?? []).length,
+					secondWarnings: messages(second),
+					secondOrphans: orphanCuries(second),
+					secondOrphansChecked: second.orphansChecked,
+					notesBefore,
+					notesAfter,
+					catalogHubBefore,
+					catalogHubAfter,
+					oldFamilyHubBefore,
+					oldFamilyHubAfter,
+					newFamilyHubAfter,
+				};
+			},
+			{
+				base: BASE_60,
+				catalog: CATALOG_60,
+				rowsV1: ROWS_60_V1,
+				rowsV2: ROWS_60_V2,
+				recipe: recipe60(),
+			},
+		);
+
+		expect(out60.firstErrors).toEqual([]);
+		expect(out60.secondErrors).toEqual([]);
+
+		// Preconditions, asserted rather than assumed. Release 1: 2 controls + 3 hubs
+		// (root, catalog, AC). Release 2 skips both existing controls and writes the
+		// one appended row.
+		expect(out60.firstCreated).toBe(5);
+		expect(out60.secondSkipped).toBe(2);
+
+		// THE NEW FAMILY HUB IS PRESENT, with its own recorded identity, and the old
+		// one is still where it was: the folder that grew and the folder that did not.
+		expect(out60.catalogHubBefore).not.toBe(null);
+		expect(out60.oldFamilyHubBefore).not.toBe(null);
+		expect(out60.newFamilyHubAfter).not.toBe(null);
+		expect(typeof out60.newFamilyHubAfter?.curie).toBe('string');
+		expect(out60.oldFamilyHubAfter?.path).toBe(out60.oldFamilyHubBefore?.path);
+		expect(out60.oldFamilyHubAfter?.curie).toBe(out60.oldFamilyHubBefore?.curie);
+
+		// The appended row's note and the new family's hub both exist on disk; no
+		// note that was there before is gone.
+		for (const p of out60.notesBefore) expect(out60.notesAfter).toContain(p);
+		expect(out60.notesAfter).toContain(`${BASE_60}/${CATALOG_60}/AU/AU-1.md`);
+
+		// THE TWO LOAD-BEARING FACTS, in one assertion so a defect that breaks both
+		// cannot hide one behind the other's failure:
+		//   - the catalog hub's Contents names BOTH families (the defect rewrites it
+		//     from the single written record and drops the kept sibling), and
+		//   - the run reports zero orphans, with `orphansChecked` true because AM-7
+		//     made an empty list mean either "found none" or "nobody could look".
+		expect({
+			contentsNamesOldFamily: out60.catalogHubAfter?.text.includes('[[AC]]'),
+			contentsNamesNewFamily: out60.catalogHubAfter?.text.includes('[[AU]]'),
+			orphansChecked: out60.secondOrphansChecked,
+			orphans: out60.secondOrphans,
+		}).toEqual({
+			contentsNamesOldFamily: true,
+			contentsNamesNewFamily: true,
+			orphansChecked: true,
+			orphans: [],
+		});
+
+		// AND NO REFUSAL about a note nobody moved: the kept family is in the same
+		// population as the written row, so nothing about it is guessed.
+		const movedCause = out60.secondWarnings.filter((m) => m.includes('the note may have been moved'));
+		expect(movedCause).toEqual([]);
+	});
+});

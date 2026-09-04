@@ -70,11 +70,54 @@ describe('AM-57: the occupant check sees the existing note at the composed addre
 		expect(app.vault.getAbstractFileByPath(path)).not.toBeNull();
 	});
 
-	it('a cleared setting falls back to the shared default, still composing a normalized address', () => {
-		const folder = evidenceJunctionFolder({ evidenceJunctionFolder: '' });
+	it('an UNDEFINED setting (a record from before the field existed) falls back to the shared default, still composing a normalized address', () => {
+		// S11 (2026-09-04, pass 19): the default applies to exactly ONE state --
+		// the stored field is `undefined`. An empty string is a CHOICE (the vault
+		// root), not an absence, and is handled by the next describe block.
+		const folder = evidenceJunctionFolder({});
 		expect(folder).toBe(DEFAULT_EVIDENCE_JUNCTION_FOLDER);
 		const path = evidenceLinkPath(folder, CONTROL_CURIE, CONTROL_PATH, EVIDENCE_PATH);
 		expect(path.startsWith(`${DEFAULT_EVIDENCE_JUNCTION_FOLDER}/`)).toBe(true);
 		expect(path).not.toContain('//');
+	});
+});
+
+/**
+ * S11 (2026-09-04, pass 19): the vault root is a folder a person can
+ * legitimately choose for evidence links, and choosing it must not silently
+ * substitute the default the way it did before this ruling.
+ *
+ * THE DEFECT THIS PINS. `evidenceJunctionFolder`/`evidenceReportFolder` used
+ * to apply the default whenever the stored value NORMALIZED to empty, and
+ * `normalizeFolderSetting('/')` is `''` by design (both spellings of the root
+ * agree) -- so a person who picked the vault root in the folder suggester, or
+ * typed a bare `/`, got `Evidence/Junctions` instead, silently. The accessors
+ * now mirror `outputRootPath`, not `outputRootFile`: a value that normalizes
+ * to nothing IS the vault root and is RETURNED as such, and the default
+ * applies only to the one genuinely absent state above (`undefined`).
+ */
+describe('S11: the vault root is a real, reachable choice for the evidence folders -- not a silent substitution', () => {
+	it('evidenceJunctionFolder({ evidenceJunctionFolder: "/" }) is "" -- the root, never the default', () => {
+		expect(evidenceJunctionFolder({ evidenceJunctionFolder: '/' })).toBe('');
+	});
+
+	it('evidenceJunctionFolder({ evidenceJunctionFolder: "" }) is ALSO "" -- an explicit empty string is the root too, not the default', () => {
+		expect(evidenceJunctionFolder({ evidenceJunctionFolder: '' })).toBe('');
+	});
+
+	it('the junction composes at the vault root as "<name>.md" -- no leading separator, and never the default folder', () => {
+		const folder = evidenceJunctionFolder({ evidenceJunctionFolder: '/' });
+		const path = evidenceLinkPath(folder, CONTROL_CURIE, CONTROL_PATH, EVIDENCE_PATH);
+		expect(path.startsWith('/')).toBe(false);
+		expect(path).not.toContain('//');
+		expect(path.startsWith(`${DEFAULT_EVIDENCE_JUNCTION_FOLDER}/`)).toBe(false);
+		// A root-composed address is a bare file name: no directory component
+		// before it at all.
+		expect(path).not.toContain('/');
+	});
+
+	it('undefined still yields the default, so the two states (absent vs. root) remain distinguishable', () => {
+		expect(evidenceJunctionFolder({ evidenceJunctionFolder: undefined })).toBe(DEFAULT_EVIDENCE_JUNCTION_FOLDER);
+		expect(evidenceJunctionFolder({})).toBe(DEFAULT_EVIDENCE_JUNCTION_FOLDER);
 	});
 });
