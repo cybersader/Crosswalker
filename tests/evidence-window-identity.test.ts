@@ -68,6 +68,12 @@ function makeVault() {
 	const app = {
 		vault: {
 			getMarkdownFiles: () => [...files.keys()].map((p) => new TFile(p)),
+			// S5 (2026-09-04) fix follow-up: buildLinkFallbackIndex reads getFiles(),
+			// not getMarkdownFiles() -- a stub missing it throws the moment a scan
+			// falls back to the vault file list. No non-markdown fixture here, so this
+			// answers the same set; see tests/vault-path-normalization-s5.test.ts for
+			// the PDF/non-markdown case.
+			getFiles: () => [...files.keys()].map((p) => new TFile(p)),
 			getAbstractFileByPath: (path: string) => {
 				if (files.has(path)) return new TFile(path);
 				if (folders.has(path)) return new TFolder(path);

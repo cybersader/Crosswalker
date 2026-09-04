@@ -1,5 +1,6 @@
 import { Plugin, Notice, TFile, TFolder, MarkdownView, Platform, apiVersion, normalizePath, type WorkspaceLeaf } from 'obsidian';
 import { CrosswalkerSettings, DEFAULT_SETTINGS } from './settings/settings-data';
+import { outputRootPath, outputRootFile } from './settings/output-root';
 import {
 	isImportableExtension,
 	formatOntologyStatusLabel,
@@ -1151,7 +1152,12 @@ export default class CrosswalkerPlugin extends Plugin {
 
 	/** Whether a vault event can change discovery beneath the configured output root. */
 	private pathAffectsInstalledFrameworks(path: string): boolean {
-		const outputRoot = normalizePath(this.settings.defaultOutputPath);
+		// AM-53. Through the one accessor, which maps the host's `'/'` for an empty
+		// root back to `''`. Read raw through `normalizePath` alone, this guard was
+		// dead for the supported "Vault root" state: `'/'` is truthy, so the emptiness
+		// branch never fired and the test below asked whether the changed path started
+		// with `'//'`, which is never true, so no vault event refreshed the count.
+		const outputRoot = outputRootPath(this.settings);
 		if (!outputRoot) return true;
 		const candidate = normalizePath(path);
 		return candidate === outputRoot || candidate.startsWith(`${outputRoot}/`);
@@ -1174,7 +1180,10 @@ export default class CrosswalkerPlugin extends Plugin {
 	private async refreshOntologyStatusBar(): Promise<void> {
 		if (!this.ontologyStatusBarEl) return;
 		const token = ++this.ontologyStatusRefreshToken;
-		const outputRoot = this.app.vault.getAbstractFileByPath(this.settings.defaultOutputPath);
+		// AM-53. The same reading the engine writes under. A trailing separator in the
+		// setting used to make this lookup answer null and the status bar report 0
+		// ontologies over a vault that had just imported one.
+		const outputRoot = outputRootFile(this.app, this.settings);
 		const node = await toMinimalNode(outputRoot, this.app);
 		if (token !== this.ontologyStatusRefreshToken || !this.ontologyStatusBarEl) return;
 		this.ontologyStatusBarEl.setText(formatOntologyStatusLabel(deriveInstalledOntologies(node).length));

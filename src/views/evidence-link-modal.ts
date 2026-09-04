@@ -446,11 +446,25 @@ interface LinkFallbackIndex {
 	byBasename: Map<string, string[]>;
 }
 
-/** S6. One snapshot of the vault's markdown files. Pure; reads no cache. */
+/**
+ * S6. One snapshot of the vault's files. Pure; reads no cache.
+ *
+ * S5 ruling (2026-09-04). EVERY file, not `getMarkdownFiles()`.
+ *
+ * Failure mode prevented: an evidence document is the user's own file and is
+ * routinely not a markdown note - a PDF policy, a screenshot, an exported
+ * spreadsheet - and `create()` accepts one (the existence check is a warning, not a
+ * gate). Indexed from the markdown list only, a junction whose object is such a file
+ * answered `false` here whenever the resolver had gone silent, so the pair scan
+ * concluded nothing recorded the pair and minted a SECOND junction: exactly the
+ * defect S6 was ruled to close, closed for markdown and left open for everything
+ * else. `getMarkdownFiles()` is a subset of `getFiles()`, and only the `.md`
+ * extension is stripped below, so no markdown behaviour changes.
+ */
 function buildLinkFallbackIndex(app: App): LinkFallbackIndex {
 	const byPath = new Set<string>();
 	const byBasename = new Map<string, string[]>();
-	for (const file of app.vault.getMarkdownFiles()) {
+	for (const file of app.vault.getFiles()) {
 		byPath.add(file.path);
 		// From the path, not from `TFile.basename`, so this answers the same way on
 		// any host that can list files.
@@ -545,6 +559,32 @@ export class EvidenceLinkModal extends Modal {
 	private scopeText: TextComponent | null = null;
 	private submitButton: ButtonComponent | null = null;
 	private pairStatusEl: HTMLElement | null = null;
+	/**
+	 * AM-51 (2026-09-04). The two controls `applyPairState` deliberately leaves live,
+	 * held so the WRITE can disable them too.
+	 *
+	 * They are live during a lookup because they are what CHANGES the pair. They must
+	 * not be live during a write, because changing the pair cannot change what a write
+	 * already in flight is doing, and leaving them enabled told the reviewer it could.
+	 */
+	private controlDrop: DropdownComponent | null = null;
+	private evidenceText: TextComponent | null = null;
+	/**
+	 * AM-51. A write is in flight.
+	 *
+	 * Failure mode prevented: `create()` yields, and the button that started it stays
+	 * on screen. A second click ran a second write concurrently; both read the same
+	 * `existing === null`, both took the create branch, and the loser's `vault.create`
+	 * threw "already exists", which surfaced as a raw error dump. Held as a field
+	 * rather than inferred from the disabled button, because the button is a display
+	 * of this fact and not the fact itself.
+	 */
+	private writing = false;
+	/**
+	 * AM-51. This window has closed, so nothing may start a lookup into components it
+	 * has already detached.
+	 */
+	private closed = false;
 
 	constructor(private readonly deps: EvidenceLinkModalDeps) {
 		super(deps.app);
@@ -636,6 +676,8 @@ export class EvidenceLinkModal extends Modal {
 					this.control = this.controls.find((c) => c.path === value) ?? null;
 					this.pairChanged();
 				});
+				// AM-51. Held so `create()` can lock it for the duration of a write.
+				this.controlDrop = drop;
 			});
 
 		new Setting(contentEl)
@@ -647,6 +689,8 @@ export class EvidenceLinkModal extends Modal {
 				// AM-43: the lookup runs when the pair is FIXED, never per keystroke.
 				// Leaving the field is what fixes it.
 				text.inputEl.addEventListener('blur', () => { this.pairChanged(); });
+				// AM-51. Held so `create()` can lock it for the duration of a write.
+				this.evidenceText = text;
 			});
 
 		this.pairStatusEl = contentEl.createEl('p', { text: '' });
@@ -869,8 +913,32 @@ export class EvidenceLinkModal extends Modal {
 		this.pairStatusEl.setText(text);
 	}
 
+	/**
+	 * AM-51 (2026-09-04). THE WRITE, over a snapshot of the form.
+	 *
+	 * Every field this method will write is captured into a local beside the pair
+	 * check, above the first `await`, and only those locals are read below.
+	 *
+	 * Failure mode prevented: an owner is a property of the FIELD, not of the
+	 * function that happens to be reading it. AM-48 gave the LOOKUP an owner and left
+	 * the write with two readers. `create()` awaits the control's bytes at
+	 * `readNoteFrontmatterState` - reached only when the control was cache-cold, so
+	 * that call is disk I/O by construction - and the control dropdown was live
+	 * throughout. A reviewer who switched the control during that read wrote a
+	 * junction whose subject was the NEW control, whose `reviewed_against.review_cid`
+	 * was the OLD control's fingerprint, for a pair `junctionsNamingThisPair` never
+	 * scanned: a second junction for a pair that may already have one (the outcome
+	 * AM-42 and the whole pair scan exist to prevent, and one AM-42 cannot repair
+	 * because a note minted here carries no import set), an attestation recorded
+	 * against a note the reviewer had already left (AM-41 from the other direction),
+	 * and a notice reading "Evidence link created."
+	 */
 	private async create(): Promise<void> {
-		if (!this.control) {
+		// AM-51. THE RE-ENTRY GUARD, before anything else: a second click while a
+		// write is in flight is a no-op.
+		if (this.writing) return;
+		const control = this.control;
+		if (!control) {
 			new Notice('Choose a control first.');
 			return;
 		}
@@ -886,12 +954,27 @@ export class EvidenceLinkModal extends Modal {
 		}
 		const evidencePath = normalizePath(rawEvidence);
 
+		// AM-51. THE REST OF THE SNAPSHOT, beside the pair check and above the first
+		// `await`. What the form DISPLAYS at the instant the person clicked, including
+		// the act flag that is the sole authority for writing an attestation. Nothing
+		// below this line reads `this.coverage`, `this.status`, `this.evidenceScope`,
+		// `this.statusSetInThisWindow`, `this.resolution` or `this.control` again.
+		const resolution = this.resolution;
+		// AM-43. Exactly what the controls display. No comparison to a default, no
+		// "did they answer" question: the control's state IS the person's answer, and
+		// an untouched control displays the note's own value, so writing it back is
+		// idempotent.
+		const coverage = this.coverage;
+		const status = this.status;
+		const scope = this.evidenceScope.trim();
+		// AM-41. An attestation is an act, recorded where it happened.
+		const attesting = this.statusSetInThisWindow;
+
 		// AM-43. What the form shows is what it writes, so it must have been shown.
 		// A submit with no resolution for the pair now named looks the pair up and
 		// returns: the person sees the pair's recorded state and clicks again. The
 		// alternative is reconciling at write time, which is the defect.
-		const resolution = this.resolution;
-		if (!resolution || resolution.controlPath !== this.control.path || resolution.evidencePath !== evidencePath) {
+		if (!resolution || resolution.controlPath !== control.path || resolution.evidencePath !== evidencePath) {
 			this.pairChanged();
 			new Notice('Checking for an existing link for this control and this evidence. Review the values, then click the button again.');
 			return;
@@ -904,18 +987,18 @@ export class EvidenceLinkModal extends Modal {
 			new Notice(`No note found at ${evidencePath}. Creating the link anyway.`);
 		}
 
+		// AM-51. THE LOCK. The control dropdown and the evidence field are the two
+		// controls `applyPairState` leaves live, because they are what changes the
+		// pair; that is exactly why the write must disable them. Submit joins them so
+		// the re-entry guard above has a visible counterpart.
+		this.writing = true;
+		this.controlDrop?.setDisabled(true);
+		this.evidenceText?.setDisabled(true);
+		this.submitButton?.setDisabled(true);
 		try {
 			const { index, existing, current } = resolution;
 
-			// AM-43. Exactly what the controls display. No comparison to a default,
-			// no "did they answer" question: the control's state IS the person's
-			// answer, and an untouched control displays the note's own value, so
-			// writing it back is idempotent.
-			const coverage = this.coverage;
-			const status = this.status;
-			const scope = this.evidenceScope.trim();
-
-			// AM-41. An attestation is an act. `reviewed_against` is written only
+			// AM-41. `reviewed_against` is written only
 			// when the person set `status` in THIS window: to `approved`, against the
 			// control's fingerprint as it is now; to anything else, not at all, which
 			// REMOVES the note's baseline because a revoked approval has no baseline.
@@ -923,14 +1006,13 @@ export class EvidenceLinkModal extends Modal {
 			// byte-for-byte whatever the control's fingerprint has become, so a
 			// drifted approval keeps reporting as drifted through any number of scope
 			// edits.
-			const attesting = this.statusSetInThisWindow;
 			const recordedAgainst = readRecordedReviewedAgainst(current?.frontmatter);
-			let controlReviewCid = attesting ? this.control.reviewCid : (recordedAgainst?.reviewCid ?? null);
+			let controlReviewCid = attesting ? control.reviewCid : (recordedAgainst?.reviewCid ?? null);
 			let controlReviewGroups = attesting
-				? (this.control.reviewGroups ?? null)
+				? (control.reviewGroups ?? null)
 				: (recordedAgainst?.reviewGroups ?? null);
 			if (attesting && status === 'approved' && controlReviewCid === null) {
-				const controlFile = this.app.vault.getAbstractFileByPath(this.control.path);
+				const controlFile = this.app.vault.getAbstractFileByPath(control.path);
 				if (controlFile instanceof TFile) {
 					// S7 (2026-09-04). Routed through the `!fm` reading, which is the
 					// one this repo settled on: a cache ENTRY that exists but carries no
@@ -952,7 +1034,9 @@ export class EvidenceLinkModal extends Modal {
 						// already been read from disk, so waiting changes nothing, and
 						// telling the user a false cause is the failure AM-19 removes.
 						new Notice(
-							`Crosswalker could not read the properties of ${this.control.path}, so it cannot record what `
+							// AM-51. The SNAPSHOT's path, so a refusal cannot name a
+							// control the person has already left the dropdown for.
+							`Crosswalker could not read the properties of ${control.path}, so it cannot record what `
 							+ 'you approved against. Fix that note\'s properties, then approve the link again.',
 							12000,
 						);
@@ -979,7 +1063,7 @@ export class EvidenceLinkModal extends Modal {
 			// that records the pair but carries no curie at all is given one now, so
 			// projection can finally see it.
 			const recorded = existing?.curie ?? null;
-			const curie = recorded ?? evidenceLinkCurie(this.control.curie, this.control.path, evidencePath);
+			const curie = recorded ?? evidenceLinkCurie(control.curie, control.path, evidencePath);
 
 			// Nobody but this link may hold this link's identity. Two notes with one
 			// curie is a permanent `Ambiguous identity` collision that fails every
@@ -1021,8 +1105,8 @@ export class EvidenceLinkModal extends Modal {
 			}
 
 			const note = buildEvidenceLink({
-				controlPath: this.control.path,
-				controlCurie: this.control.curie,
+				controlPath: control.path,
+				controlCurie: control.curie,
 				controlReviewCid,
 				controlReviewGroups,
 				evidencePath,
@@ -1070,7 +1154,9 @@ export class EvidenceLinkModal extends Modal {
 				const merged = mergeIntoExistingLink(
 					current,
 					note.markdown,
-					this.previousRenderBody(current, evidencePath),
+					// AM-51. The snapshot's control, so the "is this our own unedited
+					// output" comparison is made against the control this write is for.
+					this.previousRenderBody(control, current, evidencePath),
 					managed,
 				);
 				if (!merged.ok) {
@@ -1114,9 +1200,30 @@ export class EvidenceLinkModal extends Modal {
 			}
 			const file = this.app.vault.getAbstractFileByPath(writtenPath);
 			if (file instanceof TFile) await this.app.workspace.getLeaf(true).openFile(file);
+			// AM-51. Recorded here as well as in `onClose`, so the `finally` below can
+			// never start a lookup into components this window has detached, whatever
+			// the host does with `onClose`.
+			this.closed = true;
 			this.close();
 		} catch (err) {
 			new Notice(`Could not create the link: ${err instanceof Error ? err.message : String(err)}`);
+		} finally {
+			// AM-51. The lock is released whichever way the write ended, including the
+			// early returns above, so a refusal never leaves the window unusable.
+			this.writing = false;
+			this.controlDrop?.setDisabled(false);
+			this.evidenceText?.setDisabled(false);
+			if (!this.closed) {
+				// AM-51. The pair is RE-RESOLVED, not restored from memory. The note
+				// this write created or changed now exists, so the resolution captured
+				// above is out of date about the vault the instant the write lands, and
+				// a second submit reading it would take the create branch for a pair
+				// that now has a note. Re-running the one lookup is also what puts the
+				// review controls back, through `applyPairState`, showing what was
+				// written.
+				this.resolution = null;
+				this.pairChanged();
+			}
 		}
 	}
 
@@ -1141,9 +1248,7 @@ export class EvidenceLinkModal extends Modal {
 	 * update. The clause meant managed-keys plus region semantics, which is what
 	 * this does.
 	 */
-	private previousRenderBody(current: ExistingNote, fallbackEvidencePath: string): string | null {
-		const control = this.control;
-		if (!control) return null;
+	private previousRenderBody(control: ControlCandidate, current: ExistingNote, fallbackEvidencePath: string): string | null {
 		const fm = current.frontmatter;
 		const coverage = readEnum<EvidenceCoverage>(fm.coverage, EVIDENCE_COVERAGES);
 		const status = readEnum<EvidenceStatus>(fm.status, EVIDENCE_STATUSES);
@@ -1337,6 +1442,10 @@ export class EvidenceLinkModal extends Modal {
 	}
 
 	onClose(): void {
+		// AM-51. Nothing may start a lookup into components that are about to be
+		// detached: a write settling after the window closed would otherwise re-resolve
+		// the pair against a form nobody is looking at.
+		this.closed = true;
 		this.contentEl.empty();
 	}
 }

@@ -53,6 +53,21 @@ describe('AM-50: a folder no row of this run describes is refused, never named f
 		// it was found by curie at Frameworks/Elsewhere on this refresh -- a
 		// user-moved note. Frameworks/Elsewhere becomes an ancestor of the note's
 		// FINAL path with no row's values ever describing it.
+		//
+		// AM-52 (2026-09-04) HANDOFF. `path !== renderedPath` (differing directory)
+		// is exactly `enrich()`'s ONLY evidence for "a row this run kept in place",
+		// because in the real engine that shape has exactly one producer: a
+		// skip-mode kept row (generation-engine.ts's `keptRecords.push`). A
+		// replace-mode move always renames FIRST, so `path` and `renderedPath`
+		// agree by the time a record reaches `enrich()`. So this fixture -- built
+		// to simulate "a user dragged the file by hand" -- is INDISTINGUISHABLE,
+		// from inside `enrich()`, from a genuine skip-mode kept row, and AM-52's
+		// fourth refusal state (asked BEFORE this one) now claims it: with no
+		// `recordedHubValues` entry for Frameworks/Elsewhere (none supplied here),
+		// the folder is refused with the KEPT cause, never the MOVED cause below --
+		// see hub-refusal-am52-kept-not-moved.test.ts for the exempt/refused pair
+		// this state now owns, and for the still-reachable MOVED cause (an
+		// ancestor two levels up that AM-52 does not mark).
 		const notes: EnrichNote[] = [{
 			path: `${ROOT}/Elsewhere/A.md`,
 			renderedPath: `${ROOT}/X/A.md`,
@@ -69,8 +84,11 @@ describe('AM-50: a folder no row of this run describes is refused, never named f
 		expect(result.deviations.length).toBeGreaterThan(0);
 		const deviation = result.deviations.find((d) => d.includes(`${ROOT}/Elsewhere`));
 		expect(deviation).toBeDefined();
-		expect(deviation).toContain('No row of this run describes the folder');
-		expect(deviation).toContain('the note may');
+		// AM-52: the KEPT cause, since no recorded identity was supplied for this
+		// folder and its shape is a kept-row shape. Never the MOVED wording.
+		expect(deviation).toContain('kept in place because Skip existing was chosen');
+		expect(deviation).not.toContain('the note may');
+		expect(deviation).not.toContain('have been moved');
 
 		// Absent from the parent's (root's) Contents -- never linked to.
 		const root = hubByPath(result, `${ROOT}/${ROOT}.md`);

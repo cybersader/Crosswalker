@@ -876,6 +876,13 @@ export async function generateNotes(
 		// (children lists + facet hub notes + edgeCount, re-import-safe merge).
 		let enrichmentComplete = true;
 
+		// AM-52. Read once per run, and only when the run kept something: this is the
+		// only state that consults it, and a run that moved everything asks the vault
+		// nothing extra.
+		const recordedHubValues = enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure
+			? await buildRecordedHubValues(app, ownedIdentityIndex)
+			: undefined;
+
 		// AM-2. Account for the rows this run KEPT, so a skip refresh of an
 		// unchanged set reports zero orphans. Bookkeeping only, no writes.
 		if (enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure) {
@@ -887,6 +894,7 @@ export async function generateNotes(
 				records: [...enrichRecords, ...keptRecords],
 				producedCuries,
 				result,
+				recordedHubValues,
 				debug,
 			}) && enrichmentComplete;
 		}
@@ -910,6 +918,7 @@ export async function generateNotes(
 					curieOrigins,
 					isStreamed,
 					{ owned: ownedIdentityIndex, vaultWide: identityIndex },
+					recordedHubValues,
 					debug,
 				);
 			} catch (enrichErr) {
@@ -3171,6 +3180,13 @@ export async function generateFromRecipe(
 	// the same managed-merge path so re-imports stay idempotent + user-safe.
 	let enrichmentComplete = true;
 
+	// AM-52. Read once per run, and only when the run kept something: this is the
+	// only state that consults it, and a run that moved everything asks the vault
+	// nothing extra.
+	const recordedHubValues = enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure
+		? await buildRecordedHubValues(app, ownedIdentityIndex)
+		: undefined;
+
 	// AM-2. Account for the rows this run KEPT, so a skip refresh of an unchanged
 	// set reports zero orphans. Bookkeeping only, no writes.
 	if (enrichmentEnabled && keptRecords.length > 0 && !sourceStageFailure) {
@@ -3182,6 +3198,7 @@ export async function generateFromRecipe(
 			records: [...enrichRecords, ...keptRecords],
 			producedCuries,
 			result,
+			recordedHubValues,
 			debug,
 		}) && enrichmentComplete;
 	}
@@ -3200,6 +3217,7 @@ export async function generateFromRecipe(
 				curieOrigins,
 				isStreamed,
 				{ owned: ownedIdentityIndex, vaultWide: identityIndex },
+				recordedHubValues,
 				debug,
 			);
 		} catch (enrichErr) {
@@ -3471,6 +3489,55 @@ async function buildOwnedHubValueIndex(app: App, owned: IdentityIndex | undefine
 }
 
 /**
+ * AM-52 (2026-09-04). What the level hub note AT EACH FOLDER already records about
+ * it: its `hub_values` chain, keyed by that folder.
+ *
+ * `enrich()` is pure and reads no vault, so the one fact it cannot obtain for
+ * itself is what the vault already says. This supplies it, for the single state
+ * AM-52 adds: a folder holding a row this refresh KEPT at an address the layout no
+ * longer chooses (a source release that recategorises a row, imported with Skip
+ * existing). Such a folder is described by no chain of this run, so without its
+ * recorded identity its hub is refused, drops out of `producedCuries`, and the
+ * orphan pass reports the index note of a folder that still holds notes as
+ * vanished.
+ *
+ * Only the folder's OWN level hub answers for it: the level-hub address is
+ * `<folder>/<folder basename>.md`, and a facet hub that happens to sit in the same
+ * folder records values about something else entirely.
+ *
+ * Fail-closed on a half-record. `hub_levels` and `hub_values` are written together
+ * and are read together; a note carrying one without the other is not a record this
+ * run will act on, and the folder is refused by name rather than named from its
+ * path.
+ */
+async function buildRecordedHubValues(app: App, owned: IdentityIndex | undefined): Promise<Map<string, LayoutValue[]>> {
+	const byFolder = new Map<string, LayoutValue[]>();
+	if (!owned) return byFolder;
+	for (const curie of owned.curies()) {
+		const file = owned.get(curie);
+		if (!file) continue;
+		const folder = getParentPath(file.path);
+		if (!folder) continue;
+		if (file.path !== `${folder}/${folder.slice(folder.lastIndexOf('/') + 1)}.md`) continue;
+		// S8 (ruled 2026-09-02): the same discriminator every read in this file uses.
+		// Cache lag is not absence.
+		const read = await readFrontmatterForRun(app, file);
+		if (read.state !== 'ok') continue;
+		const fm = read.frontmatter;
+		if (fm.kind !== 'hub') continue;
+		const values = readStringArray(fm.hub_values);
+		const levels = readStringArray(fm.hub_levels);
+		if (!values || values.length === 0) continue;
+		if (!levels || levels.length !== values.length) continue;
+		// First claimant wins, matching the identity index's own collision rule.
+		if (!byFolder.has(folder)) {
+			byFolder.set(folder, values.map((value, i) => ({ level: levels[i], value })));
+		}
+	}
+	return byFolder;
+}
+
+/**
  * Physically apply a hub relocation decided by `resolveHubTarget`. Returns the
  * path to write at: the destination when the move succeeded, and the note's
  * CURRENT path when the destination is already occupied by something this batch
@@ -3569,9 +3636,16 @@ function markKeptHubsProduced(args: {
 	records: EnrichRecord[];
 	producedCuries: Set<string>;
 	result: GenerationResult;
+	/**
+	 * AM-52. What the hub note at each folder already records. Handed in rather than
+	 * read here so this pass and the WRITING pass derive the same identity for a
+	 * kept-in-place folder: two derivations would mark one curie as produced and
+	 * write another, which is an orphan report on a hub that is sitting right there.
+	 */
+	recordedHubValues?: ReadonlyMap<string, LayoutValue[]>;
 	debug?: DebugLog;
 }): boolean {
-	const { recipe, curiePrefix, basePath, streamed, records, producedCuries, result, debug } = args;
+	const { recipe, curiePrefix, basePath, streamed, records, producedCuries, result, recordedHubValues, debug } = args;
 	try {
 		const implied = enrich(
 			records.map((r) => ({
@@ -3585,7 +3659,7 @@ function markKeptHubsProduced(args: {
 				// skip refresh and a write refresh would disagree about what a hub is.
 				layoutValues: r.layoutValues,
 			})),
-			{ ontology: curiePrefix, config: recipe.target.enrichment ?? {}, streamed, rootFolder: basePath },
+			{ ontology: curiePrefix, config: recipe.target.enrichment ?? {}, streamed, rootFolder: basePath, recordedHubValues },
 		);
 		// AM-31, deliberately NOT guarded here, and this is the reasoned exception
 		// to "one rule, all writers": this pass writes nothing, so there is nothing
@@ -3636,6 +3710,11 @@ async function applyEnrichment(
 	 * single vault-wide index here is what let hub writes cross a set boundary.
 	 */
 	indexes: { owned?: IdentityIndex; vaultWide?: IdentityIndex } | undefined,
+	/**
+	 * AM-52. The same recorded-hub map the kept-row bookkeeping pass was given, so
+	 * the writing pass and the accounting pass agree about a kept-in-place folder.
+	 */
+	recordedHubValues: ReadonlyMap<string, LayoutValue[]> | undefined,
 	debug?: DebugLog,
 ): Promise<void> {
 	const config = recipe.target.enrichment ?? {};
@@ -3653,7 +3732,7 @@ async function applyEnrichment(
 			// AM-33: the values this row's folder levels rendered, carried to the hub pass.
 			layoutValues: r.layoutValues,
 		})),
-		{ ontology: curiePrefix, config, streamed, rootFolder: options.basePath },
+		{ ontology: curiePrefix, config, streamed, rootFolder: options.basePath, recordedHubValues },
 	);
 	result.edgeCount = enrichment.edgeCount;
 

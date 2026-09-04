@@ -9,6 +9,7 @@
 
 import { App, normalizePath, parseYaml, TFile } from 'obsidian';
 import { slugifyForCurie } from './curie';
+import { normalizeOutputRoot } from '../settings/output-root';
 import { IDENTITY_SENTINELS } from './legacy-recipe-shim';
 
 export const IMPORT_SET_ID_PATTERN = /^iset-[a-z0-9]{6}$/;
@@ -777,7 +778,22 @@ export function recoverImportSetRoot(paths: readonly string[]): string | null {
 	return common.join('/');
 }
 
-/** Trim slashes so a recorded destination compares equal to a vault path prefix. */
+/**
+ * Normalize a folder so a recorded destination compares equal to a vault path
+ * prefix.
+ *
+ * S6 ruling (2026-09-04). THE AM-53 NORMALIZATION, not a local spelling of it.
+ *
+ * Failure mode prevented: this was trim plus edge separators, which performs a
+ * fraction of one of the host's four mutations, and its result is compared against
+ * fully normalized vault paths on the question "where does this set live"
+ * (`resolveSetRoot`'s `startsWith`). A destination recorded with an NBSP, an NFD
+ * accent, a backslash or an internal `//` failed that comparison. It degrades
+ * safely - `recoverImportSetRoot` recovers the real root segment-wise from the
+ * notes themselves and fails closed to null - and that degrade path stays exactly
+ * where it is; what changes is that the comparison now succeeds in the ordinary
+ * case instead of relying on the fallback for it.
+ */
 function normalizeFolder(value: string): string {
-	return value.trim().replace(/^\/+|\/+$/g, '');
+	return normalizeOutputRoot(value);
 }

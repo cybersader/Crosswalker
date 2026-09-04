@@ -25,6 +25,7 @@ import {
 	draftPathDisplay,
 	type PreviewTreeNode,
 } from './setting-previews';
+import { outputRootPath } from './output-root';
 import type { Enrichment } from '../import/mapping/types';
 import {
 	buildParentPlacementPreview,
@@ -191,7 +192,10 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 				id: 'output',
 				title: 'Output',
 				icon: 'folder',
-				summary: () => s.defaultOutputPath || 'Vault root',
+				// AM-53. The summary states the root the product will actually use, so a
+			// setting that reads `Frameworks/` on the card and resolves to
+			// `Frameworks` everywhere else cannot look like two different folders.
+			summary: () => outputRootPath(s) || 'Vault root',
 				render: (root) => this.renderOutput(root),
 			},
 			{
@@ -384,7 +388,9 @@ export class CrosswalkerSettingTab extends PluginSettingTab {
 		});
 
 		refresh = this.addPreview(root, 'Where imports land', (el) => {
-			this.renderTree(el, outputPathTree(this.plugin.settings.defaultOutputPath));
+			// AM-53. The preview shows where imports land, so it must read the root the
+			// same way the import does.
+			this.renderTree(el, outputPathTree(outputRootPath(this.plugin.settings)));
 		});
 	}
 
