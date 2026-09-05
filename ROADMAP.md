@@ -38,7 +38,7 @@ The 0.1 design phase concluded with all named architectural questions resolved. 
 
 Mirrors the docs [milestone status snapshot](https://cybersader.github.io/crosswalker/reference/roadmap/milestones/) — that page is the live source; treat this as a snapshot.
 
-**Status last verified: 2026-07-25** — every line below re-checked against the milestone pages, `CHANGELOG.md` `[Unreleased]`, and the commit log. If today is far past that date and no newer verification line has replaced it, treat this list as unverified.
+**Status last verified: 2026-09-04** — every line below re-checked against the milestone pages, `CHANGELOG.md` `[Unreleased]`, and the commit log. Unchanged since 2026-07-25: no milestone status flipped in that window; the `fix/d1-per-import-root` safety work is unmerged branch work, not a shipped milestone. If today is far past this date and no newer verification line has replaced it, treat this list as unverified.
 
 - [x] v0.1.1 — Type system + validation foundation (2026-05-04)
 - [x] v0.1.2 — `render()` v1 (2026-05-05)

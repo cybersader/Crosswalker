@@ -17,6 +17,8 @@ Make the portable parts of the import/export chain explicit without collapsing d
 
 🚧 In progress (started 2026-07-12) — exporter first slice ✅; ImportRecipe fidelity foundation ✅ 2026-07-21. Remaining scope is the reusable-configuration library lifecycle, separate source/run binding + full-source replay proofs, and the minimal MappingSet portability envelope. Delivery detail lives only in `CHANGELOG.md` `[Unreleased]`.
 
+**Status last verified:** 2026-09-04 — verified against `CHANGELOG.md` `[Unreleased]` and `src/export/` (`csv-exporter.ts`, `oscal-profile-exporter.ts`, `sssom-exporter.ts`, `strm-tsv-exporter.ts`, `vault-reader.ts` all present; STRM command-palette wiring and the OSCAL target-shape decision remain open, matching the task list below). Unrelated to this milestone: the concurrent `fix/d1-per-import-root` branch (unmerged).
+
 ## Dependencies
 
 - [v0.1.5 — Tier 2 sidecar](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) (joins, coverage matrices, deduped exports use sidecar queries)
