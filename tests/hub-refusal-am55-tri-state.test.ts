@@ -99,8 +99,21 @@ describe('AM-55 row 2: present, no usable chain -- refused with the row-2 text A
 		expect(hubByPath(result, `${FOLDER}/Persistence.md`)).toBeUndefined();
 		const deviation = deviationFor(result, FOLDER);
 		expect(deviation).toBeDefined();
-		expect(deviation).toContain('was left as it was and not updated this run');
-		expect(deviation).toContain('predates recorded identity');
+		// AM-67 (2026-09-04). CORRECTED TO THE RULING THAT CHANGED IT. S18 (pass 20)
+		// re-ruled AM-55's row-2 text: "was left as it was and not updated this run"
+		// / "predates recorded identity" became one clause that names what was
+		// observed, because "the note predates recorded identity" is a story about
+		// the observation and not the observation - a run that computed no values
+		// writes the same state, and so does a hand edit, and so does a length
+		// mismatch. Both halves below are the pass-22 tree's own text, verbatim
+		// (`enrich.ts` row 2, the `state === 'one'` branch); AM-68 deleted the
+		// identically-worded UNREADABLE-folder message beside it, leaving this the
+		// one emitter of the sentence.
+		//
+		// These two assertions were red on the pass-21 tree and were masked before it
+		// by the missing write set, which failed the declaration earlier.
+		expect(deviation).toContain('was left as it was:');
+		expect(deviation).toContain('its recorded identity could not be read');
 		expect(deviation).toContain('Re-run with Replace to re-establish it');
 		// The note demonstrably exists -- its EXISTING curie (never a re-derived
 		// one) is added to the accounting list the caller marks produced.
@@ -113,7 +126,8 @@ describe('AM-55 row 2: present, no usable chain -- refused with the row-2 text A
 		]);
 		const result = enrich([keptNote()], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE });
 
-		expect(deviationFor(result, FOLDER)).toContain('was left as it was and not updated this run');
+		// AM-67. The same S18 correction as the sibling declaration above.
+		expect(deviationFor(result, FOLDER)).toContain('was left as it was: its recorded identity could not be read');
 		expect(result.levelHubs.keptExistingCuries).toEqual([`${ONT}:hub/persistence`]);
 	});
 });

@@ -212,6 +212,23 @@ export interface HubNote {
 	 * which is a comparison, not this flag.
 	 */
 	hasWriteSetMember?: true;
+	/**
+	 * AM-71 (2026-09-04). Level hubs only: this is the IMPORT ROOT's home note.
+	 *
+	 * The root's identity is the set's own reserved local part (`hub/_root`), not a
+	 * chain any note recorded, so its absence is never the recategorisation AM-64's
+	 * third row declines to judge - there is nothing recorded to have been about
+	 * something else. The caller therefore creates it when it is absent on any run
+	 * with a population, and preserves it as recorded on a run that wrote nothing
+	 * into it.
+	 *
+	 * Failure mode prevented: an import with no home note and no message. On an
+	 * all-skip refresh the root is held (no row the run writes lies within it), so
+	 * AM-64's no-create rule refused it - and `refusalFor` exempts the root, so
+	 * nothing was said either. A user with a pre-fix flat vault, or who deleted the
+	 * home note, got silence.
+	 */
+	importRoot?: true;
 }
 
 /** One parent-note relocation the caller must physically apply to the vault. */
@@ -259,6 +276,21 @@ export interface EnrichmentResult {
 		 * Sorted, deterministic, and deduplicated.
 		 */
 		keptExistingCuries: string[];
+		/**
+		 * AM-70 (2026-09-04). Curies of index notes the caller READ this run whose
+		 * folder no note of the population reaches - so this pass can say nothing
+		 * about what they are for.
+		 *
+		 * Neither produced nor kept nor orphan. The caller excludes them from the
+		 * orphan diff BY NAME and keeps `orphansChecked` true: the population was
+		 * checked, and these notes were named rather than judged. Reporting one as no
+		 * longer in the source is a claim the same run has evidence against, since it
+		 * read the note this pass; marking it produced would be this run vouching for
+		 * a note it wrote nothing into and cannot describe.
+		 *
+		 * Sorted, deterministic, and deduplicated.
+		 */
+		observedUnjudgedCuries: string[];
 	};
 	/** Graph edge count: parent links + children entries + member entries + level-hub child-link entries. */
 	edgeCount: number;
@@ -357,6 +389,23 @@ export interface EnrichOptions {
 	 * fact recovered from a path comparison rather than recorded.
 	 */
 	writeSet: ReadonlySet<string>;
+	/**
+	 * AM-70 (2026-09-04). EVERY index note of this import the caller READ this run,
+	 * with the folder it was found in - not only the ones whose folder the
+	 * population reaches.
+	 *
+	 * Failure mode prevented: a note the run read this pass reported as no longer in
+	 * the source. A `kind: 'hub'` note sitting in a folder no note of the population
+	 * reaches (a user tidied it into an archive folder) is observed by the caller's
+	 * walk, is judged by nothing here - `keptFolders` is gated on `folders`, which is
+	 * built from the population's own ancestors - and then lands in the orphan diff
+	 * with `orphansChecked: true`, while the same run holds the record that it read
+	 * that very note. Such a curie is neither produced nor kept nor orphan: it is
+	 * named (`observedUnjudgedCuries`) and left alone.
+	 *
+	 * Supplied by the caller because `enrich()` is pure and reads no vault.
+	 */
+	observedHubs?: readonly { curie: string; path: string; folder: string; hasRecordedChain: boolean }[];
 }
 
 /**
@@ -376,7 +425,7 @@ export interface EnrichOptions {
  * walk observed is a fact, and declining to choose between two facts is not
  * evidence that either one vanished.
  */
-export type OwnedHubAtFolder =
+export type OwnedHubAtFolder = (
 	| { state: 'one'; path: string; curie: string; values?: LayoutValue[] }
 	| { state: 'many'; paths: string[]; curies: string[] }
 	/**
@@ -392,26 +441,40 @@ export type OwnedHubAtFolder =
 	 *
 	 * Residual ruling 4 (2026-09-04). THIS ARM IS S12 ALONE. Pass 20 folded the
 	 * unreadable note in here too, which silenced a folder the run has something
-	 * true and specific to say about; see the `unreadable` arm below.
+	 * true and specific to say about; see `hasUnreadableNote` below.
 	 */
 	| { state: 'withheld' }
 	/**
-	 * Residual ruling 4 (2026-09-04). The caller found an index note here and could
-	 * not READ it - cache lag is not absence.
+	 * AM-68 (2026-09-04). No index note of this import could be READ in this folder,
+	 * and at least one note here could not be read at all (`hasUnreadableNote`).
 	 *
-	 * A separate fact from `withheld`, because a different voice speaks for it. The
-	 * S12 folder is named by the caller's own warning, so the enrichment pass says
-	 * nothing; this folder's own message is AM-55's second row, which names exactly
-	 * what was observed ("its recorded identity could not be read") and is not
-	 * silenced. Row 3 - "this import has no index note for the folder" - excludes
-	 * both, because there is one and the run read it.
-	 *
-	 * Failure mode prevented: removing a message the user could act on. Told that
-	 * no index note exists, they create one; told nothing at all, they see an
-	 * unexplained gap; told that the note could not be read, they wait for indexing
-	 * or fix its properties.
+	 * The arm exists so the folder can carry the qualifier while still being what it
+	 * is: a folder with no readable index note. It is AM-55's third row, whose voice
+	 * names the observation and nothing more.
 	 */
-	| { state: 'unreadable' };
+	| { state: 'absent' }
+) & {
+	/**
+	 * AM-68 (2026-09-04). UNREADABLE IS A NOTE-LEVEL FACT, carried as a qualifier on
+	 * whatever readable state the folder otherwise reaches - never as the folder's
+	 * state.
+	 *
+	 * Failure mode prevented: a claim the run could not observe. Residual ruling 4
+	 * (pass 21) made the folder-level `unreadable` state speak, and the state was set
+	 * by ANY owned note the run could not read - the walk's `kind: 'hub'` filter sits
+	 * below the unreadable branch, so a cache-cold concept note marked its folder.
+	 * The results screen then said the folder's INDEX NOTE could not be read while
+	 * the readable index note sitting beside it was discarded behind the sticky
+	 * guard. The caller's own warning three hundred lines away refuses to make that
+	 * claim, and names "notes", not "index notes", for exactly this reason.
+	 *
+	 * So: the folder's state is decided by its readable index note if one exists
+	 * (rows 1, 2 and `many` are unaffected by this qualifier), and where none exists
+	 * the qualifier only widens row 3's sentence to say what was observed - that a
+	 * note in the folder could not be read this run, not which note it was.
+	 */
+	hasUnreadableNote?: true;
+};
 
 /** AM-55. Folder -> the index note(s) it holds. See `EnrichOptions.ownedHubsByFolder`. */
 export type OwnedHubsByFolder = ReadonlyMap<string, OwnedHubAtFolder>;
@@ -440,7 +503,7 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 	const result: EnrichmentResult = {
 		childrenByPath: new Map(),
 		hubs: [],
-		levelHubs: { hostedChildrenByPath: new Map(), notes: [], keptExistingCuries: [] },
+		levelHubs: { hostedChildrenByPath: new Map(), notes: [], keptExistingCuries: [], observedUnjudgedCuries: [] },
 		edgeCount: 0,
 		deviations: [],
 		relocations: [],
@@ -545,7 +608,10 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 	}
 
 	// --- 4.5. Level hub notes (hierarchy MOCs). ---
-	computeLevelHubs(notes, finalPath, isWritable, byBasename, config, opts.ontology, opts.rootFolder, opts.ownedHubsByFolder, result);
+	computeLevelHubs(
+		notes, finalPath, isWritable, byBasename, config, opts.ontology, opts.rootFolder,
+		opts.ownedHubsByFolder, opts.observedHubs, result,
+	);
 
 	return result;
 }
@@ -729,6 +795,8 @@ function computeLevelHubs(
 	ontology: string,
 	rootFolder: string | undefined,
 	ownedHubsByFolder: OwnedHubsByFolder | undefined,
+	/** AM-70. Every index note of this import the caller read. See `EnrichOptions.observedHubs`. */
+	observedHubs: readonly { curie: string; path: string; folder: string; hasRecordedChain: boolean }[] | undefined,
 	result: EnrichmentResult,
 ): void {
 	if (config.level_hubs !== 'notes') return;
@@ -769,6 +837,49 @@ function computeLevelHubs(
 		}
 	}
 	if (folders.size === 0 && (root === undefined || root === '')) return;
+
+	/**
+	 * AM-70 (2026-09-04). AN INDEX NOTE IN A FOLDER NO CHAIN REACHES IS NAMED, NOT
+	 * JUDGED.
+	 *
+	 * `folders` is the population's own ancestor set, so a `kind: 'hub'` note the
+	 * caller read in some other folder is invisible to everything below: not
+	 * described, not hosted, not kept (`keptFolders` is gated on `folders`), and so
+	 * accounted for by nothing. The caller's orphan diff then reported a note this
+	 * very pass read as no longer in the source, with `orphansChecked: true`.
+	 *
+	 * The run cannot say what such a note is about - no row of it places anything in
+	 * that folder - so it neither claims it nor calls it vanished. It says what it
+	 * observed and leaves the note exactly as it found it.
+	 *
+	 * Failure mode prevented: a refusal and an orphan report about the same note on
+	 * one results screen (AM-59's rule, third site).
+	 *
+	 * SCOPED TO WHAT THE RUN CANNOT SAY (`hasRecordedChain`). "Unreached folder" on
+	 * its own is also the shape of a genuine removal: a source release that drops
+	 * every row of one folder leaves that folder holding an index note the
+	 * population no longer reaches, and reporting THAT note is the falsifying case
+	 * the orphan feature exists for (`tests/legacy-vault-refresh.test.ts`, "still
+	 * reports a hub that genuinely has no members left"). The two are told apart by
+	 * whether the note itself says what it is about: a hub carrying a usable
+	 * recorded chain answers that from its own record, so an unreached folder means
+	 * its subject left the source and it is judged as before. A hub carrying no
+	 * usable chain (written before `hub_values` existed, or a half-record) in a
+	 * folder nothing reaches is the one this pass genuinely cannot describe - the
+	 * adversary's own scenario, and the only note named here. A hub WITH a chain
+	 * that was dragged somewhere it does not describe never arrives here at all: the
+	 * caller's S12 check withholds it and suppresses orphan reporting for the run.
+	 */
+	const unjudged = new Set<string>();
+	for (const observed of observedHubs ?? []) {
+		if (folders.has(observed.folder) || observed.hasRecordedChain) continue;
+		unjudged.add(observed.curie);
+		result.deviations.push(
+			`The index note "${observed.path}" sits in a folder no note of this import reaches; it was left as it was `
+			+ 'and is not counted as removed from the source.',
+		);
+	}
+	result.levelHubs.observedUnjudgedCuries = [...unjudged].sort(cmp);
 
 	/**
 	 * AM-64 (2026-09-04). The folders this run WRITES INTO: the same ancestor walk,
@@ -1136,10 +1247,7 @@ function computeLevelHubs(
 	 * would then be keyed on a curie this import never minted, and nothing in the
 	 * run would say so.
 	 */
-	const isCurieOfThisOntology = (curie: string): boolean => {
-		const i = curie.indexOf(':');
-		return i > 0 && curie.slice(0, i) === ontology && curie.length > i + 1;
-	};
+	const isCurieOfThisOntology = (curie: string): boolean => isCurieOfOntology(curie, ontology);
 
 	/**
 	 * AM-44. Is this folder one the run declines to describe, and why?
@@ -1176,10 +1284,6 @@ function computeLevelHubs(
 		if (valuesByFolder.has(f)) return undefined;
 		const unaligned = unalignedFolders.get(f);
 		if (unaligned) return unaligned;
-		// The caller collects no values at all, so "no row described this folder" is
-		// true of every folder and says nothing. The documented path-derived
-		// fallback covers this state and only this state.
-		if (!valuesWereCollected) return undefined;
 		// AM-52/AM-54. THE FOURTH STATE, asked before AM-50's: this folder is on the
 		// chain of a row this run kept in place. A folder holding a note the run
 		// vouched for is not a folder the run knows nothing about.
@@ -1208,19 +1312,6 @@ function computeLevelHubs(
 			// values and no record to work from, so it returns null and Pass B writes
 			// nothing.
 			if (observed?.state === 'withheld') return undefined;
-			// Residual ruling 4 (2026-09-04). THE UNREADABLE FOLDER IS NOT SILENCED. It
-			// reaches AM-55's second row, whose text already says exactly what was
-			// observed. Pass 20 routed it through `withheld` alongside the S12 folder,
-			// which removed the only message about it: the caller's warning names the
-			// note as one it could not read, and nothing then said what happened to the
-			// folder's index note. Nothing is accounted for here - the run could not read
-			// the note, so it has no identity to vouch for, and the caller has already
-			// suppressed orphan reporting for the whole run.
-			if (observed?.state === 'unreadable') {
-				return `The index note for the folder "${f}" was left as it was: its recorded identity could not be read. `
-					+ 'The notes in it were kept in place by Skip existing. Re-run with Replace to re-establish it. '
-					+ STALE_LIST_DISCLOSURE;
-			}
 			// Residual ruling 5 (2026-09-04). A RECORDED IDENTITY THAT IS NOT THIS
 			// IMPORT'S IS REPORTED, NEVER REPAIRED.
 			//
@@ -1277,10 +1368,36 @@ function computeLevelHubs(
 			// evidence for: what it observed is that the set-filtered read found no index
 			// note of this import in the folder. A run may have recorded one and had it
 			// deleted, renamed, or written before import sets existed.
+			//
+			// AM-68 (2026-09-04). THE QUALIFIED FORM, when a note in this folder could
+			// not be read this run. It says what was observed - no index note of this
+			// import could be READ here, and something here was unreadable - and it does
+			// not claim which note that was. Pass 21 said "the index note ... could not be
+			// read" from an observation about ANY owned note, so a cache-cold concept note
+			// made the run assert something about an index note it may never have seen.
+			if (observed?.hasUnreadableNote) {
+				return `No index note of this import could be read in the folder "${f}"; a note in it could not be read `
+					+ 'this run. The notes in it were kept in place by Skip existing. Wait for Obsidian to finish '
+					+ `indexing the vault, then run the import again. ${STALE_LIST_DISCLOSURE}`;
+			}
 			return `This import has no index note for the folder "${f}" and none was created: the notes in it were kept in `
 				+ 'place by Skip existing and no index note of this import was found in it. Re-run with Replace to '
 				+ `create it. ${STALE_LIST_DISCLOSURE}`;
 		}
+		// The caller collects no values at all, so "no row described this folder" is
+		// true of every folder and says nothing. The documented path-derived
+		// fallback covers this state and only this state.
+		//
+		// AM-71 (2026-09-04). ASKED BELOW THE KEPT/HELD BRANCH, not above it. Above
+		// it, a run that collected no layout values was silent about every held
+		// folder - including one whose index note is absent, which is AM-64's row 3
+		// and the one state whose refusal that amendment's own justification depends
+		// on ("the run refuses by name; it does not restore what the user removed").
+		// The kept/held rows are decided by what the vault records, not by whether
+		// this caller happened to collect values, so they speak either way; only
+		// AM-50's "no row of this run describes the folder" needs the values to be
+		// meaningful, and it is the only thing below this line.
+		if (!valuesWereCollected) return undefined;
 		// AM-50. This run DID collect values and none of them reach this folder.
 		// Named as what it is, with the cause a user can actually act on. The
 		// ordinary way to arrive here is a generated note moved by hand: it is
@@ -1536,6 +1653,13 @@ function computeLevelHubs(
 			// per-import basePath colliding with an actual row's id). Known,
 			// deliberately out of scope here; the synthetic branch below is
 			// what real generation-engine imports produce for the root.
+			//
+			// AM-72 (2026-09-04). This list is derived over the WHOLE population, so it
+			// is correct for a host note the run KEPT as well as one it wrote - and the
+			// caller now maintains the managed region on a kept host from it. Failure
+			// mode prevented: a `## Contents` region the user is told not to edit
+			// permanently naming N-1 of N children, because the folder's index note
+			// happened to be a row this run held.
 			result.levelHubs.hostedChildrenByPath.set(id.hostedPath, links);
 		} else {
 			result.levelHubs.notes.push({
@@ -1572,6 +1696,10 @@ function computeLevelHubs(
 				// that is absent - a run that wrote nothing here does not restore a note
 				// the user removed.
 				...(heldByRecord(f) ? { heldFolder: true as const } : {}),
+				// AM-71. The import root's home note is the set's own. See
+				// `HubNote.importRoot`: held-only is still true of it on an all-skip run,
+				// and it is still created rather than refused.
+				...(isRoot ? { importRoot: true as const } : {}),
 			});
 		}
 	}
@@ -1666,6 +1794,8 @@ function computeLevelHubs(
 					childrenLinks: links,
 					...(facetGroup.length > 0 ? { facetLinks: rootFacetLinks } : {}),
 					...(legacyCurie !== curie ? { legacyCuries: [legacyCurie] } : {}),
+					// AM-71. The same fact as Pass B's root: this hub IS the import root.
+					importRoot: true as const,
 				});
 			}
 		}
@@ -1679,6 +1809,31 @@ function computeLevelHubs(
 	result.levelHubs.keptExistingCuries = [...keptExistingCuries].sort(cmp);
 
 	result.levelHubs.notes.sort((a, b) => cmp(a.path, b.path));
+}
+
+/**
+ * Residual ruling 5 (2026-09-04), exported by AM-73 (2026-09-04). Is this
+ * recorded curie one the named ontology could have minted - its prefix, and a
+ * local part after it?
+ *
+ * Deliberately a shape test and nothing more. It does not ask whether the local
+ * part is one the current derivation would produce, because that is exactly the
+ * question AM-61 removed: a hub written under an earlier derivation records a
+ * perfectly good identity that today's rule would spell differently, and
+ * re-deriving it renames every hub in an existing vault.
+ *
+ * ONE implementation, exported, because AM-73 asks the same question at the
+ * engine's root-hub writer. Two copies of a shape test are two answers waiting
+ * to disagree about which recorded identities this import may carry.
+ *
+ * Failure mode prevented: carrying a foreign or malformed name forward as an
+ * import's identity. The owned index, the orphan diff and every Contents entry
+ * would then be keyed on a curie the import never minted, and nothing in the run
+ * would say so.
+ */
+export function isCurieOfOntology(curie: string, ontology: string): boolean {
+	const i = curie.indexOf(':');
+	return i > 0 && curie.slice(0, i) === ontology && curie.length > i + 1;
 }
 
 /**

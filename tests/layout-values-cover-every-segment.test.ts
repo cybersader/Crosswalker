@@ -266,6 +266,19 @@ function batch(dir: string, values: LayoutValue[] | undefined, root: string): En
 const hubCuriesOf = (result: ReturnType<typeof enrich>): string[] =>
 	result.levelHubs.notes.map((h) => h.curie).sort();
 
+/**
+ * AM-66 (2026-09-04). THE WRITE SET THIS FIXTURE MEANS: every note in the batch.
+ *
+ * No batch below is a kept row - each is a live import writing every note it
+ * hands over - so the write set is every path. Stated rather than left to
+ * `enrich()` to infer: AM-65 made the fact required because, while it was
+ * optional, an omitted write set silently meant "everything is writable", which
+ * is true for THIS fixture and false for a kept-row one, so the one default
+ * served one caller and quietly broke the other with nothing in the output naming
+ * the omission. Assertions are unchanged.
+ */
+const writable = (...notes: EnrichNote[]): Set<string> => new Set(notes.map((n) => n.path));
+
 describe('AM-37: a values/segments disagreement refuses the hub, and says so', () => {
 	const ROOT = 'Frameworks';
 
@@ -278,9 +291,10 @@ describe('AM-37: a values/segments disagreement refuses the hub, and says so', (
 		// only "Ops/Team" is refused. One malformed cell no longer refuses a
 		// folder thousands of clean rows describe perfectly — see
 		// `hub-refusal-elementwise-am44.test.ts` for the dedicated coverage.
+		const notes = batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT);
 		const result = enrich(
-			batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT),
-			{ ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT },
+			notes,
+			{ ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) },
 		);
 		expect(hubCuriesOf(result)).toEqual([`${ONT}:hub/_root`, `${ONT}:hub/ops`]);
 		expect(hubCuriesOf(result)).not.toContain(`${ONT}:hub/ops/team`);
@@ -292,9 +306,10 @@ describe('AM-37: a values/segments disagreement refuses the hub, and says so', (
 		// asks for a report — an actionable message rather than a raw internal.
 		// Only ONE folder is named under AM-44 (see the sibling declaration): the
 		// aligned "Ops" is not a deviation at all.
+		const notes = batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT);
 		const result = enrich(
-			batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT),
-			{ ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT },
+			notes,
+			{ ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) },
 		);
 		expect(result.deviations).toHaveLength(1);
 		const said = result.deviations.join('\n');
@@ -310,14 +325,16 @@ describe('AM-37: a values/segments disagreement refuses the hub, and says so', (
 		// would report nothing. This asserts both halves: the fallback run does
 		// produce them, and the disagreeing run neither produces them nor stays
 		// quiet.
-		const fellBack = enrich(batch('Ops/Team', undefined, ROOT), {
-			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+		const fellBackNotes = batch('Ops/Team', undefined, ROOT);
+		const fellBack = enrich(fellBackNotes, {
+			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...fellBackNotes),
 		});
 		expect(hubCuriesOf(fellBack)).toEqual([`${ONT}:hub/_root`, `${ONT}:hub/ops`, `${ONT}:hub/ops/team`]);
 		expect(fellBack.deviations).toEqual([]);
 
-		const refused = enrich(batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT), {
-			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+		const refusedNotes = batch('Ops/Team', [{ level: 'group', value: 'Ops' }], ROOT);
+		const refused = enrich(refusedNotes, {
+			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...refusedNotes),
 		});
 		expect(hubCuriesOf(refused)).not.toEqual(hubCuriesOf(fellBack));
 		expect(refused.deviations.length).toBeGreaterThan(0);
@@ -328,14 +345,16 @@ describe('AM-37: a values/segments disagreement refuses the hub, and says so', (
 		// caller. `[]` means "this layout produced no directories", which is a
 		// claim about the layout and can be wrong. Reading the second as the first
 		// is how the fallback would grow back.
-		const absent = enrich(batch('Ops', undefined, ROOT), {
-			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+		const absentNotes = batch('Ops', undefined, ROOT);
+		const absent = enrich(absentNotes, {
+			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...absentNotes),
 		});
 		expect(hubCuriesOf(absent)).toContain(`${ONT}:hub/ops`);
 		expect(absent.deviations).toEqual([]);
 
-		const empty = enrich(batch('Ops', [], ROOT), {
-			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+		const emptyNotes = batch('Ops', [], ROOT);
+		const empty = enrich(emptyNotes, {
+			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...emptyNotes),
 		});
 		expect(hubCuriesOf(empty)).not.toContain(`${ONT}:hub/ops`);
 		expect(empty.deviations.length).toBeGreaterThan(0);
@@ -348,8 +367,9 @@ describe('AM-37: a values/segments disagreement refuses the hub, and says so', (
 			{ level: 'group', value: 'Ops' },
 			{ level: 'team', value: 'Team' },
 		];
-		const result = enrich(batch('Ops/Team', values, ROOT), {
-			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+		const alignedNotes = batch('Ops/Team', values, ROOT);
+		const result = enrich(alignedNotes, {
+			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...alignedNotes),
 		});
 		expect(result.deviations).toEqual([]);
 		expect(hubCuriesOf(result)).toEqual([`${ONT}:hub/_root`, `${ONT}:hub/ops`, `${ONT}:hub/ops/team`]);
@@ -366,7 +386,7 @@ describe('AM-37: a values/segments disagreement refuses the hub, and says so', (
 			{ path: `${ROOT}/Ops/A.md`, curie: `${ONT}:A`, frontmatter: {}, facets: [], layoutValues: [] },
 			{ path: `${ROOT}/Ops/B.md`, curie: `${ONT}:B`, frontmatter: {}, facets: [], layoutValues: [] },
 		];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) });
 		// The Ops folder's Contents list survives, keyed on its host note.
 		expect([...result.levelHubs.hostedChildrenByPath.keys()]).toContain(`${ROOT}/Ops.md`);
 		// And no synthetic hub was minted for it under a path-derived identity.

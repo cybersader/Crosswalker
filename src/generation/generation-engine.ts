@@ -78,6 +78,9 @@ import {
 	buildManagedChildrenSection,
 	mergeManagedChildrenSection,
 	ensureWaypointMarker,
+	// AM-73. The ONE shape test for "is this recorded curie this import's". Shared
+	// with the derivation so the two cannot disagree.
+	isCurieOfOntology,
 	type EnrichNote,
 	type HubNote,
 	type LayoutValue,
@@ -897,6 +900,21 @@ export async function generateNotes(
 			: undefined;
 		// AM-55. One deviation ledger per run.
 		const deviationsSeen = new Set<string>();
+		/**
+		 * AM-70 (2026-09-04). INDEX NOTES THIS RUN READ AND CANNOT JUDGE.
+		 *
+		 * A `kind: 'hub'` note of this import sitting in a folder no note of the
+		 * population reaches - a user tidied it into an archive folder - is read by
+		 * `readOwnedHubsByFolder` and accounted for by nothing: `keptFolders` is gated
+		 * on the population's own ancestor folders. It then landed in the orphan diff
+		 * below with `orphansChecked: true`, so the run told the user a note was no
+		 * longer in the source while holding the record that it had just read it.
+		 *
+		 * Neither produced nor kept nor orphan: named in a refusal and left alone.
+		 * `orphansChecked` stays true, because the population WAS checked - this note
+		 * was named, not judged.
+		 */
+		const observedUnjudgedCuries = new Set<string>();
 		// AM-60/S12. What could not be read, and what records a folder it does not
 		// sit in. Both mean the run's picture is incomplete, so it does not publish
 		// an orphan list derived from it.
@@ -943,6 +961,8 @@ export async function generateNotes(
 					isStreamed,
 					{ owned: ownedIdentityIndex, vaultWide: identityIndex },
 					ownedHubs?.byFolder,
+					ownedHubs?.observed,
+					observedUnjudgedCuries,
 					deviationsSeen,
 					debug,
 				);
@@ -976,7 +996,12 @@ export async function generateNotes(
 		result.orphansChecked = result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete;
 		if (result.orphansChecked) {
 			const orphans = ownedIdentityIndex.curies()
-				.filter((curie) => !producedCuries.has(curie))
+				// AM-70. Excluded BY NAME: an index note this pass READ, in a folder the
+				// population does not reach, is not evidence that anything left the
+				// source. Excluding it here rather than marking it produced keeps the two
+				// facts apart - the run vouches for what it wrote, and names what it read
+				// and could not describe.
+				.filter((curie) => !producedCuries.has(curie) && !observedUnjudgedCuries.has(curie))
 				.map((curie) => ({ curie, path: ownedIdentityIndex.get(curie)!.path }))
 				.sort((a, b) => a.curie.localeCompare(b.curie) || a.path.localeCompare(b.path));
 			if (orphans.length > 0) result.orphans = orphans;
@@ -3213,6 +3238,10 @@ export async function generateFromRecipe(
 		: undefined;
 	// AM-55. One deviation ledger per run.
 	const deviationsSeen = new Set<string>();
+	// AM-70. Index notes this run READ whose folder no note of the population
+	// reaches: named, not judged. See the wizard path's comment and
+	// `EnrichmentResult.levelHubs.observedUnjudgedCuries`.
+	const observedUnjudgedCuries = new Set<string>();
 	// AM-60/S12. What could not be read, and what records a folder it does not sit
 	// in. Both mean the run's picture is incomplete, so it does not publish an
 	// orphan list derived from it.
@@ -3240,6 +3269,8 @@ export async function generateFromRecipe(
 				isStreamed,
 				{ owned: ownedIdentityIndex, vaultWide: identityIndex },
 				ownedHubs?.byFolder,
+				ownedHubs?.observed,
+				observedUnjudgedCuries,
 				deviationsSeen,
 				debug,
 			);
@@ -3267,7 +3298,8 @@ export async function generateFromRecipe(
 	result.orphansChecked = result.success && result.errors.length === 0 && rowCountComplete && enrichmentComplete;
 	if (result.orphansChecked) {
 		const orphans = ownedIdentityIndex.curies()
-			.filter((curie) => !producedCuries.has(curie))
+			// AM-70. Excluded BY NAME, not by a claim. See the wizard path's comment.
+			.filter((curie) => !producedCuries.has(curie) && !observedUnjudgedCuries.has(curie))
 			.map((curie) => ({ curie, path: ownedIdentityIndex.get(curie)!.path }))
 			.sort((a, b) => a.curie.localeCompare(b.curie) || a.path.localeCompare(b.path));
 		if (orphans.length > 0) result.orphans = orphans;
@@ -3539,7 +3571,10 @@ async function buildOwnedHubValueIndex(app: App, owned: IdentityIndex | undefine
  *     note that records nothing (`project_cache_lag_is_not_absence`, tenth recorded
  *     instance and the last one on this path). Dropping it collapsed the two into a
  *     false orphan on a note sitting in the vault; the caller suppresses orphan
- *     reporting for the run instead.
+ *     reporting for the run instead. AM-68: reported as a fact about the NOTE.
+ *     This walk reads every owned note and the `kind: 'hub'` test is below the
+ *     unreadable branch, so an unreadable note here is not shown to be an index
+ *     note at all - the folder gets a qualifier, never a state.
  *
  * Fail-closed on a half-record: `hub_levels` and `hub_values` are written together
  * and are read together. Such a note is still PRESENT (AM-55's second row) - it is
@@ -3548,11 +3583,21 @@ async function buildOwnedHubValueIndex(app: App, owned: IdentityIndex | undefine
 async function readOwnedHubsByFolder(
 	app: App,
 	owned: IdentityIndex | undefined,
-): Promise<{ byFolder: Map<string, OwnedHubAtFolder>; unreadable: string[]; misplaced: string[] }> {
+): Promise<{
+	byFolder: Map<string, OwnedHubAtFolder>;
+	unreadable: string[];
+	misplaced: string[];
+	/** AM-70. Every `kind: 'hub'` note this walk read, whatever folder it sat in. */
+	observed: { curie: string; path: string; folder: string; hasRecordedChain: boolean }[];
+}> {
 	const byFolder = new Map<string, OwnedHubAtFolder>();
 	const unreadable: string[] = [];
 	const misplaced: string[] = [];
-	if (!owned) return { byFolder, unreadable, misplaced };
+	const observed: { curie: string; path: string; folder: string; hasRecordedChain: boolean }[] = [];
+	// AM-68. The folders in which SOME note could not be read - a note-level fact,
+	// applied at the end as a qualifier rather than as the folder's own state.
+	const unreadableFolders = new Set<string>();
+	if (!owned) return { byFolder, unreadable, misplaced, observed };
 	for (const curie of owned.curies()) {
 		const file = owned.get(curie);
 		if (!file) continue;
@@ -3563,12 +3608,22 @@ async function readOwnedHubsByFolder(
 		const read = await readFrontmatterForRun(app, file);
 		if (read.state === 'unreadable') {
 			unreadable.push(file.path);
-			// S18 / residual ruling 4 (2026-09-04). The FOLDER carries the observation
-			// too, not merely the note - but as its OWN state. An unreadable index note
-			// is a different fact from an S12-misplaced one and a different voice speaks
-			// for it: AM-55's second row, which says what was observed. See
-			// `markIncomplete`.
-			markIncomplete(byFolder, folder, 'unreadable');
+			// AM-68 (2026-09-04). A FACT ABOUT A NOTE IS NOT A FACT ABOUT ITS FOLDER.
+			//
+			// This walk iterates every OWNED note, and the `kind: 'hub'` filter is eight
+			// lines below - it cannot be asked of a note nothing could be read from. So
+			// residual ruling 4's folder-level `unreadable` state was set by any
+			// cache-cold concept note, and the message it unlocked said the folder's
+			// INDEX NOTE could not be read: a claim about a note the run may never have
+			// seen, printed beside this function's own warning, which deliberately says
+			// "notes" for exactly this reason.
+			//
+			// The observation is kept where it was observed: the note is in
+			// `unreadable[]` (which drives that warning and suppresses orphan reporting
+			// for the run), and its folder is noted so row 3 can widen its sentence
+			// WITHOUT naming a note. The folder's state is still decided by its readable
+			// index note if it has one.
+			unreadableFolders.add(folder);
 			continue;
 		}
 		if (read.state !== 'ok') continue;
@@ -3579,6 +3634,17 @@ async function readOwnedHubsByFolder(
 		const usable = values && values.length > 0 && levels && levels.length === values.length
 			? values.map((value, i) => ({ level: levels[i], value }))
 			: undefined;
+		// AM-70. Recorded before any refusal below, because this is the fact the
+		// accounting needs: an index note of this import that THIS RUN READ. Whether
+		// the population reaches its folder is not this walk's question.
+		//
+		// `hasRecordedChain` travels with it because it decides whether the run can
+		// SAY WHAT THE NOTE IS ABOUT. A hub carrying a usable chain answers that from
+		// its own record, so a population that no longer reaches its folder means its
+		// subject left the source - the orphan this feature exists to report. A hub
+		// carrying no usable chain in a folder nothing reaches is the one the run can
+		// say nothing about, and it is the one AM-70 names instead of judging.
+		observed.push({ curie, path: file.path, folder, hasRecordedChain: usable !== undefined });
 		// S12 (2026-09-04). THE NOTE'S OWN RECORD MUST DESCRIBE THE FOLDER IT SITS IN.
 		//
 		// Failure mode prevented: adoption. AM-55 keyed this map by placement and
@@ -3608,8 +3674,16 @@ async function readOwnedHubsByFolder(
 		// S18. A folder whose picture is already incomplete stays incomplete: a
 		// second, readable hub in the same folder does not restore what the first one
 		// made unanswerable.
-		if (existing && (existing.state === 'withheld' || existing.state === 'unreadable')) continue;
-		if (existing) {
+		//
+		// AM-68 (2026-09-04). `withheld` ALONE. The `unreadable` arm this also tested
+		// discarded a perfectly readable index note because some other note in the
+		// same folder was cache-cold - and then said the index note could not be read.
+		// A note the run CAN read is the folder's answer.
+		if (existing && existing.state === 'withheld') continue;
+		// `absent` is never set during the walk - it is the qualifier pass's state for
+		// a folder no readable index note was found in - so a second readable hub here
+		// can only be joining one this walk already recorded.
+		if (existing && (existing.state === 'one' || existing.state === 'many')) {
 			// AM-59. Paths AND curies, index for index, so the refusal can account for
 			// every note it names. Sorted by path so the message and the accounting are
 			// in the same deterministic order.
@@ -3627,39 +3701,51 @@ async function readOwnedHubsByFolder(
 		}
 		byFolder.set(folder, { state: 'one', path: file.path, curie, ...(usable ? { values: usable } : {}) });
 	}
+	// AM-68. The qualifier, applied AFTER every readable note has had its say, so a
+	// folder with a readable index note keeps that note's state and only gains the
+	// note-level observation. A folder whose only owned note was unreadable has no
+	// readable index note at all: that is AM-55's third row, qualified.
+	for (const folder of unreadableFolders) {
+		const existing = byFolder.get(folder);
+		byFolder.set(folder, existing
+			? { ...existing, hasUnreadableNote: true }
+			: { state: 'absent', hasUnreadableNote: true });
+	}
 	// Deterministic order for the messages that name them.
 	unreadable.sort();
 	misplaced.sort();
-	return { byFolder, unreadable, misplaced };
+	observed.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+	return { byFolder, unreadable, misplaced, observed };
 }
 
 /**
- * S18 (2026-09-04), split by residual ruling 4. Mark a folder as holding an index
- * note this run READ but cannot act on.
+ * S18 (2026-09-04). Mark a folder as holding an index note this run READ and
+ * declines to act on: S12's note, whose recorded chain describes a different
+ * folder. The caller's own warning names that note, so the enrichment pass says
+ * nothing more about the folder.
  *
- * Two states, because two different voices speak for them:
- *   - `withheld` (S12: the note records a different folder) - the caller's own
- *     warning names the note, so the enrichment pass says nothing;
- *   - `unreadable` (the properties could not be read) - AM-55's second row speaks,
- *     naming exactly what was observed.
+ * Sticky and fail-closed: once a folder's picture is incomplete, a later readable
+ * hub in the same folder does not restore it, because the first note is still
+ * sitting there and the run still cannot say which one describes the folder.
  *
- * Both are sticky and fail-closed: once a folder's picture is incomplete, a later
- * readable hub in the same folder does not restore it, because the first note is
- * still sitting there and the run still cannot say which one describes the folder.
+ * AM-68 (2026-09-04). ONE STATE, NOT TWO. Residual ruling 4 added an
+ * `unreadable` folder state here; a folder is never marked from a note the run
+ * could not show to be its index note, so the unreadable observation stays on the
+ * note (`unreadable[]`) and reaches the folder only as the `hasUnreadableNote`
+ * qualifier.
  *
  * Failure mode prevented: two voices about one folder, or none. Without any state
  * the folder was simply absent from the map, so the enrichment pass took AM-55's
  * third row and printed "This import has no index note for the folder ..." beside
- * a warning naming a note in that very folder; with one shared state the
- * unreadable folder lost its message altogether.
+ * a warning naming a note in that very folder.
  */
 function markIncomplete(
 	byFolder: Map<string, OwnedHubAtFolder>,
 	folder: string,
-	state: 'withheld' | 'unreadable',
+	state: 'withheld',
 ): void {
 	const existing = byFolder.get(folder);
-	if (existing && (existing.state === 'withheld' || existing.state === 'unreadable')) return;
+	if (existing && existing.state === 'withheld') return;
 	byFolder.set(folder, { state });
 }
 
@@ -3722,6 +3808,90 @@ function heldHubProvenance(
 			? preserved
 			: { ...preserved, produced_at: freshProducedAt },
 	};
+}
+
+/**
+ * AM-72 (2026-09-04). Maintain the managed regions of a HOST note this run KEPT.
+ *
+ * A hosted folder's index content lives inside an ordinary row's note (the
+ * sibling folder-note shape, which this module's own docs call the production
+ * shape). When that row is one the run held, the patch loop dropped it, so the
+ * managed `## Contents` region and the managed `children:` array permanently
+ * named N-1 of N children after a Skip-existing refresh added one row under it -
+ * with no deviation and no warning. AM-64 answered the identical question for a
+ * held folder's SYNTHETIC index note by writing it when its children list
+ * differs; the answer cannot depend on whether the folder's index note happens
+ * to be a row.
+ *
+ * Failure mode prevented: a stale list inside the one part of a note the user is
+ * told not to edit, because the next run owns it - and then the next run does not
+ * own it.
+ *
+ * Skip existing's promise is kept exactly: only the regions this run maintains
+ * are rebuilt, every other byte of the note survives (`mergeManagedChildrenSection`
+ * is byte-preserving outside its own markers), the recorded provenance is
+ * preserved rather than replaced (AM-62), the candidate is compared against the
+ * bytes on disk, and the note is written only on a real difference - so a refresh
+ * that changed nothing writes nothing. `produced_at` moves only on a write.
+ *
+ * Only a HOST is maintained here (`patch.hubChildren` present). A held row that
+ * is merely a `children_lists` parent is left exactly as it was: that is the
+ * pre-existing behaviour and AM-72 does not reach it.
+ */
+async function maintainHeldHostRegions(
+	app: App,
+	path: string,
+	patch: { children?: string[]; hubChildren?: string[] },
+	freshProvenance: unknown,
+	debug?: DebugLog,
+): Promise<void> {
+	if (!patch.hubChildren) return;
+	const file = app.vault.getAbstractFileByPath(normalizePath(path));
+	if (!(file instanceof TFile)) return;
+	let existingNote: { frontmatter: Record<string, unknown>; body: string };
+	try {
+		existingNote = await readExistingNote(app, file);
+	} catch {
+		// Fail-closed and silent about the note itself: without the read there is no
+		// candidate to compare, and leaving a kept note exactly as it is the safe
+		// direction. The run's own unreadable-note warning already speaks for a note
+		// whose properties could not be read.
+		debug?.info('generation', 'held-host-unreadable', `Kept host ${path} left as it was (properties could not be read)`, { path });
+		return;
+	}
+	const { _crosswalker, children: recordedChildren, ...rest } = existingNote.frontmatter;
+	// The list this run maintains, or the one the note already carries when this run
+	// maintains no `children` array for it. Never dropped.
+	const nextChildren = patch.children ?? recordedChildren;
+	const frontmatter: Record<string, unknown> = {
+		...rest,
+		...(nextChildren !== undefined ? { children: nextChildren } : {}),
+		...(_crosswalker !== undefined ? { _crosswalker } : {}),
+	};
+	const body = mergeManagedChildrenSection(
+		existingNote.body,
+		buildManagedChildrenSection('Contents', patch.hubChildren),
+		// AM-56. An empty list rewrites a region; it never creates one.
+		patch.hubChildren.length === 0,
+	);
+	const held = heldHubProvenance(existingNote.frontmatter, freshProvenance);
+	frontmatter._crosswalker = held.preserved;
+	const candidate = buildNoteContent(frontmatter, body);
+	let onDisk: string | null = null;
+	try {
+		onDisk = await app.vault.read(file);
+	} catch {
+		onDisk = null;
+	}
+	if (onDisk !== null && onDisk === candidate) {
+		debug?.info('generation', 'held-host-unchanged', `Kept host ${path} left exactly as it was`, { path });
+		return;
+	}
+	frontmatter._crosswalker = held.stamped;
+	await app.vault.modify(file, buildNoteContent(frontmatter, body));
+	debug?.info('generation', 'held-host-regions-rebuilt', `Kept host ${path}: managed regions rebuilt`, {
+		path, children: patch.hubChildren.length,
+	});
 }
 
 /** The last path segment of a vault-relative folder path. */
@@ -3935,6 +4105,18 @@ async function applyEnrichment(
 	 */
 	ownedHubsByFolder: OwnedHubsByFolder | undefined,
 	/**
+	 * AM-70. Every index note of this import the caller READ this run. Handed over
+	 * so the one derivation can say which of them no note of the population reaches.
+	 */
+	observedHubs: readonly { curie: string; path: string; folder: string; hasRecordedChain: boolean }[] | undefined,
+	/**
+	 * AM-70. Filled here, read by the caller's orphan diff: the curies of index
+	 * notes the run read and cannot judge. Never merged into `producedCuries` - this
+	 * run wrote nothing for them and cannot describe them, so it neither vouches for
+	 * them nor calls them vanished.
+	 */
+	observedUnjudgedCuries: Set<string>,
+	/**
 	 * AM-55. The run's deviation ledger. AM-60 leaves one pass, so this is now a
 	 * within-pass guarantee that one folder's refusal is reported once, rather than
 	 * a handshake between two passes that saw different populations.
@@ -3947,6 +4129,14 @@ async function applyEnrichment(
 	// they carry recipe.hash but never concept_cid — see the two buildProvenance
 	// calls below. Computed once per applyEnrichment call (one per generation run).
 	const recipeHash = computeRecipeHash(recipe.target, recipe.source);
+	// AM-72. One fresh block per run for the held-host writer below. Only its
+	// `produced_at` is ever taken (`heldHubProvenance`), except on a host that
+	// records no provenance at all, where writing one is a gain and not an
+	// overwrite.
+	const freshProvenance = buildProvenance(
+		{ sourceFile: options.sourceFileName, sourceVersion: options.sourceVersion, recipeId: recipe.recipe, recipeHash, importSet },
+		PLUGIN_VERSION,
+	);
 	const enrichment = enrich(
 		records.map((r) => ({
 			path: r.path,
@@ -3968,9 +4158,17 @@ async function applyEnrichment(
 			// identity the note on disk already carries, and `computeRelocations`
 			// planned moves this pass then refused - a plan the same run contradicts.
 			writeSet,
+			// AM-70. What the run READ, so the derivation that knows which folders the
+			// population reaches can name the notes it cannot judge.
+			observedHubs,
 		},
 	);
 	result.edgeCount = enrichment.edgeCount;
+
+	// AM-70. Read straight back out to the caller's orphan diff. Kept OUT of
+	// `producedCuries`: a claim records the origin of something this run wrote, and
+	// this run wrote nothing for these notes and cannot say what they are about.
+	for (const curie of enrichment.levelHubs.observedUnjudgedCuries) observedUnjudgedCuries.add(curie);
 
 	// AM-55. Through the run's one ledger, so one folder's refusal is reported once.
 	if (enrichment.deviations.length > 0) {
@@ -4097,7 +4295,14 @@ async function applyEnrichment(
 		// which is the half that was missing. (This loop already refused to touch a
 		// note absent from its batch, via `recordsByPath`; the batch is now the whole
 		// population, so the write set is what carries that guarantee.)
-		if (!writePaths.has(path)) continue;
+		//
+		// AM-72 (2026-09-04). EXCEPT THE MANAGED REGIONS OF A KEPT HOST. Skip
+		// existing's promise covers the user's own prose and properties, not the list
+		// this run tells the user not to edit by hand.
+		if (!writePaths.has(path)) {
+			await maintainHeldHostRegions(app, path, patch, freshProvenance, debug);
+			continue;
+		}
 		const record = recordsByPath.get(path);
 		if (!record) continue;
 		const file = app.vault.getAbstractFileByPath(normalizePath(path));
@@ -4197,8 +4402,12 @@ async function applyEnrichment(
 		// block could never answer anything. An unreadable note yields nothing to
 		// preserve, which falls through to the write: the behaviour this writer had
 		// before the amendment, and the safe direction.
+		//
+		// AM-69 (2026-09-04). READ ONLY FOR A RUN THAT WROTE NONE OF ITS MEMBERS. The
+		// freeze exists for the run that did not write the note; a run that did earns
+		// the fresh block. See the write below.
 		let recordedFacetProvenance: unknown;
-		if (existing instanceof TFile) {
+		if (!hub.hasWriteSetMember && existing instanceof TFile) {
 			try {
 				recordedFacetProvenance = (await readExistingNote(app, existing)).frontmatter._crosswalker;
 			} catch {
@@ -4257,22 +4466,42 @@ async function applyEnrichment(
 			// put back, so everything else in the candidate is what the merge just
 			// derived. A serialization difference therefore fails SAFE: the run writes,
 			// which is what this writer did before.
-			const facetProvenance = heldHubProvenance({ _crosswalker: recordedFacetProvenance }, frontmatter._crosswalker);
-			frontmatter._crosswalker = facetProvenance.preserved;
-			const facetCandidate = buildNoteContent(frontmatter, body);
-			let facetOnDisk: string | null = null;
-			try {
-				facetOnDisk = await app.vault.read(existing);
-			} catch {
-				facetOnDisk = null;
+			//
+			// AM-69 (2026-09-04). PROVENANCE BELONGS TO THE RUN THAT WROTE THE NOTE;
+			// THE FREEZE IS FOR THE RUN THAT DID NOT. Gated on `hasWriteSetMember`,
+			// mirroring the level writer's `if (hub.heldFolder)` below.
+			//
+			// Failure mode prevented: one import set holding two answers to "which
+			// recipe produced this", split by note kind. Pass 21 applied the freeze to
+			// EVERY facet write, so a Replace re-import with a revised recipe wrote the
+			// facet hub's new members list while recording the PREVIOUS recipe's hash,
+			// source file and plugin version - and, because the preservation was
+			// unconditional, no later run could ever restamp it. An `import_set`
+			// sub-field added after the note was first written could never land on a
+			// facet hub, and `agreedDerivation` refuses a partly-stamped set by name.
+			//
+			// A run that wrote one of this hub's members authored its current content
+			// and says so: the fresh block from the managed-key merge, as before pass
+			// 21. A run that wrote none of them keeps what the note records and moves
+			// `produced_at` only if something else actually differs.
+			if (!hub.hasWriteSetMember) {
+				const facetProvenance = heldHubProvenance({ _crosswalker: recordedFacetProvenance }, frontmatter._crosswalker);
+				frontmatter._crosswalker = facetProvenance.preserved;
+				const facetCandidate = buildNoteContent(frontmatter, body);
+				let facetOnDisk: string | null = null;
+				try {
+					facetOnDisk = await app.vault.read(existing);
+				} catch {
+					facetOnDisk = null;
+				}
+				if (facetOnDisk !== null && facetOnDisk === facetCandidate) {
+					debug?.info('generation', 'facet-hub-unchanged', `Facet hub ${hubCurie ?? writePath} left exactly as it was`, {
+						path: writePath,
+					});
+					continue;
+				}
+				frontmatter._crosswalker = facetProvenance.stamped;
 			}
-			if (facetOnDisk !== null && facetOnDisk === facetCandidate) {
-				debug?.info('generation', 'facet-hub-unchanged', `Facet hub ${hubCurie ?? writePath} left exactly as it was`, {
-					path: writePath,
-				});
-				continue;
-			}
-			frontmatter._crosswalker = facetProvenance.stamped;
 			await app.vault.modify(existing, buildNoteContent(frontmatter, body));
 		} else {
 			// AM-64. AN ABSENT FACET HUB IS CREATED ONLY FOR A RUN THAT WROTE ONE OF ITS
@@ -4402,7 +4631,16 @@ async function applyEnrichment(
 		// AM-55's third row, refused by name in the deviation the derivation already
 		// emitted. Restoring it here would be the run undoing a deletion on a pass
 		// that was meant to leave the folder alone.
-		if (hub.heldFolder && !(existing instanceof TFile)) {
+		//
+		// AM-71 (2026-09-04). THE IMPORT ROOT IS EXEMPT. Its identity is the set's own
+		// reserved local part, so an absent root note is not a folder whose recorded
+		// meaning the run would be guessing at - there is nothing recorded. Refusing
+		// it left an import with no home note and, because `refusalFor` exempts the
+		// root, no message either: silence on a pre-fix flat vault or after the user
+		// deleted the home note. Created with fresh provenance, since there is nothing
+		// recorded to preserve; an EXISTING root on an all-skip run is untouched by
+		// the byte rule below.
+		if (hub.heldFolder && !hub.importRoot && !(existing instanceof TFile)) {
 			debug?.info('generation', 'held-hub-not-created', `Hub ${hubCurie ?? fullPath} accounted for, not created`, {
 				path: fullPath,
 			});
@@ -4413,6 +4651,12 @@ async function applyEnrichment(
 		// exists for a hub whose address the run is actively re-deciding, which is a
 		// described folder's hub. Without this, an all-skip refresh could still rename
 		// an index note the user had renamed by hand.
+		//
+		// Ruling 2 (pass 21, ratified): A HELD-ONLY HUB IS NEVER RELOCATED, and a hub
+		// the user renamed by hand keeps the name they gave it on any run that writes
+		// nothing into its folder. Relocations are planned over the write set alone
+		// (AM-61), and a rename is a write - so this is that rule reaching the one
+		// writer that could still have performed one.
 		const writePath = hub.heldFolder && existing instanceof TFile
 			? existing.path
 			: await applyHubRelocation(app, target, hubCurie, result, options.overwriteMode, producedThisRun, debug);
@@ -4503,8 +4747,40 @@ async function applyEnrichment(
 				// rewrote that note purely to restamp its curie. A run that wrote nothing
 				// into a folder does not re-identify its index note; a Replace run, which
 				// writes rows into the folder, is not held and restamps as before.
+				//
+				// AM-73 (2026-09-04). THE SHAPE TEST, AND THE NAME WHEN IT FAILS. Residual
+				// ruling 5 names a recorded identity that is not this import's and never
+				// repairs it, but that naming lives in `refusalFor`, behind
+				// `keptFolders` - which excludes the import root by construction. So the
+				// root's recorded curie was the one recorded identity carried forward with
+				// no test and no message: a hand edit, or a prefix from before an ontology
+				// rename, was written back on every held run in silence.
+				//
+				// Carried either way (never repaired: the fact is what the note records,
+				// and re-deriving it is what AM-61 removed) and NAMED when it is not a
+				// curie of this import, through the one exported shape test so the engine
+				// and the derivation cannot disagree about which identities are this
+				// import's.
 				const recordedCurie = existingNote.frontmatter.curie;
-				if (typeof recordedCurie === 'string' && recordedCurie !== '') frontmatter.curie = recordedCurie;
+				if (typeof recordedCurie === 'string' && recordedCurie !== '') {
+					frontmatter.curie = recordedCurie;
+					// Scoped to the root, which is what AM-73 rules and the only hub this
+					// branch can reach with a foreign recorded identity: for every other
+					// held folder `refusalFor` has already named it (residual ruling 5) and
+					// no `HubNote` is emitted at all, so this writer never sees it.
+					if (hub.importRoot && !isCurieOfOntology(recordedCurie, curiePrefix)) {
+						const named = `The home note's recorded identity "${recordedCurie}" is not a curie of this import; `
+							+ 'it was left as it was.';
+						if (!deviationsSeen.has(named)) {
+							deviationsSeen.add(named);
+							result.warnings ??= [];
+							result.warnings.push({ row: 0, message: named });
+						}
+						debug?.warn('generation', 'root-hub-foreign-curie', 'The home note records an identity this import did not mint', {
+							path: existing.path, recorded: recordedCurie,
+						});
+					}
+				}
 				const candidate = buildNoteContent(frontmatter, body);
 				let onDisk: string | null = null;
 				try {

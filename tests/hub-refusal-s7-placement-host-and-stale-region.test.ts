@@ -45,6 +45,19 @@ const ONT = 'hg';
 const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_hubs: 'notes' as const };
 const ROOT = 'Frameworks';
 
+/**
+ * AM-66 (2026-09-04). THE WRITE SET THIS FIXTURE MEANS: every note in the batch.
+ *
+ * No batch below is a kept row - each is a live import writing every note it
+ * hands over - so the write set is every path. Stated rather than left to
+ * `enrich()` to infer: AM-65 made the fact required because, while it was
+ * optional, an omitted write set silently meant "everything is writable", which
+ * is true for THIS fixture and false for a kept-row one, so the one default
+ * served one caller and quietly broke the other with nothing in the output naming
+ * the omission. Assertions are unchanged.
+ */
+const writable = (...notes: EnrichNote[]): Set<string> => new Set(notes.map((n) => n.path));
+
 const hubCuriesOf = (result: ReturnType<typeof enrich>): string[] =>
 	result.levelHubs.notes.map((h) => h.curie).sort();
 
@@ -69,7 +82,7 @@ describe('S7 (write path): identityOf hosts a folder by PLACEMENT, never by an u
 			facets: [],
 			layoutValues: [{ level: 'deep', value: 'Somewhere' }, { level: 'x', value: 'Deep' }],
 		};
-		const result = enrich([item, unrelated], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([item, unrelated], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(item, unrelated) });
 
 		expect(result.deviations).toEqual([]);
 		// Written under its OWN synthesized identity -- never the unrelated
@@ -96,7 +109,7 @@ describe('S7 (write path): identityOf hosts a folder by PLACEMENT, never by an u
 			frontmatter: {},
 			facets: [],
 		};
-		const result = enrich([item, host], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([item, host], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(item, host) });
 
 		expect(result.deviations).toEqual([]);
 		expect(result.levelHubs.hostedChildrenByPath.get(`${ROOT}/Group.md`)).toContain('[[Item]]');
@@ -133,7 +146,7 @@ describe('S7 (stale-region retraction, WITHDRAWN by AM-56 2026-09-04): a refused
 			facets: [],
 			layoutValues: [{ level: 'deep', value: 'Somewhere' }, { level: 'x', value: 'Deep' }],
 		};
-		const result = enrich([disagreeing, unrelated], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([disagreeing, unrelated], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(disagreeing, unrelated) });
 
 		// Refused, as S4 already pins. (This is the AM-44 elementwise-disagreement
 		// refusal, which does not carry AM-56's disclosure sentence -- only the
@@ -176,7 +189,10 @@ describe('S7 (stale-region retraction, WITHDRAWN by AM-56 2026-09-04): a refused
 
 		const result = enrich(
 			[disagreeingGroup, hostedGroupLeaf, hostedGroupHost],
-			{ ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT },
+			{
+				ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT,
+				writeSet: writable(disagreeingGroup, hostedGroupLeaf, hostedGroupHost),
+			},
 		);
 
 		// Cat1/Group is refused, as before.

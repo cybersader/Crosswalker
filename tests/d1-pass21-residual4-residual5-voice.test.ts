@@ -4,15 +4,18 @@
  * 7): two more states an `OwnedHubAtFolder` can carry, each with its own
  * voice, and neither one repaired.
  *
- * RESIDUAL 4. `withheld` (S12: the note records a DIFFERENT folder) and
- * `unreadable` (cache lag / a damaged note: nothing could be read) are TWO
- * states, not one. Pass 20 folded the unreadable note into `withheld`, which
- * silenced a folder the run has something true and specific to say about:
- * the caller's own S12 warning names the MISPLACED note, but says nothing
- * about a folder whose OWN index note the run genuinely could not read.
- * `withheld` stays silent here (the caller's warning is the one voice);
- * `unreadable` reaches AM-55's second row, which says exactly what was
- * observed. This file also closes the other half at the ENGINE level: an
+ * RESIDUAL 4, AS AMENDED BY AM-68 (2026-09-04, pass 22). `withheld` (S12: the
+ * note records a DIFFERENT folder) and an unreadable note are TWO different
+ * facts with two different voices. Pass 20 folded the unreadable note into
+ * `withheld`, which silenced a folder the run has something true to say about;
+ * pass 21 gave the FOLDER an `unreadable` state and made it speak as AM-55's
+ * row 2, which said the folder's INDEX NOTE could not be read on the strength of
+ * ANY unreadable owned note - a claim about a note the run may never have seen.
+ * AM-68 keeps the observation where it was observed: `withheld` stays silent
+ * here (the caller's warning is the one voice), and a folder with no readable
+ * index note carrying an unreadable note is AM-55's row 3 with a qualifier that
+ * states only the observation. This file also closes the other half at the
+ * ENGINE level: an
  * S12-withheld folder's warnings contain the caller's own message and
  * NOTHING ELSE about that same folder -- no duplicate row-3 text riding
  * alongside it.
@@ -62,9 +65,24 @@ const deviationFor = (result: ReturnType<typeof enrich>, folder: string) =>
 // (silent), at the enrich() level.
 // ---------------------------------------------------------------------------
 
-describe('Residual ruling 4: an unreadable held hub gets AM-55 row 2, verbatim, never row 3', () => {
-	it('the deviation is the exact row-2 text, nothing is accounted, and no hub is written', () => {
-		const ownedHubsByFolder: OwnedHubsByFolder = new Map([[FOLDER, { state: 'unreadable' }]]);
+describe('Residual ruling 4, as amended by AM-68: an unreadable NOTE qualifies row 3, and never speaks as row 2 about an index note', () => {
+	it('the deviation is the exact qualified row-3 text, nothing is accounted, and no hub is written', () => {
+		// AM-67 / AM-68 (2026-09-04). RE-POINTED TO THE AMENDMENT THAT CHANGED IT.
+		//
+		// Residual ruling 4 (pass 20) gave the FOLDER an `unreadable` state and made
+		// it speak as AM-55's row 2 ("its recorded identity could not be read"). The
+		// state was set by any owned note the run could not read - the walk's
+		// `kind: 'hub'` filter sits BELOW the unreadable branch - so a cache-cold
+		// concept note made the run assert something about an index note it may never
+		// have seen, and the sticky guard then discarded the readable index note
+		// sitting beside it. AM-68 withdraws the folder-level state: the unreadable
+		// note stays a note-level fact, and a folder with no readable index note is
+		// AM-55's row 3 with a qualifier that says only what was observed.
+		//
+		// So the fixture is the state the walk can now produce (no readable index
+		// note in the folder, and something in it unreadable), and the assertion is
+		// the pass-22 tree's own text, verbatim.
+		const ownedHubsByFolder: OwnedHubsByFolder = new Map([[FOLDER, { state: 'absent', hasUnreadableNote: true }]]);
 		const result = enrich([keptNote()], {
 			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE,
 		});
@@ -72,19 +90,21 @@ describe('Residual ruling 4: an unreadable held hub gets AM-55 row 2, verbatim, 
 		expect(hubByPath(result, `${FOLDER}/Persistence.md`)).toBeUndefined();
 		const deviation = deviationFor(result, FOLDER);
 		expect(deviation).toBe(
-			`The index note for the folder "${FOLDER}" was left as it was: its recorded identity could not be read. `
-			+ 'The notes in it were kept in place by Skip existing. Re-run with Replace to re-establish it. '
-			+ "Any list that still names this folder's index note is left as it was.",
+			`No index note of this import could be read in the folder "${FOLDER}"; a note in it could not be read `
+			+ 'this run. The notes in it were kept in place by Skip existing. Wait for Obsidian to finish '
+			+ "indexing the vault, then run the import again. Any list that still names this folder's index note "
+			+ 'is left as it was.',
 		);
-		// Never row 3's text.
-		expect(deviation).not.toContain('This import has no index note for the folder');
-		expect(deviation).not.toContain('none was created');
+		// AM-68. It never claims something about the folder's INDEX NOTE, which is
+		// the claim the run has no evidence for.
+		expect(deviation).not.toContain('The index note for the folder');
+		expect(deviation).not.toContain('its recorded identity could not be read');
 		// Residual ruling 4, as implemented: nothing is accounted here -- the run
 		// could not read the note, so it has no identity to vouch for.
 		expect(result.levelHubs.keptExistingCuries).toEqual([]);
 	});
 
-	it('CONTROL: the SAME folder as `withheld` (S12) instead gets total silence from this pass -- proving `unreadable` is a genuinely different voice, not the same suppression under a new name', () => {
+	it('CONTROL: the SAME folder as `withheld` (S12) instead gets total silence from this pass -- proving the qualified row 3 is a genuinely different voice, not the same suppression under a new name', () => {
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([[FOLDER, { state: 'withheld' }]]);
 		const result = enrich([keptNote()], {
 			ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, ownedHubsByFolder, writeSet: NOTHING_WRITABLE,

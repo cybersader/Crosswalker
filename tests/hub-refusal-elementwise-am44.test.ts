@@ -31,6 +31,19 @@ const ONT = 'hg';
 const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_hubs: 'notes' as const };
 const ROOT = 'Frameworks';
 
+/**
+ * AM-66 (2026-09-04). THE WRITE SET THIS FIXTURE MEANS: every note in the batch.
+ *
+ * No batch below is a kept row - each is a live import writing every note it
+ * hands over - so the write set is every path. Stated rather than left to
+ * `enrich()` to infer: AM-65 made the fact required because, while it was
+ * optional, an omitted write set silently meant "everything is writable", which
+ * is true for THIS fixture and false for a kept-row one, so the one default
+ * served one caller and quietly broke the other with nothing in the output naming
+ * the omission. Assertions are unchanged.
+ */
+const writable = (...notes: EnrichNote[]): Set<string> => new Set(notes.map((n) => n.path));
+
 const hubCuriesOf = (result: ReturnType<typeof enrich>): string[] =>
 	result.levelHubs.notes.map((h) => h.curie).sort();
 const hubPathsOf = (result: ReturnType<typeof enrich>): string[] =>
@@ -58,7 +71,7 @@ describe('AM-44(a): equal arity does not excuse a positional disagreement', () =
 			facets: [],
 			layoutValues: [{ level: 'y', value: 'Y' }, { level: 'x', value: 'X' }],
 		}];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) });
 
 		// Disagreement is at index 0 (values[0]="Y" !== segs[0]="X"), so BOTH "X"
 		// and "X/Y" are refused — nothing above the disagreement to save them.
@@ -89,7 +102,7 @@ describe('AM-44(b): a disagreement at index 2 leaves indices 0-1 aligned', () =>
 				{ level: 'c', value: 'WRONG' }, // segs[2] is actually "C"
 			],
 		}];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) });
 
 		expect(hubCuriesOf(result)).toContain(`${ONT}:hub/a`);
 		expect(hubCuriesOf(result)).toContain(`${ONT}:hub/a/b`);
@@ -129,7 +142,7 @@ describe('AM-44(c): a sibling row\'s deeper disagreement does not refuse a folde
 				{ level: 'c', value: 'NOT-C' }, // this row's OWN chain disagrees at index 2
 			],
 		};
-		const result = enrich([aligned, disagreeing], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([aligned, disagreeing], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(aligned, disagreeing) });
 
 		// The folder survives: something (the aligned row) genuinely described it.
 		expect(hubCuriesOf(result)).toContain(`${ONT}:hub/a/b/c`);
@@ -159,7 +172,7 @@ describe('AM-44(c): a sibling row\'s deeper disagreement does not refuse a folde
 			facets: [],
 			layoutValues: [{ level: 'a', value: 'A' }, { level: 'b', value: 'B' }, { level: 'c', value: 'NOT-C' }],
 		};
-		const result = enrich([aligned, disagreeing], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([aligned, disagreeing], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(aligned, disagreeing) });
 		expect(hubCuriesOf(result)).toContain(`${ONT}:hub/a/b/c`);
 	});
 });
@@ -190,7 +203,7 @@ describe('AM-44(d): a refused hub is absent from the parent\'s Contents and neve
 				layoutValues: [{ level: 'group', value: 'Y' }],
 			},
 		];
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) });
 
 		// X was never identified: no hub note anywhere carries its identity or
 		// sits at its would-be path.

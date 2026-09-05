@@ -28,6 +28,23 @@ const ONT = 'hg';
 const ROOT = 'Frameworks';
 const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_hubs: 'notes' as const };
 
+/**
+ * AM-66 (2026-09-04). THE WRITE SET THIS FIXTURE MEANS: the live rows only.
+ *
+ * Both `enrich()` fixtures below are KEPT-SHAPED - each carries a note whose
+ * `renderedPath` sits in a different folder from its own path, which is a row
+ * this run declined to write at the address the layout now chooses. That is the
+ * fact the file's own comments state ("kept in place", "the kept-row holder"),
+ * and it is the fact the deleted inference merely recovered from a path
+ * comparison; AM-65 requires the caller to state it instead.
+ *
+ * So: a note whose `renderedPath` is absent or equal to its `path` is written;
+ * one whose `renderedPath` differs is held. Assertions are unchanged - the
+ * refusals these tests pin are exactly the ones a held folder produces.
+ */
+const writable = (...notes: EnrichNote[]): Set<string> =>
+	new Set(notes.filter((n) => n.renderedPath === undefined || n.renderedPath === n.path).map((n) => n.path));
+
 describe('AM-56: a refused folder never touches an unrelated note that happens to share its basename', () => {
 	it('a leaf note elsewhere in the batch, sharing the refused folder\'s basename but hosting nothing, gains no Contents region', () => {
 		// Frameworks/Persistence is refused (kept in place, no recorded identity --
@@ -49,7 +66,7 @@ describe('AM-56: a refused folder never touches an unrelated note that happens t
 			facets: [],
 			layoutValues: [{ level: 'tactic', value: 'Discovery' }],
 		};
-		const result = enrich([keptRow, unrelatedLeaf], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([keptRow, unrelatedLeaf], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(keptRow, unrelatedLeaf) });
 
 		// The folder is genuinely refused (sanity check the fixture engages AM-56 at all).
 		expect(result.deviations.find((d) => d.includes(`${ROOT}/Persistence"`))).toBeDefined();
@@ -78,7 +95,7 @@ describe('AM-56: the disclosure sentence is present on every refusal, never a si
 		// (see hub-refusal-am50-and-s4.test.ts's own note on the same fixture);
 		// either branch it lands in carries the SAME disclosure sentence, which
 		// is what this test actually pins.
-		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich(notes, { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(...notes) });
 		const deviation = result.deviations.find((d) => d.includes(`${ROOT}/Elsewhere`));
 		expect(deviation).toBeDefined();
 		expect(deviation).toContain("Any list that still names this folder's index note is left as it was.");

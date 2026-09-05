@@ -32,6 +32,19 @@ const HUB_CONFIG = { children_lists: true, facet_notes: 'none' as const, level_h
 // for `!folders.has(root)`, i.e. the harness branch this file exercises.
 const ROOT = 'Frameworks';
 
+/**
+ * AM-66 (2026-09-04). THE WRITE SET THIS FIXTURE MEANS: every note in the batch.
+ *
+ * No batch below is a kept row - each is a live import writing every note it
+ * hands over - so the write set is every path. Stated rather than left to
+ * `enrich()` to infer: AM-65 made the fact required because, while it was
+ * optional, an omitted write set silently meant "everything is writable", which
+ * is true for THIS fixture and false for a kept-row one, so the one default
+ * served one caller and quietly broke the other with nothing in the output naming
+ * the omission. Assertions are unchanged.
+ */
+const writable = (...notes: EnrichNote[]): Set<string> => new Set(notes.map((n) => n.path));
+
 const syntheticHome = (result: ReturnType<typeof enrich>) =>
 	result.levelHubs.notes.find((h) => h.path === `${ROOT}.md`);
 
@@ -47,7 +60,7 @@ describe('S9: two candidates PLACED as siblings of the root, sharing its basenam
 		const candidateA: EnrichNote = { path: 'Frameworks.md', curie: `${ONT}:a`, frontmatter: {}, facets: [] };
 		const candidateB: EnrichNote = { path: 'Frameworks.MD', curie: `${ONT}:b`, frontmatter: {}, facets: [] };
 
-		const result = enrich([candidateA, candidateB], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([candidateA, candidateB], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(candidateA, candidateB) });
 
 		const deviation = result.deviations.find((d) => d.includes(`"${ROOT}"`));
 		expect(deviation).toBeDefined();
@@ -76,7 +89,7 @@ describe('S9: a basename twin placed ELSEWHERE (not a sibling of the root) is ne
 		// Contents to name (childRefs.length > 0).
 		const leaf: EnrichNote = { path: 'Leaf.md', curie: `${ONT}:leaf`, frontmatter: {}, facets: [] };
 
-		const result = enrich([twin, leaf], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT });
+		const result = enrich([twin, leaf], { ontology: ONT, config: HUB_CONFIG, rootFolder: ROOT, writeSet: writable(twin, leaf) });
 
 		// The twin was NEVER claimed as the root's host -- the exact failure mode
 		// (an unrelated note's managed region getting the root's whole Contents

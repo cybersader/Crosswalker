@@ -63,6 +63,24 @@ describe('AM-54: a kept note three folders deep exempts all three ancestors, not
 		// The vault's own record at each of the three OLD folders -- deliberately
 		// NOT matching the plain path segment, so a curie derived from the path
 		// instead of the record would read differently and the test would catch it.
+		//
+		// AM-61 (2026-09-04), recorded by AM-67 (2026-09-04). THE RECORDED FORM IS
+		// THE CORRECT ONE. Each entry's `curie` and its `values` deliberately
+		// disagree (`hg:hub/stale-a` against a chain that would DERIVE to
+		// `hg:hub/reca`), and AM-61 settled which of the two a kept folder keeps: the
+		// string the note on disk carries, read, never the string this run's
+		// derivation would mint from that note's values. A hub written before a
+		// derivation changed records values that describe its folder perfectly and a
+		// curie today's rule spells differently, so re-deriving renamed the identity
+		// of every hub in an existing vault on a refresh that was otherwise leaving
+		// them alone. So the assertions below expect the RECORDED curies; the trap
+		// this fixture was built for (an identity taken from the path) is still
+		// caught, because a path-derived curie would read `hg:hub/a` and neither the
+		// recorded nor the derived form is that.
+		//
+		// These three assertions were red on the pass-21 tree, and were masked before
+		// it by the missing write set: `keptFolders` was empty, so the folder never
+		// reached row 1 and fell to AM-50's refusal instead - a different failure.
 		const ownedHubsByFolder: OwnedHubsByFolder = new Map([
 			[`${ROOT}/A`, { state: 'one', path: `${ROOT}/A/A.md`, curie: `${ONT}:hub/stale-a`, values: [{ level: 'l1', value: 'RecA' }] }],
 			[`${ROOT}/A/B`, { state: 'one', path: `${ROOT}/A/B/B.md`, curie: `${ONT}:hub/stale-ab`, values: [{ level: 'l1', value: 'RecA' }, { level: 'l2', value: 'RecB' }] }],
@@ -75,17 +93,18 @@ describe('AM-54: a kept note three folders deep exempts all three ancestors, not
 		expect(deviationFor(result, `${ROOT}/A/B`)).toBeUndefined();
 		expect(deviationFor(result, `${ROOT}/A/B/C`)).toBeUndefined();
 
-		// Each hub is written, and its identity is the RECORDED chain, never a
-		// re-derivation from the folder's own path segment.
+		// Each hub is written, and its identity is the curie the note on disk RECORDS
+		// (AM-61 / AM-67, see the fixture comment above), never a re-derivation from
+		// the recorded values and never one from the folder's own path segment.
 		const a = hubByPath(result, `${ROOT}/A/A.md`);
 		const ab = hubByPath(result, `${ROOT}/A/B/B.md`);
 		const abc = hubByPath(result, `${ROOT}/A/B/C/C.md`);
 		expect(a).toBeDefined();
 		expect(ab).toBeDefined();
 		expect(abc).toBeDefined();
-		expect(a!.curie).toBe(`${ONT}:hub/reca`);
-		expect(ab!.curie).toBe(`${ONT}:hub/reca/recb`);
-		expect(abc!.curie).toBe(`${ONT}:hub/reca/recb/recc`);
+		expect(a!.curie).toBe(`${ONT}:hub/stale-a`);
+		expect(ab!.curie).toBe(`${ONT}:hub/stale-ab`);
+		expect(abc!.curie).toBe(`${ONT}:hub/stale-abc`);
 		expect(a!.frontmatter.hub_values).toEqual(['RecA']);
 		expect(ab!.frontmatter.hub_values).toEqual(['RecA', 'RecB']);
 		expect(abc!.frontmatter.hub_values).toEqual(['RecA', 'RecB', 'RecC']);
