@@ -169,6 +169,22 @@ Two consecutive attempts were decided by a step that produced **nothing** — on
 
 ---
 
+## 7. Follow-up recorded 2026-09-05: preservation checked inside Obsidian
+
+**The unit-only limitation in section 6 is now superseded for four specific cases.** The [kept-host preservation spec](https://github.com/cybersader/crosswalker/blob/fix/d1-per-import-root/tests/e2e/kept-host-preservation.spec.ts) calls the production importer inside real Obsidian and reads the resulting files through its vault adapter. It does not click through the import wizard. No production code changed in this follow-up.
+
+A **kept host** (an existing note beside the folder whose contents list it carries) was seeded with handwritten properties, comments, a multiline value, and **CRLF** (Windows line endings). On an unchanged refresh, the note stayed byte-for-byte identical and the run made zero recorded writes. When one source row was added, only the expected managed list content and the permitted timestamp field could differ; the comparison kept all other bytes exact, including line endings.
+
+Two more cases supplied a duplicated end marker, with and without a `children:` property. Each reported the parser's actual corruption verdict and left the host unchanged, including the old children list when present. These cases do not establish behavior for every malformed, nested, or unclosed marker sequence.
+
+The targeted run passed all four declarations. The full default run then measured **212 declarations: 179 passing, 7 failing, 26 skipped**, with exactly those four new passing declarations and all 208 prior results unchanged. Its exit code remains **1**: the failing and skipped identities are unchanged, and no quarantine entry was cleared. Section 5 remains the original pass-23 measurement, not a table rewritten to conceal a later result.
+
+The first targeted attempt was blocked by a fixture mistake: two differently located notes claimed the same identifier. The importer correctly refused the collision. The corrected fixtures use separate identities, not merely separate folders; all four cases were rerun, with their assertions unchanged. That failed attempt's evidence is retained.
+
+**What this unblocks:** the exercised preservation cases no longer depend solely on a mocked vault. It does not decide merge timing, clear the large-corpus or quarantine work, resolve the properties-append boundary, or change Part B's scope. Delivery detail remains in the [changelog](https://github.com/cybersader/crosswalker/blob/fix/d1-per-import-root/CHANGELOG.md).
+
+---
+
 ## Related
 
 - [First run was broken, and every gate was green](/crosswalker/agent-context/zz-log/2026-08-28-first-run-and-the-blind-spots-that-hid-it/) — the original defect and the first nine attempts. This page continues it and replaces none of it
