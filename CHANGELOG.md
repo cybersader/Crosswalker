@@ -8,6 +8,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### The safety work on that defect now passes every check that was run, and is still not released (2026-09-04)
+
+This continues the section below. It does not restate it: read that one for what the original defect was and what to do if you already have imports sitting in your output folder.
+
+**What is new is a measurement, not a release.** The work to make the per-import-folder fix safe for a vault that already holds imports was measured against the bar written down in advance, and it meets every check that was actually run: 2,961 unit tests passing with none failing, a clean build, a clean lint, and a full run of the Obsidian walkthroughs in which 175 checks pass, none that passed before now fails, and none that used to be checked has gone missing. **It is not a claim that everything is safe.** Seven long-standing quarantined visual walkthroughs still fail, four large-corpus walkthroughs did not run at all, and the branch is not merged. What follows is what changed for you, and what is still not covered.
+
+**Your own notes are no longer rewritten by a refresh that changed nothing.** When a framework's folder has a note of yours sitting beside it, Crosswalker maintains a contents list on that note. It used to rebuild the whole note to do it, which quietly rewrote your properties even on a run that imported nothing new: a date-shaped value gained quotes, comments and blank lines disappeared, a value written across several lines was folded into one, and a file saved with Windows line endings came back with Unix ones. It now edits only the two blocks it owns and copies every other line through exactly as you wrote it, keeping the line endings the file already had. A refresh that changes nothing now leaves every note byte-for-byte identical, index notes and their timestamps included.
+
+**A note it cannot read is reported, not half-written.** If the markers around that contents list are damaged, Crosswalker says so and writes nothing to the note, instead of quietly updating one half of it and leaving the other stale. Previously a damaged marker was treated the same as a note that simply had no contents list.
+
+**A home note you renamed is named once, not reported missing.** A framework's home note whose identity you had edited by hand used to be refused and, on the same results screen, listed as gone from your source. The identity it carries is now recorded where the results are counted, so it is left alone and mentioned once.
+
+**Older items in this arc that were listed as still-broken and are now closed:**
+
+- **A crosswalk import no longer silently drops edges.** Several mappings that reduced to the same generated file name were written into one file and the last one won, with nothing said. A mapping is now identified by the pair of controls it connects rather than by the two file names it was built from, so mappings your source says are different stay different.
+- **An identifier can be read back out of a vault and still mean what your source said.** When a second release of a framework is imported alongside the first, its identifiers are qualified so the two do not collide. That qualification is now reversible and recorded rather than applied silently, and a declared prefix is checked against the framework it claims to belong to, so exporting and re-importing returns what went in. Previously a set that had been qualified could not re-import its own export at all.
+- **Updating an evidence link keeps your review fields exactly as they were.** The evidence window now updates a link through the same merge the importer uses, so the reviewer, review date, confidence, expiry, notes and scope you recorded survive an update byte-for-byte unless you changed them in the window yourself.
+
+**What is still not covered, plainly:**
+
+- **Not released.** This lives on an unmerged branch. Nothing here is in a version you can install.
+- **Seven visual walkthroughs still fail** and are the same seven, in the same six files, that have failed throughout. None was fixed and none was removed from the quarantine list.
+- **The large-corpus walkthroughs did not run.** Four of them, three release-blocking, have not been exercised since 2026-08-27.
+- **The Windows-line-ending case and the damaged-marker case are covered by unit tests only.** No walkthrough inside real Obsidian exercises either shape.
+- **One boundary is unresolved rather than proven safe.** If a note that Crosswalker does not record as its own were ever reached by the writer that appends a properties block, one line break on a Windows-line-ending file would be wrong. No route to it was found through the checks that exist today, and no route was proven impossible either. It is cosmetic if it ever happens.
+- **Two behaviours are deferred**, not fixed: what a replace-mode run observes about grouping notes, and a grouping note dragged to the top of your vault, which is still not seen.
+
 ### Known defect, mostly closed: each import now gets its own folder, but an existing vault needs care (2026-08-28, amended 2026-08-29, five times on 2026-08-30, and three times on 2026-08-31)
 
 The original defect is fixed and the fix is verified against a real run. It is recorded here rather than rewritten as a plain feature entry because it is not safe to apply blindly to a vault that already holds imports, and because one form of the original problem survives untouched.

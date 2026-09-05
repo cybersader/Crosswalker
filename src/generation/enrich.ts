@@ -255,6 +255,20 @@ export interface EnrichmentResult {
 		 */
 		hostedChildrenByPath: Map<string, string[]>;
 		/**
+		 * AM-76 (2026-09-04). The FOLDER each hosted path hosts, recorded by the one
+		 * pass that knows it.
+		 *
+		 * A host note is left alone when it carries no managed region, and the
+		 * sentence that says so names the folder. The caller has only the note's
+		 * path, and a folder derived from a path is a guess: the sibling shape
+		 * (`T1078.md` hosts `T1078/`) and the folder-note shape
+		 * (`T1078/T1078.md` hosts `T1078/`) are different derivations of the same
+		 * string, and picking between them by looking at the path is exactly the
+		 * inference `project_reimport_identity_reconciliation` rules out. The pass
+		 * that decided the hosting says which folder it decided about.
+		 */
+		hostedFolderByPath: Map<string, string>;
+		/**
 		 * Brand-new synthetic hub notes for folders with no hosting note (sorted
 		 * by path). `path` is a FULL vault-relative path already — see `HubNote`'s
 		 * doc comment; callers must NOT re-prefix with basePath.
@@ -503,7 +517,13 @@ export function enrich(notes: EnrichNote[], opts: EnrichOptions): EnrichmentResu
 	const result: EnrichmentResult = {
 		childrenByPath: new Map(),
 		hubs: [],
-		levelHubs: { hostedChildrenByPath: new Map(), notes: [], keptExistingCuries: [], observedUnjudgedCuries: [] },
+		levelHubs: {
+			hostedChildrenByPath: new Map(),
+			hostedFolderByPath: new Map(),
+			notes: [],
+			keptExistingCuries: [],
+			observedUnjudgedCuries: [],
+		},
 		edgeCount: 0,
 		deviations: [],
 		relocations: [],
@@ -869,6 +889,22 @@ function computeLevelHubs(
 	 * adversary's own scenario, and the only note named here. A hub WITH a chain
 	 * that was dragged somewhere it does not describe never arrives here at all: the
 	 * caller's S12 check withholds it and suppresses orphan reporting for the run.
+	 *
+	 * AM-78 (2026-09-04). THIS NARROWING IS THE RULE, not an implementation of a
+	 * wider one. AM-70's wider wording - any read hub in a folder no chain reaches
+	 * is unjudged - deletes the orphan report `tests/legacy-vault-refresh.test.ts`
+	 * exists to prove, so it cannot stand: a hub whose recorded chain is PRESENT and
+	 * whose folder no note reaches is what a source release that dropped every row
+	 * of a folder leaves behind, and it is an orphan, judged by its recorded
+	 * identity rather than by its path. The amendment now reads as the condition
+	 * below does.
+	 *
+	 * Two inherited edges are named and DEFERRED to Part B; neither is opened here:
+	 *   - `ownedHubs` is read only when `keptRecords.length > 0`
+	 *     (`generation-engine.ts:898`, `:3236`), so the same chain-less hub is named
+	 *     under Skip existing and orphaned under Replace.
+	 *   - a hub hand-dragged to the vault root is skipped at
+	 *     `generation-engine.ts:3605` and is never observed at all.
 	 */
 	const unjudged = new Set<string>();
 	for (const observed of observedHubs ?? []) {
@@ -1345,6 +1381,15 @@ function computeLevelHubs(
 			// that state (AM-39), and so does a hand edit, and so does a length mismatch,
 			// and none of those is an old note. Naming the wrong cause sends the user to
 			// fix the wrong thing.
+			//
+			// AM-79 (2026-09-04). THIS SENTENCE HAS ONE OWNER AND IT IS S18. AM-68
+			// deleted the text `its recorded identity could not be read`, but that
+			// deletion reaches the FOLDER-LEVEL `unreadable` arm and its text alone. The
+			// sentence here belongs to state `one`: a note the run READ, whose
+			// frontmatter carries no usable recorded chain. That is a fact about the
+			// note, not a failure to read the folder, and it stands unchanged. It is
+			// pinned at `tests/d1-pass20-s17-s18-address-and-withheld.test.ts:147`, and
+			// the tri-state assertions re-pointed under AM-67 point here.
 			if (observed?.state === 'one') {
 				keptExistingCuries.add(observed.curie);
 				return `The index note for the folder "${f}" was left as it was: its recorded identity could not be read. `
@@ -1661,6 +1706,8 @@ function computeLevelHubs(
 			// permanently naming N-1 of N children, because the folder's index note
 			// happened to be a row this run held.
 			result.levelHubs.hostedChildrenByPath.set(id.hostedPath, links);
+			// AM-76. Which folder this note hosts, said by the pass that decided it.
+			result.levelHubs.hostedFolderByPath.set(id.hostedPath, f);
 		} else {
 			result.levelHubs.notes.push({
 				path: joinMd(f, id.label),
@@ -1779,6 +1826,8 @@ function computeLevelHubs(
 				// See the matching comment in Pass B: hosted-root facets are a
 				// deliberately out-of-scope rare edge case.
 				result.levelHubs.hostedChildrenByPath.set(finalPath(host), links);
+				// AM-76. Same fact from the harness path: this host hosts the root.
+				result.levelHubs.hostedFolderByPath.set(finalPath(host), root);
 			} else {
 				// Same rule as `hubCurieOf` above: this hub IS the import root, so its
 				// relative path is empty and it takes the reserved local part. The

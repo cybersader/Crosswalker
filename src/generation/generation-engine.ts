@@ -87,8 +87,11 @@ import {
 	type OwnedHubAtFolder,
 	type OwnedHubsByFolder,
 } from './enrich';
-import { wrapManagedBody, scanRegions } from './managed-body';
-import { mergeExistingNote, readExistingNote, ExistingNoteReadError } from './existing-note';
+import { wrapManagedBody, scanRegions, findSpan, replaceRegion } from './managed-body';
+// AM-75. `splitNoteText` is THE one reader that knows where a note's frontmatter
+// ends. The held-host writer works on raw bytes and must agree with it exactly,
+// so it asks that reader rather than carrying a second copy of the fence rule.
+import { mergeExistingNote, readExistingNote, splitNoteText, ExistingNoteReadError } from './existing-note';
 import type { FacetMembership } from '../import/mapping/facets';
 import { normalizeMappingSetId, normalizePredicateModifierInput } from '../utils/mapping-provenance';
 
@@ -3811,6 +3814,120 @@ function heldHubProvenance(
 }
 
 /**
+ * AM-75 (2026-09-04). One top-level properties key and the raw lines that are
+ * written for it, newline excluded and otherwise exactly as they sit on disk.
+ */
+interface FrontmatterKeyBlock { key: string; lines: string[] }
+
+/**
+ * AM-75 (2026-09-04). Split a raw properties block into its top-level keys,
+ * keeping every line as it is written.
+ *
+ * Deliberately textual, and deliberately a copy rather than an import. The same
+ * rule already exists at `src/views/evidence-link-modal.ts:224` and is the
+ * precedent AM-75 cites; it lives in a VIEW, and generation must not depend on
+ * the UI layer (AM-58: a pure module stays pure, and the direction of that rule
+ * is that the writer never reaches up into the host's windows). The two are kept
+ * behaviourally identical on purpose: a key's block runs until the next line that
+ * starts a top-level key, so indented lines, block-sequence dashes, comments and
+ * blank lines belong to the key above them and travel with it.
+ *
+ * A trailing CR is part of the line's bytes here and is preserved: this splitter
+ * is fed text split on `\n` alone, so a CRLF note's lines carry their own CR and
+ * a merge cannot silently fold the file to LF.
+ */
+function frontmatterKeyBlocks(lines: readonly string[]): FrontmatterKeyBlock[] {
+	const out: FrontmatterKeyBlock[] = [];
+	let current: FrontmatterKeyBlock | null = null;
+	for (const line of lines) {
+		const bare = line.replace(/\r$/, '');
+		const startsTopLevel = bare !== ''
+			&& !/^[\s-]/.test(bare)
+			&& !bare.trimStart().startsWith('#')
+			&& bare.includes(':');
+		if (startsTopLevel) {
+			current = { key: bare.slice(0, bare.indexOf(':')).trim().replace(/^["']|["']$/g, ''), lines: [line] };
+			out.push(current);
+		} else if (current) {
+			current.lines.push(line);
+		} else {
+			// Anything before the first key (a leading comment, a blank line) is
+			// nobody's value and is kept under a key no writer can own.
+			current = { key: '', lines: [line] };
+			out.push(current);
+		}
+	}
+	return out;
+}
+
+/**
+ * AM-75 (2026-09-04). Rewrite named keys of a properties block by TEXT, leaving
+ * every other byte of the block exactly as it was.
+ *
+ * A key present on disk and named in `replacements` is replaced by the given
+ * lines. A key named in `replacements` and absent from disk is APPENDED at the
+ * end of the block. Every other line - quoting, comments, blank lines, key order,
+ * multi-line scalars, a value this product does not understand - is copied
+ * verbatim.
+ *
+ * Failure mode prevented: the whole reason this function exists. Rebuilding the
+ * block from a PARSED object and re-serialising it rewrites a user's own note:
+ * `formatYamlValue` quotes any digit-leading string (`created: 2024-01-05` ->
+ * `created: "2024-01-05"`), quotes on an apostrophe, drops comments and blank
+ * lines, and - because its double-quote branch escapes only `"` - leaves a raw
+ * newline inside a quoted scalar, so a multi-line property folds to a space on
+ * the next read. That last one is a changed VALUE, not changed formatting, and
+ * the note it changes is the user's concept note.
+ */
+function mergeFrontmatterKeyText(
+	existingText: string,
+	replacements: ReadonlyMap<string, string[]>,
+	eol: string,
+): string {
+	// Split on `\n` alone so a CRLF note's CR stays attached to its own line and
+	// is written back with it. Fresh lines take the note's own ending.
+	const lines = existingText.split('\n');
+	const suffix = eol === '\r\n' ? '\r' : '';
+	const withEnding = (fresh: string[]): string[] => fresh.map((l) => `${l}${suffix}`);
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const block of frontmatterKeyBlocks(lines)) {
+		const fresh = replacements.get(block.key);
+		if (fresh !== undefined && block.key !== '' && !seen.has(block.key)) {
+			seen.add(block.key);
+			out.push(...withEnding(fresh));
+			continue;
+		}
+		out.push(...block.lines);
+	}
+	for (const [key, fresh] of replacements) {
+		if (seen.has(key)) continue;
+		out.push(...withEnding(fresh));
+	}
+	// C2 (2026-09-04). `FRONTMATTER_RE` consumes the separator before the closing
+	// fence, so the captured text's FINAL line carries no `\r` even on a CRLF note
+	// while every interior line does. A fresh block that lands last would otherwise
+	// gain one and the caller's untouched `\r\n---` would follow it, writing
+	// `\r\r\n` before the fence. One post-pass on the final element only, so this
+	// function stays the identity when every replacement equals what it replaced
+	// and no interior line moves.
+	if (out.length > 0 && lines.length > 0) {
+		const last = out.length - 1;
+		if (!lines[lines.length - 1].endsWith('\r') && out[last].endsWith('\r')) {
+			out[last] = out[last].slice(0, -1);
+		}
+	}
+	return out.join('\n');
+}
+
+/** AM-75. Two managed lists are the same list when they name the same links in the same order. */
+function sameLinkList(a: unknown, b: unknown): boolean {
+	if (!Array.isArray(a) || !Array.isArray(b)) return false;
+	if (a.length !== b.length) return false;
+	return a.every((v, i) => v === b[i]);
+}
+
+/**
  * AM-72 (2026-09-04). Maintain the managed regions of a HOST note this run KEPT.
  *
  * A hosted folder's index content lives inside an ordinary row's note (the
@@ -3828,27 +3945,76 @@ function heldHubProvenance(
  * own it.
  *
  * Skip existing's promise is kept exactly: only the regions this run maintains
- * are rebuilt, every other byte of the note survives (`mergeManagedChildrenSection`
- * is byte-preserving outside its own markers), the recorded provenance is
- * preserved rather than replaced (AM-62), the candidate is compared against the
- * bytes on disk, and the note is written only on a real difference - so a refresh
- * that changed nothing writes nothing. `produced_at` moves only on a write.
+ * are rebuilt, every other byte of the note survives, the recorded provenance is
+ * preserved rather than replaced (AM-62), and the note is written only on a real
+ * difference - so a refresh that changed nothing writes nothing. `produced_at`
+ * moves only on a write.
  *
  * Only a HOST is maintained here (`patch.hubChildren` present). A held row that
  * is merely a `children_lists` parent is left exactly as it was: that is the
  * pre-existing behaviour and AM-72 does not reach it.
+ *
+ * ---------------------------------------------------------------------------
+ * AM-75 (2026-09-04). WHOSE BYTES THIS WRITER IS HOLDING.
+ *
+ * The subject here is the USER'S OWN CONCEPT NOTE - `T1078.md` beside `T1078/` -
+ * annotated through Obsidian's property editor. Its bytes are the user's, its
+ * identity is the row's, and the only list this writer owns is the hosted
+ * children list. AM-72 extended AM-64's mechanism to this new subject without
+ * restating that, and the mechanism it inherited was designed against notes
+ * Crosswalker itself wrote:
+ *
+ *   - the candidate was re-serialised from the PARSED frontmatter through
+ *     `buildNoteContent`, so every property that is not a fixed point of
+ *     parse-then-format came back changed. `created: 2024-01-05` gained quotes,
+ *     an apostrophe gained quotes, YAML comments and blank lines disappeared,
+ *     CRLF folded to LF, and a multi-line property took the double-quote branch
+ *     whose escape covers only `"` - so its raw newline survived inside a quoted
+ *     scalar and folded to a space on the next read. A changed VALUE.
+ *   - the write trigger was WHOLE-NOTE byte inequality, so each of those
+ *     differences was itself the reason to write, and `produced_at` was restamped
+ *     on a Skip run that put nothing into the folder.
+ *
+ * The pre-amendment behaviour at the call site was a bare `continue` - no write
+ * at all - so this is the only write a kept host receives under Skip existing,
+ * and its failure direction rewrites a note the run promised to leave alone.
+ *
+ * So: the candidate is built from the note's raw properties bytes - the value
+ * `ExistingNote.frontmatterText` carries for exactly this purpose, re-derived
+ * here through the same one reader from the same bytes the write is compared
+ * against, so the two halves of the decision cannot come from two reads - by a
+ * TEXT-LEVEL merge
+ * (precedent `src/views/evidence-link-modal.ts:316`). Only the `children:` block
+ * and the `_crosswalker:` block are rewritten; the body changes only between the
+ * existing managed-region markers; the note's line ending is taken from its own
+ * bytes and kept. The trigger is the region difference AM-72 names - the hosted
+ * children list differs from the links in the managed region, or from the
+ * recorded `children:` - and only then does the byte comparison decide.
+ *
+ * AM-76 (2026-09-04). REBUILD MEANS WHAT EXISTS. A `children:` block on disk is
+ * rebuilt; a `## Contents` region on disk is rebuilt; a host with neither is not
+ * written at all and is voiced once. `mergeManagedChildrenSection`'s
+ * append-when-absent path is not reached from here, which is why this writer
+ * calls `replaceRegion` on a span it has already found rather than the merger.
  */
 async function maintainHeldHostRegions(
 	app: App,
 	path: string,
 	patch: { children?: string[]; hubChildren?: string[] },
 	freshProvenance: unknown,
+	/**
+	 * AM-76. The folder this note hosts, as the pass that decided the hosting
+	 * recorded it. Never derived from the note's path here.
+	 */
+	hostedFolder: string | undefined,
+	result: GenerationResult,
+	deviationsSeen: Set<string>,
 	debug?: DebugLog,
 ): Promise<void> {
 	if (!patch.hubChildren) return;
 	const file = app.vault.getAbstractFileByPath(normalizePath(path));
 	if (!(file instanceof TFile)) return;
-	let existingNote: { frontmatter: Record<string, unknown>; body: string };
+	let existingNote: { frontmatter: Record<string, unknown>; body: string; frontmatterText: string };
 	try {
 		existingNote = await readExistingNote(app, file);
 	} catch {
@@ -3859,38 +4025,147 @@ async function maintainHeldHostRegions(
 		debug?.info('generation', 'held-host-unreadable', `Kept host ${path} left as it was (properties could not be read)`, { path });
 		return;
 	}
-	const { _crosswalker, children: recordedChildren, ...rest } = existingNote.frontmatter;
-	// The list this run maintains, or the one the note already carries when this run
-	// maintains no `children` array for it. Never dropped.
-	const nextChildren = patch.children ?? recordedChildren;
-	const frontmatter: Record<string, unknown> = {
-		...rest,
-		...(nextChildren !== undefined ? { children: nextChildren } : {}),
-		...(_crosswalker !== undefined ? { _crosswalker } : {}),
-	};
-	const body = mergeManagedChildrenSection(
-		existingNote.body,
-		buildManagedChildrenSection('Contents', patch.hubChildren),
-		// AM-56. An empty list rewrites a region; it never creates one.
-		patch.hubChildren.length === 0,
-	);
-	const held = heldHubProvenance(existingNote.frontmatter, freshProvenance);
-	frontmatter._crosswalker = held.preserved;
-	const candidate = buildNoteContent(frontmatter, body);
-	let onDisk: string | null = null;
+	// The raw bytes, read once. Everything below is decided against these, and the
+	// note is rebuilt out of them rather than out of a parsed value.
+	let onDisk: string;
 	try {
 		onDisk = await app.vault.read(file);
 	} catch {
-		onDisk = null;
+		// Unreadable is not evidence of anything, least of all of a difference worth
+		// writing. A kept note stays as it is.
+		debug?.info('generation', 'held-host-unreadable', `Kept host ${path} left as it was (the file could not be read)`, { path });
+		return;
 	}
-	if (onDisk !== null && onDisk === candidate) {
+	// AM-75. The note's own line ending, taken from its first line break. Fresh
+	// lines are written with it, so a CRLF note stays a CRLF note.
+	const firstBreak = /\r?\n/.exec(onDisk);
+	const eol = firstBreak && firstBreak[0] === '\r\n' ? '\r\n' : '\n';
+
+	const split = splitNoteText(onDisk);
+	const body = split.body;
+	const prefix = onDisk.slice(0, onDisk.length - body.length);
+	const fmStart = prefix.indexOf('\n') + 1;
+	const fmEnd = fmStart + split.frontmatterText.length;
+	const hasPropertiesBlock = prefix !== '' && prefix.slice(fmStart, fmEnd) === split.frontmatterText;
+	if (prefix !== '' && !hasPropertiesBlock) {
+		// The one reader and this writer disagree about where the block sits. That is
+		// not a state to guess through on someone else's note.
+		debug?.warn('generation', 'held-host-unlocatable-properties', `Kept host ${path} left as it was (its properties block could not be located byte-exactly)`, { path });
+		return;
+	}
+
+	// --- What exists (AM-76). Read from the BYTES, not from a parsed value. ---
+	const fmBlocks = hasPropertiesBlock ? frontmatterKeyBlocks(split.frontmatterText.split('\n')) : [];
+	const hasChildrenKey = fmBlocks.some((b) => b.key === 'children');
+	const hasProvenanceKey = fmBlocks.some((b) => b.key === '_crosswalker');
+	const scan = scanRegions(body);
+	if (!scan.ok) {
+		// C4 (2026-09-04). MALFORMED IS NOT ABSENT. A duplicated, nested or unclosed
+		// marker set is a verdict the scanner already reached; discarding it and
+		// falling into the arm below would tell the user this note "carries no
+		// managed Contents region", which is false, and would silently update the
+		// `children:` key of a note whose body this writer cannot locate. Report the
+		// scan's own code and detail the way the sibling hub writer does, and leave
+		// every byte alone.
+		recordConflict(result, debug, path, undefined, scan.code, scan.detail);
+		return;
+	}
+	const span = findSpan(scan.spans, 'children');
+
+	if (!hasChildrenKey && !span) {
+		// AM-76. Neither region is there. Nothing is rebuilt, nothing is appended, and
+		// the note is named once so the stale list is not a silence.
+		//
+		// C5 (2026-09-04). The folder is the hosting OBSERVATION or nothing. Falling
+		// back to the note's parent path was exactly the path inference this writer's
+		// own contract says it never makes, and it would put a folder name the run
+		// never decided inside a sentence that reads as a finding. Without the
+		// observation the sentence claims no folder.
+		const named = hostedFolder !== undefined
+			? `The note "${path}" hosts the folder "${hostedFolder}" but carries no managed Contents region; `
+				+ 'it was left as it was.'
+			: `The note "${path}" hosts a folder but carries no managed Contents region; `
+				+ 'it was left as it was.';
+		if (!deviationsSeen.has(named)) {
+			deviationsSeen.add(named);
+			result.warnings ??= [];
+			result.warnings.push({ row: 0, message: named });
+		}
+		debug?.info('generation', 'held-host-no-region', `Kept host ${path} carries no managed region; left as it was`, { path });
+		return;
+	}
+
+	// --- Has anything this writer owns actually changed? (AM-75's trigger.) ---
+	const freshRegion = buildManagedChildrenSection('Contents', patch.hubChildren)
+		.replace(/\n+$/, '')
+		.replace(/\n/g, eol);
+	// C1 (2026-09-04). The scanner's span ends AT the `\n` of the end-marker line,
+	// so on a CRLF note the captured text carries that line's own `\r` while
+	// `freshRegion` never does. Comparing the two raw made `regionChanged` true for
+	// every CRLF host on every run, including an all-skip refresh that changed
+	// nothing. Compare without the span's terminal CR, and carry that CR back on
+	// substitution so the untouched `\n` just past `outerEnd` stays paired. A span
+	// that ends at EOF with no newline captures no CR and is unaffected. The shared
+	// scanner's offset contract is not touched: this is the caller's business.
+	const spanText = span !== undefined ? body.slice(span.outerStart, span.outerEnd) : undefined;
+	const spanTerminalCr = spanText !== undefined && spanText.endsWith('\r') ? '\r' : '';
+	const regionChanged = spanText !== undefined && spanText.replace(/\r$/, '') !== freshRegion;
+	const childrenChanged = hasChildrenKey
+		&& patch.children !== undefined
+		&& !sameLinkList(patch.children, existingNote.frontmatter.children);
+	if (!regionChanged && !childrenChanged) {
 		debug?.info('generation', 'held-host-unchanged', `Kept host ${path} left exactly as it was`, { path });
 		return;
 	}
-	frontmatter._crosswalker = held.stamped;
-	await app.vault.modify(file, buildNoteContent(frontmatter, body));
+
+	// --- Rebuild ONLY what changed hands, out of the bytes on disk. ---
+	const held = heldHubProvenance(existingNote.frontmatter, freshProvenance);
+	// AM-69/AM-80 (2026-09-04). THE FREEZE IS UNCONDITIONAL HERE, AND THAT IS NOT A
+	// SECOND FORM OF THE RULE. The facet and level writers freeze recorded
+	// provenance only when the folder has no write-set member; a kept host cannot
+	// have one. A row in the write set is rewritten whole by the row writer and
+	// never reaches this function, so `!hasWriteSetMember` is vacuously true at this
+	// site and stating it would only invite a reader to look for the branch that
+	// makes it false. What the `_crosswalker` block on a host describes is the ROW's
+	// rendered content, and Skip existing did not regenerate that; the only thing
+	// this run made is the region. `produced_at` therefore moves - and it is the
+	// only provenance field that moves - because the run is about to write.
+	const replacements = new Map<string, string[]>();
+	if (hasChildrenKey && patch.children !== undefined) {
+		replacements.set('children', formatYamlLine('children', patch.children, 0).split('\n'));
+	}
+	if (hasPropertiesBlock && held.stamped !== undefined) {
+		// Rewritten in place when the block is there; appended at the end of the
+		// properties when it is not, which is the one key this writer adds. A host
+		// that records no provenance gains one rather than having one overwritten -
+		// the reading the caller's own fresh-provenance block already states - and it
+		// happens only on a run that is writing the note anyway.
+		replacements.set('_crosswalker', formatYamlLine('_crosswalker', held.stamped, 0).split('\n'));
+	}
+	const mergedFrontmatter = hasPropertiesBlock
+		? mergeFrontmatterKeyText(split.frontmatterText, replacements, eol)
+		: split.frontmatterText;
+	const mergedBody = span !== undefined
+		? replaceRegion(body, scan.spans, 'children', freshRegion + spanTerminalCr)
+		: body;
+	const candidate = hasPropertiesBlock
+		? prefix.slice(0, fmStart) + mergedFrontmatter + prefix.slice(fmEnd) + mergedBody
+		: prefix + mergedBody;
+
+	// AM-75. Only NOW does the byte comparison decide. It is the last gate, never
+	// the trigger: whole-note inequality on a note whose properties are the user's
+	// is not evidence that this run has anything to say.
+	if (onDisk === candidate) {
+		debug?.info('generation', 'held-host-unchanged', `Kept host ${path} left exactly as it was`, { path });
+		return;
+	}
+	await app.vault.modify(file, candidate);
 	debug?.info('generation', 'held-host-regions-rebuilt', `Kept host ${path}: managed regions rebuilt`, {
-		path, children: patch.hubChildren.length,
+		path,
+		children: patch.hubChildren.length,
+		region: regionChanged,
+		childrenKey: childrenChanged,
+		provenanceExisted: hasProvenanceKey,
 	});
 }
 
@@ -4300,7 +4575,17 @@ async function applyEnrichment(
 		// existing's promise covers the user's own prose and properties, not the list
 		// this run tells the user not to edit by hand.
 		if (!writePaths.has(path)) {
-			await maintainHeldHostRegions(app, path, patch, freshProvenance, debug);
+			await maintainHeldHostRegions(
+				app,
+				path,
+				patch,
+				freshProvenance,
+				// AM-76. The folder this note hosts, from the pass that decided it.
+				enrichment.levelHubs.hostedFolderByPath.get(path),
+				result,
+				deviationsSeen,
+				debug,
+			);
 			continue;
 		}
 		const record = recordsByPath.get(path);
@@ -4761,13 +5046,74 @@ async function applyEnrichment(
 				// curie of this import, through the one exported shape test so the engine
 				// and the derivation cannot disagree about which identities are this
 				// import's.
+				// AM-77 (2026-09-04). A FACT CARRIED AT ONE SITE IS CLAIMED AT THE SITE
+				// THAT ACCOUNTS FOR IT.
+				//
+				// AM-73 carried the recorded identity, shape-tested it and named it when
+				// the test failed, and stopped there. The identity was therefore written
+				// onto the note and absent from `producedCuries`: the root is excluded
+				// from `keptFolders` by construction, and its folder IS reached, so it is
+				// not in `observedUnjudgedCuries` either. It fell straight into the orphan
+				// diff - and a Skip run over a hand-edited home note showed the refusal
+				// and an orphan report about the same note on one screen, which is exactly
+				// what AM-70 rules out in its own text (AM-59's third site). The quieter
+				// half was worse to debug: a recorded curie that PASSES the shape test but
+				// simply differs was preserved in silence and reported as gone.
+				//
+				// The root is the one folder where the preserved and the claimed identity
+				// can diverge at all: `recordedHubCurieOf` (`enrich.ts:1480-1489`) hands
+				// every other held folder's recorded string to Pass B as the hub's curie,
+				// so there the writer already claims the string it preserves and the
+				// condition below is false. Claimed the way `target.adoptedAlias` is - a
+				// second identity this same note keeps - so a collision is a refusal by
+				// name rather than two notes silently agreeing on one identity.
 				const recordedCurie = existingNote.frontmatter.curie;
 				if (typeof recordedCurie === 'string' && recordedCurie !== '') {
 					frontmatter.curie = recordedCurie;
+					if (recordedCurie !== hubCurie) {
+						const firstClaim = claimProducedCurie(producedCuries, curieOrigins, recordedCurie, {
+							row: 0, path: existing.path, kind: 'hub',
+						});
+						// A NOTE CANNOT COLLIDE WITH ITSELF. On a vault whose home note was
+						// written under the older address-derived identity, the recorded
+						// curie IS `target.adoptedAlias`, which this same hub claimed a few
+						// lines above under this same note's path. Re-claiming it here is one
+						// note keeping one identity - accounted, not ambiguous - and refusing
+						// it would abandon the write and report an ambiguous-identity error on
+						// an ordinary legacy refresh (`tests/legacy-vault-refresh.test.ts`,
+						// "raises no ambiguous-identity error", measured red on this tree
+						// before the check below existed). Only a claim held by a DIFFERENT
+						// note is the two-claimants case AM-31 refuses.
+						//
+						// C3 (2026-09-04). The exemption is `existing.path` ALONE. A second
+						// disjunct on `fullPath` was unsound: `fullPath` is the hub's RENDERED
+						// address, and a held hub writes at `existing.path` precisely because
+						// the two can differ (a hand-renamed held hub keeps its name). The
+						// disjunct was therefore active only when `fullPath` could not denote
+						// this note, and claims are recorded at PLANNED addresses before any
+						// write, so it could silence a genuine second claimant. The measured
+						// legacy red is covered by the `existing.path` comparison on its own.
+						if (
+							firstClaim
+							&& normalizePath(firstClaim.path) !== normalizePath(existing.path)
+						) {
+							result.errors.push({
+								row: 0,
+								message: duplicateHubCurieMessage(recordedCurie, existing.path, firstClaim),
+							});
+							continue;
+						}
+					}
 					// Scoped to the root, which is what AM-73 rules and the only hub this
 					// branch can reach with a foreign recorded identity: for every other
 					// held folder `refusalFor` has already named it (residual ruling 5) and
 					// no `HubNote` is emitted at all, so this writer never sees it.
+					//
+					// AM-77. Two voices, never both, each said once per run. The identity is
+					// carried either way and never repaired - the fact is what the note
+					// records - but the run says which of the two it saw, because "not a
+					// curie of this import" and "this import's, but not this one" send the
+					// user to different places.
 					if (hub.importRoot && !isCurieOfOntology(recordedCurie, curiePrefix)) {
 						const named = `The home note's recorded identity "${recordedCurie}" is not a curie of this import; `
 							+ 'it was left as it was.';
@@ -4778,6 +5124,17 @@ async function applyEnrichment(
 						}
 						debug?.warn('generation', 'root-hub-foreign-curie', 'The home note records an identity this import did not mint', {
 							path: existing.path, recorded: recordedCurie,
+						});
+					} else if (hub.importRoot && hubCurie && recordedCurie !== hubCurie) {
+						const named = `The home note's recorded identity "${recordedCurie}" is not this import's `
+							+ `"${hubCurie}"; it was left as it was.`;
+						if (!deviationsSeen.has(named)) {
+							deviationsSeen.add(named);
+							result.warnings ??= [];
+							result.warnings.push({ row: 0, message: named });
+						}
+						debug?.warn('generation', 'root-hub-differing-curie', 'The home note records an identity of this import that is not this run', {
+							path: existing.path, recorded: recordedCurie, expected: hubCurie,
 						});
 					}
 				}
