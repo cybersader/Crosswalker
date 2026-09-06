@@ -19,7 +19,7 @@ The [v0.1 implementation phase](/crosswalker/reference/roadmap/#v01-implementati
 | [v0.1.2](/crosswalker/reference/roadmap/milestones/v0-1-2-render/) | `render()` v1 — folder + file + heading | 3–5 days | ✅ Done (2026-05-05) |
 | [v0.1.3](/crosswalker/reference/roadmap/milestones/v0-1-3-generation-engine-integration/) | Generation engine integration | 3–5 days | ✅ Done (2026-05-05) |
 | [v0.1.4](/crosswalker/reference/roadmap/milestones/v0-1-4-junction-notes-and-crosswalks/) | Junction notes + crosswalk edges | 2–3 days | ✅ Done (2026-05-05) |
-| [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) | Streaming refactor (engine accepts row iterator) | 1–2 days | ✅ Done (2026-05-05) |
+| [v0.1.4.5](/crosswalker/reference/roadmap/milestones/v0-1-4-5-streaming-refactor/) | Iterator-ready engine boundary (wizard remains eager) | 1–2 days | ✅ Done (2026-05-05) |
 | [v0.1.5](/crosswalker/reference/roadmap/milestones/v0-1-5-tier-2-sidecar/) | Tier 2 sqlite-wasm sidecar projector | 5–8 days | ✅ Done (2026-05-06) |
 | [v0.1.6](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) | Bases query layer + SSSOM import + recipe UX | 3–5 days (ran long — absorbed the shape-workbench side-arc) | 🚧 In progress — Phases 1–6.4 ✅ + Phase 7 (shape-workbench side-arc) ✅ 2026-07-11; v0.1.7 is active. Delivery detail: `CHANGELOG.md` `[Unreleased]`; phase list: [milestone page](/crosswalker/reference/roadmap/milestones/v0-1-6-bases-query-layer/) |
 | [v0.1.7](/crosswalker/reference/roadmap/milestones/v0-1-7-exporters/) | Portability: exporters, reusable configurations, source bindings, MappingSets | Expanded | 🚧 In progress — exporter first slice ✅; recipe-fidelity foundation ✅ 2026-07-21; configuration library, exact source-bound replay, MappingSet envelope/UI, and exporter completion remain, now gated on the [save-and-replay](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) + [primitives](/crosswalker/agent-context/zz-log/2026-07-25-primitives-reconciliation-decision-register/) decision registers (2026-07-25). Detail: `CHANGELOG.md` `[Unreleased]` |
@@ -28,7 +28,9 @@ The [v0.1 implementation phase](/crosswalker/reference/roadmap/#v01-implementati
 
 **Status legend**: 📋 Planning · 🚧 In progress · ✅ Done · ⏸ Blocked
 
-**Status last verified: 2026-09-04** — every cell above re-checked against the milestone pages, `CHANGELOG.md` `[Unreleased]`, and the commit log. Unchanged since 2026-07-25: no milestone status flipped in that window; the `fix/d1-per-import-root` safety work is unmerged branch work, not a shipped milestone. If today is far past this date and no newer verification line has replaced it, treat this table as unverified.
+**Status last verified: 2026-09-05** — every cell above was re-checked against the milestone pages, `CHANGELOG.md` `[Unreleased]`, and the commit log. No milestone status changed in this documentation update; the `fix/d1-per-import-root` safety work remains unmerged branch work, not a shipped milestone. If today is far past this date and no newer verification line has replaced it, treat this table as unverified.
+
+**Ingestion sequencing:** ship a correct, usable supported path first; stage advanced streaming, parser migration, and mutable-source replay integrity behind demonstrated workflow needs and measured acceptance. This does not relax preservation, supported-input, or completion-truth requirements. See [the 2026-09-05 decision](/crosswalker/agent-context/zz-log/2026-09-05-ingestion-safety-and-staged-performance/).
 
 ## Total estimate
 
@@ -66,7 +68,7 @@ Per-milestone E2E spec — verbatim from the [testing-patterns skill](https://gi
 | v0.1.2 | `render.spec.ts` — recipe w/ folder+heading mechanisms → correct vault structure |
 | v0.1.3 | `re-import.spec.ts` — managed overwritten + user_preserve preserved |
 | v0.1.4 | `crosswalks.spec.ts` — junction notes + STRM enum enforced |
-| v0.1.4.5 | `streaming.spec.ts` — large-CSV streaming import; bounded RAM |
+| v0.1.4.5 | `streaming.spec.ts` — iterator consumption and eager-array compatibility with 100 synthetic rows; no memory-ceiling proof |
 | v0.1.5 | `sidecar.spec.ts` — `.crosswalker.sqlite` projects + recovers on delete |
 | v0.1.6 | `bases-queries.spec.ts` — emitted Bases query renders in note body |
 | v0.1.7 | `export.spec.ts` — reusable configuration save/reopen/replay + MappingSet SSSOM/STRM round-trip + honest OSCAL target handling |
