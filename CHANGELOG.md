@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Vault-root CSV and crosswalk exports passed scoped runtime verification and remain unreleased (2026-09-06)
+
+- **The two older folder exporters now identify the vault root through Obsidian's root-folder API.** Both registered commands selected Obsidian's actual root (`path: /`, `isRoot(): true`) through the friendly `/ (vault root)` picker choice. CSV wrote `vault.export.csv`; the crosswalk mapping command wrote `vault.export.tsv`. Their expected headers and unique synthetic rows were present, source-note bytes were unchanged, and existing hidden-style `.export.csv` and `.export.tsv` bytes stayed untouched. Non-root sibling names are unchanged.
+- **Replacement policy is unchanged.** These older commands still replace an existing corrected destination by default, without the typed mapping command's confirmation step. Existing hidden-style files are not migrated, deleted, or modified automatically.
+- **Verification is scoped to this correction.** The original source-identical verification wave passed 27 focused tests, the full unit suite with 2,988 passed and 2 skipped, lint, and production build. Those checks were not rerun after the later test-only fixture simplification. The final targeted runtime run passed both export specs, all four real command scenarios, and teardown; all six static gates and diff checks also passed. This is not a full-E2E or quarantine-clearance claim, and the correction remains unmerged and unreleased.
+
 ### Typed mapping table export passed scoped runtime verification and remains unreleased (2026-09-06)
 
 - **A new command exposes the existing typed mapping table exporter:** **Import and export: export folder as a typed mapping table**. It writes a sibling named `<folder>.export.typed-mappings.tsv`, or `vault.export.typed-mappings.tsv` for the vault root. The distinct name does not replace the existing crosswalk mapping file at `<folder>.export.tsv`.

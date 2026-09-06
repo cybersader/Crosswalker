@@ -226,8 +226,7 @@ describe('Typed mapping table export command', function () {
 			{ timeout: 10_000, interval: 100, timeoutMsg: 'root folder picker did not open' },
 		);
 		await browser.saveScreenshot(path.join(OUT, 'typed-mappings-04-root-picker.png'));
-		const rootPickerLabel = rootFacts.path === '' ? '/ (vault root)' : rootFacts.path;
-		await chooseFolder(rootPickerLabel);
+		await chooseFolder('/ (vault root)');
 
 		await browser.waitUntil(
 			async () => (await readVaultBytes([ROOT_TYPED_EXPORT]))[ROOT_TYPED_EXPORT] !== null,

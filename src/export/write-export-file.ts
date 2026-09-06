@@ -16,7 +16,7 @@ import { TFile, normalizePath } from 'obsidian';
 
 /** The vault-relative sibling path `<folder>.export.<ext>` for a chosen export folder. */
 export function exportSiblingPath(folder: TFolder, extension: string): string {
-	const label = folder.path === '' ? 'vault' : folder.name;
+	const label = folder.isRoot() ? 'vault' : folder.name;
 	const parentPath = folder.parent && folder.parent.path !== folder.path ? folder.parent.path : '';
 	return normalizePath(`${parentPath ? `${parentPath}/` : ''}${label}.export.${extension}`);
 }

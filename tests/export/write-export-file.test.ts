@@ -1,6 +1,22 @@
-import type { App } from 'obsidian';
+import type { App, TFolder } from 'obsidian';
 import { TFile } from 'obsidian';
-import { writeExportFile } from '../../src/export/write-export-file';
+import { ExportFolderPickerModal } from '../../src/export/folder-picker-modal';
+import { exportSiblingPath, writeExportFile } from '../../src/export/write-export-file';
+
+function folder(
+	path: string,
+	name: string,
+	parentPath: string | null,
+	root: boolean,
+): TFolder {
+	return {
+		path,
+		name,
+		parent: parentPath === null ? null : { path: parentPath },
+		children: [],
+		isRoot: () => root,
+	} as unknown as TFolder;
+}
 
 function makeWriterApp(initial: Record<string, string> = {}): {
 	app: App;
@@ -35,6 +51,36 @@ function makeWriterApp(initial: Record<string, string> = {}): {
 	} as unknown as App;
 	return { app, files, folders, create, modify };
 }
+
+describe('export folder root naming', () => {
+	it.each([
+		['', 'csv', 'vault.export.csv'],
+		['/', 'csv', 'vault.export.csv'],
+		['', 'tsv', 'vault.export.tsv'],
+		['/', 'tsv', 'vault.export.tsv'],
+	])('uses isRoot() for root path %p with extension %s', (path, extension, expected) => {
+		expect(exportSiblingPath(folder(path, '', null, true), extension)).toBe(expected);
+	});
+
+	it.each([
+		['csv', 'Frameworks/NIST.export.csv'],
+		['tsv', 'Frameworks/NIST.export.tsv'],
+	])('keeps non-root sibling naming unchanged for %s', (extension, expected) => {
+		expect(exportSiblingPath(folder('Frameworks/NIST', 'NIST', 'Frameworks', false), extension))
+			.toBe(expected);
+	});
+
+	it.each(['', '/'])('labels root path %p with the public root predicate', (path) => {
+		const modal = new ExportFolderPickerModal({} as App, jest.fn());
+		expect(modal.getItemText(folder(path, '', null, true))).toBe('/ (vault root)');
+	});
+
+	it('keeps non-root picker labels unchanged', () => {
+		const modal = new ExportFolderPickerModal({} as App, jest.fn());
+		expect(modal.getItemText(folder('Frameworks/NIST', 'NIST', 'Frameworks', false)))
+			.toBe('Frameworks/NIST');
+	});
+});
 
 describe('writeExportFile overwrite policy', () => {
 	it('retains the legacy default of replacing an existing file', async () => {
