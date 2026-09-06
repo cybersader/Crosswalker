@@ -182,6 +182,21 @@ bun tools/generate-fixtures.ts   --source "Frameworks/cprt_CSF_2_0_0_06-01-2026.
 - [ ] Import the bundled fixture → 11 junction notes under `_crosswalker/mappings/csf-to-iso27001/`
 - [ ] Spot-check one note: `predicate_id` direction sane (broadMatch → `is_narrower_than` — the 2026-06-12 direction fix)
 
+## 4.5 Export commands (v0.1.7 portability)
+
+*Measured 2026-09-06: lint and production build passed; 18 focused tests passed; the full unit suite passed 2,979 tests with 2 skipped; and both targeted isolated-vault real-Obsidian tests passed. The runtime walkthrough invoked the exact manifest-prefixed command, used the real picker for a nested folder and Obsidian's actual `/` root, verified deterministic typed output and byte preservation, cancelled replacement with Escape, and completed confirmed replacement. Root runtime evidence applies only to this typed command, not to the older CSV or crosswalk exports. All four captured screenshots were reviewed; screenshot 03 caught a notice mid-animation, and screenshot 04 confirmed its fully visible settled position.*
+
+- [x] Command palette → **Crosswalker: Import and export: export folder as a typed mapping table** → the real folder picker opens
+- [x] Pick a nested folder containing canonical `kind: crosswalk-edge` notes → a sibling `<folder>.export.typed-mappings.tsv` appears; picking the vault root instead uses `vault.export.typed-mappings.tsv`
+- [x] Confirm the typed table has the expected ordered mapping columns and deterministic rows, while source-note bytes and the distinct `<folder>.export.tsv` crosswalk mapping file remain unchanged
+- [x] Run the command again → replacement confirmation opens; press **Escape** or close it and confirm the prior output bytes remain unchanged
+- [x] Run it a third time, choose **Replace file**, and confirm the unchanged source produces the same destination and bytes
+- [ ] Pick a folder with no exportable mappings (including one with skipped notes) → no file is created or replaced; skipped-note counts use correct singular/plural wording
+- [ ] Put a folder or other non-file item at the destination → the command refuses it and names the rename/choose-another-folder action
+- [ ] Command palette → **Crosswalker: Import and export: export folder as a crosswalk mapping file** still writes the separate crosswalk mapping export; **export folder as CSV** remains unchanged
+
+**Sprint handoff:** this slice exposes the existing typed mapping serializer only. Persistent reusable-configuration storage/UI, the separate source/run binding, and full-source save → reopen → exact-replay proofs remain unresolved v0.1.7 work; do not read this command as closing those decisions or the milestone.
+
 ## 5. Query commands (v0.1.6 Phases 4.5–4.7 — manual smokes still pending)
 
 *These have pending "⏸ manual smoke" notes on the milestone page — your pass

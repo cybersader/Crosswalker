@@ -15,6 +15,7 @@ import {
 	exportFolderAsCsv,
 	exportSiblingPath,
 	writeExportFile,
+	runFolderTypedTableExport,
 } from './export';
 import { ConfigBrowserModal } from './config/config-browser-modal';
 import { buildCrosswalkerPivotViewFactory } from './views/crosswalker-pivot-view';
@@ -1013,6 +1014,22 @@ export default class CrosswalkerPlugin extends Plugin {
 							6000,
 						);
 					})();
+				}).open();
+			},
+		});
+
+		this.addCommand({
+			id: 'export-folder-as-typed-mapping-table',
+			name: 'Import and export: export folder as a typed mapping table',
+			callback: () => {
+				new ExportFolderPickerModal(this.app, (folder) => {
+					void runFolderTypedTableExport({ app: this.app, folder })
+						.then((outcome) => {
+							new Notice(outcome.message, outcome.status === 'failed' ? 8000 : 6000);
+						})
+						.catch(() => {
+							new Notice('Could not finish the export; check the destination file before trying again.', 8000);
+						});
 				}).open();
 			},
 		});

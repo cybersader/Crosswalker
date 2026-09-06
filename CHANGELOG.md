@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 The 0.1 design phase concluded 2026-05-04 and implementation began the same day. As of 2026-07-21, milestones v0.1.1 through v0.1.5 are ✅ shipped; v0.1.6 has delivered its Bases/query, SSSOM, primitives, ingestion, and shape-workbench phases; v0.1.7 is active with the exporter first slice and canonical ImportRecipe fidelity foundation delivered.
 
+### Typed mapping table export passed scoped runtime verification and remains unreleased (2026-09-06)
+
+- **A new command exposes the existing typed mapping table exporter:** **Import and export: export folder as a typed mapping table**. It writes a sibling named `<folder>.export.typed-mappings.tsv`, or `vault.export.typed-mappings.tsv` for the vault root. The distinct name does not replace the existing crosswalk mapping file at `<folder>.export.tsv`.
+- **Existing output is replaced only after explicit confirmation.** Cancelling or closing the confirmation writes nothing. A new destination is create-only, so a file that appears during the write race is refused rather than silently modified. A folder or other non-file item at the destination is also refused.
+- **Result messages follow completed work.** Zero exportable rows never create or replace a file, even when notes were skipped. Success is shown only after the write settles; read and write failures provide a next action without exposing raw host errors or claiming that a failed write changed nothing.
+- **Scoped verification is green.** Lint and production build passed; 18 focused tests passed; the full unit suite passed 2,979 tests with 2 skipped; and both targeted real-Obsidian tests passed. The registered command opened the real folder picker, exported deterministic nested-folder rows, preserved source notes and the distinct crosswalk TSV, preserved prior output when replacement was dismissed with Escape, and replaced it only after confirmation. The same command selected Obsidian's actual vault root (`path: /`, `isRoot(): true`) and wrote `vault.export.typed-mappings.tsv` without replacing a pre-existing root output. This root evidence applies only to the new typed mapping command, not the older CSV or crosswalk export commands. All six static documentation gates and diff checks passed, and eleven scoped file hashes remained stable through verification.
+- **This is not a release claim.** The changes remain unmerged and unreleased. The verification does not establish Excel behavior, large-source performance, a byte-identical STRM round trip, or completion of v0.1.7.
+
 ### The safety work on that defect now passes every check that was run, and is still not released (2026-09-04)
 
 This continues the section below. It does not restate it: read that one for what the original defect was and what to do if you already have imports sitting in your output folder.

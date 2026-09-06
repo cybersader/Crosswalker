@@ -6,7 +6,7 @@ tags: [obsidian, getting-started]
 
 Access these from Obsidian's command palette (`Ctrl/Cmd + P`). Obsidian adds the **Crosswalker:** prefix; the leading words keep related actions together.
 
-**Status last verified:** 2026-08-28 — verified against `src/main.ts` and the command palette captured by the real-Obsidian `tests/e2e/first-run.spec.ts` run.
+**Status last verified:** 2026-09-06 — verified against `src/main.ts` and the targeted real-Obsidian typed-export walkthrough. The exact prefixed typed mapping command below opened the real folder picker and completed both nested-folder and actual vault-root exports; existing-output cancellation and confirmed replacement also passed. Root behavior was runtime-verified only for this new typed command, not for the older CSV or crosswalk export commands. The three export commands are listed in the Import and export section; all remaining entries retain the 2026-08-28 command-palette baseline from `tests/e2e/first-run.spec.ts`.
 
 ## Start here
 
@@ -28,6 +28,7 @@ Access these from Obsidian's command palette (`Ctrl/Cmd + P`). Obsidian adds the
 |---|---|
 | **Crosswalker: Import and export: import crosswalk mapping file** | Imports relationships between two frameworks from a mapping file. |
 | **Crosswalker: Import and export: export folder as a crosswalk mapping file** | Exports relationship notes beneath a chosen folder. |
+| **Crosswalker: Import and export: export folder as a typed mapping table** | Exports typed relationship notes beneath a chosen folder to `<folder>.export.typed-mappings.tsv` (or `vault.export.typed-mappings.tsv` for the vault root). Existing output requires confirmation; zero exportable rows write nothing. |
 | **Crosswalker: Import and export: export folder as CSV** | Exports notes beneath a chosen folder as CSV. |
 
 ## Explore data
