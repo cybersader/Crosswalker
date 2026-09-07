@@ -1,12 +1,12 @@
 /**
  * hash.ts — canonical serialization + sha256 for provenance hashing.
  *
- * Provides the two hash-computation primitives the `_crosswalker` provenance
- * block's `concept_cid` and `recipe.hash` slots need (spec/tier1.schema.json
- * `$defs/provenance_block` + `$defs/sha256_cid`). Per the Ch 43 deliverable
+ * Provides canonical hash helpers for the `_crosswalker` provenance block's
+ * `concept_cid` and `recipe.hash` slots, plus the separate full canonical
+ * recipe-document digest referenced by recipe ancestry and Tier 1 provenance.
+ * The original provenance helpers landed from the Ch 43 deliverable
  * (`.workspace/2026-07-11-challenge-43-version-migration-deliverable.md` §2 /
- * §0-B): the schema anticipated both slots but nothing computed them —
- * `provenance.ts` only passed them through. This module is what computes them.
+ * §0-B), where the schema anticipated both slots but nothing computed them.
  *
  * No new dependency. Node's `crypto` module is unavailable on mobile Obsidian
  * (Capacitor WebView has no Node runtime; esbuild's `external` list — see
@@ -20,6 +20,7 @@
 
 import { interpolationColumn, parseTemplateSegments, type Interpolation } from '../render/template';
 import type { Recipe } from '../render';
+import type { CrosswalkerImportRecipe } from '../types/generated/recipe';
 
 // ---------------------------------------------------------------------------
 // Canonical serialization
@@ -191,6 +192,18 @@ export function sha256Hex(input: string): string {
 /** Wraps a hex digest in the `sha256-{hex}` format spec/tier1.schema.json's `sha256_cid` $def requires. */
 export function toSha256Cid(hex: string): string {
 	return `sha256-${hex}`;
+}
+
+/**
+ * Digest a complete canonical ImportRecipe revision.
+ *
+ * The caller must first validate and normalize the recipe with normalizeRecipe().
+ * This helper deliberately hashes the full recursively key-sorted object, including
+ * normalized defaults, source, target, metadata, ancestry references and ordered
+ * arrays. It performs no normalization or field stripping of its own.
+ */
+export function computeRecipeDocumentDigest(recipe: CrosswalkerImportRecipe): string {
+	return toSha256Cid(sha256Hex(canonicalStringify(recipe)));
 }
 
 /**

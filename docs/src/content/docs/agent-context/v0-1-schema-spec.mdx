@@ -9,7 +9,7 @@ tags: [schema, foundation, v0-1, architecture]
 
 
 :::tip[Current contract verification]
-**Status last verified:** 2026-08-31 — re-checked field by field against [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json), [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), and `src/tier2/schema.sql`.
+**Status last verified:** 2026-09-06 — the recipe-document digest additions were checked field by field against the local working tree: both new `recipe_document_digest` definitions and reference locations in [`spec/tier1.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/tier1.schema.json) and [`spec/recipe.schema.json`](https://github.com/cybersader/crosswalker/blob/main/spec/recipe.schema.json), the helper and the reduced effective-target input in `src/generation/hash.ts`, `normalizeRecipe()` and the fork branch in `src/import/recipe-document.ts`, and the generated `RecipeAncestryReference`. That work has since passed independent verification (full unit suite, golden tests, lint, build, `codegen --check`, fixture no-drift, and all six static gates — detail in [CHANGELOG.md — Unreleased](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md#unreleased--v01-implementation-in-progress-2026-05-04--present)) and remains unmerged and unreleased. The rest of the page retains its 2026-08-31 field-by-field verification against those two schemas and `src/tier2/schema.sql`.
 
 The machine-readable contracts and canonical SQL remain authoritative. Sections §3 and §7 below summarize the shipped shapes. Historical TypeScript/YAML sketches are labeled as history and must not be used as implementation contracts.
 
@@ -125,12 +125,33 @@ Tier 1 (the canonical Markdown representation) is governed by [`spec/tier1.schem
 | `source_ref` | Yes | Stable or human-readable source reference |
 | `produced_at` | Yes | ISO 8601 production timestamp |
 | `producer` | No | Producer name and version |
-| `recipe` | No | Recipe identifier and content hash used for this output |
+| `recipe` | No | Reference to the recipe used for this output. Three optional properties, none required (source: `spec/tier1.schema.json § $defs.provenance_block.properties.recipe`): `id`, the recipe identifier; `hash`, the long-standing effective-target receipt, still typed as a plain string with no pattern — deliberately left permissive so existing records keep validating; and `recipe_document_digest`, added 2026-09-06, strictly `^sha256-[a-f0-9]{64}$` via `$defs.recipe_document_digest`. Nothing in the generation path writes the digest field yet — see [the digest subsection](#recipe-document-digest-two-reference-fields) |
 | `import_set` | No | Durable ownership stamp. Five properties, two of them required when the block is present (source: `spec/tier1.schema.json § $defs.provenance_block.properties.import_set`): `id` (required) matches `^iset-[a-z0-9]{6}$`; `scheme` (required) is fixed at mint, closed enum `endpoint-v1` or `set-qualified-v1`; `destination` (optional) records the folder the set was last written to; `ontology` (optional) pins the CURIE prefix the set mints under; `derivation` (optional) pins how the set turns a source row into a CURIE local part, closed enum `filename-stem-v1` or `declared-facts-v1`. See the two subsections below |
 | `concept_cid` | No | Content identifier for the declared concept-identity scope; layout and mapping-only defaults do not enter a concept's scope |
 | `review_cid` | No | The same identity record hashed with the review-normalization rule applied to every string value, so cosmetically-different content (citation markers, curly quotes, collapsed whitespace, markdown link destinations) hashes identically here and differently in `concept_cid`. This normalized whole-row hash is the only changed/not-changed gate. Absent means the producer computed none, which is not a claim that the content is unchanged |
 | `review_groups` | No | Three recipe-driven explanation hashes, all required when the block is present: `wording`, `scope`, and `housekeeping` (source: `spec/tier1.schema.json § $defs.review_group_cids`). They classify a changed `review_cid`; they never replace or narrow the whole-row gate |
 
+
+#### Recipe-document digest: two reference fields
+
+A **recipe-document digest** (a fingerprint naming one complete recipe revision) answers a question the existing hashes cannot: *which exact revision of this recipe is this?* It is stored in exactly two places, both optional, both new on 2026-09-06:
+
+| Schema | Location | Means |
+|---|---|---|
+| `spec/recipe.schema.json` (SchemaVer 1.10.0) | `metadata.based_on.recipe_document_digest` | The complete ancestor recipe named by `based_on.recipe` |
+| `spec/tier1.schema.json` (SchemaVer 1.4.0) | `_crosswalker.recipe.recipe_document_digest`, inside `$defs.provenance_block.properties.recipe` | The complete recipe referenced by that note's provenance |
+
+Both accept only `^sha256-[a-f0-9]{64}$` through a local `$defs.recipe_document_digest` in each schema. Both are optional, so recipes and notes written before this addition still validate, and neither schema `$id` changed.
+
+**Normalized input, and what that includes.** The digest is computed by `computeRecipeDocumentDigest(recipe)` in `src/generation/hash.ts`, which is `sha256-` plus the SHA-256 of `canonicalStringify()` over the whole recipe object. **It neither validates nor normalizes what it is given**: its precondition is a validated canonical recipe already put through `normalizeRecipe()` (`src/import/recipe-document.ts § normalizeRecipe`). Any external producer computing this digest must therefore do both steps first — passing raw recipe JSON straight in yields a digest for a different object than the one Crosswalker would identify. Keeping normalization on the caller also keeps the module graph acyclic — `recipe-document.ts` imports `hash.ts`, never the reverse.
+
+Because normalization runs first, the digest covers the defaults `normalizeRecipe()` supplies: `spec_version`, `target.linkStyle`, the folder `variadic` defaults (`segment`, `drop_last`, `max_depth`, `on_overflow`), and the `also_emit.body` defaults (`position`, `format`, `omit_if_empty`, and `heading_depth` for `section` entries) — sourced from that function. The practical consequence for external producers: **an omitted default and an explicitly written equivalent default identify the same revision and digest identically.** This is a digest of a normalized canonical recipe, not of arbitrary raw recipe JSON, and object key order and input-file whitespace do not affect it while array order does.
+
+**How it differs from the existing recipe hash.** `computeRecipeHash()` hashes a deliberately reduced slice — `layout`, `also_emit`, `enrichment`, `auto_heading`, `source.where`, `source.joins` (source: `src/generation/hash.ts § recipeHashCanonicalInput`) — because it answers "did anything that changes output behavior change?" The document digest covers the whole recipe, so a changed recipe id, title, or ancestry reference changes the digest while leaving the effective-target hash fixed. Both meanings, and every value already written under them, are unchanged by this addition.
+
+**No self-field and no stripping.** Digests live on references to *other* documents, so a recipe never carries its own digest: an own-digest property on recipe metadata is rejected by the closed metadata schema. Nothing is excluded before hashing either — an ancestor digest string already present in a recipe is ordinary document content and participates in that recipe's digest, as does any similarly named key inside an opaque block.
+
+**What emits it today.** Only the existing fork path: when `patchRecipeDocument()` customizes a recognized recipe and writes `metadata.based_on`, it records the digest of the normalized original *before* the descendant's edits (`src/import/recipe-document.ts § patchRecipeDocument`). Fresh documents still get no ancestry, and a no-op patch mints nothing. **The Tier 1 field is contract only**: no generation path stamps `_crosswalker.recipe.recipe_document_digest` yet, and this slice adds no recipe storage, recipe-library UI, source retention, or replay execution.
 
 #### What is pinned to the set, and why
 
@@ -240,7 +261,7 @@ The active import workbench now retains the full validated canonical recipe thro
 
 Current additive fields include:
 
-- optional display metadata and structured `metadata.based_on` ancestry;
+- optional display metadata and structured `metadata.based_on` ancestry, which since 2026-09-06 may also carry `recipe_document_digest`, a strict digest of the complete normalized ancestor recipe (see [the digest subsection](#recipe-document-digest-two-reference-fields) for its input contract and how it differs from the effective-target hash);
 - optional `source.version` as compatibility metadata, never stronger than verified run provenance;
 - ordered `target.also_emit.body` projections (`append | section` × `text | code | quote | list`);
 - typed managed scalar coercion through the closed `number` template filter;

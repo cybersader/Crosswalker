@@ -64,6 +64,8 @@ Make the portable parts of the import/export chain explicit without collapsing d
 
 ### Track 2 — Source/run binding and exact replay
 
+Gate 1 of the [save-and-exact-replay register](/crosswalker/agent-context/zz-log/2026-07-25-save-and-exact-replay-decision-register/) closed 2026-09-06 — see the [Gate 1 ratification](/crosswalker/agent-context/zz-log/2026-09-06-save-and-exact-replay-gate-1-ratification/) for the ratified digest, binding-surface, replay-promise, and source-retention answers. That unblocks writing the design specification; Gate 2 (D5, D6) remains open. A first recipe-document digest slice is implemented locally and has passed independent verification; it remains unmerged and unreleased — see [CHANGELOG.md — Unreleased](https://github.com/cybersader/crosswalker/blob/main/CHANGELOG.md#unreleased--v01-implementation-in-progress-2026-05-04--present). None of the checkboxes below are satisfied by it.
+
 - [ ] Keep the reusable configuration independent from a concrete run binding
 - [ ] Record recipe reference + canonical recipe hash, exact source-byte hash, parser selectors (for example sheet/header/iterator), destination, and bound parameters
 - [ ] Diagnose missing or drifted source bytes before replay; never silently treat a changed source as the original input
